@@ -85,9 +85,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly string[] SharedClientOwnedVehicleVehicleIdOnlyActionNames =
             ResolveClientRawActionNames(
                 // IDA `IsAbleTamingMobAction` admits raw action 42 for mounted action coverage
-                // before vehicle-specific branches (including 1932000 and 1932016). Keep this
+                // before vehicle-specific branches (including 1932000 and 1932016). Keep these
                 // as owner-preservation only for mounts that already own the seam.
-                42 // paralyze
+                42, // paralyze
+                43, // ladder2
+                44, // rope2
+                45, // shoot6
+                46  // arrowRain
             );
 
         private static readonly string[] MechanicClientOwnedVehicleMountedMoveActions =

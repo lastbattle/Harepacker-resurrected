@@ -421,18 +421,7 @@ namespace HaCreator.MapSimulator
             {
                 for (int i = 0; i < _packetOwnedEventCalendarEntries.Count; i++)
                 {
-                    EventEntrySnapshot entry = _packetOwnedEventCalendarEntries[i];
-                    entries.Add(new EventEntrySnapshot
-                    {
-                        Title = entry.Title,
-                        Detail = entry.Detail,
-                        StatusText = entry.StatusText,
-                        Status = entry.Status,
-                        ScheduledAt = entry.ScheduledAt,
-                        SourceTick = entry.SourceTick,
-                        SortPriority = entry.SortPriority,
-                        SortOrder = nextSortOrder++
-                    });
+                    entries.Add(CloneEventEntryForOwnerSnapshot(_packetOwnedEventCalendarEntries[i], nextSortOrder++));
                 }
             }
 
@@ -619,6 +608,43 @@ namespace HaCreator.MapSimulator
                 AlarmLines = BuildEventAlarmOwnerLines(currentTick),
                 Entries = entries
             };
+        }
+
+        private static EventEntrySnapshot CloneEventEntryForOwnerSnapshot(
+            EventEntrySnapshot entry,
+            int sortOrder,
+            int defaultSourceTick = int.MinValue)
+        {
+            if (entry == null)
+            {
+                return new EventEntrySnapshot
+                {
+                    ScheduledAt = DateTime.Today,
+                    SourceTick = defaultSourceTick,
+                    SortOrder = Math.Max(0, sortOrder)
+                };
+            }
+
+            return new EventEntrySnapshot
+            {
+                Title = entry.Title,
+                Detail = entry.Detail,
+                StatusText = entry.StatusText,
+                AlarmText = entry.AlarmText,
+                Status = entry.Status,
+                ScheduledAt = entry.ScheduledAt.Date,
+                SourceTick = entry.SourceTick == int.MinValue ? defaultSourceTick : entry.SourceTick,
+                SortPriority = entry.SortPriority,
+                SortOrder = Math.Max(0, sortOrder)
+            };
+        }
+
+        internal static EventEntrySnapshot CloneEventEntryForOwnerSnapshotForTests(
+            EventEntrySnapshot entry,
+            int sortOrder,
+            int defaultSourceTick = int.MinValue)
+        {
+            return CloneEventEntryForOwnerSnapshot(entry, sortOrder, defaultSourceTick);
         }
 
         private IEnumerable<EventEntrySnapshot> BuildSpecialFieldEventEntries()

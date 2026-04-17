@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedLogoutGiftDialogFrameFallbackPath = "UI/UIWindow.img/LogoutGift/backgrnd";
         private const string PacketOwnedLogoutGiftUiPath = "LogoutGift/backgrnd";
         private const string PacketOwnedLogoutGiftButtonFallbackPath = "UI/UIWindow.img/LogoutGift/BtSelect";
+        private const string PacketOwnedLogoutGiftButtonClientUolFallbackPath = "UI/Login.img/CharSelect/BtSelect";
         private const string PacketOwnedLogoutGiftButtonUiPath = "LogoutGift/BtSelect";
         private const int PacketOwnedLogoutGiftCompletionStringPoolId = 0x16AB;
         private const string PacketOwnedLogoutGiftCompletionFallbackText = "Congratulations! Please come back in 3 days. Thank you!";
@@ -34,6 +35,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftPredictQuitContextDwordIndex = 4137;
         private const int PacketOwnedLogoutGiftCommodityContextDwordIndex = 4138;
         private const int PacketOwnedLogoutGiftPrecursorContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - 1;
+        private const int PacketOwnedLogoutGiftPrecursorContextSlotCount = 3;
         private const int PacketOwnedLogoutGiftPredictQuitContextByteOffset = 0x40A4;
         private const int PacketOwnedLogoutGiftCommodityContextByteOffset = 0x40A8;
 
@@ -425,15 +427,19 @@ namespace HaCreator.MapSimulator
             _packetOwnedLogoutGiftHasConfig = HasDecodedPacketOwnedLogoutGiftConfig(commoditySerialNumbers);
             _packetOwnedLogoutGiftSelectedIndex = ResolveFirstPacketOwnedLogoutGiftSelection();
             bool hasCommodity = HasAnyPacketOwnedLogoutGiftCommodity(commoditySerialNumbers);
+            string precursorContextSummary = DescribePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingContextFields);
             string configOffsetSummary = logoutGiftConfigOffset > 0
                 ? $" at tail offset {logoutGiftConfigOffset.ToString(CultureInfo.InvariantCulture)}"
                 : string.Empty;
+            string mappedPrecursorContextSuffix = string.IsNullOrWhiteSpace(precursorContextSummary)
+                ? string.Empty
+                : $" Mapped contiguous precursor slots: {precursorContextSummary}.";
             _lastPacketOwnedLogoutGiftSummary = _packetOwnedLogoutGiftHasConfig
                 ? HasPacketOwnedLogoutGiftOpaqueTail()
-                    ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache{configOffsetSummary} (`m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]): {FormatPacketOwnedLogoutGiftCommodityList()}.{(hasCommodity ? string.Empty : " All three commodity slots are zero, but the decoded cache remains owned by the logout-gift context fields.")}"
+                    ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache{configOffsetSummary} (`m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]): {FormatPacketOwnedLogoutGiftCommodityList()}.{(hasCommodity ? string.Empty : " All three commodity slots are zero, but the decoded cache remains owned by the logout-gift context fields.")}{mappedPrecursorContextSuffix}"
                     : hasCommodity
-                        ? $"Decoded `CWvsContext::OnSetLogoutGiftConfig` from character-data SetField with `m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}. Packet 432 now refreshes the dedicated owner instead of leaving the values hidden in stage payload tail bytes."
-                        : $"Decoded the explicit `CWvsContext::OnSetLogoutGiftConfig` payload from SetField with `m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and all three commodity slots zero; the simulator preserves the client cache as present rather than collapsing it to missing config."
+                        ? $"Decoded `CWvsContext::OnSetLogoutGiftConfig` from character-data SetField with `m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}. Packet 432 now refreshes the dedicated owner instead of leaving the values hidden in stage payload tail bytes.{mappedPrecursorContextSuffix}"
+                        : $"Decoded the explicit `CWvsContext::OnSetLogoutGiftConfig` payload from SetField with `m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and all three commodity slots zero; the simulator preserves the client cache as present rather than collapsing it to missing config.{mappedPrecursorContextSuffix}"
                 : "Character-data SetField did not decode a complete logout-gift cache payload.";
             NotifyEventAlarmOwnerActivity("packet-owned logout gift");
 
@@ -539,10 +545,13 @@ namespace HaCreator.MapSimulator
                 return _packetOwnedLogoutGiftButtonSkin;
             }
 
-            _packetOwnedLogoutGiftButtonSkin = TryLoadPacketOwnedLogoutGiftButtonSkinFromResourcePath(PacketOwnedLogoutGiftButtonFallbackPath);
-            if (_packetOwnedLogoutGiftButtonSkin != null)
+            foreach (string resourcePath in EnumeratePacketOwnedLogoutGiftButtonResourcePathCandidates())
             {
-                return _packetOwnedLogoutGiftButtonSkin;
+                _packetOwnedLogoutGiftButtonSkin = TryLoadPacketOwnedLogoutGiftButtonSkinFromResourcePath(resourcePath);
+                if (_packetOwnedLogoutGiftButtonSkin != null)
+                {
+                    return _packetOwnedLogoutGiftButtonSkin;
+                }
             }
 
             foreach (string imageName in PacketOwnedLogoutGiftUiImageNames)
@@ -1064,15 +1073,17 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<PacketOwnedLogoutGiftContextField>();
             }
 
-            int firstDwordIndex = PacketOwnedLogoutGiftPrecursorContextDwordIndex - (leadingOpaqueInt32Values.Length - 1);
-            PacketOwnedLogoutGiftContextField[] fields = new PacketOwnedLogoutGiftContextField[leadingOpaqueInt32Values.Length];
-            for (int i = 0; i < leadingOpaqueInt32Values.Length; i++)
+            int mappedValueCount = Math.Min(PacketOwnedLogoutGiftPrecursorContextSlotCount, leadingOpaqueInt32Values.Length);
+            int mappedStartIndex = leadingOpaqueInt32Values.Length - mappedValueCount;
+            int firstDwordIndex = PacketOwnedLogoutGiftPrecursorContextDwordIndex - (mappedValueCount - 1);
+            PacketOwnedLogoutGiftContextField[] fields = new PacketOwnedLogoutGiftContextField[mappedValueCount];
+            for (int i = 0; i < mappedValueCount; i++)
             {
                 int dwordIndex = firstDwordIndex + i;
                 fields[i] = new PacketOwnedLogoutGiftContextField(
                     dwordIndex,
                     ResolvePacketOwnedLogoutGiftContextByteOffset(dwordIndex),
-                    leadingOpaqueInt32Values[i],
+                    leadingOpaqueInt32Values[mappedStartIndex + i],
                     ResolvePacketOwnedLogoutGiftLeadingContextSemanticName(dwordIndex));
             }
 
@@ -1113,7 +1124,9 @@ namespace HaCreator.MapSimulator
                 parts.Add(
                     string.Equals(field.SemanticName, "CWvsContext::m_bPredictQuit", StringComparison.Ordinal)
                         ? $"{field.SemanticName}@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)} ({(field.Value != 0 ? "true" : "false")}, TryShowLogoutGiftDialog gate)"
-                        : $"CWvsContext dword[{field.DwordIndex.ToString(CultureInfo.InvariantCulture)}]@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}");
+                        : !string.IsNullOrWhiteSpace(field.SemanticName)
+                            ? $"{field.SemanticName}@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}"
+                            : $"CWvsContext dword[{field.DwordIndex.ToString(CultureInfo.InvariantCulture)}]@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}");
             }
 
             return string.Join(", ", parts);
@@ -1138,6 +1151,12 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(leading))
             {
                 parts.Add($"pre-`OnSetLogoutGiftConfig` aligned tail int32 [{leading}]");
+            }
+
+            string precursorContext = DescribePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingContextFields);
+            if (!string.IsNullOrWhiteSpace(precursorContext))
+            {
+                parts.Add(precursorContext);
             }
 
             string trailing = DescribePacketOwnedLogoutGiftLeadingInt32Values(_packetOwnedLogoutGiftTrailingOpaqueInt32Values);
@@ -1175,9 +1194,16 @@ namespace HaCreator.MapSimulator
 
         private static string ResolvePacketOwnedLogoutGiftLeadingContextSemanticName(int dwordIndex)
         {
-            return dwordIndex == PacketOwnedLogoutGiftPrecursorContextDwordIndex
-                ? "CWvsContext::m_nLogoutGiftPrecursor"
-                : $"CWvsContext::m_anLogoutGiftPrecursorDword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}]";
+            int relativeIndex = dwordIndex - (PacketOwnedLogoutGiftPredictQuitContextDwordIndex - PacketOwnedLogoutGiftPrecursorContextSlotCount);
+            return relativeIndex >= 0 && relativeIndex < PacketOwnedLogoutGiftPrecursorContextSlotCount
+                ? $"CWvsContext::OnSetLogoutGiftConfigPrecursorDword[{relativeIndex.ToString(CultureInfo.InvariantCulture)}]"
+                : null;
+        }
+
+        private static IEnumerable<string> EnumeratePacketOwnedLogoutGiftButtonResourcePathCandidates()
+        {
+            yield return PacketOwnedLogoutGiftButtonFallbackPath;
+            yield return PacketOwnedLogoutGiftButtonClientUolFallbackPath;
         }
 
         private static string DescribePacketOwnedLogoutGiftCommodityContextFields(IReadOnlyList<PacketOwnedLogoutGiftContextField> fields)

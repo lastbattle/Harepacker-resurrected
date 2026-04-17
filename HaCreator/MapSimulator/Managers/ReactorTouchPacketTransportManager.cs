@@ -441,6 +441,10 @@ namespace HaCreator.MapSimulator.Managers
             while (_pendingOutboundPackets.Count > 0
                 && ShouldFlushDeferredTouchAtTick(resolvedCurrentTick, _nextDeferredTouchFlushTick, _deferredTouchFlushTickInitialized))
             {
+                int replayTick = ResolveDeferredTouchReplayTick(
+                    resolvedCurrentTick,
+                    _nextDeferredTouchFlushTick,
+                    _deferredTouchFlushTickInitialized);
                 PendingTouchRequest packet = _pendingOutboundPackets.Peek();
                 string line = $"packetoutraw {Convert.ToHexString(packet.RawPacket)}";
                 int sent = 0;
@@ -474,7 +478,7 @@ namespace HaCreator.MapSimulator.Managers
                 LastSentObjectId = dequeued.ObjectId;
                 LastSentTouchFlag = dequeued.IsTouching;
                 LastSentRawPacket = dequeued.RawPacket;
-                UpdateDeferredTouchFlushScheduleAfterSendUnsafe(dequeued, resolvedCurrentTick);
+                UpdateDeferredTouchFlushScheduleAfterSendUnsafe(dequeued, replayTick);
             }
 
             if (_pendingOutboundPackets.Count == 0)
@@ -547,6 +551,18 @@ namespace HaCreator.MapSimulator.Managers
             return !hasSchedule || unchecked(currentTick - nextFlushTick) >= 0;
         }
 
+        internal static int ResolveDeferredTouchReplayTick(int currentTick, int nextFlushTick, bool hasSchedule)
+        {
+            if (!hasSchedule)
+            {
+                return currentTick;
+            }
+
+            return ShouldFlushDeferredTouchAtTick(currentTick, nextFlushTick, hasSchedule)
+                ? nextFlushTick
+                : currentTick;
+        }
+
         internal static int ComputeDeferredTouchReplayDelayMs(int previousSourceTick, int nextSourceTick)
         {
             int delta = unchecked(nextSourceTick - previousSourceTick);
@@ -558,7 +574,7 @@ namespace HaCreator.MapSimulator.Managers
             return delta;
         }
 
-        private void UpdateDeferredTouchFlushScheduleAfterSendUnsafe(PendingTouchRequest sent, int currentTick)
+        private void UpdateDeferredTouchFlushScheduleAfterSendUnsafe(PendingTouchRequest sent, int replayTick)
         {
             if (_pendingOutboundPackets.Count == 0)
             {
@@ -568,7 +584,7 @@ namespace HaCreator.MapSimulator.Managers
 
             PendingTouchRequest next = _pendingOutboundPackets.Peek();
             int replayDelay = ComputeDeferredTouchReplayDelayMs(sent.SourceTick, next.SourceTick);
-            _nextDeferredTouchFlushTick = unchecked(currentTick + replayDelay);
+            _nextDeferredTouchFlushTick = unchecked(replayTick + replayDelay);
             _deferredTouchFlushTickInitialized = true;
         }
 

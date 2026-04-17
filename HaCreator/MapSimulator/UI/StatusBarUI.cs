@@ -243,9 +243,17 @@ namespace HaCreator.MapSimulator.UI {
         private const int BUFF_TRAY_ROWS = 2;
         private const int BUFF_TRAY_TOP_MARGIN = 8;
         private const int BUFF_TRAY_RIGHT_MARGIN = 8;
-        private const int COOLDOWN_TRAY_COLUMNS = 8;
         private const int COOLDOWN_TRAY_TOP_MARGIN = BUFF_TRAY_TOP_MARGIN + (BUFF_TRAY_ROWS * (BUFF_ICON_SIZE + BUFF_ICON_SPACING)) + 4;
         private const int COOLDOWN_TRAY_RIGHT_MARGIN = 8;
+        // Client evidence: CUIStatusBar::CQuickSlot::GetIndexByPos checks 8 fixed 32x32 cells.
+        // WZ evidence: UI/StatusBar2.img/mainBar/quickSlot/quickSlot is a 145x93 4x2 panel.
+        private const int CLIENT_SHORTCUT_SLOT_COUNT = 8;
+        private const int CLIENT_SHORTCUT_SLOT_COLUMNS = 4;
+        private const int CLIENT_SHORTCUT_SLOT_SIZE = 32;
+        private const int CLIENT_SHORTCUT_SLOT_STEP = 33;
+        private const int CLIENT_SHORTCUT_TRAY_WIDTH = 145;
+        private const int CLIENT_SHORTCUT_TRAY_SLOT_LEFT = 6;
+        private const int CLIENT_SHORTCUT_TRAY_SLOT_TOP = 14;
         private const int OFFBAR_COOLDOWN_ICON_SIZE = 24;
         private const int OFFBAR_COOLDOWN_ICON_SPACING = 2;
         private const int OFFBAR_COOLDOWN_TRAY_COLUMNS = 6;
@@ -1175,18 +1183,11 @@ namespace HaCreator.MapSimulator.UI {
         {
             _cooldownIconHitboxes.Clear();
             _cooldownTooltipEntries.Clear();
-            DrawCooldownTrayGroup(
+            int primaryTrayBottom = DrawPrimaryCooldownTray(
                 sprite,
                 renderParameters,
-                currentTime,
-                _getCooldownStatus,
-                COOLDOWN_TRAY_COLUMNS,
-                1,
-                BUFF_ICON_SIZE,
-                BUFF_ICON_SPACING,
-                COOLDOWN_TRAY_RIGHT_MARGIN,
-                COOLDOWN_TRAY_TOP_MARGIN,
-                SkillManager.CooldownMaskSurface.QuickSlot);
+                currentTime);
+            int offBarTopMargin = Math.Max(OFFBAR_COOLDOWN_TRAY_TOP_MARGIN, primaryTrayBottom + 4);
             DrawCooldownTrayGroup(
                 sprite,
                 renderParameters,
@@ -1197,11 +1198,92 @@ namespace HaCreator.MapSimulator.UI {
                 OFFBAR_COOLDOWN_ICON_SIZE,
                 OFFBAR_COOLDOWN_ICON_SPACING,
                 OFFBAR_COOLDOWN_TRAY_RIGHT_MARGIN,
-                OFFBAR_COOLDOWN_TRAY_TOP_MARGIN,
+                offBarTopMargin,
                 SkillManager.CooldownMaskSurface.SkillBook);
         }
 
-        private void DrawCooldownTrayGroup(
+        private int DrawPrimaryCooldownTray(
+            SpriteBatch sprite,
+            RenderParameters renderParameters,
+            int currentTime)
+        {
+            if (_getCooldownStatus == null)
+            {
+                return COOLDOWN_TRAY_TOP_MARGIN;
+            }
+
+            IReadOnlyList<StatusBarCooldownRenderData> cooldownEntries = _getCooldownStatus(currentTime);
+            if (cooldownEntries == null || cooldownEntries.Count == 0)
+            {
+                return COOLDOWN_TRAY_TOP_MARGIN;
+            }
+
+            Point trayTopLeft = ResolveClientShortcutTrayTopLeft(renderParameters.RenderWidth);
+            int visibleCount = Math.Min(cooldownEntries.Count, CLIENT_SHORTCUT_SLOT_COUNT);
+            int maxBottom = trayTopLeft.Y;
+            for (int entryIndex = 0; entryIndex < visibleCount; entryIndex++)
+            {
+                StatusBarCooldownRenderData cooldownEntry = cooldownEntries[entryIndex];
+                Rectangle iconRect = ResolveClientShortcutSlotRect(trayTopLeft.X, trayTopLeft.Y, entryIndex);
+                maxBottom = Math.Max(maxBottom, iconRect.Bottom);
+
+                _cooldownIconHitboxes[cooldownEntry.SkillId] = iconRect;
+                _cooldownTooltipEntries[cooldownEntry.SkillId] = cooldownEntry;
+
+                DrawBuffIconFrame(sprite, iconRect);
+                if (cooldownEntry.IconTexture != null)
+                {
+                    sprite.Draw(cooldownEntry.IconTexture, iconRect, Color.White);
+                }
+
+                if (!cooldownEntry.SuppressProgressOverlay)
+                {
+                    DrawCooldownMask(
+                        sprite,
+                        iconRect,
+                        cooldownEntry.MaskFrameIndex,
+                        SkillManager.CooldownMaskSurface.QuickSlot);
+                }
+
+                if (!HasStatusBarTextRenderer() || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
+                {
+                    continue;
+                }
+
+                string remainingText = string.IsNullOrWhiteSpace(cooldownEntry.CounterText)
+                    ? Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f)).ToString()
+                    : cooldownEntry.CounterText;
+                Vector2 textSize = MeasureStatusBarText(remainingText, 0.5f);
+                Vector2 textPosition = new Vector2(
+                    iconRect.Right - textSize.X - 2,
+                    iconRect.Bottom - textSize.Y - 1);
+
+                DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, 0.5f);
+            }
+
+            return maxBottom;
+        }
+
+        internal static Point ResolveClientShortcutTrayTopLeft(int renderWidth)
+        {
+            return new Point(
+                renderWidth - COOLDOWN_TRAY_RIGHT_MARGIN - CLIENT_SHORTCUT_TRAY_WIDTH,
+                COOLDOWN_TRAY_TOP_MARGIN);
+        }
+
+        internal static Rectangle ResolveClientShortcutSlotRect(int trayLeft, int trayTop, int slotIndex)
+        {
+            int clampedSlotIndex = Math.Clamp(slotIndex, 0, CLIENT_SHORTCUT_SLOT_COUNT - 1);
+            int column = clampedSlotIndex % CLIENT_SHORTCUT_SLOT_COLUMNS;
+            int row = clampedSlotIndex / CLIENT_SHORTCUT_SLOT_COLUMNS;
+            return new Rectangle(
+                trayLeft + CLIENT_SHORTCUT_TRAY_SLOT_LEFT + (column * CLIENT_SHORTCUT_SLOT_STEP),
+                trayTop + CLIENT_SHORTCUT_TRAY_SLOT_TOP + (row * CLIENT_SHORTCUT_SLOT_STEP),
+                CLIENT_SHORTCUT_SLOT_SIZE,
+                CLIENT_SHORTCUT_SLOT_SIZE);
+        }
+
+        private int DrawCooldownTrayGroup(
             SpriteBatch sprite,
             RenderParameters renderParameters,
             int currentTime,
@@ -1216,15 +1298,16 @@ namespace HaCreator.MapSimulator.UI {
         {
             if (provider == null)
             {
-                return;
+                return topMargin;
             }
 
             IReadOnlyList<StatusBarCooldownRenderData> cooldownEntries = provider(currentTime);
             if (cooldownEntries == null || cooldownEntries.Count == 0)
             {
-                return;
+                return topMargin;
             }
 
+            int maxBottom = topMargin;
             int maxVisibleEntries = Math.Max(1, columns * rows);
             int visibleCount = Math.Min(cooldownEntries.Count, maxVisibleEntries);
 
@@ -1249,6 +1332,7 @@ namespace HaCreator.MapSimulator.UI {
                         topMargin + row * (iconSize + iconSpacing),
                         iconSize,
                         iconSize);
+                    maxBottom = Math.Max(maxBottom, iconRect.Bottom);
 
                     _cooldownIconHitboxes[cooldownEntry.SkillId] = iconRect;
                     _cooldownTooltipEntries[cooldownEntry.SkillId] = cooldownEntry;
@@ -1287,6 +1371,8 @@ namespace HaCreator.MapSimulator.UI {
                     DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, textScale);
                 }
             }
+
+            return maxBottom;
         }
 
         private void DrawHoveredCooldownTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)

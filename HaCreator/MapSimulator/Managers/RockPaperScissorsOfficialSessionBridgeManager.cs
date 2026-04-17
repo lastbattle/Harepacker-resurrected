@@ -132,7 +132,8 @@ namespace HaCreator.MapSimulator.Managers
             string outboundHistory = RecentOutboundPacketCount == 0
                 ? "no captured client opcode 160 history"
                 : $"{RecentOutboundPacketCount} captured client opcode 160 packet(s)";
-            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}. {LastStatus}";
+            string guidance = DescribeSessionControlGuidance();
+            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}. {LastStatus} {guidance}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -996,6 +997,26 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return autoSelectListenPort || currentListenPort == expectedListenPort;
+        }
+
+        private string DescribeSessionControlGuidance()
+        {
+            if (HasConnectedSession)
+            {
+                return $"Live opcode {RockPaperScissorsField.OwnerOpcode}/{RockPaperScissorsField.ClientOpcode} ownership is active through the proxied Maple session.";
+            }
+
+            if (HasPassiveEstablishedSocketPair && !IsRunning)
+            {
+                return "Use `/rps session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]` or `/rps session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]` and reconnect Maple through localhost to recover live decrypt/inject ownership.";
+            }
+
+            if (IsRunning && !HasConnectedSession)
+            {
+                return $"Reconnect Maple through 127.0.0.1:{ListenPort} to recover opcode {RockPaperScissorsField.OwnerOpcode}/{RockPaperScissorsField.ClientOpcode} decrypt/inject ownership.";
+            }
+
+            return "Use `/rps session attach <remotePort> [processName|pid] [localPort]` for passive status-only binding to an already-established Maple socket pair, or use `/rps session start ...`, `/rps session startauto ...`, or `/rps session attachproxy ...` for live decrypt/inject ownership.";
         }
 
         private static IReadOnlyList<TcpRowOwnerPid> EnumerateTcpRows()

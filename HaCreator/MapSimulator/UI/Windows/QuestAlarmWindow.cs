@@ -582,6 +582,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            QuestRecentUpdateAcknowledged?.Invoke(questId);
             ResetSelectionAfterMutation();
             QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
             HandleEmptySnapshotVisibility(refreshedSnapshot);
@@ -600,6 +601,9 @@ namespace HaCreator.MapSimulator.UI
             bool clearHiddenAutoTombstones)
         {
             EnsurePersistedStateLoaded();
+            HashSet<int> previousTrackedQuestIds = _trackedQuestIds.Count == 0
+                ? null
+                : _trackedQuestIds.ToHashSet();
 
             _trackedQuestIds.Clear();
             if (clearHiddenAutoTombstones)
@@ -616,6 +620,15 @@ namespace HaCreator.MapSimulator.UI
                     {
                         _trackedQuestIds.Add(questId);
                     }
+                }
+            }
+
+            if (previousTrackedQuestIds != null && previousTrackedQuestIds.Count > 0)
+            {
+                previousTrackedQuestIds.ExceptWith(_trackedQuestIds);
+                foreach (int removedQuestId in previousTrackedQuestIds)
+                {
+                    QuestRecentUpdateAcknowledged?.Invoke(removedQuestId);
                 }
             }
 
@@ -1431,6 +1444,7 @@ namespace HaCreator.MapSimulator.UI
             EnsurePersistedStateLoaded();
             QuestAlarmSnapshot snapshot = RefreshFilteredSnapshot();
             string questTitle = TryGetQuestTitle(snapshot, questId);
+            QuestRecentUpdateAcknowledged?.Invoke(questId);
             _trackedQuestIds.Remove(questId);
             _hiddenAutoQuestIds.Add(questId);
 
@@ -1451,6 +1465,14 @@ namespace HaCreator.MapSimulator.UI
             if ((fullSnapshot.Entries == null || fullSnapshot.Entries.Count == 0) && !HasLocalRegistrationState())
             {
                 return;
+            }
+
+            foreach (QuestAlarmEntrySnapshot entry in fullSnapshot.Entries ?? Array.Empty<QuestAlarmEntrySnapshot>())
+            {
+                if (entry?.QuestId > 0)
+                {
+                    QuestRecentUpdateAcknowledged?.Invoke(entry.QuestId);
+                }
             }
 
             _trackedQuestIds.Clear();

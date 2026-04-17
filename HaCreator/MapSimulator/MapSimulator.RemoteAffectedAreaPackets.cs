@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator
     {
         private const int RemoteAffectedAreaFallbackTickMs = 1000;
         private readonly Dictionary<int, Fields.MonsterCarnivalTeam> _remoteAffectedAreaMonsterCarnivalOwnerTeams = new();
+        private readonly Dictionary<int, string> _remoteAffectedAreaOwnerNames = new();
         private readonly Dictionary<int, int> _remoteAffectedAreaLocalPlayerTickTimes = new();
 
         private readonly record struct RemoteAffectedAreaSkillRuntime(
@@ -255,33 +256,39 @@ namespace HaCreator.MapSimulator
 
             int hostileTickIntervalMs = ResolveRemoteAffectedAreaHostileTickIntervalMs(
                 hostileSkillRuntimes.Select(static runtime => runtime.LevelData));
-            if (!_affectedAreaPool.TryBeginGameplayTick(area, currentTime, hostileTickIntervalMs))
-            {
-                return;
-            }
-
+            bool shouldReplayMobTick = canAffectMobs
+                                       && _affectedAreaPool.TryBeginGameplayTick(
+                                           area,
+                                           currentTime,
+                                           hostileTickIntervalMs);
+            bool shouldReplayLocalPlayerTick = false;
             if (canAffectLocalPlayer)
             {
                 int localHostileTickIntervalMs = ResolveRemoteAffectedAreaHostileTickIntervalMs(
                     localPlayerHostileSkillRuntimes.Select(static runtime => runtime.LevelData));
-                canAffectLocalPlayer = TryBeginRemoteAffectedAreaLocalPlayerTick(
+                shouldReplayLocalPlayerTick = TryBeginRemoteAffectedAreaLocalPlayerTick(
                     area.ObjectId,
                     currentTime,
                     localHostileTickIntervalMs);
             }
 
-            SkillManager skillManager = _playerManager?.Skills;
-            if (skillManager == null && canAffectLocalPlayer)
+            if (!shouldReplayMobTick && !shouldReplayLocalPlayerTick)
             {
                 return;
             }
 
-            if (canAffectLocalPlayer)
+            SkillManager skillManager = _playerManager?.Skills;
+            if (skillManager == null && shouldReplayLocalPlayerTick)
+            {
+                return;
+            }
+
+            if (shouldReplayLocalPlayerTick)
             {
                 ApplyRemoteHostileAffectedAreaToLocalPlayer(localPlayerHostileSkillRuntimes, currentTime);
             }
 
-            if (!canAffectMobs || skillManager == null)
+            if (!shouldReplayMobTick || skillManager == null)
             {
                 return;
             }
@@ -949,7 +956,44 @@ namespace HaCreator.MapSimulator
             return resolved;
         }
 
+        internal static string ResolveRemoteAffectedAreaOwnerName(
+            int ownerId,
+            IReadOnlyDictionary<int, string> cachedOwnerNames,
+            Func<int, string> resolveLiveOwnerName)
+        {
+            if (ownerId <= 0)
+            {
+                return null;
+            }
+
+            string liveOwnerName = resolveLiveOwnerName?.Invoke(ownerId);
+            if (!string.IsNullOrWhiteSpace(liveOwnerName))
+            {
+                return liveOwnerName.Trim();
+            }
+
+            return cachedOwnerNames != null
+                   && cachedOwnerNames.TryGetValue(ownerId, out string cachedOwnerName)
+                   && !string.IsNullOrWhiteSpace(cachedOwnerName)
+                ? cachedOwnerName
+                : null;
+        }
+
         private string ResolveRemoteAffectedAreaOwnerName(int ownerId)
+        {
+            string ownerName = ResolveRemoteAffectedAreaOwnerName(
+                ownerId,
+                _remoteAffectedAreaOwnerNames,
+                ResolveLiveRemoteAffectedAreaOwnerName);
+            if (!string.IsNullOrWhiteSpace(ownerName))
+            {
+                _remoteAffectedAreaOwnerNames[ownerId] = ownerName;
+            }
+
+            return ownerName;
+        }
+
+        private string ResolveLiveRemoteAffectedAreaOwnerName(int ownerId)
         {
             return ownerId > 0 && _remoteUserPool.TryGetActor(ownerId, out RemoteUserActor actor)
                 ? actor?.Name

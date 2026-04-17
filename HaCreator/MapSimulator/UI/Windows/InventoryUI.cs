@@ -1311,6 +1311,11 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public bool TryConsumeItemAtSlotForDropRequest(InventoryType type, int slotIndex, int itemId, int quantity)
+        {
+            return TryConsumeItemAtSlot(type, slotIndex, itemId, quantity);
+        }
+
         public bool TryHandleExternalDropRequest(int mouseX, int mouseY)
         {
             if (_draggedSlotData == null || InventoryDropRequested == null)
@@ -1797,7 +1802,17 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return TryConsumeItemAtSlot(inventoryType, slotIndex, slotData.ItemId, requestSlot.Quantity);
+            if (TryConsumeItemAtSlot(inventoryType, slotIndex, slotData.ItemId, requestSlot.Quantity))
+            {
+                return true;
+            }
+
+            if (IsSlotPendingDropRequest(inventoryType, slotIndex, slotData.ItemId))
+            {
+                return true;
+            }
+
+            return WasSlotMutatedByExternalDropCommit(inventoryType, slotIndex, slotData, requestSlot.Quantity);
         }
 
         private void CloseDropQuantityPrompt()
@@ -2035,6 +2050,52 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsStackable(InventoryType type, int maxStackSize)
         {
             return type != InventoryType.EQUIP && maxStackSize > 1;
+        }
+
+        private bool IsSlotPendingDropRequest(InventoryType type, int slotIndex, int itemId)
+        {
+            if (itemId <= 0
+                || !_inventoryData.TryGetValue(type, out List<InventorySlotData> slots)
+                || slotIndex < 0
+                || slotIndex >= slots.Count)
+            {
+                return false;
+            }
+
+            InventorySlotData slot = slots[slotIndex];
+            return slot != null
+                && slot.ItemId == itemId
+                && slot.PendingRequestId > 0
+                && slot.IsDisabled;
+        }
+
+        private bool WasSlotMutatedByExternalDropCommit(
+            InventoryType type,
+            int slotIndex,
+            InventorySlotData sourceSlotData,
+            int consumedQuantity)
+        {
+            if (sourceSlotData == null
+                || sourceSlotData.ItemId <= 0
+                || !_inventoryData.TryGetValue(type, out List<InventorySlotData> slots))
+            {
+                return false;
+            }
+
+            if (slotIndex < 0 || slotIndex >= slots.Count)
+            {
+                return true;
+            }
+
+            InventorySlotData slot = slots[slotIndex];
+            if (slot == null || slot.ItemId != sourceSlotData.ItemId)
+            {
+                return true;
+            }
+
+            int sourceQuantity = Math.Max(1, sourceSlotData.Quantity);
+            int expectedMaxRemaining = Math.Max(0, sourceQuantity - Math.Max(1, consumedQuantity));
+            return Math.Max(1, slot.Quantity) <= expectedMaxRemaining;
         }
 
         private static bool IsSlotLocked(InventorySlotData slot)

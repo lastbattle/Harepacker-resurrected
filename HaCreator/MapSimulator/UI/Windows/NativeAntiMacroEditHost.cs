@@ -713,6 +713,11 @@ namespace HaCreator.MapSimulator.UI
                     CancelImeComposition();
                 }
 
+                if (ShouldDisableImeOpenStatusOnFocusChange(hasFocus: true))
+                {
+                    SetImeOpenStatus(open: false);
+                }
+
                 UpdateImePlacement();
                 FocusChanged?.Invoke(true);
             }
@@ -722,6 +727,11 @@ namespace HaCreator.MapSimulator.UI
                 if (ShouldCancelImeCompositionOnFocusChange(hasFocus: false))
                 {
                     CancelImeComposition();
+                }
+
+                if (ShouldDisableImeOpenStatusOnFocusChange(hasFocus: false))
+                {
+                    SetImeOpenStatus(open: false);
                 }
 
                 FocusChanged?.Invoke(false);
@@ -931,9 +941,14 @@ namespace HaCreator.MapSimulator.UI
         internal static bool ShouldCancelImeCompositionOnFocusChange(bool hasFocus)
         {
             // `CCtrlEdit::OnSetFocus(true)` calls `CWndMan::ClearComposition`.
-            // The hosted seam already mirrors the blur-side cleanup by cancelling
-            // outstanding IME composition when focus leaves the edit.
-            return true;
+            return hasFocus;
+        }
+
+        internal static bool ShouldDisableImeOpenStatusOnFocusChange(bool hasFocus)
+        {
+            // `CCtrlEdit::OnSetFocus(true)` also calls `CWndMan::EnableIME(..., 0)`,
+            // so mirror that by explicitly disabling IME open status on focus gain.
+            return hasFocus;
         }
 
         internal static bool IsClientEncodedKeyUp(int clientLParam)
@@ -1061,6 +1076,29 @@ namespace HaCreator.MapSimulator.UI
             try
             {
                 ImmNotifyIME(inputContext, NiCompositionStr, CpsCancel, 0);
+            }
+            finally
+            {
+                ImmReleaseContext(_editHandle, inputContext);
+            }
+        }
+
+        private void SetImeOpenStatus(bool open)
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            IntPtr inputContext = ImmGetContext(_editHandle);
+            if (inputContext == IntPtr.Zero)
+            {
+                return;
+            }
+
+            try
+            {
+                ImmSetOpenStatus(inputContext, open);
             }
             finally
             {
@@ -1551,6 +1589,9 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("imm32.dll")]
         private static extern bool ImmNotifyIME(IntPtr hIMC, int dwAction, int dwIndex, int dwValue);
+
+        [DllImport("imm32.dll")]
+        private static extern bool ImmSetOpenStatus(IntPtr hIMC, bool fOpen);
 
         [DllImport("imm32.dll")]
         private static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);

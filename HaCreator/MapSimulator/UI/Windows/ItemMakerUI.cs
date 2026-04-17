@@ -726,7 +726,14 @@ namespace HaCreator.MapSimulator.UI
                 sprite.DrawString(_font, scrollText, new Vector2(listRect.Right - 68, listRect.Bottom + 4), new Color(182, 191, 210));
             }
 
-            ItemMakerRecipe selectedRecipe = recipes[Math.Clamp(_selectedRecipeIndex, 0, recipes.Count - 1)];
+            if (_selectedRecipeIndex < 0 || _selectedRecipeIndex >= recipes.Count)
+            {
+                DrawGauge(sprite);
+                sprite.DrawString(_font, _statusMessage, new Vector2(Position.X + 18, Position.Y + 321), new Color(230, 230, 230));
+                return;
+            }
+
+            ItemMakerRecipe selectedRecipe = recipes[_selectedRecipeIndex];
             Vector2 detailOrigin = new(Position.X + 18, Position.Y + 185);
             if (selectedRecipe.Mode == ItemMakerRecipeMode.Disassemble)
             {
@@ -1858,7 +1865,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedPageIndex = pageIndex;
-            _selectedRecipeIndex = 0;
+            _selectedRecipeIndex = -1;
             _recipeScrollOffset = 0;
             _craftingRecipeIndex = -1;
             _isCrafting = false;
@@ -2917,7 +2924,7 @@ namespace HaCreator.MapSimulator.UI
             if (_pages.Count == 0)
             {
                 _selectedPageIndex = 0;
-                _selectedRecipeIndex = 0;
+                _selectedRecipeIndex = -1;
                 _recipeScrollOffset = 0;
                 _isCategorySelectorExpanded = false;
                 _isItemSelectorExpanded = false;
@@ -2929,12 +2936,22 @@ namespace HaCreator.MapSimulator.UI
             _selectedPageIndex = pageIndex >= 0 ? pageIndex : 0;
 
             IReadOnlyList<ItemMakerRecipe> currentRecipes = CurrentRecipes;
-            int recipeIndex = ResolveRecipeSelectionIndex(
+            int selectedCategoryKey = _pages[_selectedPageIndex].CategoryKey;
+            bool categoryChanged = selectedCategoryKey != previousCategoryKey;
+            int recipeIndex = ResolveRebuildRecipeSelectionIndex(
                 currentRecipes.Select(static recipe => (recipe.RecipeKey, recipe.OutputItemId)).ToList(),
                 previousRecipeKey,
-                previousRecipeId);
-            _selectedRecipeIndex = recipeIndex >= 0 ? recipeIndex : 0;
-            EnsureSelectedRecipeVisible();
+                previousRecipeId,
+                categoryChanged);
+            _selectedRecipeIndex = recipeIndex;
+            if (_selectedRecipeIndex >= 0)
+            {
+                EnsureSelectedRecipeVisible();
+            }
+            else
+            {
+                _recipeScrollOffset = 0;
+            }
             _isCategorySelectorExpanded = false;
             _isItemSelectorExpanded = false;
 
@@ -3317,6 +3334,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return -1;
+        }
+
+        internal static int ResolveRebuildRecipeSelectionIndex(
+            IReadOnlyList<(string RecipeKey, int OutputItemId)> recipes,
+            string previousRecipeKey,
+            int previousRecipeId,
+            bool categoryChanged)
+        {
+            if (recipes == null || recipes.Count == 0 || categoryChanged)
+            {
+                return -1;
+            }
+
+            return ResolveRecipeSelectionIndex(recipes, previousRecipeKey, previousRecipeId);
         }
 
         private void FocusLaunchContext()

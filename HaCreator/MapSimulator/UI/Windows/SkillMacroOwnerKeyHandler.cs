@@ -5,6 +5,7 @@ namespace HaCreator.MapSimulator.UI
     internal static class SkillMacroOwnerKeyHandler
     {
         internal const int ClientForwardedFunctionKeyCount = 12;
+        internal const int ClientForwardedCtrlSlotKeyCount = 8;
 
         internal static bool ShouldCloseWindow(KeyboardState keyboardState, KeyboardState previousKeyboardState)
         {
@@ -22,6 +23,59 @@ namespace HaCreator.MapSimulator.UI
 
             functionKeyIndex = -1;
             return false;
+        }
+
+        internal static bool TryGetClientForwardedCtrlSlotIndex(Keys key, out int ctrlSlotIndex)
+        {
+            if (key >= Keys.D1 && key <= Keys.D8)
+            {
+                ctrlSlotIndex = key - Keys.D1;
+                return true;
+            }
+
+            ctrlSlotIndex = -1;
+            return false;
+        }
+
+        internal static bool ShouldForwardClientOwnedNonFunctionKeyDownToParent(
+            Keys key,
+            bool controlHeld,
+            bool shiftHeld,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            if (TryGetClientForwardedFunctionKeyIndex(key, out _))
+            {
+                return false;
+            }
+
+            return key switch
+            {
+                Keys.Back => false,
+                Keys.Delete => false,
+                Keys.C or Keys.V or Keys.X => !controlHeld,
+                Keys.Home or Keys.End => controlHeld,
+                Keys.Down => !ShouldDeferDownKeyToIme(controlHeld, shiftHeld, imeCompositionActive, imeCandidateWindowActive),
+                Keys.Insert => !shiftHeld,
+                Keys.Enter or Keys.Left or Keys.Right or Keys.Up => true,
+                _ => true
+            };
+        }
+
+        internal static bool ShouldForwardClientOwnedNonFunctionKeyUpToParent(Keys key)
+        {
+            return !TryGetClientForwardedFunctionKeyIndex(key, out _);
+        }
+
+        internal static bool ShouldDeferDownKeyToIme(
+            bool controlHeld,
+            bool shiftHeld,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
+        {
+            // Mirrors the native CCtrlEdit edit-host behavior where plain Down
+            // can be deferred to IME-owned candidate/composition handling first.
+            return !controlHeld && !shiftHeld && (imeCompositionActive || imeCandidateWindowActive);
         }
 
         internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)

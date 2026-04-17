@@ -646,7 +646,25 @@ namespace HaCreator.MapSimulator.Managers
 
             if (wrapperPacketType < DojoField.PacketTypeClock || wrapperPacketType > DojoField.PacketTypeTimeOver)
             {
-                return false;
+                if (wrapperPacketType != FieldSpecificDataOpcode
+                    || !TryInferInboundPacketType(wrapperPacketType, wrapperPayload, out int inferredPacketType, out string mappingReason))
+                {
+                    return false;
+                }
+
+                message = new DojoPacketInboxMessage(
+                    DojoPacketMessageKind.RawPacket,
+                    value: 0,
+                    option: string.Empty,
+                    source: source,
+                    rawText: $"packetraw {Convert.ToHexString(rawPacket)}",
+                    packetType: inferredPacketType,
+                    payload: wrapperPayload);
+                RecordRecentPacket(opcode, rawPacket, inferredPacketType, $"shared-relay:fieldspecific:{mappingReason}");
+                LastStatus =
+                    $"Decoded shared Dojo dispatch opcode {opcode} through the current-wrapper relay as field-specific packet {wrapperPacketType}, " +
+                    $"then classified the nested payload as {DescribePacketType(inferredPacketType)} ({mappingReason}).";
+                return true;
             }
 
             message = new DojoPacketInboxMessage(

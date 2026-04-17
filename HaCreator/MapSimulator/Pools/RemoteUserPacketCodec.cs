@@ -1309,10 +1309,12 @@ namespace HaCreator.MapSimulator.Pools
                     skillId = reader.ReadInt32();
                 }
 
+                byte[] rawTrailingPayload = null;
+                string hitString = null;
                 if (reader.RemainingLength != 0)
                 {
-                    error = $"Remote user hit packet has {reader.RemainingLength} unread bytes remaining.";
-                    return false;
+                    rawTrailingPayload = reader.ReadRemainingBytes();
+                    hitString = TryParseOptionalHitString(rawTrailingPayload);
                 }
 
                 if (characterId <= 0)
@@ -1343,13 +1345,36 @@ namespace HaCreator.MapSimulator.Pools
                     incDecType,
                     hitFlags,
                     hpDelta,
-                    skillId);
+                    skillId,
+                    rawTrailingPayload,
+                    hitString);
                 return true;
             }
             catch (InvalidOperationException ex)
             {
                 error = ex.Message;
                 return false;
+            }
+        }
+
+        private static string TryParseOptionalHitString(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length < sizeof(ushort))
+            {
+                return null;
+            }
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                string value = reader.ReadString16();
+                return reader.RemainingLength == 0 && !string.IsNullOrWhiteSpace(value)
+                    ? value.Trim()
+                    : null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
             }
         }
 

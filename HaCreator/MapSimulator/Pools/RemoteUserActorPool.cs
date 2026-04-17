@@ -1182,7 +1182,7 @@ namespace HaCreator.MapSimulator.Pools
                 skill = _skillLoader.LoadSkill(skillId);
             }
 
-            int chargeElement = ResolveRemoteAfterImageChargeElement(actor, chargeSkillId);
+            int chargeElement = ResolveRemoteAfterImageChargeElement(actor, chargeSkillId, skillId);
             string resolvedActionName = ResolveRemoteMeleeActionName(
                 actor,
                 skill,
@@ -2236,6 +2236,7 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.TemporaryStats = temporaryStats;
             actor.TemporaryStatDelay = delay;
+            actor.PendingTemporaryStatTimelineReseed = true;
             SyncTemporaryStatPresentation(actor);
             message = temporaryStats.HasPayload
                 ? $"Remote user {characterId} temporary-stat snapshot applied."
@@ -2482,13 +2483,14 @@ namespace HaCreator.MapSimulator.Pools
             }
             else if (ShouldTryRegisterRemoteHitDamageReactiveSpecialEffect(packet.HpDelta, packet.SkillId))
             {
+                int damageReactiveRollPercent = ResolveRemoteHitDamageReactiveRandomRollPercentForParity(packet);
                 registeredDamageReactiveSkillEffect = TryRegisterRemoteHitDamageReactiveSpecialEffect(
                     actor?.Build?.Job ?? 0,
                     actor?.TemporaryStats.KnownState ?? default,
                     skillId => _skillLoader?.LoadSkill(skillId),
                     HasRemoteAnimationDisplayerSpecialBranch,
                     skillId => RegisterRemoteHitSpecialSkillUseEffect(actor, skillId, currentTime),
-                    randomRollPercent: null,
+                    randomRollPercent: damageReactiveRollPercent,
                     out damageReactiveSkillId);
             }
 
@@ -3123,6 +3125,25 @@ namespace HaCreator.MapSimulator.Pools
             // Client `CUserRemote::OnHit` reserves `nHPDamage == -1` for an explicit packet skill id.
             // The WZ `info/condition = damaged` fallback should only emulate a real damage branch.
             return hpDelta > 0 && packetSkillId.GetValueOrDefault() <= 0;
+        }
+
+        internal static int ResolveRemoteHitDamageReactiveRandomRollPercentForParity(RemoteUserHitPacket packet)
+        {
+            unchecked
+            {
+                // Keep damaged-condition trigger ownership bound to the decoded `OnHit` packet
+                // surface rather than global simulator RNG so replayed packets stay stable.
+                int seed = (packet.CharacterId * 397)
+                           ^ (packet.AttackIndex * 131)
+                           ^ (packet.Damage * 17)
+                           ^ (packet.HpDelta * 31)
+                           ^ (packet.MobTemplateId.GetValueOrDefault() * 53)
+                           ^ (packet.MobId.GetValueOrDefault() * 71)
+                           ^ (packet.HitFlags * 11)
+                           ^ (packet.IncDecType * 19)
+                           ^ (packet.SkillId.GetValueOrDefault() * 29);
+                return ResolveRemoteHitRandomOffsetForParity(seed, 100);
+            }
         }
 
         internal static IReadOnlyList<int> EnumerateRemoteHitDamageReactiveSkillCandidateIds(
@@ -5717,6 +5738,11 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            if (ShouldSuppressCarryItemEffectForParity(actor))
+            {
+                return;
+            }
+
             CarryItemEffectDefinition effect = _loader.LoadCarryItemEffectDefinition();
             if (effect?.IsReady != true)
             {
@@ -5766,6 +5792,20 @@ namespace HaCreator.MapSimulator.Pools
                     actor.FacingRight,
                     rotationRadians);
             }
+        }
+
+        internal static bool ShouldSuppressCarryItemEffectForParity(RemoteUserActor actor)
+        {
+            return actor == null
+                || ShouldSuppressCarryItemEffectForParity(actor.HasMorphTemplate, actor.ActionName);
+        }
+
+        internal static bool ShouldSuppressCarryItemEffectForParity(
+            bool hasMorphTemplate,
+            string actionName)
+        {
+            return hasMorphTemplate
+                || IsRelationshipOverlayGhostAction(actionName);
         }
 
         private void DrawRelationshipOverlay(
@@ -7668,7 +7708,6 @@ namespace HaCreator.MapSimulator.Pools
                 || left.IsRelationshipOverlaySuppressed
                 || right.IsRelationshipOverlaySuppressed
                 || !CanReusePortableChairPairRecord(left, right)
-                || !CanReusePortableChairPairRecord(right, left)
                 || !PlayerCharacter.IsPortableChairActualPairActive(
                     left.Chair,
                     left.FacingRight,
@@ -7970,6 +8009,8 @@ namespace HaCreator.MapSimulator.Pools
             int temporaryStatAnimationStartTime = ResolveRemoteTemporaryStatAnimationStartTime(
                 currentTime,
                 actor.TemporaryStatDelay);
+            bool reseedTimelineFromPacket = actor.PendingTemporaryStatTimelineReseed;
+            actor.PendingTemporaryStatTimelineReseed = false;
             CharacterPart overrideAvatarPart = null;
             CharacterPart overrideTamingMobPart = null;
             if (knownState.MorphId is int morphTemplateId && morphTemplateId > 0)
@@ -8011,55 +8052,64 @@ namespace HaCreator.MapSimulator.Pools
                 actor.TemporaryStatSoulArrowEffect,
                 soulArrowSkillId,
                 soulArrowSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteWeaponChargeSkill(actor, knownState, out int? weaponChargeSkillId, out SkillData weaponChargeSkill);
             actor.TemporaryStatWeaponChargeEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatWeaponChargeEffect,
                 weaponChargeSkillId,
                 weaponChargeSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteAuraSkill(actor, knownState, out int? auraSkillId, out SkillData auraSkill);
             actor.TemporaryStatAuraEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatAuraEffect,
                 auraSkillId,
                 auraSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteMoreWildDamageUpSkill(knownState, out int? moreWildDamageUpSkillId, out SkillData moreWildDamageUpSkill);
             actor.TemporaryStatMoreWildEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatMoreWildEffect,
                 moreWildDamageUpSkillId,
                 moreWildDamageUpSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteBarrierSkill(actor, knownState, out int? barrierSkillId, out SkillData barrierSkill);
             actor.TemporaryStatBarrierEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatBarrierEffect,
                 barrierSkillId,
                 barrierSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteBlessingArmorSkill(actor, knownState, out int? blessingArmorSkillId, out SkillData blessingArmorSkill);
             actor.TemporaryStatBlessingArmorEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatBlessingArmorEffect,
                 blessingArmorSkillId,
                 blessingArmorSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteRepeatEffectSkill(actor, knownState, out int? repeatEffectSkillId, out SkillData repeatEffectSkill);
             actor.TemporaryStatRepeatEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatRepeatEffect,
                 repeatEffectSkillId,
                 repeatEffectSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteMagicShieldSkill(actor, knownState, out int? magicShieldSkillId, out SkillData magicShieldSkill);
             actor.TemporaryStatMagicShieldEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatMagicShieldEffect,
                 magicShieldSkillId,
                 magicShieldSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             ResolveRemoteFinalCutSkill(actor, knownState, out int? finalCutSkillId, out SkillData finalCutSkill);
             actor.TemporaryStatFinalCutEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatFinalCutEffect,
                 finalCutSkillId,
                 finalCutSkill,
-                temporaryStatAnimationStartTime);
+                temporaryStatAnimationStartTime,
+                reseedTimelineFromPacket);
             actor.HasMorphTemplate = overrideAvatarPart?.Type == CharacterPartType.Morph;
             actor.HiddenLikeClient = knownState.IsHiddenLikeClient;
             actor.ActionName = ResolveClientVisibleActionName(actor.BaseActionName, knownState);
@@ -8077,6 +8127,33 @@ namespace HaCreator.MapSimulator.Pools
         internal static int ResolveRemoteTemporaryStatAnimationStartTimeForTesting(int currentTime, ushort delayMs)
         {
             return ResolveRemoteTemporaryStatAnimationStartTime(currentTime, delayMs);
+        }
+
+        private static int ResolveRemoteTemporaryStatAvatarEffectAnimationStartTime(
+            int existingSkillId,
+            int nextSkillId,
+            int existingStartTime,
+            int nextStartTime,
+            bool reseedTimelineFromPacket)
+        {
+            return existingSkillId == nextSkillId && !reseedTimelineFromPacket
+                ? existingStartTime
+                : nextStartTime;
+        }
+
+        internal static int ResolveRemoteTemporaryStatAvatarEffectAnimationStartTimeForTesting(
+            int existingSkillId,
+            int nextSkillId,
+            int existingStartTime,
+            int nextStartTime,
+            bool reseedTimelineFromPacket)
+        {
+            return ResolveRemoteTemporaryStatAvatarEffectAnimationStartTime(
+                existingSkillId,
+                nextSkillId,
+                existingStartTime,
+                nextStartTime,
+                reseedTimelineFromPacket);
         }
 
         private static void SetActorAction(
@@ -8765,7 +8842,8 @@ namespace HaCreator.MapSimulator.Pools
             RemoteTemporaryStatAvatarEffectState existingState,
             int? skillId,
             SkillData skill,
-            int currentTime)
+            int currentTime,
+            bool reseedTimelineFromPacket)
         {
             if (!skillId.HasValue
                 || skill == null
@@ -8787,7 +8865,12 @@ namespace HaCreator.MapSimulator.Pools
                     OverlaySecondaryAnimation = nextState.OverlaySecondaryAnimation,
                     UnderFaceAnimation = nextState.UnderFaceAnimation,
                     UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
-                    AnimationStartTime = existingState.AnimationStartTime
+                    AnimationStartTime = ResolveRemoteTemporaryStatAvatarEffectAnimationStartTime(
+                        existingState.SkillId,
+                        nextState.SkillId,
+                        existingState.AnimationStartTime,
+                        nextState.AnimationStartTime,
+                        reseedTimelineFromPacket)
                 }
                 : nextState;
         }
@@ -10584,7 +10667,7 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private static int ResolveRemoteAfterImageChargeElement(RemoteUserActor actor, int chargeSkillId)
+        private static int ResolveRemoteAfterImageChargeElement(RemoteUserActor actor, int chargeSkillId, int skillId)
         {
             if (AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int explicitChargeElement))
             {
@@ -10599,7 +10682,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             RemoteUserTemporaryStatSnapshot temporaryStats = actor?.TemporaryStats ?? default;
-            int preferredSkillId = ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0);
+            int preferredSkillId = AfterImageChargeSkillResolver.IsKnownChargeSkillId(skillId)
+                ? skillId
+                : ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0);
             int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(
                 temporaryStats,
                 preferredSkillId);
@@ -11105,6 +11190,7 @@ namespace HaCreator.MapSimulator.Pools
         public Dictionary<RemoteRelationshipOverlayType, RemoteRelationshipOverlayState> RelationshipOverlays { get; } = new();
         public RemoteUserTemporaryStatSnapshot TemporaryStats { get; set; }
         public ushort TemporaryStatDelay { get; set; }
+        public bool PendingTemporaryStatTimelineReseed { get; set; }
         public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         public byte LastMoveActionRaw { get; set; }
         public int CurrentFootholdId { get; set; }

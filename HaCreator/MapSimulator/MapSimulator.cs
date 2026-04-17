@@ -3514,16 +3514,16 @@ namespace HaCreator.MapSimulator
             messengerWindow.SetActionHandlers(
                 slotIndex => _messengerRuntime.SelectSlot(slotIndex),
                 () => _messengerRuntime.SubmitClaim(),
-                () => _messengerRuntime.LeaveMessenger(),
+                TryHandleMessengerLeaveActionThroughClientSeam,
                 forward => _messengerRuntime.CycleState(forward),
                 message => TryMirrorMessengerChatEditInput(message, out string mirroredMessage)
                     ? mirroredMessage
                     : _messengerRuntime.ProcessChatInput(message),
                 message => _messengerRuntime.WhisperSelected(message),
                 () => _messengerRuntime.RequestExitPrompt(),
-                () => _messengerRuntime.ConfirmExitPrompt(),
+                () => TryHandleMessengerCloseRequestThroughClientSeam(fromExitPrompt: true),
                 () => _messengerRuntime.CancelExitPrompt(),
-                () => _messengerRuntime.TryDeleteMessenger(),
+                () => TryHandleMessengerCloseRequestThroughClientSeam(fromExitPrompt: false),
                 _messengerRuntime.AcknowledgeWindowClose,
                 ShowUtilityFeedbackMessage);
             messengerWindow.SetFont(_fontChat);
@@ -22500,9 +22500,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (ShouldRejectOnlyPickupUseOutsidePickupRuntime(
-                    inventoryType,
-                    InventoryItemMetadataResolver.IsOnlyPickup(itemId)))
+            if (TryRejectOnlyPickupInventoryUse(itemId, inventoryType, currentTime))
             {
                 return false;
             }
@@ -25144,14 +25142,20 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            bool isRepresentedByDedicatedFieldActor = IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant);
+            bool hasEligibleTraderOccupantRole = kind is not SocialRoomKind.PersonalShop
+                && kind is not SocialRoomKind.EntrustedShop
+                || isRepresentedByDedicatedFieldActor;
+
             return ShouldSeedSyntheticMinimapOccupantMarkerForTesting(
                 kind,
                 HasVisibleRemoteTrackedUserActor(occupantName),
                 hasDedicatedFieldActorMarker,
-                IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant),
+                isRepresentedByDedicatedFieldActor,
                 _remoteUserPool.TryGetPosition(occupantName, out _),
                 occupant?.AvatarBuild != null,
-                occupant != null);
+                occupant != null,
+                hasEligibleTraderOccupantRole);
         }
 
         internal static bool ShouldSeedSyntheticMinimapOccupantMarkerForTesting(
@@ -25161,7 +25165,8 @@ namespace HaCreator.MapSimulator
             bool isRepresentedByDedicatedFieldActor,
             bool hasRemotePosition,
             bool hasAvatarBuild,
-            bool hasOccupant)
+            bool hasOccupant,
+            bool hasEligibleTraderOccupantRole)
         {
             if (kind is not SocialRoomKind.MiniRoom
                 && kind is not SocialRoomKind.PersonalShop
@@ -25173,6 +25178,12 @@ namespace HaCreator.MapSimulator
             // Owner-window-only names without an active room occupant should not
             // be promoted into synthetic minimap helper markers.
             if (!hasOccupant)
+            {
+                return false;
+            }
+
+            if ((kind is SocialRoomKind.PersonalShop || kind is SocialRoomKind.EntrustedShop)
+                && !hasEligibleTraderOccupantRole)
             {
                 return false;
             }
@@ -26411,9 +26422,7 @@ namespace HaCreator.MapSimulator
 
             if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack)
             {
-                return skill.UsesAffectedSkillBodyAttack
-                       || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
-                       || skill.AreaAttack;
+                return IsClientBodyLaneAreaCompatible(skill);
             }
 
             bool hasAreaMetadata =
@@ -26548,18 +26557,85 @@ namespace HaCreator.MapSimulator
             return ownerLane switch
             {
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingMeleeAttack =>
-                    skill.Projectile == null
-                    && skill.AttackType != SkillAttackType.Ranged
-                    && skill.AttackType != SkillAttackType.Magic
-                    && !skill.IsMagicDamageSkill,
+                    IsClientMeleeLaneAreaCompatible(skill),
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack =>
-                    skill.Projectile != null
-                    || skill.AttackType == SkillAttackType.Ranged,
+                    IsClientShootLaneAreaCompatible(skill),
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack =>
-                    skill.AttackType == SkillAttackType.Magic
-                    || skill.IsMagicDamageSkill,
+                    IsClientMagicLaneAreaCompatible(skill),
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack =>
+                    IsClientBodyLaneAreaCompatible(skill),
                 _ => true
             };
+        }
+
+        private static bool IsClientMeleeLaneAreaCompatible(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (ClientShootAttackFamilyResolver.UsesClientShootAttackLane(skill.SkillId))
+            {
+                return false;
+            }
+
+            return skill.Projectile == null
+                   && skill.AttackType != SkillAttackType.Ranged
+                   && skill.AttackType != SkillAttackType.Magic
+                   && !skill.IsMagicDamageSkill
+                   && skill.ClientInfoType != 2
+                   && skill.ClientInfoType != 10
+                   && skill.ClientInfoType != 52;
+        }
+
+        private static bool IsClientShootLaneAreaCompatible(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (ClientShootAttackFamilyResolver.UsesClientShootAttackLane(skill.SkillId))
+            {
+                return true;
+            }
+
+            return skill.Projectile != null
+                   || skill.AttackType == SkillAttackType.Ranged
+                   || skill.ClientInfoType == 2
+                   || skill.ClientInfoType == 52;
+        }
+
+        private static bool IsClientMagicLaneAreaCompatible(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            return skill.AttackType == SkillAttackType.Magic
+                   || skill.IsMagicDamageSkill
+                   || skill.ClientInfoType == 10
+                   || (skill.ClientInfoType == 32 && skill.IsMassSpell);
+        }
+
+        private static bool IsClientBodyLaneAreaCompatible(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            // IDA coverage for TryDoingBodyAttack includes an explicit 32121003 branch.
+            if (skill.SkillId == 32121003)
+            {
+                return true;
+            }
+
+            return skill.UsesAffectedSkillBodyAttack
+                   || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
+                   || (skill.AreaAttack && (skill.ClientInfoType == 1 || !string.IsNullOrWhiteSpace(skill.AffectedSkillEffect)));
         }
 
         private static bool ContainsBodyAttackMetadata(string affectedSkillEffect)
@@ -27595,8 +27671,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
-            return ShouldSendTransferFieldRequestForPortal(portal.tm, currentMapId, portal.pt);
+            return IsPassiveTransferFieldPortalCandidate(portal.tm);
         }
 
         private static bool IsPassiveTransferFieldPortalType(PortalType portalType)
@@ -27604,6 +27679,12 @@ namespace HaCreator.MapSimulator
             return portalType != PortalType.CollisionScript
                    && portalType != PortalType.CollisionVerticalJump
                    && portalType != PortalType.CollisionCustomImpact;
+        }
+
+        internal static bool IsPassiveTransferFieldPortalCandidate(int targetMapId)
+        {
+            return targetMapId > 0
+                   && targetMapId != MapConstants.MaxMap;
         }
 
         private static bool IsChangeablePortalType(PortalType portalType)
@@ -32213,6 +32294,7 @@ namespace HaCreator.MapSimulator
             _affectedAreaPool?.Clear();
             _localOwnedAffectedAreaObjectIdsBySkillId.Clear();
             _remoteAffectedAreaMonsterCarnivalOwnerTeams.Clear();
+            _remoteAffectedAreaOwnerNames.Clear();
             _remoteAffectedAreaLocalPlayerTickTimes.Clear();
         }
 
@@ -33093,17 +33175,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int ownerId = _playerManager.Player.Build?.Id ?? 0;
-            _dropPool.SpawnItemDrop(
-                _playerManager.Player.X,
-                _playerManager.Player.Y,
-                request.ItemId.ToString(CultureInfo.InvariantCulture),
-                request.Quantity,
-                currTickCount,
-                ownerId);
-            MirrorClientItemDropRequestEcho(request);
-            PlayDropItemSE();
-            return true;
+            return TryQueuePendingLocalItemDropRequest(request, draggedSlotData);
         }
 
         private bool HandleLocalMesoDropRequest(long requestedAmount, out string message)
@@ -33168,11 +33240,11 @@ namespace HaCreator.MapSimulator
                 payload);
         }
 
-        private void MirrorClientItemDropRequestEcho(LocalFieldItemDropRequest request)
+        private bool MirrorClientItemDropRequestEcho(LocalFieldItemDropRequest request)
         {
             if (request.ItemId <= 0 || request.Quantity <= 0)
             {
-                return;
+                return false;
             }
 
             byte[] payload = FieldDropRequestEvaluator.BuildClientItemDropRequestPayload(
@@ -33180,12 +33252,12 @@ namespace HaCreator.MapSimulator
                 request.InventoryType,
                 request.SlotIndex,
                 request.Quantity);
-            TrySendOrQueueLocalUtilityPacket(
+            return TrySendOrQueueLocalUtilityPacket(
                 FieldDropRequestEvaluator.ClientChangeSlotPositionRequestOpcode,
                 payload);
         }
 
-        private void TrySendOrQueueLocalUtilityPacket(int opcode, byte[] payload)
+        private bool TrySendOrQueueLocalUtilityPacket(int opcode, byte[] payload)
         {
             StampPacketOwnedUtilityRequestState();
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
@@ -33193,7 +33265,7 @@ namespace HaCreator.MapSimulator
                 payload,
                 out _))
             {
-                return;
+                return true;
             }
 
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(
@@ -33201,7 +33273,7 @@ namespace HaCreator.MapSimulator
                 payload,
                 out _))
             {
-                return;
+                return true;
             }
 
             if (_localUtilityOfficialSessionBridgeEnabled
@@ -33210,10 +33282,10 @@ namespace HaCreator.MapSimulator
                     payload,
                     out _))
             {
-                return;
+                return true;
             }
 
-            _localUtilityPacketOutbox.TryQueueOutboundPacket(
+            return _localUtilityPacketOutbox.TryQueueOutboundPacket(
                 opcode,
                 payload,
                 out _);

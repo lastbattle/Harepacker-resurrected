@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator
         private const string WeddingRemoteUserSourceTag = "wedding";
         private readonly Dictionary<int, int> _weddingRemoteItemEffectRevisionByCharacterId = new();
         private readonly Dictionary<int, int> _weddingRemoteAvatarModifiedRevisionByCharacterId = new();
+        private readonly Dictionary<int, int> _weddingRemoteNameTagRevisionByCharacterId = new();
 
         private void SyncWeddingRemoteActorsToSharedPool(WeddingField field)
         {
@@ -44,8 +45,15 @@ namespace HaCreator.MapSimulator
                     snapshot.ActionName,
                     WeddingRemoteUserSourceTag,
                     isVisibleInWorld: true);
-                TryApplyWeddingRemoteProfileMetadata(_remoteUserPool, characterId, build, out _);
-                TryApplyWeddingRemoteGuildMarkMetadata(_remoteUserPool, characterId, build, out _);
+                if (ShouldSyncWeddingNameTagMetadata(
+                        _weddingRemoteNameTagRevisionByCharacterId,
+                        characterId,
+                        snapshot.NameTagRevision))
+                {
+                    TryApplyWeddingRemoteProfileMetadata(_remoteUserPool, characterId, build, out _);
+                    TryApplyWeddingRemoteGuildMarkMetadata(_remoteUserPool, characterId, build, out _);
+                    _weddingRemoteNameTagRevisionByCharacterId[characterId] = snapshot.NameTagRevision;
+                }
 
                 _remoteUserPool.TrySetPortableChair(
                     characterId,
@@ -104,6 +112,11 @@ namespace HaCreator.MapSimulator
             {
                 _weddingRemoteAvatarModifiedRevisionByCharacterId.Remove(characterId);
             }
+
+            foreach (int characterId in _weddingRemoteNameTagRevisionByCharacterId.Keys.Except(desiredCharacterIds).ToArray())
+            {
+                _weddingRemoteNameTagRevisionByCharacterId.Remove(characterId);
+            }
         }
 
         private void ClearWeddingRemoteActorsFromSharedPool()
@@ -111,6 +124,17 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.RemoveBySourceTag(WeddingRemoteUserSourceTag);
             _weddingRemoteItemEffectRevisionByCharacterId.Clear();
             _weddingRemoteAvatarModifiedRevisionByCharacterId.Clear();
+            _weddingRemoteNameTagRevisionByCharacterId.Clear();
+        }
+
+        internal static bool ShouldSyncWeddingNameTagMetadata(
+            IReadOnlyDictionary<int, int> syncedNameTagRevisionByCharacterId,
+            int characterId,
+            int participantNameTagRevision)
+        {
+            return syncedNameTagRevisionByCharacterId == null
+                || !syncedNameTagRevisionByCharacterId.TryGetValue(characterId, out int syncedRevision)
+                || syncedRevision != participantNameTagRevision;
         }
 
         internal static bool TryApplyWeddingRemoteProfileMetadata(

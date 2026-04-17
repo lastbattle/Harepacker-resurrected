@@ -226,27 +226,26 @@ namespace HaCreator.MapSimulator.Character
                     "icemanAttack"
                 },
                 // Evan skill rows in Skill/2200.img and Skill/2210.img through
-                // Skill/2218.img, plus the Flame Gear rows under Skill/000.img,
-                // Skill/001.img, and Skill/1211.img, still publish these client
-                // raw spell roots, while current Morph/*.img exposes no verbatim
-                // magic branches. Keep them on the already-evidenced morph
-                // spell/ice combat surface.
-                ["magicmissile"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["fireCircle"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["lightingBolt"] = ClientPublishedIceSpellMorphFallbackAliases,
+                // Skill/2218.img still publish these raw spell and dragon roots.
+                // Character/00002000.img keeps their body rows on explicit redirect
+                // families, while current Morph/*.img publishes no verbatim roots.
+                ["magicmissile"] = new[] { "walk", "move", "stand", "stabO1", "swingO3" },
+                ["fireCircle"] = new[] { "walk", "move", "stand", "stabO1", "swingO3", "alert" },
+                ["blaze"] = new[] { "alert", "stabO1" },
+                ["magicFlare"] = new[] { "alert", "stabO1", "swingO2" },
+                ["lightingBolt"] = new[] { "alert", "stabO1", "swingO2" },
+                ["dragonBreathe"] = new[] { "stabO1", "alert" },
+                ["dragonIceBreathe"] = new[] { "stabO1", "alert" },
+                ["dragonThrust"] = new[] { "alert", "stabO1" },
+                ["Earthquake"] = new[] { "alert", "swingO2" },
+                ["darkFog"] = new[] { "alert", "swingO2" },
+                ["illusion"] = new[] { "alert", "stabO1", "swingO3", "stabO2" },
+                ["flameWheel"] = new[] { "alert", "stabO1", "swingO3", "stabO2" },
+                ["killingWing"] = new[] { "stand", "walk", "swingO3", "stabO1", "swingO1", "swingO2", "alert" },
+                // Flame Gear rows under Skill/000.img, Skill/001.img, and Skill/1211.img
+                // still publish `flamegear`, while checked Morph/*.img publishes no
+                // verbatim branch.
                 ["flamegear"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["dragonBreathe"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["breathe_prepare"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["icebreathe_prepare"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["blaze"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["illusion"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["dragonIceBreathe"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["magicFlare"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["killingWing"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["Earthquake"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["dragonThrust"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["darkFog"] = ClientPublishedIceSpellMorphFallbackAliases,
-                ["flameWheel"] = ClientPublishedIceSpellMorphFallbackAliases,
                 ["iceAttack1"] = new[] { "icemanAttack" },
                 ["iceAttack2"] = new[] { "icemanAttack" },
                 ["iceSmash"] = new[] { "icemanAttack" },
@@ -389,7 +388,9 @@ namespace HaCreator.MapSimulator.Character
                 // Character/00002000.img backs both surfaces entirely with alert frames
                 // and Morph/*.img publishes no verbatim `revive` / `superBody` branches.
                 ["revive"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
-                ["superBody"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" }
+                ["superBody"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                // Evan spell and dragon entries are kept in the earlier explicit
+                // redirect block to avoid duplicate-key shadowing in this map.
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =
@@ -495,21 +496,21 @@ namespace HaCreator.MapSimulator.Character
                 // Later Demon / Mercedes / Resistance body actions in
                 // Character/00002000.img still collapse onto generic swing/stab families
                 // rather than unique morph roots.
-                ["demonSlasher"] = new[] { "swingO2" },
-                ["bluntSmash"] = new[] { "swingO3", "swingOF" },
+                ["demonSlasher"] = new[] { "stand1", "swingO2" },
+                ["bluntSmash"] = new[] { "alert", "swingO3", "swingOF" },
                 ["demonTrace"] = new[] { "swingOF" },
                 ["elfrush"] = new[] { "alert", "swingO1" },
                 ["elfrush2"] = new[] { "alert", "swingO1" },
                 ["elfrush_final"] = new[] { "alert", "swingO1" },
                 ["elfrush_final2"] = new[] { "alert", "swingO1" },
-                ["deathDraw"] = new[] { "swingO2", "swingOF", "swingO3" },
+                ["deathDraw"] = new[] { "alert", "swingO2", "swingOF", "swingO3" },
                 ["dealingRush"] = new[] { "swingPF", "swingO1" },
-                ["elfTornado"] = new[] { "swingPF", "swingTF" },
-                ["devilCry"] = new[] { "swingT1" },
-                ["movebind"] = new[] { "swingO2", "swingOF" },
-                ["darkSpin"] = new[] { "swingT1" },
-                ["darkThrust"] = new[] { "stabT1", "swingT1" },
-                ["healingAttack"] = new[] { "stabO1" },
+                ["elfTornado"] = new[] { "alert", "swingPF", "swingTF" },
+                ["devilCry"] = new[] { "alert", "swingO2", "swingOF" },
+                ["movebind"] = new[] { "alert", "swingO2", "swingOF" },
+                ["darkSpin"] = new[] { "alert", "swingT1" },
+                ["darkThrust"] = new[] { "alert", "stabT1", "swingT1" },
+                ["healingAttack"] = new[] { "alert", "stabO1" },
                 // These later client raw-action requests stay outside Morph/*.img
                 // verbatim roots; Character/00002000.img backs them with ordinary
                 // body-action families instead.
@@ -534,7 +535,7 @@ namespace HaCreator.MapSimulator.Character
                 // checked body row keeps it on `swingT1` before `swingTF`.
                 ["windEffect"] = new[] { "swingT1", "swingTF" },
                 ["jShot"] = new[] { "swingT2", "swingPF", "swingOF" },
-                ["multiSniping"] = new[] { "swingT1", "swingTF", "shoot1", "shoot2" },
+                ["multiSniping"] = new[] { "swingT1", "swingTF", "shoot1", "swingT2", "shoot2" },
                 // Character/00002000.img keeps the three pole-arm raw roots as body
                 // redirects (`swingT2PoleArm -> swingT2`, `swingP1PoleArm -> swingP1`,
                 // `swingP2PoleArm -> swingP2`), while checked Morph/*.img publishes no
@@ -635,7 +636,12 @@ namespace HaCreator.MapSimulator.Character
                 ["ghostjump"] = new[] { "jump", "stand" },
                 ["ghostladder"] = new[] { "ladder", "ladder2", "stand" },
                 ["ghostrope"] = new[] { "rope", "rope2", "stand" },
-                ["ghostfly"] = new[] { "fly", "fly2", "jump", "stand" }
+                ["ghostfly"] = new[] { "fly", "fly2", "jump", "stand" },
+                // Skill/2215..2218 and 2212..2218 keep these Evan dragon prepare roots,
+                // while Character/00002000.img redirects both to `walk1` and checked
+                // Morph/*.img publishes no verbatim `*_prepare` movement roots.
+                ["breathe_prepare"] = new[] { "walk", "move", "stand" },
+                ["icebreathe_prepare"] = new[] { "walk", "move", "stand" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedPostureMorphFallbackAliases =

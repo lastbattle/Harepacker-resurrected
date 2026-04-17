@@ -917,7 +917,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool hasExplicitHostileStatusMetadata =
-                HasExplicitHostilePlayerStatusMetadata(skill, levelData);
+                HasExplicitHostilePlayerStatusMetadata(
+                    skill,
+                    levelData,
+                    includeNumericStatFallback: skill.Target is not (SkillTarget.Self or SkillTarget.Party));
             if (skill.Target is SkillTarget.Self or SkillTarget.Party)
             {
                 return hasExplicitHostileStatusMetadata;
@@ -945,7 +948,8 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool HasExplicitHostilePlayerStatusMetadata(
             SkillData skill,
-            SkillLevelData levelData)
+            SkillLevelData levelData,
+            bool includeNumericStatFallback = true)
         {
             if (UsesHostileDotOrBodyAttackMetadata(skill))
             {
@@ -974,6 +978,11 @@ namespace HaCreator.MapSimulator.Pools
                     "burn"))
             {
                 return true;
+            }
+
+            if (!includeNumericStatFallback)
+            {
+                return false;
             }
 
             return levelData != null

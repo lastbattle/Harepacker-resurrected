@@ -76,6 +76,7 @@ namespace HaCreator.MapSimulator.Pools
     public enum PacketDropLeaveReason : byte
     {
         Remove = 0,
+        OtherPickup = 1,
         PlayerPickup = 2,
         MobPickup = 3,
         Explode = 4,
@@ -2789,6 +2790,22 @@ namespace HaCreator.MapSimulator.Pools
                         packet.ActorId,
                         currentTime,
                         DropPickupActorKind.Player,
+                        actorNameResolver?.Invoke(packet.Reason, packet),
+                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                        pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
+                        bypassStateValidation: drop.IsPacketControlled,
+                        useClientPacketAbsorbMotion: drop.IsPacketControlled,
+                        pickupTargetPositionResolver: actorPositionResolver == null
+                            ? null
+                            : () => actorPositionResolver(packet.Reason, packet));
+
+                case PacketDropLeaveReason.OtherPickup:
+                    DetachPacketDropLookupForLeave(drop);
+                    return ResolveRemotePickup(
+                        drop,
+                        packet.ActorId,
+                        currentTime,
+                        DropPickupActorKind.Other,
                         actorNameResolver?.Invoke(packet.Reason, packet),
                         pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
                         pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),

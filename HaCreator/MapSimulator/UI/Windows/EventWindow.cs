@@ -906,7 +906,7 @@ namespace HaCreator.MapSimulator.UI
             // WZ evidence: EventList/main/event/BtStart/BtIng/BtClear/BtNone/BtWill
             // use 57x32 button canvases with origin (-226,-5), anchoring the row status lane at (226,5).
             int statusLeft = rowBounds.X + 226;
-            int statusTop = rowBounds.Y + 8;
+            int statusTop = rowBounds.Y + 5;
             int statusWidth = Math.Max(40, Math.Min(57, rowBounds.Right - statusLeft - 5));
             float titleWidth = Math.Max(40f, statusLeft - contentLeft - 8f);
             return new EventRowTextLayout(

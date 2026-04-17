@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.UI
         public int CommodityCount { get; init; }
         public bool AskItemWishlist { get; init; }
         public int TrailingByteCount { get; init; }
+        public string TrailingPayloadSignature { get; init; } = string.Empty;
         public IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> Rows { get; init; }
             = Array.Empty<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot>();
     }
@@ -58,15 +59,43 @@ namespace HaCreator.MapSimulator.UI
 
             bool askItemWishlist = payload[offset] != 0;
             offset += sizeof(byte);
+            ReadOnlySpan<byte> trailingPayload = payload.AsSpan(offset);
             snapshot = new AdminShopPacketOwnedOpenPayloadSnapshot
             {
                 NpcTemplateId = Math.Max(0, npcTemplateId),
                 CommodityCount = Math.Max(0, itemCount),
                 AskItemWishlist = askItemWishlist,
                 TrailingByteCount = Math.Max(0, payload.Length - offset),
+                TrailingPayloadSignature = BuildPayloadSignature(trailingPayload),
                 Rows = rows
             };
             return true;
+        }
+
+        private static string BuildPayloadSignature(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length <= 0)
+            {
+                return "none";
+            }
+
+            const ulong fnvOffsetBasis = 14695981039346656037UL;
+            const ulong fnvPrime = 1099511628211UL;
+            ulong hash = fnvOffsetBasis;
+            for (int i = 0; i < payload.Length; i++)
+            {
+                hash ^= payload[i];
+                hash *= fnvPrime;
+            }
+
+            int headByteCount = Math.Min(8, payload.Length);
+            string head = Convert.ToHexString(payload[..headByteCount]);
+            return string.Concat(
+                payload.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ":",
+                hash.ToString("X16", System.Globalization.CultureInfo.InvariantCulture),
+                ":",
+                head);
         }
     }
 }

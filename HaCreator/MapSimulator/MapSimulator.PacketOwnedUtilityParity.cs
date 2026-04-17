@@ -3310,6 +3310,7 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.VegaResultClientPacketType:
                     return TryApplyPacketOwnedVegaResultPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.ItemUpgradeResultClientPacketType:
                 case LocalUtilityPacketInboxManager.ItemUpgradeResultPacketType:
                     return TryApplyPacketOwnedItemUpgradeResultPayload(payload, out message);
 
@@ -3335,6 +3336,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerDestroyResultPacketType:
                     return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.OwnerDestroyResult, payload, out message);
+
+                case LocalUtilityPacketInboxManager.QuestRewardRaiseQuestRecordMessagePacketType:
+                    return TryApplyPacketOwnedQuestRewardRaiseQuestRecordMessagePayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.QuestGuideResultPacketType:
                     return TryApplyPacketOwnedQuestGuidePayload(payload, out message);
@@ -3840,7 +3844,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _animationEffects?.RemoveMotionBlurAnimation(_packetOwnedActiveEffectMotionBlurId);
+            _animationEffects?.TerminateMotionBlurAnimation(
+                _packetOwnedActiveEffectMotionBlurId,
+                Environment.TickCount);
             _packetOwnedActiveEffectMotionBlurId = -1;
         }
 
@@ -5584,6 +5590,79 @@ namespace HaCreator.MapSimulator
             }
 
             message = dispatchStatus;
+            return true;
+        }
+
+        private bool TryMirrorMessengerBlockedAutoRejectClientRequest(string blockedArguments, out string message, bool queueOnly = false)
+        {
+            message = null;
+            string packedArguments = blockedArguments?.Trim();
+            if (string.IsNullOrWhiteSpace(packedArguments))
+            {
+                message = "Usage: /messenger session <send|queue> blocked <inviter> [localName] [blocked]";
+                return false;
+            }
+
+            string[] parts = packedArguments.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 1 || parts.Length > 3)
+            {
+                message = "Usage: /messenger session <send|queue> blocked <inviter> [localName] [blocked]";
+                return false;
+            }
+
+            string inviterName = parts[0].Trim();
+            if (string.IsNullOrWhiteSpace(inviterName))
+            {
+                message = "Messenger blocked-auto-reject mirroring needs a non-empty inviter name.";
+                return false;
+            }
+
+            string localCharacterName = parts.Length >= 2
+                ? parts[1].Trim()
+                : _playerManager?.Player?.Name;
+            if (string.IsNullOrWhiteSpace(localCharacterName))
+            {
+                localCharacterName = "Player";
+            }
+
+            bool blocked = true;
+            if (parts.Length >= 3 && !TryParsePacketOwnedBooleanToken(parts[2], out blocked))
+            {
+                message = "Messenger blocked-auto-reject flag must be a boolean token (for example: on/off, true/false, 1/0).";
+                return false;
+            }
+
+            byte[] requestPayload = MessengerPacketCodec.BuildBlockedAutoRejectPayload(inviterName, localCharacterName);
+            if (requestPayload.Length > 0)
+            {
+                requestPayload[^1] = blocked ? (byte)1 : (byte)0;
+            }
+
+            if (!TryDispatchMessengerOfficialSessionRequest(
+                    MessengerPacketCodec.ClientMessengerRequestOpcode,
+                    requestPayload,
+                    $"CUIMessenger::OnInvite blocked-auto-reject for {inviterName}",
+                    out string dispatchStatus,
+                    queueOnly))
+            {
+                message = dispatchStatus;
+                return false;
+            }
+
+            if (queueOnly)
+            {
+                message = dispatchStatus;
+                return true;
+            }
+
+            byte[] blockedPayload = MessengerPacketCodec.BuildBlockedPayload(inviterName, blocked);
+            if (TryApplyPacketOwnedMessengerPacket(MessengerPacketType.Blocked, blockedPayload, out string runtimeStatus))
+            {
+                message = $"{runtimeStatus} {dispatchStatus}";
+                return true;
+            }
+
+            message = $"{dispatchStatus} Messenger runtime blocked-state update was skipped: {runtimeStatus}";
             return true;
         }
 
@@ -8349,6 +8428,7 @@ namespace HaCreator.MapSimulator
                 string.IsNullOrWhiteSpace(storedEntry.PacketOwnedRadioCreateLayerLastMutationSource)
                     ? "persisted-radioctx"
                     : storedEntry.PacketOwnedRadioCreateLayerLastMutationSource,
+                int.MinValue,
                 runtimeCharacterId);
         }
 
@@ -12269,9 +12349,29 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedInventoryOperationAuthorityPayload(byte[] payload, out string message)
         {
+            bool consumedCollisionScriptReset = TryConsumeCollisionScriptExclusiveResetFromInventoryOperationPayload(payload);
+            string collisionScriptResetMessage = consumedCollisionScriptReset
+                ? "Inventory-operation payload consumed the client bExclRequestSent reset marker and cleared collision-script exclusive-request state."
+                : null;
+            if (TryApplyPendingLocalItemDropInventoryOperationPayload(payload, out message))
+            {
+                StampPacketOwnedUtilityRequestState();
+                if (!string.IsNullOrWhiteSpace(collisionScriptResetMessage))
+                {
+                    message = $"{message} {collisionScriptResetMessage}";
+                }
+
+                return true;
+            }
+
             if (TryQueueCharacterAuthorityResultFromInventoryOperationPayload(payload, out message))
             {
                 StampPacketOwnedUtilityRequestState();
+                if (!string.IsNullOrWhiteSpace(collisionScriptResetMessage))
+                {
+                    message = $"{message} {collisionScriptResetMessage}";
+                }
+
                 return true;
             }
 
@@ -12279,6 +12379,11 @@ namespace HaCreator.MapSimulator
             if (TryQueueMechanicAuthorityResultFromInventoryOperationPayload(payload, out message))
             {
                 StampPacketOwnedUtilityRequestState();
+                if (!string.IsNullOrWhiteSpace(collisionScriptResetMessage))
+                {
+                    message = $"{message} {collisionScriptResetMessage}";
+                }
+
                 return true;
             }
 
@@ -12292,7 +12397,32 @@ namespace HaCreator.MapSimulator
                 message = characterRejectReason;
             }
 
-            return false;
+            if (!consumedCollisionScriptReset)
+            {
+                return false;
+            }
+
+            message = string.IsNullOrWhiteSpace(message)
+                ? collisionScriptResetMessage
+                : $"{message} {collisionScriptResetMessage}";
+            return true;
+        }
+
+        private bool TryConsumeCollisionScriptExclusiveResetFromInventoryOperationPayload(byte[] payload)
+        {
+            if (!ShouldConsumeCollisionScriptExclusiveResetFromInventoryOperationPayload(payload))
+            {
+                return false;
+            }
+
+            ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
+            return true;
+        }
+
+        internal static bool ShouldConsumeCollisionScriptExclusiveResetFromInventoryOperationPayload(byte[] payload)
+        {
+            return payload?.Length > 0
+                   && payload[0] != 0;
         }
 
         private bool TryResolvePacketOwnedTutorDisplayState(
@@ -12971,17 +13101,7 @@ namespace HaCreator.MapSimulator
             int sortOrder = _packetOwnedEventCalendarEntries.Count;
             foreach (EventEntrySnapshot entry in entries ?? Array.Empty<EventEntrySnapshot>())
             {
-                _packetOwnedEventCalendarEntries.Add(new EventEntrySnapshot
-                {
-                    Title = entry.Title,
-                    Detail = entry.Detail,
-                    StatusText = entry.StatusText,
-                    Status = entry.Status,
-                    ScheduledAt = entry.ScheduledAt.Date,
-                    SourceTick = entry.SourceTick == int.MinValue ? now : entry.SourceTick,
-                    SortPriority = entry.SortPriority,
-                    SortOrder = sortOrder++
-                });
+                _packetOwnedEventCalendarEntries.Add(CloneEventEntryForOwnerSnapshot(entry, sortOrder++, now));
             }
 
             if (clearRequested || (hasAlarmLines && replaceAlarmLines))

@@ -532,6 +532,22 @@ namespace HaCreator.MapSimulator.Animation
             return false;
         }
 
+        public bool TerminateMotionBlurAnimation(int id, int currentTimeMs)
+        {
+            for (int i = _secondaryMotionBlurAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_secondaryMotionBlurAnimations[i].Id != id)
+                {
+                    continue;
+                }
+
+                _secondaryMotionBlurAnimations[i].RequestTermination(currentTimeMs);
+                return true;
+            }
+
+            return false;
+        }
+
         public int RegisterSecondaryChainLightningAnimation(
             IReadOnlyList<List<IDXObject>> frameVariants,
             Vector2 start,
@@ -1728,6 +1744,7 @@ namespace HaCreator.MapSimulator.Animation
         private int _lastUpdateTime;
         private bool _follow;
         private bool _ownsFrameTextures;
+        private bool _terminationRequested;
 
         public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
 
@@ -1775,6 +1792,7 @@ namespace HaCreator.MapSimulator.Animation
             _endTime = currentTimeMs + Math.Max(1, durationMs);
             _intervalMs = Math.Max(16, intervalMs);
             _alpha = alpha;
+            _terminationRequested = false;
         }
 
         public bool Update(int currentTimeMs)
@@ -1812,6 +1830,18 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return currentTimeMs < _endTime || _snapshots.Count > 0;
+        }
+
+        public void RequestTermination(int currentTimeMs)
+        {
+            if (_terminationRequested)
+            {
+                return;
+            }
+
+            _terminationRequested = true;
+            _endTime = Math.Min(_endTime, currentTimeMs);
+            _nextUpdateTime = Math.Max(_nextUpdateTime, _endTime);
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
@@ -2087,7 +2117,13 @@ namespace HaCreator.MapSimulator.Animation
     {
         LoadLayer = 0,
         Animate = 1,
-        RegisterOneTimeAnimation = 2
+        RegisterOneTimeAnimation = 2,
+        RetainOverlayParent = 3,
+        RetainOriginVector = 4,
+        RetainLoadedLayerForRegistration = 5,
+        ReleaseLoadedLayer = 6,
+        ReleaseOriginVector = 7,
+        ReleaseOverlayParent = 8
     }
 
     internal readonly record struct OneTimeAnimationRecoveredNativeOperation(
@@ -2286,7 +2322,8 @@ namespace HaCreator.MapSimulator.Animation
         bool KeepsOverlayOnSeparateLayer,
         string OverlayCanvasPath,
         string OverlaySpriteName,
-        Point OverlayOffset);
+        Point OverlayOffset,
+        int OverlayLayerPositionOffsetY);
 
     /// <summary>
     /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
@@ -2503,10 +2540,11 @@ namespace HaCreator.MapSimulator.Animation
             CanvasLayerRecoveredOwnerTrace? ownerTrace)
         {
             bool hasOverlayPosition = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
+            int overlayLayerPositionOffsetY = ownerTrace?.OverlayLayerPositionOffsetY ?? 0;
             CanvasLayerRecoveredPositionSettings overlayPosition = hasOverlayPosition
                 ? new CanvasLayerRecoveredPositionSettings(
                     registrationTrace.Position.Left,
-                    registrationTrace.Position.Top - 30)
+                    registrationTrace.Position.Top + overlayLayerPositionOffsetY)
                 : default;
 
             return new CanvasLayerRecoveredNativeLayerState(
@@ -2586,6 +2624,7 @@ namespace HaCreator.MapSimulator.Animation
             if (hasOverlayPositionWrite)
             {
                 Point overlayOffset = ResolveOverlayInsertOffset(insertCommands);
+                int overlayLayerPositionOffsetY = ownerTrace?.OverlayLayerPositionOffsetY ?? 0;
                 operations.Add(new CanvasLayerRecoveredNativeOperation(
                     CanvasLayerRecoveredNativeOperationKind.SetLayerPosition,
                     AnimationCanvasLayerContent.OverlayCanvas,
@@ -2595,7 +2634,7 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     new CanvasLayerRecoveredPositionSettings(
                         registrationTrace.Position.Left,
-                        registrationTrace.Position.Top - 30),
+                        registrationTrace.Position.Top + overlayLayerPositionOffsetY),
                     0));
             }
 
@@ -2940,39 +2979,79 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
-            var operations = new List<OneTimeAnimationRecoveredNativeOperation>(
-                trace.RegistersOneTimeAnimation ? 3 : 2)
+            int capacity = 2
+                + (trace.UsesOverlayLayer ? 2 : 0)
+                + (trace.UsesOriginVector ? 2 : 0)
+                + (trace.RegistersOneTimeAnimation ? 2 : 1);
+            var operations = new List<OneTimeAnimationRecoveredNativeOperation>(capacity);
+
+            if (trace.UsesOverlayLayer)
             {
-                new(
-                    OneTimeAnimationRecoveredNativeOperationKind.LoadLayer,
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainOverlayParent,
                     trace.SourceUol,
                     AnimationOneTimePlaybackMode.Default,
-                    trace.UsesOriginVector,
+                    false,
+                    0,
+                    0,
+                    true,
+                    trace.OverlayParentKind,
+                    Value: 1));
+            }
+
+            if (trace.UsesOriginVector)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainOriginVector,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    true,
                     trace.LoadLayerOriginOffsetX,
                     trace.LoadLayerOriginOffsetY,
-                    trace.UsesOverlayLayer,
-                    trace.OverlayParentKind,
-                    trace.LoadLayerOptionValue,
-                    trace.LoadLayerCanvasValue,
-                    trace.LoadLayerAlphaValue,
-                    trace.LoadLayerFlip,
-                    trace.LoadLayerReservedValue),
-                new(
-                    OneTimeAnimationRecoveredNativeOperationKind.Animate,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+            }
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.LoadLayer,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                trace.UsesOriginVector,
+                trace.LoadLayerOriginOffsetX,
+                trace.LoadLayerOriginOffsetY,
+                trace.UsesOverlayLayer,
+                trace.OverlayParentKind,
+                trace.LoadLayerOptionValue,
+                trace.LoadLayerCanvasValue,
+                trace.LoadLayerAlphaValue,
+                trace.LoadLayerFlip,
+                trace.LoadLayerReservedValue));
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.Animate,
+                trace.SourceUol,
+                trace.AnimatePlaybackMode,
+                false,
+                0,
+                0,
+                false,
+                AnimationOneTimeOverlayParentKind.None,
+                (int)trace.AnimatePlaybackMode,
+                AnimateUsesMissingStartTime: trace.AnimateUsesMissingStartTime,
+                AnimateUsesMissingRepeatCount: trace.AnimateUsesMissingRepeatCount));
+
+            if (trace.RegistersOneTimeAnimation)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RetainLoadedLayerForRegistration,
                     trace.SourceUol,
-                    trace.AnimatePlaybackMode,
+                    AnimationOneTimePlaybackMode.Default,
                     false,
                     0,
                     0,
                     false,
                     AnimationOneTimeOverlayParentKind.None,
-                    (int)trace.AnimatePlaybackMode,
-                    AnimateUsesMissingStartTime: trace.AnimateUsesMissingStartTime,
-                    AnimateUsesMissingRepeatCount: trace.AnimateUsesMissingRepeatCount)
-            };
-
-            if (trace.RegistersOneTimeAnimation)
-            {
+                    Value: 1));
                 operations.Add(new OneTimeAnimationRecoveredNativeOperation(
                     OneTimeAnimationRecoveredNativeOperationKind.RegisterOneTimeAnimation,
                     trace.SourceUol,
@@ -2984,6 +3063,45 @@ namespace HaCreator.MapSimulator.Animation
                     AnimationOneTimeOverlayParentKind.None,
                     trace.RegisterOneTimeAnimationDelayMs,
                     RegisterOneTimeAnimationHasCallback: trace.RegisterOneTimeAnimationHasCallback));
+            }
+
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                false,
+                0,
+                0,
+                false,
+                AnimationOneTimeOverlayParentKind.None,
+                Value: 1));
+
+            if (trace.UsesOriginVector)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ReleaseOriginVector,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    true,
+                    trace.LoadLayerOriginOffsetX,
+                    trace.LoadLayerOriginOffsetY,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1));
+            }
+
+            if (trace.UsesOverlayLayer)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ReleaseOverlayParent,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    true,
+                    trace.OverlayParentKind,
+                    Value: 1));
             }
 
             return operations.ToArray();

@@ -652,6 +652,12 @@ namespace HaCreator.MapSimulator.Character
         private const string MountedTamingMobOneTimeActionOwnerName = "mounted.tamingMob.oneTime";
         private const string ShadowPartnerPersistentActionOwnerName = "aux.shadowPartner.persistent";
         private const string ShadowPartnerOneTimeActionOwnerName = "aux.shadowPartner.oneTime";
+        private const string AuxiliaryAvatarEffectBehindCharacterPersistentActionOwnerName = "aux.avatarEffect.behindCharacter.persistent";
+        private const string AuxiliaryAvatarEffectBehindCharacterOneTimeActionOwnerName = "aux.avatarEffect.behindCharacter.oneTime";
+        private const string AuxiliaryAvatarEffectUnderFacePersistentActionOwnerName = "aux.avatarEffect.underFace.persistent";
+        private const string AuxiliaryAvatarEffectUnderFaceOneTimeActionOwnerName = "aux.avatarEffect.underFace.oneTime";
+        private const string AuxiliaryAvatarEffectOverCharacterPersistentActionOwnerName = "aux.avatarEffect.overCharacter.persistent";
+        private const string AuxiliaryAvatarEffectOverCharacterOneTimeActionOwnerName = "aux.avatarEffect.overCharacter.oneTime";
         private readonly Dictionary<string, ActionLayerOwnerCounterState> _actionLayerOwnerCounters =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, AuxiliaryLayerOwnerCounterState> _auxiliaryLayerOwnerCounters =
@@ -2653,6 +2659,37 @@ namespace HaCreator.MapSimulator.Character
                 : ShadowPartnerPersistentActionOwnerName;
         }
 
+        private static string ResolveAuxiliaryAvatarEffectActionOwnerName(SkillAvatarEffectPlane plane, bool oneTime)
+        {
+            return plane switch
+            {
+                SkillAvatarEffectPlane.BehindCharacter => oneTime
+                    ? AuxiliaryAvatarEffectBehindCharacterOneTimeActionOwnerName
+                    : AuxiliaryAvatarEffectBehindCharacterPersistentActionOwnerName,
+                SkillAvatarEffectPlane.UnderFace => oneTime
+                    ? AuxiliaryAvatarEffectUnderFaceOneTimeActionOwnerName
+                    : AuxiliaryAvatarEffectUnderFacePersistentActionOwnerName,
+                _ => oneTime
+                    ? AuxiliaryAvatarEffectOverCharacterOneTimeActionOwnerName
+                    : AuxiliaryAvatarEffectOverCharacterPersistentActionOwnerName
+            };
+        }
+
+        private static bool IsAuxiliaryAvatarEffectOneTime(SkillAnimation animation)
+        {
+            return animation?.Loop != true;
+        }
+
+        private static string ResolveAuxiliaryAvatarEffectActionName(int skillId, SkillAnimation animation)
+        {
+            if (!string.IsNullOrWhiteSpace(animation?.Name))
+            {
+                return animation.Name;
+            }
+
+            return $"skill:{Math.Max(0, skillId)}";
+        }
+
         private static bool IsAuxiliaryLayerOwnerCounterContextMatch(
             AuxiliaryLayerOwnerCounterState ownerCounter,
             int skillId,
@@ -2708,6 +2745,216 @@ namespace HaCreator.MapSimulator.Character
             ownerCounter.FacingRight = facingRight;
             ownerCounter.AnimationElapsedMs = Math.Max(0, animationElapsedMs);
             ownerCounter.LastUpdateTimeMs = lastUpdateTimeMs;
+        }
+
+        private bool TryRestoreAuxiliaryAvatarEffectOwnerCounter(
+            int currentTime,
+            int skillId,
+            SkillAnimation animation,
+            SkillAvatarEffectPlane plane,
+            bool facingRight,
+            out int animationStartTime)
+        {
+            animationStartTime = currentTime;
+            if (skillId <= 0
+                || animation?.Frames == null
+                || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            string ownerName = ResolveAuxiliaryAvatarEffectActionOwnerName(
+                plane,
+                IsAuxiliaryAvatarEffectOneTime(animation));
+            string actionName = ResolveAuxiliaryAvatarEffectActionName(skillId, animation);
+            if (!TryRestoreAuxiliaryLayerOwnerCounter(
+                    ownerName,
+                    skillId,
+                    actionName,
+                    facingRight,
+                    out int animationElapsedMs))
+            {
+                return false;
+            }
+
+            animationStartTime = currentTime - animationElapsedMs;
+            return true;
+        }
+
+        private void StoreAuxiliaryAvatarEffectOwnerCounter(
+            int currentTime,
+            int skillId,
+            SkillAnimation animation,
+            SkillAvatarEffectPlane plane,
+            bool facingRight,
+            int animationStartTime)
+        {
+            if (skillId <= 0
+                || animation?.Frames == null
+                || animation.Frames.Count == 0)
+            {
+                return;
+            }
+
+            int animationElapsedMs = Math.Max(0, currentTime - animationStartTime);
+            StoreAuxiliaryLayerOwnerCounter(
+                ResolveAuxiliaryAvatarEffectActionOwnerName(plane, IsAuxiliaryAvatarEffectOneTime(animation)),
+                skillId,
+                ResolveAuxiliaryAvatarEffectActionName(skillId, animation),
+                facingRight,
+                animationElapsedMs,
+                currentTime);
+        }
+
+        private static bool TryResolveTransientAuxiliaryAvatarEffectOwnerCounterContext(
+            TransientSkillAvatarEffectState effectState,
+            out SkillAnimation animation,
+            out SkillAvatarEffectPlane plane)
+        {
+            animation = null;
+            plane = SkillAvatarEffectPlane.OverCharacter;
+            if (effectState == null)
+            {
+                return false;
+            }
+
+            animation = effectState.IsFinishing ? effectState.FinishAnimation : effectState.Animation;
+            plane = effectState.IsFinishing ? effectState.FinishPlane : effectState.Plane;
+            if (animation?.Frames != null && animation.Frames.Count > 0)
+            {
+                return true;
+            }
+
+            animation = effectState.IsFinishing ? effectState.FinishSecondaryAnimation : effectState.SecondaryAnimation;
+            plane = effectState.IsFinishing ? effectState.FinishSecondaryPlane : effectState.SecondaryPlane;
+            return animation?.Frames != null && animation.Frames.Count > 0;
+        }
+
+        private bool TryRestoreTransientAuxiliaryAvatarEffectOwnerCounter(
+            int currentTime,
+            TransientSkillAvatarEffectState effectState,
+            out int animationStartTime)
+        {
+            animationStartTime = currentTime;
+            return effectState != null
+                   && TryResolveTransientAuxiliaryAvatarEffectOwnerCounterContext(effectState, out SkillAnimation animation, out SkillAvatarEffectPlane plane)
+                   && TryRestoreAuxiliaryAvatarEffectOwnerCounter(
+                       currentTime,
+                       effectState.SkillId,
+                       animation,
+                       plane,
+                       FacingRight,
+                       out animationStartTime);
+        }
+
+        private void StoreTransientAuxiliaryAvatarEffectOwnerCounter(TransientSkillAvatarEffectState effectState, int currentTime)
+        {
+            if (effectState == null
+                || !TryResolveTransientAuxiliaryAvatarEffectOwnerCounterContext(effectState, out SkillAnimation animation, out SkillAvatarEffectPlane plane))
+            {
+                return;
+            }
+
+            StoreAuxiliaryAvatarEffectOwnerCounter(
+                currentTime,
+                effectState.SkillId,
+                animation,
+                plane,
+                FacingRight,
+                effectState.AnimationStartTime);
+        }
+
+        private static bool TryResolvePersistentAuxiliaryAvatarEffectOwnerCounterContext(
+            SkillAvatarEffectState effectState,
+            out SkillAnimation animation,
+            out SkillAvatarEffectPlane plane)
+        {
+            animation = null;
+            plane = SkillAvatarEffectPlane.OverCharacter;
+            if (effectState == null)
+            {
+                return false;
+            }
+
+            PersistentSkillAvatarEffectRenderSelection selection = ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
+                effectState.IsFinishing,
+                effectState.Mode == SkillAvatarEffectMode.LadderOrRope,
+                effectState.HideOnLadderOrRope,
+                effectState.LadderOverlayAnimation,
+                effectState.GroundOverlayAnimation,
+                effectState.GroundOverlaySecondaryAnimation,
+                effectState.GroundUnderFaceAnimation,
+                effectState.GroundUnderFaceSecondaryAnimation,
+                effectState.LadderOverlayFinishAnimation,
+                effectState.GroundOverlayFinishAnimation,
+                effectState.GroundUnderFaceFinishAnimation);
+            SkillAvatarEffectPlane overlayPlane = selection.OverlayUsesBehindCharacterPlane
+                ? SkillAvatarEffectPlane.BehindCharacter
+                : SkillAvatarEffectPlane.OverCharacter;
+
+            if (selection.OverlayAnimation?.Frames != null && selection.OverlayAnimation.Frames.Count > 0)
+            {
+                animation = selection.OverlayAnimation;
+                plane = overlayPlane;
+                return true;
+            }
+
+            if (selection.OverlaySecondaryAnimation?.Frames != null && selection.OverlaySecondaryAnimation.Frames.Count > 0)
+            {
+                animation = selection.OverlaySecondaryAnimation;
+                plane = overlayPlane;
+                return true;
+            }
+
+            if (selection.UnderFaceAnimation?.Frames != null && selection.UnderFaceAnimation.Frames.Count > 0)
+            {
+                animation = selection.UnderFaceAnimation;
+                plane = SkillAvatarEffectPlane.UnderFace;
+                return true;
+            }
+
+            if (selection.UnderFaceSecondaryAnimation?.Frames != null && selection.UnderFaceSecondaryAnimation.Frames.Count > 0)
+            {
+                animation = selection.UnderFaceSecondaryAnimation;
+                plane = SkillAvatarEffectPlane.UnderFace;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryRestorePersistentAuxiliaryAvatarEffectOwnerCounter(
+            int currentTime,
+            SkillAvatarEffectState effectState,
+            out int animationStartTime)
+        {
+            animationStartTime = currentTime;
+            return effectState != null
+                   && TryResolvePersistentAuxiliaryAvatarEffectOwnerCounterContext(effectState, out SkillAnimation animation, out SkillAvatarEffectPlane plane)
+                   && TryRestoreAuxiliaryAvatarEffectOwnerCounter(
+                       currentTime,
+                       effectState.SkillId,
+                       animation,
+                       plane,
+                       FacingRight,
+                       out animationStartTime);
+        }
+
+        private void StorePersistentAuxiliaryAvatarEffectOwnerCounter(SkillAvatarEffectState effectState, int currentTime)
+        {
+            if (effectState == null
+                || !TryResolvePersistentAuxiliaryAvatarEffectOwnerCounterContext(effectState, out SkillAnimation animation, out SkillAvatarEffectPlane plane))
+            {
+                return;
+            }
+
+            StoreAuxiliaryAvatarEffectOwnerCounter(
+                currentTime,
+                effectState.SkillId,
+                animation,
+                plane,
+                FacingRight,
+                effectState.AnimationStartTime);
         }
 
         private bool TryRestoreShadowPartnerActionOwnerCounter(
@@ -4033,7 +4280,13 @@ namespace HaCreator.MapSimulator.Character
 
             effectState.Mode = GetCurrentSkillAvatarEffectMode();
             effectState.AnimationStartTime = currentTime;
+            if (TryRestorePersistentAuxiliaryAvatarEffectOwnerCounter(currentTime, effectState, out int restoredStartTime))
+            {
+                effectState.AnimationStartTime = restoredStartTime;
+            }
+
             _activeSkillAvatarEffects.Add(effectState);
+            StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
             return true;
         }
 
@@ -4064,7 +4317,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             ClearTransientSkillAvatarEffect(skillId);
-            _transientSkillAvatarEffects.Add(new TransientSkillAvatarEffectState
+            var transientEffectState = new TransientSkillAvatarEffectState
             {
                 SkillId = skillId,
                 Animation = animation,
@@ -4076,7 +4329,14 @@ namespace HaCreator.MapSimulator.Character
                 SecondaryPlane = ResolveTransientSkillAvatarEffectPlane(secondaryAnimation, isClientMovementOwner),
                 FinishPlane = ResolveTransientSkillAvatarEffectPlane(finishAnimation, isClientMovementOwner),
                 FinishSecondaryPlane = ResolveTransientSkillAvatarEffectPlane(finishSecondaryAnimation, isClientMovementOwner)
-            });
+            };
+            if (TryRestoreTransientAuxiliaryAvatarEffectOwnerCounter(currentTime, transientEffectState, out int restoredStartTime))
+            {
+                transientEffectState.AnimationStartTime = restoredStartTime;
+            }
+
+            _transientSkillAvatarEffects.Add(transientEffectState);
+            StoreTransientAuxiliaryAvatarEffectOwnerCounter(transientEffectState, currentTime);
             return true;
         }
 
@@ -4180,11 +4440,20 @@ namespace HaCreator.MapSimulator.Character
                     {
                         transientEffect.IsFinishing = true;
                         transientEffect.AnimationStartTime = currentTime;
+                        if (TryRestoreTransientAuxiliaryAvatarEffectOwnerCounter(currentTime, transientEffect, out int restoredStartTime))
+                        {
+                            transientEffect.AnimationStartTime = restoredStartTime;
+                        }
+
+                        StoreTransientAuxiliaryAvatarEffectOwnerCounter(transientEffect, currentTime);
                         continue;
                     }
 
                     _transientSkillAvatarEffects.RemoveAt(i);
+                    continue;
                 }
+
+                StoreTransientAuxiliaryAvatarEffectOwnerCounter(transientEffect, currentTime);
             }
 
             if (_activeSkillAvatarEffects.Count == 0)
@@ -4201,8 +4470,10 @@ namespace HaCreator.MapSimulator.Character
                     if (IsSkillAvatarEffectAnimationComplete(effectState, currentTime))
                     {
                         _activeSkillAvatarEffects.RemoveAt(i);
+                        continue;
                     }
 
+                    StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
                     continue;
                 }
 
@@ -4218,7 +4489,13 @@ namespace HaCreator.MapSimulator.Character
                 if (hasCurrentModeAnimation || hasPreviousModeAnimation)
                 {
                     effectState.AnimationStartTime = currentTime;
+                    if (TryRestorePersistentAuxiliaryAvatarEffectOwnerCounter(currentTime, effectState, out int restoredStartTime))
+                    {
+                        effectState.AnimationStartTime = restoredStartTime;
+                    }
                 }
+
+                StorePersistentAuxiliaryAvatarEffectOwnerCounter(effectState, currentTime);
             }
         }
 
@@ -6068,9 +6345,7 @@ namespace HaCreator.MapSimulator.Character
                     recreatesLayerObject: false,
                     ResolveMirrorImageTargetOffsetForCurrentState());
                 bool hasSourceCanvas = HasMirrorImageInsertCanvasSource(
-                    HasMirrorImageLiveSourceCanvas(sourceParts),
-                    preparedLayer.TextureSourceBounds,
-                    preparedLayer.ComposedTexture);
+                    HasMirrorImageLiveSourceCanvas(sourceParts));
                 ApplyMirrorImageInsertCanvasMetadata(
                     preparedLayer,
                     sourceSignature,
@@ -6140,9 +6415,7 @@ namespace HaCreator.MapSimulator.Character
                 sourceSignature,
                 currentTime,
                 HasMirrorImageInsertCanvasSource(
-                    HasMirrorImageLiveSourceCanvas(sourceParts),
-                    preparedLayer.TextureSourceBounds,
-                    composedTexture));
+                    HasMirrorImageLiveSourceCanvas(sourceParts)));
             preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
@@ -6410,19 +6683,10 @@ namespace HaCreator.MapSimulator.Character
                 : existingTargetOffset;
         }
 
-        internal static bool HasMirrorImageInsertCanvasSource(Rectangle sourceBounds, Texture2D composedTexture)
-        {
-            return composedTexture != null
-                   && sourceBounds.Width > 0
-                   && sourceBounds.Height > 0;
-        }
-
         internal static bool HasMirrorImageInsertCanvasSource(
-            bool hasLiveSourceCanvas,
-            Rectangle sourceBounds,
-            Texture2D composedTexture)
+            bool hasLiveSourceCanvas)
         {
-            return hasLiveSourceCanvas || HasMirrorImageInsertCanvasSource(sourceBounds, composedTexture);
+            return hasLiveSourceCanvas;
         }
 
         internal static bool HasMirrorImageLiveSourceCanvas(IReadOnlyList<AssembledPart> sourceParts)
@@ -8963,6 +9227,25 @@ namespace HaCreator.MapSimulator.Character
         internal static string ResolveShadowPartnerActionOwnerNameForTesting(string actionName)
         {
             return ResolveShadowPartnerActionOwnerName(actionName);
+        }
+
+        internal static string ResolveAuxiliaryAvatarEffectActionOwnerNameForTesting(int planeCode, bool oneTime)
+        {
+            SkillAvatarEffectPlane plane = planeCode switch
+            {
+                0 => SkillAvatarEffectPlane.BehindCharacter,
+                1 => SkillAvatarEffectPlane.UnderFace,
+                _ => SkillAvatarEffectPlane.OverCharacter
+            };
+
+            return ResolveAuxiliaryAvatarEffectActionOwnerName(plane, oneTime);
+        }
+
+        internal static string ResolveAuxiliaryAvatarEffectActionNameForTesting(int skillId, string animationName)
+        {
+            return ResolveAuxiliaryAvatarEffectActionName(
+                skillId,
+                new SkillAnimation { Name = animationName });
         }
 
         internal static bool IsShadowPartnerOwnerCounterContextMatchForTesting(

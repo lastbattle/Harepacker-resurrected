@@ -273,8 +273,7 @@ namespace HaCreator.MapSimulator.Interaction
                             : $"Client OnPartyResult({(byte)packet.Kind}) reported {packet.ActorName} joining party {packet.PartyId}.");
 
                 case SocialListClientPartyResultKind.Create:
-                    _clientPartyId = Math.Max(0, packet.PartyId);
-                    return SetPacketSyncSummary(SocialListTab.Party, $"Client OnPartyResult({(byte)packet.Kind}) created party {packet.PartyId}.");
+                    return ApplyClientPartyCreate(packet);
 
                 case SocialListClientPartyResultKind.LeaderChange:
                     return ApplyClientPartyLeaderChange(packet);
@@ -287,6 +286,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialListClientPartyResultKind.Notice16:
                 case SocialListClientPartyResultKind.Notice17:
                 case SocialListClientPartyResultKind.Notice18:
+                case SocialListClientPartyResultKind.NoOp19:
                 case SocialListClientPartyResultKind.NoticeNamed:
                 case SocialListClientPartyResultKind.Notice29:
                 case SocialListClientPartyResultKind.Notice32:
@@ -294,6 +294,10 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialListClientPartyResultKind.Notice34:
                 case SocialListClientPartyResultKind.Notice36:
                 case SocialListClientPartyResultKind.Notice37:
+                case SocialListClientPartyResultKind.PqRewardSelectSuccess:
+                case SocialListClientPartyResultKind.PqRewardSelectFail:
+                case SocialListClientPartyResultKind.PqRewardReceive:
+                case SocialListClientPartyResultKind.PqRewardRequestFail:
                 case SocialListClientPartyResultKind.Notice44:
                 case SocialListClientPartyResultKind.NoticeOptionalMessage:
                 case SocialListClientPartyResultKind.TownPortal:
@@ -319,6 +323,46 @@ namespace HaCreator.MapSimulator.Interaction
                 default:
                     return $"Unsupported client party-result subtype {(byte)packet.Kind}.";
             }
+        }
+
+        private string ApplyClientPartyCreate(SocialListClientPartyResultPacket packet)
+        {
+            _clientPartyId = Math.Max(0, packet.PartyId);
+
+            List<SocialEntryState> entries = _entriesByTab[SocialListTab.Party];
+            SocialEntryState localState = ResolveLocalEntryState(SocialListTab.Party);
+            int localLevel = 1;
+            if (localState != null
+                && !string.IsNullOrWhiteSpace(localState.SecondaryText)
+                && localState.SecondaryText.StartsWith("Lv.", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(localState.SecondaryText.Replace("Lv.", string.Empty, StringComparison.OrdinalIgnoreCase).Trim(), out int parsedLevel))
+            {
+                localLevel = Math.Max(1, parsedLevel);
+            }
+
+            SocialEntryState seededLeader = new(
+                localState?.Name ?? _playerName,
+                "Leader",
+                $"Lv. {localLevel}",
+                localState?.LocationSummary ?? _locationSummary,
+                localState?.Channel ?? _channel,
+                isOnline: true,
+                isLeader: true,
+                isBlocked: false)
+            {
+                MemberId = localState?.MemberId,
+                IsLocalPlayer = true
+            };
+
+            entries.Clear();
+            entries.Add(EnsureEntryHasMemberId(SocialListTab.Party, seededLeader));
+
+            _packetOwnedRosterByTab[SocialListTab.Party] = true;
+            _lastPendingRequestByTab[SocialListTab.Party] = null;
+            _lastPacketSyncSummaryByTab[SocialListTab.Party] =
+                $"Client OnPartyResult({(byte)packet.Kind}) created party {packet.PartyId} and seeded the local leader row.";
+            ResetSelectionAfterMutation(SocialListTab.Party);
+            return _lastPacketSyncSummaryByTab[SocialListTab.Party];
         }
 
         internal string ApplyClientAllianceResultDelta(SocialListClientAllianceResultPacket packet)

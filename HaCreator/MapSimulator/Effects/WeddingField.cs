@@ -435,17 +435,17 @@ namespace HaCreator.MapSimulator.Effects
                 switch (packetType)
                 {
                     case PacketTypeWeddingProgress:
-                        if (!_isActive)
+                        if (!_isActive && !IsWeddingPhotoSceneOwnerActive)
                         {
-                            errorMessage = "Wedding packet owner inactive.";
+                            errorMessage = "Wedding owner inactive.";
                             return false;
                         }
 
                         return TryApplyWeddingProgressPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeWeddingCeremonyEnd:
-                        if (!_isActive)
+                        if (!_isActive && !IsWeddingPhotoSceneOwnerActive)
                         {
-                            errorMessage = "Wedding packet owner inactive.";
+                            errorMessage = "Wedding owner inactive.";
                             return false;
                         }
 
@@ -519,6 +519,8 @@ namespace HaCreator.MapSimulator.Effects
         {
             switch (packetType)
             {
+                case PacketTypeWeddingProgress:
+                case PacketTypeWeddingCeremonyEnd:
                 case PacketTypeUserEnterField:
                 case PacketTypeUserLeaveField:
                 case PacketTypeUserMoveOfficial:
@@ -568,6 +570,8 @@ namespace HaCreator.MapSimulator.Effects
         {
             return packetType switch
             {
+                PacketTypeWeddingProgress => "CField_WeddingPhoto wedding-progress choreography",
+                PacketTypeWeddingCeremonyEnd => "CField_WeddingPhoto wedding-ceremony-end choreography",
                 PacketTypeUserEnterField => "CField_WeddingPhoto remote user enter presentation",
                 PacketTypeUserLeaveField => "CField_WeddingPhoto remote user leave presentation",
                 PacketTypeUserMoveOfficial => "CField_WeddingPhoto remote user move presentation",
@@ -2459,16 +2463,12 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void OnWeddingProgress(int step, int groomId, int brideId, int currentTimeMs)
         {
-            if (!_isActive)
+            if (!_isActive && !IsWeddingPhotoSceneOwnerActive)
             {
                 return;
             }
 
             int npcId = ResolveCeremonyNpcId(_mapId);
-            if (npcId <= 0)
-            {
-                return;
-            }
 
             System.Diagnostics.Debug.WriteLine($"[WeddingField] OnWeddingProgress: step={step}, groom={groomId}, bride={brideId}");
 
@@ -2479,6 +2479,16 @@ namespace HaCreator.MapSimulator.Effects
             _groomId = groomId;
             _brideId = brideId;
             UpdateParticipantState();
+
+            if (npcId <= 0)
+            {
+                // Wedding-photo scenes still consume the ceremony packet family for owner state,
+                // even when no altar NPC contract is present on the active map.
+                SetCeremonyTextOverlay(false);
+                SetCeremonyCardOverlay(false);
+                SetCeremonyCelebration(active: false);
+                return;
+            }
 
 
             // Step 0: Start ceremony - play wedding BGM
@@ -2513,7 +2523,7 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void OnWeddingCeremonyEnd(int currentTimeMs)
         {
-            if (!_isActive || ResolveCeremonyNpcId(_mapId) <= 0)
+            if (!_isActive && !IsWeddingPhotoSceneOwnerActive)
             {
                 return;
             }

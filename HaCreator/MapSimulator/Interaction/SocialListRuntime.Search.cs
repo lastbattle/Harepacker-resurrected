@@ -45,7 +45,8 @@ namespace HaCreator.MapSimulator.Interaction
             CharacterBuild build,
             string locationSummary,
             int channel,
-            bool isRemoteTarget)
+            bool isRemoteTarget,
+            string handoffStatusText = null)
         {
             EnsureSearchSeedData();
             ClearCharacterInfoSearchLaunch();
@@ -57,7 +58,8 @@ namespace HaCreator.MapSimulator.Interaction
                     ResolveCharacterInfoSearchPrimaryText(build),
                     ResolveCharacterInfoSearchSecondaryText(build),
                     ResolveCharacterInfoSearchLocation(locationSummary),
-                    Math.Max(1, channel));
+                    Math.Max(1, channel),
+                    ResolveCharacterInfoSearchStatusText(handoffStatusText));
                 ApplyCharacterInfoSearchLaunch();
                 _searchCurrentTab = SocialSearchTab.PartyMember;
                 _searchSelectedIndexByTab[SocialSearchTab.PartyMember] = 0;
@@ -446,7 +448,7 @@ namespace HaCreator.MapSimulator.Interaction
                     "Available",
                     launch.LocationSummary,
                     launch.Channel,
-                    "Character-info target handoff.")
+                    launch.StatusText)
                 {
                     IsCharacterInfoOwned = true
                 };
@@ -479,7 +481,7 @@ namespace HaCreator.MapSimulator.Interaction
                 string.IsNullOrWhiteSpace(existingEntry?.CapacityText) ? "Available" : existingEntry.CapacityText,
                 string.IsNullOrWhiteSpace(launch.LocationSummary) ? existingEntry?.LocationSummary : launch.LocationSummary,
                 launch.Channel > 0 ? launch.Channel : Math.Max(1, existingEntry?.Channel ?? 1),
-                "Character-info target handoff.")
+                ResolveCharacterInfoSearchStatusText(launch.StatusText))
             {
                 IsCharacterInfoOwned = true
             };
@@ -507,6 +509,13 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(locationSummary)
                 ? "Location unknown"
                 : locationSummary.Trim();
+        }
+
+        private static string ResolveCharacterInfoSearchStatusText(string handoffStatusText)
+        {
+            return string.IsNullOrWhiteSpace(handoffStatusText)
+                ? "Character-info target handoff."
+                : handoffStatusText.Trim();
         }
 
         private bool IsEntryNearLocalLevel(string levelText)
@@ -940,13 +949,15 @@ namespace HaCreator.MapSimulator.Interaction
                 string primaryText,
                 string secondaryText,
                 string locationSummary,
-                int channel)
+                int channel,
+                string statusText)
             {
                 Name = name ?? string.Empty;
                 PrimaryText = primaryText ?? string.Empty;
                 SecondaryText = secondaryText ?? string.Empty;
                 LocationSummary = locationSummary ?? string.Empty;
                 Channel = channel;
+                StatusText = statusText ?? string.Empty;
             }
 
             public string Name { get; }
@@ -954,6 +965,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string SecondaryText { get; }
             public string LocationSummary { get; }
             public int Channel { get; }
+            public string StatusText { get; }
         }
 
         private sealed class GuildSearchEntryState

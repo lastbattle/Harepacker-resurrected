@@ -1120,7 +1120,8 @@ namespace HaCreator.MapSimulator.Effects
                 compositionTrace.KeepsCriticalBannerOnSeparateLayer,
                 compositionTrace.CriticalBannerLayerCanvasPath,
                 overlaySpriteName,
-                overlayOffset);
+                overlayOffset,
+                DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y);
         }
 
         internal static CanvasLayerRecoveredLayerSettings ResolveRecoveredLayerSettings()

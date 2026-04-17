@@ -24,5 +24,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
         public bool IsAlerting { get; set; }
+        public int LayerUpdateSequence { get; set; }
+        public int LowDurabilityAlertSequence { get; set; }
+        public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;
     }
 }

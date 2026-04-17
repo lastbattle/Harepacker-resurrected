@@ -23,6 +23,8 @@ namespace HaCreator.MapSimulator.Combat
             int MobId,
             string AttackAction,
             string BallUol,
+            int AttackType,
+            bool IsRangedAttack,
             bool HasClientMobActionFrames,
             bool HasCanvasFrames,
             Func<Vector2> GetPosition,
@@ -464,6 +466,8 @@ namespace HaCreator.MapSimulator.Combat
                     mobItem.MobId,
                     attack.AnimationName,
                     ballUol,
+                    attack?.AttackType ?? -1,
+                    attack?.IsRanged == true,
                     hasClientMobActionFrames,
                     hasCanvasFrames,
                     () => projectile.Position,
@@ -1644,9 +1648,20 @@ namespace HaCreator.MapSimulator.Combat
             return hasClientMobActionFrames && !string.IsNullOrWhiteSpace(ballUol);
         }
 
-        internal static bool ShouldRegisterAnimationDisplayerMobSwallowBullet(bool hasCanvasFrames)
+        internal static bool ShouldRegisterAnimationDisplayerMobSwallowBullet(
+            bool hasCanvasFrames,
+            bool hasClientMobActionFrames,
+            int attackType,
+            bool isRangedAttack)
         {
-            return hasCanvasFrames;
+            // WZ-backed ranged ball branches used by this row's sampled mobs
+            // (for example 3220000/attack2, 3230200/attack1, 8140512/attack3)
+            // resolve as info/attack/<slot>/type=2. Keep swallow-owner fallback
+            // narrow: only for ranged-like ball attacks that still have no client
+            // action frames in the simulator.
+            return hasCanvasFrames
+                && !hasClientMobActionFrames
+                && (isRangedAttack || attackType == 2);
         }
 
         internal static int ResolveAnimationDisplayerApplyStartDelayMs(MobAttackEntry attack)

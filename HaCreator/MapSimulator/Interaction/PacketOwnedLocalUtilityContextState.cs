@@ -29,7 +29,7 @@ namespace HaCreator.MapSimulator.Interaction
         public ulong LastPetConsumePetSerial { get; private set; }
         public ushort LastPetConsumeSlot { get; private set; }
         public int LastPetConsumeItemId { get; private set; }
-        public bool LastPetConsumeBuffSkill { get; private set; }
+        public byte LastPetConsumeBuffSkill { get; private set; }
         public int LastPetConsumeRequestIndex { get; private set; } = -1;
         public byte[] LastPetConsumePayload { get; private set; } = Array.Empty<byte>();
         private readonly int[] _petConsumeExclusiveRequestTicks = CreatePetConsumeExclusiveRequestTicks();
@@ -276,6 +276,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool bLeft,
             int mutationSequence,
             string mutationSource,
+            int mutationTick,
             int runtimeCharacterId)
         {
             int resolvedBoundCharacterId = NormalizeCharacterId(boundCharacterId);
@@ -287,16 +288,19 @@ namespace HaCreator.MapSimulator.Interaction
             RadioCreateLayerLastMutationSource = string.IsNullOrWhiteSpace(mutationSource)
                 ? "persisted-restore"
                 : mutationSource.Trim();
-            RadioCreateLayerLastMutationTick = int.MinValue;
+            RadioCreateLayerLastMutationTick = mutationTick;
             _recentRadioCreateLayerMutations.Clear();
             string value = HasRadioCreateLayerLeftContextValue
                 ? (RadioCreateLayerLeftContextValue ? "1" : "0")
                 : "unset";
+            string tick = RadioCreateLayerLastMutationTick == int.MinValue
+                ? "persisted"
+                : RadioCreateLayerLastMutationTick.ToString();
             string runtimeCharacter = RadioCreateLayerLastObservedRuntimeCharacterId > 0
                 ? RadioCreateLayerLastObservedRuntimeCharacterId.ToString()
                 : "unset";
             _recentRadioCreateLayerMutations.Add(
-                $"seq={RadioCreateLayerMutationSequence} value={value} source={RadioCreateLayerLastMutationSource} tick=persisted boundCharacter={resolvedBoundCharacterId} runtimeCharacter={runtimeCharacter}");
+                $"seq={RadioCreateLayerMutationSequence} value={value} source={RadioCreateLayerLastMutationSource} tick={tick} boundCharacter={resolvedBoundCharacterId} runtimeCharacter={runtimeCharacter}");
         }
 
         public void SetRadioCreateLayerLeftContextValue(bool enabled, string source, int currentTick, int runtimeCharacterId)
@@ -589,7 +593,7 @@ namespace HaCreator.MapSimulator.Interaction
             LastPetConsumePetSerial = petSerial;
             LastPetConsumeSlot = slot;
             LastPetConsumeItemId = itemId;
-            LastPetConsumeBuffSkill = buffSkill;
+            LastPetConsumeBuffSkill = buffSkill ? (byte)1 : (byte)0;
             LastPetConsumeRequestIndex = requestIndex;
             LastPetConsumePayload = request.Payload as byte[] ?? request.Payload.ToArray();
             return true;
@@ -609,7 +613,7 @@ namespace HaCreator.MapSimulator.Interaction
             string outpacketText = LastPetConsumeRequestTick == int.MinValue || LastPetConsumeRequestOpcode < 0
                 ? "idle"
                 : $"{LastPetConsumeRequestOpcode}[{BitConverter.ToString(LastPetConsumePayload).Replace("-", string.Empty)}] age={requestAge}";
-            string buffSkillText = LastPetConsumeBuffSkill ? "1" : "0";
+            string buffSkillText = LastPetConsumeBuffSkill.ToString();
             return $"Pet auto-consume exclSent={exclusiveSentText}, requestIndex={LastPetConsumeRequestIndex}, buffSkill={buffSkillText}, slot={LastPetConsumeSlot}, item={LastPetConsumeItemId}, petSerial={LastPetConsumePetSerial}, outpacket={outpacketText}.";
         }
 
@@ -714,7 +718,7 @@ namespace HaCreator.MapSimulator.Interaction
             LastPetConsumePetSerial = 0;
             LastPetConsumeSlot = 0;
             LastPetConsumeItemId = 0;
-            LastPetConsumeBuffSkill = false;
+            LastPetConsumeBuffSkill = 0;
             LastPetConsumeRequestIndex = -1;
             LastPetConsumePayload = Array.Empty<byte>();
             Array.Fill(_petConsumeExclusiveRequestTicks, int.MinValue);

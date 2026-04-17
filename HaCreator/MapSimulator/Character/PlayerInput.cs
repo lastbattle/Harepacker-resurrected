@@ -375,6 +375,60 @@ namespace HaCreator.MapSimulator.Character
             return $"Controller {((int)index) + 1}";
         }
 
+        public static int GetDetectedConfigurableGamepadButtonCount(PlayerIndex index, InputAction action)
+        {
+            IReadOnlyList<Buttons> configurableButtons = GetConfigurableGamepadButtons(action);
+            if (configurableButtons == null || configurableButtons.Count == 0)
+            {
+                return 0;
+            }
+
+            GamePadCapabilities capabilities = GamePad.GetCapabilities(index);
+            if (!capabilities.IsConnected)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < configurableButtons.Count; i++)
+            {
+                if (HasConfigurableButtonCapability(capabilities, configurableButtons[i]))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static bool HasConfigurableButtonCapability(GamePadCapabilities capabilities, Buttons button)
+        {
+            return button switch
+            {
+                Buttons.A => capabilities.HasAButton,
+                Buttons.B => capabilities.HasBButton,
+                Buttons.X => capabilities.HasXButton,
+                Buttons.Y => capabilities.HasYButton,
+                Buttons.LeftShoulder => capabilities.HasLeftShoulderButton,
+                Buttons.RightShoulder => capabilities.HasRightShoulderButton,
+                Buttons.LeftTrigger => capabilities.HasLeftTrigger,
+                Buttons.RightTrigger => capabilities.HasRightTrigger,
+                Buttons.Back => capabilities.HasBackButton,
+                Buttons.Start => capabilities.HasStartButton,
+                Buttons.LeftStick => capabilities.HasLeftStickButton,
+                Buttons.RightStick => capabilities.HasRightStickButton,
+                Buttons.DPadUp => capabilities.HasDPadUpButton,
+                Buttons.DPadDown => capabilities.HasDPadDownButton,
+                Buttons.DPadLeft => capabilities.HasDPadLeftButton,
+                Buttons.DPadRight => capabilities.HasDPadRightButton,
+                Buttons.LeftThumbstickLeft => capabilities.HasLeftXThumbStick,
+                Buttons.LeftThumbstickRight => capabilities.HasLeftXThumbStick,
+                Buttons.LeftThumbstickUp => capabilities.HasLeftYThumbStick,
+                Buttons.LeftThumbstickDown => capabilities.HasLeftYThumbStick,
+                _ => false,
+            };
+        }
+
         public float GetLeftStickDeadZone()
         {
             return (_leftStickDeadZoneX + _leftStickDeadZoneY) * 0.5f;

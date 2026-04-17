@@ -159,12 +159,12 @@ namespace HaCreator.MapSimulator
 
         private static readonly PacketOwnedRawFunctionOwnerWindowRoute[] PacketOwnedRawFunctionOwnerWindowRoutes =
         {
-            // CUIMedalQuestInfo::OnCreate is confirmed, but the mounted UI set does not expose an obvious
-            // Medal-named UIWindow branch, so keep this as the routed client owner with a generic shell.
+            // IDA owner is CUIMedalQuestInfo; in v95 exports the closest authored chrome is
+            // UIWindow2.img/Title/main, so keep the medal owner routed there.
             new(
                 PacketOwnedRawFunctionOwner.Medal,
                 MapSimulatorWindowNames.MedalQuestInfo,
-                string.Empty),
+                "Title/main"),
             // Active WZ data exposes these packet-owned raw palette owners under UIWindow2.img.
             new(
                 PacketOwnedRawFunctionOwner.ItemPot,

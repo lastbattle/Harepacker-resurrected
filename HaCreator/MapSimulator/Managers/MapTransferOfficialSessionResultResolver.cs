@@ -165,6 +165,8 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetResultCode switch
             {
+                MapTransferRuntimePacketResultCode.OfficialFailure6 => MapTransferRuntimeRequestType.Register,
+                MapTransferRuntimePacketResultCode.OfficialFailure7 => MapTransferRuntimeRequestType.Register,
                 MapTransferRuntimePacketResultCode.NoEmptySlot => MapTransferRuntimeRequestType.Register,
                 MapTransferRuntimePacketResultCode.AlreadyRegistered => MapTransferRuntimeRequestType.Register,
                 MapTransferRuntimePacketResultCode.OfficialFailure8 => MapTransferRuntimeRequestType.Register,

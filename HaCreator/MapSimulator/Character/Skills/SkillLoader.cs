@@ -96,6 +96,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             "summonUol"
         };
         private const string ClientSummonedUolBranchName = "summon";
+        private static readonly char[] ClientSummonedUolTokenTrimChars =
+        {
+            '"', '\'', '`', '(', ')', '[', ']', '{', '}', '<', '>', ':'
+        };
+        private static readonly string[] ClientSummonedUolEmbeddedSkillPrefixes =
+        {
+            "Skill/",
+            "Skill.wz/",
+            "wz/Skill/"
+        };
 
         private static readonly string[] PersistentAvatarEffectBranches =
         {
@@ -2785,6 +2795,50 @@ namespace HaCreator.MapSimulator.Character.Skills
                         ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
                 }
             }
+
+            SynthesizeFallbackRemappedMountedShadowPartnerActions(actionAnimations, supportedRawActionNames);
+        }
+
+        internal static void SynthesizeFallbackRemappedMountedShadowPartnerActions(
+            IDictionary<string, SkillAnimation> actionAnimations,
+            IReadOnlySet<string> supportedRawActionNames = null)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return;
+            }
+
+            IReadOnlyDictionary<string, SkillAnimation> readOnlyActionAnimations =
+                actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+
+            // `LoadShadowPartnerAction` still falls back to plain action-name lookup when an
+            // action-specific helper row is missing from Character/00002000.img. Keep mounted
+            // piece rows as first priority, then synthesize remapped attack aliases for any
+            // remaining non-ghost client-initialized rows.
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedShadowPartnerRawActionNames())
+            {
+                if (string.IsNullOrWhiteSpace(actionName)
+                    || actionAnimations.ContainsKey(actionName)
+                    || actionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase)
+                    || ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName)
+                    || !ShadowPartnerClientActionResolver.IsAttackAction(actionName))
+                {
+                    continue;
+                }
+
+                SkillAnimation remappedAnimation = ShadowPartnerClientActionResolver.TryBuildRemappedShadowPartnerActionAnimation(
+                    readOnlyActionAnimations,
+                    actionName,
+                    supportedRawActionNames);
+                if (remappedAnimation?.Frames.Count > 0)
+                {
+                    actionAnimations[actionName] = remappedAnimation;
+                    readOnlyActionAnimations =
+                        actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                        ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+                }
+            }
         }
 
         private bool TryGetShadowPartnerClientActionPieces(
@@ -2919,7 +2973,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     sourcePiece.DelayOverrideMs,
                     sourcePiece.Flip,
                     sourcePiece.Move,
-                    sourcePiece.RotationDegrees));
+                    sourcePiece.RotationDegrees,
+                    IsSyntheticMirroredTailPiece: true));
             }
         }
 
@@ -5879,14 +5934,55 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             yield return value;
-            foreach (string token in value.Split(new[] { '&', '|', ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            foreach (string token in value.Split(new[] { '&', '|', ',', ';', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                string trimmedToken = token.Trim();
+                string trimmedToken = ExtractEmbeddedClientSummonedUolPathToken(token);
                 if (!string.IsNullOrWhiteSpace(trimmedToken))
                 {
                     yield return trimmedToken;
                 }
             }
+        }
+
+        private static string ExtractEmbeddedClientSummonedUolPathToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            string normalizedToken = token
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Replace('\\', '/');
+
+            int skillPrefixIndex = FindClientSummonedUolEmbeddedSkillPrefixIndex(normalizedToken);
+            if (skillPrefixIndex > 0)
+            {
+                normalizedToken = normalizedToken[skillPrefixIndex..];
+            }
+
+            return normalizedToken.Trim(ClientSummonedUolTokenTrimChars);
+        }
+
+        private static int FindClientSummonedUolEmbeddedSkillPrefixIndex(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return -1;
+            }
+
+            int skillPrefixIndex = -1;
+            foreach (string prefix in ClientSummonedUolEmbeddedSkillPrefixes)
+            {
+                int index = value.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+                if (index >= 0 && (skillPrefixIndex < 0 || index < skillPrefixIndex))
+                {
+                    skillPrefixIndex = index;
+                }
+            }
+
+            return skillPrefixIndex;
         }
 
         private static IEnumerable<int> EnumerateLinkedSkillIdsFromChildNames(WzImageProperty property)
@@ -5956,11 +6052,34 @@ namespace HaCreator.MapSimulator.Character.Skills
             int skillIdPartIndex = -1;
             if (parts[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
             {
-                if (parts.Length < 3 || !TryParseRequiredSkillId(parts[2], out _))
+                if (parts.Length >= 4
+                    && parts[2].Equals("skill", StringComparison.OrdinalIgnoreCase)
+                    && TryParseRequiredSkillId(parts[3], out _))
+                {
+                    skillIdPartIndex = 3;
+                }
+                else if (parts.Length >= 3 && TryParseRequiredSkillId(parts[2], out _))
+                {
+                    skillIdPartIndex = 2;
+                }
+                else
                 {
                     return false;
                 }
-
+            }
+            else if (TryParseRequiredSkillId(parts[1], out _)
+                     && parts.Length >= 4
+                     && parts[2].Equals("skill", StringComparison.OrdinalIgnoreCase)
+                     && TryParseRequiredSkillId(parts[3], out _))
+            {
+                skillIdPartIndex = 3;
+            }
+            else if (TryParseRequiredSkillId(parts[1], out int mountedRootValue)
+                     && parts.Length >= 3
+                     && parts[1].Length <= 4
+                     && TryParseRequiredSkillId(parts[2], out int childSkillId)
+                     && childSkillId > mountedRootValue)
+            {
                 skillIdPartIndex = 2;
             }
             else if (TryParseRequiredSkillId(parts[1], out _))
@@ -6903,7 +7022,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 foreach (int linkedSkillId in linkedDummySkillIds)
                 {
-                    if (linkedSkillId > 0 && skillsById.ContainsKey(linkedSkillId))
+                    if (linkedSkillId > 0
+                        && skillsById.TryGetValue(linkedSkillId, out SkillData linkedSkill)
+                        && linkedSkill?.IsSwallowSkill == true)
                     {
                         swallowSkillIds.Add(linkedSkillId);
                     }

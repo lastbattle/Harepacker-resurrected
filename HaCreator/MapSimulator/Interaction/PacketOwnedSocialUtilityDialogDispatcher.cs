@@ -683,6 +683,13 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedTrunkDialogRuntime
     {
+        private const int TrunkDefaultNoticeStringPoolId = 0x0369;
+        private const int TrunkResult10NoticeStringPoolId = 0x0366;
+        private const int TrunkResult11And16NoticeStringPoolId = 0x1A8B;
+        private const int TrunkResult12NoticeStringPoolId = 0x0374;
+        private const int TrunkResult17NoticeStringPoolId = 0x0373;
+        private const int TrunkResult23NoticeStringPoolId = 0x16ED;
+
         private static readonly InventoryType[] SnapshotInventoryOrder =
         {
             InventoryType.EQUIP,
@@ -726,20 +733,45 @@ namespace HaCreator.MapSimulator.Interaction
                 case 19:
                     return TryApplySnapshotPacket(payload, openDialog: false, out message);
                 case 10:
-                    return ApplyNotice("CTrunkDlg result 10 followed the StringPool 0x366 trunk notice branch.", out message);
+                    return ApplyStringPoolNotice(
+                        LastSubtype,
+                        TrunkResult10NoticeStringPoolId,
+                        "Trunk notice 10.",
+                        out message);
                 case 11:
                 case 16:
-                    return ApplyNotice($"CTrunkDlg result {LastSubtype.ToString(CultureInfo.InvariantCulture)} followed the StringPool 0x1A8B trunk notice branch.", out message);
+                    return ApplyStringPoolNotice(
+                        LastSubtype,
+                        TrunkResult11And16NoticeStringPoolId,
+                        "Trunk notice 11/16.",
+                        out message);
                 case 12:
-                    return ApplyNotice("CTrunkDlg result 12 followed the StringPool 0x374 trunk notice branch.", out message);
+                    return ApplyStringPoolNotice(
+                        LastSubtype,
+                        TrunkResult12NoticeStringPoolId,
+                        "Trunk notice 12.",
+                        out message);
                 case 17:
-                    return ApplyNotice("CTrunkDlg result 17 followed the StringPool 0x373 trunk notice branch.", out message);
+                    return ApplyStringPoolNotice(
+                        LastSubtype,
+                        TrunkResult17NoticeStringPoolId,
+                        "Trunk notice 17.",
+                        out message);
                 case 23:
-                    return ApplyNotice("CTrunkDlg result 23 followed the StringPool 0x16ED trunk notice branch.", out message);
+                    return ApplyStringPoolNotice(
+                        LastSubtype,
+                        TrunkResult23NoticeStringPoolId,
+                        "Trunk notice 23.",
+                        out message);
                 case 24:
                     return TryApplyCustomNoticePacket(payload, out message);
                 default:
-                    return ApplyNotice($"CTrunkDlg result {LastSubtype.ToString(CultureInfo.InvariantCulture)} fell back to the default StringPool 0x369 trunk notice branch.", out message);
+                    return ApplyStringPoolNotice(
+                        LastSubtype,
+                        TrunkDefaultNoticeStringPoolId,
+                        $"Trunk notice {LastSubtype.ToString(CultureInfo.InvariantCulture)}.",
+                        out message,
+                        "fell back to the default branch");
             }
         }
 
@@ -812,7 +844,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (payload[1] == 0)
             {
-                return ApplyNotice("CTrunkDlg result 24 followed the default StringPool 0x369 notice branch.", out message);
+                return ApplyStringPoolNotice(
+                    LastSubtype,
+                    TrunkDefaultNoticeStringPoolId,
+                    "Trunk notice 24.",
+                    out message,
+                    "followed the default (non-custom) notice branch");
             }
 
             using MemoryStream stream = new(payload, 2, payload.Length - 2, writable: false);
@@ -828,6 +865,28 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = $"CTrunkDlg result 24 delivered a custom packet-owned notice: {notice}";
             message = StatusMessage;
             return true;
+        }
+
+        private bool ApplyStringPoolNotice(int subtype, int stringPoolId, string fallback, out string message, string branchSuffix = null)
+        {
+            string text = ResolveStringPoolNoticeText(stringPoolId, fallback);
+            string branchText = string.IsNullOrWhiteSpace(branchSuffix)
+                ? $"followed {FormatStringPoolId(stringPoolId)}"
+                : $"{branchSuffix} via {FormatStringPoolId(stringPoolId)}";
+            return ApplyNotice(
+                $"CTrunkDlg result {subtype.ToString(CultureInfo.InvariantCulture)} {branchText}: {text}",
+                out message);
+        }
+
+        private static string ResolveStringPoolNoticeText(int stringPoolId, string fallback)
+        {
+            string text = MapleStoryStringPool.GetOrFallback(stringPoolId, fallback)?.Trim();
+            return string.IsNullOrWhiteSpace(text) ? fallback : text;
+        }
+
+        private static string FormatStringPoolId(int stringPoolId)
+        {
+            return $"StringPool 0x{stringPoolId.ToString("X", CultureInfo.InvariantCulture)}";
         }
 
         private bool ApplyNotice(string statusMessage, out string message)

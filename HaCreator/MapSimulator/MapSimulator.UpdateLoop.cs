@@ -147,8 +147,13 @@ namespace HaCreator.MapSimulator
             bool uiWindowsHandledEsc = false;
             if (uiWindowManager != null)
             {
+                bool initialQuizCapturesWindowInputForUiUpdate = DoesInitialQuizOwnerCaptureWindowInput();
                 RefreshQuestUiState();
-                uiWindowsHandledEsc = uiWindowManager.Update(gameTime, currTickCount, _chat.IsActive, isWindowActive);
+                uiWindowsHandledEsc = uiWindowManager.Update(
+                    gameTime,
+                    currTickCount,
+                    _chat.IsActive,
+                    isWindowActive && ShouldForwardInitialQuizOwnerInputToActiveWindow(initialQuizCapturesWindowInputForUiUpdate));
                 SyncFriendGroupPopupWindowState();
                 ProcessPendingRepairDurabilityRequest();
             }
@@ -350,6 +355,7 @@ namespace HaCreator.MapSimulator
             DrainLocalUtilityPacketInbox();
             DrainAdminShopPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
+            FlushPendingLocalItemDropRequests(currTickCount);
             DrainMessengerOfficialSessionBridge();
             DrainMapleTvOfficialSessionBridge();
             DrainExpeditionIntermediaryPacketInbox();

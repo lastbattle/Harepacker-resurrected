@@ -134,6 +134,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestAlarmTitleTooltipPacketType = 1043;
         public const int ClassCompetitionRemotePagePacketType = 1044;
         public const int QuestAlarmRegistrationSyncPacketType = 1045;
+        public const int ItemUpgradeResultClientPacketType = 425;
         public const int ItemUpgradeResultPacketType = 1046;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
@@ -1102,6 +1103,14 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("itemupgraderesultclient", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemupgradeclientresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onitemupgraderesult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ItemUpgradeResultClientPacketType;
+                return true;
+            }
+
             if (token.Equals("petconsumehp", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petconsumeitem", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petautohp", StringComparison.OrdinalIgnoreCase))
@@ -1225,6 +1234,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == RandomMorphRequestAckPacketType
                 || packetType == QuestAlarmTitleTooltipPacketType
                 || packetType == QuestAlarmRegistrationSyncPacketType
+                || packetType == ItemUpgradeResultClientPacketType
                 || packetType == ItemUpgradeResultPacketType
                 || packetType == ClassCompetitionRemotePagePacketType;
         }
@@ -1436,6 +1446,7 @@ namespace HaCreator.MapSimulator.Managers
                 RandomMorphRequestAckPacketType => "RandomMorphRequestAck(1042)",
                 QuestAlarmTitleTooltipPacketType => "QuestAlarmTitleTooltip(1043)",
                 QuestAlarmRegistrationSyncPacketType => "QuestAlarmRegistrationSync(1045)",
+                ItemUpgradeResultClientPacketType => "OnItemUpgradeResult(425)",
                 ItemUpgradeResultPacketType => "ItemUpgradeResult(1046)",
                 ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
                 _ => $"packet {packetType}"

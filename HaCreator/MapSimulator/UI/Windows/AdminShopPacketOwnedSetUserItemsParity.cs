@@ -9,7 +9,8 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<AdminShopUserSellMutationRow> currentRows,
             InventoryType inventoryType,
             int itemId,
-            int slotPosition)
+            int slotPosition,
+            int packetSerialNumber)
         {
             if (currentRows == null || inventoryType == InventoryType.NONE || itemId <= 0 || slotPosition <= 0)
             {
@@ -21,7 +22,8 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopUserSellMutationRow currentRow = currentRows[index];
                 if (currentRow.InventoryType == inventoryType
                     && currentRow.ItemId == itemId
-                    && currentRow.SlotPosition == slotPosition)
+                    && currentRow.SlotPosition == slotPosition
+                    && (packetSerialNumber <= 0 || currentRow.PacketSerialNumber == packetSerialNumber))
                 {
                     return index;
                 }
@@ -35,10 +37,11 @@ namespace HaCreator.MapSimulator.UI
             InventoryType inventoryType,
             int itemId,
             int slotPosition,
+            int packetSerialNumber,
             int currentScrollOffset,
             int maxVisibleRows)
         {
-            int selectedIndex = FindMatchingEntryIndex(currentRows, inventoryType, itemId, slotPosition);
+            int selectedIndex = FindMatchingEntryIndex(currentRows, inventoryType, itemId, slotPosition, packetSerialNumber);
             int scrollOffset = AdminShopUserSellMutationParity.ComputeScrollOffset(
                 currentScrollOffset,
                 selectedIndex,

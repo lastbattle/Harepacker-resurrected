@@ -8,7 +8,8 @@ namespace HaCreator.MapSimulator.UI
         InventoryType InventoryType,
         int ItemId,
         int SlotPosition,
-        int Stock);
+        int Stock,
+        int PacketSerialNumber);
 
     internal readonly record struct AdminShopUserSellMutationResolution(
         int SelectedIndex,

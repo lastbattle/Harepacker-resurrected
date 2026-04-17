@@ -1641,14 +1641,27 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         internal byte ResolveClientSummonPacketMovePathAttributeByte()
         {
-            int attribute = CurrentMovePathAttribute;
-            if (attribute == 0 && IsRecordingPath && _movePath.Count > 0)
+            int? tailAttribute = _movePath.Count > 0
+                ? _movePath[_movePath.Count - 1].MovePathAttribute
+                : null;
+            return ResolveClientSummonPacketMovePathAttributeByteForTesting(
+                CurrentMovePathAttribute,
+                IsRecordingPath,
+                tailAttribute);
+        }
+
+        internal static byte ResolveClientSummonPacketMovePathAttributeByteForTesting(
+            int currentMovePathAttribute,
+            bool isRecordingPath,
+            int? tailMovePathAttribute)
+        {
+            int attribute = currentMovePathAttribute;
+            if (attribute == 0
+                && isRecordingPath
+                && tailMovePathAttribute.HasValue
+                && tailMovePathAttribute.Value != 0)
             {
-                int tailAttribute = _movePath[_movePath.Count - 1].MovePathAttribute;
-                if (tailAttribute != 0)
-                {
-                    attribute = tailAttribute;
-                }
+                attribute = tailMovePathAttribute.Value;
             }
 
             return unchecked((byte)attribute);

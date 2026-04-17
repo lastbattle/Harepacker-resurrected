@@ -1414,7 +1414,7 @@ namespace HaCreator.MapSimulator.Interaction
                 normalFallbackFormat,
                 warningFallbackFormat,
                 expiredFallbackText);
-            callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
+            callbacks?.AddClientChatMessage?.Invoke(text, 12, null);
             _lastBossTimerSummary = text;
             TryShowBossTimerClock(
                 bossName,
@@ -1445,7 +1445,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
+            callbacks?.AddClientChatMessage?.Invoke(text, 12, null);
             _lastBossTimerSummary = text;
             TryShowBossTimerClock(
                 "Hontale",

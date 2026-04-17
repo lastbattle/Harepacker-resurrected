@@ -1275,7 +1275,14 @@ namespace HaCreator.MapSimulator.UI
                     ? MeasureCategoryText(labelText, labelScale, emphasized: false)
                     : MeasureClientText(labelText, labelScale);
 
-                DrawCategoryText(sprite, labelText, new Vector2(textX, textY), labelColor, labelScale, emphasized: false);
+                DrawCategoryText(
+                    sprite,
+                    labelText,
+                    new Vector2(textX, textY),
+                    labelColor,
+                    labelScale,
+                    emphasized: false,
+                    maxWidth: Math.Max(0f, availableLabelWidth));
                 if (HasClientCategoryButtonArt())
                 {
                     renderedCountText = useClientCategoryText
@@ -1298,7 +1305,14 @@ namespace HaCreator.MapSimulator.UI
 
                     if (!string.IsNullOrEmpty(renderedCountText))
                     {
-                        DrawCategoryText(sprite, renderedCountText, new Vector2(countX, textY), countColor, countScale, emphasized: true);
+                        DrawCategoryText(
+                            sprite,
+                            renderedCountText,
+                            new Vector2(countX, textY),
+                            countColor,
+                            countScale,
+                            emphasized: true,
+                            maxWidth: Math.Max(0f, ResolveClientCategoryMaxCountWidth()));
                     }
                 }
                 else
@@ -1363,7 +1377,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawCategoryText(sprite, leaderText, new Vector2(left, top), color, scale, emphasized: false);
+            DrawCategoryText(
+                sprite,
+                leaderText,
+                new Vector2(left, top),
+                color,
+                scale,
+                emphasized: false,
+                maxWidth: width);
         }
 
         private string BuildCategoryLeaderText(float width, float scale)
@@ -2320,7 +2341,14 @@ namespace HaCreator.MapSimulator.UI
             return MeasureClientText(text, scale);
         }
 
-        private void DrawCategoryText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale, bool emphasized)
+        private void DrawCategoryText(
+            SpriteBatch sprite,
+            string text,
+            Vector2 position,
+            Color color,
+            float scale,
+            bool emphasized,
+            float? maxWidth = null)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -2330,7 +2358,17 @@ namespace HaCreator.MapSimulator.UI
             ClientTextRasterizer rasterizer = ResolveCategoryTextRasterizer(emphasized);
             if (rasterizer != null)
             {
-                rasterizer.DrawString(sprite, text, position, color, scale);
+                rasterizer.DrawString(sprite, text, position, color, scale, maxWidth);
+                return;
+            }
+
+            if (maxWidth.HasValue)
+            {
+                text = FitSingleLineText(text, maxWidth.Value, scale);
+            }
+
+            if (string.IsNullOrEmpty(text))
+            {
                 return;
             }
 

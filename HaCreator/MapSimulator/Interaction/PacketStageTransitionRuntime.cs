@@ -1202,26 +1202,32 @@ namespace HaCreator.MapSimulator.Interaction
             PacketCharacterDataSnapshot snapshot)
         {
             ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
+            Dictionary<ulong, int> decodedSectionByteCounts = CloneDecodedSectionByteCounts(snapshot);
             if ((characterDataFlags & 0x2UL) != 0)
             {
+                long sectionStart = reader.BaseStream.Position;
                 snapshot = snapshot with
                 {
                     Meso = Math.Max(0, reader.ReadInt32())
                 };
                 decodedSectionFlags |= 0x2UL;
+                decodedSectionByteCounts[0x2UL] = checked((int)(reader.BaseStream.Position - sectionStart));
             }
 
             if ((characterDataFlags & 0x80UL) != 0)
             {
+                long sectionStart = reader.BaseStream.Position;
                 snapshot = snapshot with
                 {
                     InventorySlotLimits = ReadCharacterDataInventorySlotLimits(reader)
                 };
                 decodedSectionFlags |= 0x80UL;
+                decodedSectionByteCounts[0x80UL] = checked((int)(reader.BaseStream.Position - sectionStart));
             }
 
             if ((characterDataFlags & CharacterDataTwoIntValueRecordFlag) != 0)
             {
+                long sectionStart = reader.BaseStream.Position;
                 PacketCharacterDataTwoIntValueRecord twoIntValueRecord = new(
                     reader.ReadInt32(),
                     reader.ReadInt32());
@@ -1232,11 +1238,13 @@ namespace HaCreator.MapSimulator.Interaction
                     TwoIntValueRecord = twoIntValueRecord
                 };
                 decodedSectionFlags |= CharacterDataTwoIntValueRecordFlag;
+                decodedSectionByteCounts[CharacterDataTwoIntValueRecordFlag] = checked((int)(reader.BaseStream.Position - sectionStart));
             }
 
             return snapshot with
             {
-                DecodedSectionFlags = decodedSectionFlags
+                DecodedSectionFlags = decodedSectionFlags,
+                DecodedSectionByteCounts = decodedSectionByteCounts
             };
         }
 
@@ -1631,6 +1639,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ? Array.Empty<byte>()
                     : remainingBytes.Take(opaqueByteCount).ToArray();
                 ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
+                Dictionary<ulong, int> decodedSectionByteCounts = CloneDecodedSectionByteCounts(snapshot);
                 ulong opaquePreMapTransferFlags = decodeInt16ValueRecords
                     ? 0
                     : characterDataFlags & CharacterDataInt16ValueRecordFlag;
@@ -1668,6 +1677,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (decodeInt16ValueRecords)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     IReadOnlyList<PacketCharacterDataInt16ValueRecord> int16ValueRecordEntries =
                         ReadCharacterDataInt16ValueRecords(reader, out IReadOnlyDictionary<int, int> int16ValueRecords);
                     decoratedSnapshot = decoratedSnapshot with
@@ -1677,10 +1687,17 @@ namespace HaCreator.MapSimulator.Interaction
                         Int16ValueRecords = int16ValueRecords
                     };
                     decodedSectionFlags |= CharacterDataInt16ValueRecordFlag;
+                    decodedSectionByteCounts[CharacterDataInt16ValueRecordFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
+                }
+                else if ((characterDataFlags & CharacterDataInt16ValueRecordFlag) != 0)
+                {
+                    decodedSectionByteCounts[CharacterDataInt16ValueRecordFlag] = opaquePreMapTransferBytes.Length;
                 }
 
                 if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     IReadOnlyDictionary<int, string> questRecords = ReadCharacterDataQuestStringRecords(reader);
                     decoratedSnapshot = decoratedSnapshot with
                     {
@@ -1688,10 +1705,13 @@ namespace HaCreator.MapSimulator.Interaction
                         QuestRecordValues = questRecords
                     };
                     decodedSectionFlags |= CharacterDataQuestRecordFlag;
+                    decodedSectionByteCounts[CharacterDataQuestRecordFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     IReadOnlyDictionary<int, long> shortFileTimeRecords = ReadCharacterDataShortFileTimeRecords(reader);
                     decoratedSnapshot = decoratedSnapshot with
                     {
@@ -1699,23 +1719,30 @@ namespace HaCreator.MapSimulator.Interaction
                         ShortFileTimeRecords = shortFileTimeRecords
                     };
                     decodedSectionFlags |= CharacterDataShortFileTimeRecordFlag;
+                    decodedSectionByteCounts[CharacterDataShortFileTimeRecordFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 decoratedSnapshot = DecodeCharacterDataLeadingTailSections(reader, characterDataFlags, decoratedSnapshot);
                 decodedSectionFlags = decoratedSnapshot.DecodedSectionFlags;
+                decodedSectionByteCounts = CloneDecodedSectionByteCounts(decoratedSnapshot);
 
                 if ((characterDataFlags & CharacterDataMapTransferFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         RegularMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.RegularCapacity),
                         ContinentMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.ContinentCapacity)
                     };
                     decodedSectionFlags |= CharacterDataMapTransferFlag;
+                    decodedSectionByteCounts[CharacterDataMapTransferFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 if ((characterDataFlags & CharacterDataNewYearCardRecordFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     IReadOnlyList<PacketCharacterDataNewYearCardRecord> newYearCardRecords = ReadCharacterDataNewYearCardRecords(reader);
                     decoratedSnapshot = decoratedSnapshot with
                     {
@@ -1723,10 +1750,13 @@ namespace HaCreator.MapSimulator.Interaction
                         NewYearCardRecords = newYearCardRecords
                     };
                     decodedSectionFlags |= CharacterDataNewYearCardRecordFlag;
+                    decodedSectionByteCounts[CharacterDataNewYearCardRecordFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 if ((characterDataFlags & CharacterDataQuestExRecordFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     IReadOnlyDictionary<int, string> questExRecords = ReadCharacterDataQuestStringRecords(reader);
 
                     decoratedSnapshot = decoratedSnapshot with
@@ -1735,11 +1765,14 @@ namespace HaCreator.MapSimulator.Interaction
                         QuestExRecordValues = questExRecords
                     };
                     decodedSectionFlags |= CharacterDataQuestExRecordFlag;
+                    decodedSectionByteCounts[CharacterDataQuestExRecordFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 if ((characterDataFlags & CharacterDataWildHunterInfoFlag) != 0 &&
                     decoratedSnapshot.JobId / 100 == 33)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     PacketCharacterDataWildHunterInfo wildHunterInfo = ReadCharacterDataWildHunterInfo(reader);
                     decoratedSnapshot = decoratedSnapshot with
                     {
@@ -1747,10 +1780,13 @@ namespace HaCreator.MapSimulator.Interaction
                         WildHunterInfo = wildHunterInfo
                     };
                     decodedSectionFlags |= CharacterDataWildHunterInfoFlag;
+                    decodedSectionByteCounts[CharacterDataWildHunterInfoFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 if ((characterDataFlags & CharacterDataQuestCompleteRecordFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     IReadOnlyDictionary<int, long> questCompleteRecords = ReadCharacterDataQuestCompleteRecords(reader);
 
                     decoratedSnapshot = decoratedSnapshot with
@@ -1759,10 +1795,13 @@ namespace HaCreator.MapSimulator.Interaction
                         QuestCompleteRecords = questCompleteRecords
                     };
                     decodedSectionFlags |= CharacterDataQuestCompleteRecordFlag;
+                    decodedSectionByteCounts[CharacterDataQuestCompleteRecordFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 if ((characterDataFlags & CharacterDataVisitorQuestRecordFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     IReadOnlyDictionary<int, int> visitorQuestRecords = ReadCharacterDataUInt16ValueRecords(reader);
 
                     decoratedSnapshot = decoratedSnapshot with
@@ -1771,11 +1810,14 @@ namespace HaCreator.MapSimulator.Interaction
                         VisitorQuestRecords = visitorQuestRecords
                     };
                     decodedSectionFlags |= CharacterDataVisitorQuestRecordFlag;
+                    decodedSectionByteCounts[CharacterDataVisitorQuestRecordFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 decoratedSnapshot = decoratedSnapshot with
                 {
-                    DecodedSectionFlags = decodedSectionFlags
+                    DecodedSectionFlags = decodedSectionFlags,
+                    DecodedSectionByteCounts = decodedSectionByteCounts
                 };
                 return true;
             }
@@ -1869,9 +1911,11 @@ namespace HaCreator.MapSimulator.Interaction
                 int skillCooldownRecordCount = 0;
                 int skillMasterLevelRecordCount = 0;
                 ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
+                Dictionary<ulong, int> decodedSectionByteCounts = CloneDecodedSectionByteCounts(snapshot);
 
                 if ((characterDataFlags & CharacterDataSkillRecordFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     ReadCharacterDataSkillRecordSection(
                         reader,
                         out skillRecordEntries,
@@ -1882,22 +1926,30 @@ namespace HaCreator.MapSimulator.Interaction
                     skillRecordCount = skillRecordEntries?.Count ?? 0;
                     skillMasterLevelRecordCount = rawSkillMasterLevels?.Count ?? 0;
                     decodedSectionFlags |= CharacterDataSkillRecordFlag;
+                    decodedSectionByteCounts[CharacterDataSkillRecordFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 if ((characterDataFlags & CharacterDataSkillExpirationFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     skillExpirationRecordEntries = ReadCharacterDataSkillExpirationRecords(reader, out skillExpirations);
                     skillExpirationRecordCount = skillExpirationRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordExpirations(skillRecordEntries, skillExpirations);
                     decodedSectionFlags |= CharacterDataSkillExpirationFlag;
+                    decodedSectionByteCounts[CharacterDataSkillExpirationFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
                 {
+                    long sectionStart = reader.BaseStream.Position;
                     skillCooldownRecordEntries = ReadCharacterDataInt16ValueRecords(reader, out skillCooldowns);
                     skillCooldownRecordCount = skillCooldownRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordCooldowns(skillRecordEntries, skillCooldowns);
                     decodedSectionFlags |= CharacterDataSkillCooldownFlag;
+                    decodedSectionByteCounts[CharacterDataSkillCooldownFlag] =
+                        checked((int)(reader.BaseStream.Position - sectionStart));
                 }
 
                 decoratedSnapshot = snapshot with
@@ -1922,7 +1974,8 @@ namespace HaCreator.MapSimulator.Interaction
                     QuestRecordValues = null,
                     ShortFileTimeRecordCount = 0,
                     ShortFileTimeRecords = null,
-                    DecodedSectionFlags = decodedSectionFlags
+                    DecodedSectionFlags = decodedSectionFlags,
+                    DecodedSectionByteCounts = decodedSectionByteCounts
                 };
                 return true;
             }
@@ -2265,21 +2318,26 @@ namespace HaCreator.MapSimulator.Interaction
             PacketCharacterDataSnapshot snapshot)
         {
             ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
+            Dictionary<ulong, int> decodedSectionByteCounts = CloneDecodedSectionByteCounts(snapshot);
             IReadOnlyList<PacketCharacterDataFixedClientRecord> miniGameRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             IReadOnlyList<PacketCharacterDataFixedClientRecord> coupleRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             IReadOnlyList<PacketCharacterDataFixedClientRecord> friendRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             IReadOnlyList<PacketCharacterDataFixedClientRecord> marriageRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0)
             {
+                long sectionStart = reader.BaseStream.Position;
                 miniGameRecords = ReadCharacterDataFixedRecordGroup(
                     reader,
                     PacketCharacterDataFixedClientRecord.MiniGameOwner,
                     CharacterDataMiniGameRecordByteLength);
                 decodedSectionFlags |= CharacterDataMiniGameRecordFlag;
+                decodedSectionByteCounts[CharacterDataMiniGameRecordFlag] =
+                    checked((int)(reader.BaseStream.Position - sectionStart));
             }
 
             if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0)
             {
+                long sectionStart = reader.BaseStream.Position;
                 coupleRecords = ReadCharacterDataFixedRecordGroup(
                     reader,
                     PacketCharacterDataFixedClientRecord.CoupleOwner,
@@ -2293,6 +2351,8 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketCharacterDataFixedClientRecord.MarriageOwner,
                     CharacterDataMarriageRecordByteLength);
                 decodedSectionFlags |= CharacterDataRelationshipRecordFlag;
+                decodedSectionByteCounts[CharacterDataRelationshipRecordFlag] =
+                    checked((int)(reader.BaseStream.Position - sectionStart));
             }
 
             return snapshot with
@@ -2309,8 +2369,16 @@ namespace HaCreator.MapSimulator.Interaction
                 MarriageRecordCount = marriageRecords.Count,
                 MarriageRecordEntries = marriageRecords,
                 MarriageRecords = ExtractFixedClientRecordBytes(marriageRecords),
-                DecodedSectionFlags = decodedSectionFlags
+                DecodedSectionFlags = decodedSectionFlags,
+                DecodedSectionByteCounts = decodedSectionByteCounts
             };
+        }
+
+        private static Dictionary<ulong, int> CloneDecodedSectionByteCounts(PacketCharacterDataSnapshot snapshot)
+        {
+            return snapshot?.DecodedSectionByteCounts != null
+                ? new Dictionary<ulong, int>(snapshot.DecodedSectionByteCounts)
+                : new Dictionary<ulong, int>();
         }
 
         private static int[] ReadCharacterDataMapTransferFields(BinaryReader reader, int count)
@@ -2855,7 +2923,8 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<int, long> QuestCompleteRecords = null,
         int VisitorQuestRecordCount = 0,
         IReadOnlyDictionary<int, int> VisitorQuestRecords = null,
-        ulong DecodedSectionFlags = 0);
+        ulong DecodedSectionFlags = 0,
+        IReadOnlyDictionary<ulong, int> DecodedSectionByteCounts = null);
 
     internal readonly record struct PacketCharacterDataTwoIntValueRecord(
         int Value1,

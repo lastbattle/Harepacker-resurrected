@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public string ActiveRemoteEndpoint => _activePair?.RemoteEndpoint ?? string.Empty;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int LastSentOpcode { get; private set; } = -1;

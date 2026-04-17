@@ -17,7 +17,8 @@ namespace HaCreator.MapSimulator.Character
             int? DelayOverrideMs = null,
             bool Flip = false,
             Point? Move = null,
-            int RotationDegrees = 0);
+            int RotationDegrees = 0,
+            bool IsSyntheticMirroredTailPiece = false);
 
         private static readonly string[] SwingHeuristicFragments =
         {
@@ -1342,7 +1343,9 @@ namespace HaCreator.MapSimulator.Character
             int eventDelayMs = 0;
             foreach (ShadowPartnerActionPiece piece in piecePlan)
             {
-                if (!piece.DelayOverrideMs.HasValue || piece.DelayOverrideMs.Value >= 0)
+                if (piece.IsSyntheticMirroredTailPiece
+                    || !piece.DelayOverrideMs.HasValue
+                    || piece.DelayOverrideMs.Value >= 0)
                 {
                     continue;
                 }

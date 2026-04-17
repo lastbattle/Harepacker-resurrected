@@ -147,6 +147,36 @@ namespace HaCreator.MapSimulator.Interaction
             return typedCandidates;
         }
 
+        internal static IReadOnlyList<AccountMoreInfoBackgroundResourceCandidate> EnumerateBackgroundProbeCandidates()
+        {
+            IReadOnlyList<AccountMoreInfoBackgroundResourceCandidate> baseCandidates = EnumerateBackgroundResourceCandidates();
+            if (baseCandidates.Count <= 1)
+            {
+                return baseCandidates;
+            }
+
+            List<AccountMoreInfoBackgroundResourceCandidate> probeCandidates = new(baseCandidates.Count);
+            for (int i = 0; i < baseCandidates.Count; i++)
+            {
+                AccountMoreInfoBackgroundResourceCandidate candidate = baseCandidates[i];
+                if (candidate.MirrorsClientSetBackgrnd)
+                {
+                    probeCandidates.Add(candidate);
+                }
+            }
+
+            for (int i = 0; i < baseCandidates.Count; i++)
+            {
+                AccountMoreInfoBackgroundResourceCandidate candidate = baseCandidates[i];
+                if (!candidate.MirrorsClientSetBackgrnd)
+                {
+                    probeCandidates.Add(candidate);
+                }
+            }
+
+            return probeCandidates;
+        }
+
         private static void AddDistinctCandidate(ICollection<string> candidates, string candidate)
         {
             if (candidates == null || string.IsNullOrWhiteSpace(candidate))

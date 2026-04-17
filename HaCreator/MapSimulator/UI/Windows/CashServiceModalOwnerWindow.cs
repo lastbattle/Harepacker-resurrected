@@ -86,6 +86,11 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
+        private Texture2D _comboBoxLeftTexture;
+        private Texture2D _comboBoxMiddleTexture;
+        private Texture2D _comboBoxButtonTexture;
+        private Texture2D _checkBoxUncheckedTexture;
+        private Texture2D _checkBoxCheckedTexture;
         private string _title = string.Empty;
         private string _body = string.Empty;
         private string _footer = string.Empty;
@@ -143,6 +148,20 @@ namespace HaCreator.MapSimulator.UI
         internal void SetButtonHandler(Action<int> buttonHandler)
         {
             _buttonHandler = buttonHandler;
+        }
+
+        internal void SetOwnerChrome(
+            Texture2D comboBoxLeftTexture,
+            Texture2D comboBoxMiddleTexture,
+            Texture2D comboBoxButtonTexture,
+            Texture2D checkBoxUncheckedTexture,
+            Texture2D checkBoxCheckedTexture)
+        {
+            _comboBoxLeftTexture = comboBoxLeftTexture;
+            _comboBoxMiddleTexture = comboBoxMiddleTexture;
+            _comboBoxButtonTexture = comboBoxButtonTexture;
+            _checkBoxUncheckedTexture = checkBoxUncheckedTexture;
+            _checkBoxCheckedTexture = checkBoxCheckedTexture;
         }
 
         public override void SetFont(SpriteFont font)
@@ -584,12 +603,22 @@ namespace HaCreator.MapSimulator.UI
 
                 Color border = checkBox.IsEnabled ? new Color(196, 196, 196) : new Color(96, 96, 96);
                 Color text = checkBox.IsEnabled ? Color.White : new Color(130, 130, 130);
-                sprite.Draw(_pixelTexture, bounds, new Color(20, 20, 20, 220));
-                DrawBorder(sprite, bounds, border);
-                if (checkBox.ControlId == _selectedCheckBoxControlId)
+                bool isSelected = checkBox.ControlId == _selectedCheckBoxControlId;
+                Texture2D checkTexture = isSelected ? _checkBoxCheckedTexture : _checkBoxUncheckedTexture;
+                if (checkTexture != null)
                 {
-                    Rectangle mark = new(bounds.X + 3, bounds.Y + 3, bounds.Width - 6, bounds.Height - 6);
-                    sprite.Draw(_pixelTexture, mark, checkBox.IsEnabled ? new Color(255, 221, 141) : new Color(120, 120, 120));
+                    Color tint = checkBox.IsEnabled ? Color.White : new Color(160, 160, 160);
+                    sprite.Draw(checkTexture, new Vector2(bounds.X, bounds.Y), tint);
+                }
+                else
+                {
+                    sprite.Draw(_pixelTexture, bounds, new Color(20, 20, 20, 220));
+                    DrawBorder(sprite, bounds, border);
+                    if (isSelected)
+                    {
+                        Rectangle mark = new(bounds.X + 3, bounds.Y + 3, bounds.Width - 6, bounds.Height - 6);
+                        sprite.Draw(_pixelTexture, mark, checkBox.IsEnabled ? new Color(255, 221, 141) : new Color(120, 120, 120));
+                    }
                 }
 
                 string label = string.IsNullOrWhiteSpace(checkBox.Detail)
@@ -614,18 +643,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _comboBounds = ResolveComboBoxBounds(cursor);
-            sprite.Draw(_pixelTexture, _comboBounds, new Color(238, 238, 238, 232));
-            DrawBorder(sprite, _comboBounds, new Color(153, 153, 153));
+            if (_comboBoxLeftTexture != null && _comboBoxMiddleTexture != null && _comboBoxButtonTexture != null)
+            {
+                sprite.Draw(_comboBoxLeftTexture, new Vector2(_comboBounds.X, _comboBounds.Y), Color.White);
+                int middleStartX = _comboBounds.X + _comboBoxLeftTexture.Width;
+                int middleWidth = Math.Max(0, _comboBounds.Width - _comboBoxLeftTexture.Width - _comboBoxButtonTexture.Width);
+                if (middleWidth > 0)
+                {
+                    sprite.Draw(
+                        _comboBoxMiddleTexture,
+                        new Rectangle(middleStartX, _comboBounds.Y, middleWidth, _comboBounds.Height),
+                        Color.White);
+                }
+
+                sprite.Draw(
+                    _comboBoxButtonTexture,
+                    new Vector2(_comboBounds.Right - _comboBoxButtonTexture.Width, _comboBounds.Y),
+                    Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixelTexture, _comboBounds, new Color(238, 238, 238, 232));
+                DrawBorder(sprite, _comboBounds, new Color(153, 153, 153));
+                Rectangle arrowFallbackBounds = new(_comboBounds.Right - 18, _comboBounds.Y, 18, _comboBounds.Height);
+                sprite.Draw(_pixelTexture, arrowFallbackBounds, new Color(198, 198, 198, 232));
+                DrawBorder(sprite, arrowFallbackBounds, new Color(153, 153, 153));
+                SelectorWindowDrawing.DrawShadowedText(sprite, _font, "v", new Vector2(arrowFallbackBounds.X + 5, arrowFallbackBounds.Y + 1), Color.Black);
+            }
+
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
                 _font,
                 SelectedComboLabel,
                 new Vector2(_comboBounds.X + 4, _comboBounds.Y + 2),
                 Color.Black);
-            Rectangle arrowBounds = new(_comboBounds.Right - 18, _comboBounds.Y, 18, _comboBounds.Height);
-            sprite.Draw(_pixelTexture, arrowBounds, new Color(198, 198, 198, 232));
-            DrawBorder(sprite, arrowBounds, new Color(153, 153, 153));
-            SelectorWindowDrawing.DrawShadowedText(sprite, _font, "v", new Vector2(arrowBounds.X + 5, arrowBounds.Y + 1), Color.Black);
 
             cursor.Y += Math.Max(ComboBoxHeight, _comboBounds.Height);
             _comboOptionBounds.Clear();

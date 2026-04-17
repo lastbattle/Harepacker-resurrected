@@ -6,7 +6,9 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator
 {
@@ -577,6 +579,62 @@ namespace HaCreator.MapSimulator
             return request?.ClientOpcode >= 0
                 ? request.ClientPayload ?? Array.Empty<byte>()
                 : request?.Payload ?? Array.Empty<byte>();
+        }
+
+        private bool TryApplyPacketOwnedQuestRewardRaiseQuestRecordMessagePayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < sizeof(ushort) + sizeof(short))
+            {
+                message = "Raise quest-record payload must contain a quest id and Maple ASCII string.";
+                return false;
+            }
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+
+            int questId = reader.ReadUInt16();
+            if (!TryReadPacketOwnedAsciiString(reader, out string questRecordValue))
+            {
+                message = "Raise quest-record payload is missing the quest-record text.";
+                return false;
+            }
+
+            if (stream.Position != stream.Length)
+            {
+                message = $"Raise quest-record payload has {stream.Length - stream.Position} trailing byte(s).";
+                return false;
+            }
+
+            questRecordValue ??= string.Empty;
+            StampPacketOwnedUtilityRequestState();
+            _questRuntime.SetPacketOwnedQuestRecordValue(questId, questRecordValue);
+
+            if (TryParseQuestRewardRaiseQrData(questRecordValue, out int qrData))
+            {
+                QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+                if (activeRaise != null && Math.Max(0, activeRaise.Prompt?.QuestId ?? 0) == questId)
+                {
+                    activeRaise.QrData = qrData;
+                }
+
+                QuestRewardRaiseState observedRaise = _questRewardRaiseManager.GetObservedRaiseByQuestId(questId);
+                if (observedRaise != null)
+                {
+                    observedRaise.QrData = qrData;
+                }
+            }
+
+            RefreshQuestRewardRaiseWindow();
+            RefreshQuestUiState();
+
+            string questName = _questRuntime.TryGetQuestName(questId, out string resolvedQuestName)
+                ? resolvedQuestName
+                : $"Quest #{questId}";
+            message = TryParseQuestRewardRaiseQrData(questRecordValue, out int resolvedQrData)
+                ? $"Stored packet-owned raise quest record for {questName}: qr={resolvedQrData.ToString(CultureInfo.InvariantCulture)}."
+                : $"Stored packet-owned raise quest record text for {questName}: '{TruncatePacketOwnedUtilityText(questRecordValue, 60)}'.";
+            return true;
         }
 
         private bool TryApplyPacketOwnedQuestRewardRaisePayload(

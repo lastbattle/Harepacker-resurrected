@@ -714,6 +714,7 @@ namespace HaCreator.MapSimulator.UI
                 out InventoryType preservedUserSelectionInventoryType,
                 out int preservedUserSelectionItemId,
                 out int preservedUserSelectionSlotPosition,
+                out int preservedUserSelectionPacketSerialNumber,
                 out int preservedUserSelectionScrollOffset);
             _packetOwnedAdminShopSession.BeginOpen(
                 snapshot,
@@ -730,6 +731,7 @@ namespace HaCreator.MapSimulator.UI
                     preservedUserSelectionInventoryType,
                     preservedUserSelectionItemId,
                     preservedUserSelectionSlotPosition,
+                    preservedUserSelectionPacketSerialNumber,
                     preservedUserSelectionScrollOffset);
             }
             _footerMessage = _packetOwnedAdminShopSession.NpcTemplateId > 0
@@ -784,6 +786,12 @@ namespace HaCreator.MapSimulator.UI
 
         internal string ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(string blockingOwner, AdminShopPacketOwnedOpenPayloadSnapshot snapshot)
         {
+            if (snapshot != null)
+            {
+                _packetOwnedAdminShopRows.Clear();
+                _packetOwnedAdminShopRows.AddRange(snapshot.Rows);
+            }
+
             _packetOwnedAdminShopSession.RecordBlockedByOwner(snapshot, blockingOwner);
             _footerMessage = string.IsNullOrWhiteSpace(blockingOwner)
                 ? "Packet 367 arrived while another unique-modeless owner was active, so the admin-shop owner stayed unchanged."
@@ -3637,7 +3645,8 @@ namespace HaCreator.MapSimulator.UI
                 entry.SourceInventoryType,
                 entry.SourceItemId,
                 entry.InventorySlotIndex + 1,
-                Math.Max(0, entry.DisplayQuantity));
+                Math.Max(0, entry.DisplayQuantity),
+                Math.Max(0, entry.PacketSerialNumber));
             _activePane = AdminShopPane.User;
             _activeBrowseMode = AdminShopBrowseMode.All;
             _activeCategory = ResolveCategoryForInventoryType(entry.SourceInventoryType);
@@ -3665,11 +3674,13 @@ namespace HaCreator.MapSimulator.UI
             out InventoryType inventoryType,
             out int itemId,
             out int slotPosition,
+            out int packetSerialNumber,
             out int scrollOffset)
         {
             inventoryType = InventoryType.NONE;
             itemId = 0;
             slotPosition = 0;
+            packetSerialNumber = 0;
             scrollOffset = 0;
             if (!_packetOwnedAdminShopSession.IsActive || _activePane != AdminShopPane.User)
             {
@@ -3690,6 +3701,7 @@ namespace HaCreator.MapSimulator.UI
             inventoryType = entry.SourceInventoryType;
             itemId = entry.SourceItemId;
             slotPosition = entry.InventorySlotIndex + 1;
+            packetSerialNumber = Math.Max(0, entry.PacketSerialNumber);
             scrollOffset = Math.Max(0, _paneStates[AdminShopPane.User].ScrollOffset);
             return true;
         }
@@ -3698,6 +3710,7 @@ namespace HaCreator.MapSimulator.UI
             InventoryType inventoryType,
             int itemId,
             int slotPosition,
+            int packetSerialNumber,
             int scrollOffset)
         {
             if (inventoryType == InventoryType.NONE || itemId <= 0 || slotPosition <= 0)
@@ -3720,6 +3733,7 @@ namespace HaCreator.MapSimulator.UI
                 inventoryType,
                 itemId,
                 slotPosition,
+                packetSerialNumber,
                 scrollOffset,
                 MaxVisibleRows);
             if (resolution.SelectedIndex < 0)
@@ -5564,7 +5578,8 @@ namespace HaCreator.MapSimulator.UI
                     inventoryType,
                     entry.SourceItemId,
                     entry.InventorySlotIndex + 1,
-                    Math.Max(0, entry.DisplayQuantity)));
+                    Math.Max(0, entry.DisplayQuantity),
+                    Math.Max(0, entry.PacketSerialNumber)));
             }
 
             return rows;

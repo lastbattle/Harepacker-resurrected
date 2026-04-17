@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMessengerSessionCommand(string[] args)
         {
-            const string usage = "Usage: /messenger session [status|table|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /messenger session [status|table|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMessengerOfficialSessionBridgeStatus());
@@ -94,14 +94,14 @@ namespace HaCreator.MapSimulator
             {
                 if (args.Length < 2)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|blocked <inviter> [localName] [blocked]>");
                 }
 
                 bool queueOnly = string.Equals(args[0], "queue", StringComparison.OrdinalIgnoreCase);
                 switch (args[1].ToLowerInvariant())
                 {
                     case "invite":
-                        if (args.Length < 4)
+                        if (args.Length < 3)
                         {
                             return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> invite <name>");
                         }
@@ -127,8 +127,16 @@ namespace HaCreator.MapSimulator
                         return TryMirrorMessengerClaimClientRequest(string.Join(" ", args, 2, args.Length - 2), out string claimStatus, queueOnly)
                             ? ChatCommandHandler.CommandResult.Ok(claimStatus)
                             : ChatCommandHandler.CommandResult.Error(claimStatus);
+                    case "blocked":
+                    case "autoreject":
+                        return TryMirrorMessengerBlockedAutoRejectClientRequest(
+                                string.Join(" ", args, 2, args.Length - 2),
+                                out string blockedStatus,
+                                queueOnly)
+                            ? ChatCommandHandler.CommandResult.Ok(blockedStatus)
+                            : ChatCommandHandler.CommandResult.Error(blockedStatus);
                     default:
-                        return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|blocked <inviter> [localName] [blocked]>");
                 }
             }
 

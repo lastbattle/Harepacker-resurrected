@@ -2169,6 +2169,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int AlphaEnd { get; init; }
         public int AlphaVectorStart { get; init; }
         public int AlphaVectorEnd { get; init; }
+        public bool HasAlphaVectorStart { get; init; }
+        public bool HasAlphaVectorEnd { get; init; }
         public float FrameAlphaMultiplier { get; init; } = 1f;
 
         public bool IsExpired(int currentTime)
@@ -2221,12 +2223,16 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private int ResolveAlphaVectorStart()
         {
-            return AlphaVectorStart > 0 ? AlphaVectorStart : AlphaStart;
+            return HasAlphaVectorStart || AlphaVectorStart != 0
+                ? AlphaVectorStart
+                : AlphaStart;
         }
 
         private int ResolveAlphaVectorEnd()
         {
-            return AlphaVectorEnd > 0 || AlphaEnd <= 0 ? AlphaVectorEnd : AlphaEnd;
+            return HasAlphaVectorEnd || AlphaVectorEnd != 0
+                ? AlphaVectorEnd
+                : AlphaEnd;
         }
     }
 

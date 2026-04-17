@@ -111,8 +111,24 @@ namespace HaCreator.MapSimulator.UI
                             _ = reader.ReadInt32();
                             break;
                         case 0:
-                            rejectReason = "Inventory-operation add-slot entries are not recovered for character completion matching.";
-                            return false;
+                        {
+                            if (!TryReadClientInventoryOperationAddEntry(reader, out int addedItemId, out rejectReason))
+                            {
+                                return false;
+                            }
+
+                            if (TryMatchesCharacterInventoryOperationAdd(
+                                    request,
+                                    inventoryType,
+                                    fromPosition,
+                                    addedItemId,
+                                    out rejectReason))
+                            {
+                                return true;
+                            }
+
+                            break;
+                        }
                         default:
                             rejectReason = $"Inventory-operation mode {operationMode} is unsupported for character completion matching.";
                             return false;
@@ -125,7 +141,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            rejectReason = "Inventory-operation payload did not include a character-equipment swap matching the active request.";
+            rejectReason = "Inventory-operation payload did not include a character-equipment add-or-swap entry matching the active request.";
             return false;
         }
 
@@ -751,9 +767,227 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static bool TryMatchesCharacterInventoryOperationAdd(
+            EquipmentChangeRequest request,
+            byte inventoryType,
+            short targetPosition,
+            int addedItemId,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            switch (request.Kind)
+            {
+                case EquipmentChangeRequestKind.InventoryToCharacter:
+                    if (!request.TargetEquipSlot.HasValue)
+                    {
+                        rejectReason = "Character equip-in request is missing target equipment slot metadata.";
+                        return false;
+                    }
+
+                    if (inventoryType != (byte)request.SourceInventoryType)
+                    {
+                        rejectReason = "Character equip-in inventory-operation add entry did not target the requested inventory.";
+                        return false;
+                    }
+
+                    if (targetPosition != ToClientEquipPosition(request.TargetEquipSlot.Value))
+                    {
+                        rejectReason = "Inventory-operation add entry did not target the requested equip-in slot.";
+                        return false;
+                    }
+
+                    if (addedItemId != request.ItemId)
+                    {
+                        rejectReason = "Inventory-operation add entry did not carry the requested equip-in item id.";
+                        return false;
+                    }
+
+                    return true;
+
+                case EquipmentChangeRequestKind.CharacterToCharacter:
+                    if (!request.TargetEquipSlot.HasValue)
+                    {
+                        rejectReason = "Character move request is missing target equipment slot metadata.";
+                        return false;
+                    }
+
+                    if (inventoryType != ClientEquipInventoryType)
+                    {
+                        rejectReason = "Character move inventory-operation add entry did not target the equipped inventory.";
+                        return false;
+                    }
+
+                    if (targetPosition != ToClientEquipPosition(request.TargetEquipSlot.Value))
+                    {
+                        rejectReason = "Inventory-operation add entry did not target the requested character slot move.";
+                        return false;
+                    }
+
+                    if (addedItemId != request.ItemId)
+                    {
+                        rejectReason = "Inventory-operation add entry did not carry the requested character item id.";
+                        return false;
+                    }
+
+                    return true;
+
+                case EquipmentChangeRequestKind.CharacterToInventory:
+                    if (!request.SourceEquipSlot.HasValue)
+                    {
+                        rejectReason = "Character unequip request is missing source equipment slot metadata.";
+                        return false;
+                    }
+
+                    if (!IsSupportedClientCharacterInventoryType(inventoryType))
+                    {
+                        rejectReason = "Character unequip inventory-operation add entry targeted an unsupported inventory.";
+                        return false;
+                    }
+
+                    if (request.RequestedPart?.IsCash == true && inventoryType != ClientCashInventoryType)
+                    {
+                        rejectReason = "Character unequip inventory-operation add entry did not target the cash inventory for a cash item.";
+                        return false;
+                    }
+
+                    if (request.RequestedPart?.IsCash == false && inventoryType != ClientEquipInventoryType)
+                    {
+                        rejectReason = "Character unequip inventory-operation add entry did not target the equip inventory for a non-cash item.";
+                        return false;
+                    }
+
+                    if (targetPosition <= 0)
+                    {
+                        rejectReason = "Inventory-operation add entry did not land in a positive inventory slot.";
+                        return false;
+                    }
+
+                    if (addedItemId != request.ItemId)
+                    {
+                        rejectReason = "Inventory-operation add entry did not carry the requested unequip item id.";
+                        return false;
+                    }
+
+                    return true;
+
+                default:
+                    rejectReason = "Unsupported character equipment request kind for inventory-operation add matching.";
+                    return false;
+            }
+        }
+
         private static short ToClientEquipPosition(EquipSlot slot)
         {
             return unchecked((short)-(int)slot);
+        }
+
+        private static bool TryReadClientInventoryOperationAddEntry(
+            BinaryReader reader,
+            out int itemId,
+            out string rejectReason)
+        {
+            itemId = 0;
+            rejectReason = null;
+            try
+            {
+                byte slotType = reader.ReadByte();
+                if (slotType is not 1 and not 2 and not 3)
+                {
+                    rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
+                    return false;
+                }
+
+                itemId = reader.ReadInt32();
+                bool hasCashSerial = reader.ReadByte() != 0;
+                if (hasCashSerial)
+                {
+                    _ = reader.ReadInt64();
+                }
+
+                _ = reader.ReadInt64(); // dateExpire
+                switch (slotType)
+                {
+                    case 1:
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        for (int i = 0; i < 14; i++)
+                        {
+                            _ = reader.ReadInt16();
+                        }
+
+                        _ = ReadMapleString(reader);
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt32();
+                        return true;
+                    case 2:
+                        _ = reader.ReadUInt16();
+                        _ = ReadMapleString(reader);
+                        _ = reader.ReadInt16();
+                        if ((itemId / 10000) is 207 or 233)
+                        {
+                            _ = reader.ReadInt64();
+                        }
+
+                        return true;
+                    case 3:
+                        if (reader.ReadBytes(13).Length != 13)
+                        {
+                            rejectReason = "Inventory-operation add entry is truncated.";
+                            return false;
+                        }
+
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadUInt16();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt16();
+                        return true;
+                    default:
+                        rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
+                        return false;
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                rejectReason = "Inventory-operation add entry is truncated.";
+                return false;
+            }
+            catch (IOException)
+            {
+                rejectReason = "Inventory-operation add entry is truncated.";
+                return false;
+            }
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            if (length == 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] bytes = reader.ReadBytes(length);
+            return bytes.Length == length
+                ? System.Text.Encoding.ASCII.GetString(bytes)
+                : string.Empty;
         }
 
         private static bool IsSupportedClientCharacterInventoryType(byte inventoryType)

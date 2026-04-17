@@ -79,7 +79,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return PacketQuestResultAvailabilityRefreshDisposition.Immediate;
             }
 
-            return PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation;
+            return closeKind switch
+            {
+                NpcInteractionOverlayCloseKind.None => PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation,
+                NpcInteractionOverlayCloseKind.Completed => PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation,
+                NpcInteractionOverlayCloseKind.Dismissed => PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation,
+                _ => PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation
+            };
         }
 
         internal static bool ResolveUtilDialogNoticeAutoSeparated(int resultType)

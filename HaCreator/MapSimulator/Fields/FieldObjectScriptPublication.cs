@@ -186,6 +186,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            bool sawNestedContainer = false;
             for (int i = 0; i < children.Count; i++)
             {
                 WzImageProperty child = children[i];
@@ -194,19 +195,29 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                if (!IsNestedAliasContainer(child))
+                if (!IsNestedAliasContainer(child, allowWrapperContainerNames: true))
                 {
                     return false;
                 }
+
+                sawNestedContainer = true;
             }
 
-            return true;
+            return sawNestedContainer;
         }
 
-        private static bool IsNestedAliasContainer(WzImageProperty property)
+        private static bool IsNestedAliasContainer(
+            WzImageProperty property,
+            bool allowWrapperContainerNames)
         {
-            if (property == null
-                || !ShouldTreatPropertyNameAsScriptAlias(property.Name))
+            if (property == null)
+            {
+                return false;
+            }
+
+            bool isAliasContainer = ShouldTreatPropertyNameAsScriptAlias(property.Name);
+            bool isWrapperContainer = allowWrapperContainerNames && IsAliasWrapperContainerName(property.Name);
+            if (!isAliasContainer && !isWrapperContainer)
             {
                 return false;
             }
@@ -217,6 +228,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            bool sawNestedAlias = false;
             for (int i = 0; i < children.Count; i++)
             {
                 WzImageProperty child = children[i];
@@ -225,8 +237,40 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                if (!IsNestedAliasContainer(child)
-                    && child is not WzStringProperty)
+                if (child is WzStringProperty)
+                {
+                    sawNestedAlias = true;
+                    continue;
+                }
+
+                if (!IsNestedAliasContainer(child, allowWrapperContainerNames: true))
+                {
+                    return false;
+                }
+
+                sawNestedAlias = true;
+            }
+
+            return sawNestedAlias;
+        }
+
+        private static bool IsAliasWrapperContainerName(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            if (propertyName.Equals("script", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("scripts", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("info", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            for (int i = 0; i < propertyName.Length; i++)
+            {
+                if (!char.IsDigit(propertyName[i]))
                 {
                     return false;
                 }

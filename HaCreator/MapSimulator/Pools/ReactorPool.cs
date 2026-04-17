@@ -1768,7 +1768,10 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int previousVisualState = ResolvePacketVisualOwnershipSourceState(data);
+            ResolvePacketVisualOwnershipSourceStatesForMutation(
+                data,
+                out int packetAnimationSourceState,
+                out int packetHitAnimationState);
             bool wasAnimationClockRunning = IsPacketAnimationClockRunning(data);
             bool previousLeavePending = data.PacketLeavePending;
             int previousHitStartTime = data.PacketHitStartTime;
@@ -1802,8 +1805,8 @@ namespace HaCreator.MapSimulator.Pools
 
             ApplyPacketProperEventIndexPreference(data, properEventIndex);
             data.PacketStateEndTime = ResolvePacketStateEndTime(currentTick, stateEndDelayTicks);
-            data.PacketAnimationSourceState = previousVisualState;
-            data.PacketHitAnimationState = previousVisualState;
+            data.PacketAnimationSourceState = packetAnimationSourceState;
+            data.PacketHitAnimationState = packetHitAnimationState;
             data.PacketPendingVisualState = state;
             ConfigurePacketStateMovement(
                 reactor,
@@ -1907,14 +1910,17 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int previousVisualState = ResolvePacketVisualOwnershipSourceState(data);
+            ResolvePacketVisualOwnershipSourceStatesForMutation(
+                data,
+                out int packetAnimationSourceState,
+                out int packetHitAnimationState);
             int remainingCurrentAnimationDuration = reactor.GetRemainingStoppedAnimationDuration(currentTick);
             ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick, applyAnimationState: false);
             data.PacketLeavePending = true;
             ClearLocalTouchOwnership(index, data);
             data.PacketProperEventIndex = -2;
-            data.PacketAnimationSourceState = previousVisualState;
-            data.PacketHitAnimationState = previousVisualState;
+            data.PacketAnimationSourceState = packetAnimationSourceState;
+            data.PacketHitAnimationState = packetHitAnimationState;
             bool hasAuthoredStateEvents = reactor.HasAuthoredEventInfo(state);
             data.PacketPendingVisualState = hasAuthoredStateEvents ? -1 : state;
             data.PacketHitStartTime = ResolvePacketLeaveHitStartTime(currentTick, hasAuthoredStateEvents);
@@ -3673,6 +3679,36 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return data.VisualState;
+        }
+
+        internal static void ResolvePacketVisualOwnershipSourceStatesForMutation(
+            ReactorRuntimeData data,
+            out int packetAnimationSourceState,
+            out int packetHitAnimationState)
+        {
+            packetAnimationSourceState = 0;
+            packetHitAnimationState = -1;
+            if (data == null)
+            {
+                return;
+            }
+
+            if (data.PacketHitAnimationState >= 0)
+            {
+                packetAnimationSourceState = data.PacketAnimationSourceState >= 0
+                    ? data.PacketAnimationSourceState
+                    : data.PacketHitAnimationState;
+                packetHitAnimationState = data.PacketHitAnimationState;
+                return;
+            }
+
+            if (data.PacketAnimationSourceState >= 0)
+            {
+                packetAnimationSourceState = data.PacketAnimationSourceState;
+                return;
+            }
+
+            packetAnimationSourceState = data.VisualState;
         }
 
         internal static bool ShouldPreservePacketAnimationSourceState(ReactorRuntimeData data)

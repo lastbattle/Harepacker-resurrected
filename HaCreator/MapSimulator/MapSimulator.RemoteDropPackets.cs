@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
 using System;
+using System.Linq;
 
 namespace HaCreator.MapSimulator
 {
@@ -284,7 +285,8 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.Build?.Id ?? 0,
                 _socialListRuntime.IsTrackedPartyActor,
                 IsTrackedDropPartyActor,
-                AreObservedDropPartyActorsLinked);
+                AreObservedDropPartyActorsLinked,
+                IsObservedDropPartyActorPartyLinked);
         }
 
         internal static bool AreDropActorsInSameParty(
@@ -294,7 +296,8 @@ namespace HaCreator.MapSimulator
             int localCharacterId,
             Func<int, bool> trackedPartyActorEvaluator,
             Func<int, bool> legacyTrackedActorEvaluator,
-            Func<int, int, bool> observedPartyLinkEvaluator = null)
+            Func<int, int, bool> observedPartyLinkEvaluator = null,
+            Func<int, bool> observedPartyAnchorEvaluator = null)
         {
             if (ownerId <= 0 || actorId <= 0)
             {
@@ -318,9 +321,11 @@ namespace HaCreator.MapSimulator
             bool legacyTrackedOwner = legacyTrackedActorEvaluator?.Invoke(ownerId) == true;
             bool legacyTrackedActor = actorId == localCharacterId
                 || legacyTrackedActorEvaluator?.Invoke(actorId) == true;
+            bool observedTrackedOwner = observedPartyAnchorEvaluator?.Invoke(ownerId) == true;
+            bool observedTrackedActor = observedPartyAnchorEvaluator?.Invoke(actorId) == true;
 
-            if ((packetTrackedOwner || legacyTrackedOwner)
-                && (packetTrackedActor || legacyTrackedActor))
+            if ((packetTrackedOwner || legacyTrackedOwner || observedTrackedOwner)
+                && (packetTrackedActor || legacyTrackedActor || observedTrackedActor))
             {
                 return true;
             }
@@ -346,6 +351,17 @@ namespace HaCreator.MapSimulator
         private bool AreObservedDropPartyActorsLinked(int firstActorId, int secondActorId)
         {
             return AreObservedDropPartyActorsLinked(_observedDropPartyActorParents, firstActorId, secondActorId);
+        }
+
+        private bool IsObservedDropPartyActorPartyLinked(int actorId)
+        {
+            return IsObservedDropPartyActorPartyLinked(
+                _observedDropPartyActorParents,
+                actorId,
+                _socialListRuntime.ClientPartyId,
+                _playerManager?.Player?.Build?.Id ?? 0,
+                _socialListRuntime.IsTrackedPartyActor,
+                IsTrackedDropPartyActor);
         }
 
         internal static void RegisterObservedDropPartyActorLink(
@@ -380,6 +396,66 @@ namespace HaCreator.MapSimulator
 
             return FindObservedDropPartyActorRoot(actorParents, firstActorId)
                 == FindObservedDropPartyActorRoot(actorParents, secondActorId);
+        }
+
+        internal static bool IsObservedDropPartyActorPartyLinked(
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            int actorId,
+            int localPartyId,
+            int localCharacterId,
+            Func<int, bool> trackedPartyActorEvaluator,
+            Func<int, bool> legacyTrackedActorEvaluator)
+        {
+            if (actorParents == null || actorId <= 0)
+            {
+                return false;
+            }
+
+            if (IsKnownDropPartyActor(
+                actorId,
+                localPartyId,
+                localCharacterId,
+                trackedPartyActorEvaluator,
+                legacyTrackedActorEvaluator))
+            {
+                return true;
+            }
+
+            int targetRoot = FindObservedDropPartyActorRoot(actorParents, actorId);
+            int[] linkedActorIds = actorParents.Keys.ToArray();
+            foreach (int linkedActorId in linkedActorIds)
+            {
+                if (FindObservedDropPartyActorRoot(actorParents, linkedActorId) != targetRoot)
+                {
+                    continue;
+                }
+
+                if (IsKnownDropPartyActor(
+                    linkedActorId,
+                    localPartyId,
+                    localCharacterId,
+                    trackedPartyActorEvaluator,
+                    legacyTrackedActorEvaluator))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsKnownDropPartyActor(
+            int actorId,
+            int localPartyId,
+            int localCharacterId,
+            Func<int, bool> trackedPartyActorEvaluator,
+            Func<int, bool> legacyTrackedActorEvaluator)
+        {
+            return actorId > 0
+                && (actorId == localPartyId
+                    || actorId == localCharacterId
+                    || trackedPartyActorEvaluator?.Invoke(actorId) == true
+                    || legacyTrackedActorEvaluator?.Invoke(actorId) == true);
         }
 
         private static int FindObservedDropPartyActorRoot(

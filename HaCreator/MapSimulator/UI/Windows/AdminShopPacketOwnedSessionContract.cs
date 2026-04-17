@@ -183,7 +183,7 @@ namespace HaCreator.MapSimulator.UI
         public void RecordBlockedByOwner(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string blockingOwner)
         {
             snapshot ??= new AdminShopPacketOwnedOpenPayloadSnapshot();
-            IsActive = false;
+            IsActive = true;
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
@@ -205,6 +205,7 @@ namespace HaCreator.MapSimulator.UI
                 : $"Packet 367 was blocked by the visible {blockingOwner} unique-modeless owner.";
             LastCloseOpenedWishlist = false;
             ClearPendingWishlistRegister();
+            OpenCount++;
             BlockedByOwnerCount++;
             TouchWishlistSearchStateToken();
         }

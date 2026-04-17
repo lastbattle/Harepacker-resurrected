@@ -137,6 +137,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
                     }
 
+                    if (preferredSkillId > 0
+                        && TryGetChargeElement(preferredSkillId, out int preferredElement)
+                        && TryGetChargeElement(matchedChargeSkillId, out int matchedElement)
+                        && TryGetChargeElement(candidateSkillId, out int candidateElement)
+                        && matchedElement != candidateElement)
+                    {
+                        if (matchedElement == preferredElement)
+                        {
+                            continue;
+                        }
+
+                        if (candidateElement == preferredElement)
+                        {
+                            matchedChargeSkillId = candidateSkillId;
+                            continue;
+                        }
+                    }
+
                     chargeSkillId = 0;
                     return false;
                 }
@@ -221,6 +239,21 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (matchedChargeElement != candidateElement)
                 {
+                    if (preferredSkillId > 0
+                        && TryGetChargeElement(preferredSkillId, out int preferredElement))
+                    {
+                        if (matchedChargeElement == preferredElement)
+                        {
+                            continue;
+                        }
+
+                        if (candidateElement == preferredElement)
+                        {
+                            matchedChargeElement = candidateElement;
+                            continue;
+                        }
+                    }
+
                     return false;
                 }
             }

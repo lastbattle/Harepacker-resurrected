@@ -13,6 +13,8 @@ namespace HaCreator.MapSimulator
         private const int ItemUpgradeOwnerRequestPayloadLength = sizeof(int) * 3;
         private const byte ItemUpgradePacketResultCodeFail = 0;
         private const byte ItemUpgradePacketResultCodeSuccess = 1;
+        private const byte ItemUpgradePacketResultCodeClientNoUpgradeSlot = 65;
+        private const byte ItemUpgradePacketResultCodeClientRejected = 66;
 
         private bool _itemUpgradeOwnerRequestSent;
         private int _itemUpgradeOwnerRequestSentTick = int.MinValue;
@@ -24,6 +26,8 @@ namespace HaCreator.MapSimulator
             public int RequestedAtTick { get; init; }
             public int ResultReadyAtTick { get; set; }
             public bool? ForcedSuccess { get; set; }
+            public bool SuppressUpgradeApply { get; set; }
+            public string PacketOwnedStatusMessage { get; set; }
             public bool PacketOwnedResultObserved { get; set; }
             public byte? PacketOwnedResultCode { get; set; }
             public byte[] EncodedRequestPayload { get; init; } = Array.Empty<byte>();
@@ -118,14 +122,30 @@ namespace HaCreator.MapSimulator
             itemUpgradeWindow.PrepareEquipmentSelection(pendingRequest.Request.Slot);
             itemUpgradeWindow.PrepareConsumableSelection(pendingRequest.Request.ConsumableItemId);
 
-            ItemUpgradeUI.ItemUpgradeAttemptResult result =
-                itemUpgradeWindow.ApplyPacketOwnedPreparedUpgradeResultAtSlots(
-                    pendingRequest.Request.ConsumableInventoryType,
-                    pendingRequest.Request.ConsumableSlotIndex,
-                    pendingRequest.Request.ModifierInventoryType,
-                    pendingRequest.Request.ModifierSlotIndex,
-                    pendingRequest.ForcedSuccess);
-            ShowUtilityFeedbackMessage(result.StatusMessage);
+            string statusMessage;
+            bool? success;
+            if (pendingRequest.SuppressUpgradeApply)
+            {
+                statusMessage = string.IsNullOrWhiteSpace(pendingRequest.PacketOwnedStatusMessage)
+                    ? ResolveItemUpgradeBlockedStateNotice()
+                    : pendingRequest.PacketOwnedStatusMessage;
+                success = false;
+                itemUpgradeWindow.SetOwnerStatusMessage(statusMessage, success);
+            }
+            else
+            {
+                ItemUpgradeUI.ItemUpgradeAttemptResult result =
+                    itemUpgradeWindow.ApplyPacketOwnedPreparedUpgradeResultAtSlots(
+                        pendingRequest.Request.ConsumableInventoryType,
+                        pendingRequest.Request.ConsumableSlotIndex,
+                        pendingRequest.Request.ModifierInventoryType,
+                        pendingRequest.Request.ModifierSlotIndex,
+                        pendingRequest.ForcedSuccess);
+                statusMessage = result.StatusMessage;
+                success = result.Success;
+            }
+
+            ShowUtilityFeedbackMessage(statusMessage);
             _itemUpgradeOwnerRequestSent = false;
             _itemUpgradeOwnerRequestSentTick = currTickCount;
         }
@@ -145,6 +165,18 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryResolveItemUpgradePacketOwnedNoticeOnlyResult(payload, resultCode, out string noticeMessage))
+            {
+                _pendingItemUpgradeOwnerRequest.ForcedSuccess = null;
+                _pendingItemUpgradeOwnerRequest.SuppressUpgradeApply = true;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedStatusMessage = noticeMessage;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = resultCode;
+                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
+                message = $"Queued packet-owned item-upgrade notice result code {resultCode}.";
+                return true;
+            }
+
             if (!TryMapItemUpgradeResultCode(resultCode, out bool success))
             {
                 message = $"Unsupported packet-owned item-upgrade result code {resultCode}.";
@@ -152,6 +184,8 @@ namespace HaCreator.MapSimulator
             }
 
             _pendingItemUpgradeOwnerRequest.ForcedSuccess = success;
+            _pendingItemUpgradeOwnerRequest.SuppressUpgradeApply = false;
+            _pendingItemUpgradeOwnerRequest.PacketOwnedStatusMessage = null;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = resultCode;
             _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
@@ -194,6 +228,18 @@ namespace HaCreator.MapSimulator
             }
 
             resultCode = payload[0];
+            return true;
+        }
+
+        private static bool TryDecodeItemUpgradeResultReasonCode(byte[] payload, out int reasonCode)
+        {
+            reasonCode = 0;
+            if (payload == null || payload.Length < (sizeof(byte) + sizeof(int)))
+            {
+                return false;
+            }
+
+            reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int)));
             return true;
         }
 
@@ -283,6 +329,55 @@ namespace HaCreator.MapSimulator
             return TryMapItemUpgradeResultCode(resultCode, out success);
         }
 
+        private static bool TryResolveItemUpgradePacketOwnedNoticeOnlyResult(
+            byte[] payload,
+            byte resultCode,
+            out string message)
+        {
+            message = null;
+            if (resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot)
+            {
+                if (TryDecodeItemUpgradeResultReasonCode(payload, out int noSlotReasonCode) && noSlotReasonCode != 0)
+                {
+                    message = ResolveItemUpgradeBusyNotice();
+                }
+                else
+                {
+                    message = ResolveItemUpgradeNoUpgradeSlotNotice();
+                }
+
+                return true;
+            }
+
+            if (resultCode != ItemUpgradePacketResultCodeClientRejected)
+            {
+                return false;
+            }
+
+            if (!TryDecodeItemUpgradeResultReasonCode(payload, out int reasonCode))
+            {
+                message = ResolveItemUpgradeBlockedStateNotice();
+                return true;
+            }
+
+            message = reasonCode switch
+            {
+                1 => ResolveItemUpgradeSelectionRequiredNotice(),
+                2 => ResolveItemUpgradeIncompatibleSelectionNotice(),
+                3 => ResolveItemUpgradeNoUpgradeSlotNotice(),
+                _ => ResolveItemUpgradeBusyNotice()
+            };
+            return true;
+        }
+
+        internal static bool TryResolveItemUpgradePacketOwnedNoticeOnlyResultForTests(
+            byte[] payload,
+            byte resultCode,
+            out string message)
+        {
+            return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(payload, resultCode, out message);
+        }
+
         private static string ResolveItemUpgradeBusyNotice()
         {
             return ResolveItemUpgradeStringPoolNotice(0x1A86, "An enhancement request is already in progress.");
@@ -291,6 +386,21 @@ namespace HaCreator.MapSimulator
         private static string ResolveItemUpgradeBlockedStateNotice()
         {
             return ResolveItemUpgradeStringPoolNotice(0x136, "You cannot use item enhancement right now.");
+        }
+
+        private static string ResolveItemUpgradeSelectionRequiredNotice()
+        {
+            return ResolveItemUpgradeStringPoolNotice(0x13CE, "Please select an item to enhance.");
+        }
+
+        private static string ResolveItemUpgradeIncompatibleSelectionNotice()
+        {
+            return ResolveItemUpgradeStringPoolNotice(0x13CF, "The selected item cannot be enhanced with this scroll.");
+        }
+
+        private static string ResolveItemUpgradeNoUpgradeSlotNotice()
+        {
+            return ResolveItemUpgradeStringPoolNotice(0x13D1, "The selected item has no upgrade slots remaining.");
         }
 
         private static string ResolveItemUpgradeStringPoolNotice(int stringPoolId, string fallback)

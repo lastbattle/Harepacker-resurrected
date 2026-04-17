@@ -1272,6 +1272,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     return new PacketScriptSpeaker(speakerTypeId, speakerTemplateId, speakerTemplateId, cachedName);
                 }
+
+                return new PacketScriptSpeaker(
+                    speakerTypeId,
+                    speakerTemplateId,
+                    speakerTemplateId,
+                    $"NPC #{speakerTemplateId}");
             }
 
             if (activeNpc != null)

@@ -1058,7 +1058,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _npcTemplateId;
         private int _slotCount;
         private int _money;
-        private int _dbcharFlagMask;
+        private ulong _dbcharFlagMask;
         private int _pendingGetAllPassingDay;
         private int _pendingGetAllFee;
         private int _pendingGetAllOwnerRowIndex = -1;
@@ -1762,7 +1762,7 @@ namespace HaCreator.MapSimulator.Interaction
             _npcTemplateId = reader.ReadInt32();
             _slotCount = reader.ReadByte();
             long flags = reader.ReadInt64();
-            _dbcharFlagMask = (int)flags;
+            _dbcharFlagMask = (ulong)flags;
             HashSet<InventoryType> decodedGroups = new();
             _money = (flags & 2L) != 0 && stream.Length - stream.Position >= sizeof(int)
                 ? reader.ReadInt32()
@@ -1813,7 +1813,7 @@ namespace HaCreator.MapSimulator.Interaction
                 for (int itemIndex = 0; itemIndex < previousItems.Count; itemIndex++)
                 {
                     StoreBankItemEntry previousItem = previousItems[itemIndex];
-                    if (previousItem.PacketGroupInventoryType == inventoryType)
+                    if (ResolveRetainedInventoryType(previousItem) == inventoryType)
                     {
                         _decodedItems.Add(CloneRetainedItem(previousItem));
                         _retainedCountsByType[inventoryType] = _retainedCountsByType.TryGetValue(inventoryType, out int retainedCount)
@@ -1824,6 +1824,25 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private static InventoryType ResolveRetainedInventoryType(StoreBankItemEntry item)
+        {
+            if (item == null)
+            {
+                return InventoryType.NONE;
+            }
+
+            int nativeTypeIndex = item.ItemId / 1_000_000;
+            return nativeTypeIndex switch
+            {
+                1 => InventoryType.EQUIP,
+                2 => InventoryType.USE,
+                3 => InventoryType.SETUP,
+                4 => InventoryType.ETC,
+                5 => InventoryType.CASH,
+                _ => item.PacketGroupInventoryType
+            };
         }
 
         private string BuildDecodedInventorySummary()
@@ -3228,15 +3247,15 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastDecodedDotDamage;
         private int _lastDecodedDotHitCount;
         private int? _lastDecodedAttrRate;
-        private int _timerSetSeconds;
-        private int _timerStopRemainSeconds;
+        private int _timerSetMilliseconds;
+        private int _timerStopRemainMilliseconds;
         private int _timerExpiryTick;
 
         internal bool IsOpen { get; private set; }
         internal int CurrentPageIndex => _pageIndex;
-        internal bool IsExtended { get; private set; } = true;
-        internal bool HasActiveTimer => _timerSetSeconds > 0 && _timerStopRemainSeconds <= 0;
-        internal bool HasPausedTimer => _timerStopRemainSeconds > 0;
+        internal bool IsExtended { get; private set; }
+        internal bool HasActiveTimer => _timerSetMilliseconds > 0 && _timerStopRemainMilliseconds <= 0;
+        internal bool HasPausedTimer => _timerStopRemainMilliseconds > 0;
         internal bool OnCalc { get; private set; }
         internal bool ServerOnCalc { get; private set; }
         internal bool DotTrackingEnabled { get; private set; } = true;
@@ -3343,9 +3362,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            _timerSetSeconds = seconds;
-            _timerStopRemainSeconds = 0;
-            _timerExpiryTick = unchecked(currentTickCount + (seconds * 1000));
+            _timerSetMilliseconds = checked(seconds * 1000);
+            _timerStopRemainMilliseconds = 0;
+            _timerExpiryTick = unchecked(currentTickCount + _timerSetMilliseconds);
             bool hasRequest = TryBuildRequestOnCalcOutboundRequest(enabled: true, out request, out message);
             StatusMessage = $"CUIBattleRecord button 2003 staged timer auto-calc for {seconds.ToString(CultureInfo.InvariantCulture)} second(s) and mirrored RequestOnCalc(1).";
             AppendNote(StatusMessage);
@@ -3355,20 +3374,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryBuildTimerStopResumeOutboundRequest(int currentTickCount, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
         {
-            if (_timerStopRemainSeconds > 0)
+            if (_timerStopRemainMilliseconds > 0)
             {
-                int resumedSeconds = _timerStopRemainSeconds;
-                _timerSetSeconds = resumedSeconds;
-                _timerStopRemainSeconds = 0;
-                _timerExpiryTick = unchecked(currentTickCount + (resumedSeconds * 1000));
+                int resumedMilliseconds = _timerStopRemainMilliseconds;
+                _timerSetMilliseconds = resumedMilliseconds;
+                _timerStopRemainMilliseconds = 0;
+                _timerExpiryTick = unchecked(currentTickCount + resumedMilliseconds);
                 bool hasResumeRequest = TryBuildRequestOnCalcOutboundRequest(enabled: true, out request, out message);
-                StatusMessage = $"CUIBattleRecord button 2008 resumed the staged timer with {resumedSeconds.ToString(CultureInfo.InvariantCulture)} second(s) retained and mirrored RequestOnCalc(1).";
+                StatusMessage = $"CUIBattleRecord button 2008 resumed the staged timer with {FormatMillisecondsAsSeconds(resumedMilliseconds)} second(s) retained and mirrored RequestOnCalc(1).";
                 AppendNote(StatusMessage);
                 message = StatusMessage;
                 return hasResumeRequest;
             }
 
-            if (_timerSetSeconds <= 0)
+            if (_timerSetMilliseconds <= 0)
             {
                 request = default;
                 message = "CUIBattleRecord button 2008 ignored timer stop because no timer is staged.";
@@ -3379,12 +3398,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             int remainingMilliseconds = _timerExpiryTick > 0
                 ? Math.Max(0, unchecked(_timerExpiryTick - currentTickCount))
-                : _timerSetSeconds * 1000;
-            _timerStopRemainSeconds = Math.Max(1, (int)Math.Ceiling(remainingMilliseconds / 1000d));
-            _timerSetSeconds = 0;
+                : _timerSetMilliseconds;
+            _timerStopRemainMilliseconds = remainingMilliseconds;
+            _timerSetMilliseconds = 0;
             _timerExpiryTick = 0;
             bool hasStopRequest = TryBuildRequestOnCalcOutboundRequest(enabled: false, out request, out message);
-            StatusMessage = $"CUIBattleRecord button 2008 paused the staged timer with {_timerStopRemainSeconds.ToString(CultureInfo.InvariantCulture)} second(s) retained and mirrored RequestOnCalc(0).";
+            StatusMessage = $"CUIBattleRecord button 2008 paused the staged timer with {FormatMillisecondsAsSeconds(_timerStopRemainMilliseconds)} second(s) retained and mirrored RequestOnCalc(0).";
             AppendNote(StatusMessage);
             message = StatusMessage;
             return hasStopRequest;
@@ -3400,8 +3419,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _timerExpiryTick = 0;
-            _timerSetSeconds = 0;
-            _timerStopRemainSeconds = 0;
+            _timerSetMilliseconds = 0;
+            _timerStopRemainMilliseconds = 0;
             bool hasRequest = TryBuildRequestOnCalcOutboundRequest(enabled: false, out request, out message);
             StatusMessage = "CUIBattleRecord::Update expired the staged timer and mirrored CBattleRecordMan::RequestOnCalc(0).";
             AppendNote(StatusMessage);
@@ -3497,8 +3516,8 @@ namespace HaCreator.MapSimulator.Interaction
                         IsOpen = false;
                         OnCalc = false;
                         _timerExpiryTick = 0;
-                        _timerSetSeconds = 0;
-                        _timerStopRemainSeconds = 0;
+                        _timerSetMilliseconds = 0;
+                        _timerStopRemainMilliseconds = 0;
                         StatusMessage = "CBattleRecordMan rejected the server-on-calc request result and followed the client UI_Close(35) branch.";
                     }
                     else
@@ -3642,8 +3661,8 @@ namespace HaCreator.MapSimulator.Interaction
             _lastDecodedDotDamage = 0;
             _lastDecodedDotHitCount = 0;
             _lastDecodedAttrRate = null;
-            _timerSetSeconds = 0;
-            _timerStopRemainSeconds = 0;
+            _timerSetMilliseconds = 0;
+            _timerStopRemainMilliseconds = 0;
             _timerExpiryTick = 0;
             if (clearNotes)
             {
@@ -3682,17 +3701,28 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string DescribeTimerState()
         {
-            if (_timerStopRemainSeconds > 0)
+            if (_timerStopRemainMilliseconds > 0)
             {
-                return $"paused {_timerStopRemainSeconds.ToString(CultureInfo.InvariantCulture)}s";
+                return $"paused {FormatMillisecondsAsSeconds(_timerStopRemainMilliseconds)}s";
             }
 
-            if (_timerSetSeconds > 0)
+            if (_timerSetMilliseconds > 0)
             {
-                return $"armed {_timerSetSeconds.ToString(CultureInfo.InvariantCulture)}s";
+                return $"armed {FormatMillisecondsAsSeconds(_timerSetMilliseconds)}s";
             }
 
             return "idle";
+        }
+
+        private static string FormatMillisecondsAsSeconds(int milliseconds)
+        {
+            if (milliseconds <= 0)
+            {
+                return "0";
+            }
+
+            int seconds = (int)Math.Ceiling(milliseconds / 1000d);
+            return seconds.ToString(CultureInfo.InvariantCulture);
         }
 
         private void AppendNote(string note)

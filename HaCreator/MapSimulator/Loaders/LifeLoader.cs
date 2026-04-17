@@ -1864,7 +1864,8 @@ namespace HaCreator.MapSimulator.Loaders
             CharacterGender? localPlayerGender = null,
             bool hasQuestCheckContext = false,
             Func<int, QuestStateType> questStateProvider = null,
-            Func<int, string> questRecordValueProvider = null)
+            Func<int, string> questRecordValueProvider = null,
+            int requestedClientActionSetIndex = NpcClientActionSetLoader.AutomaticClientActionSetIndex)
         {
             NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
             WzImage source = NpcImgEntryResolver.Resolve(npcInfo);
@@ -1878,7 +1879,8 @@ namespace HaCreator.MapSimulator.Loaders
                 localPlayerGender,
                 hasQuestCheckContext,
                 questStateProvider,
-                questRecordValueProvider);
+                questRecordValueProvider,
+                requestedClientActionSetIndex);
             if (animationSet.IsHiddenToLocalUser)
                 return null;
 

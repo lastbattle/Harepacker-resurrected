@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -57,7 +58,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex RewardCategoryRegex = new(@"#W(?<category>[^#\s]*)#", RegexOptions.Compiled);
         private static readonly Regex FontNameRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontSizeRegex = new(@"#fs-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex FontTableRegex = new(@"#w(?:(?<value>basic|summary|select|reward|prob|-?\d+)#|#|(?=$|\s))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontTableRegex = new(@"#w(?:(?<value>basic|summary|select|reward|prob|default|black|red|green|blue|purple|magenta|-?\d+)#|#|(?=$|\s))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
         private static readonly Regex NumericPrefixedStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -100,7 +101,14 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = FontNameRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontName, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
             formatted = FontSizeRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontSize, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
             formatted = FontTableRegex.Replace(formatted, static match =>
-                BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontTable, match.Groups["value"].Value));
+            {
+                if (TryResolveFontTableIndex(match.Groups["value"].Value, out int tableId))
+                {
+                    return BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontTable, tableId.ToString(CultureInfo.InvariantCulture));
+                }
+
+                return BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontTable, match.Groups["value"].Value);
+            });
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = NumericPrefixedStyleRegex.Replace(formatted, static match => "#" + match.Groups["tag"].Value);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
@@ -147,6 +155,40 @@ namespace HaCreator.MapSimulator.Interaction
 
             markerLength = (suffixIndex - startIndex) + FontControlMarkerSuffix.Length;
             return true;
+        }
+
+        internal static bool TryResolveFontTableIndex(string value, out int tableId)
+        {
+            string normalized = value?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                tableId = 0;
+                return true;
+            }
+
+            if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out tableId))
+            {
+                return tableId >= 0 && tableId <= 11;
+            }
+
+            tableId = normalized.ToLowerInvariant() switch
+            {
+                "basic" => 0,
+                "summary" => 0,
+                "default" => 0,
+                "black" => 0,
+                "red" => 2,
+                "green" => 4,
+                "blue" => 6,
+                "prob" => 6,
+                "purple" => 8,
+                "magenta" => 8,
+                "reward" => 8,
+                "select" => 3,
+                _ => -1
+            };
+
+            return tableId >= 0 && tableId <= 11;
         }
 
         private static string StripInlineSelections(string text)

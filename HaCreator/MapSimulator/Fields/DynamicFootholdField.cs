@@ -679,7 +679,7 @@ namespace HaCreator.MapSimulator.Fields
                 return packetOwnedName;
             }
 
-            if (piece is int pieceValue && pieceValue > 0)
+            if (piece is int pieceValue && pieceValue != 0)
             {
                 packetOwnedName = $"{packetOwnedName}/{pieceValue.ToString(CultureInfo.InvariantCulture)}";
             }

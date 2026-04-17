@@ -171,6 +171,100 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public static bool TryDecodeSg88FirstUseRequestPayload(
+            byte[] payload,
+            out PacketOwnedSg88FirstUseRequest request,
+            out string error)
+        {
+            request = default;
+            error = "SG-88 first-use request payload is missing.";
+            if (payload == null || payload.Length != ((sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2))
+            {
+                return false;
+            }
+
+            try
+            {
+                int offset = 0;
+                int requestTime = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                offset += sizeof(int);
+                int skillId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                offset += sizeof(int);
+                byte skillLevelByte = payload[offset++];
+                short x = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+                offset += sizeof(short);
+                short y = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+                offset += sizeof(short);
+                byte moveActionLowBit = payload[offset++];
+                byte vecCtrlState = payload[offset];
+
+                if (skillId != Sg88SkillId)
+                {
+                    error = $"SG-88 first-use payload skill id must be {Sg88SkillId}, got {skillId}.";
+                    return false;
+                }
+
+                if ((moveActionLowBit & 0xFE) != 0)
+                {
+                    error = "SG-88 first-use payload move-action flag must keep only the low bit.";
+                    return false;
+                }
+
+                byte[] rawPacket = new byte[sizeof(ushort) + payload.Length];
+                BinaryPrimitives.WriteUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)), Sg88FirstUseSummonOpcode);
+                payload.CopyTo(rawPacket, sizeof(ushort));
+                request = new PacketOwnedSg88FirstUseRequest(
+                    Sg88FirstUseSummonOpcode,
+                    skillId,
+                    skillLevelByte,
+                    requestTime,
+                    x,
+                    y,
+                    moveActionLowBit,
+                    vecCtrlState,
+                    (byte[])payload.Clone(),
+                    rawPacket);
+                error = null;
+                return true;
+            }
+            catch (Exception ex) when (ex is ArgumentOutOfRangeException)
+            {
+                error = $"SG-88 first-use payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        public static bool TryDecodeSg88FirstUseRawPacket(
+            byte[] rawPacket,
+            out PacketOwnedSg88FirstUseRequest request,
+            out string error)
+        {
+            request = default;
+            error = "SG-88 first-use raw packet is missing.";
+            int minimumLength = sizeof(ushort) + ((sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2);
+            if (rawPacket == null || rawPacket.Length != minimumLength)
+            {
+                return false;
+            }
+
+            ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
+            if (opcode != Sg88FirstUseSummonOpcode)
+            {
+                error = $"SG-88 first-use raw packet opcode must be {Sg88FirstUseSummonOpcode}, got {opcode}.";
+                return false;
+            }
+
+            byte[] payload = new byte[rawPacket.Length - sizeof(ushort)];
+            Buffer.BlockCopy(rawPacket, sizeof(ushort), payload, 0, payload.Length);
+            if (!TryDecodeSg88FirstUseRequestPayload(payload, out PacketOwnedSg88FirstUseRequest decoded, out error))
+            {
+                return false;
+            }
+
+            request = decoded with { RawPacket = (byte[])rawPacket.Clone() };
+            return true;
+        }
+
         public static bool TryDecodeRepeatSkillModeEndAck(
             byte[] payload,
             out PacketOwnedRepeatSkillModeEndAck ack,

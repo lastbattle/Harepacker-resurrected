@@ -36,6 +36,10 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerVioletCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoViolet0";
         private const string AnimationDisplayerCatchEffectBaseUol = "Effect/BasicEff.img/Catch";
         private const string AnimationDisplayerCoolEffectUol = "Effect/BasicEff.img/CoolHit/cool";
+        private const string AnimationDisplayerSquibEffectUol = "Effect/BasicEff.img/Flame/SquibEffect";
+        private const string AnimationDisplayerSquibEffect2Uol = "Effect/BasicEff.img/Flame/SquibEffect2";
+        private const string AnimationDisplayerTransformEffectUol = "Effect/BasicEff.img/Transform";
+        private const string AnimationDisplayerTransformOnLadderEffectUol = "Effect/BasicEff.img/TransformOnLadder";
         private const int AnimationDisplayerSessionValueCoolKeyStringPoolId = 0x14F1;
         private const string AnimationDisplayerSessionValueCoolFallbackKey = "massacre_cool";
         private const int AnimationDisplayerFallingFallbackDurationMs = 1000;
@@ -228,7 +232,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "socialanim",
                 "Exercise the shared social or event animation-displayer runtime",
-                "/socialanim <status|clear|newyear|firecracker|guard|miss|catch|cool|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]",
+                "/socialanim <status|clear|newyear|firecracker|guard|miss|catch|cool|squib|transformed|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]",
                 HandleAnimationDisplayerChatCommand);
         }
 
@@ -280,7 +284,7 @@ namespace HaCreator.MapSimulator
                         args.Length > 2 ? args[2] : null,
                         out DamageColorType colorType))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|violet]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|blue|violet]");
                 }
 
                 return TryRegisterAnimationDisplayerCombatFeedback(
@@ -348,6 +352,68 @@ namespace HaCreator.MapSimulator
                 return TryRegisterAnimationDisplayerCool(
                     ownerCharacterId,
                     getPosition,
+                    currTickCount,
+                    out string message)
+                    ? ChatCommandHandler.CommandResult.Ok($"{message} Owner={ownerName}.")
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "squib", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryResolveAnimationDisplayerOwner(
+                        args.Length > 1 ? args[1] : "local",
+                        out int ownerCharacterId,
+                        out Func<Vector2> getPosition,
+                        out string ownerName))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Could not resolve squib animation owner.");
+                }
+
+                int variant = 1;
+                if (args.Length > 2)
+                {
+                    if (!int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out variant)
+                        || variant < 1
+                        || variant > 2)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /socialanim squib [local|characterId] [1|2]");
+                    }
+                }
+
+                return TryRegisterAnimationDisplayerSquib(
+                    ownerCharacterId,
+                    getPosition,
+                    variant,
+                    currTickCount,
+                    out string message)
+                    ? ChatCommandHandler.CommandResult.Ok($"{message} Owner={ownerName}.")
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "transformed", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryResolveAnimationDisplayerOwner(
+                        args.Length > 1 ? args[1] : "local",
+                        out int ownerCharacterId,
+                        out Func<Vector2> getPosition,
+                        out string ownerName))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Could not resolve transformed animation owner.");
+                }
+
+                bool onLadder = args.Length > 2
+                    && string.Equals(args[2], "ladder", StringComparison.OrdinalIgnoreCase);
+                if (args.Length > 2
+                    && !onLadder
+                    && !string.Equals(args[2], "normal", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /socialanim transformed [local|characterId] [normal|ladder]");
+                }
+
+                return TryRegisterAnimationDisplayerTransformed(
+                    ownerCharacterId,
+                    getPosition,
+                    onLadder,
                     currTickCount,
                     out string message)
                     ? ChatCommandHandler.CommandResult.Ok($"{message} Owner={ownerName}.")
@@ -507,7 +573,7 @@ namespace HaCreator.MapSimulator
                     : ChatCommandHandler.CommandResult.Error($"Quest-delivery animation frames could not be loaded for item {itemId}.");
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|guard|miss|catch|cool|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|guard|miss|catch|cool|squib|transformed|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]");
         }
 
         private string DescribeAnimationDisplayerStatus()
@@ -934,6 +1000,74 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryRegisterAnimationDisplayerSquib(
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            int variant,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                message = "Squib animation owner is missing.";
+                return false;
+            }
+
+            string effectUol = ResolveAnimationDisplayerSquibEffectUol(variant);
+            if (!TryGetAnimationDisplayerFrames($"squib:{effectUol}", effectUol, out List<IDXObject> frames))
+            {
+                message = $"Squib animation frames could not be loaded from {effectUol}.";
+                return false;
+            }
+
+            Vector2 fallbackPosition = getPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                getPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                currentTime);
+            message = $"Registered squib animation-displayer layer from {effectUol}.";
+            return true;
+        }
+
+        private bool TryRegisterAnimationDisplayerTransformed(
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            bool onLadder,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                message = "Transformed animation owner is missing.";
+                return false;
+            }
+
+            string effectUol = ResolveAnimationDisplayerTransformedEffectUol(onLadder);
+            if (!TryGetAnimationDisplayerFrames($"transformed:{effectUol}", effectUol, out List<IDXObject> frames))
+            {
+                message = $"Transformed animation frames could not be loaded from {effectUol}.";
+                return false;
+            }
+
+            Vector2 fallbackPosition = getPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                getPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                currentTime);
+            message = $"Registered transformed animation-displayer layer from {effectUol}.";
+            return true;
+        }
+
         internal static string ResolveAnimationDisplayerBuffItemUseEffectUol(
             string requestedEffectUol,
             Func<string, bool> effectExists)
@@ -979,6 +1113,20 @@ namespace HaCreator.MapSimulator
         internal static string ResolveAnimationDisplayerCoolEffectUol()
         {
             return AnimationDisplayerCoolEffectUol;
+        }
+
+        internal static string ResolveAnimationDisplayerSquibEffectUol(int variant)
+        {
+            return variant == 2
+                ? AnimationDisplayerSquibEffect2Uol
+                : AnimationDisplayerSquibEffectUol;
+        }
+
+        internal static string ResolveAnimationDisplayerTransformedEffectUol(bool onLadder)
+        {
+            return onLadder
+                ? AnimationDisplayerTransformOnLadderEffectUol
+                : AnimationDisplayerTransformEffectUol;
         }
 
         private bool TryRegisterAnimationDisplayerLocalCooldownReady(int currentTime)
@@ -1143,7 +1291,11 @@ namespace HaCreator.MapSimulator
                 request.HasClientMobActionFrames,
                 resolvedEffectUol);
             bool isMobSwallowOwner = !isMobBulletOwner
-                && MobAttackSystem.ShouldRegisterAnimationDisplayerMobSwallowBullet(request.HasCanvasFrames);
+                && MobAttackSystem.ShouldRegisterAnimationDisplayerMobSwallowBullet(
+                    request.HasCanvasFrames,
+                    request.HasClientMobActionFrames,
+                    request.AttackType,
+                    request.IsRangedAttack);
             if (!isMobBulletOwner && !isMobSwallowOwner)
             {
                 message = $"Mob projectile owner was skipped for {request.MobId}/{request.AttackAction}.";
@@ -1244,6 +1396,12 @@ namespace HaCreator.MapSimulator
                 || string.Equals(token, "purple", StringComparison.OrdinalIgnoreCase))
             {
                 colorType = DamageColorType.Violet;
+                return true;
+            }
+
+            if (string.Equals(token, "blue", StringComparison.OrdinalIgnoreCase))
+            {
+                colorType = DamageColorType.Blue;
                 return true;
             }
 
@@ -1413,6 +1571,7 @@ namespace HaCreator.MapSimulator
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatBlessingArmorEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatRepeatEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatAuraEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatMoreWildEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatMagicShieldEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatSoulArrowEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatWeaponChargeEffect);

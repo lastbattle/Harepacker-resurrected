@@ -446,7 +446,7 @@ namespace HaCreator.MapSimulator
             }
 
             property = null;
-            return property != null;
+            return false;
         }
 
         private static IEnumerable<string> EnumerateReviveOwnerPropertyNameCandidates(string propertyName)
