@@ -1461,7 +1461,7 @@ namespace HaCreator.MapSimulator
                                 {
                                     _pendingCrossMapTeleportTarget = null;
                                     _packetOwnedTeleportRequestActive = false;
-                                    ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
+                                    ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
                                 }
 
 

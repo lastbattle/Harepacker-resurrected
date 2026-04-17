@@ -970,7 +970,7 @@ namespace HaCreator.MapSimulator.Managers
             string reconnectTarget = listenPort.HasValue && listenPort.Value > 0
                 ? $"127.0.0.1:{listenPort.Value}"
                 : "the configured localhost listen port";
-            return $"Discovery identifies established Maple sockets. Use `/guildboss session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or `/guildboss session attachproxy ...` to arm a reconnect proxy and queue opcode {OutboundPulleyRequestOpcode} until Maple reconnects through {reconnectTarget}.";
+            return $"Discovery identifies established Maple sockets. Use `/guildboss session attach ...` to bind the simulator to the current socket pair for passive status-only observation, `/guildboss session attachproxy ...` to arm a reconnect proxy for a selected established socket pair, or `/guildboss session startauto ...` to arm reconnect proxy ownership from discovery and queue opcode {OutboundPulleyRequestOpcode} until Maple reconnects through {reconnectTarget}.";
         }
 
         private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(

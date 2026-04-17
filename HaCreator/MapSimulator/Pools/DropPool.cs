@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Pools
         public string ActorName { get; set; }
         public DropOwnershipType OwnershipType { get; set; } = DropOwnershipType.None;
         public int OwnerId { get; set; }
+        public bool OwnershipWindowActive { get; set; }
         public float PickupX { get; set; }
         public float PickupY { get; set; }
     }
@@ -2364,6 +2365,7 @@ namespace HaCreator.MapSimulator.Pools
                 ActorName = actorName,
                 OwnershipType = drop.OwnershipType,
                 OwnerId = drop.OwnerId,
+                OwnershipWindowActive = IsOwnershipWindowActive(drop, currentTime),
                 PickupX = drop.State == DropState.PickingUp ? drop.PickupStartX : drop.X,
                 PickupY = drop.State == DropState.PickingUp ? drop.PickupStartY : drop.Y
             };

@@ -179,6 +179,7 @@ namespace HaCreator.MapSimulator.UI
         private SkillMacroSoftKeyboardWindowButton _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
         private int _softKeyboardPressedVisualUntil;
         private Point? _lastMousePosition;
+        private readonly Dictionary<Keys, int> _forwardedNonFunctionHotkeySlotsByPhysicalKey = new();
 
         // Buttons
         private UIObject _btnOK;
@@ -270,6 +271,7 @@ namespace HaCreator.MapSimulator.UI
         public Action OnMacroWindowClosed;
         internal Func<int, int, bool> OnImeCandidateSelected;
         internal Action<int, bool> OnClientForwardedFunctionKeyStateChanged;
+        internal Action<int, bool> OnClientForwardedNonFunctionHotkeyStateChanged;
         internal Func<IntPtr> ResolveImeWindowHandle;
         #endregion
 
@@ -458,6 +460,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ResetEditingState()
         {
+            ReleaseForwardedNonFunctionHotkeys();
             _editingMacroIndex = -1;
             _editingMacroName = string.Empty;
             _notifyPartyMembers = false;
@@ -2074,6 +2077,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Hide()
         {
+            ReleaseForwardedNonFunctionHotkeys();
             HideSoftKeyboard();
             CancelDrag();
             ClearCompositionText();
@@ -2107,6 +2111,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!CapturesKeyboardInput)
             {
+                ReleaseForwardedNonFunctionHotkeys();
                 _previousKeyboardState = keyboardState;
                 return;
             }
@@ -2321,6 +2326,7 @@ namespace HaCreator.MapSimulator.UI
             bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
             int tickCount = Environment.TickCount;
             ForwardClientOwnedFunctionKeyTransitions(keyboardState);
+            ForwardClientOwnedNonFunctionKeyTransitions(keyboardState, ctrl, shift);
 
             if (!ctrl && TryHandleImeCandidateKeyboardNavigation(keyboardState))
             {
@@ -2530,6 +2536,89 @@ namespace HaCreator.MapSimulator.UI
                 {
                     OnClientForwardedFunctionKeyStateChanged(functionKeyIndex, isDown);
                 }
+            }
+        }
+
+        private void ForwardClientOwnedNonFunctionKeyTransitions(KeyboardState keyboardState, bool controlHeld, bool shiftHeld)
+        {
+            if (OnClientForwardedNonFunctionHotkeyStateChanged == null)
+            {
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey.Clear();
+                return;
+            }
+
+            bool imeCompositionActive = _compositionText.Length > 0;
+            bool imeCandidateWindowActive = _candidateListState.HasCandidates;
+
+            Keys[] pressedKeys = keyboardState.GetPressedKeys();
+            for (int i = 0; i < pressedKeys.Length; i++)
+            {
+                Keys key = pressedKeys[i];
+                if (!_previousKeyboardState.IsKeyUp(key))
+                {
+                    continue;
+                }
+
+                if (!SkillMacroOwnerKeyHandler.ShouldForwardClientOwnedNonFunctionKeyDownToParent(
+                        key,
+                        controlHeld,
+                        shiftHeld,
+                        imeCompositionActive,
+                        imeCandidateWindowActive))
+                {
+                    continue;
+                }
+
+                if (!SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out int hotkeySlot))
+                {
+                    continue;
+                }
+
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey[key] = hotkeySlot;
+                OnClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, true);
+            }
+
+            Keys[] releasedKeys = _previousKeyboardState.GetPressedKeys();
+            for (int i = 0; i < releasedKeys.Length; i++)
+            {
+                Keys key = releasedKeys[i];
+                if (!keyboardState.IsKeyUp(key)
+                    || !SkillMacroOwnerKeyHandler.ShouldForwardClientOwnedNonFunctionKeyUpToParent(key))
+                {
+                    continue;
+                }
+
+                if (!_forwardedNonFunctionHotkeySlotsByPhysicalKey.TryGetValue(key, out int hotkeySlot)
+                    && !SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out hotkeySlot))
+                {
+                    continue;
+                }
+
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey.Remove(key);
+                OnClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, false);
+            }
+        }
+
+        private void ReleaseForwardedNonFunctionHotkeys()
+        {
+            if (_forwardedNonFunctionHotkeySlotsByPhysicalKey.Count == 0)
+            {
+                return;
+            }
+
+            if (OnClientForwardedNonFunctionHotkeyStateChanged == null)
+            {
+                _forwardedNonFunctionHotkeySlotsByPhysicalKey.Clear();
+                return;
+            }
+
+            int[] uniqueSlots = _forwardedNonFunctionHotkeySlotsByPhysicalKey.Values
+                .Distinct()
+                .ToArray();
+            _forwardedNonFunctionHotkeySlotsByPhysicalKey.Clear();
+            for (int i = 0; i < uniqueSlots.Length; i++)
+            {
+                OnClientForwardedNonFunctionHotkeyStateChanged(uniqueSlots[i], false);
             }
         }
 

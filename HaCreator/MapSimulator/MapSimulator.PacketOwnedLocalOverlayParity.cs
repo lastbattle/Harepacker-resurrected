@@ -145,6 +145,8 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, Texture2D> _packetOwnedBalloonInlineUiCanvasCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _failedUiCanvasTextureKeys = new(StringComparer.OrdinalIgnoreCase);
         private FieldHazardPetAutoConsumeRequest? _pendingFieldHazardPetAutoConsumeRequest;
+        private FieldHazardPetAutoConsumeRequest? _recentClosedFieldHazardPetAutoConsumeRequest;
+        private int _recentClosedFieldHazardPetAutoConsumeRequestExpiresAt = int.MinValue;
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
         private bool _localOverlayPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
@@ -163,6 +165,8 @@ namespace HaCreator.MapSimulator
             FieldHazardPetAutoConsumeDeferredDispatchObservationWindowMs;
         private const int FieldHazardPetAutoConsumeDeferredDispatchRemoteObservationWindowMs =
             FieldHazardPetAutoConsumeDeferredDispatchObservationWindowMs + FieldHazardPetAutoConsumeRemoteObservationWindowMs;
+        private const int FieldHazardPetAutoConsumeClosedOwnershipRetentionMs =
+            FieldHazardPetAutoConsumeDeferredDispatchRemoteObservationWindowMs;
         private const int FieldHazardPetAutoConsumeDefaultRequestIndex = 0;
         private const int FieldHazardPetAutoConsumeForceRequestIndex = 1;
         private const int FieldHazardPetAutoConsumeBuffSkillRequestIndex = 2;

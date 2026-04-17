@@ -159,8 +159,7 @@ namespace HaCreator.MapSimulator.UI {
         private readonly Dictionary<string, Texture2D> _buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, Rectangle> _buffIconHitboxes = new Dictionary<int, Rectangle>();
         private readonly Dictionary<int, StatusBarBuffRenderData> _buffTooltipEntries = new Dictionary<int, StatusBarBuffRenderData>();
-        private readonly Dictionary<int, Rectangle> _cooldownIconHitboxes = new Dictionary<int, Rectangle>();
-        private readonly Dictionary<int, StatusBarCooldownRenderData> _cooldownTooltipEntries = new Dictionary<int, StatusBarCooldownRenderData>();
+        private readonly List<StatusBarCooldownTooltipHitTarget> _cooldownTooltipHitTargets = new List<StatusBarCooldownTooltipHitTarget>();
         private readonly Dictionary<string, StatusBarKeyDownBarTextures> _keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
         private Texture2D[] _cooldownMaskTextures = Array.Empty<Texture2D>();
         private Texture2D _temporaryStatViewTexture;
@@ -179,6 +178,13 @@ namespace HaCreator.MapSimulator.UI {
         private int _mpFlashStartTime = int.MinValue;
         private int _mpFlashEndTime = int.MinValue;
         private ButtonState _previousRightButtonState = ButtonState.Released;
+
+        private sealed class StatusBarCooldownTooltipHitTarget
+        {
+            public Rectangle IconRect { get; init; }
+            public StatusBarCooldownRenderData CooldownEntry { get; init; }
+            public SkillTooltipAnchorOwner AnchorOwner { get; init; }
+        }
 
         // Text positions relative to status bar (from IDA Pro analysis)
         // The status bar is composed of: lvBacktrnd (left ~64px) + gaugeBackgrd (center) + buttons
@@ -1108,22 +1114,29 @@ namespace HaCreator.MapSimulator.UI {
             return false;
         }
 
-        private bool TryGetHoveredCooldownEntry(out StatusBarCooldownRenderData cooldownEntry, out Rectangle iconRect)
+        private bool TryGetHoveredCooldownEntry(
+            out StatusBarCooldownRenderData cooldownEntry,
+            out Rectangle iconRect,
+            out SkillTooltipAnchorOwner anchorOwner)
         {
             Point mousePosition = new Point(Mouse.GetState().X, Mouse.GetState().Y);
-            foreach (KeyValuePair<int, Rectangle> hitbox in _cooldownIconHitboxes)
+            for (int i = _cooldownTooltipHitTargets.Count - 1; i >= 0; i--)
             {
-                if (!hitbox.Value.Contains(mousePosition))
+                StatusBarCooldownTooltipHitTarget hitTarget = _cooldownTooltipHitTargets[i];
+                if (!hitTarget.IconRect.Contains(mousePosition))
                 {
                     continue;
                 }
 
-                iconRect = hitbox.Value;
-                return _cooldownTooltipEntries.TryGetValue(hitbox.Key, out cooldownEntry);
+                cooldownEntry = hitTarget.CooldownEntry;
+                iconRect = hitTarget.IconRect;
+                anchorOwner = hitTarget.AnchorOwner;
+                return cooldownEntry != null;
             }
 
             cooldownEntry = null;
             iconRect = Rectangle.Empty;
+            anchorOwner = SkillTooltipAnchorOwner.StatusBarCooldownTray;
             return false;
         }
 
@@ -1181,8 +1194,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawCooldownTray(SpriteBatch sprite, RenderParameters renderParameters, int currentTime)
         {
-            _cooldownIconHitboxes.Clear();
-            _cooldownTooltipEntries.Clear();
+            _cooldownTooltipHitTargets.Clear();
             int primaryTrayBottom = DrawPrimaryCooldownTray(
                 sprite,
                 renderParameters,
@@ -1199,7 +1211,8 @@ namespace HaCreator.MapSimulator.UI {
                 OFFBAR_COOLDOWN_ICON_SPACING,
                 OFFBAR_COOLDOWN_TRAY_RIGHT_MARGIN,
                 offBarTopMargin,
-                SkillManager.CooldownMaskSurface.SkillBook);
+                SkillManager.CooldownMaskSurface.SkillBook,
+                SkillTooltipAnchorOwner.StatusBarOffBarCooldownTray);
         }
 
         private int DrawPrimaryCooldownTray(
@@ -1227,8 +1240,10 @@ namespace HaCreator.MapSimulator.UI {
                 Rectangle iconRect = ResolveClientShortcutSlotRect(trayTopLeft.X, trayTopLeft.Y, entryIndex);
                 maxBottom = Math.Max(maxBottom, iconRect.Bottom);
 
-                _cooldownIconHitboxes[cooldownEntry.SkillId] = iconRect;
-                _cooldownTooltipEntries[cooldownEntry.SkillId] = cooldownEntry;
+                RegisterCooldownTooltipHitTarget(
+                    cooldownEntry,
+                    iconRect,
+                    SkillTooltipAnchorOwner.StatusBarCooldownTray);
 
                 DrawBuffIconFrame(sprite, iconRect);
                 if (cooldownEntry.IconTexture != null)
@@ -1294,7 +1309,8 @@ namespace HaCreator.MapSimulator.UI {
             int iconSpacing,
             int rightMargin,
             int topMargin,
-            SkillManager.CooldownMaskSurface fallbackMaskSurface)
+            SkillManager.CooldownMaskSurface fallbackMaskSurface,
+            SkillTooltipAnchorOwner anchorOwner)
         {
             if (provider == null)
             {
@@ -1334,8 +1350,7 @@ namespace HaCreator.MapSimulator.UI {
                         iconSize);
                     maxBottom = Math.Max(maxBottom, iconRect.Bottom);
 
-                    _cooldownIconHitboxes[cooldownEntry.SkillId] = iconRect;
-                    _cooldownTooltipEntries[cooldownEntry.SkillId] = cooldownEntry;
+                    RegisterCooldownTooltipHitTarget(cooldownEntry, iconRect, anchorOwner);
 
                     DrawBuffIconFrame(sprite, iconRect);
                     if (cooldownEntry.IconTexture != null)
@@ -1377,7 +1392,11 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawHoveredCooldownTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (!HasStatusBarTextRenderer() || !TryGetHoveredCooldownEntry(out StatusBarCooldownRenderData cooldownEntry, out _))
+            if (!HasStatusBarTextRenderer()
+                || !TryGetHoveredCooldownEntry(
+                    out StatusBarCooldownRenderData cooldownEntry,
+                    out _,
+                    out SkillTooltipAnchorOwner anchorOwner))
             {
                 return;
             }
@@ -1395,7 +1414,25 @@ namespace HaCreator.MapSimulator.UI {
                 SanitizeTooltipText(cooldownEntry.Description),
                 cooldownEntry.IconTexture,
                 useClientSkillLayout: true,
-                anchorOwner: SkillTooltipAnchorOwner.StatusBarCooldownTray);
+                anchorOwner: anchorOwner);
+        }
+
+        private void RegisterCooldownTooltipHitTarget(
+            StatusBarCooldownRenderData cooldownEntry,
+            Rectangle iconRect,
+            SkillTooltipAnchorOwner anchorOwner)
+        {
+            if (cooldownEntry == null)
+            {
+                return;
+            }
+
+            _cooldownTooltipHitTargets.Add(new StatusBarCooldownTooltipHitTarget
+            {
+                IconRect = iconRect,
+                CooldownEntry = cooldownEntry,
+                AnchorOwner = anchorOwner
+            });
         }
 
         private void DrawCooldownMask(

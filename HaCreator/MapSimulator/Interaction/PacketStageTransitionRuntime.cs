@@ -1123,25 +1123,35 @@ namespace HaCreator.MapSimulator.Interaction
                 IReadOnlyList<long> backwardUpdatePrimaryRemovedSerialNumbers = Array.Empty<long>();
                 IReadOnlyList<long> backwardUpdateSecondaryRemovedSerialNumbers = Array.Empty<long>();
                 int backwardUpdatePreludeByteCount = 0;
+                int backwardUpdateSubtypeByteCount = 0;
+                int backwardUpdatePrimaryRemovedSerialNumberCountByteCount = 0;
+                int backwardUpdatePrimaryRemovedSerialNumberByteCount = 0;
+                int backwardUpdateSecondaryRemovedSerialNumberCountByteCount = 0;
+                int backwardUpdateSecondaryRemovedSerialNumberByteCount = 0;
                 if (hasBackwardUpdate)
                 {
                     long backwardUpdateSectionStart = reader.BaseStream.Position;
                     backwardUpdateSubtype = reader.ReadByte();
+                    backwardUpdateSubtypeByteCount = sizeof(byte);
                     int removedSnCount = reader.ReadInt32();
+                    backwardUpdatePrimaryRemovedSerialNumberCountByteCount = sizeof(int);
                     if (removedSnCount < 0)
                     {
                         return false;
                     }
 
                     backwardUpdatePrimaryRemovedSerialNumbers = ReadCharacterDataInt64Array(reader, removedSnCount);
+                    backwardUpdatePrimaryRemovedSerialNumberByteCount = checked(removedSnCount * sizeof(long));
 
                     int removedCashCount = reader.ReadInt32();
+                    backwardUpdateSecondaryRemovedSerialNumberCountByteCount = sizeof(int);
                     if (removedCashCount < 0)
                     {
                         return false;
                     }
 
                     backwardUpdateSecondaryRemovedSerialNumbers = ReadCharacterDataInt64Array(reader, removedCashCount);
+                    backwardUpdateSecondaryRemovedSerialNumberByteCount = checked(removedCashCount * sizeof(long));
                     backwardUpdatePreludeByteCount = checked((int)(reader.BaseStream.Position - backwardUpdateSectionStart));
                 }
 
@@ -1162,8 +1172,13 @@ namespace HaCreator.MapSimulator.Interaction
                     HasBackwardUpdate = hasBackwardUpdate,
                     BackwardUpdatePreludeByteCount = backwardUpdatePreludeByteCount,
                     BackwardUpdateSubtype = backwardUpdateSubtype,
+                    BackwardUpdateSubtypeByteCount = backwardUpdateSubtypeByteCount,
+                    BackwardUpdatePrimaryRemovedSerialNumberCountByteCount = backwardUpdatePrimaryRemovedSerialNumberCountByteCount,
+                    BackwardUpdatePrimaryRemovedSerialNumberByteCount = backwardUpdatePrimaryRemovedSerialNumberByteCount,
                     BackwardUpdatePrimaryRemovedSerialNumberCount = backwardUpdatePrimaryRemovedSerialNumbers.Count,
                     BackwardUpdatePrimaryRemovedSerialNumbers = backwardUpdatePrimaryRemovedSerialNumbers,
+                    BackwardUpdateSecondaryRemovedSerialNumberCountByteCount = backwardUpdateSecondaryRemovedSerialNumberCountByteCount,
+                    BackwardUpdateSecondaryRemovedSerialNumberByteCount = backwardUpdateSecondaryRemovedSerialNumberByteCount,
                     BackwardUpdateSecondaryRemovedSerialNumberCount = backwardUpdateSecondaryRemovedSerialNumbers.Count,
                     BackwardUpdateSecondaryRemovedSerialNumbers = backwardUpdateSecondaryRemovedSerialNumbers,
                     DecodedSectionFlags = CharacterDataStatFlag
@@ -1277,8 +1292,10 @@ namespace HaCreator.MapSimulator.Interaction
                 Dictionary<ulong, int> decodedSectionByteCounts = CloneDecodedSectionByteCounts(snapshot);
                 Dictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> inventoryItemsByType = new();
                 Dictionary<InventoryType, int> inventorySectionByteCounts = new();
+                Dictionary<InventoryType, int> cashItemSerialNumberCountsByType = new();
                 int inventorySectionTotalByteCount = 0;
                 int cashInventorySerialNumberCount = 0;
+                int totalCashItemSerialNumberCount = 0;
                 for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
                 {
                     if ((characterDataFlags & CharacterDataInventorySectionFlags[inventoryIndex]) == 0)
@@ -1307,6 +1324,14 @@ namespace HaCreator.MapSimulator.Interaction
                         inventorySectionByteCounts[inventoryType] = sectionByteCount;
                         decodedSectionByteCounts[inventoryFlag] = sectionByteCount;
                         inventorySectionTotalByteCount += sectionByteCount;
+                        int equipCashSerialCount = CountItemSlotsWithCashSerialNumber(equipItems);
+                        cashItemSerialNumberCountsByType[inventoryType] = equipCashSerialCount;
+                        totalCashItemSerialNumberCount += equipCashSerialCount;
+                        if (inventoryType == InventoryType.CASH)
+                        {
+                            cashInventorySerialNumberCount = equipCashSerialCount;
+                        }
+
                         continue;
                     }
 
@@ -1321,15 +1346,12 @@ namespace HaCreator.MapSimulator.Interaction
                     inventorySectionByteCounts[inventoryType] = sectionBytes;
                     decodedSectionByteCounts[inventoryFlag] = sectionBytes;
                     inventorySectionTotalByteCount += sectionBytes;
-                    if (inventoryType == InventoryType.CASH && inventoryItems != null)
+                    int sectionCashSerialCount = CountItemSlotsWithCashSerialNumber(inventoryItems);
+                    cashItemSerialNumberCountsByType[inventoryType] = sectionCashSerialCount;
+                    totalCashItemSerialNumberCount += sectionCashSerialCount;
+                    if (inventoryType == InventoryType.CASH)
                     {
-                        for (int itemIndex = 0; itemIndex < inventoryItems.Count; itemIndex++)
-                        {
-                            if (inventoryItems[itemIndex].HasCashItemSerialNumber)
-                            {
-                                cashInventorySerialNumberCount++;
-                            }
-                        }
+                        cashInventorySerialNumberCount = sectionCashSerialCount;
                     }
                 }
 
@@ -1337,8 +1359,10 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     InventoryItemsByType = inventoryItemsByType,
                     InventorySectionByteCounts = inventorySectionByteCounts,
+                    CashItemSerialNumberCountsByType = cashItemSerialNumberCountsByType,
                     InventorySectionTotalByteCount = inventorySectionTotalByteCount,
                     CashInventorySerialNumberCount = cashInventorySerialNumberCount,
+                    TotalCashItemSerialNumberCount = totalCashItemSerialNumberCount,
                     DecodedSectionFlags = decodedSectionFlags,
                     DecodedSectionByteCounts = decodedSectionByteCounts
                 };
@@ -1584,6 +1608,25 @@ namespace HaCreator.MapSimulator.Interaction
                 itemSlot = default;
                 return false;
             }
+        }
+
+        private static int CountItemSlotsWithCashSerialNumber(IReadOnlyList<PacketCharacterDataItemSlot> items)
+        {
+            if (items == null || items.Count == 0)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
+            {
+                if (items[itemIndex].HasCashItemSerialNumber)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         private static bool TryDecodeKnownCharacterDataTailSections(
@@ -2894,8 +2937,13 @@ namespace HaCreator.MapSimulator.Interaction
         bool HasBackwardUpdate = false,
         int BackwardUpdatePreludeByteCount = 0,
         byte BackwardUpdateSubtype = 0,
+        int BackwardUpdateSubtypeByteCount = 0,
+        int BackwardUpdatePrimaryRemovedSerialNumberCountByteCount = 0,
+        int BackwardUpdatePrimaryRemovedSerialNumberByteCount = 0,
         int BackwardUpdatePrimaryRemovedSerialNumberCount = 0,
         IReadOnlyList<long> BackwardUpdatePrimaryRemovedSerialNumbers = null,
+        int BackwardUpdateSecondaryRemovedSerialNumberCountByteCount = 0,
+        int BackwardUpdateSecondaryRemovedSerialNumberByteCount = 0,
         int BackwardUpdateSecondaryRemovedSerialNumberCount = 0,
         IReadOnlyList<long> BackwardUpdateSecondaryRemovedSerialNumbers = null,
         int? Meso = null,
@@ -2903,8 +2951,10 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
         IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> InventoryItemsByType = null,
         IReadOnlyDictionary<InventoryType, int> InventorySectionByteCounts = null,
+        IReadOnlyDictionary<InventoryType, int> CashItemSerialNumberCountsByType = null,
         int InventorySectionTotalByteCount = 0,
         int CashInventorySerialNumberCount = 0,
+        int TotalCashItemSerialNumberCount = 0,
         LoginAvatarLook AvatarLook = null,
         int? PreInventoryHeaderValue1 = null,
         int? PreInventoryHeaderValue2 = null,

@@ -444,6 +444,8 @@ namespace HaCreator.MapSimulator
                 resultSnapshot.Subtype,
                 resultSnapshot.ResultCode,
                 resultSnapshot.TrailingByteCount,
+                resultSnapshot.TrailingPayloadSignature,
+                resultSnapshot.TrailingPayload,
                 resultSnapshot.HasResultCode,
                 out message,
                 out string notice,

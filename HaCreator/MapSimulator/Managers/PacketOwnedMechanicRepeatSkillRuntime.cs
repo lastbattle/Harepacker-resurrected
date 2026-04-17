@@ -265,6 +265,41 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public static bool TryDecodeSg88FirstUseRawPacketWithReplayParity(
+            byte[] rawPacket,
+            out PacketOwnedSg88FirstUseRequest request,
+            out bool replayParityMatched,
+            out string error)
+        {
+            request = default;
+            replayParityMatched = false;
+            if (!TryDecodeSg88FirstUseRawPacket(rawPacket, out PacketOwnedSg88FirstUseRequest decoded, out error))
+            {
+                return false;
+            }
+
+            if (!TryCreateSg88FirstUseRequest(
+                    decoded.RequestTime,
+                    decoded.SkillLevel,
+                    decoded.X,
+                    decoded.Y,
+                    decoded.MoveActionLowBit,
+                    decoded.VecCtrlState,
+                    out PacketOwnedSg88FirstUseRequest rebuilt,
+                    out string rebuildError))
+            {
+                error = $"SG-88 first-use replay parity failed to rebuild from decoded fields: {rebuildError}";
+                return false;
+            }
+
+            replayParityMatched = rawPacket.AsSpan().SequenceEqual(rebuilt.RawPacket);
+            request = decoded;
+            error = replayParityMatched
+                ? null
+                : "SG-88 first-use replay parity mismatch between observed raw packet and rebuilt request packet.";
+            return true;
+        }
+
         public static bool TryDecodeRepeatSkillModeEndAck(
             byte[] payload,
             out PacketOwnedRepeatSkillModeEndAck ack,

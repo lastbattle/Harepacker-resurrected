@@ -136,6 +136,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestAlarmRegistrationSyncPacketType = 1045;
         public const int ItemUpgradeResultClientPacketType = 425;
         public const int ItemUpgradeResultPacketType = 1046;
+        public const int MonsterBookRegistrationResultPacketType = 1047;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -771,6 +772,8 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("makerhiddenunlock", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("itemmakerhiddenunlock", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakerunlock", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("makerhiddenlistunlock", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onmakerhiddenunlock", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = ItemMakerHiddenRecipeUnlockPacketType;
@@ -779,6 +782,11 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("makersession", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("itemmakersession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakerinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("makerinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("professioninfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("professionsession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onitemmakerinfo", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onitemmakersession", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = ItemMakerSessionPacketType;
@@ -1108,6 +1116,16 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onitemupgraderesult", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = ItemUpgradeResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("monsterbookregister", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookregistration", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookregistrationresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("bookcollectionregister", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MonsterBookRegistrationResultPacketType;
                 return true;
             }
 
@@ -1448,6 +1466,7 @@ namespace HaCreator.MapSimulator.Managers
                 QuestAlarmRegistrationSyncPacketType => "QuestAlarmRegistrationSync(1045)",
                 ItemUpgradeResultClientPacketType => "OnItemUpgradeResult(425)",
                 ItemUpgradeResultPacketType => "ItemUpgradeResult(1046)",
+                MonsterBookRegistrationResultPacketType => "MonsterBookRegistrationResult(1047)",
                 ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
                 _ => $"packet {packetType}"
             };

@@ -509,12 +509,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsBoundJumpActionName(string actionName)
         {
+            // Keep non-explicit bound-jump gating on the constrained type-40 profile.
             return ActionTextContains(actionName, "doublejump")
                    || ActionTextContains(actionName, "flash jump")
                    || ActionTextContains(actionName, "archerdoublejump")
-                   || ActionTextContains(actionName, "backspin")
-                   || ActionTextContains(actionName, "assaulter")
-                   || ActionTextContains(actionName, "screw");
+                   || ActionTextContains(actionName, "icedoublejump");
         }
 
         private static bool ActionTextContains(string actionName, string value)

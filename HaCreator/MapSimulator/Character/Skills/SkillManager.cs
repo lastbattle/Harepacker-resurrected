@@ -7400,6 +7400,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return currentActionType;
             }
 
+            if (skill?.AttackType == SkillAttackType.Ranged
+                && skill.Projectile == null
+                && TryResolveWzBackedMovingShootAttackActionTypeFromWeaponType(
+                    currentWeaponType,
+                    out int postV95AttackActionType))
+            {
+                // When weapon attack metadata is absent and the current action does not
+                // publish a resolvable owner, keep the post-v95 owner id from the active
+                // weapon profile (double bowgun/cannon) instead of collapsing to type 1.
+                return postV95AttackActionType;
+            }
+
             return ResolveQueuedMovingShootAttackActionType(skill);
         }
 
@@ -7867,12 +7879,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             publishedWeaponActionNames ??= EmptyPublishedMovingShootActionNames;
-            if (publishedWeaponActionNames.Count > 0
-                && publishedWeaponActionNames.Any(IsClientPostV95WeaponAttackActionName))
-            {
-                return publishedWeaponActionNames;
-            }
-
             var mergedPublishedActionNames = new HashSet<string>(publishedWeaponActionNames, StringComparer.OrdinalIgnoreCase);
             foreach (string actionName in EnumerateQueuedMovingShootSkillPublishedPostV95ActionNames(skill))
             {
@@ -8092,21 +8098,26 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             publishedWeaponActionNames ??= EmptyPublishedMovingShootActionNames;
             bool filterByPublishedActions = publishedWeaponActionNames.Count > 0;
-            bool preferredActionWasYielded = false;
-            if (!string.IsNullOrWhiteSpace(preferredActionName)
-                && actionNames.Contains(preferredActionName, StringComparer.OrdinalIgnoreCase)
-                && (!filterByPublishedActions
-                    || publishedWeaponActionNames.Contains(preferredActionName, StringComparer.OrdinalIgnoreCase))
-                && CharacterPart.TryGetClientRawActionCode(preferredActionName, out int preferredRawActionCode))
+            string yieldedPreferredActionName = null;
+            foreach (string preferredCandidate in EnumerateClientRandomMovingShootPreferredActionCandidates(preferredActionName))
             {
-                yield return (preferredActionName, preferredRawActionCode);
-                preferredActionWasYielded = true;
+                if (!actionNames.Contains(preferredCandidate, StringComparer.OrdinalIgnoreCase)
+                    || (filterByPublishedActions
+                        && !publishedWeaponActionNames.Contains(preferredCandidate, StringComparer.OrdinalIgnoreCase))
+                    || !CharacterPart.TryGetClientRawActionCode(preferredCandidate, out int preferredRawActionCode))
+                {
+                    continue;
+                }
+
+                yieldedPreferredActionName = preferredCandidate;
+                yield return (preferredCandidate, preferredRawActionCode);
+                break;
             }
 
             foreach (string actionName in actionNames)
             {
-                if (preferredActionWasYielded
-                    && string.Equals(actionName, preferredActionName, StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(yieldedPreferredActionName)
+                    && string.Equals(actionName, yieldedPreferredActionName, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -8271,6 +8282,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 else if (primaryFamily == ClientRandomMovingShootActionFamily.PostV95Melee)
                 {
                     yield return ClientRandomMovingShootActionFamily.PostV95Shoot;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientRandomMovingShootPreferredActionCandidates(string preferredActionName)
+        {
+            if (string.IsNullOrWhiteSpace(preferredActionName))
+            {
+                yield break;
+            }
+
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string lookupActionName in CharacterPart.GetActionLookupStrings(preferredActionName))
+            {
+                if (!string.IsNullOrWhiteSpace(lookupActionName)
+                    && yielded.Add(lookupActionName))
+                {
+                    yield return lookupActionName;
                 }
             }
         }
@@ -8743,11 +8772,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             string holdActionName = ResolvePreparedAvatarActionName(
                 prepared.SkillData,
                 GetKeydownActionName(prepared.SkillData));
+            bool playHoldWeaponSfx = ShouldPlayEffectiveWeaponSfxForSkillAction(prepared.SkillData, holdActionName);
+            prepared.PlayHoldWeaponSfx = playHoldWeaponSfx;
+            prepared.LastHoldWeaponSfxTime = currentTime;
+            prepared.HoldWeaponSfxRepeatIntervalMs = playHoldWeaponSfx
+                ? ResolvePreparedHoldWeaponSfxRepeatIntervalMs(
+                    GetKeydownRepeatInterval(prepared.SkillData),
+                    ResolvePreparedHoldActionDurationMs(holdActionName))
+                : 0;
             _player.BeginSustainedSkillAnimation(
                 holdActionName,
                 skillId: prepared.SkillId,
                 currentTime: currentTime,
-                playEffectiveWeaponSfx: ShouldPlayEffectiveWeaponSfxForSkillAction(prepared.SkillData, holdActionName));
+                playEffectiveWeaponSfx: playHoldWeaponSfx);
         }
 
         private void BeginPreparedSkillHold(PreparedSkill prepared, int currentTime)
@@ -8965,6 +9002,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (UsesReleaseTriggeredKeydownExecution(prepared.SkillData))
             {
+                TryPlayPreparedHoldWeaponSfx(prepared, currentTime);
                 return;
             }
 
@@ -8981,6 +9019,70 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ExecuteSkillPayload(prepared.SkillData, prepared.Level, currentTime);
                 prepared.LastRepeatTime += repeatInterval;
             }
+        }
+
+        private void TryPlayPreparedHoldWeaponSfx(PreparedSkill prepared, int currentTime)
+        {
+            if (prepared == null
+                || _player == null
+                || !prepared.PlayHoldWeaponSfx
+                || !TryAdvancePreparedHoldWeaponSfxCadence(prepared, currentTime, out int playCount))
+            {
+                return;
+            }
+
+            for (int i = 0; i < playCount; i++)
+            {
+                _player.PlayEffectiveWeaponSfx();
+            }
+        }
+
+        private int ResolvePreparedHoldActionDurationMs(string actionName)
+        {
+            if (_player?.Assembler == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return 0;
+            }
+
+            return Math.Max(0, _player.Assembler.ResolveClientActionLayerDuration(actionName));
+        }
+
+        internal static int ResolvePreparedHoldWeaponSfxRepeatIntervalMs(int keydownRepeatIntervalMs, int actionDurationMs)
+        {
+            int repeatIntervalMs = Math.Max(1, keydownRepeatIntervalMs);
+            if (actionDurationMs <= 0)
+            {
+                return repeatIntervalMs;
+            }
+
+            return Math.Max(repeatIntervalMs, actionDurationMs);
+        }
+
+        internal static bool TryAdvancePreparedHoldWeaponSfxCadence(
+            PreparedSkill prepared,
+            int currentTime,
+            out int playCount)
+        {
+            playCount = 0;
+            if (prepared == null
+                || !prepared.IsHolding
+                || !prepared.PlayHoldWeaponSfx
+                || prepared.HoldWeaponSfxRepeatIntervalMs <= 0
+                || prepared.LastHoldWeaponSfxTime == int.MinValue
+                || currentTime <= prepared.LastHoldWeaponSfxTime)
+            {
+                return false;
+            }
+
+            int elapsedMs = currentTime - prepared.LastHoldWeaponSfxTime;
+            playCount = elapsedMs / prepared.HoldWeaponSfxRepeatIntervalMs;
+            if (playCount <= 0)
+            {
+                return false;
+            }
+
+            prepared.LastHoldWeaponSfxTime += playCount * prepared.HoldWeaponSfxRepeatIntervalMs;
+            return true;
         }
 
         private static string GetPrepareActionName(SkillData skill)
@@ -10780,7 +10882,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool MatchesDeferredMovingShootExecutionMetadata(int? queuedValue, int? previousValue)
         {
-            if (!queuedValue.HasValue || !previousValue.HasValue)
+            if (queuedValue.HasValue != previousValue.HasValue)
+            {
+                return false;
+            }
+
+            if (!queuedValue.HasValue)
             {
                 return true;
             }
@@ -10830,9 +10937,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             string normalizedQueuedOwner = NormalizeDeferredMovingShootActionOwnerName(queuedActionName, queuedRawActionCode);
             string normalizedPreviousOwner = NormalizeDeferredMovingShootActionOwnerName(previousActionName, previousRawActionCode);
-            if (string.IsNullOrWhiteSpace(normalizedQueuedOwner) || string.IsNullOrWhiteSpace(normalizedPreviousOwner))
+            bool queuedOwnerMissing = string.IsNullOrWhiteSpace(normalizedQueuedOwner);
+            bool previousOwnerMissing = string.IsNullOrWhiteSpace(normalizedPreviousOwner);
+            if (queuedOwnerMissing || previousOwnerMissing)
             {
-                return true;
+                return queuedOwnerMissing && previousOwnerMissing;
             }
 
             return string.Equals(normalizedQueuedOwner, normalizedPreviousOwner, StringComparison.OrdinalIgnoreCase);
@@ -11026,7 +11135,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             projectile.OwnerX = refreshedOrigin.X;
             projectile.OwnerY = refreshedOrigin.Y;
             projectile.QueuedFollowUpSourceMicroOffsetSnapshot =
-                IsFiniteQueuedFollowUpSourceMicroOffset(preservedOwnerRelativeOffset)
+                IsFiniteQueuedFollowUpSourceMicroOffset(preservedOwnerRelativeOffset, projectile)
                     ? preservedOwnerRelativeOffset
                     : null;
             projectile.X = refreshedOrigin.X + preservedOwnerRelativeOffset.X;
@@ -13923,26 +14032,43 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (projectile.QueuedFollowUpSourceMicroOffsetSnapshot is Vector2 queuedSnapshot
-                && IsFiniteQueuedFollowUpSourceMicroOffset(queuedSnapshot))
+                && IsFiniteQueuedFollowUpSourceMicroOffset(queuedSnapshot, projectile))
             {
                 return queuedSnapshot;
             }
 
             Vector2 ownerRelativeOffset = ResolveQueuedProjectileOwnerRelativeLaunchOffset(projectile);
-            return IsFiniteQueuedFollowUpSourceMicroOffset(ownerRelativeOffset)
+            return IsFiniteQueuedFollowUpSourceMicroOffset(ownerRelativeOffset, projectile)
                 ? ownerRelativeOffset
                 : Vector2.Zero;
         }
 
-        internal static bool IsFiniteQueuedFollowUpSourceMicroOffset(Vector2 offset)
+        internal static float ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitude(ActiveProjectile projectile)
         {
-            // Keep only the small launch-point micro offsets that survive the deferred
-            // moving-shoot handoff. Large deltas usually indicate post-launch movement.
-            const float maxMagnitude = 96f;
+            const float defaultMaxMagnitude = 96f;
+            if (projectile == null || (!projectile.IsQueuedFinalAttack && !projectile.IsQueuedSparkAttack))
+            {
+                return defaultMaxMagnitude;
+            }
+
+            int laneOffsetY = ResolveQueuedFollowUpBulletSourceLaneOffsetY(projectile);
+            // Keep the client lane spread surface plus a small source nudge budget,
+            // while still rejecting large post-launch drift.
+            return Math.Max(defaultMaxMagnitude, MathF.Abs(laneOffsetY) + 32f);
+        }
+
+        internal static bool IsFiniteQueuedFollowUpSourceMicroOffset(Vector2 offset, ActiveProjectile projectile)
+        {
+            float maxMagnitude = ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitude(projectile);
             return float.IsFinite(offset.X)
                    && float.IsFinite(offset.Y)
                    && MathF.Abs(offset.X) <= maxMagnitude
                    && MathF.Abs(offset.Y) <= maxMagnitude;
+        }
+
+        internal static bool IsFiniteQueuedFollowUpSourceMicroOffset(Vector2 offset)
+        {
+            return IsFiniteQueuedFollowUpSourceMicroOffset(offset, projectile: null);
         }
 
         internal static Vector2 ResolveQueuedFollowUpBulletPresentationSourcePoint(
@@ -15572,7 +15698,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 bool hasAfterimages = owner?.AfterimageLayers?.Count > 0;
                 bool beforeStart = owner?.Presentation != null && currentTime < owner.Presentation.StartTime;
                 bool finished = owner?.Presentation == null
-                    || (owner.StopTime.HasValue || currentTime >= owner.Presentation.EndTime);
+                    || currentTime >= owner.Presentation.EndTime;
                 if (!beforeStart && finished && !hasAfterimages)
                 {
                     _bulletAnimationOwners.RemoveAt(i);
@@ -16724,7 +16850,24 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (skill?.TargetHitEffects == null || skill.TargetHitEffects.Count == 0)
             {
+                if (UsesClientMultipleLayerHitAnimation(skill?.SkillId ?? 0))
+                {
+                    return ResolveIndexedTargetHitAnimation(skill?.MultipleLayerTargetHitEffects, requestedIndex: 0)
+                           ?? fallbackAnimation;
+                }
+
                 return fallbackAnimation;
+            }
+
+            if (UsesClientMultipleLayerHitAnimation(skill.SkillId))
+            {
+                SkillAnimation multipleLayerAnimation = ResolveIndexedTargetHitAnimation(
+                    skill.MultipleLayerTargetHitEffects,
+                    requestedIndex: 0);
+                if (multipleLayerAnimation != null)
+                {
+                    return multipleLayerAnimation;
+                }
             }
 
             if (UsesClientFinalDamageLineSubHitAnimation(skill.SkillId))
@@ -16774,7 +16917,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == 5101003
                    || skillId == 5101004
                    || skillId == 5211002
-                   || skillId == 15101003
+                   || skillId == 15101003;
+        }
+
+        internal static bool UsesClientMultipleLayerHitAnimation(int skillId)
+        {
+            // `CSkill_HitAni::CSkill_HitAni` routes these ids through
+            // `CreateMultipleLayer(..., 1)`, which resolves `sHitRootUOL + "hit0"`.
+            return skillId == 5121007
                    || skillId == 15111004;
         }
 
@@ -20530,6 +20680,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ResolveWildHunterMineHiddenFallbackMountItemId(
                     activeSkillMountSkillId,
                     activeSkillMountItemId,
+                    jaguarRideOwnershipActive || activeJaguarRiderMount,
                     equippedMountItemId));
         }
 
@@ -20559,9 +20710,16 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static int ResolveWildHunterMineHiddenFallbackMountItemId(
             int activeSkillMountSkillId,
             int activeSkillMountItemId,
+            bool jaguarRideOwnershipActive,
             int equippedMountItemId)
         {
             if (IsActiveWildHunterJaguarRiderMount(activeSkillMountSkillId, activeSkillMountItemId))
+            {
+                return activeSkillMountItemId;
+            }
+
+            if (jaguarRideOwnershipActive
+                && IsWildHunterJaguarTamingMobItemId(activeSkillMountItemId))
             {
                 return activeSkillMountItemId;
             }
@@ -24353,6 +24511,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && HasAuthoredTemporaryStatProperty(levelData, "terR");
             TrackIfMissing(temporaryStats, hasWaterShieldPlaceholderProfile, DamageReductionBuffLabel);
 
+            bool hasRollOfTheDicePlaceholderProfile = hasLevelData
+                && levelData.U > 0
+                && levelData.V > 0
+                && levelData.W > 0
+                && HasAuthoredTemporaryStatProperty(levelData, "u")
+                && HasAuthoredTemporaryStatProperty(levelData, "v")
+                && HasAuthoredTemporaryStatProperty(levelData, "w")
+                && (HasAuthoredTemporaryStatProperty(levelData, "damR", "indieDamR")
+                    || HasAuthoredTemporaryStatProperty(levelData, "expR")
+                    || HasAuthoredTemporaryStatProperty(levelData, "mhpR", "indieMhpR")
+                    || HasAuthoredTemporaryStatProperty(levelData, "mmpR", "indieMmpR")
+                    || HasAuthoredTemporaryStatProperty(levelData, "cr"));
+            TrackIfMissing(temporaryStats, hasRollOfTheDicePlaceholderProfile, "ACC");
+            TrackIfMissing(temporaryStats, hasRollOfTheDicePlaceholderProfile, "EVA");
+            TrackIfMissing(temporaryStats, hasRollOfTheDicePlaceholderProfile, "Speed");
+
             bool isHaste = ContainsAny(combinedText, "haste");
             TrackIfMissing(temporaryStats, isHaste, "Speed");
             TrackIfMissing(temporaryStats, isHaste, "Jump");
@@ -25028,8 +25202,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             bool mentions(string token)
             {
-                return name.Contains(token, StringComparison.Ordinal)
-                       || description.Contains(token, StringComparison.Ordinal);
+                return ContainsMasteryTokenPhrase(name, token)
+                       || ContainsMasteryTokenPhrase(description, token);
             }
 
             // `String/Skill.img` alternates between "weapon mastery", "weapons mastery",
@@ -25187,6 +25361,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
 
             return matchesWeapon;
+        }
+
+        private static bool ContainsMasteryTokenPhrase(string text, string token)
+        {
+            if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            // Mastery parsing normalizes punctuation to spaces. Keep phrase checks token-boundary
+            // anchored so crossbow/dual-bowgun wording does not leak into bow/gun families.
+            return $" {text} ".Contains($" {token} ", StringComparison.Ordinal);
         }
 
         private static bool MatchesKnownActiveStateMasterySkill(int skillId, int weaponCode)

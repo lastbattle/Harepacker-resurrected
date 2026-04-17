@@ -411,8 +411,15 @@ namespace HaCreator.MapSimulator
             }
 
             // Handle Up arrow - browse history (older)
-            if (newKeyboardState.IsKeyDown(Keys.Up) && oldKeyboardState.IsKeyUp(Keys.Up))
+            if (newKeyboardState.IsKeyDown(Keys.Up))
             {
+                bool isFirstPress = oldKeyboardState.IsKeyUp(Keys.Up);
+                bool isRepeat = !isFirstPress && ShouldRepeatKey(Keys.Up, tickCount);
+                if (!isFirstPress && !isRepeat)
+                {
+                    return true;
+                }
+
                 if (_isWhisperTargetPickerActive)
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
@@ -423,17 +430,17 @@ namespace HaCreator.MapSimulator
                     if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
                         && !_isWhisperTargetPickerComboDropdownOpen)
                     {
-                        return true;
+                        // Closed modal combo consumes Up without selection movement.
                     }
-
-                    MoveWhisperTargetPickerSelection(
-                        -1,
-                        WhisperTargetPickerNavigationMode.Step,
-                        updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
-                    return true;
+                    else
+                    {
+                        MoveWhisperTargetPickerSelection(
+                            -1,
+                            WhisperTargetPickerNavigationMode.Step,
+                            updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
                 }
-
-                if (_inputHistory.Count > 0)
+                else if (_inputHistory.Count > 0)
                 {
                     // Save current input when starting to browse history
                     if (_historyIndex == -1)
@@ -450,12 +457,35 @@ namespace HaCreator.MapSimulator
                         _cursorPosition = _inputText.Length; // Move cursor to end
                     }
                 }
+
+                if (isFirstPress)
+                {
+                    _lastHeldKey = Keys.Up;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else
+                {
+                    _lastKeyRepeatTime = tickCount;
+                }
+
                 return true;
+            }
+            else if (_lastHeldKey == Keys.Up)
+            {
+                ResetKeyRepeat();
             }
 
             // Handle Down arrow - browse history (newer)
-            if (newKeyboardState.IsKeyDown(Keys.Down) && oldKeyboardState.IsKeyUp(Keys.Down))
+            if (newKeyboardState.IsKeyDown(Keys.Down))
             {
+                bool isFirstPress = oldKeyboardState.IsKeyUp(Keys.Down);
+                bool isRepeat = !isFirstPress && ShouldRepeatKey(Keys.Down, tickCount);
+                if (!isFirstPress && !isRepeat)
+                {
+                    return true;
+                }
+
                 if (_isWhisperTargetPickerActive)
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
@@ -467,18 +497,17 @@ namespace HaCreator.MapSimulator
                         && !_isWhisperTargetPickerComboDropdownOpen)
                     {
                         OpenWhisperTargetPickerModalComboDropdown();
-                        return true;
                     }
-
-                    OpenWhisperTargetPickerModalComboDropdown();
-                    MoveWhisperTargetPickerSelection(
-                        1,
-                        WhisperTargetPickerNavigationMode.Step,
-                        updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
-                    return true;
+                    else
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        MoveWhisperTargetPickerSelection(
+                            1,
+                            WhisperTargetPickerNavigationMode.Step,
+                            updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
                 }
-
-                if (_historyIndex > -1)
+                else if (_historyIndex > -1)
                 {
                     _historyIndex--;
                     _inputText.Clear();
@@ -494,7 +523,23 @@ namespace HaCreator.MapSimulator
                     }
                     _cursorPosition = _inputText.Length; // Move cursor to end
                 }
+
+                if (isFirstPress)
+                {
+                    _lastHeldKey = Keys.Down;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else
+                {
+                    _lastKeyRepeatTime = tickCount;
+                }
+
                 return true;
+            }
+            else if (_lastHeldKey == Keys.Down)
+            {
+                ResetKeyRepeat();
             }
 
             // Handle Left arrow - move cursor left (with key repeat)
@@ -2475,7 +2520,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if ((key == Keys.Left || key == Keys.Right) && !_isWhisperTargetPickerComboDropdownOpen)
+            if (key == Keys.Left || key == Keys.Right)
             {
                 ToggleWhisperTargetPickerModalComboDropdown();
                 return true;

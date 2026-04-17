@@ -4982,7 +4982,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Coconut minigame packet and result flow",
 
-                "/coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|team <maple|story|0|1>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]",
+                "/coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|team <maple|story|0|1>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]",
                 args =>
                 {
                     CoconutField field = _specialFieldRuntime.Minigames.Coconut;
@@ -5189,6 +5189,37 @@ namespace HaCreator.MapSimulator
                                 return _coconutOfficialSessionBridge.TryAttachEstablishedSession(attachRemotePort, processSelector, localPortFilter, out string attachStatus)
                                     ? ChatCommandHandler.CommandResult.Ok(attachStatus)
                                     : ChatCommandHandler.CommandResult.Error(attachStatus);
+                            }
+
+                            if (string.Equals(args[1], "attachproxy", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 4
+                                    || !CoconutSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
+                                    || !int.TryParse(args[3], out int attachProxyRemotePort)
+                                    || attachProxyRemotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(CoconutSessionCommandParsing.AttachProxyUsage);
+                                }
+                                string processSelector = args.Length >= 5 ? args[4] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 6)
+                                {
+                                    if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(CoconutSessionCommandParsing.AttachProxyUsage);
+                                    }
+
+                                    localPortFilter = parsedLocalPort;
+                                }
+
+                                return _coconutOfficialSessionBridge.TryAttachEstablishedSessionAndStartProxy(
+                                    attachProxyListenPort,
+                                    attachProxyRemotePort,
+                                    processSelector,
+                                    localPortFilter,
+                                    out string attachProxyStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(attachProxyStatus)
+                                    : ChatCommandHandler.CommandResult.Error(attachProxyStatus);
                             }
 
                             if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))

@@ -8766,7 +8766,9 @@ namespace HaCreator.MapSimulator.Loaders
                     LoadCanvasTexture(calendarBackgroundProperty1, "backgrnd3", device)
                 },
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "normal", device).ToArray(),
-                LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "select", device).ToArray())
+                LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "select", device).ToArray(),
+                new Point(226, 5),
+                57)
             {
                 Position = position
             };

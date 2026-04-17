@@ -1825,7 +1825,7 @@ namespace HaCreator.MapSimulator.Entities
 
             bool shouldRegisterBurst = currentChargeCount >= AI.AngerChargeTarget
                 && AI.ShouldTriggerAngerGaugeFullChargeEffect(tickCount);
-            if (!shouldRegisterBurst && !AI.HasSpecialAttackFullChargeEffectOwnerTiming)
+            if (!shouldRegisterBurst && AI.ShouldUseFallbackAngerGaugeFullChargeCadence())
             {
                 shouldRegisterBurst = MobAngerGaugeBurstParity.ShouldRegisterBurst(
                     currentChargeCount,

@@ -49,13 +49,7 @@ namespace HaCreator.MapSimulator.Managers
             MapTransferDestinationBook responseBook = authoritativeResponse.CanTransferContinent
                 ? MapTransferDestinationBook.Continent
                 : MapTransferDestinationBook.Regular;
-            MapTransferRuntimeRequestType? expectedType = authoritativeResponse.ResultType switch
-            {
-                MapTransferRuntimeResultType.RegisterApplied => MapTransferRuntimeRequestType.Register,
-                MapTransferRuntimeResultType.DeleteApplied => MapTransferRuntimeRequestType.Delete,
-                _ => null
-            };
-            expectedType ??= InferRequestTypeFromFailureResultCode(authoritativeResponse.PacketResultCode);
+            MapTransferRuntimeRequestType? expectedType = InferRequestType(authoritativeResponse);
             if (!expectedType.HasValue)
             {
                 return -1;
@@ -158,6 +152,22 @@ namespace HaCreator.MapSimulator.Managers
                 MapId = mapId,
                 SlotIndex = slot
             };
+        }
+
+        internal static MapTransferRuntimeRequestType? InferRequestType(MapTransferRuntimeResponse authoritativeResponse)
+        {
+            if (authoritativeResponse == null)
+            {
+                return null;
+            }
+
+            MapTransferRuntimeRequestType? requestType = authoritativeResponse.ResultType switch
+            {
+                MapTransferRuntimeResultType.RegisterApplied => MapTransferRuntimeRequestType.Register,
+                MapTransferRuntimeResultType.DeleteApplied => MapTransferRuntimeRequestType.Delete,
+                _ => null
+            };
+            return requestType ?? InferRequestTypeFromFailureResultCode(authoritativeResponse.PacketResultCode);
         }
 
         private static MapTransferRuntimeRequestType? InferRequestTypeFromFailureResultCode(

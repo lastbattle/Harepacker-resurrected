@@ -1702,6 +1702,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            List<string> completionIssues = EvaluateCompletionIssues(definition, build);
+            bool completionReady = completionIssues == null || completionIssues.Count == 0;
+            if (completionReady)
+            {
+                target = BuildNpcWorldMapTarget(definition, definition.EndNpcId ?? definition.StartNpcId, currentMapId, "Completion NPC");
+                return target != null;
+            }
+
             QuestItemRequirement guideItemRequirement = GetPreferredQuestGuideItemRequirement(definition.EndItemRequirements);
             if (guideItemRequirement != null)
             {
@@ -1736,27 +1744,27 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            QuestMobRequirement incompleteMobRequirement = definition.EndMobRequirements
-                .FirstOrDefault(requirement => GetCurrentMobCount(progress, requirement.MobId) < requirement.RequiredCount);
-            if (incompleteMobRequirement != null)
+            QuestMobRequirement guideMobRequirement = definition.EndMobRequirements
+                .FirstOrDefault(requirement => GetCurrentMobCount(progress, requirement.MobId) < requirement.RequiredCount)
+                ?? definition.EndMobRequirements.FirstOrDefault(requirement => requirement != null && requirement.MobId > 0);
+            if (guideMobRequirement != null)
             {
-                IReadOnlyList<int> mobMapIds = ResolveQuestMobMapIds(incompleteMobRequirement.MobId, currentMapId);
+                IReadOnlyList<int> mobMapIds = ResolveQuestMobMapIds(guideMobRequirement.MobId, currentMapId);
                 target = new QuestWorldMapTarget
                 {
                     Kind = QuestWorldMapTargetKind.Mob,
                     QuestId = questId,
                     MapId = mobMapIds.Count > 0 ? mobMapIds[0] : currentMapId,
                     MapIds = mobMapIds,
-                    EntityId = incompleteMobRequirement.MobId,
-                    Label = ResolveMobName(incompleteMobRequirement.MobId),
+                    EntityId = guideMobRequirement.MobId,
+                    Label = ResolveMobName(guideMobRequirement.MobId),
                     Description = "Quest target mob",
                     FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
                 };
                 return true;
             }
 
-            target = BuildNpcWorldMapTarget(definition, definition.EndNpcId ?? definition.StartNpcId, currentMapId, "Completion NPC");
-            return target != null;
+            return false;
         }
 
         public bool TryBuildQuestDemandItemQuery(int questId, out QuestDemandItemQueryState queryState)
@@ -7269,6 +7277,11 @@ namespace HaCreator.MapSimulator.Interaction
                 WzIntProperty intProp => intProp.GetInt(),
                 WzShortProperty shortProp => shortProp.GetShort(),
                 WzLongProperty longProp => checked((int)longProp.Value),
+                WzStringProperty stringProp when int.TryParse(
+                    stringProp.Value?.Trim(),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int parsedValue) => parsedValue,
                 _ => null
             };
         }
@@ -7954,30 +7967,82 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IReadOnlyList<QuestStateRequirement> ParseQuestRequirements(WzImageProperty property)
         {
-            if (property?.WzProperties == null)
+            if (property == null)
             {
                 return Array.Empty<QuestStateRequirement>();
             }
 
             var requirements = new List<QuestStateRequirement>();
+            if (TryParseQuestStateRequirement(property, out QuestStateRequirement directRequirement))
+            {
+                requirements.Add(directRequirement);
+            }
+
+            if (property.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return requirements.Count == 0
+                    ? Array.Empty<QuestStateRequirement>()
+                    : requirements;
+            }
+
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
-                WzImageProperty requirement = property.WzProperties[i];
-                int questId = ParseInt(requirement["id"]).GetValueOrDefault();
-                int stateValue = ParseInt(requirement["state"]).GetValueOrDefault();
-                if (questId == 0 || !Enum.IsDefined(typeof(QuestStateType), stateValue))
+                if (!TryParseQuestStateRequirement(property.WzProperties[i], out QuestStateRequirement requirement))
                 {
                     continue;
                 }
 
-                requirements.Add(new QuestStateRequirement
+                if (!requirements.Any(existing =>
+                        existing.QuestId == requirement.QuestId &&
+                        existing.State == requirement.State))
                 {
-                    QuestId = questId,
-                    State = (QuestStateType)stateValue
-                });
+                    requirements.Add(requirement);
+                }
             }
 
             return requirements;
+        }
+
+        private static bool TryParseQuestStateRequirement(
+            WzImageProperty property,
+            out QuestStateRequirement requirement)
+        {
+            requirement = null;
+            if (property == null)
+            {
+                return false;
+            }
+
+            int questId = ParseInt(property["id"]).GetValueOrDefault();
+            int stateValue = ParseInt(property["state"]).GetValueOrDefault();
+            if (questId > 0 && Enum.IsDefined(typeof(QuestStateType), stateValue))
+            {
+                requirement = new QuestStateRequirement
+                {
+                    QuestId = questId,
+                    State = (QuestStateType)stateValue
+                };
+                return true;
+            }
+
+            if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedQuestId) ||
+                parsedQuestId <= 0)
+            {
+                return false;
+            }
+
+            int parsedStateValue = ParseInt(property).GetValueOrDefault();
+            if (!Enum.IsDefined(typeof(QuestStateType), parsedStateValue))
+            {
+                return false;
+            }
+
+            requirement = new QuestStateRequirement
+            {
+                QuestId = parsedQuestId,
+                State = (QuestStateType)parsedStateValue
+            };
+            return true;
         }
 
         private static IReadOnlyList<QuestMobRequirement> ParseMobRequirements(WzImageProperty property)

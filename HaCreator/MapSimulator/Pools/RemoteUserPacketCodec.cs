@@ -330,6 +330,7 @@ namespace HaCreator.MapSimulator.Pools
         ItemMake = 18,
         MakerSkill = 19,
         ReservedEffect = 20,
+        NoOp = 21,
         EffectByItem = 22,
         MakerResultMessage = 23,
         CarnivalReservedEffect = 24,
@@ -361,6 +362,7 @@ namespace HaCreator.MapSimulator.Pools
             (byte)RemoteUserEffectSubtype.ItemMake => RemoteUserEffectSubtype.ItemMake,
             (byte)RemoteUserEffectSubtype.MakerSkill => RemoteUserEffectSubtype.MakerSkill,
             (byte)RemoteUserEffectSubtype.ReservedEffect => RemoteUserEffectSubtype.ReservedEffect,
+            (byte)RemoteUserEffectSubtype.NoOp => RemoteUserEffectSubtype.NoOp,
             (byte)RemoteUserEffectSubtype.EffectByItem => RemoteUserEffectSubtype.EffectByItem,
             (byte)RemoteUserEffectSubtype.MakerResultMessage => RemoteUserEffectSubtype.MakerResultMessage,
             (byte)RemoteUserEffectSubtype.CarnivalReservedEffect => RemoteUserEffectSubtype.CarnivalReservedEffect,
@@ -1401,6 +1403,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     case RemoteUserEffectSubtype.GenericUserState:
                     case RemoteUserEffectSubtype.MakerSkill:
+                    case RemoteUserEffectSubtype.NoOp:
                     case RemoteUserEffectSubtype.IncubatorMessage:
                     case RemoteUserEffectSubtype.QuestDeliveryEnd:
                     case RemoteUserEffectSubtype.EvolRingStatusBar:
@@ -2716,14 +2719,21 @@ namespace HaCreator.MapSimulator.Pools
                 return string.Empty;
             }
 
-            for (int i = 0; i < segments.Length; i++)
+            int defaultHelperSegmentIndex = -1;
+            for (int i = segments.Length - 1; i >= 0; i--)
             {
                 if (!string.Equals(segments[i], "DefaultHelper", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                for (int j = i + 1; j < segments.Length; j++)
+                defaultHelperSegmentIndex = i;
+                break;
+            }
+
+            if (defaultHelperSegmentIndex >= 0)
+            {
+                for (int j = defaultHelperSegmentIndex + 1; j < segments.Length; j++)
                 {
                     string candidate = NormalizeHelperMarkerNameSegment(segments[j]);
                     if (candidate.Length == 0 || IsNumericHelperMarkerPathSegment(candidate))

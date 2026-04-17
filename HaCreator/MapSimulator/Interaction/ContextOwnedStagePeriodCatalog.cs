@@ -663,7 +663,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             ContextOwnedStageAffectedMapRow row = inherited.Merge(property);
             int fieldId = row.ResolveFieldId(property);
-            if (fieldId > 0 && !string.IsNullOrWhiteSpace(row.StageKeyword))
+            if (fieldId > 0
+                && !string.IsNullOrWhiteSpace(row.StageKeyword)
+                && row.IsStructurallyValidForRuntimeMatch())
             {
                 if (!byFieldId.TryGetValue(fieldId, out List<ContextOwnedStageAffectedMapEntry> entries))
                 {
@@ -1115,6 +1117,13 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestState.GetValueOrDefault(),
                 HasQuestStateGate,
                 RandomTimeSeconds.GetValueOrDefault());
+        }
+
+        internal bool IsStructurallyValidForRuntimeMatch()
+        {
+            // `questState` rows without a concrete quest id are malformed metadata;
+            // do not let them participate in priority-tier arbitration.
+            return !HasQuestStateGate || QuestId.GetValueOrDefault() > 0;
         }
 
         private static string ReadString(WzImageProperty property)

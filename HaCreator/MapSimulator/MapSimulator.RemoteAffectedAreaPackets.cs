@@ -49,24 +49,31 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            int ownerId = unchecked((int)packet.OwnerCharacterId);
             if (RemoteAffectedAreaSupportResolver.IsAreaBuffItemType(packet.Type))
             {
-                return UpsertRemoteAreaBuffItemAffectedArea(
+                bool applied = UpsertRemoteAreaBuffItemAffectedArea(
                     packet.ObjectId,
                     packet.Type,
-                    unchecked((int)packet.OwnerCharacterId),
+                    ownerId,
                     packet.SkillId,
                     packet.Bounds,
                     packet.StartDelayUnits,
                     packet.ElementAttribute,
                     packet.Phase);
+                if (applied)
+                {
+                    CacheRemoteAffectedAreaOwnerRuntimeState(ownerId);
+                }
+
+                return applied;
             }
 
-            return packet.SkillId >= 10000
+            bool appliedPlayerOrMob = packet.SkillId >= 10000
                 ? UpsertRemotePlayerAffectedArea(
                     packet.ObjectId,
                     packet.Type,
-                    unchecked((int)packet.OwnerCharacterId),
+                    ownerId,
                     packet.SkillId,
                     packet.SkillLevel,
                     packet.Bounds,
@@ -77,13 +84,19 @@ namespace HaCreator.MapSimulator
                 : UpsertRemoteMobAffectedArea(
                     packet.ObjectId,
                     packet.Type,
-                    unchecked((int)packet.OwnerCharacterId),
+                    ownerId,
                     packet.SkillId,
                     packet.SkillLevel,
                     packet.Bounds,
                     packet.StartDelayUnits,
                     packet.ElementAttribute,
                     packet.Phase);
+            if (appliedPlayerOrMob)
+            {
+                CacheRemoteAffectedAreaOwnerRuntimeState(ownerId);
+            }
+
+            return appliedPlayerOrMob;
         }
 
         private string DescribeRemoteAffectedAreaStatus()
@@ -162,6 +175,76 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static void CacheRemoteAffectedAreaOwnerRuntimeState(
+            int ownerId,
+            IDictionary<int, string> cachedOwnerNames,
+            IDictionary<int, int> cachedBattlefieldOwnerTeams,
+            IDictionary<int, Fields.MonsterCarnivalTeam> cachedCarnivalOwnerTeams,
+            Func<int, string> resolveLiveOwnerName,
+            Func<int, int?> resolveRuntimeBattlefieldOwnerTeamId,
+            int? localBattlefieldTeamId,
+            Func<string, Fields.MonsterCarnivalTeam?> resolveMonsterCarnivalOwnerTeamByName)
+        {
+            if (ownerId <= 0)
+            {
+                return;
+            }
+
+            string ownerName = resolveLiveOwnerName?.Invoke(ownerId);
+            if (!string.IsNullOrWhiteSpace(ownerName))
+            {
+                cachedOwnerNames?[ownerId] = ownerName.Trim();
+            }
+
+            if (localBattlefieldTeamId.HasValue
+                && TryResolveBattlefieldAffectedAreaOwnerTeam(
+                    ownerId,
+                    localBattlefieldTeamId,
+                    cachedBattlefieldOwnerTeams as IReadOnlyDictionary<int, int>,
+                    resolveRuntimeBattlefieldOwnerTeamId,
+                    out int ownerBattlefieldTeamId))
+            {
+                cachedBattlefieldOwnerTeams?[ownerId] = ownerBattlefieldTeamId;
+            }
+
+            if (cachedCarnivalOwnerTeams?.ContainsKey(ownerId) == true)
+            {
+                return;
+            }
+
+            string ownerNameForCarnival = !string.IsNullOrWhiteSpace(ownerName)
+                ? ownerName.Trim()
+                : ResolveRemoteAffectedAreaOwnerName(
+                    ownerId,
+                    cachedOwnerNames as IReadOnlyDictionary<int, string>,
+                    resolveLiveOwnerName);
+            if (string.IsNullOrWhiteSpace(ownerNameForCarnival))
+            {
+                return;
+            }
+
+            Fields.MonsterCarnivalTeam? ownerCarnivalTeam =
+                resolveMonsterCarnivalOwnerTeamByName?.Invoke(ownerNameForCarnival);
+            if (ownerCarnivalTeam.HasValue)
+            {
+                cachedCarnivalOwnerTeams[ownerId] = ownerCarnivalTeam.Value;
+            }
+        }
+
+        private void CacheRemoteAffectedAreaOwnerRuntimeState(int ownerId)
+        {
+            Effects.BattlefieldField battlefield = _specialFieldRuntime?.SpecialEffects?.Battlefield;
+            CacheRemoteAffectedAreaOwnerRuntimeState(
+                ownerId,
+                _remoteAffectedAreaOwnerNames,
+                _remoteAffectedAreaBattlefieldOwnerTeams,
+                _remoteAffectedAreaMonsterCarnivalOwnerTeams,
+                ResolveLiveRemoteAffectedAreaOwnerName,
+                ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId,
+                battlefield?.LocalTeamId,
+                ResolveMonsterCarnivalAffectedAreaOwnerTeamByName);
         }
 
         private void UpdateRemoteAffectedAreaGameplay(int currentTime)
@@ -987,19 +1070,20 @@ namespace HaCreator.MapSimulator
             }
 
             return resolved;
+        }
 
-            int? ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId(int candidateOwnerId)
+        private int? ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId(int candidateOwnerId)
+        {
+            Effects.BattlefieldField battlefield = _specialFieldRuntime?.SpecialEffects?.Battlefield;
+            if (battlefield?.TryGetAssignedTeamId(candidateOwnerId, out int assignedTeamId) == true)
             {
-                if (battlefield.TryGetAssignedTeamId(candidateOwnerId, out int assignedTeamId))
-                {
-                    return assignedTeamId;
-                }
-
-                return _remoteUserPool?.TryGetActor(candidateOwnerId, out RemoteUserActor actor) == true
-                       && actor?.BattlefieldTeamId.HasValue == true
-                    ? actor.BattlefieldTeamId.Value
-                    : null;
+                return assignedTeamId;
             }
+
+            return _remoteUserPool?.TryGetActor(candidateOwnerId, out RemoteUserActor actor) == true
+                   && actor?.BattlefieldTeamId.HasValue == true
+                ? actor.BattlefieldTeamId.Value
+                : null;
         }
 
         private bool TryResolveMonsterCarnivalAffectedAreaOwnerTeam(int ownerId, out Fields.MonsterCarnivalTeam team)

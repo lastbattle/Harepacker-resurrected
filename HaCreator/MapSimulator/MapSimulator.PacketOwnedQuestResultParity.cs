@@ -507,7 +507,8 @@ namespace HaCreator.MapSimulator
 
         private void HandlePacketOwnedQuestResultOverlayClose(NpcInteractionOverlayCloseKind closeKind)
         {
-            if (closeKind == NpcInteractionOverlayCloseKind.None)
+            if (closeKind == NpcInteractionOverlayCloseKind.None ||
+                !HasPendingPacketOwnedQuestResultOverlayCloseWork())
             {
                 return;
             }
@@ -517,8 +518,15 @@ namespace HaCreator.MapSimulator
                     resultType: 10,
                     openedModal: true,
                     closeKind);
+            PacketQuestResultUtilDialogModalHostSnapshot modalHostSnapshot =
+                _npcInteractionOverlay?.PacketQuestResultModalHostSnapshot ?? default;
+            int? doModalReturnCode = modalHostSnapshot.TerminalResultCount > 0
+                ? modalHostSnapshot.LastTerminalDoModalReturnCode
+                : null;
             PacketQuestResultSubtype10ContinuationDisposition continuationDisposition =
-                PacketQuestResultClientSemantics.ResolveSubtype10ContinuationDisposition(closeKind);
+                PacketQuestResultClientSemantics.ResolveSubtype10ContinuationDisposition(
+                    closeKind,
+                    doModalReturnCode);
             // CUserLocal::OnQuestResult always runs the post-branch tail after subtype 10
             // modal return, regardless of DoModal result. Only StartQuest continuation is
             // gated by the Next/OK return value (0x2001).
@@ -556,6 +564,15 @@ namespace HaCreator.MapSimulator
             }
 
             ClearPendingPacketOwnedQuestResultContinuation();
+        }
+
+        private bool HasPendingPacketOwnedQuestResultOverlayCloseWork()
+        {
+            return _pendingPacketOwnedQuestResultContinuationQuestId > 0
+                   || (_pendingPacketOwnedQuestResultTrailingFollowUpPayload?.Length ?? 0) > 0
+                   || _pendingPacketOwnedQuestResultFollowUpQuestId.HasValue
+                   || !string.IsNullOrWhiteSpace(_pendingPacketOwnedQuestResultDeferredNoticeText)
+                   || _hasPendingPacketOwnedQuestResultAvailabilityRefresh;
         }
 
         private void UpdatePendingPacketOwnedQuestResultFollowUp()

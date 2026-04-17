@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int PacketType = 1024;
         internal const int DeltaPacketMagic = 0x54444B4D; // "MKDT"
+        private const byte CompactDeltaMarker = 0x80;
 
         public static bool TryDecode(byte[] payload, out PacketOwnedItemMakerSession result, out string error)
         {
@@ -118,6 +119,23 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         private static bool TryDecodeCore(byte[] payload, out PacketOwnedItemMakerSession result, out string error)
+        {
+            if (TryDecodeInt32Envelope(payload, out result, out error))
+            {
+                return true;
+            }
+
+            string intEnvelopeError = error;
+            if (TryDecodeCompactEnvelope(payload, out result, out error))
+            {
+                return true;
+            }
+
+            error = intEnvelopeError ?? error ?? "Maker-session payload could not be decoded.";
+            return false;
+        }
+
+        private static bool TryDecodeInt32Envelope(byte[] payload, out PacketOwnedItemMakerSession result, out string error)
         {
             result = null;
             error = null;
@@ -212,6 +230,242 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private static bool TryDecodeCompactEnvelope(byte[] payload, out PacketOwnedItemMakerSession result, out string error)
+        {
+            result = null;
+            error = null;
+
+            if (payload == null || payload.Length < sizeof(byte))
+            {
+                error = "Maker-session compact payload must include at least the Byte session flags.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+
+                byte compactFlags = reader.ReadByte();
+                bool isDelta = (compactFlags & CompactDeltaMarker) != 0;
+                if (isDelta)
+                {
+                    return TryDecodeCompactDeltaPayload(reader, out result, out error);
+                }
+
+                PacketOwnedItemMakerSessionFlags flags = (PacketOwnedItemMakerSessionFlags)(compactFlags & 0x7F);
+                List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargets = null;
+                List<PacketOwnedItemMakerSessionHiddenEntry> hiddenEntries = null;
+
+                if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeDisassemblyTargets))
+                {
+                    int count = ReadNonNegativeCount16(reader, "Maker-session compact disassembly target count is missing or negative.");
+                    if (count > 0)
+                    {
+                        disassemblyTargets = new List<PacketOwnedItemMakerDisassemblyTargetEntry>(count);
+                        for (int i = 0; i < count; i++)
+                        {
+                            EnsureReadable(reader, sizeof(int) * 2, "Maker-session compact disassembly target entry is truncated.");
+                            int slotIndex = reader.ReadInt32();
+                            int itemId = reader.ReadInt32();
+                            if (slotIndex < 0)
+                            {
+                                throw new InvalidDataException("Maker-session compact disassembly target slots must be zero-based and non-negative.");
+                            }
+
+                            if (itemId <= 0)
+                            {
+                                throw new InvalidDataException("Maker-session compact disassembly target entries must include a positive item id.");
+                            }
+
+                            disassemblyTargets.Add(new PacketOwnedItemMakerDisassemblyTargetEntry(slotIndex, itemId));
+                        }
+                    }
+                }
+
+                if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList))
+                {
+                    int count = ReadNonNegativeCount16(reader, "Maker-session compact hidden recipe count is missing or negative.");
+                    if (count > 0)
+                    {
+                        hiddenEntries = new List<PacketOwnedItemMakerSessionHiddenEntry>(count);
+                        for (int i = 0; i < count; i++)
+                        {
+                            EnsureReadable(reader, sizeof(int) * 2, "Maker-session compact hidden recipe entry is truncated.");
+                            int bucketKey = reader.ReadInt32();
+                            int outputItemId = reader.ReadInt32();
+                            if (outputItemId <= 0)
+                            {
+                                throw new InvalidDataException("Maker-session compact hidden recipe entries must include a positive output item id.");
+                            }
+
+                            hiddenEntries.Add(new PacketOwnedItemMakerSessionHiddenEntry(bucketKey, outputItemId));
+                        }
+                    }
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    error = $"Maker-session compact payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
+                    return false;
+                }
+
+                result = new PacketOwnedItemMakerSession
+                {
+                    Flags = flags,
+                    DisassemblyTargets = disassemblyTargets ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                    HiddenRecipeEntries = hiddenEntries ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
+                };
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException)
+            {
+                error = $"Maker-session compact payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeCompactDeltaPayload(
+            BinaryReader reader,
+            out PacketOwnedItemMakerSession result,
+            out string error)
+        {
+            result = null;
+            error = null;
+
+            EnsureReadable(reader, sizeof(byte), "Maker-session compact delta payload is missing its Byte delta flags.");
+            byte compactDeltaFlags = reader.ReadByte();
+            PacketOwnedItemMakerSessionDeltaFlags deltaFlags = PacketOwnedItemMakerSessionDeltaFlags.None;
+
+            if ((compactDeltaFlags & 0x01) != 0)
+            {
+                EnsureReadable(reader, sizeof(byte), "Maker-session compact delta payload is missing its server-owned-craft override value.");
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasServerOwnsCraftExecutionValue;
+                if (reader.ReadByte() != 0)
+                {
+                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ServerOwnsCraftExecutionValue;
+                }
+            }
+
+            if ((compactDeltaFlags & 0x02) != 0)
+            {
+                EnsureReadable(reader, sizeof(byte), "Maker-session compact delta payload is missing its disassembly-list override value.");
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasAuthoritativeDisassemblyTargetsValue;
+                if (reader.ReadByte() != 0)
+                {
+                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.AuthoritativeDisassemblyTargetsValue;
+                }
+            }
+
+            if ((compactDeltaFlags & 0x04) != 0)
+            {
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ClearDisassemblyTargets;
+            }
+
+            List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions = null;
+            if ((compactDeltaFlags & 0x08) != 0)
+            {
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions;
+                disassemblyTargetAdditions = ReadDisassemblyTargetEntries16(
+                    reader,
+                    "Maker-session compact delta disassembly target addition");
+            }
+
+            List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals = null;
+            if ((compactDeltaFlags & 0x10) != 0)
+            {
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetRemovals;
+                disassemblyTargetRemovals = ReadDisassemblyTargetEntries16(
+                    reader,
+                    "Maker-session compact delta disassembly target removal");
+            }
+
+            if ((compactDeltaFlags & 0x20) != 0)
+            {
+                EnsureReadable(reader, sizeof(byte), "Maker-session compact delta payload is missing its hidden-list override value.");
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasAuthoritativeHiddenRecipeListValue;
+                if (reader.ReadByte() != 0)
+                {
+                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.AuthoritativeHiddenRecipeListValue;
+                }
+            }
+
+            if ((compactDeltaFlags & 0x40) != 0)
+            {
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ClearHiddenRecipeEntries;
+            }
+
+            if ((compactDeltaFlags & 0x80) != 0)
+            {
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ClearAll;
+            }
+
+            List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions = null;
+            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasAuthoritativeHiddenRecipeListValue)
+                && deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.AuthoritativeHiddenRecipeListValue))
+            {
+                // Compact deltas can optionally append hidden additions and removals after the
+                // hidden-list override block. Preserve this extension while remaining wire-safe
+                // for packets that only carry the authority bit.
+                if (reader.BaseStream.Position < reader.BaseStream.Length)
+                {
+                    hiddenRecipeAdditions = ReadHiddenRecipeEntries16(
+                        reader,
+                        "Maker-session compact delta hidden recipe addition");
+                    if (hiddenRecipeAdditions?.Count > 0)
+                    {
+                        deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions;
+                    }
+                }
+
+                if (reader.BaseStream.Position < reader.BaseStream.Length)
+                {
+                    List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals = ReadHiddenRecipeEntries16(
+                        reader,
+                        "Maker-session compact delta hidden recipe removal");
+                    if (hiddenRecipeRemovals?.Count > 0)
+                    {
+                        deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals;
+                        result = new PacketOwnedItemMakerSession
+                        {
+                            IsDeltaUpdate = true,
+                            DeltaFlags = deltaFlags,
+                            DisassemblyTargetAdditions = disassemblyTargetAdditions ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                            DisassemblyTargetRemovals = disassemblyTargetRemovals ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                            HiddenRecipeAdditions = hiddenRecipeAdditions ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>(),
+                            HiddenRecipeRemovals = hiddenRecipeRemovals
+                        };
+
+                        if (reader.BaseStream.Position != reader.BaseStream.Length)
+                        {
+                            error = $"Maker-session compact delta payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
+                            result = null;
+                            return false;
+                        }
+
+                        return true;
+                    }
+                }
+            }
+
+            if (reader.BaseStream.Position != reader.BaseStream.Length)
+            {
+                error = $"Maker-session compact delta payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
+                return false;
+            }
+
+            result = new PacketOwnedItemMakerSession
+            {
+                IsDeltaUpdate = true,
+                DeltaFlags = deltaFlags,
+                DisassemblyTargetAdditions = disassemblyTargetAdditions ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                DisassemblyTargetRemovals = disassemblyTargetRemovals ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                HiddenRecipeAdditions = hiddenRecipeAdditions ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>(),
+                HiddenRecipeRemovals = Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
+            };
+            return true;
+        }
+
         private static bool TryDecodeDeltaPayload(
             BinaryReader reader,
             out PacketOwnedItemMakerSession result,
@@ -296,9 +550,64 @@ namespace HaCreator.MapSimulator.Managers
             return entries;
         }
 
+        private static List<PacketOwnedItemMakerDisassemblyTargetEntry> ReadDisassemblyTargetEntries16(BinaryReader reader, string label)
+        {
+            int count = ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
+            if (count <= 0)
+            {
+                return null;
+            }
+
+            List<PacketOwnedItemMakerDisassemblyTargetEntry> entries = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                EnsureReadable(reader, sizeof(int) * 2, $"{label} entry is truncated.");
+                int slotIndex = reader.ReadInt32();
+                int itemId = reader.ReadInt32();
+                if (slotIndex < 0)
+                {
+                    throw new InvalidDataException($"{label} slots must be zero-based and non-negative.");
+                }
+
+                if (itemId <= 0)
+                {
+                    throw new InvalidDataException($"{label} entries must include a positive item id.");
+                }
+
+                entries.Add(new PacketOwnedItemMakerDisassemblyTargetEntry(slotIndex, itemId));
+            }
+
+            return entries;
+        }
+
         private static List<PacketOwnedItemMakerSessionHiddenEntry> ReadHiddenRecipeEntries(BinaryReader reader, string label)
         {
             int count = ReadNonNegativeCount(reader, $"{label} count is missing or negative.");
+            if (count <= 0)
+            {
+                return null;
+            }
+
+            List<PacketOwnedItemMakerSessionHiddenEntry> entries = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                EnsureReadable(reader, sizeof(int) * 2, $"{label} entry is truncated.");
+                int bucketKey = reader.ReadInt32();
+                int outputItemId = reader.ReadInt32();
+                if (outputItemId <= 0)
+                {
+                    throw new InvalidDataException($"{label} entries must include a positive output item id.");
+                }
+
+                entries.Add(new PacketOwnedItemMakerSessionHiddenEntry(bucketKey, outputItemId));
+            }
+
+            return entries;
+        }
+
+        private static List<PacketOwnedItemMakerSessionHiddenEntry> ReadHiddenRecipeEntries16(BinaryReader reader, string label)
+        {
+            int count = ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
             if (count <= 0)
             {
                 return null;
@@ -339,6 +648,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return count;
+        }
+
+        private static int ReadNonNegativeCount16(BinaryReader reader, string message)
+        {
+            EnsureReadable(reader, sizeof(ushort), message);
+            return reader.ReadUInt16();
         }
     }
 }

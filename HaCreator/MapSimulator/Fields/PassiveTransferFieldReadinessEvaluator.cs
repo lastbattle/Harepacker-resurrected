@@ -82,19 +82,26 @@ namespace HaCreator.MapSimulator.Fields
                 return QueuedRetryDecision.Clear;
             }
 
+            bool shouldKeepPending = ShouldKeepQueuedRetryPending(
+                new PassiveTransferFieldQueuedRetryState(
+                    state.HasLiveFieldInterface,
+                    state.HasPendingMapChange,
+                    state.HasBoundPlayer,
+                    state.IsPlayerActive));
+
             if (state.HasOneTimeActionCompleted && state.HasReadyFieldInterface)
             {
+                if (!shouldKeepPending)
+                {
+                    return QueuedRetryDecision.Clear;
+                }
+
                 return state.HasCollidingTransferPortal
                     ? QueuedRetryDecision.ReplayHandleUpKeyDown
                     : QueuedRetryDecision.Clear;
             }
 
-            return ShouldKeepQueuedRetryPending(
-                new PassiveTransferFieldQueuedRetryState(
-                    state.HasLiveFieldInterface,
-                    state.HasPendingMapChange,
-                    state.HasBoundPlayer,
-                    state.IsPlayerActive))
+            return shouldKeepPending
                 ? QueuedRetryDecision.KeepPending
                 : QueuedRetryDecision.Clear;
         }

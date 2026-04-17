@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Character;
 using System;
 using System.Buffers.Binary;
 using System.Globalization;
@@ -32,6 +33,7 @@ namespace HaCreator.MapSimulator
             public bool? ForcedSuccess { get; set; }
             public bool SuppressUpgradeApply { get; set; }
             public string PacketOwnedStatusMessage { get; set; }
+            public string PacketOwnedApplyStatusMessageOverride { get; set; }
             public bool PacketOwnedResultObserved { get; set; }
             public byte? PacketOwnedResultCode { get; set; }
             public byte[] EncodedRequestPayload { get; init; } = Array.Empty<byte>();
@@ -145,8 +147,14 @@ namespace HaCreator.MapSimulator
                         pendingRequest.Request.ModifierInventoryType,
                         pendingRequest.Request.ModifierSlotIndex,
                         pendingRequest.ForcedSuccess);
-                statusMessage = result.StatusMessage;
+                statusMessage = string.IsNullOrWhiteSpace(pendingRequest.PacketOwnedApplyStatusMessageOverride)
+                    ? result.StatusMessage
+                    : pendingRequest.PacketOwnedApplyStatusMessageOverride;
                 success = result.Success;
+                if (!string.IsNullOrWhiteSpace(pendingRequest.PacketOwnedApplyStatusMessageOverride))
+                {
+                    itemUpgradeWindow.SetOwnerStatusMessage(statusMessage, success);
+                }
             }
 
             ShowUtilityFeedbackMessage(statusMessage);
@@ -181,6 +189,23 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot &&
+                hasReasonCode &&
+                reasonCode == 0)
+            {
+                int recoverySlotCountArgument = ResolveItemUpgradeRecoveredSlotCountArgument(_pendingItemUpgradeOwnerRequest.Request.Slot);
+                _pendingItemUpgradeOwnerRequest.ForcedSuccess = true;
+                _pendingItemUpgradeOwnerRequest.SuppressUpgradeApply = false;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedStatusMessage = null;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride =
+                    ResolveItemUpgradeRecoveredSlotNotice(recoverySlotCountArgument);
+                _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = resultCode;
+                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
+                message = $"Queued packet-owned item-upgrade recovery apply result code {resultCode}.";
+                return true;
+            }
+
             if (TryResolveItemUpgradePacketOwnedNoticeOnlyResult(
                     resultCode,
                     hasReasonCode ? reasonCode : (int?)null,
@@ -190,6 +215,7 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.ForcedSuccess = null;
                 _pendingItemUpgradeOwnerRequest.SuppressUpgradeApply = true;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedStatusMessage = noticeMessage;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = resultCode;
                 _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
@@ -206,6 +232,7 @@ namespace HaCreator.MapSimulator
             _pendingItemUpgradeOwnerRequest.ForcedSuccess = success;
             _pendingItemUpgradeOwnerRequest.SuppressUpgradeApply = false;
             _pendingItemUpgradeOwnerRequest.PacketOwnedStatusMessage = null;
+            _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = resultCode;
             _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
@@ -213,6 +240,16 @@ namespace HaCreator.MapSimulator
                 ? $"Queued packet-owned item-upgrade success result code {resultCode}."
                 : $"Queued packet-owned item-upgrade fail result code {resultCode}.";
             return true;
+        }
+
+        private int ResolveItemUpgradeRecoveredSlotCountArgument(EquipSlot slot)
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
+            {
+                return itemUpgradeWindow.ResolveProjectedRemainingUpgradeSlotCountAfterRecovery(slot);
+            }
+
+            return 1;
         }
 
         private void MarkItemUpgradeOwnerRequestSent()
@@ -408,13 +445,10 @@ namespace HaCreator.MapSimulator
                 if (reasonCode.GetValueOrDefault() != 0)
                 {
                     message = ResolveItemUpgradeBusyNotice(resultValue ?? ItemUpgradeClientBusyResultFallbackValue);
-                }
-                else
-                {
-                    message = ResolveItemUpgradeNoUpgradeSlotNotice();
+                    return true;
                 }
 
-                return true;
+                return false;
             }
 
             if (resultCode != ItemUpgradePacketResultCodeClientRejected)
@@ -432,7 +466,7 @@ namespace HaCreator.MapSimulator
             {
                 1 => ResolveItemUpgradeSelectionRequiredNotice(),
                 2 => ResolveItemUpgradeIncompatibleSelectionNotice(),
-                3 => ResolveItemUpgradeNoUpgradeSlotNotice(),
+                3 => ResolveItemUpgradeViciousHammerBlockedNotice(),
                 _ => ResolveItemUpgradeBusyNotice(resultValue ?? ItemUpgradeClientBusyResultFallbackValue)
             };
             return true;
@@ -446,12 +480,25 @@ namespace HaCreator.MapSimulator
             return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(payload, resultCode, out message);
         }
 
+        internal static string ResolveItemUpgradeRecoveredSlotNoticeForTests(int remainingUpgradeCount)
+        {
+            return ResolveItemUpgradeRecoveredSlotNotice(remainingUpgradeCount);
+        }
+
         private static string ResolveItemUpgradeBusyNotice(int resultValue)
         {
             return ResolveItemUpgradeFormattedStringPoolNotice(
                 0x1A86,
                 resultValue,
                 "An enhancement request is already in progress.");
+        }
+
+        private static string ResolveItemUpgradeRecoveredSlotNotice(int remainingUpgradeCount)
+        {
+            return ResolveItemUpgradeFormattedStringPoolNotice(
+                0x13D0,
+                Math.Max(0, remainingUpgradeCount),
+                "Increased available upgrade by 1. 1 upgrades are left.");
         }
 
         private static string ResolveItemUpgradeBlockedStateNotice()
@@ -469,9 +516,9 @@ namespace HaCreator.MapSimulator
             return ResolveItemUpgradeStringPoolNotice(0x13CF, "The selected item cannot be enhanced with this scroll.");
         }
 
-        private static string ResolveItemUpgradeNoUpgradeSlotNotice()
+        private static string ResolveItemUpgradeViciousHammerBlockedNotice()
         {
-            return ResolveItemUpgradeStringPoolNotice(0x13D1, "The selected item has no upgrade slots remaining.");
+            return ResolveItemUpgradeStringPoolNotice(0x13D1, "You can't use Vicious' Hammer on Horntail Necklace.");
         }
 
         private static string ResolveItemUpgradeStringPoolNotice(int stringPoolId, string fallback)

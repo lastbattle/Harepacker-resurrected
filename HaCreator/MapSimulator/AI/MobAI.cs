@@ -1236,6 +1236,22 @@ namespace HaCreator.MapSimulator.AI
             return true;
         }
 
+        internal bool ShouldUseFallbackAngerGaugeFullChargeCadence()
+        {
+            if (!HasAngerGauge)
+            {
+                return false;
+            }
+
+            MobAttackEntry attack = GetCurrentAttack();
+            if (attack?.IsSpecialAttack == true)
+            {
+                return attack.AttackAfter <= 0;
+            }
+
+            return !_hasSpecialAttackFullChargeEffectOwnerTiming;
+        }
+
         /// <summary>
         /// Check if mob skill effect should apply this frame (based on skill timing)
         /// </summary>

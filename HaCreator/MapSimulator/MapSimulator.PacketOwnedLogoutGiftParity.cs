@@ -433,7 +433,7 @@ namespace HaCreator.MapSimulator
                 : string.Empty;
             string mappedPrecursorContextSuffix = string.IsNullOrWhiteSpace(precursorContextSummary)
                 ? string.Empty
-                : $" Mapped contiguous precursor slots: {precursorContextSummary}.";
+                : $" Mapped contiguous precursor dword slots immediately before `CWvsContext::m_bPredictQuit`: {precursorContextSummary}.";
             _lastPacketOwnedLogoutGiftSummary = _packetOwnedLogoutGiftHasConfig
                 ? HasPacketOwnedLogoutGiftOpaqueTail()
                     ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache{configOffsetSummary} (`m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]): {FormatPacketOwnedLogoutGiftCommodityList()}.{(hasCommodity ? string.Empty : " All three commodity slots are zero, but the decoded cache remains owned by the logout-gift context fields.")}{mappedPrecursorContextSuffix}"
@@ -1209,7 +1209,7 @@ namespace HaCreator.MapSimulator
         {
             int relativeIndex = dwordIndex - (PacketOwnedLogoutGiftPredictQuitContextDwordIndex - PacketOwnedLogoutGiftPrecursorContextSlotCount);
             return relativeIndex >= 0 && relativeIndex < PacketOwnedLogoutGiftPrecursorContextSlotCount
-                ? $"CWvsContext::OnSetLogoutGiftConfigPrecursorDword[{relativeIndex.ToString(CultureInfo.InvariantCulture)}]"
+                ? $"CWvsContext::PrePredictQuitDword[{relativeIndex.ToString(CultureInfo.InvariantCulture)}]"
                 : null;
         }
 

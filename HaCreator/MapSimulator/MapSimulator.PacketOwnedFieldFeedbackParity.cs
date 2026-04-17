@@ -210,6 +210,7 @@ namespace HaCreator.MapSimulator
                 ResolveChannelName = ResolvePacketFieldFeedbackChannelName,
                 IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name),
                 IsBlockedFriendName = name => _socialListRuntime.IsBlockedFriend(name),
+                IsUnderCover = static () => false,
                 QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer,
                 UpdateWhisperUserListLocation = UpdatePacketOwnedWhisperUserListLocation,
                 ResolveSwindleWarnings = GetPacketOwnedSwindleWarningEntries,

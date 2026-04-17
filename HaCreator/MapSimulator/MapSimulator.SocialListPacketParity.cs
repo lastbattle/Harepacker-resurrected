@@ -25,7 +25,7 @@ namespace HaCreator.MapSimulator
         private int _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt;
 
         private const string SocialListPacketPayloadUsage =
-            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n] [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|start <listenPort> <remoteHost> <remotePort> <opcode> [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|stop]|clientraw <hex>|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|friendresult <payloadhex=..|payloadb64=..>|partyresult <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
+            "Usage: /sociallist packet [status|session [status|discoverstatus <remotePort> [process=selector] [localPort=n]|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n] [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|start <listenPort> <remoteHost> <remotePort> <opcode> [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|stop]|clientraw <hex>|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|friendresult <payloadhex=..|payloadb64=..>|partyresult <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
         private const string SocialListPacketRawUsage =
             "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|friendresult|partyresult|guildresult|guildskillresult|allianceresult|clientresult> <hex>";
 
@@ -515,6 +515,9 @@ namespace HaCreator.MapSimulator
 
             switch (args[0].ToLowerInvariant())
             {
+                case "discoverstatus":
+                    return HandleSocialListSessionDiscoverStatusCommand(args);
+
                 case "discover":
                     if (args.Length < 3
                         || !int.TryParse(args[1], out int discoverRemotePort)
@@ -640,9 +643,88 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridge.Stop();
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialListOfficialSessionBridgeStatus());
 
+                case "history":
+                    return HandleSocialListSessionHistoryCommand(args);
+
+                case "clearhistory":
+                    return ChatCommandHandler.CommandResult.Ok(_socialListOfficialSessionBridge.ClearRecentPackets());
+
+                case "replay":
+                    return HandleSocialListSessionReplayCommand(args);
+
+                case "sendraw":
+                    return HandleSocialListSessionSendRawCommand(args);
+
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n] [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|start <listenPort> <remoteHost> <remotePort> <opcode> [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|stop]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session [status|discoverstatus <remotePort> [process=selector] [localPort=n]|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n] [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|start <listenPort> <remoteHost> <remotePort> <opcode> [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|stop]");
             }
+        }
+
+        private ChatCommandHandler.CommandResult HandleSocialListSessionHistoryCommand(string[] args)
+        {
+            int historyCount = 10;
+            if (args.Length > 1
+                && (!int.TryParse(args[1], out historyCount) || historyCount <= 0))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session history [count]");
+            }
+
+            return ChatCommandHandler.CommandResult.Info(_socialListOfficialSessionBridge.DescribeRecentPackets(historyCount));
+        }
+
+        private ChatCommandHandler.CommandResult HandleSocialListSessionReplayCommand(string[] args)
+        {
+            if (args.Length < 2
+                || !int.TryParse(args[1], out int replayIndex)
+                || replayIndex <= 0)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session replay <historyIndex>");
+            }
+
+            return _socialListOfficialSessionBridge.TryReplayRecentPacket(replayIndex, out string replayStatus)
+                ? ChatCommandHandler.CommandResult.Ok(replayStatus)
+                : ChatCommandHandler.CommandResult.Error(replayStatus);
+        }
+
+        private ChatCommandHandler.CommandResult HandleSocialListSessionSendRawCommand(string[] args)
+        {
+            if (args.Length < 2 || !TryDecodeHexBytes(string.Concat(args[1..]), out byte[] rawPacket))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session sendraw <hex>");
+            }
+
+            return _socialListOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string sendStatus)
+                ? ChatCommandHandler.CommandResult.Ok(sendStatus)
+                : ChatCommandHandler.CommandResult.Error(sendStatus);
+        }
+
+        private ChatCommandHandler.CommandResult HandleSocialListSessionDiscoverStatusCommand(string[] args)
+        {
+            if (args.Length < 2
+                || !int.TryParse(args[1], out int remotePort)
+                || remotePort <= 0
+                || remotePort > ushort.MaxValue)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session discoverstatus <remotePort> [process=selector] [localPort=n]");
+            }
+
+            string processSelector = null;
+            int? localPort = null;
+            for (int i = 2; i < args.Length; i++)
+            {
+                if (args[i].StartsWith("process=", StringComparison.OrdinalIgnoreCase))
+                {
+                    processSelector = args[i]["process=".Length..];
+                }
+                else if (args[i].StartsWith("localPort=", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(args[i]["localPort=".Length..], out int parsedLocalPort))
+                {
+                    localPort = parsedLocalPort;
+                }
+            }
+
+            return ChatCommandHandler.CommandResult.Info(
+                _socialListOfficialSessionBridge.DescribeDiscoveredSessions(remotePort, processSelector, localPort));
         }
 
         private void ResolveConfiguredSocialListResultOpcodes(

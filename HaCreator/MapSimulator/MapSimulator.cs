@@ -2265,6 +2265,7 @@ namespace HaCreator.MapSimulator
                 return snapshot;
             }
 
+            int requestId = ReserveMonsterBookRegistrationRequestId();
             int responseDelayMs;
             string requestSummary = DispatchMonsterBookRegistrationRequest(
                 ownerIdentity.Build,
@@ -2272,12 +2273,14 @@ namespace HaCreator.MapSimulator
                 ownerIdentity.CharacterName,
                 mobId,
                 registered,
+                requestId,
                 out responseDelayMs);
             _pendingMonsterBookRegistrationRequest = new PendingMonsterBookRegistrationRequest
             {
                 Build = ownerIdentity.Build,
                 CharacterId = ownerIdentity.CharacterId,
                 CharacterName = ownerIdentity.CharacterName,
+                RequestId = requestId,
                 MobId = mobId,
                 Registered = registered,
                 SentTick = Environment.TickCount64,
@@ -4130,16 +4133,35 @@ namespace HaCreator.MapSimulator
         private string HandleCharacterInfoSearchRequest(UserInfoUI.UserInfoActionContext context)
         {
             context = NormalizeCharacterInfoActionContext(context);
+            string locationSummary = context.LocationSummary;
+            int channel = context.Channel;
+            string handoffStatus = null;
+            bool remotePresenceResolved = true;
+            if (context.IsRemoteTarget)
+            {
+                remotePresenceResolved = TryResolveRemoteCharacterInfoTargetPresence(
+                    context,
+                    out locationSummary,
+                    out channel,
+                    out string unavailableMessage);
+                handoffStatus = remotePresenceResolved
+                    ? $"Character-info BtSearch handoff preserved {locationSummary} (CH {Math.Max(1, channel)})."
+                    : unavailableMessage;
+            }
+
             WireSocialSearchWindowData();
             _socialListRuntime.OpenSearchWindowFromCharacterInfo(
                 context.CharacterName,
                 context.Build,
-                context.LocationSummary,
-                context.Channel,
-                context.IsRemoteTarget);
+                locationSummary,
+                channel,
+                context.IsRemoteTarget,
+                handoffStatus);
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
-            return context.IsRemoteTarget
-                ? $"Social search opened from the character-info target handoff for {context.CharacterName}."
+            return context.IsRemoteTarget && !remotePresenceResolved
+                ? $"Social search opened from the character-info target handoff for {context.CharacterName}. Target presence could not be proven from the active seams, so this remains preview-only."
+                : context.IsRemoteTarget
+                    ? $"Social search opened from the character-info target handoff for {context.CharacterName}."
                 : "Social search opened from the profile window.";
         }
 
@@ -26691,12 +26713,9 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                for (int i = 0; i < part.Length; i++)
+                if (TryResolveCompactLocalOwnedElementToken(part, out int compactMask))
                 {
-                    if (TryResolveLocalOwnedElementToken(part[i].ToString(), out int charMask))
-                    {
-                        resolvedMask |= charMask;
-                    }
+                    resolvedMask |= compactMask;
                 }
             }
 
@@ -26735,6 +26754,7 @@ namespace HaCreator.MapSimulator
 
             return skill.Projectile == null
                    && !skill.UsesAffectedSkillBodyAttack
+                   && !ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
                    && skill.AttackType != SkillAttackType.Ranged
                    && skill.AttackType != SkillAttackType.Magic
                    && !skill.IsMagicDamageSkill
@@ -26749,9 +26769,17 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (IsClientShootLaneExplicitAreaSkillId(skill.SkillId))
+            {
+                return true;
+            }
+
             if (IsClientMagicInfoType(skill.ClientInfoType)
                 || skill.AttackType == SkillAttackType.Magic
-                || skill.IsMagicDamageSkill)
+                || skill.IsMagicDamageSkill
+                || skill.UsesAffectedSkillBodyAttack
+                || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
+                || IsClientBodyInfoType(skill.ClientInfoType))
             {
                 return false;
             }
@@ -26769,6 +26797,22 @@ namespace HaCreator.MapSimulator
         private static bool IsClientMagicLaneAreaCompatible(SkillData skill)
         {
             if (skill == null)
+            {
+                return false;
+            }
+
+            if (IsClientMagicLaneExplicitAreaSkillId(skill.SkillId))
+            {
+                return true;
+            }
+
+            if (ClientShootAttackFamilyResolver.UsesClientShootAttackLane(skill.SkillId)
+                || skill.Projectile != null
+                || skill.AttackType == SkillAttackType.Ranged
+                || IsClientShootInfoType(skill.ClientInfoType)
+                || skill.UsesAffectedSkillBodyAttack
+                || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
+                || IsClientBodyInfoType(skill.ClientInfoType))
             {
                 return false;
             }
@@ -26792,9 +26836,40 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            // IDA: TryDoingBodyAttack also owns `is_teleport_mastery_skill` path.
+            if (IsClientTeleportMasterySkillId(skill.SkillId))
+            {
+                return true;
+            }
+
             return skill.UsesAffectedSkillBodyAttack
                    || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
                    || (skill.AreaAttack && (IsClientBodyInfoType(skill.ClientInfoType) || !string.IsNullOrWhiteSpace(skill.AffectedSkillEffect)));
+        }
+
+        private static bool IsClientShootLaneExplicitAreaSkillId(int skillId)
+        {
+            // IDA: TryDoingShootAttack still has explicit area/foothold ownership branches.
+            return skillId == 3111003;
+        }
+
+        private static bool IsClientMagicLaneExplicitAreaSkillId(int skillId)
+        {
+            // IDA: TryDoingMagicAttack still gates local area ownership through explicit skill-id branches.
+            return skillId == 2121007
+                   || skillId == 2221007
+                   || skillId == 2321008
+                   || skillId == 22161001
+                   || skillId == 22181002
+                   || skillId == 32121004;
+        }
+
+        private static bool IsClientTeleportMasterySkillId(int skillId)
+        {
+            return skillId == 2111007
+                   || skillId == 2211007
+                   || skillId == 2311007
+                   || skillId == 32111010;
         }
 
         private static bool ContainsBodyAttackMetadata(string affectedSkillEffect)
@@ -26825,22 +26900,56 @@ namespace HaCreator.MapSimulator
 
         private static bool TryResolveLocalOwnedElementToken(string token, out int mask)
         {
+            if (int.TryParse(token, out int numericMask) && numericMask >= 0)
+            {
+                mask = numericMask;
+                return true;
+            }
+
             mask = token.Trim().ToLowerInvariant() switch
             {
                 "f" => 1,
                 "fire" => 1,
+                "burn" => 1,
                 "i" => 2,
                 "ice" => 2,
+                "cold" => 2,
                 "l" => 4,
                 "lightning" => 4,
+                "thunder" => 4,
                 "s" => 8,
                 "poison" => 8,
+                "venom" => 8,
                 "h" => 16,
                 "holy" => 16,
+                "sacred" => 16,
                 "d" => 32,
                 "dark" => 32,
+                "shadow" => 32,
                 _ => 0
             };
+
+            return mask != 0;
+        }
+
+        private static bool TryResolveCompactLocalOwnedElementToken(string token, out int mask)
+        {
+            mask = 0;
+            string compact = token?.Trim();
+            if (string.IsNullOrWhiteSpace(compact) || compact.Length > 6)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < compact.Length; i++)
+            {
+                if (!TryResolveLocalOwnedElementToken(compact[i].ToString(), out int charMask))
+                {
+                    return false;
+                }
+
+                mask |= charMask;
+            }
 
             return mask != 0;
         }
@@ -27775,13 +27884,14 @@ namespace HaCreator.MapSimulator
         private PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision EvaluatePassiveTransferFieldQueuedRetryDecision(int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
+            bool hasActiveOneTimeAction = player?.HasActivePassiveTransferFieldOneTimeAction() == true;
             bool hasLiveFieldInterface = HasPassiveTransferFieldInterface();
             bool hasCollidingTransferPortal = HasPassiveTransferFieldPortalCollision();
             return PassiveTransferFieldReadinessEvaluator.EvaluateQueuedRetryDecision(
                 new PassiveTransferFieldQueuedRetryDecisionState(
                     HasPendingRequest: _passiveTransferRequestPending,
-                    HasOneTimeActionCompleted: player?.HasActivePassiveTransferFieldOneTimeAction() != true,
-                    HasReadyFieldInterface: player?.HasActivePassiveTransferFieldOneTimeAction() != true
+                    HasOneTimeActionCompleted: !hasActiveOneTimeAction,
+                    HasReadyFieldInterface: !hasActiveOneTimeAction
                                             && ResolvePassiveTransferFieldReadyState(currentTime),
                     HasCollidingTransferPortal: hasCollidingTransferPortal,
                     HasLiveFieldInterface: hasLiveFieldInterface,
@@ -28787,11 +28897,31 @@ namespace HaCreator.MapSimulator
 
         private void ClearTransferFieldExclusiveRequestSent(bool preserveCooldown = true)
         {
-            _transferFieldExclusiveRequestSent = false;
-            if (!preserveCooldown)
+            ApplyTransferFieldExclusiveRequestClear(
+                preserveCooldown,
+                ref _transferFieldExclusiveRequestSent,
+                ref _transferFieldExclusiveRequestSentTick);
+        }
+
+        internal static void ApplyTransferFieldExclusiveRequestClear(
+            bool preserveCooldown,
+            ref bool exclusiveRequestSent,
+            ref int exclusiveRequestSentTick)
+        {
+            exclusiveRequestSent = false;
+            if (preserveCooldown)
             {
-                _transferFieldExclusiveRequestSentTick = int.MinValue;
+                return;
             }
+
+            exclusiveRequestSentTick = int.MinValue;
+        }
+
+        private void ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle()
+        {
+            // CWvsContext transfer/portal handoff responses consume both shared exclusive-request owners.
+            ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
+            ClearTransferFieldExclusiveRequestSent(preserveCooldown: false);
         }
 
         private void RegisterPortalCollisionRequestSource(int portalIndex)
@@ -32464,7 +32594,10 @@ namespace HaCreator.MapSimulator
         private void HandlePlayerSkillCast(SkillCastInfo castInfo)
 
         {
-            TryRegisterAnimationDisplayerSkillUse(castInfo);
+            if (!TryRouteLocalShowSkillEffectCastThroughRequestSeam(castInfo))
+            {
+                TryRegisterAnimationDisplayerSkillUse(castInfo);
+            }
 
             _fieldRuleRuntime?.RegisterSuccessfulSkillUse(castInfo?.SkillData);
 
@@ -32487,6 +32620,29 @@ namespace HaCreator.MapSimulator
 
             _temporaryPortalField?.TryCreateOpenGate(castInfo, currentMapId);
 
+        }
+
+        private bool TryRouteLocalShowSkillEffectCastThroughRequestSeam(SkillCastInfo castInfo)
+        {
+            if (!ShouldRouteLocalSkillCastThroughClientSkillEffectRequestSeamForTesting(castInfo))
+            {
+                return false;
+            }
+
+            var request = new SkillUseEffectRequest
+            {
+                EffectSkillId = castInfo.SkillId,
+                SourceSkillId = castInfo.SkillId,
+                RequestTime = castInfo.CastTime > 0 ? castInfo.CastTime : currTickCount,
+                BranchNames = castInfo.RequestedBranchNames,
+                WorldOrigin = new Microsoft.Xna.Framework.Vector2(castInfo.CasterX, castInfo.CasterY),
+                OriginOffset = castInfo.OriginOffset,
+                FollowOwnerPosition = castInfo.FollowOwnerPosition,
+                FollowOwnerFacing = castInfo.FollowOwnerFacing,
+                DelayRateOverride = castInfo.DelayRateOverride
+            };
+
+            return TryRegisterAnimationDisplayerLocalSkillUseRequest(request);
         }
 
 

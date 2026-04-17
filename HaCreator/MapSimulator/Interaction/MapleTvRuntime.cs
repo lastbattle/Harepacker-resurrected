@@ -154,8 +154,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal MapleTvSnapshot BuildSnapshot(int currentTick)
         {
             int remainingMs = 0;
+            int messageAnimationTick = 0;
             if (_showMessage && _messageStartedAt != int.MinValue)
             {
+                messageAnimationTick = Math.Max(0, currentTick - _messageStartedAt);
                 remainingMs = Math.Max(0, _activeDurationMs - Math.Max(0, currentTick - _messageStartedAt));
             }
 
@@ -187,6 +189,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SenderBuild = _senderBuild,
                 ReceiverBuild = _receiverBuild,
                 RemainingMs = remainingMs,
+                MessageAnimationTick = messageAnimationTick,
                 TotalWaitMs = totalWaitMs,
                 CanPublish = _draftLines.Any(line => !string.IsNullOrWhiteSpace(line)),
                 CanClear = _showMessage || _queueExists,
@@ -1184,6 +1187,7 @@ namespace HaCreator.MapSimulator.Interaction
         public CharacterBuild SenderBuild { get; init; }
         public CharacterBuild ReceiverBuild { get; init; }
         public int RemainingMs { get; init; }
+        public int MessageAnimationTick { get; init; }
         public int TotalWaitMs { get; init; }
         public bool CanPublish { get; init; }
         public bool CanClear { get; init; }

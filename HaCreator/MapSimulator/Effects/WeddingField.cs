@@ -650,7 +650,9 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
                     participant.AvatarModifiedRevision,
-                    participant.NameTagRevision);
+                    participant.NameTagRevision,
+                    participant.ProfileMetadataRevision,
+                    participant.GuildMarkRevision);
                 return true;
             }
 
@@ -681,7 +683,9 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
                     participant.AvatarModifiedRevision,
-                    participant.NameTagRevision));
+                    participant.NameTagRevision,
+                    participant.ProfileMetadataRevision,
+                    participant.GuildMarkRevision));
             }
 
             return snapshots;
@@ -713,7 +717,9 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
                     participant.AvatarModifiedRevision,
-                    participant.NameTagRevision));
+                    participant.NameTagRevision,
+                    participant.ProfileMetadataRevision,
+                    participant.GuildMarkRevision));
             }
 
             return snapshots;
@@ -1046,7 +1052,9 @@ namespace HaCreator.MapSimulator.Effects
                 participant.PacketOwnedItemEffectRevision,
                 participant.AvatarModifiedState,
                 participant.AvatarModifiedRevision,
-                participant.NameTagRevision);
+                participant.NameTagRevision,
+                participant.ProfileMetadataRevision,
+                participant.GuildMarkRevision);
             return true;
         }
 
@@ -4394,7 +4402,9 @@ namespace HaCreator.MapSimulator.Effects
         int PacketOwnedItemEffectRevision,
         RemoteUserAvatarModifiedPacket? AvatarModifiedState,
         int AvatarModifiedRevision,
-        int NameTagRevision);
+        int NameTagRevision,
+        int ProfileMetadataRevision,
+        int GuildMarkRevision);
 
     internal readonly record struct WeddingRemoteSpawnPacket(
         int CharacterId,
@@ -4457,6 +4467,8 @@ namespace HaCreator.MapSimulator.Effects
         public RemoteUserAvatarModifiedPacket? AvatarModifiedState { get; set; }
         public int AvatarModifiedRevision { get; set; }
         public int NameTagRevision { get; set; }
+        public int ProfileMetadataRevision { get; set; }
+        public int GuildMarkRevision { get; set; }
         public bool MovementDrivenActionSelection { get; set; }
         public bool HasExplicitFacing { get; set; }
         public bool HasExplicitAction { get; set; }

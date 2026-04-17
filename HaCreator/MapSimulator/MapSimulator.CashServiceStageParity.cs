@@ -52,6 +52,8 @@ namespace HaCreator.MapSimulator
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
         private const int CashShopOneADayHistorySlotCount = 12;
         private int _lastPlayedCashGachaponAnimationSequence;
+        private bool _cashReceiveGiftFollowUpNoticePending;
+        private int _cashReceiveGiftFollowUpNoticeNextIndex = -1;
 
         private sealed class CashInventoryPacketFocusSnapshot
         {
@@ -1442,6 +1444,8 @@ namespace HaCreator.MapSimulator
             {
                 uiWindowManager?.HideWindow(CashShopModalOwnerWindowNames[i]);
             }
+
+            ClearCashReceiveGiftFollowUpNoticeState();
         }
 
         private void ShowCashShopChildOwnerWindows()
@@ -1843,6 +1847,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            ClearCashReceiveGiftFollowUpNoticeState();
             CashServiceStageWindow.PacketCatalogEntry entry = stageWindow.CashGiftPacketEntries[giftIndex];
             int totalGiftCount = stageWindow.CashGiftPacketEntries.Count;
             string sender = string.IsNullOrWhiteSpace(entry.Seller) ? "Unknown sender" : entry.Seller;
@@ -1876,6 +1881,47 @@ namespace HaCreator.MapSimulator
                 giftRows: BuildCashReceiveGiftQueueLabels(stageWindow.CashGiftPacketEntries),
                 selectedGiftIndex: giftIndex);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+        }
+
+        private void ShowCashReceiveGiftFollowUpNoticeDialog(CashServiceStageWindow stageWindow, int nextGiftIndex, string acceptanceSummary)
+        {
+            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, out CashServiceModalOwnerWindow modalWindow))
+            {
+                return;
+            }
+
+            int remainingRows = Math.Max(0, stageWindow?.CashGiftPacketEntries.Count ?? 0);
+            bool hasNextGiftRow = stageWindow != null
+                && nextGiftIndex >= 0
+                && nextGiftIndex < stageWindow.CashGiftPacketEntries.Count;
+            modalWindow.Configure(
+                "CUIReceiveGift",
+                "The current GW_GiftList row returned from CDialog::DoModal and staged its follow-up owner notice.",
+                new[]
+                {
+                    acceptanceSummary,
+                    $"Decoded queue still has {remainingRows.ToString(CultureInfo.InvariantCulture)} row(s) after this accept branch."
+                },
+                new[]
+                {
+                    new CashServiceModalOwnerWindow.ActionButtonState
+                    {
+                        Label = "OK",
+                        IsPrimary = true
+                    }
+                },
+                footer: hasNextGiftRow
+                    ? "Follow-up notice acknowledged: the next packet-owned gift row will open on OK."
+                    : "Follow-up notice acknowledged: no additional packet-owned gift rows remain.");
+            _cashReceiveGiftFollowUpNoticePending = true;
+            _cashReceiveGiftFollowUpNoticeNextIndex = nextGiftIndex;
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+        }
+
+        private void ClearCashReceiveGiftFollowUpNoticeState()
+        {
+            _cashReceiveGiftFollowUpNoticePending = false;
+            _cashReceiveGiftFollowUpNoticeNextIndex = -1;
         }
 
         private void ShowCashNameChangeLicenseDialog(CashServiceStageWindow stageWindow)
@@ -2137,6 +2183,20 @@ namespace HaCreator.MapSimulator
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
             {
                 uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+                ClearCashReceiveGiftFollowUpNoticeState();
+                return;
+            }
+
+            if (_cashReceiveGiftFollowUpNoticePending)
+            {
+                int nextGiftIndexAfterNotice = _cashReceiveGiftFollowUpNoticeNextIndex;
+                uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+                ClearCashReceiveGiftFollowUpNoticeState();
+                if (nextGiftIndexAfterNotice >= 0 && nextGiftIndexAfterNotice < stageWindow.CashGiftPacketEntries.Count)
+                {
+                    ShowCashReceiveGiftDialog(stageWindow, nextGiftIndexAfterNotice);
+                }
+
                 return;
             }
 
@@ -2165,6 +2225,8 @@ namespace HaCreator.MapSimulator
                 TryTriggerSpecialistPetSocialFeedback(
                     BuildCashReceiveGiftSpecialistMessages(selectedGift, normalizedReplyText),
                     currTickCount);
+                ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, selectedGiftIndex, message);
+                return;
             }
 
             int nextGiftIndex = buttonIndex == 0 ? selectedGiftIndex : selectedGiftIndex + 1;

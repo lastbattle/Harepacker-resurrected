@@ -568,7 +568,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string currentDirectoryPath = HaCreator.Program.DataSource?.VersionInfo?.DirectoryPath;
-            foreach (string candidateDirectory in EnumerateFallbackCountryNameDataSourceDirectories(currentDirectoryPath))
+            string preferredDirectoryPath = AccountMoreInfoOwnerStringPoolText.GetPreferredAccountMoreInfoDataSourceDirectory();
+            IReadOnlyList<string> fallbackDirectories = PrioritizePreferredDataSourceDirectory(
+                preferredDirectoryPath,
+                EnumerateFallbackCountryNameDataSourceDirectories(currentDirectoryPath));
+            foreach (string candidateDirectory in fallbackDirectories)
             {
                 try
                 {
@@ -647,6 +651,35 @@ namespace HaCreator.MapSimulator.Managers
                 .ThenBy(directory => directory.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(directory => directory.FullName)
                 .ToArray();
+        }
+
+        internal static IReadOnlyList<string> PrioritizePreferredDataSourceDirectory(
+            string preferredDirectoryPath,
+            IReadOnlyList<string> fallbackDirectories)
+        {
+            if (fallbackDirectories == null || fallbackDirectories.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> ordered = new(fallbackDirectories.Count + 1);
+            if (!string.IsNullOrWhiteSpace(preferredDirectoryPath)
+                && fallbackDirectories.Any(directory => string.Equals(directory, preferredDirectoryPath, StringComparison.OrdinalIgnoreCase)))
+            {
+                ordered.Add(preferredDirectoryPath);
+            }
+
+            foreach (string directory in fallbackDirectories)
+            {
+                if (ordered.Any(existing => string.Equals(existing, directory, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                ordered.Add(directory);
+            }
+
+            return ordered;
         }
 
         private static string ExtractComparableVersionPrefix(string directoryName)

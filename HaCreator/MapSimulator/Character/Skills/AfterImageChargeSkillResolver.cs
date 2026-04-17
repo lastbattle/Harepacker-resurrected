@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     'i' => 1,
                     'f' => 2,
+                    'l' => 3,
                     's' => 3,
                     'h' => 5,
                     _ => 0

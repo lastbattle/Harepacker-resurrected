@@ -50,6 +50,13 @@ namespace HaCreator.MapSimulator.Fields
 
             if (property is WzStringProperty stringProperty)
             {
+                if (ShouldTreatPropertyNameAsScriptAlias(stringProperty.Name)
+                    && IsBooleanLikeStateText(stringProperty.Value))
+                {
+                    Append(stringProperty.Name, inheritedDelayMs, publications, seenPublications);
+                    return;
+                }
+
                 Append(stringProperty.Value, inheritedDelayMs, publications, seenPublications);
                 return;
             }

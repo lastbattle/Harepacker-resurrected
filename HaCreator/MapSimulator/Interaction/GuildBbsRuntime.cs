@@ -67,6 +67,10 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte ClientEntryNotFoundResultType = 8;
         private const int ClientRequestHistoryLimit = 16;
         private const int DateBufferLength = 8;
+        // IDA evidence: CUIGuildBBS::IsGuildBBSAdmin gates admin paths by CWvsContext::GetGuildMemberGrade(...) <= 2.
+        private const int ClientGuildMemberGradeMin = 1;
+        private const int ClientGuildMemberGradeAdminThreshold = 2;
+        private const int ClientGuildMemberGradeMax = 5;
 
         private sealed class GuildBbsCommentState
         {
@@ -2018,6 +2022,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryFindStructuredPermissionCandidate(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
         {
+            if (TryFindClientGuildMemberGradePermissionCandidate(payload, out mask, out detail))
+            {
+                return true;
+            }
+
             if (TryDecodePermissionFlagVector(payload, 0, out mask))
             {
                 detail = "matched a direct five-flag authority vector at offset 0";
@@ -2035,6 +2044,71 @@ namespace HaCreator.MapSimulator.Interaction
             mask = GuildBbsPermissionMask.None;
             detail = null;
             return false;
+        }
+
+        private static bool TryFindClientGuildMemberGradePermissionCandidate(
+            byte[] payload,
+            out GuildBbsPermissionMask mask,
+            out string detail)
+        {
+            mask = GuildBbsPermissionMask.None;
+            detail = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (TryMapClientGuildMemberGradeToPermissionMask(payload[0], out mask))
+            {
+                detail = $"matched client guild member grade {payload[0]} byte at offset 0";
+                return true;
+            }
+
+            if (payload.Length >= 2
+                && payload[0] == 1
+                && TryMapClientGuildMemberGradeToPermissionMask(payload[1], out mask))
+            {
+                detail = $"matched count-prefixed client guild member grade {payload[1]} byte";
+                return true;
+            }
+
+            if (payload.Length >= sizeof(int)
+                && TryMapClientGuildMemberGradeToPermissionMask(BitConverter.ToInt32(payload, 0), out mask))
+            {
+                int candidate = BitConverter.ToInt32(payload, 0);
+                detail = $"matched client guild member grade {candidate} int32 at offset 0";
+                return true;
+            }
+
+            if (payload.Length >= 1 + sizeof(int)
+                && payload[0] == 1
+                && TryMapClientGuildMemberGradeToPermissionMask(BitConverter.ToInt32(payload, 1), out mask))
+            {
+                int candidate = BitConverter.ToInt32(payload, 1);
+                detail = $"matched count-prefixed client guild member grade {candidate} int32";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryMapClientGuildMemberGradeToPermissionMask(int grade, out GuildBbsPermissionMask mask)
+        {
+            mask = GuildBbsPermissionMask.None;
+            if (grade < ClientGuildMemberGradeMin || grade > ClientGuildMemberGradeMax)
+            {
+                return false;
+            }
+
+            mask = GuildBbsPermissionMask.WriteThread
+                   | GuildBbsPermissionMask.Reply
+                   | GuildBbsPermissionMask.OwnThread;
+            if (grade <= ClientGuildMemberGradeAdminThreshold)
+            {
+                mask |= GuildBbsPermissionMask.WriteNotice | GuildBbsPermissionMask.Moderate;
+            }
+
+            return true;
         }
 
         private bool TryFindPermissionMaskCandidate(byte[] payload, out GuildBbsPermissionMask mask, out string detail)

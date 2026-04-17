@@ -268,7 +268,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (!alreadyTracked)
             {
-                _trackedQuestIds.Add(questId);
+                int insertIndex = ResolveManualTrackInsertIndex(_currentSnapshot, _trackedQuestIds.Count);
+                _trackedQuestIds.Insert(insertIndex, questId);
             }
 
             _hiddenAutoQuestIds.Remove(questId);
@@ -543,6 +544,25 @@ namespace HaCreator.MapSimulator.UI
             RefreshFrame(_currentSnapshot ?? RefreshFilteredSnapshot());
             UpdateButtonStates();
             SavePersistedState();
+        }
+
+        private static int ResolveManualTrackInsertIndex(QuestAlarmSnapshot snapshot, int fallbackIndex)
+        {
+            if (snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return Math.Max(0, fallbackIndex);
+            }
+
+            int clampedFallbackIndex = Math.Max(0, Math.Min(fallbackIndex, snapshot.Entries.Count));
+            for (int i = 0; i < clampedFallbackIndex; i++)
+            {
+                if (snapshot.Entries[i]?.IsRecentlyUpdated == true)
+                {
+                    return i;
+                }
+            }
+
+            return clampedFallbackIndex;
         }
 
         internal bool IsQuestTracked(int questId)

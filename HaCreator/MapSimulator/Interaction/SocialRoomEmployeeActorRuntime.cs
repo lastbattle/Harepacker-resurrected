@@ -1511,7 +1511,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string ResolveNameTagText(SocialRoomFieldActorSnapshot snapshot)
         {
-            string ownerName = ExtractOwnerName(snapshot?.Detail);
+            string ownerName = ResolveNameTagOwner(ExtractOwnerName(snapshot?.Detail));
             if (string.IsNullOrWhiteSpace(ownerName))
             {
                 return string.Empty;
@@ -1523,6 +1523,59 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return FormatHiredMerchantNameTag(ownerName);
+        }
+
+        private static string ResolveNameTagOwner(string ownerNameOrTag)
+        {
+            string candidate = ownerNameOrTag?.Trim();
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return string.Empty;
+            }
+
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                HiredMerchantNameTagStringPoolId,
+                HiredMerchantNameTagFallbackFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            return TryExtractOwnerNameFromFormattedNameTag(candidate, format, out string ownerName)
+                ? ownerName
+                : candidate;
+        }
+
+        private static bool TryExtractOwnerNameFromFormattedNameTag(string formattedNameTag, string compositeFormat, out string ownerName)
+        {
+            ownerName = string.Empty;
+            if (string.IsNullOrWhiteSpace(formattedNameTag) || string.IsNullOrWhiteSpace(compositeFormat))
+            {
+                return false;
+            }
+
+            const string PlaceholderToken = "{0}";
+            int placeholderIndex = compositeFormat.IndexOf(PlaceholderToken, StringComparison.Ordinal);
+            if (placeholderIndex < 0)
+            {
+                return false;
+            }
+
+            string prefix = compositeFormat[..placeholderIndex];
+            string suffix = compositeFormat[(placeholderIndex + PlaceholderToken.Length)..];
+            if (!formattedNameTag.StartsWith(prefix, StringComparison.Ordinal)
+                || !formattedNameTag.EndsWith(suffix, StringComparison.Ordinal)
+                || formattedNameTag.Length < prefix.Length + suffix.Length)
+            {
+                return false;
+            }
+
+            int ownerLength = formattedNameTag.Length - prefix.Length - suffix.Length;
+            string extractedOwnerName = formattedNameTag.Substring(prefix.Length, ownerLength).Trim();
+            if (string.IsNullOrWhiteSpace(extractedOwnerName))
+            {
+                return false;
+            }
+
+            ownerName = extractedOwnerName;
+            return true;
         }
 
         private static bool ShouldShowLiveEmployeeNameTag(SocialRoomFieldActorSnapshot snapshot)

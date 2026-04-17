@@ -784,14 +784,18 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = 0; i < _clientOwnedPreviousMaskTopLefts.Count; i++)
             {
                 Vector2 topLeft = _clientOwnedPreviousMaskTopLefts[i];
-                spriteBatch.Draw(
-                    _pixelTexture,
-                    new Rectangle(
-                        (int)MathF.Round(topLeft.X),
-                        (int)MathF.Round(topLeft.Y),
-                        width,
-                        height),
-                    smallDarkColor);
+                if (!TryResolveClientOwnedSmallDarkPatchRectangle(
+                    (int)MathF.Round(topLeft.X),
+                    (int)MathF.Round(topLeft.Y),
+                    width,
+                    height,
+                    GetClientOwnedDarkLayerBounds(),
+                    out Rectangle destinationRect))
+                {
+                    continue;
+                }
+
+                spriteBatch.Draw(_pixelTexture, destinationRect, smallDarkColor);
             }
         }
 
@@ -1142,6 +1146,25 @@ namespace HaCreator.MapSimulator.Fields
             return sourceRect.Width > 0 && sourceRect.Height > 0;
         }
 
+        internal static bool TryResolveClientOwnedSmallDarkPatchRectangle(
+            int left,
+            int top,
+            int width,
+            int height,
+            Rectangle darkLayerBounds,
+            out Rectangle destinationRect)
+        {
+            destinationRect = Rectangle.Empty;
+
+            if (width <= 0 || height <= 0 || darkLayerBounds.Width <= 0 || darkLayerBounds.Height <= 0)
+            {
+                return false;
+            }
+
+            Rectangle unclippedDestination = new(left, top, width, height);
+            return TryIntersectRectangles(unclippedDestination, darkLayerBounds, out destinationRect);
+        }
+
         private static bool TryIntersectRectangles(Rectangle a, Rectangle b, out Rectangle intersection)
         {
             int left = Math.Max(a.Left, b.Left);
@@ -1219,15 +1242,19 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            if (!TryResolveClientOwnedSmallDarkPatchRectangle(
+                (int)MathF.Round(topLeft.X),
+                (int)MathF.Round(topLeft.Y),
+                width,
+                height,
+                GetClientOwnedDarkLayerBounds(),
+                out Rectangle destinationRect))
+            {
+                return;
+            }
+
             Color smallDarkColor = new((byte)0, (byte)0, (byte)0, fogColor.A);
-            spriteBatch.Draw(
-                _pixelTexture,
-                new Rectangle(
-                    (int)MathF.Round(topLeft.X),
-                    (int)MathF.Round(topLeft.Y),
-                    width,
-                    height),
-                smallDarkColor);
+            spriteBatch.Draw(_pixelTexture, destinationRect, smallDarkColor);
         }
 
         internal IReadOnlyList<Vector2> ClientOwnedPreviousMaskTopLefts => _clientOwnedPreviousMaskTopLefts;

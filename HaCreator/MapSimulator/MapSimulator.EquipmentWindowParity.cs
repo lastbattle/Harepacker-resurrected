@@ -1765,7 +1765,6 @@ namespace HaCreator.MapSimulator
             {
                 if (envelope?.Request == null
                     || !envelope.AwaitingMechanicPacketAuthority
-                    || !envelope.AllowObservedLiveMechanicRecovery
                     || !IsMechanicEquipmentRequest(envelope.Request))
                 {
                     continue;

@@ -906,20 +906,24 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static float ResolveClientActiveFollowHorizontalStep(float currentX, float targetX, out double velocityX)
         {
-            if (targetX > currentX + ActiveFollowDistanceX)
+            int currentXInt = ToClientWorldInt(currentX);
+            int targetXInt = ToClientWorldInt(targetX);
+            if (targetXInt > currentXInt + ActiveFollowDistanceX)
             {
                 velocityX = 1d;
-                return Math.Min(targetX - ActiveFollowDistanceX, currentX + ActiveFollowStepX);
+                int nextX = Math.Min(targetXInt - (int)ActiveFollowDistanceX, currentXInt + (int)ActiveFollowStepX);
+                return nextX;
             }
 
-            if (targetX < currentX - ActiveFollowDistanceX)
+            if (targetXInt < currentXInt - ActiveFollowDistanceX)
             {
                 velocityX = -1d;
-                return Math.Max(targetX + ActiveFollowDistanceX, currentX - ActiveFollowStepX);
+                int nextX = Math.Max(targetXInt + (int)ActiveFollowDistanceX, currentXInt - (int)ActiveFollowStepX);
+                return nextX;
             }
 
             velocityX = 0d;
-            return currentX;
+            return currentXInt;
         }
 
         internal static float ResolveClientActiveFollowVerticalStep(
@@ -929,8 +933,10 @@ namespace HaCreator.MapSimulator.Companions
             ref int checkCount,
             out double velocityY)
         {
-            float deltaY = targetY - currentY;
-            float absoluteDeltaY = Math.Abs(deltaY);
+            int currentYInt = ToClientWorldInt(currentY);
+            int targetYInt = ToClientWorldInt(targetY);
+            int deltaY = targetYInt - currentYInt;
+            int absoluteDeltaY = Math.Abs(deltaY);
             if (followingState == 0)
             {
                 if (absoluteDeltaY > ActiveFollowVerticalCheckDistance)
@@ -961,23 +967,28 @@ namespace HaCreator.MapSimulator.Companions
             if (!shouldMoveVertically)
             {
                 velocityY = 0d;
-                return currentY;
+                return currentYInt;
             }
 
-            if (followingState < 0 && currentY == targetY)
+            if (followingState < 0 && currentYInt == targetYInt)
             {
                 followingState = 0;
                 velocityY = 0d;
-                return currentY;
+                return currentYInt;
             }
 
             int verticalStep = Math.Max(1, (int)(MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f));
             float nextY = deltaY >= 0f
-                ? Math.Min(targetY, currentY + verticalStep)
-                : Math.Max(targetY, currentY - verticalStep);
+                ? Math.Min(targetYInt, currentYInt + verticalStep)
+                : Math.Max(targetYInt, currentYInt - verticalStep);
             followingState = nextY == targetY ? -1 : 1;
             velocityY = deltaY >= 0f ? 1d : -1d;
             return nextY;
+        }
+
+        private static int ToClientWorldInt(float value)
+        {
+            return (int)value;
         }
 
         internal static bool ShouldUseImmediateActiveVerticalFollow(float deltaY)

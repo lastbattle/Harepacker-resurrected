@@ -1342,10 +1342,14 @@ namespace HaCreator.MapSimulator.Character
                 return 0;
             }
 
+            ShadowPartnerActionPiece[] orderedPieces = piecePlan
+                .OrderBy(static piece => piece.SlotIndex)
+                .ToArray();
+
             bool hasClientActionManInitPieces = false;
             bool hasSyntheticMirroredTail = false;
             int eventDelayMs = 0;
-            foreach (ShadowPartnerActionPiece piece in piecePlan)
+            foreach (ShadowPartnerActionPiece piece in orderedPieces)
             {
                 hasClientActionManInitPieces |= piece.IsClientActionManInitPiece;
                 hasSyntheticMirroredTail |= piece.IsSyntheticMirroredTailPiece;
@@ -1374,7 +1378,7 @@ namespace HaCreator.MapSimulator.Character
             int totalDelayMs = 0;
             int lastFrameDelayMs = 0;
             bool hasResolvedFrameDelay = false;
-            foreach (ShadowPartnerActionPiece piece in piecePlan)
+            foreach (ShadowPartnerActionPiece piece in orderedPieces)
             {
                 if (piece.IsSyntheticMirroredTailPiece || !piece.DelayOverrideMs.HasValue)
                 {
@@ -1750,6 +1754,17 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return Math.Max(0, timeMs) >= ResolvePlaybackTotalDurationMs(animation);
+        }
+
+        public static bool ShouldHoldBlockingAction(
+            string actionName,
+            SkillAnimation playbackAnimation,
+            int elapsedTimeMs)
+        {
+            return IsBlockingAction(actionName)
+                   && playbackAnimation?.Frames != null
+                   && playbackAnimation.Frames.Count > 0
+                   && !IsPlaybackComplete(playbackAnimation, elapsedTimeMs);
         }
 
         public static int ResolvePlaybackFrameDurationMs(int frameDelayMs)

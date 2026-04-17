@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<int, string> ResolveChannelName { get; init; }
         internal Func<string, bool> IsBlacklistedName { get; init; }
         internal Func<string, bool> IsBlockedFriendName { get; init; }
+        internal Func<bool> IsUnderCover { get; init; }
         internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
         internal Action<string, string, byte, int> UpdateWhisperUserListLocation { get; init; }
         internal Func<IReadOnlyList<PacketFieldSwindleWarningEntry>> ResolveSwindleWarnings { get; init; }
@@ -879,7 +880,11 @@ namespace HaCreator.MapSimulator.Interaction
                             return true;
                         }
 
-                        callbacks?.AddClientChatMessage?.Invoke(resolved, 1, null);
+                        if (!string.IsNullOrWhiteSpace(resolved))
+                        {
+                            callbacks?.AddClientChatMessage?.Invoke(resolved, 1, null);
+                        }
+
                         _statusMessage = queuedTransfer
                             ? $"Applied packet-owned whisper chase response for {target} and queued map transfer."
                             : $"Applied packet-owned whisper location response for {target}.";
@@ -1698,12 +1703,18 @@ namespace HaCreator.MapSimulator.Interaction
                 switch (result)
                 {
                     case 1:
-                        if (!HasWhisperTransferTarget(value, callbacks))
+                        if (IsWhisperHiddenField(value, callbacks))
                         {
                             string hiddenText = MapleStoryStringPool.GetOrFallback(
                                 WhisperUserListHiddenFieldStringPoolId,
                                 WhisperUserListHiddenFieldFallback);
                             text = FormatWhisperUserListText(normalizedTarget, hiddenText);
+                            return true;
+                        }
+
+                        if (!HasWhisperTransferTarget(value, callbacks))
+                        {
+                            text = string.Empty;
                             return true;
                         }
 
@@ -1735,12 +1746,18 @@ namespace HaCreator.MapSimulator.Interaction
             switch (result)
             {
                 case 1:
-                    if (!HasWhisperTransferTarget(value, callbacks))
+                    if (IsWhisperHiddenField(value, callbacks))
                     {
                         text = FormatWhisperStringPoolText(
                             subtype == 72 ? WhisperUserListFormatStringPoolId : WhisperHiddenFieldStringPoolId,
                             WhisperHiddenFieldFallback,
                             normalizedTarget);
+                        return true;
+                    }
+
+                    if (!HasWhisperTransferTarget(value, callbacks))
+                    {
+                        text = string.Empty;
                         return true;
                     }
 
@@ -1785,6 +1802,17 @@ namespace HaCreator.MapSimulator.Interaction
                 WhisperUserListEntryFallback,
                 target,
                 detailText ?? string.Empty);
+        }
+
+        private static bool IsWhisperHiddenField(int mapId, PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (mapId <= 0)
+            {
+                return false;
+            }
+
+            int mapCategory = Math.Abs(mapId / 1000000) % 100;
+            return mapCategory == 9 && callbacks?.IsUnderCover?.Invoke() != true;
         }
 
         private static bool TryResolveGroupFamily(byte family, out int chatLogType, out string prefix)

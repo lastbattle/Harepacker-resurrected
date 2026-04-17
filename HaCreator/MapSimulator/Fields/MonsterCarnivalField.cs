@@ -1163,6 +1163,10 @@ namespace HaCreator.MapSimulator.Fields
         private readonly MonsterCarnivalUiWindowState _uiWindowState = new();
         private MonsterCarnivalVariantSessionPhase _variantSessionPhase;
         private string _variantSessionSummary;
+        private int _lastVariantDelegatedPacketType = -1;
+        private bool _lastVariantDelegatedRawPacket;
+        private string _lastVariantDelegatedOwner;
+        private string _lastVariantDelegatedSummary;
         private GraphicsDevice _graphicsDevice;
         private MonsterCarnivalHudAssets _hudAssets = new();
 
@@ -1255,6 +1259,17 @@ namespace HaCreator.MapSimulator.Fields
                 enemyTeam.TotalCp);
 
             ShowStatus(BuildEnterStatusMessage(localTeam), Environment.TickCount);
+            if (_definition?.IsWaitingRoom == true)
+            {
+                SetVariantSessionPhase(
+                    MonsterCarnivalVariantSessionPhase.MemberState,
+                    $"{_definition.ClientOwnerLabel} delegated OnEnter to CField_MonsterCarnival while preserving the waiting-room wrapper-only surface.");
+                RecordRecoveredClientOwnerAction(
+                    $"{_definition.ClientOwnerLabel}::OnEnter delegated to CField_MonsterCarnival::OnEnter while the waiting-room wrapper kept CUIMonsterCarnival disabled.",
+                    Array.Empty<int>());
+                return;
+            }
+
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.HudSync,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} synchronized the shared Carnival HUD through OnEnter.");
@@ -1309,6 +1324,17 @@ namespace HaCreator.MapSimulator.Fields
             _team1.CurrentCp = Math.Max(0, team1CurrentCp);
             _team1.TotalCp = Math.Max(_team1.CurrentCp, team1TotalCp);
             RefreshClientOwnedUiWindowCpState();
+            if (_definition?.IsWaitingRoom == true)
+            {
+                SetVariantSessionPhase(
+                    MonsterCarnivalVariantSessionPhase.LiveHud,
+                    $"{_definition.ClientOwnerLabel} delegated CP synchronization to CField_MonsterCarnival without creating CUIMonsterCarnival.");
+                RecordRecoveredClientOwnerAction(
+                    $"{_definition.ClientOwnerLabel}::OnPersonalCP/OnTeamCP delegated CP totals while the waiting-room wrapper stayed HUD-less.",
+                    Array.Empty<int>());
+                return;
+            }
+
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.LiveHud,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} refreshed live CP totals on the shared Carnival seam.");
@@ -1718,9 +1744,18 @@ namespace HaCreator.MapSimulator.Fields
                             }
 
                             RefreshClientOwnedUiWindowSpellState();
-                            RecordRecoveredClientOwnerAction(
-                                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
-                                Array.Empty<int>());
+                            if (_definition?.IsWaitingRoom == true)
+                            {
+                                RecordRecoveredClientOwnerAction(
+                                    $"{_definition.ClientOwnerLabel}::OnEnter delegated summoned-count decode to CField_MonsterCarnival while preserving waiting-room wrapper-only UI ownership.",
+                                    Array.Empty<int>());
+                            }
+                            else
+                            {
+                                RecordRecoveredClientOwnerAction(
+                                    $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
+                                    Array.Empty<int>());
+                            }
                         }
 
                         RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
@@ -1826,9 +1861,18 @@ namespace HaCreator.MapSimulator.Fields
                             }
 
                             RefreshClientOwnedUiWindowSpellState();
-                            RecordRecoveredClientOwnerAction(
-                                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
-                                Array.Empty<int>());
+                            if (_definition?.IsWaitingRoom == true)
+                            {
+                                RecordRecoveredClientOwnerAction(
+                                    $"{_definition.ClientOwnerLabel}::OnEnter delegated summoned-count decode to CField_MonsterCarnival while preserving waiting-room wrapper-only UI ownership.",
+                                    Array.Empty<int>());
+                            }
+                            else
+                            {
+                                RecordRecoveredClientOwnerAction(
+                                    $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
+                                    Array.Empty<int>());
+                            }
                         }
 
                         RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
@@ -1991,6 +2035,10 @@ namespace HaCreator.MapSimulator.Fields
             _uiWindowState.Reset();
             _variantSessionPhase = MonsterCarnivalVariantSessionPhase.None;
             _variantSessionSummary = null;
+            _lastVariantDelegatedPacketType = -1;
+            _lastVariantDelegatedRawPacket = false;
+            _lastVariantDelegatedOwner = null;
+            _lastVariantDelegatedSummary = null;
         }
 
         private void ClearRoundState()
@@ -3208,20 +3256,56 @@ namespace HaCreator.MapSimulator.Fields
 
         private void RecordVariantWrapperPacketDelegation(int packetType, bool rawPacket)
         {
-            if (_definition == null || (!_definition.IsWaitingRoom && !_definition.IsSeason2Mode))
+            if (_definition == null || !ShouldTrackVariantClientOwnerAction())
             {
                 return;
             }
 
             string packetLabel = rawPacket ? "raw packet" : "packet";
+            string delegatedOwner = ResolveVariantDelegatedOwner(packetType, rawPacket);
+            _lastVariantDelegatedPacketType = packetType;
+            _lastVariantDelegatedRawPacket = rawPacket;
+            _lastVariantDelegatedOwner = delegatedOwner;
+            _lastVariantDelegatedSummary = $"{packetLabel} {packetType} -> {delegatedOwner}";
+
+            if (_definition.IsWaitingRoom)
+            {
+                SetVariantSessionPhase(
+                    ResolveDelegatedVariantPhase(packetType),
+                    $"{_definition.ClientOwnerLabel} delegated {packetLabel} {packetType} through {delegatedOwner} while keeping the waiting-room wrapper-only surface.");
+            }
+            else if (_definition.IsSeason2Mode)
+            {
+                SetVariantSessionPhase(
+                    ResolveDelegatedVariantPhase(packetType),
+                    $"{_definition.ClientOwnerLabel} delegated {packetLabel} {packetType} through {delegatedOwner} while retaining Season 2 UIWindow2 ownership.");
+            }
+            else if (_definition.IsReviveMode)
+            {
+                SetVariantSessionPhase(
+                    ResolveDelegatedVariantPhase(packetType),
+                    $"{_definition.ClientOwnerLabel} routed {packetLabel} {packetType} through {delegatedOwner}.");
+            }
+
             RecordClientOwnerAction(
-                $"{_definition.ClientOwnerLabel}::Init retained monsterCarnival/mapType={_definition.MapType}; {packetLabel} {packetType} delegated to CField_MonsterCarnival.",
+                $"{_definition.ClientOwnerLabel}::Init retained monsterCarnival/mapType={_definition.MapType}; {packetLabel} {packetType} delegated to {delegatedOwner}.",
                 Array.Empty<int>());
         }
 
         private void MarkClientOwnedCpHudRefresh(string packetOwner, string uiOwner)
         {
             string ownerLabel = _definition?.ClientOwnerLabel ?? "CField_MonsterCarnival";
+            if (_definition?.IsWaitingRoom == true)
+            {
+                SetVariantSessionPhase(
+                    MonsterCarnivalVariantSessionPhase.LiveHud,
+                    $"{ownerLabel}::{packetOwner} delegated CP synchronization to CField_MonsterCarnival while the waiting-room wrapper remained UI-less.");
+                RecordRecoveredClientOwnerAction(
+                    $"{ownerLabel}::{packetOwner} delegated CP ownership without creating CUIMonsterCarnival.",
+                    Array.Empty<int>());
+                return;
+            }
+
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.LiveHud,
                 $"{ownerLabel}::{packetOwner} refreshed the shared Carnival HUD through {uiOwner}.");
@@ -3424,6 +3508,17 @@ namespace HaCreator.MapSimulator.Fields
             return string.Join(" => ", _variantActionTrail.Select(action => TrimVariantActionText(action, 54)));
         }
 
+        private string BuildVariantDelegatedPacketSummary()
+        {
+            if (_lastVariantDelegatedPacketType < 0 || string.IsNullOrWhiteSpace(_lastVariantDelegatedOwner))
+            {
+                return "none";
+            }
+
+            string packetLabel = _lastVariantDelegatedRawPacket ? "raw" : "packet";
+            return $"{packetLabel} {_lastVariantDelegatedPacketType} -> {_lastVariantDelegatedOwner}";
+        }
+
         private string BuildInitialVariantSessionSummary(MonsterCarnivalFieldDefinition definition)
         {
             if (definition == null)
@@ -3463,6 +3558,46 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return text[..Math.Max(1, maxLength - 3)] + "...";
+        }
+
+        private static MonsterCarnivalVariantSessionPhase ResolveDelegatedVariantPhase(int packetType)
+        {
+            return packetType switch
+            {
+                1 or 346 => MonsterCarnivalVariantSessionPhase.MemberState,
+                2 or 3 or 349 or 350 => MonsterCarnivalVariantSessionPhase.Request,
+                4 or 353 => MonsterCarnivalVariantSessionPhase.ResultRoute,
+                5 or 351 => MonsterCarnivalVariantSessionPhase.DeathState,
+                6 or 7 or 8 or 347 or 348 => MonsterCarnivalVariantSessionPhase.LiveHud,
+                _ => MonsterCarnivalVariantSessionPhase.MemberState
+            };
+        }
+
+        private string ResolveVariantDelegatedOwner(int packetType, bool rawPacket)
+        {
+            if (_definition?.IsReviveMode == true)
+            {
+                return packetType switch
+                {
+                    346 or 1 => $"{_definition.ClientOwnerLabel}::OnEnter",
+                    353 or 4 => $"{_definition.ClientOwnerLabel}::OnShowGameResult",
+                    _ => "CField::OnPacket"
+                };
+            }
+
+            return packetType switch
+            {
+                1 or 346 => "CField_MonsterCarnival::OnEnter",
+                2 or 349 => "CField_MonsterCarnival::OnRequestResult",
+                3 or 350 => "CField_MonsterCarnival::OnRequestResult(reject)",
+                4 or 353 => "CField_MonsterCarnival::OnShowGameResult",
+                5 or 351 => "CField_MonsterCarnival::OnProcessForDeath",
+                6 or 347 or 348 => "CField_MonsterCarnival::OnPersonalCP/OnTeamCP",
+                7 => "CField_MonsterCarnival::OnPersonalCP/OnTeamCP(delta)",
+                8 => "CField_MonsterCarnival::OnEnter/InsertSpelledData",
+                352 => "CField_MonsterCarnival::OnShowMemberOutMsg",
+                _ => rawPacket ? "CField::OnPacket(raw)" : "CField::OnPacket"
+            };
         }
 
         private string BuildClientOwnerActionSummary()

@@ -86,6 +86,14 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedCurrentExJablinSkillId = 4120010;
         private const string PacketOwnedExJablinSkillDescriptionMarker = "the next attack will always be a Critical Attack";
         private const int PacketOwnedActiveEffectMotionBlurOwnerDurationMs = 600000;
+        private static readonly AvatarRenderLayer[] PacketOwnedActiveEffectMotionBlurLayerCaptureOrder =
+        {
+            AvatarRenderLayer.Face,
+            AvatarRenderLayer.OverFace,
+            AvatarRenderLayer.UnderFace,
+            AvatarRenderLayer.OverCharacter,
+            AvatarRenderLayer.UnderCharacter
+        };
         private const int PacketOwnedBaseTimeBombHitPeriodMs = 1500;
         private const int PacketOwnedTimeBombInvincibilityOptionType = 52;
         private const string PacketOwnedTimeBombInvincibilityDurationTemplate = "Invincible for #time more seconds after getting attacked.";
@@ -3144,7 +3152,11 @@ namespace HaCreator.MapSimulator
                         out message);
 
                 case LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType:
-                    return TryApplyPacketOwnedRadioCreateLayerContextPayload(payload, out message);
+                    return TryApplyPacketOwnedRadioCreateLayerContextPayload(
+                        payload,
+                        LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType,
+                        source,
+                        out message);
 
                   case LocalUtilityPacketInboxManager.LogoutGiftClientPacketType:
                       return TryApplyPacketOwnedLogoutGiftPayload(payload, out message);
@@ -3297,7 +3309,7 @@ namespace HaCreator.MapSimulator
                     return TryApplyRepairDurabilityResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType:
-                    return TryApplyMapleTvConsumeCashItemUseRequestPayload(payload, out message);
+                    return TryApplyConsumeCashItemUseRequestPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.VegaLaunchPacketType:
                     if (TryApplyPacketOwnedEventAlarmTextPayload(payload, out message))
@@ -3953,6 +3965,99 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!TryCreatePacketOwnedActiveEffectMotionBlurLayerStack(frame, frameDelayMs, out frames, out message))
+            {
+                return false;
+            }
+
+            frameBounds = frame.Bounds;
+            feetOffset = frame.FeetOffset;
+            facingRight = player.FacingRight;
+            return true;
+        }
+
+        private bool TryCreatePacketOwnedActiveEffectMotionBlurFramesAtSampleTime(
+            PlayerCharacter player,
+            int sampleTime,
+            int frameDelayMs,
+            out List<IDXObject> frames)
+        {
+            frames = null;
+            return TryCreatePacketOwnedActiveEffectMotionBlurFrame(
+                player,
+                sampleTime,
+                frameDelayMs,
+                out frames,
+                out _,
+                out _,
+                out _,
+                out _);
+        }
+
+        private bool TryCreatePacketOwnedActiveEffectMotionBlurLayerStack(
+            AssembledFrame frame,
+            int frameDelayMs,
+            out List<IDXObject> frames,
+            out string message)
+        {
+            frames = new List<IDXObject>(PacketOwnedActiveEffectMotionBlurLayerCaptureOrder.Length);
+            message = null;
+            if (GraphicsDevice == null)
+            {
+                message = "Graphics device is unavailable.";
+                return false;
+            }
+
+            int delay = Math.Max(1, frameDelayMs);
+            try
+            {
+                for (int i = 0; i < PacketOwnedActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+                {
+                    AvatarRenderLayer layer = PacketOwnedActiveEffectMotionBlurLayerCaptureOrder[i];
+                    if (!TryCreatePacketOwnedActiveEffectMotionBlurLayerFrame(
+                            frame,
+                            layer,
+                            delay,
+                            out IDXObject layerFrame))
+                    {
+                        continue;
+                    }
+
+                    layerFrame.Tag = new HaCreator.MapSimulator.Animation.AnimationEffects.SecondaryMotionBlurLayerStackEntryTag(
+                        drawOrder: ResolvePacketOwnedActiveEffectMotionBlurLayerDrawOrder(layer));
+                    frames.Add(layerFrame);
+                }
+            }
+            catch (Exception ex)
+            {
+                DisposePacketOwnedActiveEffectMotionBlurFrames(frames);
+                frames = null;
+                message = $"Could not capture active-effect-item layer-stack motion blur frame: {ex.Message}";
+                return false;
+            }
+
+            if (frames.Count == 0)
+            {
+                message = "Current local avatar frame did not produce any visible layer snapshots.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryCreatePacketOwnedActiveEffectMotionBlurLayerFrame(
+            AssembledFrame frame,
+            AvatarRenderLayer layer,
+            int frameDelayMs,
+            out IDXObject frameObject)
+        {
+            frameObject = null;
+            IReadOnlyList<AssembledPart> layerParts = ResolvePacketOwnedActiveEffectMotionBlurLayerParts(frame, layer);
+            if (layerParts == null || layerParts.Count == 0 || frame.Bounds.Width <= 0 || frame.Bounds.Height <= 0)
+            {
+                return false;
+            }
+
             RenderTargetBinding[] previousTargets = GraphicsDevice.GetRenderTargets();
             Viewport previousViewport = GraphicsDevice.Viewport;
             var renderTarget = new RenderTarget2D(
@@ -3968,9 +4073,9 @@ namespace HaCreator.MapSimulator
                 GraphicsDevice.Clear(Color.Transparent);
                 using var spriteBatch = new SpriteBatch(GraphicsDevice);
                 spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
-                for (int partIndex = 0; partIndex < frame.Parts.Count; partIndex++)
+                for (int partIndex = 0; partIndex < layerParts.Count; partIndex++)
                 {
-                    AssembledPart part = frame.Parts[partIndex];
+                    AssembledPart part = layerParts[partIndex];
                     if (part?.Texture == null || !part.IsVisible)
                     {
                         continue;
@@ -3978,7 +4083,7 @@ namespace HaCreator.MapSimulator
 
                     int drawX = part.OffsetX - frame.Bounds.Left;
                     int drawY = part.OffsetY - frame.Bounds.Top;
-                    part.Texture.DrawBackground(spriteBatch, _skeletonMeshRenderer, null, drawX, drawY, Color.White, false, null);
+                    part.Texture.DrawBackground(spriteBatch, _skeletonMeshRenderer, null, drawX, drawY, Color.White, flip: false, null);
                 }
 
                 spriteBatch.End();
@@ -4002,32 +4107,60 @@ namespace HaCreator.MapSimulator
                 GraphicsDevice.Viewport = previousViewport;
             }
 
-            frameBounds = frame.Bounds;
-            feetOffset = frame.FeetOffset;
-            facingRight = player.FacingRight;
-            frames = new List<IDXObject>
-            {
-                new DXObject(0, 0, renderTarget, Math.Max(1, frameDelayMs))
-            };
+            frameObject = new DXObject(0, 0, renderTarget, frameDelayMs);
             return true;
         }
 
-        private bool TryCreatePacketOwnedActiveEffectMotionBlurFramesAtSampleTime(
-            PlayerCharacter player,
-            int sampleTime,
-            int frameDelayMs,
-            out List<IDXObject> frames)
+        private static IReadOnlyList<AssembledPart> ResolvePacketOwnedActiveEffectMotionBlurLayerParts(
+            AssembledFrame frame,
+            AvatarRenderLayer layer)
         {
-            frames = null;
-            return TryCreatePacketOwnedActiveEffectMotionBlurFrame(
-                player,
-                sampleTime,
-                frameDelayMs,
-                out frames,
-                out _,
-                out _,
-                out _,
-                out _);
+            if (frame?.AvatarRenderLayers != null)
+            {
+                int layerIndex = (int)layer;
+                if (layerIndex >= 0
+                    && layerIndex < frame.AvatarRenderLayers.Length
+                    && frame.AvatarRenderLayers[layerIndex] != null
+                    && frame.AvatarRenderLayers[layerIndex].Count > 0)
+                {
+                    return frame.AvatarRenderLayers[layerIndex];
+                }
+            }
+
+            return frame?.Parts?
+                .Where(part => part != null && part.IsVisible && part.RenderLayer == layer)
+                .ToArray();
+        }
+
+        private static int ResolvePacketOwnedActiveEffectMotionBlurLayerDrawOrder(AvatarRenderLayer layer)
+        {
+            return layer switch
+            {
+                AvatarRenderLayer.UnderCharacter => 0,
+                AvatarRenderLayer.OverCharacter => 1,
+                AvatarRenderLayer.UnderFace => 2,
+                AvatarRenderLayer.Face => 3,
+                AvatarRenderLayer.OverFace => 4,
+                _ => 2
+            };
+        }
+
+        private static void DisposePacketOwnedActiveEffectMotionBlurFrames(IEnumerable<IDXObject> frames)
+        {
+            if (frames == null)
+            {
+                return;
+            }
+
+            foreach (IDXObject frame in frames)
+            {
+                if (frame is DXObject dxObject
+                    && dxObject.Texture != null
+                    && !dxObject.Texture.IsDisposed)
+                {
+                    dxObject.Texture.Dispose();
+                }
+            }
         }
 
         private string DescribePacketOwnedEmotionOutboundDispatch(
@@ -5330,6 +5463,52 @@ namespace HaCreator.MapSimulator
             return applied;
         }
 
+        private bool TryApplyConsumeCashItemUseRequestPayload(byte[] payload, out string message)
+        {
+            if (ShouldRouteConsumeCashItemUseRequestToFieldMessageBox(payload, out _))
+            {
+                return TryApplyFieldMessageBoxConsumeCashItemUseRequestPayload(payload, out message);
+            }
+
+            return TryApplyMapleTvConsumeCashItemUseRequestPayload(payload, out message);
+        }
+
+        internal static bool ShouldRouteConsumeCashItemUseRequestToFieldMessageBox(byte[] payload, out int itemId)
+        {
+            itemId = 0;
+            if (!FieldMessageBoxRuntime.TryResolveConsumeCashItemUseRequestItemId(payload, out int resolvedItemId))
+            {
+                return false;
+            }
+
+            itemId = resolvedItemId;
+            return FieldMessageBoxRuntime.IsKnownChalkboardConsumeRequestItem(resolvedItemId);
+        }
+
+        private bool TryApplyFieldMessageBoxConsumeCashItemUseRequestPayload(byte[] payload, out string message)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                message = "Message-box consume-cash item request requires a loaded local player host.";
+                return false;
+            }
+
+            _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
+            bool applied = _fieldMessageBoxRuntime.TryApplyConsumeCashItemUseRequestPayload(
+                payload,
+                currTickCount,
+                _playerManager?.Player?.Build?.Name ?? "Player",
+                new Point((int)Math.Round(player.X), (int)Math.Round(player.Y)),
+                out message);
+            if (applied)
+            {
+                message = $"{message} Routed to the message-box field owner seam.";
+            }
+
+            return applied;
+        }
+
         private bool TryApplyMapleTvConsumeCashItemUseRequestPayload(byte[] payload, out string message)
         {
             bool applied = _mapleTvRuntime.TryApplyConsumeCashItemUseRequestPayload(
@@ -6037,16 +6216,24 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private bool TryApplyPacketOwnedRadioCreateLayerContextPayload(byte[] payload, out string message)
+        private bool TryApplyPacketOwnedRadioCreateLayerContextPayload(
+            byte[] payload,
+            int packetType,
+            string source,
+            out string message)
         {
             if (!TryDecodePacketOwnedRadioCreateLayerContextPayload(payload, out bool hasOverride, out bool bLeft, out message))
             {
                 return false;
             }
 
+            string mutationSource = ResolvePacketOwnedRadioCreateLayerContextMutationSourceLabel(
+                packetType,
+                source,
+                clearMutation: !hasOverride);
             message = hasOverride
-                ? SetPacketOwnedRadioCreateLayerContext(bLeft, "packet-radioctx")
-                : ClearPacketOwnedRadioCreateLayerContext("packet-radioctx-clear");
+                ? SetPacketOwnedRadioCreateLayerContext(bLeft, mutationSource)
+                : ClearPacketOwnedRadioCreateLayerContext(mutationSource);
             ShowUtilityFeedbackMessage($"{message} {DescribePacketOwnedRadioCreateLayerContextStatus()}");
             return true;
         }
@@ -6641,6 +6828,25 @@ namespace HaCreator.MapSimulator
         {
             return !string.IsNullOrWhiteSpace(source)
                 && source.Trim().StartsWith("official-session", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static string ResolvePacketOwnedRadioCreateLayerContextMutationSourceLabel(
+            int packetType,
+            string source,
+            bool clearMutation)
+        {
+            string normalizedSource = string.IsNullOrWhiteSpace(source)
+                ? "simulator-local"
+                : source.Trim();
+            string action = clearMutation ? "clear" : "set";
+            if (packetType == LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType)
+            {
+                return IsPacketOwnedRadioScheduleOfficialSessionSource(normalizedSource)
+                    ? $"official-session CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] radio bLeft {action}({LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType})"
+                    : $"packet-authored CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] radio bLeft {action}({LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType}) via {normalizedSource}";
+            }
+
+            return $"packet-radioctx-{action}({packetType}) via {normalizedSource}";
         }
 
         private static string FormatPacketOwnedRadioTemplateResolution(int stringPoolId, string trackDescriptor, string resolvedDescriptor)
@@ -7510,12 +7716,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            bool hasPassiveTemporaryStatOwner =
+            bool hasPassiveTemporaryStatTrackingOwner =
                 _playerManager.Skills.HasActiveClientOwnedVehicleTemporaryStatOwnerForParity(PacketOwnedBattleshipSkillId);
             bool isVehiclePresentationActive = IsPacketOwnedBattleshipVehiclePresentationActive();
+            bool hasPassiveTemporaryStatObject =
+                ResolvePacketOwnedBattleshipPassiveTemporaryStatObjectState(
+                    hasPassiveTemporaryStatTrackingOwner,
+                    isVehiclePresentationActive,
+                    allowBootstrap: recordPassiveTemporaryStatUpdate);
             if (!TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
                 || !ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
-                    hasPassiveTemporaryStatOwner,
+                    hasPassiveTemporaryStatObject,
                     isVehiclePresentationActive))
             {
                 _playerManager.Skills.ClearAuthoritativeCooldownPresentation(PacketOwnedBattleshipSkillId);
@@ -7579,6 +7790,47 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private bool ResolvePacketOwnedBattleshipPassiveTemporaryStatObjectState(
+            bool hasPassiveTemporaryStatTrackingOwner,
+            bool isVehiclePresentationActive,
+            bool allowBootstrap)
+        {
+            if (!TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool hasPassiveTemporaryStatObject))
+            {
+                return false;
+            }
+
+            if (hasPassiveTemporaryStatObject
+                || !ShouldBootstrapPacketOwnedBattleshipPassiveTemporaryStatObjectForParity(
+                    hasPassiveTemporaryStatTrackingOwner,
+                    isVehiclePresentationActive,
+                    hasPassiveTemporaryStatObject,
+                    allowBootstrap))
+            {
+                return hasPassiveTemporaryStatObject;
+            }
+
+            _playerManager.Skills.EnsurePassiveVehicleTemporaryStatOwnerForParity(PacketOwnedBattleshipSkillId, currTickCount);
+            return TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out hasPassiveTemporaryStatObject)
+                && hasPassiveTemporaryStatObject;
+        }
+
+        private bool TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool hasPassiveTemporaryStatObject)
+        {
+            hasPassiveTemporaryStatObject = false;
+            if (_playerManager?.Skills == null)
+            {
+                return false;
+            }
+
+            hasPassiveTemporaryStatObject =
+                _playerManager.Skills.TryGetPassiveVehicleTemporaryStatStateForParity(
+                    PacketOwnedBattleshipSkillId,
+                    out SkillManager.PassiveVehicleTemporaryStatState passiveState)
+                && passiveState?.HasTemporaryObject == true;
+            return true;
+        }
+
         private bool TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
         {
             currentValue = 0;
@@ -7628,14 +7880,26 @@ namespace HaCreator.MapSimulator
         }
 
         internal static bool ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
-            bool hasPassiveTemporaryStatOwner,
+            bool hasPassiveTemporaryStatObject,
             bool isVehiclePresentationActive)
         {
             // Client evidence: CWvsContext::SetSkillCooltimeOver only calls
             // CTemporaryStatView::UpdatePassively for the Battleship sentinel
             // when SecondaryStat::IsRidingSkillVehicle is true, and that
             // routine only mutates an existing TEMPORARY_STAT node.
-            return hasPassiveTemporaryStatOwner && isVehiclePresentationActive;
+            return hasPassiveTemporaryStatObject && isVehiclePresentationActive;
+        }
+
+        internal static bool ShouldBootstrapPacketOwnedBattleshipPassiveTemporaryStatObjectForParity(
+            bool hasPassiveTemporaryStatTrackingOwner,
+            bool isVehiclePresentationActive,
+            bool hasPassiveTemporaryStatObject,
+            bool allowBootstrap)
+        {
+            return hasPassiveTemporaryStatTrackingOwner
+                && isVehiclePresentationActive
+                && !hasPassiveTemporaryStatObject
+                && allowBootstrap;
         }
 
         internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(
@@ -8181,8 +8445,11 @@ namespace HaCreator.MapSimulator
                 explicitContextValue,
                 minimapExpanded);
             _packetOwnedRadioSessionCreateLayerMutationSequence = _packetOwnedLocalUtilityContext.RadioCreateLayerMutationSequence;
+            string contextMutationSource = string.IsNullOrWhiteSpace(_packetOwnedLocalUtilityContext.RadioCreateLayerLastMutationSource)
+                ? "unknown"
+                : _packetOwnedLocalUtilityContext.RadioCreateLayerLastMutationSource.Trim();
             _packetOwnedRadioSessionCreateLayerSource = hasExplicitContextValue
-                ? $"packet-owned CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}]={(explicitContextValue ? 1 : 0)}"
+                ? $"packet-owned CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}]={(explicitContextValue ? 1 : 0)} from {contextMutationSource}"
                 : $"minimap expanded fallback={(minimapExpanded ? 1 : 0)}";
         }
 

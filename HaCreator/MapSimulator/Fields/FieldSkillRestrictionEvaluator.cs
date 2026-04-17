@@ -578,13 +578,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            int skillRoot = Math.Abs(GetSkillRoot(skill?.SkillId ?? 0));
-            if (skillRoot <= 0)
-            {
-                skillRoot = Math.Abs(skill?.Job ?? 0);
-            }
-
-            if (skillRoot <= 0)
+            int skillId = Math.Abs(skill?.SkillId ?? 0);
+            if (skillId <= 0)
             {
                 foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
                 {
@@ -597,6 +592,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            int skillRoot = skillId / 10000;
             if (IsEvanSkillClassRoot(skillRoot))
             {
                 int evanClass = GetClientJobClassGrade(skillRoot);

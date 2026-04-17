@@ -997,6 +997,45 @@ namespace HaCreator.MapSimulator.Effects
                 _ => false
             };
         }
+        internal static bool TryDecodeFieldSpecificPacketPayload(
+            byte[] payload,
+            out int packetType,
+            out byte[] packetPayload,
+            out string errorMessage)
+        {
+            packetType = -1;
+            packetPayload = Array.Empty<byte>();
+            errorMessage = null;
+            payload ??= Array.Empty<byte>();
+            if (payload.Length < sizeof(ushort))
+            {
+                errorMessage = "Dojo field-specific payload requires a 2-byte packet id prefix.";
+                return false;
+            }
+
+            packetType = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(0, sizeof(ushort)));
+            if (packetType < PacketTypeClock || packetType > PacketTypeTimeOver)
+            {
+                errorMessage = $"Dojo field-specific packet id {packetType} is outside the known Dojo packet table.";
+                return false;
+            }
+
+            int payloadLength = payload.Length - sizeof(ushort);
+            if (payloadLength > 0)
+            {
+                packetPayload = new byte[payloadLength];
+                Buffer.BlockCopy(payload, sizeof(ushort), packetPayload, 0, payloadLength);
+            }
+
+            if (!TryValidatePacketPayloadForType(packetType, packetPayload))
+            {
+                errorMessage = $"Dojo field-specific packet {packetType} payload failed strict validation.";
+                packetPayload = Array.Empty<byte>();
+                return false;
+            }
+
+            return true;
+        }
         private static List<(int PacketType, string Summary)> CollectPacketPayloadCandidates(byte[] payload)
         {
             payload ??= Array.Empty<byte>();

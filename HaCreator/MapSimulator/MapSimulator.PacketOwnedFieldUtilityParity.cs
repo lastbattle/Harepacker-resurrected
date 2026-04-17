@@ -1313,32 +1313,60 @@ namespace HaCreator.MapSimulator
         {
             if (!TryResolvePacketOwnedQuizProblem(category, problemId, out WzSubProperty problemProperty))
             {
-                string fallback = $"{(isQuestion ? "Question" : "Answer")} {category}-{problemId}";
-                return new PacketOwnedQuizPresentation(
-                    $"Packet-authored quiz {(isQuestion ? "question" : "answer")} {category}-{problemId} is unavailable in Etc/OXQuiz.img.",
-                    fallback,
-                    isQuestion);
+                (string summary, string displayText, bool startEventTimer) = BuildMissingPacketOwnedQuizPresentationForPacketParity(
+                    isQuestion,
+                    category,
+                    problemId);
+                return new PacketOwnedQuizPresentation(summary, displayText, startEventTimer);
             }
 
+            (string resolvedSummary, string resolvedDisplayText, bool resolvedStartEventTimer) = BuildResolvedPacketOwnedQuizPresentationForPacketParity(
+                isQuestion,
+                category,
+                problemId,
+                problemProperty["q"]?.GetString(),
+                problemProperty["d"]?.GetString(),
+                problemProperty["a"]?.GetInt());
+            return new PacketOwnedQuizPresentation(resolvedSummary, resolvedDisplayText, resolvedStartEventTimer);
+        }
+
+        internal static (string Summary, string DisplayText, bool StartEventTimer) BuildMissingPacketOwnedQuizPresentationForPacketParity(
+            bool isQuestion,
+            byte category,
+            ushort problemId)
+        {
+            return (
+                $"Packet-authored quiz {(isQuestion ? "question" : "answer")} {category}-{problemId} is unavailable in Etc/OXQuiz.img; cleared the StatusBar notice text.",
+                string.Empty,
+                false);
+        }
+
+        internal static (string Summary, string DisplayText, bool StartEventTimer) BuildResolvedPacketOwnedQuizPresentationForPacketParity(
+            bool isQuestion,
+            byte category,
+            ushort problemId,
+            string questionText,
+            string detailText,
+            int? answerValue)
+        {
             if (isQuestion)
             {
-                string questionText = NormalizePacketOwnedQuizText(problemProperty["q"]?.GetString());
-                string displayText = string.IsNullOrWhiteSpace(questionText)
-                    ? $"Question {category}-{problemId}"
-                    : questionText;
-                return new PacketOwnedQuizPresentation(
-                    $"Packet-authored quiz question {category}-{problemId}: {displayText}",
-                    displayText,
+                string normalizedQuestionText = NormalizePacketOwnedQuizText(questionText);
+                return (
+                    string.IsNullOrWhiteSpace(normalizedQuestionText)
+                        ? $"Packet-authored quiz question {category}-{problemId} has no `q` text; cleared the StatusBar notice text and kept the 30s timer path."
+                        : $"Packet-authored quiz question {category}-{problemId}: {normalizedQuestionText}",
+                    normalizedQuestionText,
                     true);
             }
 
-            int answerValue = problemProperty["a"]?.GetInt() ?? -1;
-            string detailText = NormalizePacketOwnedQuizText(problemProperty["d"]?.GetString());
-            string answerPrefix = ResolvePacketOwnedQuizAnswerMarker(answerValue);
-            string answerDisplayText = string.IsNullOrWhiteSpace(detailText)
+            int normalizedAnswerValue = answerValue ?? 0;
+            string normalizedDetailText = NormalizePacketOwnedQuizText(detailText);
+            string answerPrefix = ResolvePacketOwnedQuizAnswerMarker(normalizedAnswerValue);
+            string answerDisplayText = string.IsNullOrWhiteSpace(normalizedDetailText)
                 ? answerPrefix
-                : $"{detailText} {answerPrefix}";
-            return new PacketOwnedQuizPresentation(
+                : $"{normalizedDetailText} {answerPrefix}";
+            return (
                 $"Packet-authored quiz answer {category}-{problemId}: {answerDisplayText}",
                 answerDisplayText,
                 false);

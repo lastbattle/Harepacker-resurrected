@@ -46,6 +46,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D[] _calendarGridTextures;
         private readonly Texture2D[] _calendarNumberTextures;
         private readonly Texture2D[] _calendarSelectedNumberTextures;
+        private readonly Point _statusLaneAnchorOffset;
+        private readonly int _statusLaneMaxWidth;
         private UIObject _allButton;
         private UIObject _startButton;
         private UIObject _inProgressButton;
@@ -76,7 +78,7 @@ namespace HaCreator.MapSimulator.UI
             string windowName,
             Texture2D normalRowTexture,
             Texture2D selectedRowTexture)
-            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>())
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(226, 5), 57)
         {
         }
 
@@ -93,7 +95,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] calendarOverlayTextures,
             Texture2D[] calendarGridTextures,
             Texture2D[] calendarNumberTextures,
-            Texture2D[] calendarSelectedNumberTextures)
+            Texture2D[] calendarSelectedNumberTextures,
+            Point statusLaneAnchorOffset,
+            int statusLaneMaxWidth)
             : base(frame)
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
@@ -108,6 +112,8 @@ namespace HaCreator.MapSimulator.UI
             _calendarGridTextures = calendarGridTextures ?? Array.Empty<Texture2D>();
             _calendarNumberTextures = calendarNumberTextures ?? Array.Empty<Texture2D>();
             _calendarSelectedNumberTextures = calendarSelectedNumberTextures ?? Array.Empty<Texture2D>();
+            _statusLaneAnchorOffset = statusLaneAnchorOffset;
+            _statusLaneMaxWidth = Math.Max(40, statusLaneMaxWidth);
         }
 
         public override string WindowName => _windowName;
@@ -360,7 +366,11 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(statusIcon, iconPosition, Color.White);
                 }
 
-                EventRowTextLayout textLayout = ResolveEventRowTextLayout(bounds, slotBounds);
+                EventRowTextLayout textLayout = ResolveEventRowTextLayout(
+                    bounds,
+                    slotBounds,
+                    _statusLaneAnchorOffset,
+                    _statusLaneMaxWidth);
                 DrawTrimmedText(sprite, entry.Title, textLayout.TitleX, textLayout.TitleY, textLayout.TitleMaxWidth, Color.White);
                 DrawTrimmedText(sprite, entry.StatusText, textLayout.StatusX, textLayout.StatusY, textLayout.StatusMaxWidth, new Color(255, 228, 151));
                 DrawWrappedText(
@@ -902,12 +912,21 @@ namespace HaCreator.MapSimulator.UI
 
         internal static EventRowTextLayout ResolveEventRowTextLayout(Rectangle rowBounds, Rectangle slotBounds)
         {
-            int contentLeft = slotBounds.Right + 10;
             // WZ evidence: EventList/main/event/BtStart/BtIng/BtClear/BtNone/BtWill
-            // use 57x32 button canvases with origin (-226,-5), anchoring the row status lane at (226,5).
-            int statusLeft = rowBounds.X + 226;
-            int statusTop = rowBounds.Y + 5;
-            int statusWidth = Math.Max(40, Math.Min(57, rowBounds.Right - statusLeft - 5));
+            // button canvases carry origin (-226,-5), which maps to a status anchor at (226,5).
+            return ResolveEventRowTextLayout(rowBounds, slotBounds, new Point(226, 5), 57);
+        }
+
+        internal static EventRowTextLayout ResolveEventRowTextLayout(
+            Rectangle rowBounds,
+            Rectangle slotBounds,
+            Point statusLaneAnchorOffset,
+            int authoredStatusWidth)
+        {
+            int contentLeft = slotBounds.Right + 10;
+            int statusLeft = rowBounds.X + statusLaneAnchorOffset.X;
+            int statusTop = rowBounds.Y + statusLaneAnchorOffset.Y;
+            int statusWidth = Math.Max(40, Math.Min(Math.Max(40, authoredStatusWidth), rowBounds.Right - statusLeft - 5));
             float titleWidth = Math.Max(40f, statusLeft - contentLeft - 8f);
             return new EventRowTextLayout(
                 contentLeft,

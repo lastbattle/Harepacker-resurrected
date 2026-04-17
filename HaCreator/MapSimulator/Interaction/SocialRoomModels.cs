@@ -355,6 +355,11 @@ namespace HaCreator.MapSimulator.Interaction
         private const ushort EmployeeEnterFieldOpcode = 319;
         private const ushort EmployeeLeaveFieldOpcode = 320;
         private const ushort EmployeeMiniRoomBalloonOpcode = 321;
+        private const ushort TradeAttributeProtectedFlag = 0x0001;
+        private const ushort TradeAttributePreventSlipFlag = 0x0002;
+        private const ushort TradeAttributeSupportWarmFlag = 0x0004;
+        private const ushort TradeAttributeBindedFlag = 0x0008;
+        private const ushort TradeAttributePossibleTradingFlag = 0x0010;
 
         public sealed class SocialRoomRemoteInventoryEntry
         {
@@ -424,6 +429,12 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
+        private enum TradePacketAttributeKind
+        {
+            Equip,
+            Bundle,
+            Pet
+        }
 
         private readonly List<SocialRoomOccupant> _occupants;
         private readonly List<SocialRoomItemEntry> _items;
@@ -2796,10 +2807,7 @@ namespace HaCreator.MapSimulator.Interaction
             AppendStatPart(parts, "niSpeed", speed);
             AppendStatPart(parts, "niJump", jump);
 
-            if (attribute != 0)
-            {
-                parts.Add($"nAttribute 0x{(ushort)attribute:X4}");
-            }
+            AppendTradeAttributePart(parts, attribute, TradePacketAttributeKind.Equip);
 
             if (levelUpType > 0)
             {
@@ -2863,10 +2871,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static string BuildBundleTradeMetadataSummary(short attribute, long rechargeableSerialNumber)
         {
             List<string> parts = new List<string>();
-            if (attribute != 0)
-            {
-                parts.Add($"nAttribute 0x{(ushort)attribute:X4}");
-            }
+            AppendTradeAttributePart(parts, attribute, TradePacketAttributeKind.Bundle);
 
             if (rechargeableSerialNumber > 0)
             {
@@ -2911,12 +2916,100 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"dateDead {expirationText}");
             }
 
-            if (itemAttribute != 0)
-            {
-                parts.Add($"nAttribute 0x{(ushort)itemAttribute:X4}");
-            }
+            AppendTradeAttributePart(parts, itemAttribute, TradePacketAttributeKind.Pet);
 
             return string.Join(", ", parts);
+        }
+
+        private static void AppendTradeAttributePart(
+            List<string> parts,
+            short attribute,
+            TradePacketAttributeKind kind)
+        {
+            if (attribute == 0)
+            {
+                return;
+            }
+
+            ushort rawAttribute = unchecked((ushort)attribute);
+            parts.Add($"nAttribute 0x{rawAttribute:X4}");
+            string semanticSummary = BuildTradeAttributeSemanticSummary(rawAttribute, kind);
+            if (!string.IsNullOrWhiteSpace(semanticSummary))
+            {
+                parts.Add(semanticSummary);
+            }
+        }
+
+        private static string BuildTradeAttributeSemanticSummary(ushort rawAttribute, TradePacketAttributeKind kind)
+        {
+            List<string> flags = new();
+            ushort knownMask;
+            switch (kind)
+            {
+                case TradePacketAttributeKind.Equip:
+                    knownMask = TradeAttributeProtectedFlag
+                        | TradeAttributePreventSlipFlag
+                        | TradeAttributeSupportWarmFlag
+                        | TradeAttributeBindedFlag
+                        | TradeAttributePossibleTradingFlag;
+                    if ((rawAttribute & TradeAttributeProtectedFlag) != 0)
+                    {
+                        flags.Add("protected");
+                    }
+
+                    if ((rawAttribute & TradeAttributePreventSlipFlag) != 0)
+                    {
+                        flags.Add("prevent-slip");
+                    }
+
+                    if ((rawAttribute & TradeAttributeSupportWarmFlag) != 0)
+                    {
+                        flags.Add("warm-support");
+                    }
+
+                    if ((rawAttribute & TradeAttributeBindedFlag) != 0)
+                    {
+                        flags.Add("binded");
+                    }
+
+                    if ((rawAttribute & TradeAttributePossibleTradingFlag) != 0)
+                    {
+                        flags.Add("possible-trade");
+                    }
+                    break;
+                case TradePacketAttributeKind.Bundle:
+                    knownMask = TradeAttributeProtectedFlag | TradeAttributePreventSlipFlag;
+                    if ((rawAttribute & TradeAttributeProtectedFlag) != 0)
+                    {
+                        flags.Add("protected");
+                    }
+
+                    if ((rawAttribute & TradeAttributePreventSlipFlag) != 0)
+                    {
+                        flags.Add("possible-trade");
+                    }
+                    break;
+                case TradePacketAttributeKind.Pet:
+                    knownMask = TradeAttributeProtectedFlag;
+                    if ((rawAttribute & TradeAttributeProtectedFlag) != 0)
+                    {
+                        flags.Add("possible-trade");
+                    }
+                    break;
+                default:
+                    knownMask = 0;
+                    break;
+            }
+
+            ushort unknownMask = (ushort)(rawAttribute & ~knownMask);
+            if (unknownMask != 0)
+            {
+                flags.Add($"unknown 0x{unknownMask:X4}");
+            }
+
+            return flags.Count == 0
+                ? string.Empty
+                : $"attrFlags {string.Join("/", flags)}";
         }
 
         private static string BuildTradeDateDetail(string label, long? fileTime)
@@ -3702,10 +3795,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             string payloadPreview = BuildPacketHexPreview(nestedPayload);
             string detail = handled
-                ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message} | payload={payloadPreview} | remaining={nestedReader.Remaining}"
-                : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message} | payload={payloadPreview} | remaining={nestedReader.Remaining}";
+                ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message} | payload={payloadPreview} | bytes={nestedPayload.Length} | remaining={nestedReader.Remaining}"
+                : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message} | payload={payloadPreview} | bytes={nestedPayload.Length} | remaining={nestedReader.Remaining}";
             _lastPacketOwnerSummary = detail;
             message = detail;
+            PersistState();
             return handled;
         }
 

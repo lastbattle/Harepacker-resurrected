@@ -641,8 +641,10 @@ namespace HaCreator.MapSimulator
             bool hasAttachedClient,
             bool hasPassiveEstablishedSocketPair)
         {
-            return bridgeEnabled
-                && (isRunning || hasConnectedSession || hasAttachedClient || hasPassiveEstablishedSocketPair);
+            // Passive attach is a status-only ownership seam even when the reconnect proxy
+            // is not armed, so keep bridge routing preferred to avoid outbox fallback.
+            return hasPassiveEstablishedSocketPair
+                || (bridgeEnabled && (isRunning || hasConnectedSession || hasAttachedClient));
         }
     }
 }

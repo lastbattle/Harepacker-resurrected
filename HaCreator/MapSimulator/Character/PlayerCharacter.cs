@@ -657,6 +657,8 @@ namespace HaCreator.MapSimulator.Character
         private const string MountedTamingMobOneTimeActionOwnerName = "mounted.tamingMob.oneTime";
         private const string ShadowPartnerPersistentActionOwnerName = "aux.shadowPartner.persistent";
         private const string ShadowPartnerOneTimeActionOwnerName = "aux.shadowPartner.oneTime";
+        private const string MirrorImagePersistentActionOwnerName = "aux.mirrorImage.persistent";
+        private const string MeleeAfterImageOneTimeActionOwnerName = "aux.meleeAfterImage.oneTime";
         private const string AuxiliaryAvatarEffectBehindCharacterPersistentActionOwnerName = "aux.avatarEffect.behindCharacter.persistent";
         private const string AuxiliaryAvatarEffectBehindCharacterOneTimeActionOwnerName = "aux.avatarEffect.behindCharacter.oneTime";
         private const string AuxiliaryAvatarEffectUnderFacePersistentActionOwnerName = "aux.avatarEffect.underFace.persistent";
@@ -1233,6 +1235,7 @@ namespace HaCreator.MapSimulator.Character
                 UpdateShadowPartnerRenderState(currentTime);
                 UpdateMirrorImageRenderState(currentTime);
                 UpdateAvatarEffects(currentTime);
+                StoreMeleeAfterImageOwnerCounter(currentTime);
                 UpdateFaceExpression(currentTime);
                 RecordMovementSync(currentTime);
                 return;
@@ -1286,6 +1289,7 @@ namespace HaCreator.MapSimulator.Character
             UpdateShadowPartnerRenderState(currentTime);
             UpdateMirrorImageRenderState(currentTime);
             UpdateAvatarEffects(currentTime);
+            StoreMeleeAfterImageOwnerCounter(currentTime);
             UpdateFaceExpression(currentTime);
             ApplyPortableChairRecovery(currentTime);
             RecordMovementSync(currentTime);
@@ -2666,6 +2670,23 @@ namespace HaCreator.MapSimulator.Character
                 : ShadowPartnerPersistentActionOwnerName;
         }
 
+        private static string ResolveMirrorImageActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                ? actionName
+                : CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
+        private static string ResolveMeleeAfterImageActionName(int skillId, string actionName)
+        {
+            if (!string.IsNullOrWhiteSpace(actionName))
+            {
+                return actionName;
+            }
+
+            return $"skill:{Math.Max(0, skillId)}";
+        }
+
         private static string ResolveAuxiliaryAvatarEffectActionOwnerName(SkillAvatarEffectPlane plane, bool oneTime)
         {
             return plane switch
@@ -3027,6 +3048,85 @@ namespace HaCreator.MapSimulator.Character
                 _activeShadowPartner.CurrentActionName,
                 _activeShadowPartner.CurrentFacingRight,
                 animationElapsedMs,
+                currentTime);
+        }
+
+        private bool TryRestoreMirrorImageOwnerCounter(
+            int currentTime,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            out int startTime)
+        {
+            startTime = currentTime;
+            if (skillId <= 0
+                || !TryRestoreAuxiliaryLayerOwnerCounter(
+                    MirrorImagePersistentActionOwnerName,
+                    skillId,
+                    ResolveMirrorImageActionName(actionName),
+                    facingRight,
+                    out int animationElapsedMs))
+            {
+                return false;
+            }
+
+            startTime = currentTime - animationElapsedMs;
+            return true;
+        }
+
+        private void StoreMirrorImageOwnerCounter(int currentTime)
+        {
+            if (_activeMirrorImage == null || _activeMirrorImage.SkillId <= 0)
+            {
+                return;
+            }
+
+            int animationElapsedMs = Math.Max(0, currentTime - _activeMirrorImage.StartTime);
+            StoreAuxiliaryLayerOwnerCounter(
+                MirrorImagePersistentActionOwnerName,
+                _activeMirrorImage.SkillId,
+                ResolveMirrorImageActionName(_activeMirrorImage.ObservedPlayerActionName),
+                _activeMirrorImage.ObservedPlayerFacingRight,
+                animationElapsedMs,
+                currentTime);
+        }
+
+        private bool TryRestoreMeleeAfterImageOwnerCounter(
+            int currentTime,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            out int animationStartTime)
+        {
+            animationStartTime = currentTime;
+            if (skillId <= 0
+                || !TryRestoreAuxiliaryLayerOwnerCounter(
+                    MeleeAfterImageOneTimeActionOwnerName,
+                    skillId,
+                    ResolveMeleeAfterImageActionName(skillId, actionName),
+                    facingRight,
+                    out int animationElapsedMs))
+            {
+                return false;
+            }
+
+            animationStartTime = currentTime - animationElapsedMs;
+            return true;
+        }
+
+        private void StoreMeleeAfterImageOwnerCounter(int currentTime)
+        {
+            if (_activeMeleeAfterImage == null || _activeMeleeAfterImage.SkillId <= 0)
+            {
+                return;
+            }
+
+            StoreAuxiliaryLayerOwnerCounter(
+                MeleeAfterImageOneTimeActionOwnerName,
+                _activeMeleeAfterImage.SkillId,
+                ResolveMeleeAfterImageActionName(_activeMeleeAfterImage.SkillId, _activeMeleeAfterImage.ActionName),
+                _activeMeleeAfterImage.FacingRight,
+                Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime),
                 currentTime);
         }
 
@@ -3958,6 +4058,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentActionName = actionName;
             CurrentSkillAnimationSkillId = skillId;
             CurrentSkillAnimationStartTime = currentTime;
+            StoreMeleeAfterImageOwnerCounter(currentTime == int.MinValue ? Environment.TickCount : currentTime);
             _activeMeleeAfterImage = null;
 
             _attackFrame = 0;
@@ -3998,6 +4099,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentActionName = actionName;
             CurrentSkillAnimationSkillId = skillId;
             CurrentSkillAnimationStartTime = currentTime;
+            StoreMeleeAfterImageOwnerCounter(currentTime == int.MinValue ? Environment.TickCount : currentTime);
             _activeMeleeAfterImage = null;
 
             if (!isSameAction)
@@ -4034,19 +4136,32 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            int activationDelayMs = ClientMeleeAfterimageRangeResolver.ResolveActivationDelayMs(
+                afterImageAction,
+                Assembler?.GetAnimation(actionName));
+            int resolvedAnimationStartTime = currentTime;
+            if (TryRestoreMeleeAfterImageOwnerCounter(
+                    currentTime,
+                    skillId,
+                    actionName,
+                    FacingRight,
+                    out int restoredAnimationStartTime))
+            {
+                resolvedAnimationStartTime = restoredAnimationStartTime;
+            }
+
             _activeMeleeAfterImage = new MeleeAfterImageState
             {
                 SkillId = skillId,
                 ActionName = actionName,
                 AfterImageAction = afterImageAction,
-                AnimationStartTime = currentTime,
-                ActivationStartTime = currentTime + ClientMeleeAfterimageRangeResolver.ResolveActivationDelayMs(
-                    afterImageAction,
-                    Assembler?.GetAnimation(actionName)),
+                AnimationStartTime = resolvedAnimationStartTime,
+                ActivationStartTime = resolvedAnimationStartTime + activationDelayMs,
                 FacingRight = FacingRight,
                 ActionDuration = GetMeleeAfterImageActionDuration(actionName)
             };
 
+            StoreMeleeAfterImageOwnerCounter(currentTime);
         }
 
         public void PlayEffectiveWeaponSfx()
@@ -4060,6 +4175,7 @@ namespace HaCreator.MapSimulator.Character
 
         public void ClearMeleeAfterImage()
         {
+            StoreMeleeAfterImageOwnerCounter(Environment.TickCount);
             _activeMeleeAfterImage = null;
         }
 
@@ -4284,7 +4400,18 @@ namespace HaCreator.MapSimulator.Character
                 Visible = false
             };
 
+            if (TryRestoreMirrorImageOwnerCounter(
+                    currentTime,
+                    skillId,
+                    _activeMirrorImage.ObservedPlayerActionName,
+                    _activeMirrorImage.ObservedPlayerFacingRight,
+                    out int restoredStartTime))
+            {
+                _activeMirrorImage.StartTime = restoredStartTime;
+            }
+
             UpdateMirrorImageRenderState(currentTime);
+            StoreMirrorImageOwnerCounter(currentTime);
             return _activeMirrorImage.Visible;
         }
 
@@ -4292,6 +4419,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (_activeMirrorImage != null && _activeMirrorImage.SkillId == skillId)
             {
+                StoreMirrorImageOwnerCounter(Environment.TickCount);
                 DisposeMirrorImagePreparedSourceLayers(_activeMirrorImage.PreparedSourceLayers);
                 _activeMirrorImage = null;
             }
@@ -5642,6 +5770,7 @@ namespace HaCreator.MapSimulator.Character
                     out bool shouldClear);
                 if (shouldClear)
                 {
+                    StoreMeleeAfterImageOwnerCounter(currentTime);
                     _activeMeleeAfterImage = null;
                 }
 
@@ -5693,6 +5822,7 @@ namespace HaCreator.MapSimulator.Character
                     fadeElapsed);
                 if (layers.Count == 0)
                 {
+                    StoreMeleeAfterImageOwnerCounter(currentTime);
                     _activeMeleeAfterImage = null;
                     return;
                 }
@@ -6338,7 +6468,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             liveSourceParts = frame.AvatarRenderLayers[renderLayerIndex];
-            return CanUseLiveMirrorImageSourceLayer(
+            if (!CanUseLiveMirrorImageSourceLayer(
                 _activeMirrorImage.PreparedActionName,
                 CurrentActionName,
                 _activeMirrorImage.PreparedFrameIndex,
@@ -6346,7 +6476,16 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.PreparedFacingRight,
                 FacingRight,
                 preparedLayer.SourceSignature,
-                liveSourceParts);
+                liveSourceParts))
+            {
+                return false;
+            }
+
+            return ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
+                preparedLayer.PreparedLayerObjectId,
+                preparedLayer.LastInsertCanvasLayerObjectId,
+                preparedLayer.RenderLayer,
+                preparedLayer.LastInsertCanvasSourceLayer);
         }
 
         private MirrorImagePreparedSourceLayer CreatePreparedMirrorImageSourceLayer(
@@ -6425,6 +6564,51 @@ namespace HaCreator.MapSimulator.Character
                     sourceSignature,
                     currentTime,
                     hasSourceCanvas);
+                preparedLayer.PreparedFacingRight = facingRight;
+                ApplyMirrorImagePreparedLayerClientProperties(
+                    preparedLayer,
+                    renderLayer,
+                    recreatesLayerObject: false);
+                return preparedLayer;
+            }
+
+            bool hasLiveInsertCanvasSource = HasMirrorImageInsertCanvasSource(
+                HasMirrorImageLiveSourceCanvas(sourceParts));
+            if (CanPreserveMirrorImagePreparedSnapshotForLiveInsertCanvas(
+                    preservesPreparedLayerObject,
+                    hasLiveInsertCanvasSource,
+                    preparedLayer.ComposedTexture != null))
+            {
+                int refreshedSourceLayerCurrentTime = ResolveMirrorImagePreparedSourceLayerCurrentTime(
+                    preparedLayer.PreparedSourceLayerCurrentTime,
+                    reusesExistingSourceCanvas: true,
+                    sourceLayerCurrentTime);
+                preparedLayer.RenderLayer = renderLayer;
+                preparedLayer.SourceSignature = sourceSignature;
+                preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
+                    preparedLayer.PreparedCurrentTime,
+                    reusesExistingLayer: true,
+                    preservesExistingLayerObject: true,
+                    currentTime);
+                preparedLayer.PreparedSourceLayerCurrentTime = refreshedSourceLayerCurrentTime;
+                preparedLayer.PreparedTransitionStartTime = ResolveMirrorImagePreparedSourceLayerTransitionStartTime(
+                    preparedLayer.PreparedTransitionStartTime,
+                    preservesExistingLayerObject: true,
+                    mirrorStartTime: _activeMirrorImage?.StartTime ?? currentTime,
+                    sourceLayerCurrentTime: refreshedSourceLayerCurrentTime,
+                    currentTime);
+                preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
+                    preparedLayer.PreparedLayerObjectId,
+                    preservesExistingLayerObject: true);
+                preparedLayer.PreparedTargetOffsetPx = ResolveMirrorImagePreparedLayerTargetOffset(
+                    preparedLayer.PreparedTargetOffsetPx,
+                    recreatesLayerObject: false,
+                    ResolveMirrorImageTargetOffsetForCurrentState());
+                ApplyMirrorImageInsertCanvasMetadata(
+                    preparedLayer,
+                    sourceSignature,
+                    currentTime,
+                    hasLiveInsertCanvasSource);
                 preparedLayer.PreparedFacingRight = facingRight;
                 ApplyMirrorImagePreparedLayerClientProperties(
                     preparedLayer,
@@ -6763,6 +6947,16 @@ namespace HaCreator.MapSimulator.Character
             return hasLiveSourceCanvas;
         }
 
+        internal static bool CanPreserveMirrorImagePreparedSnapshotForLiveInsertCanvas(
+            bool preservesExistingLayerObject,
+            bool hasLiveInsertCanvasSource,
+            bool hasPreparedSnapshot)
+        {
+            return preservesExistingLayerObject
+                && hasLiveInsertCanvasSource
+                && hasPreparedSnapshot;
+        }
+
         internal static bool HasMirrorImageLiveSourceCanvas(IReadOnlyList<AssembledPart> sourceParts)
         {
             if (sourceParts == null || sourceParts.Count == 0)
@@ -7045,6 +7239,32 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return HasMirrorImageLiveSourceCanvas(liveSourceParts);
+        }
+
+        internal static bool ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
+            int preparedLayerObjectId,
+            int lastInsertCanvasLayerObjectId,
+            AvatarRenderLayer sourceLayer,
+            AvatarRenderLayer? lastInsertCanvasSourceLayer)
+        {
+            if (lastInsertCanvasLayerObjectId <= 0)
+            {
+                return true;
+            }
+
+            if (preparedLayerObjectId <= 0
+                || preparedLayerObjectId != lastInsertCanvasLayerObjectId)
+            {
+                return false;
+            }
+
+            if (lastInsertCanvasSourceLayer.HasValue
+                && lastInsertCanvasSourceLayer.Value != sourceLayer)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private static AssembledPart CloneMirrorImageSourcePart(AssembledPart part)
@@ -7812,6 +8032,7 @@ namespace HaCreator.MapSimulator.Character
 
             AssembledFrame currentFrame = ResolveCurrentRenderFrame(currentTime, out int currentFrameIndex);
             PrepareMirrorImageSourceLayers(currentFrame, currentFrameIndex, currentTime);
+            StoreMirrorImageOwnerCounter(currentTime);
         }
 
         internal static bool ShouldRestartMirrorImageStartTime(
@@ -8583,13 +8804,20 @@ namespace HaCreator.MapSimulator.Character
 
         private bool ShouldHoldShadowPartnerCurrentAction(int currentTime)
         {
-            if (_activeShadowPartner?.ActionAnimations == null
-                || string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName)
-                || !_activeShadowPartner.ActionAnimations.TryGetValue(_activeShadowPartner.CurrentActionName, out SkillAnimation currentAnimation)
-                || currentAnimation?.Frames == null
-                || currentAnimation.Frames.Count == 0)
+            if (_activeShadowPartner == null
+                || string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName))
             {
                 return false;
+            }
+
+            SkillAnimation playbackAnimation = _activeShadowPartner.CurrentPlaybackAnimation;
+            if (playbackAnimation?.Frames == null || playbackAnimation.Frames.Count == 0)
+            {
+                if (_activeShadowPartner.ActionAnimations == null
+                    || !_activeShadowPartner.ActionAnimations.TryGetValue(_activeShadowPartner.CurrentActionName, out playbackAnimation))
+                {
+                    return false;
+                }
             }
 
             if (!IsShadowPartnerBlockingAction(_activeShadowPartner.CurrentActionName))
@@ -8598,7 +8826,10 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int elapsedTime = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
-            return !ShadowPartnerClientActionResolver.IsPlaybackComplete(currentAnimation, elapsedTime);
+            return ShadowPartnerClientActionResolver.ShouldHoldBlockingAction(
+                _activeShadowPartner.CurrentActionName,
+                playbackAnimation,
+                elapsedTime);
         }
 
         private static bool IsShadowPartnerBlockingAction(string actionName)
@@ -8942,18 +9173,36 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            bool ownerIsLeft = ownerX <= partnerX;
-            bool leftFacingRight = ownerIsLeft ? ownerFacingRight : partnerFacingRight;
-            bool rightFacingRight = ownerIsLeft ? partnerFacingRight : ownerFacingRight;
-
-            return (chair.CoupleDirection ?? 0) switch
+            int direction = chair.CoupleDirection ?? 0;
+            if (direction == 0)
             {
-                0 => true,
-                3 => leftFacingRight == rightFacingRight,
-                11 => !leftFacingRight && !rightFacingRight,
-                12 => !leftFacingRight && rightFacingRight,
-                21 => leftFacingRight && !rightFacingRight,
-                22 => leftFacingRight && rightFacingRight,
+                return true;
+            }
+
+            // CUserPool::Update compares couple-chair facing using move-action facing bits
+            // after ordering users by Y (upper first), not by X.
+            bool upperFacingRight;
+            bool lowerFacingRight;
+            if (ownerY < partnerY)
+            {
+                upperFacingRight = ownerFacingRight;
+                lowerFacingRight = partnerFacingRight;
+            }
+            else
+            {
+                upperFacingRight = partnerFacingRight;
+                lowerFacingRight = ownerFacingRight;
+            }
+
+            bool upperFacesLeft = !upperFacingRight;
+            bool lowerFacesLeft = !lowerFacingRight;
+            return direction switch
+            {
+                3 => upperFacesLeft == lowerFacesLeft,
+                11 => upperFacesLeft && lowerFacesLeft,
+                12 => upperFacesLeft && !lowerFacesLeft,
+                21 => !upperFacesLeft && lowerFacesLeft,
+                22 => !upperFacesLeft && !lowerFacesLeft,
                 _ => false
             };
         }
@@ -9325,6 +9574,26 @@ namespace HaCreator.MapSimulator.Character
         internal static string ResolveShadowPartnerActionOwnerNameForTesting(string actionName)
         {
             return ResolveShadowPartnerActionOwnerName(actionName);
+        }
+
+        internal static string ResolveMirrorImageActionOwnerNameForTesting()
+        {
+            return MirrorImagePersistentActionOwnerName;
+        }
+
+        internal static string ResolveMeleeAfterImageActionOwnerNameForTesting()
+        {
+            return MeleeAfterImageOneTimeActionOwnerName;
+        }
+
+        internal static string ResolveMirrorImageActionNameForTesting(string actionName)
+        {
+            return ResolveMirrorImageActionName(actionName);
+        }
+
+        internal static string ResolveMeleeAfterImageActionNameForTesting(int skillId, string actionName)
+        {
+            return ResolveMeleeAfterImageActionName(skillId, actionName);
         }
 
         internal static string ResolveAuxiliaryAvatarEffectActionOwnerNameForTesting(int planeCode, bool oneTime)

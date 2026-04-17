@@ -719,12 +719,13 @@ namespace HaCreator.MapSimulator.Character
                 // Skill/3212.img still publishes the raw Battle Mage root, while
                 // Character/00002000.img backs it entirely with alert frames.
                 ["nemesis"] = new[] { "alert" },
-                // Skill/3212.img publishes the prepared cyclone raw action, while
-                // Character/00002000.img starts that body sequence on alert/stab
-                // frames and Morph/*.img publishes no verbatim cyclone branch.
-                ["cyclone_pre"] = new[] { "alert", "stabO1", "swingO2" },
-                ["cyclone"] = new[] { "swingO2", "stabO1", "alert" },
-                ["cyclone_after"] = new[] { "alert", "stabO1", "swingO2" },
+                // Skill/3212.img still publishes `cyclone_pre`, while the client raw
+                // surface also keeps `cyclone` / `cyclone_after`; Character/00002000.img
+                // routes those body rows through `swingO2` + `swingTF` (with alert-tail
+                // recovery on `cyclone_after`) and Morph/*.img publishes no verbatim roots.
+                ["cyclone_pre"] = new[] { "alert", "stabO1", "swingO2", "swingTF" },
+                ["cyclone"] = new[] { "swingO2", "swingTF" },
+                ["cyclone_after"] = new[] { "swingO2", "swingTF", "alert" },
                 // Character/00002000.img backs the checked full-screen jaguar rain
                 // branch with `alert` rather than a morph-owned `*Rain` attack root.
                 ["flashRain"] = new[] { "alert" },

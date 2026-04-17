@@ -1771,6 +1771,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ResolvePacketVisualOwnershipSourceStatesForMutation(
                 data,
+                reactor.GetActiveAnimationState(),
                 out int packetAnimationSourceState,
                 out int packetHitAnimationState);
             bool wasAnimationClockRunning = IsPacketAnimationClockRunning(data);
@@ -1913,6 +1914,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ResolvePacketVisualOwnershipSourceStatesForMutation(
                 data,
+                reactor.GetActiveAnimationState(),
                 out int packetAnimationSourceState,
                 out int packetHitAnimationState);
             int remainingCurrentAnimationDuration = reactor.GetRemainingStoppedAnimationDuration(currentTick);
@@ -3085,8 +3087,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return bounds.Contains(
-                (int)MathF.Round(playerX, MidpointRounding.AwayFromZero),
-                (int)MathF.Round(playerY, MidpointRounding.AwayFromZero));
+                (int)playerX,
+                (int)playerY);
         }
 
         internal static int ResolveLocalTouchObjectId(ReactorRuntimeData data)
@@ -3698,6 +3700,19 @@ namespace HaCreator.MapSimulator.Pools
             out int packetAnimationSourceState,
             out int packetHitAnimationState)
         {
+            ResolvePacketVisualOwnershipSourceStatesForMutation(
+                data,
+                data?.VisualState ?? 0,
+                out packetAnimationSourceState,
+                out packetHitAnimationState);
+        }
+
+        internal static void ResolvePacketVisualOwnershipSourceStatesForMutation(
+            ReactorRuntimeData data,
+            int fallbackAnimationOwnerState,
+            out int packetAnimationSourceState,
+            out int packetHitAnimationState)
+        {
             packetAnimationSourceState = 0;
             packetHitAnimationState = -1;
             if (data == null)
@@ -3709,8 +3724,8 @@ namespace HaCreator.MapSimulator.Pools
             {
                 packetAnimationSourceState = data.PacketAnimationSourceState >= 0
                     ? data.PacketAnimationSourceState
-                    : data.VisualState >= 0
-                        ? data.VisualState
+                    : fallbackAnimationOwnerState >= 0
+                        ? fallbackAnimationOwnerState
                         : data.PacketHitAnimationState;
                 packetHitAnimationState = data.PacketHitAnimationState;
                 return;
@@ -3722,7 +3737,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            packetAnimationSourceState = data.VisualState;
+            packetAnimationSourceState = fallbackAnimationOwnerState;
         }
 
         internal static bool ShouldPreservePacketAnimationSourceState(ReactorRuntimeData data)

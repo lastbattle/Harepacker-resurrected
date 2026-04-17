@@ -601,7 +601,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int headlineBottom = AddEntryHeadlineRecords(records, entry, top, measureTextWidth);
-            int detailTop = GetFollowingAnalyzedTextTop(top, headlineBottom);
+            int detailTop = ResolveEntryDetailTop(top, entry, headlineBottom);
             AddEntryDetailRecords(records, entry, detailTop, measureTextWidth);
             int detailBottom = GetEntryDetailBottom(entry, detailTop, headlineBottom, measureTextWidth);
             int ruleTop = Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
@@ -617,7 +617,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int headlineBottom = AddEntryHeadlineRecords(records, entry, top, measureTextWidth);
-            int detailTop = GetFollowingAnalyzedTextTop(top, headlineBottom);
+            int detailTop = ResolveEntryDetailTop(top, entry, headlineBottom);
             AddEntryDetailRecords(records, entry, detailTop, measureTextWidth);
             int detailBottom = GetEntryDetailBottom(entry, detailTop, headlineBottom, measureTextWidth);
             int ruleTop = Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
@@ -761,7 +761,7 @@ namespace HaCreator.MapSimulator.UI
         private static int GetStandardEntryDetailTop(int top, CollectionBookEntrySnapshot entry, Func<string, int, float> measureTextWidth, int? headlineBottom = null)
         {
             int resolvedHeadlineBottom = headlineBottom ?? GetEntryHeadlineBottom(entry, top, measureTextWidth);
-            return GetFollowingAnalyzedTextTop(top, resolvedHeadlineBottom);
+            return ResolveEntryDetailTop(top, entry, resolvedHeadlineBottom);
         }
 
         private static int GetEntryHeadlineBottom(CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)
@@ -932,6 +932,19 @@ namespace HaCreator.MapSimulator.UI
         private static int GetFollowingAnalyzedTextTop(int top, int precedingBlockBottom)
         {
             return Math.Max(top + ClientCollectionAnalyzedBlockCarry, precedingBlockBottom + ClientCollectionAnalyzedBlockCarry);
+        }
+
+        private static int ResolveEntryDetailTop(int top, CollectionBookEntrySnapshot entry, int headlineBottom)
+        {
+            return HasEntryHeadlineText(entry)
+                ? GetFollowingAnalyzedTextTop(top, headlineBottom)
+                : top;
+        }
+
+        private static bool HasEntryHeadlineText(CollectionBookEntrySnapshot entry)
+        {
+            return !string.IsNullOrWhiteSpace(entry?.Label)
+                || !string.IsNullOrWhiteSpace(entry?.Value);
         }
 
         private static IReadOnlyList<string> WrapCollectionText(string text, int width, int styleIndex, Func<string, int, float> measureTextWidth = null)

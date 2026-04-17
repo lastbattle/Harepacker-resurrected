@@ -372,7 +372,10 @@ namespace HaCreator.MapSimulator.UI
             script = null;
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
-            return TryResolveSpecScript(itemProperty?["spec"] as WzSubProperty, out script);
+            return TryResolveSpecScript(
+                itemProperty?["spec"] as WzSubProperty,
+                itemProperty?["specEx"] as WzSubProperty,
+                out script);
         }
 
         public static bool TryResolveSpecScripts(int itemId, out IReadOnlyList<string> scripts)
@@ -380,7 +383,10 @@ namespace HaCreator.MapSimulator.UI
             scripts = Array.Empty<string>();
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
-            return TryResolveSpecScripts(itemProperty?["spec"] as WzSubProperty, out scripts);
+            return TryResolveSpecScripts(
+                itemProperty?["spec"] as WzSubProperty,
+                itemProperty?["specEx"] as WzSubProperty,
+                out scripts);
         }
 
         internal static bool TryResolveSpecScriptPublications(
@@ -390,7 +396,10 @@ namespace HaCreator.MapSimulator.UI
             publications = Array.Empty<FieldObjectScriptPublication>();
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
-            return TryResolveSpecScriptPublications(itemProperty?["spec"] as WzSubProperty, out publications);
+            return TryResolveSpecScriptPublications(
+                itemProperty?["spec"] as WzSubProperty,
+                itemProperty?["specEx"] as WzSubProperty,
+                out publications);
         }
 
         public static bool TryResolveSpecNpc(int itemId, out int npcId)
@@ -398,12 +407,12 @@ namespace HaCreator.MapSimulator.UI
             npcId = 0;
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
-            if (itemProperty?["spec"] is not WzSubProperty specProperty)
+            int resolvedNpcId = GetIntOrStringValue((itemProperty?["spec"] as WzSubProperty)?["npc"]);
+            if (resolvedNpcId <= 0)
             {
-                return false;
+                resolvedNpcId = GetIntOrStringValue((itemProperty?["specEx"] as WzSubProperty)?["npc"]);
             }
 
-            int resolvedNpcId = GetIntOrStringValue(specProperty["npc"]);
             if (resolvedNpcId <= 0)
             {
                 return false;
@@ -945,6 +954,7 @@ namespace HaCreator.MapSimulator.UI
         {
             npcId = 0;
             if (TryResolveNpcValue(itemProperty?["spec"] as WzSubProperty, out int resolvedNpcId)
+                || TryResolveNpcValue(itemProperty?["specEx"] as WzSubProperty, out resolvedNpcId)
                 || TryResolveNpcValue(itemProperty?["info"] as WzSubProperty, out resolvedNpcId))
             {
                 npcId = resolvedNpcId;
@@ -986,8 +996,16 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool TryResolveSpecScript(WzSubProperty specProperty, out string script)
         {
+            return TryResolveSpecScript(specProperty, null, out script);
+        }
+
+        internal static bool TryResolveSpecScript(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            out string script)
+        {
             script = null;
-            if (!TryResolveSpecScripts(specProperty, out IReadOnlyList<string> scripts)
+            if (!TryResolveSpecScripts(specProperty, specExProperty, out IReadOnlyList<string> scripts)
                 || scripts.Count == 0)
             {
                 return false;
@@ -999,15 +1017,45 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool TryResolveSpecScripts(WzSubProperty specProperty, out IReadOnlyList<string> scripts)
         {
+            return TryResolveSpecScripts(specProperty, null, out scripts);
+        }
+
+        internal static bool TryResolveSpecScripts(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            out IReadOnlyList<string> scripts)
+        {
             scripts = Array.Empty<string>();
 
-            IReadOnlyList<string> resolvedScripts = QuestRuntimeManager.ParseScriptNames(specProperty?["script"]);
-            if (resolvedScripts.Count == 0)
+            var mergedScripts = new List<string>();
+            var seenScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            IReadOnlyList<string> resolvedSpecScripts = QuestRuntimeManager.ParseScriptNames(specProperty?["script"]);
+            for (int index = 0; index < resolvedSpecScripts.Count; index++)
+            {
+                string candidate = resolvedSpecScripts[index];
+                if (!string.IsNullOrWhiteSpace(candidate) && seenScripts.Add(candidate))
+                {
+                    mergedScripts.Add(candidate);
+                }
+            }
+
+            IReadOnlyList<string> resolvedSpecExScripts = QuestRuntimeManager.ParseScriptNames(specExProperty?["script"]);
+            for (int index = 0; index < resolvedSpecExScripts.Count; index++)
+            {
+                string candidate = resolvedSpecExScripts[index];
+                if (!string.IsNullOrWhiteSpace(candidate) && seenScripts.Add(candidate))
+                {
+                    mergedScripts.Add(candidate);
+                }
+            }
+
+            if (mergedScripts.Count == 0)
             {
                 return false;
             }
 
-            scripts = resolvedScripts;
+            scripts = mergedScripts;
             return true;
         }
 
@@ -1015,17 +1063,65 @@ namespace HaCreator.MapSimulator.UI
             WzSubProperty specProperty,
             out IReadOnlyList<FieldObjectScriptPublication> publications)
         {
+            return TryResolveSpecScriptPublications(specProperty, null, out publications);
+        }
+
+        internal static bool TryResolveSpecScriptPublications(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            out IReadOnlyList<FieldObjectScriptPublication> publications)
+        {
             publications = Array.Empty<FieldObjectScriptPublication>();
 
-            IReadOnlyList<FieldObjectScriptPublication> resolvedPublications =
+            var mergedPublications = new List<FieldObjectScriptPublication>();
+            var seenPublicationKeys = new HashSet<string>(StringComparer.Ordinal);
+
+            IReadOnlyList<FieldObjectScriptPublication> resolvedSpecPublications =
                 FieldObjectScriptPublicationParser.Parse(specProperty?["script"]);
-            if (resolvedPublications.Count == 0)
+            AddSpecScriptPublications(resolvedSpecPublications, mergedPublications, seenPublicationKeys);
+
+            IReadOnlyList<FieldObjectScriptPublication> resolvedSpecExPublications =
+                FieldObjectScriptPublicationParser.Parse(specExProperty?["script"]);
+            AddSpecScriptPublications(resolvedSpecExPublications, mergedPublications, seenPublicationKeys);
+
+            if (mergedPublications.Count == 0)
             {
                 return false;
             }
 
-            publications = resolvedPublications;
+            publications = mergedPublications;
             return true;
+        }
+
+        private static void AddSpecScriptPublications(
+            IReadOnlyList<FieldObjectScriptPublication> source,
+            ICollection<FieldObjectScriptPublication> destination,
+            ISet<string> seenKeys)
+        {
+            if (source == null || source.Count == 0 || destination == null || seenKeys == null)
+            {
+                return;
+            }
+
+            for (int index = 0; index < source.Count; index++)
+            {
+                FieldObjectScriptPublication publication = source[index];
+                if (publication == null || string.IsNullOrWhiteSpace(publication.ScriptName))
+                {
+                    continue;
+                }
+
+                string key = string.Concat(
+                    publication.ScriptName.Trim(),
+                    "|",
+                    publication.DelayMs.ToString(CultureInfo.InvariantCulture));
+                if (!seenKeys.Add(key))
+                {
+                    continue;
+                }
+
+                destination.Add(publication);
+            }
         }
 
         public static bool TryResolveSpecScriptForTests(WzSubProperty specProperty, out string script)
@@ -1033,9 +1129,25 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveSpecScript(specProperty, out script);
         }
 
+        public static bool TryResolveSpecScriptForTests(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            out string script)
+        {
+            return TryResolveSpecScript(specProperty, specExProperty, out script);
+        }
+
         public static bool TryResolveSpecScriptsForTests(WzSubProperty specProperty, out IReadOnlyList<string> scripts)
         {
             return TryResolveSpecScripts(specProperty, out scripts);
+        }
+
+        public static bool TryResolveSpecScriptsForTests(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            out IReadOnlyList<string> scripts)
+        {
+            return TryResolveSpecScripts(specProperty, specExProperty, out scripts);
         }
 
         internal static bool TryResolveSpecScriptPublicationsForTests(
@@ -1043,6 +1155,14 @@ namespace HaCreator.MapSimulator.UI
             out IReadOnlyList<FieldObjectScriptPublication> publications)
         {
             return TryResolveSpecScriptPublications(specProperty, out publications);
+        }
+
+        internal static bool TryResolveSpecScriptPublicationsForTests(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            out IReadOnlyList<FieldObjectScriptPublication> publications)
+        {
+            return TryResolveSpecScriptPublications(specProperty, specExProperty, out publications);
         }
 
         public static bool IsWeddingInvitationItemForTests(
@@ -1057,7 +1177,10 @@ namespace HaCreator.MapSimulator.UI
         internal static bool HasAuthoredNpcInteraction(WzSubProperty itemProperty)
         {
             return TryResolveNpcReference(itemProperty, out _)
-                   || TryResolveSpecScripts(itemProperty?["spec"] as WzSubProperty, out _);
+                   || TryResolveSpecScripts(
+                       itemProperty?["spec"] as WzSubProperty,
+                       itemProperty?["specEx"] as WzSubProperty,
+                       out _);
         }
 
         internal static bool IsWeddingInvitationItem(
@@ -1298,13 +1421,14 @@ namespace HaCreator.MapSimulator.UI
             WzSubProperty specExProperty)
         {
             List<string> effectLines = new();
+            WzSubProperty effectSpecProperty = specProperty ?? specExProperty;
             AppendInfoEffectLines(effectLines, infoProperty);
             AppendInfoExperienceEffectLines(effectLines, infoProperty);
             AppendChairRecoveryEffectLines(effectLines, infoProperty);
             AppendPetFoodEffectLine(effectLines, itemId, specProperty);
             AppendBuffItemEffectLines(effectLines, itemProperty?["buff"] as WzSubProperty);
-            AppendScriptedUseEffectLines(effectLines, specProperty);
-            AppendPickupModifierEffectLines(effectLines, specProperty);
+            AppendScriptedUseEffectLines(effectLines, specProperty, specExProperty);
+            AppendPickupModifierEffectLines(effectLines, effectSpecProperty);
             AppendMobEffectLines(effectLines, itemProperty?["mob"] as WzSubProperty);
             AppendRewardEffectLines(effectLines, itemProperty?["reward"] as WzSubProperty);
 
@@ -1313,7 +1437,6 @@ namespace HaCreator.MapSimulator.UI
                 return effectLines;
             }
 
-            WzSubProperty effectSpecProperty = specProperty ?? specExProperty;
             AppendStatEffectLine(effectLines, "HP", TryGetPositiveInt(effectSpecProperty["hp"]), false);
             AppendStatEffectLine(effectLines, "HP", ResolveFirstPositiveInt(effectSpecProperty, "hpR", "hpRatio", "hpPer"), true);
             AppendStatEffectLine(effectLines, "MP", TryGetPositiveInt(effectSpecProperty["mp"]), false);
@@ -1659,15 +1782,44 @@ namespace HaCreator.MapSimulator.UI
             effectLines.Add($"Pet Fullness {FormatSignedValue(fullnessIncrease)}");
         }
 
-        private static void AppendScriptedUseEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        private static void AppendScriptedUseEffectLines(
+            List<string> effectLines,
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
         {
-            if (specProperty == null)
+            if (effectLines == null)
+            {
+                return;
+            }
+
+            var seenNpcIds = new HashSet<int>();
+            bool addedPickupTriggerLine = false;
+
+            AppendScriptedUseEffectLinesFromProperty(
+                effectLines,
+                specProperty,
+                seenNpcIds,
+                ref addedPickupTriggerLine);
+            AppendScriptedUseEffectLinesFromProperty(
+                effectLines,
+                specExProperty,
+                seenNpcIds,
+                ref addedPickupTriggerLine);
+        }
+
+        private static void AppendScriptedUseEffectLinesFromProperty(
+            ICollection<string> effectLines,
+            WzSubProperty specProperty,
+            ISet<int> seenNpcIds,
+            ref bool addedPickupTriggerLine)
+        {
+            if (effectLines == null || specProperty == null)
             {
                 return;
             }
 
             int npcId = GetIntOrStringValue(specProperty["npc"]);
-            if (npcId > 0)
+            if (npcId > 0 && (seenNpcIds == null || seenNpcIds.Add(npcId)))
             {
                 string npcName = ResolveNpcName(npcId);
                 effectLines.Add(string.IsNullOrWhiteSpace(npcName)
@@ -1681,9 +1833,10 @@ namespace HaCreator.MapSimulator.UI
                 effectLines.Add($"Uses script: {scriptName}");
             }
 
-            if (GetIntValue(specProperty["runOnPickup"]) == 1)
+            if (!addedPickupTriggerLine && GetIntValue(specProperty["runOnPickup"]) == 1)
             {
                 effectLines.Add("Runs immediately on pickup");
+                addedPickupTriggerLine = true;
             }
         }
 

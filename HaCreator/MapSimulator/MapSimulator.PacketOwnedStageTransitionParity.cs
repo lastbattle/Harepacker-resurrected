@@ -34,7 +34,7 @@ namespace HaCreator.MapSimulator
                 && PacketStageTransitionRuntime.TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket setFieldPacket, out _))
             {
                 // `CStage::OnSetField` consumes the prior field interaction request lifecycle.
-                ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
+                ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
                 UpdateRemoteDropPacketServerClockFromSetField(setFieldPacket);
                 UpdatePacketOwnedFollowRequestOptionFromSetField(setFieldPacket);
                 UpdatePacketOwnedAuthoritativeCharacterDataFromSetField(setFieldPacket);

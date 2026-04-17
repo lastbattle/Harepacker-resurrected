@@ -20,6 +20,30 @@ namespace HaCreator.MapSimulator.Animation
     /// </summary>
     public class AnimationEffects
     {
+        internal sealed class SecondaryMotionBlurLayerStackEntryTag
+        {
+            public SecondaryMotionBlurLayerStackEntryTag(int drawOrder)
+            {
+                DrawOrder = Math.Max(0, drawOrder);
+            }
+
+            public int DrawOrder { get; }
+        }
+
+        internal static bool IsSecondaryMotionBlurLayerStack(IReadOnlyList<IDXObject> frames)
+        {
+            return frames != null
+                && frames.Count > 0
+                && frames[0]?.Tag is SecondaryMotionBlurLayerStackEntryTag;
+        }
+
+        internal static int ResolveSecondaryMotionBlurLayerStackDrawOrder(IDXObject frame, int fallbackOrder)
+        {
+            return frame?.Tag is SecondaryMotionBlurLayerStackEntryTag metadata
+                ? metadata.DrawOrder
+                : fallbackOrder;
+        }
+
         internal sealed class FollowAnimationOptions
         {
             public IReadOnlyList<Vector2> GenerationPoints { get; init; }
@@ -1883,12 +1907,93 @@ namespace HaCreator.MapSimulator.Animation
                 int drawShiftX = -(int)MathF.Round(drawPosition.X) - mapShiftX;
                 int drawShiftY = -(int)MathF.Round(drawPosition.Y) - mapShiftY;
                 Color tint = new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, snapshotAlpha);
+                if (AnimationEffects.IsSecondaryMotionBlurLayerStack(frames))
+                {
+                    DrawLayerStack(
+                        frames,
+                        spriteBatch,
+                        skeletonRenderer,
+                        gameTime,
+                        drawShiftX,
+                        drawShiftY,
+                        drawFlip,
+                        tint);
+                    continue;
+                }
+
                 frame.DrawBackground(
                     spriteBatch,
                     skeletonRenderer,
                     gameTime,
                     frame.X - drawShiftX,
                     frame.Y - drawShiftY,
+                    tint,
+                    drawFlip,
+                    null);
+            }
+        }
+
+        private static void DrawLayerStack(
+            IReadOnlyList<IDXObject> frames,
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            GameTime gameTime,
+            int drawShiftX,
+            int drawShiftY,
+            bool drawFlip,
+            Color tint)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            int maxTaggedOrder = -1;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                maxTaggedOrder = Math.Max(
+                    maxTaggedOrder,
+                    AnimationEffects.ResolveSecondaryMotionBlurLayerStackDrawOrder(frames[i], fallbackOrder: -1));
+            }
+
+            for (int drawOrder = 0; drawOrder <= maxTaggedOrder; drawOrder++)
+            {
+                for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
+                {
+                    IDXObject layer = frames[frameIndex];
+                    if (layer == null
+                        || AnimationEffects.ResolveSecondaryMotionBlurLayerStackDrawOrder(layer, fallbackOrder: -1) != drawOrder)
+                    {
+                        continue;
+                    }
+
+                    layer.DrawBackground(
+                        spriteBatch,
+                        skeletonRenderer,
+                        gameTime,
+                        layer.X - drawShiftX,
+                        layer.Y - drawShiftY,
+                        tint,
+                        drawFlip,
+                        null);
+                }
+            }
+
+            for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
+            {
+                IDXObject layer = frames[frameIndex];
+                if (layer == null
+                    || layer.Tag is AnimationEffects.SecondaryMotionBlurLayerStackEntryTag)
+                {
+                    continue;
+                }
+
+                layer.DrawBackground(
+                    spriteBatch,
+                    skeletonRenderer,
+                    gameTime,
+                    layer.X - drawShiftX,
+                    layer.Y - drawShiftY,
                     tint,
                     drawFlip,
                     null);

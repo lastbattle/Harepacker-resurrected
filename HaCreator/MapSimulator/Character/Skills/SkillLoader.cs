@@ -1140,6 +1140,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.TargetHitEffects = LoadIndexedSkillAnimations(hitNode, "hit");
             }
 
+            skill.MultipleLayerTargetHitEffects = LoadPrefixedIndexedSkillAnimations(skillNode, "hit");
+
             var mobNode = skillNode["mob"];
             if (mobNode != null)
             {
@@ -2287,6 +2289,42 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 SkillAnimation animation = LoadSkillAnimation(child, $"{baseName}/{child.Name}");
+                if (animation.Frames.Count <= 0)
+                {
+                    continue;
+                }
+
+                while (animations.Count <= index)
+                {
+                    animations.Add(null);
+                }
+
+                animations[index] = animation;
+            }
+
+            return animations;
+        }
+
+        private List<SkillAnimation> LoadPrefixedIndexedSkillAnimations(WzImageProperty rootNode, string prefix)
+        {
+            var animations = new List<SkillAnimation>();
+            if (rootNode == null || string.IsNullOrWhiteSpace(prefix))
+            {
+                return animations;
+            }
+
+            foreach (WzImageProperty child in rootNode.WzProperties)
+            {
+                if (child == null
+                    || string.IsNullOrWhiteSpace(child.Name)
+                    || !child.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    || !int.TryParse(child.Name[prefix.Length..], out int index)
+                    || index < 0)
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(child, child.Name);
                 if (animation.Frames.Count <= 0)
                 {
                     continue;
@@ -5581,7 +5619,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return normalizedMountedRootPath;
             }
 
-            return NormalizeClientSummonedUolPathSegments(parts);
+            string normalizedSegmentPath = NormalizeClientSummonedUolPathSegments(parts);
+            if (!string.IsNullOrWhiteSpace(normalizedSegmentPath))
+            {
+                return normalizedSegmentPath;
+            }
+
+            string embeddedPathToken = ExtractEmbeddedClientSummonedUolPathToken(normalizedPath);
+            if (string.IsNullOrWhiteSpace(embeddedPathToken)
+                || string.Equals(embeddedPathToken, normalizedPath, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return NormalizeClientSummonedUolPath(embeddedPathToken);
         }
 
         private static string NormalizeClientSummonedUolFullPath(string summonedUolFullPath)
@@ -5887,49 +5938,89 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static IEnumerable<int> EnumerateLinkedSkillIdsFromClientSummonedUolValueProperty(
             WzImageProperty resolvedProperty)
         {
-            if (resolvedProperty is not WzStringProperty stringProperty
-                || string.IsNullOrWhiteSpace(stringProperty.Value))
+            if (resolvedProperty == null)
             {
                 yield break;
             }
 
             var yieldedSkillIds = new HashSet<int>();
-            foreach (int parsedLinkedSkillId in ParseLinkedSkillIds(stringProperty.Value))
-            {
-                if (parsedLinkedSkillId > 0 && yieldedSkillIds.Add(parsedLinkedSkillId))
-                {
-                    yield return parsedLinkedSkillId;
-                }
-            }
-
+            var processedValueTexts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var processedPathTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string pathToken in EnumerateClientSummonedUolPathTokensFromValue(stringProperty.Value))
+            foreach (string valueText in EnumerateClientSummonedUolValueTexts(resolvedProperty))
             {
-                if (string.IsNullOrWhiteSpace(pathToken)
-                    || !processedPathTokens.Add(pathToken))
+                if (string.IsNullOrWhiteSpace(valueText)
+                    || !processedValueTexts.Add(valueText))
                 {
                     continue;
                 }
 
-                string normalizedPath = NormalizeClientSummonedUolPath(pathToken);
-                if (string.IsNullOrWhiteSpace(normalizedPath))
+                foreach (int parsedLinkedSkillId in ParseLinkedSkillIds(valueText))
                 {
-                    continue;
-                }
-
-                if (TryParseClientSummonedUolRootSkillId(normalizedPath, out int rootSkillId)
-                    && yieldedSkillIds.Add(rootSkillId))
-                {
-                    yield return rootSkillId;
-                }
-
-                foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath))
-                {
-                    if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
+                    if (parsedLinkedSkillId > 0 && yieldedSkillIds.Add(parsedLinkedSkillId))
                     {
-                        yield return linkedSkillId;
+                        yield return parsedLinkedSkillId;
                     }
                 }
+
+                foreach (string pathToken in EnumerateClientSummonedUolPathTokensFromValue(valueText))
+                {
+                    if (string.IsNullOrWhiteSpace(pathToken)
+                        || !processedPathTokens.Add(pathToken))
+                    {
+                        continue;
+                    }
+
+                    string normalizedPath = NormalizeClientSummonedUolPath(pathToken);
+                    if (string.IsNullOrWhiteSpace(normalizedPath))
+                    {
+                        continue;
+                    }
+
+                    if (TryParseClientSummonedUolRootSkillId(normalizedPath, out int rootSkillId)
+                        && yieldedSkillIds.Add(rootSkillId))
+                    {
+                        yield return rootSkillId;
+                    }
+
+                    foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath))
+                    {
+                        if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
+                        {
+                            yield return linkedSkillId;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolValueTexts(WzImageProperty resolvedProperty)
+        {
+            switch (resolvedProperty)
+            {
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    yield return stringProperty.Value;
+                    yield break;
+                case WzUOLProperty uolProperty:
+                    if (!string.IsNullOrWhiteSpace(uolProperty.Value))
+                    {
+                        yield return uolProperty.Value;
+                    }
+
+                    string linkedString = uolProperty.GetString();
+                    if (!string.IsNullOrWhiteSpace(linkedString))
+                    {
+                        yield return linkedString;
+                    }
+
+                    yield break;
+                default:
+                    string value = resolvedProperty.GetString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        yield return value;
+                    }
+
+                    yield break;
             }
         }
 

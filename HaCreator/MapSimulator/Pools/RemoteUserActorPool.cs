@@ -75,7 +75,8 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 Position,
             bool FacingRight,
             int CurrentTime,
-            bool UsesAuthoredWzHitNode = false);
+            bool UsesAuthoredWzHitNode = false,
+            bool AttachToOwner = false);
         public readonly record struct RemoteMobDamageInfoPresentation(
             int CharacterId,
             int MobId,
@@ -2497,16 +2498,27 @@ namespace HaCreator.MapSimulator.Pools
             if (TryResolveRemoteHitMobAttackEffectPath(packet, out string mobAttackEffectPath))
             {
                 bool usesAuthoredHitNode = TryResolveAuthoredMobAttackHitEffectPath(packet, out _);
-                Vector2 mobAttackEffectAnchor = ResolveRemoteHitMobAttackEffectAnchorForParity(actor, packet, currentTime);
+                bool attachToOwner = TryResolveRemoteHitMobAttackAttachToOwnerForParity(packet, out bool resolvedAttachToOwner)
+                                     && resolvedAttachToOwner;
+                Vector2 mobAttackEffectAnchor = ResolveRemoteHitMobAttackEffectAnchorForParity(
+                    actor,
+                    packet,
+                    currentTime,
+                    attachToOwner);
+                bool mobAttackEffectFacingRight = ResolveRemoteHitMobAttackEffectFacingForParity(
+                    actor,
+                    packet,
+                    attachToOwner);
                 MobAttackHitEffectRegistered?.Invoke(new RemoteMobAttackHitPresentation(
                     packet.CharacterId,
                     packet.MobTemplateId.Value,
                     packet.AttackIndex,
                     mobAttackEffectPath,
                     mobAttackEffectAnchor,
-                    !packet.MobHitFacingLeft,
+                    mobAttackEffectFacingRight,
                     currentTime,
-                    usesAuthoredHitNode));
+                    usesAuthoredHitNode,
+                    attachToOwner));
 
                 string mobAttackSoundDescriptor = BuildRemoteMobAttackHitSoundDescriptorForParity(
                     packet.MobTemplateId.GetValueOrDefault(),
@@ -2695,7 +2707,8 @@ namespace HaCreator.MapSimulator.Pools
         internal static Vector2 ResolveRemoteHitMobAttackEffectAnchorForParity(
             RemoteUserActor actor,
             RemoteUserHitPacket packet,
-            int currentTime)
+            int currentTime,
+            bool attachToOwner = false)
         {
             if (actor == null)
             {
@@ -2707,8 +2720,7 @@ namespace HaCreator.MapSimulator.Pools
                 return ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f);
             }
 
-            if (TryResolveRemoteHitMobAttackAttachToOwnerForParity(packet, out bool attachToOwner)
-                && attachToOwner)
+            if (attachToOwner)
             {
                 // Client `CUserRemote::OnHit` uses the owner vec-control attachment path
                 // when `MobAttackInfo::bHitAttach` is enabled.
@@ -2736,6 +2748,19 @@ namespace HaCreator.MapSimulator.Pools
                 worldBottomExclusive,
                 randomSeed);
             return randomPoint.ToVector2();
+        }
+
+        internal static bool ResolveRemoteHitMobAttackEffectFacingForParity(
+            RemoteUserActor actor,
+            RemoteUserHitPacket packet,
+            bool attachToOwner)
+        {
+            if (attachToOwner)
+            {
+                return actor?.FacingRight ?? true;
+            }
+
+            return !packet.MobHitFacingLeft;
         }
 
         internal static bool TryResolveRemoteHitMobAttackAttachToOwnerForParity(
@@ -10156,14 +10181,16 @@ namespace HaCreator.MapSimulator.Pools
         {
             RemoteShadowPartnerPresentationState presentation = actor?.ShadowPartnerPresentation;
             if (presentation?.CurrentPlaybackAnimation?.Frames == null
-                || presentation.CurrentPlaybackAnimation.Frames.Count == 0
-                || !ShadowPartnerClientActionResolver.IsBlockingAction(presentation.CurrentActionName))
+                || presentation.CurrentPlaybackAnimation.Frames.Count == 0)
             {
                 return false;
             }
 
             int elapsedTime = Math.Max(0, currentTime - presentation.CurrentActionStartTime);
-            return !ShadowPartnerClientActionResolver.IsPlaybackComplete(presentation.CurrentPlaybackAnimation, elapsedTime);
+            return ShadowPartnerClientActionResolver.ShouldHoldBlockingAction(
+                presentation.CurrentActionName,
+                presentation.CurrentPlaybackAnimation,
+                elapsedTime);
         }
 
         private static int ResolveRemoteShadowPartnerAttackDelayMs(
@@ -10810,6 +10837,11 @@ namespace HaCreator.MapSimulator.Pools
             RemoteUserTemporaryStatSnapshot snapshot,
             int preferredSkillId)
         {
+            if (!snapshot.HasWeaponCharge)
+            {
+                return null;
+            }
+
             if (snapshot.KnownState.ChargeSkillId.HasValue)
             {
                 return snapshot.KnownState.ChargeSkillId;
@@ -10856,6 +10888,12 @@ namespace HaCreator.MapSimulator.Pools
             int preferredSkillId,
             out int chargeElement)
         {
+            if (!snapshot.HasWeaponCharge)
+            {
+                chargeElement = 0;
+                return false;
+            }
+
             if (AfterImageChargeSkillResolver.TryGetChargeElement(
                     snapshot.KnownState.ChargeSkillId ?? 0,
                     out chargeElement))

@@ -221,18 +221,27 @@ namespace HaCreator.MapSimulator.UI
             TouchWishlistSearchStateToken();
         }
 
-        public void RecordResultIgnoredByOwner(byte subtype, byte resultCode, string ownerState, int trailingByteCount = 0, bool hasResultCode = true)
+        public void RecordResultIgnoredByOwner(
+            byte subtype,
+            byte resultCode,
+            string ownerState,
+            int trailingByteCount = 0,
+            bool hasResultCode = true,
+            bool keepSessionActive = false,
+            AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden)
         {
             ResultCount++;
             LastSubtype = subtype;
             LastResultCode = resultCode;
             LastResultHadResultCode = hasResultCode;
             ResultTrailingByteCount = Math.Max(0, trailingByteCount);
-            IsActive = false;
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
-            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
+            IsActive = keepSessionActive && (IsActive || OpenCount > 0 || DecodedItemCount > 0 || NpcTemplateId > 0);
+            OwnerVisibilityState = keepSessionActive
+                ? preservedVisibilityState
+                : AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
             LastOwnerState = ownerState ?? string.Empty;
             ClearPendingWishlistRegister();
             TouchWishlistSearchStateToken();

@@ -112,8 +112,6 @@ namespace HaCreator.MapSimulator
             EquipSlot.Badge,
             EquipSlot.Pendant2,
             EquipSlot.TamingMobAccessory,
-            EquipSlot.Android,
-            EquipSlot.AndroidHeart,
             EquipSlot.TamingMob
         };
 
@@ -228,6 +226,11 @@ namespace HaCreator.MapSimulator
             public int EffectiveDurationMs => Math.Max(1, DurationMs > 0 ? DurationMs : AnimationDisplayerExplosionFallbackDurationMs);
         }
 
+        internal readonly record struct AnimationDisplayerReservedEffectMetadata(
+            int Type,
+            int StartDelayMs,
+            string VisualEffectUol);
+
         private void RegisterAnimationDisplayerChatCommand()
         {
             _chat.CommandHandler.RegisterCommand(
@@ -267,11 +270,12 @@ namespace HaCreator.MapSimulator
             }
 
             if (string.Equals(args[0], "guard", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(args[0], "miss", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(args[0], "miss", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "shot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "counter", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "resist", StringComparison.OrdinalIgnoreCase))
             {
-                string specialTextName = string.Equals(args[0], "guard", StringComparison.OrdinalIgnoreCase)
-                    ? "guard"
-                    : "Miss";
+                string specialTextName = DamageNumberRenderer.ResolveSpecialTextName(args[0]);
                 if (!TryResolveAnimationDisplayerOwner(
                         args.Length > 1 ? args[1] : "local",
                         out int ownerCharacterId,
@@ -285,7 +289,7 @@ namespace HaCreator.MapSimulator
                         args.Length > 2 ? args[2] : null,
                         out DamageColorType colorType))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|blue|violet]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|blue|violet|0|1|2]");
                 }
 
                 return TryRegisterAnimationDisplayerCombatFeedback(
@@ -1238,6 +1242,64 @@ namespace HaCreator.MapSimulator
                 : AnimationDisplayerTransformEffectUol;
         }
 
+        internal static bool TryResolveAnimationDisplayerReservedEffectMetadata(
+            string effectUol,
+            Func<string, WzImageProperty> propertyResolver,
+            out AnimationDisplayerReservedEffectMetadata metadata)
+        {
+            metadata = default;
+            string normalizedEffectUol = NormalizeRemotePacketOwnedStringEffectUol(effectUol);
+            if (string.IsNullOrWhiteSpace(normalizedEffectUol))
+            {
+                return false;
+            }
+
+            Func<string, WzImageProperty> resolver = propertyResolver ?? ResolveAnimationDisplayerPropertyStatic;
+            WzImageProperty rootProperty = WzInfoTools.GetRealProperty(resolver(normalizedEffectUol));
+            if (rootProperty == null)
+            {
+                return false;
+            }
+
+            if (rootProperty is WzSubProperty rootSubProperty)
+            {
+                int childCount = rootSubProperty.WzProperties?.Count ?? 0;
+                for (int index = 0; index < childCount; index++)
+                {
+                    WzImageProperty child = WzInfoTools.GetRealProperty(
+                        rootSubProperty[index.ToString(CultureInfo.InvariantCulture)]);
+                    if (child == null)
+                    {
+                        continue;
+                    }
+
+                    string visualPath = NormalizeRemotePacketOwnedStringEffectUol(child["visual"]?.GetString());
+                    if (string.IsNullOrWhiteSpace(visualPath))
+                    {
+                        continue;
+                    }
+
+                    metadata = new AnimationDisplayerReservedEffectMetadata(
+                        Type: child["type"]?.GetInt() ?? 0,
+                        StartDelayMs: Math.Max(0, child["start"]?.GetInt() ?? 0),
+                        VisualEffectUol: visualPath);
+                    return true;
+                }
+            }
+
+            string rootVisualPath = NormalizeRemotePacketOwnedStringEffectUol(rootProperty["visual"]?.GetString());
+            if (string.IsNullOrWhiteSpace(rootVisualPath))
+            {
+                return false;
+            }
+
+            metadata = new AnimationDisplayerReservedEffectMetadata(
+                Type: rootProperty["type"]?.GetInt() ?? 0,
+                StartDelayMs: Math.Max(0, rootProperty["start"]?.GetInt() ?? 0),
+                VisualEffectUol: rootVisualPath);
+            return true;
+        }
+
         private bool TryRegisterAnimationDisplayerLocalCooldownReady(int currentTime)
         {
             if (!TryResolveAnimationDisplayerOwner(
@@ -1495,20 +1557,44 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (string.Equals(token, "red", StringComparison.OrdinalIgnoreCase))
+            string normalized = token.Trim();
+            if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out int encodedColorType))
+            {
+                if (encodedColorType == 0)
+                {
+                    colorType = DamageColorType.Red;
+                    return true;
+                }
+
+                if (encodedColorType == 1)
+                {
+                    colorType = DamageColorType.Blue;
+                    return true;
+                }
+
+                if (encodedColorType == 2)
+                {
+                    colorType = DamageColorType.Violet;
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (string.Equals(normalized, "red", StringComparison.OrdinalIgnoreCase))
             {
                 colorType = DamageColorType.Red;
                 return true;
             }
 
-            if (string.Equals(token, "violet", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(token, "purple", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalized, "violet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "purple", StringComparison.OrdinalIgnoreCase))
             {
                 colorType = DamageColorType.Violet;
                 return true;
             }
 
-            if (string.Equals(token, "blue", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalized, "blue", StringComparison.OrdinalIgnoreCase))
             {
                 colorType = DamageColorType.Blue;
                 return true;
@@ -2324,6 +2410,54 @@ namespace HaCreator.MapSimulator
                     out _);
             }
 
+            if (TryResolveAnimationDisplayerReservedEffectMetadata(
+                    effectUol,
+                    ResolveAnimationDisplayerProperty,
+                    out AnimationDisplayerReservedEffectMetadata reservedMetadata))
+            {
+                if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(
+                        reservedMetadata.VisualEffectUol,
+                        out int reservedSquibVariant))
+                {
+                    return TryRegisterAnimationDisplayerSquib(
+                        presentation.CharacterId,
+                        getPosition,
+                        reservedSquibVariant,
+                        presentation.CurrentTime,
+                        out _);
+                }
+
+                if (TryResolveAnimationDisplayerTransformedOnLadderFromEffectUol(
+                        reservedMetadata.VisualEffectUol,
+                        out bool reservedTransformedOnLadder))
+                {
+                    return TryRegisterAnimationDisplayerTransformed(
+                        presentation.CharacterId,
+                        getPosition,
+                        reservedTransformedOnLadder,
+                        presentation.CurrentTime,
+                        out _);
+                }
+
+                if (TryGetAnimationDisplayerFrames(
+                        $"reserved:{effectUol}:{reservedMetadata.Type}:{reservedMetadata.VisualEffectUol}",
+                        reservedMetadata.VisualEffectUol,
+                        out List<IDXObject> reservedFrames))
+                {
+                    int registerTime = presentation.CurrentTime + reservedMetadata.StartDelayMs;
+                    Vector2 reservedFallbackPosition = getPosition();
+                    _animationEffects.AddOneTimeAttached(
+                        reservedFrames,
+                        getPosition,
+                        getFlip: null,
+                        reservedFallbackPosition.X,
+                        reservedFallbackPosition.Y,
+                        fallbackFlip: false,
+                        registerTime);
+                    return true;
+                }
+            }
+
             return false;
         }
 
@@ -2333,6 +2467,39 @@ namespace HaCreator.MapSimulator
                 || string.IsNullOrWhiteSpace(presentation.EffectPath)
                 || !TryLoadRemotePacketOwnedStringEffectFrames(presentation.EffectPath, out List<IDXObject> frames))
             {
+                return;
+            }
+
+            if (presentation.AttachToOwner)
+            {
+                Vector2 fallbackPosition = presentation.Position;
+                bool fallbackFacingRight = presentation.FacingRight;
+                _animationEffects.AddOneTimeAttached(
+                    frames,
+                    () =>
+                    {
+                        if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                            && liveActor != null)
+                        {
+                            return liveActor.Position;
+                        }
+
+                        return fallbackPosition;
+                    },
+                    () =>
+                    {
+                        if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                            && liveActor != null)
+                        {
+                            return liveActor.FacingRight;
+                        }
+
+                        return fallbackFacingRight;
+                    },
+                    fallbackPosition.X,
+                    fallbackPosition.Y,
+                    fallbackFacingRight,
+                    presentation.CurrentTime);
                 return;
             }
 
@@ -2788,6 +2955,22 @@ namespace HaCreator.MapSimulator
         private int ResolveAnimationDisplayerPrepareOwnerId()
         {
             return _playerManager?.Player?.Build?.Id ?? 0;
+        }
+
+        internal static bool ShouldRouteLocalSkillCastThroughClientSkillEffectRequestSeamForTesting(
+            SkillCastInfo castInfo)
+        {
+            if (castInfo?.SkillData == null
+                || castInfo.SkillId <= 0
+                || castInfo.DelayRateOverride is not > 0)
+            {
+                return false;
+            }
+
+            SkillData skill = castInfo.SkillData;
+            return !skill.IsAttack
+                   && !skill.IsPrepareSkill
+                   && !skill.IsKeydownSkill;
         }
 
         private bool TryRegisterAnimationDisplayerLocalSkillUseRequest(SkillUseEffectRequest request)

@@ -106,6 +106,23 @@ namespace HaCreator.MapSimulator.Interaction
                 : PacketQuestResultSubtype10ContinuationDisposition.Abandon;
         }
 
+        internal static PacketQuestResultSubtype10ContinuationDisposition ResolveSubtype10ContinuationDisposition(
+            int doModalReturnCode)
+        {
+            return doModalReturnCode == (int)PacketQuestResultUtilDialogModalResult.NextOrOk
+                ? PacketQuestResultSubtype10ContinuationDisposition.Continue
+                : PacketQuestResultSubtype10ContinuationDisposition.Abandon;
+        }
+
+        internal static PacketQuestResultSubtype10ContinuationDisposition ResolveSubtype10ContinuationDisposition(
+            NpcInteractionOverlayCloseKind closeKind,
+            int? doModalReturnCode)
+        {
+            return doModalReturnCode.HasValue
+                ? ResolveSubtype10ContinuationDisposition(doModalReturnCode.Value)
+                : ResolveSubtype10ContinuationDisposition(closeKind);
+        }
+
         internal static bool TryDecodeSubtype10TrailingFollowUpQuestId(
             ReadOnlySpan<byte> payload,
             out int followUpQuestId,

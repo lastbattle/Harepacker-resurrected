@@ -9,7 +9,8 @@ namespace HaCreator.MapSimulator.UI
         LegacyPanel,
         SkillBook,
         QuickSlot,
-        StatusBarCooldownTray
+        StatusBarCooldownTray,
+        StatusBarOffBarCooldownTray
     }
 
     internal static class SkillTooltipFrameLayout
@@ -30,6 +31,7 @@ namespace HaCreator.MapSimulator.UI
         private const int SkillBookCursorYOffset = 20;
         private const int QuickSlotCursorYOffset = 20;
         private const int StatusBarCooldownTrayCursorYOffset = -128;
+        private const int StatusBarOffBarCooldownTrayCursorYOffset = 20;
         private const int MountedSkillTooltipFrameWidth = 193;
         private const int MountedSkillTooltipFrameHeight = 102;
 
@@ -69,11 +71,13 @@ namespace HaCreator.MapSimulator.UI
             // v95 client evidence:
             // - CUISkill::OnMouseMove and CUIKeyConfig::OnMouseMove call SetToolTip_Skill at (mouseX, mouseY + 20).
             // - CUIStatusBar::OnMouseMove calls SetToolTip_Skill at (mouseX, mouseY - 128) for shortcut tray entries.
+            // - CUIStatusBar::ProcessToolTip uses (mouseX + 20, mouseY + 20) for status-bar owned tooltip routing.
             return owner switch
             {
                 SkillTooltipAnchorOwner.SkillBook => new Point(cursorPosition.X, cursorPosition.Y + SkillBookCursorYOffset),
                 SkillTooltipAnchorOwner.QuickSlot => new Point(cursorPosition.X, cursorPosition.Y + QuickSlotCursorYOffset),
                 SkillTooltipAnchorOwner.StatusBarCooldownTray => new Point(cursorPosition.X, cursorPosition.Y + StatusBarCooldownTrayCursorYOffset),
+                SkillTooltipAnchorOwner.StatusBarOffBarCooldownTray => new Point(cursorPosition.X, cursorPosition.Y + StatusBarOffBarCooldownTrayCursorYOffset),
                 _ => new Point(cursorPosition.X + LegacyTooltipOffsetX, cursorPosition.Y + LegacyTooltipOffsetY)
             };
         }

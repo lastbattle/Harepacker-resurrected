@@ -2733,8 +2733,7 @@ namespace HaCreator.MapSimulator.UI
 
             _cashOneADayItemDate = state.CurrentDate;
             _cashOneADayItemSerialNumber = state.CurrentCommoditySerialNumber;
-            _cashOneADayRewardPending = _cashOneADayItemSerialNumber > 0
-                && AdminShopDialogUI.TryResolveCommodityBySerialNumber(_cashOneADayItemSerialNumber, out _, out _, out _, out _);
+            _cashOneADayRewardPending = IsOneADayRewardPending(_cashOneADayItemSerialNumber);
             _cashOneADayHistoryEntries.Clear();
             _cashOneADayHistoryEntries.AddRange(state.HistoryEntries);
 
@@ -2745,6 +2744,12 @@ namespace HaCreator.MapSimulator.UI
                 $"One-a-day owner loaded {currentLabel}, date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous slot(s) ({(_cashOneADayRewardPending ? "today lane armed" : "today lane idle")}).";
             return
                 $"CCashShop::OnOneADay decoded current date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, current SN {_cashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous entry(ies).";
+        }
+
+        internal static bool IsOneADayRewardPending(int currentCommoditySerialNumber)
+        {
+            // Client ownership is packet-driven (m_nOneADayItemSN > 0), not catalog-resolution-driven.
+            return currentCommoditySerialNumber > 0;
         }
 
         internal static bool TryDecodeOneADayPayload(byte[] payload, out OneADayPacketState state)
@@ -2761,7 +2766,12 @@ namespace HaCreator.MapSimulator.UI
                 using BinaryReader reader = new(stream);
                 int currentDate = reader.ReadInt32();
                 int currentCommoditySerialNumber = reader.ReadInt32();
-                int historyCount = Math.Max(0, reader.ReadInt32());
+                int historyCount = reader.ReadInt32();
+                if (historyCount < 0)
+                {
+                    return false;
+                }
+
                 if (stream.Length - stream.Position < historyCount * 12L)
                 {
                     return false;
@@ -3585,12 +3595,16 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            // Client evidence (CCashShop::OnCashItemResLoadGiftDone @ 0x496520):
+            // GW_GiftList rows are packed as liSN(8) + nItemID(4) + sFrom[13] + sText[73].
+            long serialNumber = reader.ReadInt64();
+            int itemId = Math.Max(0, reader.ReadInt32());
             string senderRaw = ReadFixedPacketString(reader, 13, trimWhitespace: false);
             string messageRaw = ReadFixedPacketString(reader, 73, trimWhitespace: false);
             snapshot = new GiftListPacketSnapshot
             {
-                SerialNumber = reader.ReadInt64(),
-                ItemId = Math.Max(0, reader.ReadInt32()),
+                SerialNumber = serialNumber,
+                ItemId = itemId,
                 Sender = senderRaw.Trim(),
                 Message = messageRaw.Trim(),
                 SenderRaw = senderRaw,

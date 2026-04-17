@@ -183,6 +183,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
+            if (slot.CashItemSerialNumber.HasValue &&
+                slot.CashItemSerialNumber.Value > 0 &&
+                slot.CashItemSerialNumber.Value != petSerialNumber)
+            {
+                return null;
+            }
+
             string displayName = ResolveLiveInventoryDisplayName(slot.ItemId, slot.ItemName, packetSlotHint);
             return new PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate(
                 petSerialNumber,

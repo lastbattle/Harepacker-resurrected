@@ -691,6 +691,35 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Family entitlement switched to {GetEntitlementLabel(_entitlementType)}.";
         }
 
+        internal int GetSelectedEntitlementIndex()
+        {
+            return (int)_entitlementType;
+        }
+
+        internal bool TrySetSelectedEntitlementFromIndex(int entitlementIndex)
+        {
+            if (!Enum.IsDefined(typeof(FamilyEntitlementType), entitlementIndex))
+            {
+                return false;
+            }
+
+            _entitlementType = (FamilyEntitlementType)entitlementIndex;
+            return true;
+        }
+
+        internal string GetSelectedEntitlementTargetName()
+        {
+            if (!SelectedEntitlementRequiresTargetInput())
+            {
+                return string.Empty;
+            }
+
+            FamilyMemberState selectedMember = GetSelectedMember();
+            return string.IsNullOrWhiteSpace(selectedMember?.Name)
+                ? string.Empty
+                : selectedMember.Name.Trim();
+        }
+
         internal FamilyEntitlementUseResult ExecuteSelectedEntitlement(int currentTick, Vector2 localPlayerPosition)
         {
             return ExecuteSelectedEntitlement(currentTick, localPlayerPosition, null);
@@ -765,6 +794,7 @@ namespace HaCreator.MapSimulator.Interaction
                     NotifySocialChatObserved(selectedMember.Name);
                     return new FamilyEntitlementUseResult(
                         $"Moved to {selectedMember.Name}'s family-chart branch in {selectedLocation}.",
+                        WasApplied: true,
                         RequestTeleport: true,
                         TeleportPosition: selectedMember.SimulatedPosition);
                 }
@@ -781,7 +811,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ConsumeEntitlementUse(localPlayer, specialCost);
                     string message = $"Summoned {selectedMember.Name} to {localLocation}.";
                     NotifySocialChatObserved(message);
-                    return new FamilyEntitlementUseResult(message);
+                    return new FamilyEntitlementUseResult(message, WasApplied: true);
                 }
                 case FamilyEntitlementType.DropBuff:
                 case FamilyEntitlementType.ExpBuff:
@@ -790,7 +820,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _activePrivilege = new FamilyPrivilegeState(_entitlementType, currentTick + EntitlementDurationMs);
                     string privilegeMessage = $"Applied {GetEntitlementLabel(_entitlementType)} for the current simulator family session.";
                     NotifySocialChatObserved(privilegeMessage);
-                    return new FamilyEntitlementUseResult(privilegeMessage);
+                    return new FamilyEntitlementUseResult(privilegeMessage, WasApplied: true);
                 default:
                     return new FamilyEntitlementUseResult("That family entitlement is not modeled yet.");
             }
@@ -2283,10 +2313,11 @@ namespace HaCreator.MapSimulator.Interaction
             Vector2 SimulatedPosition);
     }
 
-    internal readonly record struct FamilyEntitlementUseResult(
-        string Message,
-        bool RequestTeleport = false,
-        Vector2 TeleportPosition = default);
+        internal readonly record struct FamilyEntitlementUseResult(
+            string Message,
+            bool WasApplied = false,
+            bool RequestTeleport = false,
+            Vector2 TeleportPosition = default);
 
     internal sealed class FamilyChartSnapshot
     {

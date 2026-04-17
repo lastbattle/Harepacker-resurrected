@@ -953,7 +953,9 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldForwardDeferredDownKeyToParentAfterIme(bool imeOwnedInputStateAfterKeyDown)
         {
-            return !imeOwnedInputStateAfterKeyDown;
+            // `CCtrlEdit::OnKey` still falls through to the parent callback after the
+            // IME candidate-owner branch handles VK_DOWN.
+            return true;
         }
 
         internal static bool ShouldDisableImeOpenStatusOnFocusChange(bool hasFocus)

@@ -91,7 +91,9 @@ namespace HaCreator.MapSimulator.Managers
             int ObservedAt,
             int? BoundSg88SummonObjectId,
             int? BoundSg88RequestedAt,
-            PacketOwnedSg88FirstUseRequest? DecodedSg88FirstUseRequest);
+            PacketOwnedSg88FirstUseRequest? DecodedSg88FirstUseRequest,
+            bool? DecodedSg88FirstUseReplayParityMatched,
+            string DecodedSg88FirstUseDecodeDetail);
         internal readonly record struct Sg88ManualAttackRequestPacketTemplate(
             int Opcode,
             byte[] RawPacket,
@@ -1137,6 +1139,15 @@ namespace HaCreator.MapSimulator.Managers
             byte[] payload = rawPacket.Length > sizeof(ushort)
                 ? rawPacket[sizeof(ushort)..]
                 : Array.Empty<byte>();
+            PacketOwnedSg88FirstUseRequest? decodedSg88FirstUseRequest;
+            bool? decodedSg88FirstUseReplayParityMatched;
+            string decodedSg88FirstUseDecodeDetail;
+            TryDecodeObservedSg88FirstUse(
+                opcode,
+                rawPacket,
+                out decodedSg88FirstUseRequest,
+                out decodedSg88FirstUseReplayParityMatched,
+                out decodedSg88FirstUseDecodeDetail);
             trace = new OutboundPacketTrace(
                 opcode,
                 payload.Length,
@@ -1146,23 +1157,42 @@ namespace HaCreator.MapSimulator.Managers
                 Environment.TickCount,
                 null,
                 null,
-                TryDecodeObservedSg88FirstUse(opcode, rawPacket));
+                decodedSg88FirstUseRequest,
+                decodedSg88FirstUseReplayParityMatched,
+                decodedSg88FirstUseDecodeDetail);
             return true;
         }
 
-        private static PacketOwnedSg88FirstUseRequest? TryDecodeObservedSg88FirstUse(int opcode, byte[] rawPacket)
+        private static void TryDecodeObservedSg88FirstUse(
+            int opcode,
+            byte[] rawPacket,
+            out PacketOwnedSg88FirstUseRequest? request,
+            out bool? replayParityMatched,
+            out string decodeDetail)
         {
+            request = null;
+            replayParityMatched = null;
+            decodeDetail = null;
             if (opcode != PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseSummonOpcode)
             {
-                return null;
+                return;
             }
 
-            return PacketOwnedMechanicRepeatSkillRuntime.TryDecodeSg88FirstUseRawPacket(
+            if (PacketOwnedMechanicRepeatSkillRuntime.TryDecodeSg88FirstUseRawPacketWithReplayParity(
                 rawPacket,
-                out PacketOwnedSg88FirstUseRequest request,
-                out _)
-                ? request
-                : null;
+                out PacketOwnedSg88FirstUseRequest decoded,
+                out bool replayMatched,
+                out string decodeError))
+            {
+                request = decoded;
+                replayParityMatched = replayMatched;
+                decodeDetail = replayMatched
+                    ? "replayParity=matched"
+                    : decodeError ?? "replayParity=mismatch";
+                return;
+            }
+
+            decodeDetail = decodeError ?? "decode-failed";
         }
 
         private OutboundPacketTrace TryBindSg88ManualAttackCapture(OutboundPacketTrace trace)
@@ -1477,11 +1507,47 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (!trace.DecodedSg88FirstUseRequest.HasValue)
             {
-                return string.Empty;
+                return trace.Opcode == PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseSummonOpcode
+                    && !string.IsNullOrWhiteSpace(trace.DecodedSg88FirstUseDecodeDetail)
+                    ? $" sg88FirstUseDecode={trace.DecodedSg88FirstUseDecodeDetail}"
+                    : string.Empty;
             }
 
             PacketOwnedSg88FirstUseRequest decoded = trace.DecodedSg88FirstUseRequest.Value;
-            return $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},vecCtrl={decoded.VecCtrlState})";
+            string replayParity = trace.DecodedSg88FirstUseReplayParityMatched.HasValue
+                ? (trace.DecodedSg88FirstUseReplayParityMatched.Value ? "matched" : "mismatch")
+                : "unknown";
+            string detailSuffix = string.IsNullOrWhiteSpace(trace.DecodedSg88FirstUseDecodeDetail)
+                ? string.Empty
+                : $",detail={trace.DecodedSg88FirstUseDecodeDetail}";
+            return
+                $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},vecCtrl={decoded.VecCtrlState},replayParity={replayParity}{detailSuffix})";
+        }
+
+        public string DescribeRecentSg88FirstUsePackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
+            lock (_sync)
+            {
+                PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
+                PruneExpiredTeslaAttackCaptures(Environment.TickCount);
+                OutboundPacketTrace[] entries = _recentOutboundPackets
+                    .Where(entry => entry.Opcode == PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseSummonOpcode)
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                if (entries.Length == 0)
+                {
+                    return "Summoned official-session bridge SG-88 first-use history is empty.";
+                }
+
+                return "Summoned official-session bridge SG-88 first-use history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode=0x{entry.Opcode:X} payloadLen={entry.PayloadLength} observedAt={entry.ObservedAt} source={entry.Source}{FormatObservedSg88FirstUse(entry)} payloadHex={entry.PayloadHex}"));
+            }
         }
 
         private static string FormatObservedPacketList(IReadOnlyList<OutboundPacketTrace> observedPackets, OutboundPacketTrace? requestPacket)

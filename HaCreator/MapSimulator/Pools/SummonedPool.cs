@@ -852,6 +852,10 @@ namespace HaCreator.MapSimulator.Pools
             state.LastSkillAction = (byte)(attackAction & 0x7F);
             state.LastSkillTime = currentTime;
             PromotePacketOwnedTeslaRuntimeState(state);
+            state.LastMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
+                state.Summon,
+                state.LastMoveActionRaw,
+                TeslaCoilSkillId);
             if (ShouldApplyHealingRobotSkillPacketFacing(state.Summon, state.LastSkillAction))
             {
                 state.Summon.FacingRight = ResolveHealingRobotSkillPacketFacingRight(attackAction);
@@ -1963,7 +1967,13 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.PositionY = sampled.Y;
             state.Summon.AnchorX = sampled.X;
             state.Summon.AnchorY = sampled.Y;
-            state.Summon.FacingRight = sampled.FacingRight;
+            state.Summon.FacingRight = ResolvePacketOwnedMovementSnapshotFacingForParity(
+                state.Summon,
+                state.LastMoveActionRaw,
+                sampled.FacingRight,
+                TeslaCoilSkillId,
+                out byte resolvedMoveActionRaw);
+            state.LastMoveActionRaw = resolvedMoveActionRaw;
             state.CurrentFootholdId = (short)sampled.FootholdId;
         }
 
@@ -2062,6 +2072,22 @@ namespace HaCreator.MapSimulator.Pools
         private static bool DecodeFacingRight(byte moveAction)
         {
             return (moveAction & 1) == 0;
+        }
+
+        internal static bool ResolvePacketOwnedMovementSnapshotFacingForParity(
+            ActiveSummon summon,
+            byte packetMoveActionRaw,
+            bool sampledFacingRight,
+            int teslaCoilSkillId,
+            out byte resolvedMoveActionRaw)
+        {
+            resolvedMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
+                summon,
+                packetMoveActionRaw,
+                teslaCoilSkillId);
+            return resolvedMoveActionRaw != 0
+                ? DecodeFacingRight(resolvedMoveActionRaw)
+                : sampledFacingRight;
         }
 
         internal static bool ShouldApplyHealingRobotSkillPacketFacing(ActiveSummon summon, byte normalizedAction)
@@ -3891,33 +3917,6 @@ namespace HaCreator.MapSimulator.Pools
                 orderedTargetIds.Add(targetId);
             }
 
-            if (orderedTargetIds.Count >= maxTargets)
-            {
-                return orderedTargetIds.ToArray();
-            }
-
-            Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, fallbackFacingRight);
-            IEnumerable<int> fallbackTargetIds = OrderPacketOwnedExpiryFallbackCandidates(
-                    summon,
-                    unresolvedCandidates.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
-                                                            && IsMobHitboxInPacketOwnedSummonAttackRange(
-                                                                summon,
-                                                                summonBounds,
-                                                                candidate.Hitbox,
-                                                                fallbackFacingRight)),
-                    fallbackFacingRight)
-                .Select(static candidate => candidate.MobObjectId);
-
-            foreach (int fallbackTargetId in fallbackTargetIds)
-            {
-                if (orderedTargetIds.Count >= maxTargets)
-                {
-                    break;
-                }
-
-                orderedTargetIds.Add(fallbackTargetId);
-            }
-
             return orderedTargetIds.ToArray();
         }
 
@@ -4050,16 +4049,6 @@ namespace HaCreator.MapSimulator.Pools
                 return rightScore.InRangeCount > leftScore.InRangeCount;
             }
 
-            if (ownerReferenceX.HasValue
-                && rightScore.InRangeCount > 0)
-            {
-                float ownerDeltaX = ownerReferenceX.Value - summon.PositionX;
-                if (MathF.Abs(ownerDeltaX) > 0.5f)
-                {
-                    return ownerDeltaX >= 0f;
-                }
-            }
-
             int nearestDistanceComparison = rightScore.NearestDistanceSq.CompareTo(leftScore.NearestDistanceSq);
             if (nearestDistanceComparison != 0)
             {
@@ -4105,19 +4094,7 @@ namespace HaCreator.MapSimulator.Pools
                 facingRight = hasRightHit;
                 return true;
             }
-
-            if (!ownerReferenceX.HasValue)
-            {
-                return false;
-            }
-
-            float ownerDeltaX = ownerReferenceX.Value - summon.PositionX;
-            if (MathF.Abs(ownerDeltaX) <= 0.5f)
-            {
-                return false;
-            }
-
-            facingRight = ownerDeltaX >= 0f;
+            facingRight = summon.FacingRight;
             return true;
         }
 
@@ -6193,12 +6170,71 @@ namespace HaCreator.MapSimulator.Pools
                     return null;
                 }
 
-                sourcePathTokens.Add(sourcePathToken);
+                if (!TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+                        sourcePathToken,
+                        defaultCategory,
+                        out string normalizedSourcePath))
+                {
+                    if (!TryResolvePacketMobAttackGeneralEffectRelativeSourcePath(
+                            frameProperty.FullPath,
+                            sourcePathToken,
+                            defaultCategory,
+                            out normalizedSourcePath))
+                    {
+                        return null;
+                    }
+                }
+
+                sourcePathTokens.Add(normalizedSourcePath);
             }
 
             return sourcePathTokens.Count == 0
                 ? null
                 : TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(sourcePathTokens, defaultCategory);
+        }
+
+        internal static bool TryResolvePacketMobAttackGeneralEffectRelativeSourcePath(
+            string framePropertyPath,
+            string sourcePathToken,
+            string defaultCategory,
+            out string normalizedSourcePath)
+        {
+            normalizedSourcePath = null;
+            if (string.IsNullOrWhiteSpace(framePropertyPath) || string.IsNullOrWhiteSpace(sourcePathToken))
+            {
+                return false;
+            }
+
+            string normalizedFramePath = NormalizePacketMobAttackGeneralEffectPathTokenShell(
+                framePropertyPath.Replace('\\', '/'));
+            if (string.IsNullOrWhiteSpace(normalizedFramePath))
+            {
+                return false;
+            }
+
+            string framePathCandidate = IsPacketMobAttackCategorySegment(normalizedFramePath.Split('/')[0])
+                ? normalizedFramePath
+                : $"{defaultCategory?.Trim()}/{normalizedFramePath}";
+            if (!TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+                    framePathCandidate,
+                    defaultCategory,
+                    out string normalizedFrameAbsolutePath))
+            {
+                return false;
+            }
+
+            if (!TryCombinePacketMobAttackGeneralEffectPath(
+                    normalizedFrameAbsolutePath,
+                    sourcePathToken,
+                    out string combinedPath))
+            {
+                return false;
+            }
+
+            return TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+                combinedPath,
+                defaultCategory,
+                out normalizedSourcePath);
         }
 
         internal static string[] EnumeratePacketMobAttackGeneralEffectCandidateUols(
@@ -6399,7 +6435,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (token[index] == '/')
+                if (token[index] == '/' || token[index] == ':')
                 {
                     return i;
                 }
@@ -6413,7 +6449,7 @@ namespace HaCreator.MapSimulator.Pools
                     && char.ToLowerInvariant(token[index + 1]) == 'i'
                     && char.ToLowerInvariant(token[index + 2]) == 'm'
                     && char.ToLowerInvariant(token[index + 3]) == 'g'
-                    && token[index + 4] == '/')
+                    && (token[index + 4] == '/' || token[index + 4] == ':'))
                 {
                     return i;
                 }
@@ -6664,6 +6700,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            normalizedEffectPath = NormalizePacketMobAttackGeneralEffectColonPathSeparators(normalizedEffectPath);
+
             int categoryDelimiterIndex = normalizedEffectPath.IndexOf(':');
             if (categoryDelimiterIndex > 0
                 && categoryDelimiterIndex < normalizedEffectPath.Length - 1)
@@ -6681,6 +6719,23 @@ namespace HaCreator.MapSimulator.Pools
             if (segments.Length == 0)
             {
                 return false;
+            }
+
+            int firstMeaningfulSegmentIndex = 0;
+            while (firstMeaningfulSegmentIndex < segments.Length
+                   && (string.Equals(segments[firstMeaningfulSegmentIndex], ".", StringComparison.Ordinal)
+                       || string.Equals(segments[firstMeaningfulSegmentIndex], "..", StringComparison.Ordinal)))
+            {
+                firstMeaningfulSegmentIndex++;
+            }
+
+            if (firstMeaningfulSegmentIndex > 0)
+            {
+                segments = segments.Skip(firstMeaningfulSegmentIndex).ToArray();
+                if (segments.Length == 0)
+                {
+                    return false;
+                }
             }
 
             if (IsPacketMobAttackCategorySegment(segments[0]))
@@ -6791,6 +6846,42 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalizedSegments.Count >= 3;
+        }
+
+        private static string NormalizePacketMobAttackGeneralEffectColonPathSeparators(string effectPath)
+        {
+            if (string.IsNullOrWhiteSpace(effectPath)
+                || effectPath.IndexOf("://", StringComparison.Ordinal) >= 0)
+            {
+                return effectPath;
+            }
+
+            var builder = new System.Text.StringBuilder(effectPath.Length);
+            for (int i = 0; i < effectPath.Length; i++)
+            {
+                char current = effectPath[i];
+                if (current == ':'
+                    && i > 0
+                    && i < effectPath.Length - 1
+                    && IsPacketMobAttackPathTokenCharacter(effectPath[i - 1])
+                    && IsPacketMobAttackPathTokenCharacter(effectPath[i + 1]))
+                {
+                    builder.Append('/');
+                    continue;
+                }
+
+                builder.Append(current);
+            }
+
+            return builder.ToString();
+        }
+
+        private static bool IsPacketMobAttackPathTokenCharacter(char character)
+        {
+            return char.IsLetterOrDigit(character)
+                   || character == '.'
+                   || character == '_'
+                   || character == '-';
         }
 
         private static bool IsPacketMobAttackCategorySegment(string segment)

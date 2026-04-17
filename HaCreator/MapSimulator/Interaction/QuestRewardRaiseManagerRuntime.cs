@@ -37,17 +37,14 @@ namespace HaCreator.MapSimulator.Interaction
             _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
             _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
 
-            QuestRewardRaiseWindowMode windowMode = prompt.OwnerContext?.WindowMode
-                ?? retainedState?.WindowMode
-                ?? snapshot?.WindowMode
-                ?? QuestRewardRaiseWindowMode.Selection;
+            QuestRewardRaiseWindowMode windowMode = ResolveOpenWindowMode(prompt, retainedState, snapshot);
             QuestRewardRaiseWindowMode displayMode = prompt.OwnerContext?.WindowMode
                 ?? retainedState?.DisplayMode
                 ?? snapshot?.DisplayMode
                 ?? windowMode;
             int ownerItemId = ResolveOpenOwnerItemId(prompt, retainedState, snapshot);
             int qrData = ResolveOpenQrData(prompt, retainedState, snapshot);
-            int maxDropCount = ResolveOpenMaxDropCount(prompt, retainedState, snapshot);
+            int maxDropCount = ResolveOpenMaxDropCount(prompt, retainedState, snapshot, windowMode);
             bool reuseObservedOwnerState = ShouldReuseObservedOwnerState(snapshot);
             Point windowPosition = defaultPosition;
             if (ActiveRaise != null
@@ -102,6 +99,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ActiveRaise;
+        }
+
+        public QuestRewardRaiseWindowMode ResolveOpenWindowMode(QuestRewardChoicePrompt prompt)
+        {
+            if (prompt == null)
+            {
+                return QuestRewardRaiseWindowMode.Selection;
+            }
+
+            int questId = Math.Max(0, prompt.QuestId);
+            _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
+            return ResolveOpenWindowMode(prompt, retainedState, snapshot);
         }
 
         private static int ResolveOpenGroupIndex(
@@ -459,11 +469,26 @@ namespace HaCreator.MapSimulator.Interaction
         private static int ResolveOpenMaxDropCount(
             QuestRewardChoicePrompt prompt,
             QuestRewardRaiseState retainedState,
-            QuestRewardRaiseOwnerSnapshot snapshot)
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            QuestRewardRaiseWindowMode windowMode)
         {
             int ownerContextMaxDropCount = Math.Max(1, prompt?.OwnerContext?.MaxDropCount ?? 1);
             int observedMaxDropCount = Math.Max(1, retainedState?.MaxDropCount ?? snapshot?.MaxDropCount ?? 1);
-            return Math.Max(ownerContextMaxDropCount, observedMaxDropCount);
+            int promptDerivedMaxDropCount = windowMode == QuestRewardRaiseWindowMode.PiecePlacement
+                ? Math.Max(1, QuestRewardRaiseState.CountEnabledDropItems(prompt))
+                : 1;
+            return Math.Max(ownerContextMaxDropCount, Math.Max(observedMaxDropCount, promptDerivedMaxDropCount));
+        }
+
+        private static QuestRewardRaiseWindowMode ResolveOpenWindowMode(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot)
+        {
+            return prompt?.OwnerContext?.WindowMode
+                ?? retainedState?.WindowMode
+                ?? snapshot?.WindowMode
+                ?? QuestRewardRaiseWindowMode.Selection;
         }
 
         private int ResolveOpenManagerSessionId(

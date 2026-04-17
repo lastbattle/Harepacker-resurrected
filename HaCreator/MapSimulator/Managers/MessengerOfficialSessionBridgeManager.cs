@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ushort _defaultInboundOpcode;
         private readonly ushort _defaultOutboundOpcode;
         private readonly HashSet<ushort> _additionalInboundOpcodes;
+        private readonly HashSet<ushort> _additionalOutboundOpcodes;
         private readonly ConcurrentQueue<MessengerOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
@@ -142,6 +143,12 @@ namespace HaCreator.MapSimulator.Managers
             _defaultInboundOpcode = defaultInboundOpcode == 0 ? DefaultInboundResultOpcode : defaultInboundOpcode;
             _defaultOutboundOpcode = defaultOutboundOpcode;
             _additionalInboundOpcodes = new HashSet<ushort>((additionalInboundOpcodes ?? Array.Empty<ushort>()).Where(opcode => opcode != 0));
+            _additionalOutboundOpcodes = new HashSet<ushort>();
+            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
+            {
+                _additionalOutboundOpcodes.Add(PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode);
+            }
+
             ListenPort = _defaultListenPort;
             MessengerOpcode = _defaultInboundOpcode;
             LastStatus = $"{_ownerName} official-session bridge inactive.";
@@ -161,9 +168,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            string outboundText = _defaultOutboundOpcode > 0
-                ? $"; outbound opcode={_defaultOutboundOpcode}"
-                : string.Empty;
+            string outboundText = DescribeOutboundOpcodeSet();
             string inboundText = DescribeInboundOpcodeSet();
             return $"{_ownerName} official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode {inboundText}{outboundText}.{lastOutbound}{lastQueued} {LastStatus}";
         }
@@ -675,7 +680,7 @@ namespace HaCreator.MapSimulator.Managers
         private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
         {
             if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
-                || _defaultOutboundOpcode > 0 && opcode != _defaultOutboundOpcode
+                || !IsTrackedOutboundOpcode(opcode)
                 || payload.Length == 0)
             {
                 return;
@@ -909,6 +914,33 @@ namespace HaCreator.MapSimulator.Managers
         private string DescribeInboundOpcodeSet()
         {
             return DescribeInboundOpcodeSet(MessengerOpcode);
+        }
+
+        private string DescribeOutboundOpcodeSet()
+        {
+            var outboundOpcodes = new List<ushort>();
+            if (_defaultOutboundOpcode > 0)
+            {
+                outboundOpcodes.Add(_defaultOutboundOpcode);
+            }
+
+            outboundOpcodes.AddRange(_additionalOutboundOpcodes.Where(opcode => opcode > 0));
+            ushort[] deduped = outboundOpcodes.Distinct().OrderBy(opcode => opcode).ToArray();
+            if (deduped.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return deduped.Length == 1
+                ? $"; outbound opcode={deduped[0]}"
+                : $"; outbound opcodes={string.Join("/", deduped)}";
+        }
+
+        private bool IsTrackedOutboundOpcode(int opcode)
+        {
+            return _defaultOutboundOpcode == 0 && _additionalOutboundOpcodes.Count == 0
+                || _defaultOutboundOpcode > 0 && opcode == _defaultOutboundOpcode
+                || _additionalOutboundOpcodes.Contains((ushort)opcode);
         }
 
         private string DescribeInboundOpcodeSet(ushort primaryOpcode)

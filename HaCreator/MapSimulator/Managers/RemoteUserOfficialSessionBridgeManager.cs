@@ -39,7 +39,7 @@ namespace HaCreator.MapSimulator.Managers
         private const ushort V95HireTutorLocalOpcode = LocalUtilityPacketInboxManager.HireTutorClientPacketType;
         private const ushort V95TutorMsgLocalOpcode = LocalUtilityPacketInboxManager.TutorMsgClientPacketType;
 
-        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; tutor remains local under CUserLocal::OnPacket 255/256.";
+        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; tutor remains local under CUserLocal::OnPacket 255/256.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
@@ -86,6 +86,7 @@ namespace HaCreator.MapSimulator.Managers
                 LastPayloadLength = payload?.Length ?? 0;
                 LastPayloadPreviewHex = FormatPayloadPreviewHex(payload);
                 Count = 1;
+                OfficialSessionProofCount = IsOfficialSessionSource(source) ? 1 : 0;
             }
 
             public int PacketType { get; private set; }
@@ -95,6 +96,7 @@ namespace HaCreator.MapSimulator.Managers
             public int LastPayloadLength { get; private set; }
             public string LastPayloadPreviewHex { get; private set; }
             public int Count { get; private set; }
+            public int OfficialSessionProofCount { get; private set; }
 
             public void Update(int packetType, string evidence, string source, byte[] payload)
             {
@@ -104,6 +106,10 @@ namespace HaCreator.MapSimulator.Managers
                 LastPayloadLength = payload?.Length ?? 0;
                 LastPayloadPreviewHex = FormatPayloadPreviewHex(payload);
                 Count++;
+                if (IsOfficialSessionSource(source))
+                {
+                    OfficialSessionProofCount++;
+                }
             }
 
             private static string FormatPayloadPreviewHex(byte[] payload)
@@ -215,7 +221,7 @@ namespace HaCreator.MapSimulator.Managers
                     _learnedPacketMap
                         .OrderBy(entry => entry.Key)
                         .Select(entry =>
-                            $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count}; source={entry.Value.LastSource}; payloadBytes={entry.Value.LastPayloadLength}; sample={entry.Value.LastPayloadPreviewHex})"));
+                            $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count}; officialSessionProof={entry.Value.OfficialSessionProofCount}; source={entry.Value.LastSource}; payloadBytes={entry.Value.LastPayloadLength}; sample={entry.Value.LastPayloadPreviewHex})"));
             }
         }
 
@@ -428,16 +434,25 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
-                    if (!TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(opcode, inferencePayload, out packetType, out string inferenceReason))
+                    if (TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(opcode, out packetType, out string knownOwnerReason))
+                    {
+                        _packetMap[opcode] = packetType;
+                        string learnedEvidence = $"auto:{knownOwnerReason}; {OfficialRemoteOwnerEvidence}";
+                        RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from recovered CUserLocal owner table ({knownOwnerReason}); {OfficialRemoteOwnerEvidence}";
+                    }
+                    else if (!TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(opcode, inferencePayload, out packetType, out string inferenceReason))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: payload did not match an exact remote tutor-owner wrapper. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
-
-                    _packetMap[opcode] = packetType;
-                    string learnedEvidence = $"auto:{inferenceReason}; {OfficialRemoteOwnerEvidence}";
-                    RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
-                    LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}); {OfficialRemoteOwnerEvidence}";
+                    else
+                    {
+                        _packetMap[opcode] = packetType;
+                        string learnedEvidence = $"auto:{inferenceReason}; {OfficialRemoteOwnerEvidence}";
+                        RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}); {OfficialRemoteOwnerEvidence}";
+                    }
                 }
             }
 
@@ -468,6 +483,30 @@ namespace HaCreator.MapSimulator.Managers
         {
             return opcode == V95HireTutorLocalOpcode
                 || opcode == V95TutorMsgLocalOpcode;
+        }
+
+        private static bool TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(
+            ushort opcode,
+            out int packetType,
+            out string reason)
+        {
+            packetType = 0;
+            reason = string.Empty;
+            if (opcode == V95HireTutorLocalOpcode)
+            {
+                packetType = (int)Pools.RemoteUserPacketType.UserTutorHire;
+                reason = $"v95 CUserLocal::OnPacket case {V95HireTutorLocalOpcode} owns OnHireTutor";
+                return true;
+            }
+
+            if (opcode == V95TutorMsgLocalOpcode)
+            {
+                packetType = (int)Pools.RemoteUserPacketType.UserTutorMessage;
+                reason = $"v95 CUserLocal::OnPacket case {V95TutorMsgLocalOpcode} owns OnTutorMsg";
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(
@@ -550,6 +589,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _learnedPacketMap[opcode] = new LearnedOpcodeEntry(packetType, evidence, isManual, source, payload);
+        }
+
+        private static bool IsOfficialSessionSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)

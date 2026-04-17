@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator
         private sealed record InitialQuizButtonFrame(Texture2D Texture, Point Origin);
         internal enum InitialQuizOwnerFocusTarget
         {
+            Owner,
             Input,
             OkButton
         }
@@ -200,10 +201,7 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerTimeoutCloseArmed = true;
                 _initialQuizOwnerPressedOkButton = false;
                 _initialQuizOwnerHoveringOkButton = false;
-                _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.OkButton;
-                EnsureInitialQuizOwnerEditControl()?.SetFocus(false);
-                ClearInitialQuizOwnerCompositionText();
-                ClearInitialQuizOwnerImeCandidateList();
+                SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Owner);
                 return;
             }
 
@@ -241,12 +239,12 @@ namespace HaCreator.MapSimulator
 
                 if (_initialQuizOwnerHoveringOkButton)
                 {
-                    _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.OkButton;
+                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.OkButton);
                     _initialQuizOwnerPressedOkButton = showInput;
                 }
                 else if (showInput && inputBounds.Contains(cursor))
                 {
-                    _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Input);
                     _initialQuizOwnerPressedOkButton = false;
                     if (editControl != null)
                     {
@@ -263,6 +261,7 @@ namespace HaCreator.MapSimulator
                 }
                 else
                 {
+                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Owner);
                     _initialQuizOwnerPressedOkButton = false;
                 }
 
@@ -315,7 +314,7 @@ namespace HaCreator.MapSimulator
 
             if (newKeyboardState.IsKeyDown(Keys.Tab) && oldKeyboardState.IsKeyUp(Keys.Tab))
             {
-                _initialQuizOwnerFocusTarget = ResolveNextInitialQuizOwnerFocusTarget(_initialQuizOwnerFocusTarget);
+                SetInitialQuizOwnerFocusTarget(ResolveNextInitialQuizOwnerFocusTarget(_initialQuizOwnerFocusTarget));
                 _initialQuizOwnerPressedOkButton = false;
                 _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
                 return true;
@@ -340,7 +339,7 @@ namespace HaCreator.MapSimulator
             {
                 EnsureInitialQuizOwnerEditControl()?.SetFocus(false);
                 ResetInitialQuizOwnerHeldEditKey();
-                return buttonFocused;
+                return true;
             }
 
             AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
@@ -473,7 +472,7 @@ namespace HaCreator.MapSimulator
 
                 if (validation.RefocusInput)
                 {
-                    _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Input);
                     _initialQuizOwnerPressedOkButton = false;
                     _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
                 }
@@ -1273,9 +1272,34 @@ namespace HaCreator.MapSimulator
 
         internal static InitialQuizOwnerFocusTarget ResolveNextInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget currentFocus)
         {
-            return currentFocus == InitialQuizOwnerFocusTarget.Input
-                ? InitialQuizOwnerFocusTarget.OkButton
-                : InitialQuizOwnerFocusTarget.Input;
+            return currentFocus switch
+            {
+                InitialQuizOwnerFocusTarget.Input => InitialQuizOwnerFocusTarget.OkButton,
+                InitialQuizOwnerFocusTarget.OkButton => InitialQuizOwnerFocusTarget.Input,
+                _ => InitialQuizOwnerFocusTarget.Input
+            };
+        }
+
+        internal static bool ShouldClearInitialQuizOwnerImeOnFocusChange(
+            InitialQuizOwnerFocusTarget previousFocus,
+            InitialQuizOwnerFocusTarget nextFocus)
+        {
+            return previousFocus == InitialQuizOwnerFocusTarget.Input
+                && nextFocus != InitialQuizOwnerFocusTarget.Input;
+        }
+
+        private void SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget focusTarget)
+        {
+            InitialQuizOwnerFocusTarget previousFocus = _initialQuizOwnerFocusTarget;
+            _initialQuizOwnerFocusTarget = focusTarget;
+            if (!ShouldClearInitialQuizOwnerImeOnFocusChange(previousFocus, focusTarget))
+            {
+                return;
+            }
+
+            EnsureInitialQuizOwnerEditControl()?.SetFocus(false);
+            ClearInitialQuizOwnerCompositionText();
+            ClearInitialQuizOwnerImeCandidateList();
         }
 
         internal static InitialQuizOwnerTimeoutBehavior ResolveInitialQuizOwnerTimeoutBehavior(

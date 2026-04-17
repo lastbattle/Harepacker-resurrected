@@ -116,9 +116,21 @@ namespace HaCreator.MapSimulator.UI
                             break;
                         case 0:
                         {
-                            if (!TryReadClientInventoryOperationAddEntry(reader, out int addedItemId, out rejectReason))
+                            if (!TryReadClientInventoryOperationAddEntry(
+                                    request,
+                                    inventoryType,
+                                    fromPosition,
+                                    reader,
+                                    out int addedItemId,
+                                    out bool matchedByHeader,
+                                    out rejectReason))
                             {
                                 return false;
+                            }
+
+                            if (matchedByHeader)
+                            {
+                                return true;
                             }
 
                             if (TryMatchesCharacterInventoryOperationAdd(
@@ -886,11 +898,16 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private static bool TryReadClientInventoryOperationAddEntry(
+            EquipmentChangeRequest request,
+            byte inventoryType,
+            short targetPosition,
             BinaryReader reader,
             out int itemId,
+            out bool matchedByHeader,
             out string rejectReason)
         {
             itemId = 0;
+            matchedByHeader = false;
             rejectReason = null;
             if (!TryEnsureRemaining(reader?.BaseStream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out rejectReason))
             {
@@ -914,6 +931,17 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 _ = reader.ReadInt64(); // dateExpire
+                if (TryMatchesCharacterInventoryOperationAdd(
+                        request,
+                        inventoryType,
+                        targetPosition,
+                        itemId,
+                        out _))
+                {
+                    matchedByHeader = true;
+                    return true;
+                }
+
                 switch (slotType)
                 {
                     case ItemSlotTypeEquip:

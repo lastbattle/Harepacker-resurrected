@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator
         private const int ReviveOwnerTransferFieldRequestOpcode = 41;
         private const int ReviveOwnerUpgradeTombEffectOpcode = 58;
         private const int ReviveOwnerUpgradeTombItemId = 5510000;
+        private const int ReviveOwnerPremiumSafetyCharmContextSlot = 2073;
         private const byte ReviveOwnerSyntheticFieldKey = 0;
         private static readonly string[][] ReviveOwnerMapInfoPropertyAliases =
         {
@@ -78,6 +79,7 @@ namespace HaCreator.MapSimulator
             int currentTick = Environment.TickCount;
             Vector2 spawnPoint = _playerManager?.GetSpawnPoint() ?? new Vector2(player?.DeathX ?? 0f, player?.DeathY ?? 0f);
             Vector2 deathPoint = new(player?.DeathX ?? spawnPoint.X, player?.DeathY ?? spawnPoint.Y);
+            SetRevivePremiumSafetyCharmContextFromInventory("revive-owner-open-sync", currentTick);
             ReviveOwnerVariant variant = ResolveReviveOwnerVariant();
             bool hasPremiumChoice = ReviveOwnerRuntime.HasPremiumChoiceForVariant(variant);
             string ownerLabel = ReviveOwnerRuntime.GetOwnerLabel(variant);
@@ -207,6 +209,11 @@ namespace HaCreator.MapSimulator
             {
                 if (!TryConsumeReviveOwnerPremiumItem(request))
                 {
+                    if (request.Variant == ReviveOwnerVariant.PremiumSafetyCharmChoice)
+                    {
+                        SetRevivePremiumSafetyCharmContextFromInventory("revive-owner-consume-failed-fallback", currentTick);
+                    }
+
                     Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(
                         new ReviveOwnerTransferRequest(
                             premium: false,
@@ -216,6 +223,11 @@ namespace HaCreator.MapSimulator
                             clientPremiumFlag: false)));
                     _playerManager?.Respawn();
                     return;
+                }
+
+                if (request.Variant == ReviveOwnerVariant.PremiumSafetyCharmChoice)
+                {
+                    SetRevivePremiumSafetyCharmContextFromInventory("revive-owner-consume-success", currentTick);
                 }
             }
 
@@ -282,7 +294,10 @@ namespace HaCreator.MapSimulator
 
         private bool IsPremiumCurrentFieldReviveUsable()
         {
-            return IsPremiumCurrentFieldReviveUsable(_mapBoard?.MapInfo);
+            bool fieldAllowsCurrentFieldRecovery = IsPremiumCurrentFieldReviveUsable(_mapBoard?.MapInfo);
+            bool premiumSafetyCharmArmed = ResolveRevivePremiumSafetyCharmContextArmed(
+                fallbackArmed: GetInventoryWindowItemCount(5131000) > 0);
+            return IsPremiumCurrentFieldReviveUsable(fieldAllowsCurrentFieldRecovery, premiumSafetyCharmArmed);
         }
 
         internal static bool IsPremiumCurrentFieldReviveUsable(MapInfo mapInfo)
@@ -308,6 +323,52 @@ namespace HaCreator.MapSimulator
             }
 
             return ShouldUseCurrentFieldReviveSpawnApproximation(mapInfo);
+        }
+
+        internal static bool IsPremiumCurrentFieldReviveUsable(
+            bool fieldAllowsCurrentFieldRecovery,
+            bool premiumSafetyCharmContextArmed)
+        {
+            // Client evidence from CUIRevive::OnCreate:
+            // - The premium safety-charm branch uses a dual gate:
+            //   CWvsContext slot 2073 must be armed and the adjacent field-owned
+            //   no-transfer guard must allow current-field recovery.
+            return fieldAllowsCurrentFieldRecovery && premiumSafetyCharmContextArmed;
+        }
+
+        private bool ResolveRevivePremiumSafetyCharmContextArmed(bool fallbackArmed)
+        {
+            int runtimeCharacterId = ResolveReviveOwnerRuntimeCharacterId();
+            if (_packetOwnedLocalUtilityContext.RequiresRevivePremiumSafetyCharmCharacterReset(runtimeCharacterId))
+            {
+                _packetOwnedLocalUtilityContext.ResetRevivePremiumSafetyCharmForCharacter(runtimeCharacterId);
+            }
+
+            _packetOwnedLocalUtilityContext.ObserveRevivePremiumSafetyCharmRuntimeCharacterId(runtimeCharacterId);
+            return _packetOwnedLocalUtilityContext.ResolveRevivePremiumSafetyCharmContextValue(fallbackArmed);
+        }
+
+        private void SetRevivePremiumSafetyCharmContextFromInventory(string source, int currentTick)
+        {
+            int runtimeCharacterId = ResolveReviveOwnerRuntimeCharacterId();
+            if (_packetOwnedLocalUtilityContext.RequiresRevivePremiumSafetyCharmCharacterReset(runtimeCharacterId))
+            {
+                _packetOwnedLocalUtilityContext.ResetRevivePremiumSafetyCharmForCharacter(runtimeCharacterId);
+            }
+
+            bool armed = GetInventoryWindowItemCount(5131000) > 0;
+            _packetOwnedLocalUtilityContext.SetRevivePremiumSafetyCharmContextValue(
+                armed,
+                string.IsNullOrWhiteSpace(source)
+                    ? $"revive-owner-context-slot-{ReviveOwnerPremiumSafetyCharmContextSlot}-sync"
+                    : source,
+                currentTick,
+                runtimeCharacterId);
+        }
+
+        private int ResolveReviveOwnerRuntimeCharacterId()
+        {
+            return _playerManager?.Player?.Build?.Id ?? 0;
         }
 
         private Vector2 ResolveCurrentFieldReviveRespawnPoint(ReviveOwnerVariant variant, Vector2 fallbackPoint)

@@ -255,6 +255,11 @@ namespace HaCreator.MapSimulator.Entities
 
         public float LayerAlpha { get; set; } = 1f;
 
+        internal int GetActiveAnimationState()
+        {
+            return _activeState;
+        }
+
         internal WzImageProperty TransientHitLayerSourceProperty => _transientHitLayerSourceProperty;
 
         internal int TransientHitLayerSourceState => _transientHitLayerSourceState;

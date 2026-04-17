@@ -58,7 +58,17 @@ namespace HaCreator.MapSimulator.Managers
 
         public static bool TryDecodeRandomMesoBagSucceeded(byte[] payload, out PacketOwnedRandomMesoBagResult result, out string error)
         {
+            return TryDecodeRandomMesoBagSucceeded(payload, out result, out _, out error);
+        }
+
+        public static bool TryDecodeRandomMesoBagSucceeded(
+            byte[] payload,
+            out PacketOwnedRandomMesoBagResult result,
+            out int trailingByteCount,
+            out string error)
+        {
             result = null;
+            trailingByteCount = 0;
             error = null;
 
             if (payload == null || payload.Length < sizeof(byte) + sizeof(int))
@@ -74,11 +84,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 byte rank = reader.ReadByte();
                 int mesoAmount = reader.ReadInt32();
-                if (stream.Position != stream.Length)
-                {
-                    error = $"Random-mesobag success payload has {stream.Length - stream.Position} trailing byte(s).";
-                    return false;
-                }
+                trailingByteCount = (int)Math.Max(0, stream.Length - stream.Position);
 
                 result = new PacketOwnedRandomMesoBagResult
                 {
@@ -96,7 +102,17 @@ namespace HaCreator.MapSimulator.Managers
 
         public static bool TryDecodeMesoGiveSucceeded(byte[] payload, out uint mesoAmount, out string error)
         {
+            return TryDecodeMesoGiveSucceeded(payload, out mesoAmount, out _, out error);
+        }
+
+        public static bool TryDecodeMesoGiveSucceeded(
+            byte[] payload,
+            out uint mesoAmount,
+            out int trailingByteCount,
+            out string error)
+        {
             mesoAmount = 0;
+            trailingByteCount = 0;
             error = null;
 
             if (payload == null || payload.Length < sizeof(uint))
@@ -111,11 +127,7 @@ namespace HaCreator.MapSimulator.Managers
                 using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
 
                 mesoAmount = reader.ReadUInt32();
-                if (stream.Position != stream.Length)
-                {
-                    error = $"Meso-give success payload has {stream.Length - stream.Position} trailing byte(s).";
-                    return false;
-                }
+                trailingByteCount = (int)Math.Max(0, stream.Length - stream.Position);
 
                 return true;
             }

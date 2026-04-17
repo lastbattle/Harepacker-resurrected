@@ -1050,6 +1050,62 @@ namespace HaCreator.MapSimulator.Fields
 
         #region Utility
 
+        public void ClearRouteConfiguration(bool clearVisuals = false)
+        {
+            _shipKind = 0;
+            _x = 0;
+            _y = 0;
+            _x0 = 0;
+            _f = 0;
+            _tMove = 0;
+            _shipPath = string.Empty;
+            _limitX0 = 0;
+            _limitX = 0;
+            _limitY0 = 0;
+            _limitY = 0;
+
+            _state = ShipState.Idle;
+            _currentX = 0f;
+            _currentY = 0f;
+            _currentAlpha = 0f;
+            _deltaX = 0f;
+            _deltaY = 0f;
+            _moveStartTime = 0;
+            _startMoveX = 0f;
+            _endMoveX = 0f;
+            _startAlpha = 0f;
+            _endAlpha = 0f;
+
+            _balrogState = BalrogState.Hidden;
+            _balrogX = 0f;
+            _balrogY = 0f;
+            _balrogAlpha = 0f;
+            _balrogMoveStartTime = 0;
+            _balrogStartX = 0f;
+            _balrogEndX = 0f;
+            _balrogStartY = 0f;
+            _balrogEndY = 0f;
+            _balrogMoveDuration = 1000;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
+
+            _bgScrollX = 0f;
+            _announcements.Clear();
+            _currentAnnouncement = null;
+
+            if (!clearVisuals)
+            {
+                return;
+            }
+
+            _shipFrames = null;
+            _shipFrameIndex = 0;
+            _lastShipFrameTime = 0;
+            _balrogFrames = null;
+            _balrogFrameIndex = 0;
+            _lastBalrogFrameTime = 0;
+        }
+
         public void Reset()
         {
             _balrogState = BalrogState.Hidden;

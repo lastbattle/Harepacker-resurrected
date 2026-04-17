@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Subject { get; init; } = string.Empty;
         public string DeliveredAtText { get; init; } = string.Empty;
         public string ClaimDeadlineText { get; init; } = string.Empty;
+        public string ClaimDeadlineStatusText { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
         public string AttachmentSummary { get; init; } = string.Empty;
         public string AttachmentDescription { get; init; } = string.Empty;
@@ -94,6 +95,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Preview { get; init; } = string.Empty;
         public string DeliveredAtText { get; init; } = string.Empty;
         public string ClaimDeadlineText { get; init; } = string.Empty;
+        public string ClaimDeadlineStatusText { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
         public bool IsRead { get; init; }
         public bool IsKept { get; init; }

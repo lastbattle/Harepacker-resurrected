@@ -170,6 +170,11 @@ namespace HaCreator.MapSimulator.Character
                 ["ladder"] = new[] { "ladder2", "rope2", "rope", "sit" },
                 ["rope"] = new[] { "rope2", "ladder2", "ladder", "sit" },
                 ["alert"] = new[] { "stand1", "stand2", "sit" },
+                // IDA `CActionMan::LoadTamingMobAction` remaps these raw actions before
+                // mount-family checks, so keep the same fallback names in the owner seam.
+                ["braveslash1"] = new[] { "ladder2", "stand1", "stand2", "sit" },
+                ["braveslash2"] = new[] { "stand1", "stand2", "sit" },
+                ["braveslash3"] = new[] { "stand1", "stand2", "sit" },
                 ["heal"] = new[] { "stand1", "stand2", "sit" },
                 ["dead"] = new[] { "sit", "stand1" },
                 ["ghost"] = new[] { "sit", "stand1" }

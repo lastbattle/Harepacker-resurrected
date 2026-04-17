@@ -1156,6 +1156,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation MobAnimation { get; set; }     // Target-bound branch used by client-owned secondary managers (e.g. Monster Magnet hook/chain)
         public string MobAnimationPath { get; set; }
         public List<SkillAnimation> TargetHitEffects { get; set; } = new(); // Indexed client hit UOL branches (hit/0, hit/1, ...)
+        public List<SkillAnimation> MultipleLayerTargetHitEffects { get; set; } = new(); // Indexed client multiple-layer hit roots (hit0, hit1, ...)
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation AffectedSecondaryEffect { get; set; } // Secondary buff/affected branch (e.g. affected0)
         public SkillAnimation SpecialAffectedEffect { get; set; } // One-time buff/heal start branch (e.g. specialAffected)
@@ -2143,7 +2144,6 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool CanDrawMainAnimation(int currentTime)
         {
             return Presentation != null
-                   && !StopTime.HasValue
                    && currentTime >= Presentation.StartTime
                    && currentTime < Presentation.EndTime;
         }
@@ -2455,6 +2455,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsHolding { get; set; }
         public int HoldStartTime { get; set; }
         public int LastRepeatTime { get; set; }
+        public bool PlayHoldWeaponSfx { get; set; }
+        public int HoldWeaponSfxRepeatIntervalMs { get; set; }
+        public int LastHoldWeaponSfxTime { get; set; } = int.MinValue;
 
         public int Elapsed(int currentTime) => Math.Max(0, currentTime - StartTime);
         public int HoldElapsed(int currentTime) => IsHolding ? Math.Max(0, currentTime - HoldStartTime) : 0;

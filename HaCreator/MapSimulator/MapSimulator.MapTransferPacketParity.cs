@@ -122,6 +122,7 @@ namespace HaCreator.MapSimulator
                 if (request == null)
                 {
                     request = MapTransferOfficialSessionResultResolver.InferRequestFromAuthoritativeDelta(response, preApplyFieldList);
+                    request ??= InferRequestFromAuthoritativeContext(response, responseBook, preApplyFieldList);
                 }
 
                 response = MapTransferOfficialSessionResultResolver.Resolve(
@@ -171,6 +172,70 @@ namespace HaCreator.MapSimulator
                     : response.FailureMessage ?? $"map transfer result {response.PacketResultCode}";
                 _mapTransferOfficialSessionBridge.RecordDispatchResult(message.Source, success: true, detail);
             }
+        }
+
+        private MapTransferRuntimeRequest InferRequestFromAuthoritativeContext(
+            MapTransferRuntimeResponse authoritativeResponse,
+            MapTransferDestinationBook responseBook,
+            IReadOnlyList<int> preApplyFieldList)
+        {
+            MapTransferRuntimeRequestType? requestType = MapTransferOfficialSessionResultResolver.InferRequestType(authoritativeResponse);
+            if (!requestType.HasValue)
+            {
+                return null;
+            }
+
+            if (requestType.Value == MapTransferRuntimeRequestType.Register)
+            {
+                int mapId = _mapTransferManualDestination?.MapId ?? (_mapBoard?.MapInfo?.id ?? 0);
+                if (mapId <= 0)
+                {
+                    return null;
+                }
+
+                int slotIndex = _mapTransferEditDestination?.IsSavedSlot == true
+                    ? _mapTransferEditDestination.SavedSlotIndex
+                    : -1;
+                return new MapTransferRuntimeRequest
+                {
+                    Type = MapTransferRuntimeRequestType.Register,
+                    Book = responseBook,
+                    MapId = mapId,
+                    SlotIndex = slotIndex
+                };
+            }
+
+            if (requestType.Value != MapTransferRuntimeRequestType.Delete)
+            {
+                return null;
+            }
+
+            int deleteSlotIndex = _mapTransferEditDestination?.IsSavedSlot == true
+                ? _mapTransferEditDestination.SavedSlotIndex
+                : -1;
+            int deleteMapId = 0;
+            if (deleteSlotIndex >= 0 && preApplyFieldList != null && deleteSlotIndex < preApplyFieldList.Count)
+            {
+                deleteMapId = preApplyFieldList[deleteSlotIndex];
+            }
+
+            if (deleteMapId <= 0)
+            {
+                deleteMapId = _mapTransferEditDestination?.MapId ?? 0;
+            }
+
+            if (deleteMapId <= 0 && deleteSlotIndex < 0)
+            {
+                return null;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = MapTransferRuntimeRequestType.Delete,
+                Book = responseBook,
+                MapId = deleteMapId,
+                SlotIndex = deleteSlotIndex
+            };
         }
 
         private void UpdatePacketOwnedMapTransferBootstrapFromSetField(PacketSetFieldPacket packet)
