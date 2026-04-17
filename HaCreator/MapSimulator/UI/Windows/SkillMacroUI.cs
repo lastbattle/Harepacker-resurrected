@@ -269,6 +269,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public Action OnMacroWindowClosed;
         internal Func<int, int, bool> OnImeCandidateSelected;
+        internal Action<int, bool> OnClientForwardedFunctionKeyStateChanged;
         internal Func<IntPtr> ResolveImeWindowHandle;
         #endregion
 
@@ -2319,6 +2320,7 @@ namespace HaCreator.MapSimulator.UI
             bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
             bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
             int tickCount = Environment.TickCount;
+            ForwardClientOwnedFunctionKeyTransitions(keyboardState);
 
             if (!ctrl && TryHandleImeCandidateKeyboardNavigation(keyboardState))
             {
@@ -2418,7 +2420,9 @@ namespace HaCreator.MapSimulator.UI
                 _caretBlinkTick = Environment.TickCount;
             }
 
-            if (keyboardState.IsKeyDown(Keys.Home) && _previousKeyboardState.IsKeyUp(Keys.Home))
+            if (keyboardState.IsKeyDown(Keys.Home)
+                && _previousKeyboardState.IsKeyUp(Keys.Home)
+                && SkillMacroOwnerKeyHandler.ShouldApplyCaretBoundaryNavigation(ctrl))
             {
                 ClearCompositionText();
                 ClearOwnerNotice();
@@ -2426,7 +2430,9 @@ namespace HaCreator.MapSimulator.UI
                 _caretBlinkTick = Environment.TickCount;
             }
 
-            if (keyboardState.IsKeyDown(Keys.End) && _previousKeyboardState.IsKeyUp(Keys.End))
+            if (keyboardState.IsKeyDown(Keys.End)
+                && _previousKeyboardState.IsKeyUp(Keys.End)
+                && SkillMacroOwnerKeyHandler.ShouldApplyCaretBoundaryNavigation(ctrl))
             {
                 ClearCompositionText();
                 ClearOwnerNotice();
@@ -2501,6 +2507,30 @@ namespace HaCreator.MapSimulator.UI
         private bool WasNameEditKeyPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private void ForwardClientOwnedFunctionKeyTransitions(KeyboardState keyboardState)
+        {
+            if (OnClientForwardedFunctionKeyStateChanged == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < SkillMacroOwnerKeyHandler.ClientForwardedFunctionKeyCount; i++)
+            {
+                Keys key = (Keys)((int)Keys.F1 + i);
+                bool isDown = keyboardState.IsKeyDown(key);
+                bool wasDown = _previousKeyboardState.IsKeyDown(key);
+                if (isDown == wasDown)
+                {
+                    continue;
+                }
+
+                if (SkillMacroOwnerKeyHandler.TryGetClientForwardedFunctionKeyIndex(key, out int functionKeyIndex))
+                {
+                    OnClientForwardedFunctionKeyStateChanged(functionKeyIndex, isDown);
+                }
+            }
         }
 
         private bool WasNameEditKeyPressedOrRepeated(KeyboardState keyboardState, Keys key, int tickCount)

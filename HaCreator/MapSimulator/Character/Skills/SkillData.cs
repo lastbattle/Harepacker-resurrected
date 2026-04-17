@@ -1234,6 +1234,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation ZoneAnimation { get; set; }
         public ZoneEffectData ZoneEffect { get; set; }
         public int ClientInfoType { get; set; }
+        public string ElementAttributeToken { get; set; }
         public bool AvailableInJumpingState { get; set; }
         public bool RequireHighestJump { get; set; }
         public int[] RequiredSkillIds { get; set; } = Array.Empty<int>();
@@ -2172,7 +2173,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool IsExpired(int currentTime)
         {
-            return currentTime - StartTime >= Duration;
+            return currentTime - StartTime > Duration;
         }
 
         public float ResolveAlpha(int currentTime)
@@ -2193,6 +2194,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2 origin = new(LayerOrigin.X, LayerOrigin.Y);
             Vector2 shift = Vector2.Lerp(OriginShiftStart, OriginShiftEnd, progress);
             return origin + shift;
+        }
+
+        public Vector2 ResolveOriginShift(int currentTime)
+        {
+            float progress = ResolveProgress(currentTime);
+            return Vector2.Lerp(OriginShiftStart, OriginShiftEnd, progress);
+        }
+
+        public int ResolveAlphaVector(int currentTime)
+        {
+            float progress = ResolveProgress(currentTime);
+            return (int)MathF.Round(MathHelper.Lerp(
+                ResolveAlphaVectorStart(),
+                ResolveAlphaVectorEnd(),
+                progress));
         }
 
         private float ResolveProgress(int currentTime)

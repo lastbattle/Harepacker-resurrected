@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
         int ItemId,
         int ClientStock,
         int Quantity,
+        bool IsTreatSingly,
         InventoryType InventoryType,
         InventoryType PacketGroupInventoryType,
         bool HasCashSerialNumber,
@@ -1007,6 +1008,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal int PacketGroupRowIndex { get; init; }
             internal bool WasRetainedFromPreviousSnapshot { get; init; }
             internal int Quantity { get; init; }
+            internal bool IsTreatSingly { get; init; }
             internal byte SlotType { get; init; }
             internal bool HasCashSerialNumber { get; init; }
             internal long ItemSerialNumber { get; init; }
@@ -1038,6 +1040,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<StoreBankItemEntry> _decodedItems = new();
         private readonly Dictionary<InventoryType, int> _decodedCountsByType = new();
         private readonly Dictionary<InventoryType, int> _retainedCountsByType = new();
+        private static readonly long TreatSinglyDateExpireCutoffFileTimeUtc = new DateTime(2079, 1, 1, 0, 0, 0, DateTimeKind.Utc).ToFileTimeUtc();
         private static readonly StoreInventoryGroup[] StoreInventoryGroups =
         {
             new(InventoryType.EQUIP, 4),
@@ -1175,24 +1178,12 @@ namespace HaCreator.MapSimulator.Interaction
                 StoreBankGetAllFeePromptStringPoolId,
                 "Stored item retrieval after %d day(s) costs %d mesos.");
             int clampedPassingDay = Math.Min(100, Math.Max(0, _pendingGetAllPassingDay));
-
-            try
-            {
-                return string.Format(
-                    CultureInfo.InvariantCulture,
-                    promptFormat,
-                    _pendingGetAllPassingDay,
-                    clampedPassingDay,
-                    _pendingGetAllFee);
-            }
-            catch (FormatException)
-            {
-                return string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Stored item retrieval after {0} day(s) costs {1} mesos.",
-                    _pendingGetAllPassingDay,
-                    _pendingGetAllFee);
-            }
+            return FormatStoreBankStringPoolTemplate(
+                promptFormat,
+                $"Stored item retrieval after {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} day(s) costs {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} mesos.",
+                _pendingGetAllPassingDay,
+                clampedPassingDay,
+                _pendingGetAllFee);
         }
 
         internal string CancelPendingGetAllRequest()
@@ -2024,19 +2015,11 @@ namespace HaCreator.MapSimulator.Interaction
                 0x0DC2,
                 "Stored items will be delivered through {0} mailbox slot {1}.");
             string channelName = ResolveShipmentChannelName(_lastPromptChannelId);
-
-            try
-            {
-                return string.Format(
-                    CultureInfo.InvariantCulture,
-                    format,
-                    channelName,
-                    _lastPromptTokenValue % 100);
-            }
-            catch (FormatException)
-            {
-                return $"Stored items will be delivered through {channelName} mailbox slot {_lastPromptTokenValue % 100}.";
-            }
+            return FormatStoreBankStringPoolTemplate(
+                format,
+                $"Stored items will be delivered through {channelName} mailbox slot {_lastPromptTokenValue % 100}.",
+                channelName,
+                _lastPromptTokenValue % 100);
         }
 
         private static string ResolveShipmentChannelName(int channelId)
@@ -2050,6 +2033,84 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string text = MapleStoryStringPool.GetOrFallback(stringPoolId, fallback)?.Trim();
             return string.IsNullOrWhiteSpace(text) ? fallback : text;
+        }
+
+        private static string FormatStoreBankStringPoolTemplate(string template, string fallback, params object[] args)
+        {
+            if (string.IsNullOrWhiteSpace(template))
+            {
+                return fallback;
+            }
+
+            string composite = ConvertStoreBankPrintfTemplateToCompositeFormat(template, out int placeholderCount);
+            if (placeholderCount == 0)
+            {
+                return composite;
+            }
+
+            object[] resolvedArgs = new object[placeholderCount];
+            for (int i = 0; i < placeholderCount; i++)
+            {
+                resolvedArgs[i] = args != null && i < args.Length
+                    ? args[i]
+                    : string.Empty;
+            }
+
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, composite, resolvedArgs);
+            }
+            catch (FormatException)
+            {
+                return fallback;
+            }
+        }
+
+        private static string ConvertStoreBankPrintfTemplateToCompositeFormat(string template, out int placeholderCount)
+        {
+            StringBuilder builder = new(template.Length + 16);
+            placeholderCount = 0;
+            for (int i = 0; i < template.Length; i++)
+            {
+                char current = template[i];
+                if (current != '%' || i + 1 >= template.Length)
+                {
+                    builder.Append(current);
+                    continue;
+                }
+
+                char next = template[i + 1];
+                if (next == '%')
+                {
+                    builder.Append('%');
+                    i++;
+                    continue;
+                }
+
+                if (next == 'l' && i + 2 < template.Length && template[i + 2] == 'd')
+                {
+                    builder.Append('{');
+                    builder.Append(placeholderCount.ToString(CultureInfo.InvariantCulture));
+                    builder.Append('}');
+                    placeholderCount++;
+                    i += 2;
+                    continue;
+                }
+
+                if (next is 'd' or 'i' or 'u' or 's')
+                {
+                    builder.Append('{');
+                    builder.Append(placeholderCount.ToString(CultureInfo.InvariantCulture));
+                    builder.Append('}');
+                    placeholderCount++;
+                    i++;
+                    continue;
+                }
+
+                builder.Append(current);
+            }
+
+            return builder.ToString();
         }
 
         private static string FormatStoreBankStringPoolId(int stringPoolId)
@@ -2090,6 +2151,10 @@ namespace HaCreator.MapSimulator.Interaction
             if (item.IsRechargeBundle)
             {
                 parts.Add("recharge");
+            }
+            else if (item.SlotType == 2 && item.IsTreatSingly)
+            {
+                parts.Add("treatSingly");
             }
 
             if (item.ItemSerialNumber > 0)
@@ -2494,7 +2559,7 @@ namespace HaCreator.MapSimulator.Interaction
                 itemName = $"{itemName} ({title})";
             }
 
-            int clientStock = ResolveClientStock(slotType, itemId, quantity);
+            int clientStock = ResolveClientStock(slotType, itemId, quantity, baseExpirationTime, out bool isTreatSingly);
             int encodedByteLength = checked((int)(stream.Position - itemStartPosition));
             byte[] rawEncodedBytes = CopyBytesFromStream(stream, itemStartPosition, encodedByteLength);
             byte[] bodyEncodedBytes = CopyBytesFromStream(stream, bodyStartPosition, checked((int)(stream.Position - bodyStartPosition)));
@@ -2515,6 +2580,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketGroupRowIndex = Math.Max(1, packetGroupRowIndex + 1),
                 WasRetainedFromPreviousSnapshot = false,
                 Quantity = Math.Max(1, quantity),
+                IsTreatSingly = isTreatSingly,
                 SlotType = slotType,
                 HasCashSerialNumber = hasCashSerialNumber,
                 ItemSerialNumber = itemSerialNumber,
@@ -2555,6 +2621,7 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.ItemId,
                 entry.ClientStock,
                 entry.Quantity,
+                entry.IsTreatSingly,
                 entry.InventoryType,
                 entry.PacketGroupInventoryType,
                 entry.HasCashSerialNumber,
@@ -2593,6 +2660,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketGroupRowIndex = item.PacketGroupRowIndex,
                 WasRetainedFromPreviousSnapshot = true,
                 Quantity = item.Quantity,
+                IsTreatSingly = item.IsTreatSingly,
                 SlotType = item.SlotType,
                 HasCashSerialNumber = item.HasCashSerialNumber,
                 ItemSerialNumber = item.ItemSerialNumber,
@@ -2675,20 +2743,30 @@ namespace HaCreator.MapSimulator.Interaction
             return typeIndex is >= 1 and <= 5 ? typeIndex : 0;
         }
 
-        private static int ResolveClientStock(byte slotType, int itemId, int quantity)
+        private static int ResolveClientStock(byte slotType, int itemId, int quantity, long baseExpirationTime, out bool isTreatSingly)
         {
+            isTreatSingly = false;
             return slotType switch
             {
-                2 => IsTreatSingly(itemId) ? 1 : Math.Max(1, quantity),
+                2 => (isTreatSingly = IsTreatSingly(itemId, baseExpirationTime)) ? 1 : Math.Max(1, quantity),
                 _ => 1
             };
         }
 
-        private static bool IsTreatSingly(int itemId)
+        private static bool IsTreatSingly(int itemId, long baseExpirationTime)
         {
             int typeIndex = itemId / 1_000_000;
-            return (typeIndex is not 2 and not 3 and not 4)
-                || itemId / 10_000 is 207 or 233;
+            if (typeIndex is not 2 and not 3 and not 4)
+            {
+                return true;
+            }
+
+            if (itemId / 10_000 is 207 or 233)
+            {
+                return true;
+            }
+
+            return baseExpirationTime < TreatSinglyDateExpireCutoffFileTimeUtc;
         }
 
         private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary, out StoreBankEquipData equipData)

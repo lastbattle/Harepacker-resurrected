@@ -58,25 +58,46 @@ namespace HaCreator.MapSimulator.Interaction
                 return PacketFieldSpecificDataOwnerHint.None;
             }
 
-            if (TryStripPrefix(key, "field", out string strippedKey))
+            PacketFieldSpecificDataOwnerHint ownerHint = PacketFieldSpecificDataOwnerHint.None;
+            while (TryResolveSingleOwnerHintPrefix(key, out PacketFieldSpecificDataOwnerHint currentHint, out string strippedKey))
             {
+                ownerHint = ownerHint == PacketFieldSpecificDataOwnerHint.None ? currentHint : ownerHint;
                 key = strippedKey;
-                return PacketFieldSpecificDataOwnerHint.Field;
             }
 
-            if (TryStripPrefix(key, "party", out strippedKey))
+            return ownerHint;
+        }
+
+        private static bool TryResolveSingleOwnerHintPrefix(
+            string key,
+            out PacketFieldSpecificDataOwnerHint ownerHint,
+            out string strippedKey)
+        {
+            ownerHint = PacketFieldSpecificDataOwnerHint.None;
+            strippedKey = key;
+
+            if (TryStripPrefix(key, "field", out string fieldKey))
             {
-                key = strippedKey;
-                return PacketFieldSpecificDataOwnerHint.Party;
+                ownerHint = PacketFieldSpecificDataOwnerHint.Field;
+                strippedKey = fieldKey;
+                return true;
             }
 
-            if (TryStripPrefix(key, "session", out strippedKey))
+            if (TryStripPrefix(key, "party", out string partyKey))
             {
-                key = strippedKey;
-                return PacketFieldSpecificDataOwnerHint.Session;
+                ownerHint = PacketFieldSpecificDataOwnerHint.Party;
+                strippedKey = partyKey;
+                return true;
             }
 
-            return PacketFieldSpecificDataOwnerHint.None;
+            if (TryStripPrefix(key, "session", out string sessionKey))
+            {
+                ownerHint = PacketFieldSpecificDataOwnerHint.Session;
+                strippedKey = sessionKey;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryDecodeStringPairs(

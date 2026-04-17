@@ -421,11 +421,16 @@ namespace HaCreator.MapSimulator.Character
                 ["souldriver"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["firestrike"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["blade"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["chargeBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["braveslash1"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["braveslash2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["braveslash3"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["braveslash4"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                // Character/00002000.img keeps these Aran roots on explicit redirect
+                // chains instead of one generic melee family:
+                // chargeBlow -> stabO1/alert;
+                // braveslash1/2 -> alert/swingO2/swingOF/stabO1;
+                // braveslash3/4 -> alert/swingT1/swingT3/stabO1.
+                ["chargeBlow"] = new[] { "stabO1", "alert" },
+                ["braveslash1"] = new[] { "alert", "swingO2", "swingOF", "stabO1" },
+                ["braveslash2"] = new[] { "alert", "swingO2", "swingOF", "stabO1" },
+                ["braveslash3"] = new[] { "alert", "swingT1", "swingT3", "stabO1" },
+                ["braveslash4"] = new[] { "alert", "swingT1", "swingT3", "stabO1" },
                 ["doubleSwing"] = new[] { "swingP2", "swingPF", "stabTF" },
                 ["tripleSwing"] = new[] { "swingPF", "proneStab", "swingP2" },
                 ["finalCharge"] = new[] { "stabTF", "stabT2" },
@@ -611,10 +616,10 @@ namespace HaCreator.MapSimulator.Character
                 // with flag-only morph metadata; the suffix-resolved Morph/0111.img
                 // movement surface publishes no verbatim `fastest` branch.
                 ["fastest"] = new[] { "fly", "jump", "stand" },
-                // Skill/2100.img/skill/21001001 still publishes `combatStep`, while
-                // current Morph/*.img movement surfaces expose only authored movement
-                // roots such as `fly`, `jump`, and `stand`.
-                ["combatStep"] = new[] { "fly", "jump", "stand" },
+                // Skill/2100.img/skill/21001001 still publishes `combatStep`, and
+                // Character/00002000.img keeps that row on `walk2` body redirects.
+                // Morph/*.img still publishes only generic locomotion roots.
+                ["combatStep"] = new[] { "walk", "move", "stand" },
                 // The client morph action table carries the dual-blade dash pair, but
                 // the checked morph images publish no verbatim `tornadoDash*` roots.
                 ["tornadoDash"] = new[] { "fly", "jump", "stand" },

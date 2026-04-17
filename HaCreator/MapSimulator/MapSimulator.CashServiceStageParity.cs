@@ -1863,7 +1863,11 @@ namespace HaCreator.MapSimulator
                     : "This is the last staged gift row in the current packet-owned modal sequence.",
                 inputPlaceholder: "Reply message",
                 inputActive: true,
-                inputMaxLength: 64,
+                inputMaxLength: 200,
+                inputClientX: 25,
+                inputClientY: 174,
+                inputClientWidth: 210,
+                inputClientHeight: 13,
                 giftRows: BuildCashReceiveGiftQueueLabels(stageWindow.CashGiftPacketEntries),
                 selectedGiftIndex: giftIndex);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
@@ -1978,7 +1982,11 @@ namespace HaCreator.MapSimulator
                     Label = "Maple Point",
                     Detail = stageWindow.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture),
                     IsChecked = stageWindow.MaplePointBalance > 0,
-                    IsEnabled = stageWindow.MaplePointBalance > 0
+                    IsEnabled = stageWindow.MaplePointBalance > 0,
+                    ClientX = 25,
+                    ClientYFromBottom = 95,
+                    ClientWidth = 160,
+                    ClientHeight = 14
                 },
                 new CashServiceModalOwnerWindow.CheckBoxState
                 {
@@ -1986,7 +1994,11 @@ namespace HaCreator.MapSimulator
                     Label = "Prepaid Cash",
                     Detail = stageWindow.PrepaidCashBalance.ToString("N0", CultureInfo.InvariantCulture),
                     IsChecked = stageWindow.MaplePointBalance <= 0 && stageWindow.PrepaidCashBalance > 0,
-                    IsEnabled = stageWindow.PrepaidCashBalance > 0
+                    IsEnabled = stageWindow.PrepaidCashBalance > 0,
+                    ClientX = 25,
+                    ClientYFromBottom = 80,
+                    ClientWidth = 230,
+                    ClientHeight = 14
                 },
                 new CashServiceModalOwnerWindow.CheckBoxState
                 {
@@ -1994,7 +2006,11 @@ namespace HaCreator.MapSimulator
                     Label = "Nexon Cash",
                     Detail = stageWindow.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture),
                     IsChecked = stageWindow.MaplePointBalance <= 0 && stageWindow.PrepaidCashBalance <= 0 && stageWindow.NexonCashBalance > 0,
-                    IsEnabled = stageWindow.NexonCashBalance > 0
+                    IsEnabled = stageWindow.NexonCashBalance > 0,
+                    ClientX = 25,
+                    ClientYFromBottom = 65,
+                    ClientWidth = 230,
+                    ClientHeight = 14
                 }
             };
         }
@@ -2025,7 +2041,11 @@ namespace HaCreator.MapSimulator
                 ControlId = 1003,
                 Label = "Package / period",
                 Items = items,
-                SelectedIndex = selectedIndex
+                SelectedIndex = selectedIndex,
+                ClientX = 62,
+                ClientY = 42,
+                ClientWidth = 150,
+                ClientHeight = 18
             };
         }
 
@@ -2090,10 +2110,12 @@ namespace HaCreator.MapSimulator
                 && uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
                 string selectorSummary = BuildCashPurchaseConfirmSelectionSummary(modalWindow);
+                string comboFocusSummary = TryApplyCashPurchaseVariantSelection(cashShopWindow, modalWindow.SelectedComboValue);
                 string purchaseMessage = cashShopWindow.ExecuteCashStageListAction("BtBuy");
-                message = string.IsNullOrWhiteSpace(selectorSummary)
-                    ? purchaseMessage
-                    : $"{selectorSummary} {purchaseMessage}";
+                message = string.Join(
+                    " ",
+                    new[] { selectorSummary, comboFocusSummary, purchaseMessage }
+                        .Where(part => !string.IsNullOrWhiteSpace(part)));
             }
             else
             {
@@ -2117,18 +2139,26 @@ namespace HaCreator.MapSimulator
             CashServiceStageWindow.PacketCatalogEntry selectedGift = stageWindow.CashGiftPacketEntries.Count > 0
                 ? stageWindow.CashGiftPacketEntries[selectedGiftIndex]
                 : null;
+            string normalizedReplyText = NormalizeCashReceiveGiftReplyText(modalWindow.InputValue);
+            if (buttonIndex == 0
+                && !TryValidateCashReceiveGiftReplyText(normalizedReplyText, out string replyNotice))
+            {
+                _chat?.AddErrorMessage(replyNotice, currTickCount);
+                return;
+            }
+
             string dispatchSummary = buttonIndex == 0
-                ? DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, modalWindow.InputValue)
+                ? DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText)
                 : string.Empty;
             string message = buttonIndex == 0
-                ? stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, modalWindow.InputValue, dispatchSummary)
+                ? stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, normalizedReplyText, dispatchSummary)
                 : "CUIReceiveGift skipped the current decoded gift row and advanced to the next modal-owner pass without sending the accept packet.";
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
             _chat?.AddSystemMessage(message, currTickCount);
             if (buttonIndex == 0)
             {
                 TryTriggerSpecialistPetSocialFeedback(
-                    BuildCashReceiveGiftSpecialistMessages(selectedGift, modalWindow.InputValue),
+                    BuildCashReceiveGiftSpecialistMessages(selectedGift, normalizedReplyText),
                     currTickCount);
             }
 
@@ -2183,6 +2213,43 @@ namespace HaCreator.MapSimulator
             return parts.Count == 0
                 ? string.Empty
                 : $"CConfirmPurchaseDlg confirmed with {string.Join(" and ", parts)}.";
+        }
+
+        private string TryApplyCashPurchaseVariantSelection(AdminShopDialogUI cashShopWindow, int selectedComboValue)
+        {
+            if (cashShopWindow == null || selectedComboValue <= 0)
+            {
+                return string.Empty;
+            }
+
+            bool focused = TryFocusCashServiceCommodity(selectedComboValue) || cashShopWindow.TryFocusCommoditySerialNumber(selectedComboValue);
+            return focused
+                ? $"Combo 1003 focused SN {selectedComboValue.ToString(CultureInfo.InvariantCulture)} before BtBuy."
+                : $"Combo 1003 could not focus SN {selectedComboValue.ToString(CultureInfo.InvariantCulture)}, so BtBuy stayed on the currently selected catalog row.";
+        }
+
+        private static bool TryValidateCashReceiveGiftReplyText(string normalizedReplyText, out string notice)
+        {
+            string reply = normalizedReplyText ?? string.Empty;
+            if (reply.Length > 200)
+            {
+                notice = "CUIReceiveGift rejected the reply because CCtrlEdit::SetTextLimit still caps the memo at 200 characters.";
+                return false;
+            }
+
+            if (!ClientCurseProcessParity.TryValidateText(reply, out string contentNotice))
+            {
+                notice = $"CUIReceiveGift rejected the reply text through CCurseProcess::ProcessString: {contentNotice}";
+                return false;
+            }
+
+            notice = string.Empty;
+            return true;
+        }
+
+        private static string NormalizeCashReceiveGiftReplyText(string replyText)
+        {
+            return (replyText ?? string.Empty).Trim();
         }
 
         private string DispatchCashReceiveGiftAcceptRequest(

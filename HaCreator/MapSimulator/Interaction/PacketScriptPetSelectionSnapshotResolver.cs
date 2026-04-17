@@ -114,19 +114,18 @@ namespace HaCreator.MapSimulator.Interaction
             foreach (IGrouping<int, PacketCharacterDataItemSlot> group in unresolvedAuthoritativeItems.GroupBy(static item => item.ItemId))
             {
                 if (!unresolvedLiveIndicesByItemId.TryGetValue(group.Key, out List<int> liveIndices) ||
-                    liveIndices.Count != 1)
+                    liveIndices.Count == 0)
                 {
                     continue;
                 }
 
                 PacketCharacterDataItemSlot[] authoritativeMatches = group.ToArray();
-                if (authoritativeMatches.Length != 1)
+                if (TryApplyUniqueSameItemRemap(liveCashSlots, liveIndices, authoritativeMatches))
                 {
                     continue;
                 }
 
-                int liveIndex = liveIndices[0];
-                liveCashSlots[liveIndex].CashItemSerialNumber = authoritativeMatches[0].CashItemSerialNumber;
+                TryApplyOrderedDuplicateSameItemRemap(liveCashSlots, liveIndices, authoritativeMatches);
             }
         }
 
@@ -218,6 +217,53 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return unresolved;
+        }
+
+        private static bool TryApplyUniqueSameItemRemap(
+            IReadOnlyList<InventorySlotData> liveCashSlots,
+            IReadOnlyList<int> liveIndices,
+            IReadOnlyList<PacketCharacterDataItemSlot> authoritativeMatches)
+        {
+            if (liveIndices == null ||
+                authoritativeMatches == null ||
+                liveIndices.Count != 1 ||
+                authoritativeMatches.Count != 1)
+            {
+                return false;
+            }
+
+            int liveIndex = liveIndices[0];
+            liveCashSlots[liveIndex].CashItemSerialNumber = authoritativeMatches[0].CashItemSerialNumber;
+            return true;
+        }
+
+        private static bool TryApplyOrderedDuplicateSameItemRemap(
+            IReadOnlyList<InventorySlotData> liveCashSlots,
+            IReadOnlyList<int> liveIndices,
+            IReadOnlyList<PacketCharacterDataItemSlot> authoritativeMatches)
+        {
+            if (liveIndices == null ||
+                authoritativeMatches == null ||
+                liveIndices.Count <= 1 ||
+                liveIndices.Count != authoritativeMatches.Count)
+            {
+                return false;
+            }
+
+            PacketCharacterDataItemSlot[] orderedAuthoritative = authoritativeMatches
+                .OrderBy(static item => item.InventoryPosition)
+                .ToArray();
+            int[] orderedLiveIndices = liveIndices
+                .OrderBy(static index => index)
+                .ToArray();
+
+            for (int i = 0; i < orderedLiveIndices.Length; i++)
+            {
+                int liveIndex = orderedLiveIndices[i];
+                liveCashSlots[liveIndex].CashItemSerialNumber = orderedAuthoritative[i].CashItemSerialNumber;
+            }
+
+            return true;
         }
     }
 }

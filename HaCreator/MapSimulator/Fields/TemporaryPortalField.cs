@@ -863,10 +863,11 @@ namespace HaCreator.MapSimulator.Fields
                 _remoteOpenGateRuntimes.TryGetValue(key, out RemoteOpenGateRuntime runtime);
                 bool hasPartner = _remoteOpenGates.TryGetValue(new RemoteOpenGateKey(state.OwnerCharacterId, !state.IsFirstSlot), out RemoteOpenGateState partner)
                                   && partner.Phase != RemoteOpenGateVisualPhase.Removing;
+                bool hasStablePartner = hasPartner && partner.Phase == RemoteOpenGateVisualPhase.Stable;
                 _remoteOpenGateRuntimes[key] = UpsertRemoteOpenGateRuntime(
                     runtime,
                     state,
-                    hasPartner,
+                    hasStablePartner,
                     openingVisuals,
                     soloVisuals,
                     linkedVisuals,
@@ -2336,7 +2337,7 @@ namespace HaCreator.MapSimulator.Fields
         private RemoteOpenGateRuntime UpsertRemoteOpenGateRuntime(
             RemoteOpenGateRuntime runtime,
             RemoteOpenGateState state,
-            bool hasPartner,
+            bool hasStablePartner,
             PortalVisualSet openingVisuals,
             PortalVisualSet soloVisuals,
             PortalVisualSet linkedVisuals,
@@ -2344,7 +2345,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             BaseDXDrawableItem drawable = CreateRemoteOpenGateDrawable(
                 state,
-                hasPartner,
+                hasStablePartner,
                 openingVisuals,
                 soloVisuals,
                 linkedVisuals,
@@ -2383,13 +2384,13 @@ namespace HaCreator.MapSimulator.Fields
             return runtime;
         }
 
-        private static RemoteOpenGateVisualMode ResolveRemoteOpenGateVisualMode(RemoteOpenGateState state, bool hasPartner)
+        private static RemoteOpenGateVisualMode ResolveRemoteOpenGateVisualMode(RemoteOpenGateState state, bool hasStablePartner)
         {
             return state.Phase switch
             {
                 RemoteOpenGateVisualPhase.Opening => RemoteOpenGateVisualMode.Opening,
                 RemoteOpenGateVisualPhase.Removing => RemoteOpenGateVisualMode.Removing,
-                _ when hasPartner => RemoteOpenGateVisualMode.Linked,
+                _ when hasStablePartner => RemoteOpenGateVisualMode.Linked,
                 _ => RemoteOpenGateVisualMode.Solo
             };
         }
@@ -2406,13 +2407,13 @@ namespace HaCreator.MapSimulator.Fields
 
         private static BaseDXDrawableItem CreateRemoteOpenGateDrawable(
             RemoteOpenGateState state,
-            bool hasPartner,
+            bool hasStablePartner,
             PortalVisualSet openingVisuals,
             PortalVisualSet soloVisuals,
             PortalVisualSet linkedVisuals,
             PortalVisualSet removalVisuals)
         {
-            return ResolveRemoteOpenGateVisualMode(state, hasPartner) switch
+            return ResolveRemoteOpenGateVisualMode(state, hasStablePartner) switch
             {
                 RemoteOpenGateVisualMode.Opening => openingVisuals.CreateOpeningDrawable(state.X, state.Y, state.PhaseStartedAt),
                 RemoteOpenGateVisualMode.Linked => linkedVisuals.CreateLoopDrawable(state.X, state.Y, state.PhaseStartedAt),
@@ -3605,6 +3606,15 @@ namespace HaCreator.MapSimulator.Fields
         {
             RemoteOpenGateState state = new(0, 0, 0, 0, 0, false, 0, phase, 0);
             return ResolveRemoteOpenGateVisualMode(state, hasPartner);
+        }
+
+        internal static RemoteOpenGateVisualMode ResolveRemoteOpenGateVisualModeForTesting(
+            RemoteOpenGateVisualPhase phase,
+            bool hasPartner,
+            RemoteOpenGateVisualPhase partnerPhase)
+        {
+            bool hasStablePartner = hasPartner && partnerPhase == RemoteOpenGateVisualPhase.Stable;
+            return ResolveRemoteOpenGateVisualModeForTesting(phase, hasStablePartner);
         }
 
         internal static bool ShouldLinkRemoteOpenGatePortalForTesting(

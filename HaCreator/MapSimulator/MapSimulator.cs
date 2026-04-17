@@ -1208,9 +1208,17 @@ namespace HaCreator.MapSimulator
 
                         break;
                     case QuestWorldMapTargetKind.Item:
-                        IReadOnlyList<int> itemMapIds = activeTarget.MapIds != null && activeTarget.MapIds.Count > 0
-                            ? activeTarget.MapIds
-                            : new[] { activeTarget.MapId > 0 ? activeTarget.MapId : fallbackMapId };
+                        int activeItemId = activeTarget.EntityId ?? 0;
+                        bool preferDemandQueryMaps = activeItemId > 0 &&
+                                                     _lastQuestDemandQueryVisibleItemIds.Contains(activeItemId);
+                        IReadOnlyList<int> itemMapIds = preferDemandQueryMaps
+                            ? ResolveQuestDemandQueryMapIds(activeItemId, fallbackMapId)
+                            : activeTarget.MapIds != null && activeTarget.MapIds.Count > 0
+                                ? activeTarget.MapIds
+                                : new[] { activeTarget.MapId > 0 ? activeTarget.MapId : fallbackMapId };
+                        string itemOverlaySourceSuffix = preferDemandQueryMaps
+                            ? $" via {FormatQuestDemandQueryMapSource(ResolveQuestDemandQueryMapSource(activeItemId))}"
+                            : string.Empty;
                         for (int i = 0; i < itemMapIds.Count; i++)
                         {
                             AddWorldMapQuestOverlay(
@@ -1219,7 +1227,7 @@ namespace HaCreator.MapSimulator
                                 WorldMapUI.SearchResultKind.Item,
                                 itemMapIds[i],
                                 activeTarget.Label,
-                                $"Active quest #{_activeQuestDetailQuestId} delivery item",
+                                $"Active quest #{_activeQuestDetailQuestId} delivery item{itemOverlaySourceSuffix}",
                                 ref overlayOrder,
                                 isPriorityTarget: true);
                         }
@@ -1809,6 +1817,7 @@ namespace HaCreator.MapSimulator
 
 
             ConsumeCollisionScriptExclusiveRequestFromTransferLifecycle();
+            ConsumePendingPortalSessionValueImpactsFromTransferLifecycle();
             _playerManager?.ForceStand();
             _gameState.PendingMapChange = true;
             _gameState.PendingMapId = targetMapId;
@@ -5711,8 +5720,9 @@ namespace HaCreator.MapSimulator
         private bool TryRejectOnlyPickupInventoryUse(int itemId, InventoryType inventoryType, int currentTime)
         {
             if (itemId <= 0
-                || inventoryType == InventoryType.NONE
-                || !InventoryItemMetadataResolver.IsOnlyPickup(itemId))
+                || !ShouldRejectOnlyPickupUseOutsidePickupRuntime(
+                    inventoryType,
+                    InventoryItemMetadataResolver.IsOnlyPickup(itemId)))
             {
                 return false;
             }
@@ -5723,6 +5733,11 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 false);
             return true;
+        }
+
+        internal static bool ShouldRejectOnlyPickupUseOutsidePickupRuntime(InventoryType inventoryType, bool isOnlyPickupItem)
+        {
+            return inventoryType != InventoryType.NONE && isOnlyPickupItem;
         }
 
         internal static string BuildOnlyPickupInventoryUseRejectedMessage(string itemName)
@@ -22485,6 +22500,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (ShouldRejectOnlyPickupUseOutsidePickupRuntime(
+                    inventoryType,
+                    InventoryItemMetadataResolver.IsOnlyPickup(itemId)))
+            {
+                return false;
+            }
+
             if (slotIndex.HasValue)
             {
                 IReadOnlyList<UI.InventorySlotData> slots = inventoryWindow.GetSlots(inventoryType);
@@ -25148,6 +25170,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            // Owner-window-only names without an active room occupant should not
+            // be promoted into synthetic minimap helper markers.
+            if (!hasOccupant)
+            {
+                return false;
+            }
+
             if (hasDedicatedFieldActorMarker && isRepresentedByDedicatedFieldActor)
             {
                 return false;
@@ -26380,6 +26409,13 @@ namespace HaCreator.MapSimulator
                 return skill.IsMesoExplosion;
             }
 
+            if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack)
+            {
+                return skill.UsesAffectedSkillBodyAttack
+                       || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
+                       || skill.AreaAttack;
+            }
+
             bool hasAreaMetadata =
                 skill.IsMesoExplosion
                 || skill.AreaAttack
@@ -26387,6 +26423,11 @@ namespace HaCreator.MapSimulator
                 || !string.IsNullOrWhiteSpace(skill.DotType)
                 || RemoteAffectedAreaSupportResolver.HasHostileMobGameplay(skill, levelData);
             if (!hasAreaMetadata)
+            {
+                return false;
+            }
+
+            if (!IsLocalAttackAreaOwnerLaneCompatibleWithSkill(ownerLane, skill))
             {
                 return false;
             }
@@ -26419,11 +26460,12 @@ namespace HaCreator.MapSimulator
         {
             int type = Math.Max(0, skill?.ClientInfoType ?? 0);
             int phase = ResolveLocalOwnedAffectedAreaPhase(skill);
+            int elementAttribute = ResolveLocalOwnedAffectedAreaElementAttribute(skill);
             short startDelayUnits = ResolveLocalOwnedAffectedAreaStartDelayUnits(skill, levelData, ownerLane);
             return new LocalOwnedAffectedAreaCreateMetadata(
                 type,
                 startDelayUnits,
-                ElementAttribute: 0,
+                ElementAttribute: elementAttribute,
                 Phase: phase);
         }
 
@@ -26462,10 +26504,68 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
+            if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack)
+            {
+                return 0;
+            }
+
             int delayMs = Math.Max(0, skill?.ClientDelayMs ?? 0);
 
             int units = (delayMs + 99) / 100;
             return (short)Math.Clamp(units, 0, short.MaxValue);
+        }
+
+        internal static int ResolveLocalOwnedAffectedAreaElementAttribute(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return 0;
+            }
+
+            int resolvedMask = 0;
+            string token = skill.ElementAttributeToken ?? string.Empty;
+            for (int i = 0; i < token.Length; i++)
+            {
+                resolvedMask |= char.ToLowerInvariant(token[i]) switch
+                {
+                    'f' => 1,
+                    'i' => 2,
+                    'l' => 4,
+                    's' => 8,
+                    'h' => 16,
+                    'd' => 32,
+                    _ => 0
+                };
+            }
+
+            return resolvedMask;
+        }
+
+        private static bool IsLocalAttackAreaOwnerLaneCompatibleWithSkill(
+            SkillManager.LocalAttackAreaOwnerLane ownerLane,
+            SkillData skill)
+        {
+            return ownerLane switch
+            {
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMeleeAttack =>
+                    skill.Projectile == null
+                    && skill.AttackType != SkillAttackType.Ranged
+                    && skill.AttackType != SkillAttackType.Magic
+                    && !skill.IsMagicDamageSkill,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack =>
+                    skill.Projectile != null
+                    || skill.AttackType == SkillAttackType.Ranged,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack =>
+                    skill.AttackType == SkillAttackType.Magic
+                    || skill.IsMagicDamageSkill,
+                _ => true
+            };
+        }
+
+        private static bool ContainsBodyAttackMetadata(string affectedSkillEffect)
+        {
+            return !string.IsNullOrWhiteSpace(affectedSkillEffect)
+                   && affectedSkillEffect.IndexOf("bodyAttack", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private int ResolveLocalOwnedAffectedAreaDurationSeconds(SkillData skill, SkillLevelData levelData, int skillLevel)
@@ -26814,6 +26914,30 @@ namespace HaCreator.MapSimulator
         {
             return Window != null
                 && WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window.Handle, listIndex, candidateIndex);
+        }
+
+        private void HandleSkillMacroClientForwardedFunctionKeyStateChanged(int functionKeyIndex, bool keyDown)
+        {
+            if (functionKeyIndex < 0 || functionKeyIndex >= SkillManager.FUNCTION_SLOT_COUNT)
+            {
+                return;
+            }
+
+            SkillManager skills = _playerManager?.Skills;
+            if (skills == null)
+            {
+                return;
+            }
+
+            int hotkeySlot = SkillManager.FUNCTION_SLOT_OFFSET + functionKeyIndex;
+            if (keyDown)
+            {
+                skills.TryCastHotkey(hotkeySlot, currTickCount);
+            }
+            else
+            {
+                skills.ReleaseHotkeyIfActive(hotkeySlot, currTickCount);
+            }
         }
 
         private bool TrySelectBookCollectionImeCandidate(int listIndex, int candidateIndex)
@@ -27370,8 +27494,8 @@ namespace HaCreator.MapSimulator
             return PassiveTransferFieldReadinessEvaluator.EvaluateQueuedRetryDecision(
                 new PassiveTransferFieldQueuedRetryDecisionState(
                     HasPendingRequest: _passiveTransferRequestPending,
-                    HasOneTimeActionCompleted: player?.IsPlayingClientOwnedOneTimeAction != true,
-                    HasReadyFieldInterface: player?.IsPlayingClientOwnedOneTimeAction != true
+                    HasOneTimeActionCompleted: player?.HasActivePassiveTransferFieldOneTimeAction() != true,
+                    HasReadyFieldInterface: player?.HasActivePassiveTransferFieldOneTimeAction() != true
                                             && ResolvePassiveTransferFieldReadyState(currentTime, requirePortalCollision: false),
                     HasCollidingTransferPortal: hasCollidingTransferPortal,
                     HasLiveFieldInterface: hasLiveFieldInterface,
@@ -27444,7 +27568,7 @@ namespace HaCreator.MapSimulator
 
             return PassiveTransferFieldReadinessEvaluator.CanReplayHandleUpKeyDown(
                 new PassiveTransferFieldReplayState(
-                    HasOneTimeActionCompleted: !player.IsPlayingClientOwnedOneTimeAction,
+                    HasOneTimeActionCompleted: !player.HasActivePassiveTransferFieldOneTimeAction(),
                     IsImmovable: player.IsImmovableForPassiveTransferField(currentTime),
                     IsAttractLocked: player.IsAttractLockedForPassiveTransferField(currentTime),
                     IsOnFoothold: player.Physics.IsOnFoothold()));
@@ -27453,7 +27577,7 @@ namespace HaCreator.MapSimulator
         private bool ShouldQueuePassiveTransferFieldRequest()
         {
             return PassiveTransferFieldReadinessEvaluator.CanQueuePassiveTransferFieldRequest(
-                _playerManager?.Player?.IsPlayingClientOwnedOneTimeAction == true,
+                _playerManager?.Player?.HasActivePassiveTransferFieldOneTimeAction() == true,
                 HasPassiveTransferFieldPortalCollision());
         }
 
@@ -28764,6 +28888,7 @@ namespace HaCreator.MapSimulator
             _dropPool.SetPacketItemVisualResolver(ResolvePacketItemDropVisuals);
             _dropPool.SetPacketExpireTimeUtcResolver(ResolveRemoteDropPacketServerUtc);
             _dropPool.SetPartyPickupMembershipEvaluator(AreDropActorsInSameParty);
+            _dropPool.SetOnPacketPartyPickupLinkedActors(RegisterObservedDropPartyActorLink);
             _dropPool.SetOnPacketEnterSoundRequested(HandlePacketOwnedDropEnterSoundRequested);
             _dropPool.SetOnPacketExploded(HandlePacketOwnedDropExploded);
 
@@ -29985,14 +30110,14 @@ namespace HaCreator.MapSimulator
                         "0x119-target-cover");
                 }
             };
-            _summonedPool.OnLocalOwnerSelfDestructAttackResolved = request =>
+            _summonedPool.OnPacketOwnedSelfDestructAttackResolved = request =>
             {
                 if (_playerManager == null)
                 {
                     return;
                 }
 
-                TryRouteLocalPacketOwnedSelfDestructAttackToRuntime(
+                TryRoutePacketOwnedSelfDestructAttackToRuntime(
                     request,
                     _playerManager.TryApplyPacketOwnedSelfDestructSummonAttack);
             };
@@ -30488,6 +30613,7 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.OnPreparedSkillStarted = HandleAnimationDisplayerPreparedSkillStarted;
             _playerManager.Skills.OnPreparedSkillReleased = HandleAnimationDisplayerPreparedSkillReleased;
             _playerManager.Skills.OnClientSkillEffectRequested = HandleAnimationDisplayerClientSkillEffectRequested;
+            _playerManager.Skills.OnAnimationDisplayerCatchRegistrationRequested = HandleAnimationDisplayerCatchRegistrationRequested;
             _playerManager.Skills.OnFieldSkillCastRejected = HandleFieldSkillCastRejected;
             _playerManager.Skills.OnSkillCooldownStarted = HandleSkillCooldownStarted;
             _playerManager.Skills.OnSkillCooldownBlocked = HandleSkillCooldownBlocked;
@@ -30528,6 +30654,7 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.SkillMacroWindow.OnMacroSaved = (_, _) => PersistSkillMacros();
                 uiWindowManager.SkillMacroWindow.OnMacroDeleted = _ => PersistSkillMacros();
                 uiWindowManager.SkillMacroWindow.OnImeCandidateSelected = TrySelectSkillMacroImeCandidate;
+                uiWindowManager.SkillMacroWindow.OnClientForwardedFunctionKeyStateChanged = HandleSkillMacroClientForwardedFunctionKeyStateChanged;
                 uiWindowManager.SkillMacroWindow.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
                 _playerManager.Skills.SetMacroResolver(index => uiWindowManager.SkillMacroWindow.GetMacro(index));
                 LoadPersistedSkillMacros();
@@ -31813,6 +31940,16 @@ namespace HaCreator.MapSimulator
                     && inventoryWindow.TryConsumeItemAtSlot(deliveryInventoryType, deliveryRuntimeSlotIndex, cashItemId, 1);
                 if (consumedCashItem)
                 {
+                    QuestDeliveryCashItemUseRequest request = QuestDeliveryCashItemUseRequest.Create(
+                        completionPhase
+                            ? QuestDeliveryCashItemUseRequestKind.CompleteDelivery
+                            : QuestDeliveryCashItemUseRequestKind.AcceptDelivery,
+                        updateTime: currTickCount,
+                        cashItemSlotPosition: deliveryClientSlotIndex,
+                        cashItemId: cashItemId);
+                    string consumeRequestDispatch = BuildQuestDeliveryConsumeCashItemUseRequestDispatchLabel(
+                        request,
+                        sourceContext);
                     RegisterPendingQuestDeliveryQuestResult(
                         questId,
                         completionPhase,
@@ -31825,7 +31962,7 @@ namespace HaCreator.MapSimulator
                         QuestId = questId,
                         Messages = new[]
                         {
-                            $"{deliveryMessage} Consumed {cashItemName} from {deliveryInventoryType} slot #{deliveryClientSlotIndex} through the client-shaped delivery-item seam and routed the {sourceContext} for {targetItemName} into the packet-owned delivery handoff."
+                            $"{deliveryMessage} Consumed {cashItemName} from {deliveryInventoryType} slot #{deliveryClientSlotIndex} through the client-shaped delivery-item seam and routed the {sourceContext} for {targetItemName} into the packet-owned delivery handoff. {consumeRequestDispatch}"
                         }
                     };
                 }
@@ -31854,6 +31991,12 @@ namespace HaCreator.MapSimulator
                 fallbackCommodityPrice = resolvedCommodityPrice;
             }
 
+            RegisterPendingQuestDeliveryQuestResult(
+                questId,
+                completionPhase,
+                cashItemId,
+                fallbackCommoditySn,
+                sourceContext);
             string shopMessage = ApplyPacketOwnedGoToCommoditySn(fallbackCommoditySn);
             return new QuestWindowActionResult
             {
@@ -31865,6 +32008,48 @@ namespace HaCreator.MapSimulator
                         : $"{sourceContext} could not use {cashItemName} locally, so it fell back to the packet-shaped Cash Shop seam at client commodity SN {fallbackCommoditySn}. {shopMessage}"
                 }
             };
+        }
+
+        private string BuildQuestDeliveryConsumeCashItemUseRequestDispatchLabel(
+            QuestDeliveryCashItemUseRequest request,
+            string sourceContext)
+        {
+            if (request?.Payload == null)
+            {
+                return "Quest-detail delivery consume request remained simulator-local because the request payload was unavailable.";
+            }
+
+            byte[] payload = request.Payload.Count > 0
+                ? request.Payload.ToArray()
+                : Array.Empty<byte>();
+            int opcode = request.Opcode;
+            string payloadHex = payload.Length > 0 ? Convert.ToHexString(payload) : "<empty>";
+            string contextLabel = string.IsNullOrWhiteSpace(sourceContext) ? "quest-detail delivery" : sourceContext;
+            string dispatchStatus = "live bridge unavailable";
+            string outboxStatus = "packet outbox unavailable";
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(opcode, payload, out dispatchStatus))
+            {
+                return $"{contextLabel} mirrored CWvsContext::SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(opcode, payload, out outboxStatus))
+            {
+                return $"{contextLabel} mirrored CWvsContext::SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out string queuedBridgeStatus))
+            {
+                return $"{contextLabel} queued CWvsContext::SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] for deferred official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, payload, out string queuedOutboxStatus))
+            {
+                return $"{contextLabel} queued CWvsContext::SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{contextLabel} kept CWvsContext::SendConsumeCashItemUseRequest opcode {opcode} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted the delivery owner request. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
         }
         private bool TryHandleSkillUiLevelUp(SkillDisplayData skill)
         {
@@ -32916,6 +33101,7 @@ namespace HaCreator.MapSimulator
                 request.Quantity,
                 currTickCount,
                 ownerId);
+            MirrorClientItemDropRequestEcho(request);
             PlayDropItemSE();
             return true;
         }
@@ -32977,9 +33163,33 @@ namespace HaCreator.MapSimulator
             }
 
             byte[] payload = FieldDropRequestEvaluator.BuildClientMesoDropRequestPayload(Environment.TickCount, amount);
+            TrySendOrQueueLocalUtilityPacket(
+                FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                payload);
+        }
+
+        private void MirrorClientItemDropRequestEcho(LocalFieldItemDropRequest request)
+        {
+            if (request.ItemId <= 0 || request.Quantity <= 0)
+            {
+                return;
+            }
+
+            byte[] payload = FieldDropRequestEvaluator.BuildClientItemDropRequestPayload(
+                Environment.TickCount,
+                request.InventoryType,
+                request.SlotIndex,
+                request.Quantity);
+            TrySendOrQueueLocalUtilityPacket(
+                FieldDropRequestEvaluator.ClientChangeSlotPositionRequestOpcode,
+                payload);
+        }
+
+        private void TrySendOrQueueLocalUtilityPacket(int opcode, byte[] payload)
+        {
             StampPacketOwnedUtilityRequestState();
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
-                FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                opcode,
                 payload,
                 out _))
             {
@@ -32987,7 +33197,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(
-                FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                opcode,
                 payload,
                 out _))
             {
@@ -32996,7 +33206,7 @@ namespace HaCreator.MapSimulator
 
             if (_localUtilityOfficialSessionBridgeEnabled
                 && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
-                    FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                    opcode,
                     payload,
                     out _))
             {
@@ -33004,7 +33214,7 @@ namespace HaCreator.MapSimulator
             }
 
             _localUtilityPacketOutbox.TryQueueOutboundPacket(
-                FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                opcode,
                 payload,
                 out _);
         }

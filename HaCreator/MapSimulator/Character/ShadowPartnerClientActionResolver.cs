@@ -1099,17 +1099,17 @@ namespace HaCreator.MapSimulator.Character
                 return actionNode;
             }
 
+            bool actionNodeHasPieceChildren = ContainsClientActionPieceChildren(actionNode);
+            if (!actionNodeHasPieceChildren
+                && TryResolveClientActionManInitNumericPieceOwnerNode(actionNode, actionName, out WzImageProperty numericPieceOwnerNode))
+            {
+                return numericPieceOwnerNode;
+            }
+
             WzImageProperty variantNode = actionNode["1"];
             if (variantNode?.WzProperties == null || variantNode.WzProperties.Count == 0)
             {
                 return actionNode;
-            }
-
-            bool actionNodeHasPieceChildren = ContainsClientActionPieceChildren(actionNode);
-            bool variantNodeHasPieceChildren = ContainsClientActionPieceChildren(variantNode);
-            if (!actionNodeHasPieceChildren && variantNodeHasPieceChildren)
-            {
-                return variantNode;
             }
 
             if (string.IsNullOrWhiteSpace(actionName)
@@ -1127,6 +1127,61 @@ namespace HaCreator.MapSimulator.Character
             return IsClientActionPieceNode(variantNode)
                 ? actionNode
                 : variantNode;
+        }
+
+        private static bool TryResolveClientActionManInitNumericPieceOwnerNode(
+            WzImageProperty actionNode,
+            string actionName,
+            out WzImageProperty pieceOwnerNode)
+        {
+            pieceOwnerNode = null;
+            if (actionNode?.WzProperties == null || actionNode.WzProperties.Count == 0)
+            {
+                return false;
+            }
+
+            bool prefersVariantOne = !string.IsNullOrWhiteSpace(actionName)
+                                     && CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                                     && rawActionCode >= ClientActionManInitVariantRowStartRawActionCode
+                                     && rawActionCode <= ClientActionManInitVariantRowEndRawActionCode;
+
+            var candidateRows = new List<(int Index, WzImageProperty Node)>();
+            foreach (WzImageProperty child in actionNode.WzProperties)
+            {
+                if (child == null
+                    || !int.TryParse(child.Name, out int numericIndex)
+                    || !ContainsClientActionPieceChildren(child)
+                    || IsClientActionPieceNode(child))
+                {
+                    continue;
+                }
+
+                candidateRows.Add((numericIndex, child));
+            }
+
+            if (candidateRows.Count == 0)
+            {
+                return false;
+            }
+
+            if (prefersVariantOne)
+            {
+                WzImageProperty preferredRow = candidateRows
+                    .Where(static entry => entry.Index == 1)
+                    .Select(static entry => entry.Node)
+                    .FirstOrDefault();
+                if (preferredRow != null)
+                {
+                    pieceOwnerNode = preferredRow;
+                    return true;
+                }
+            }
+
+            pieceOwnerNode = candidateRows
+                .OrderBy(static entry => entry.Index)
+                .Select(static entry => entry.Node)
+                .First();
+            return true;
         }
 
         internal static bool ContainsClientActionPieceChildren(WzImageProperty node)
@@ -1223,7 +1278,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 Name = actionName,
                 Frames = frames,
-                Loop = false,
+                Loop = ShouldLoopShadowPartnerAction(actionName),
                 Origin = firstPieceAnimation?.Origin ?? Point.Zero,
                 ZOrder = firstPieceAnimation?.ZOrder ?? 0,
                 PositionCode = firstPieceAnimation?.PositionCode,
@@ -1296,6 +1351,26 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return eventDelayMs;
+        }
+
+        internal static bool ShouldLoopShadowPartnerAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (actionName.StartsWith("create", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "dead", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private static SkillFrame CloneSkillFrame(

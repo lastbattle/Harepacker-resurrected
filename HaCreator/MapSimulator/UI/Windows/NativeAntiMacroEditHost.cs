@@ -779,11 +779,13 @@ namespace HaCreator.MapSimulator.UI
                         return true;
                     }
 
-                    return false;
+                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    return true;
                 case VkC:
                     if (!controlHeld)
                     {
-                        return false;
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                        return true;
                     }
 
                     CopySelectionToClipboard();
@@ -791,7 +793,8 @@ namespace HaCreator.MapSimulator.UI
                 case VkV:
                     if (!controlHeld)
                     {
-                        return false;
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                        return true;
                     }
 
                     PasteClipboardText();
@@ -799,7 +802,8 @@ namespace HaCreator.MapSimulator.UI
                 case VkX:
                     if (!controlHeld)
                     {
-                        return false;
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                        return true;
                     }
 
                     CutSelectionToClipboard();
@@ -823,7 +827,8 @@ namespace HaCreator.MapSimulator.UI
                 case VkHome:
                     if (controlHeld)
                     {
-                        return false;
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                        return true;
                     }
 
                     MoveCaretToBoundary(moveToEnd: false);
@@ -831,7 +836,8 @@ namespace HaCreator.MapSimulator.UI
                 case VkEnd:
                     if (controlHeld)
                     {
-                        return false;
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                        return true;
                     }
 
                     MoveCaretToBoundary(moveToEnd: true);
@@ -840,7 +846,8 @@ namespace HaCreator.MapSimulator.UI
                 case VkDown:
                     if (controlHeld || shiftHeld)
                     {
-                        return false;
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                        return true;
                     }
 
                     if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))

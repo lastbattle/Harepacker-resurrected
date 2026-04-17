@@ -287,6 +287,11 @@ namespace HaCreator.MapSimulator.Effects
         public void SpawnDamageNumber(int damage, float x, float y, DamageColorType colorType,
             bool isCritical, bool isMiss, int currentTime, int comboIndex = 0, string specialTextName = null)
         {
+            if (!IsSupportedColorType(colorType))
+            {
+                return;
+            }
+
             // Limit active numbers
             if (_activeNumbers.Count >= MAX_ACTIVE_NUMBERS)
             {
@@ -548,6 +553,13 @@ namespace HaCreator.MapSimulator.Effects
         internal static bool UsesCriticalPresentation(DamageColorType colorType, bool isCritical)
         {
             return colorType == DamageColorType.Red && isCritical;
+        }
+
+        internal static bool IsSupportedColorType(DamageColorType colorType)
+        {
+            return colorType == DamageColorType.Red
+                || colorType == DamageColorType.Blue
+                || colorType == DamageColorType.Violet;
         }
 
         internal static string ResolveSpecialTextName(string specialTextName)

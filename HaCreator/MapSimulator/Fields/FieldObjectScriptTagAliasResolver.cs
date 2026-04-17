@@ -164,6 +164,17 @@ namespace HaCreator.MapSimulator.Fields
                     }
                 }
             }
+
+            foreach (string functionAliasName in EnumerateFunctionAliasNames(scriptName))
+            {
+                foreach (string candidate in EnumerateScriptAliasCandidatesCore(functionAliasName.Trim()))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
         }
 
         private static IEnumerable<string> EnumerateScriptAliasCandidatesCore(string scriptName)
@@ -397,7 +408,7 @@ namespace HaCreator.MapSimulator.Fields
                 string functionName = ReadFunctionName(value, openIndex);
                 string argumentText = value[(openIndex + 1)..closeIndex];
                 var arguments = new List<string>(SplitFunctionArguments(argumentText));
-                if (!string.IsNullOrWhiteSpace(functionName) && arguments.Count > 0)
+                if (!string.IsNullOrWhiteSpace(functionName))
                 {
                     yield return (functionName, arguments);
                 }
@@ -414,6 +425,29 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 openIndex = value.IndexOf('(', openIndex + 1);
+            }
+        }
+
+        private static IEnumerable<string> EnumerateFunctionAliasNames(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach ((string functionName, _) in EnumerateFunctionCalls(scriptName))
+            {
+                string normalizedFunctionName = NormalizeFunctionAliasArgument(functionName);
+                if (!IsPotentialFunctionAliasName(normalizedFunctionName))
+                {
+                    continue;
+                }
+
+                if (seen.Add(normalizedFunctionName))
+                {
+                    yield return normalizedFunctionName;
+                }
             }
         }
 
@@ -660,6 +694,43 @@ namespace HaCreator.MapSimulator.Fields
         {
             return IsDelayedCallbackFunctionName(functionName)
                 || IsZeroDelayCallbackFunctionName(functionName);
+        }
+
+        private static bool IsPotentialFunctionAliasName(string functionName)
+        {
+            if (string.IsNullOrWhiteSpace(functionName))
+            {
+                return false;
+            }
+
+            string leafName = functionName.Trim();
+            int memberSeparatorIndex = leafName.LastIndexOf('.');
+            if (memberSeparatorIndex >= 0 && memberSeparatorIndex < leafName.Length - 1)
+            {
+                leafName = leafName[(memberSeparatorIndex + 1)..];
+            }
+
+            if (string.IsNullOrWhiteSpace(leafName)
+                || IsScriptCallbackFunctionName(leafName))
+            {
+                return false;
+            }
+
+            switch (leafName.ToLowerInvariant())
+            {
+                case "function":
+                case "if":
+                case "for":
+                case "while":
+                case "switch":
+                case "case":
+                case "return":
+                case "catch":
+                case "new":
+                    return false;
+                default:
+                    return true;
+            }
         }
 
         private static bool IsDelayedCallbackFunctionName(string functionName)

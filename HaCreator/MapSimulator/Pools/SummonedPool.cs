@@ -295,7 +295,7 @@ namespace HaCreator.MapSimulator.Pools
         public Action<PacketOwnedSummonTimerExpiration[]> OnSummonExpiryTimersExpiredBatch { get; set; }
         public Action<PacketOwnedSummonTimerExpiration> OnSummonExpiryTimerExpired { get; set; }
         public Action<SummonedAttackPacket, int> OnLocalOwnerAttackPacketApplied { get; set; }
-        public Action<PacketOwnedSelfDestructAttackRequest> OnLocalOwnerSelfDestructAttackResolved { get; set; }
+        public Action<PacketOwnedSelfDestructAttackRequest> OnPacketOwnedSelfDestructAttackResolved { get; set; }
 
         public int Count => _summonsByObjectId.Count;
 
@@ -749,7 +749,10 @@ namespace HaCreator.MapSimulator.Pools
                 AvatarLook = packet.AvatarLook,
                 TeslaCoilState = packet.TeslaCoilState,
                 TeslaTrianglePoints = packet.TeslaTrianglePoints?.ToArray() ?? Array.Empty<Point>(),
-                LastMoveActionRaw = packet.MoveAction,
+                LastMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
+                    summon,
+                    packet.MoveAction,
+                    TeslaCoilSkillId),
                 CurrentFootholdId = packet.FootholdId,
                 EnterType = packet.EnterType
             };
@@ -780,7 +783,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.MovementSnapshot = movementSnapshot ?? throw new ArgumentNullException(nameof(movementSnapshot));
-            state.LastMoveActionRaw = moveAction;
+            state.LastMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
+                state.Summon,
+                moveAction,
+                TeslaCoilSkillId);
             ApplyMovementSnapshot(state, currentTime);
             SyncPuppet(state, currentTime);
             return true;
@@ -814,6 +820,10 @@ namespace HaCreator.MapSimulator.Pools
             state.LastAttackTargets = packet.Targets ?? Array.Empty<SummonedAttackTargetPacket>();
             state.Summon.LastAttackTime = currentTime;
             PromotePacketOwnedTeslaRuntimeState(state);
+            state.LastMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
+                state.Summon,
+                state.LastMoveActionRaw,
+                TeslaCoilSkillId);
             state.Summon.FacingRight = PacketOwnedSummonUpdateRules.ResolvePacketAttackFacingRight(
                 state.Summon,
                 state.LastMoveActionRaw,
@@ -2316,22 +2326,15 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (state.OneTimeAction != 0)
+            if (HasPacketOwnedOneTimeActionOwner(state))
             {
-                if (currentTime < state.OneTimeActionEndTime)
+                if (state.OneTimeActionEndTime != int.MinValue
+                    && currentTime < state.OneTimeActionEndTime)
                 {
                     return;
                 }
 
-                state.OneTimeAction = 0;
-                state.OneTimeActionOwnedBySkillPacket = false;
-                state.OneTimeActionEndTime = int.MinValue;
-                state.OneTimeActionClip = null;
-                state.Summon.OneTimeActionFallbackAnimation = null;
-                state.Summon.OneTimeActionFallbackActionCode = 0;
-                state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
-                state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
-                state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
+                ClearPacketOwnedOneTimeAction(state);
                 ResolvePacketOwnedTeslaRuntimeStateAfterActionPlayback(state);
                 ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             }
@@ -2389,6 +2392,22 @@ namespace HaCreator.MapSimulator.Pools
             {
                 state.Summon.CurrentAnimationBranchName = null;
             }
+
+            state.LastMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
+                state.Summon,
+                state.LastMoveActionRaw,
+                TeslaCoilSkillId);
+        }
+
+        private static bool HasPacketOwnedOneTimeActionOwner(PacketOwnedSummonState state)
+        {
+            return state?.Summon != null
+                   && (state.OneTimeAction != 0
+                       || state.OneTimeActionOwnedBySkillPacket
+                       || state.OneTimeActionEndTime != int.MinValue
+                       || state.OneTimeActionClip.HasValue
+                       || state.Summon.OneTimeActionFallbackAnimation?.Frames.Count > 0
+                       || state.Summon.OneTimeActionFallbackActionCode != 0);
         }
 
         private static void ResolvePacketOwnedTeslaRuntimeStateAfterActionPlayback(PacketOwnedSummonState state)
@@ -2568,6 +2587,7 @@ namespace HaCreator.MapSimulator.Pools
             ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             bool hasHitAnimation = state.Summon.SkillData?.SummonHitAnimation?.Frames.Count > 0;
             state.OneTimeActionClip = null;
+            state.OneTimeActionOwnedBySkillPacket = false;
             state.Summon.OneTimeActionFallbackAnimation = null;
             state.Summon.OneTimeActionFallbackActionCode = 0;
             state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
@@ -3557,9 +3577,9 @@ namespace HaCreator.MapSimulator.Pools
                 .Select(static target => new SummonedAttackTargetPacket(target.PoolId, 0, 0))
                 .ToArray();
             SpawnPacketAttackVisuals(state, currentTime);
+            DispatchPacketOwnedSelfDestructAttackRuntime(state, targets, currentTime);
             if (state.OwnerIsLocal)
             {
-                DispatchLocalOwnerSelfDestructAttackRuntime(state, targets, currentTime);
                 TryRegisterClientOwnedAttackTileOverlay(state, currentTime);
             }
 
@@ -3602,15 +3622,12 @@ namespace HaCreator.MapSimulator.Pools
                 .Select(static target => new SummonedAttackTargetPacket(target.PoolId, 0, 0))
                 .ToArray();
             SpawnPacketAttackVisuals(state, currentTime);
-            if (state.OwnerIsLocal)
-            {
-                DispatchLocalOwnerSelfDestructAttackRuntime(state, targets, currentTime);
-            }
+            DispatchPacketOwnedSelfDestructAttackRuntime(state, targets, currentTime);
 
             return true;
         }
 
-        private void DispatchLocalOwnerSelfDestructAttackRuntime(
+        private void DispatchPacketOwnedSelfDestructAttackRuntime(
             PacketOwnedSummonState state,
             IReadOnlyList<MobItem> targets,
             int currentTime)
@@ -3623,7 +3640,7 @@ namespace HaCreator.MapSimulator.Pools
                 currentTime);
             if (request.TargetMobIds?.Count > 0)
             {
-                OnLocalOwnerSelfDestructAttackResolved?.Invoke(request);
+                OnPacketOwnedSelfDestructAttackResolved?.Invoke(request);
             }
         }
 
@@ -5951,7 +5968,8 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (current is WzSubProperty subProperty)
                 {
-                    string directSourcePath = TryExtractPacketMobAttackSourcePathToken(subProperty["source"]);
+                    string directSourcePath = TryExtractPacketMobAttackSourcePathToken(
+                        ResolvePacketMobAttackGeneralEffectSourceProperty(subProperty));
                     if (!string.IsNullOrWhiteSpace(directSourcePath)
                         && TryNormalizePacketMobAttackGeneralEffectAbsolutePath(directSourcePath, defaultCategory, out string normalizedDirectSourcePath))
                     {
@@ -5982,7 +6000,29 @@ namespace HaCreator.MapSimulator.Pools
 
             if (property is WzSubProperty subProperty)
             {
-                return TryExtractPacketMobAttackSourcePathToken(subProperty["source"]);
+                return TryExtractPacketMobAttackSourcePathToken(
+                    ResolvePacketMobAttackGeneralEffectSourceProperty(subProperty));
+            }
+
+            return null;
+        }
+
+        private static WzImageProperty ResolvePacketMobAttackGeneralEffectSourceProperty(
+            WzSubProperty subProperty)
+        {
+            if (subProperty == null)
+            {
+                return null;
+            }
+
+            string[] preferredPropertyNames = { "source", "path", "sHit", "hit", "effect", "uol" };
+            for (int i = 0; i < preferredPropertyNames.Length; i++)
+            {
+                WzImageProperty candidate = subProperty[preferredPropertyNames[i]];
+                if (candidate != null)
+                {
+                    return candidate;
+                }
             }
 
             return null;
@@ -6020,6 +6060,13 @@ namespace HaCreator.MapSimulator.Pools
             {
                 string[] segments = normalizedSourcePaths[i]
                     .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                if (segments.Length >= 5
+                    && IsPacketMobAttackSourcePropertySegment(segments[^1])
+                    && int.TryParse(segments[^2], out _))
+                {
+                    segments = segments.Take(segments.Length - 1).ToArray();
+                }
+
                 if (segments.Length < 4)
                 {
                     return null;
@@ -6241,7 +6288,19 @@ namespace HaCreator.MapSimulator.Pools
             return string.Equals(prefix, "sHit", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(prefix, "hit", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(prefix, "effect", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(prefix, "path", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(prefix, "path", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(prefix, "source", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(prefix, "uol", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPacketMobAttackSourcePropertySegment(string segment)
+        {
+            return string.Equals(segment, "source", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "path", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "sHit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "hit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "effect", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "uol", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumeratePacketMobAttackGeneralEffectBasePaths(

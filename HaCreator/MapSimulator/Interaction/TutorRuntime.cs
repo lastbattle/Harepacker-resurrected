@@ -87,9 +87,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static readonly object SharedTutorStateSync = new();
         private static readonly List<int> SharedClientTutorSkillIds = new();
-        private static readonly List<ClientTutorOwnerState> SharedTutorOwners = new();
         private static readonly List<TutorVariantSnapshot> SharedRegisteredTutorVariants = new();
         private static readonly List<TutorMessageSnapshot> SharedTutorMessages = new();
+        private static readonly List<ClientTutorOwnerState> SharedTutorOwners = new();
 
         private sealed class ClientTutorOwnerState
         {
@@ -197,7 +197,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 lock (SharedTutorStateSync)
                 {
-                    return SharedRegisteredTutorVariants.Count;
+                    return SharedTutorOwners.Count;
                 }
             }
         }

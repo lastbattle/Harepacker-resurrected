@@ -287,8 +287,8 @@ namespace HaCreator.MapSimulator.Effects
             _currentStep = 0;
 
 
-            // OnWeddingProgress resolves 680000110 -> 9201011 and 680000210 -> 9201002.
-            _npcId = mapId == WhiteWeddingAltarMapId ? WhiteWeddingAltarNpcId : SaintMapleAltarNpcId;
+            // CField_Wedding::OnWeddingProgress only resolves ceremony NPC ids for the two ceremony maps.
+            _npcId = ResolveCeremonyNpcId(mapId);
             _groomId = 0;
             _brideId = 0;
             _groomPosition = null;
@@ -2459,11 +2459,23 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void OnWeddingProgress(int step, int groomId, int brideId, int currentTimeMs)
         {
+            if (!_isActive)
+            {
+                return;
+            }
+
+            int npcId = ResolveCeremonyNpcId(_mapId);
+            if (npcId <= 0)
+            {
+                return;
+            }
+
             System.Diagnostics.Debug.WriteLine($"[WeddingField] OnWeddingProgress: step={step}, groom={groomId}, bride={brideId}");
 
             DismissCurrentDialog();
 
             _currentStep = step;
+            _npcId = npcId;
             _groomId = groomId;
             _brideId = brideId;
             UpdateParticipantState();
@@ -2501,6 +2513,11 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void OnWeddingCeremonyEnd(int currentTimeMs)
         {
+            if (!_isActive || ResolveCeremonyNpcId(_mapId) <= 0)
+            {
+                return;
+            }
+
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             DismissCurrentDialog();
             SetCeremonyTextOverlay(active: false);
@@ -2868,6 +2885,7 @@ namespace HaCreator.MapSimulator.Effects
             try
             {
                 WzImage npcImage = global::HaCreator.Program.FindImage("String", "Npc.img");
+                npcImage?.ParseImage();
                 string liveValue = npcImage?[npcId.ToString()]?[propertyName]?.GetString();
                 if (!string.IsNullOrWhiteSpace(liveValue))
                 {
@@ -4188,6 +4206,16 @@ namespace HaCreator.MapSimulator.Effects
             return _mapId == SaintMapleAltarMapId
                 ? step >= 3
                 : step >= 1;
+        }
+
+        private static int ResolveCeremonyNpcId(int mapId)
+        {
+            return mapId switch
+            {
+                WhiteWeddingAltarMapId => WhiteWeddingAltarNpcId,
+                SaintMapleAltarMapId => SaintMapleAltarNpcId,
+                _ => 0
+            };
         }
 
 

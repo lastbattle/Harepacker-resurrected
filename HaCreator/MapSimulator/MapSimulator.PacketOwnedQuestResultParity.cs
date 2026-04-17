@@ -533,6 +533,7 @@ namespace HaCreator.MapSimulator
                 _pendingPacketOwnedQuestResultFollowUpReady)
             {
                 _pendingPacketOwnedQuestResultContinuationQuestId = 0;
+                TryApplyPendingPacketOwnedQuestResultFollowUpImmediate();
                 return;
             }
 
@@ -558,6 +559,11 @@ namespace HaCreator.MapSimulator
         }
 
         private void UpdatePendingPacketOwnedQuestResultFollowUp()
+        {
+            TryApplyPendingPacketOwnedQuestResultFollowUpImmediate();
+        }
+
+        private void TryApplyPendingPacketOwnedQuestResultFollowUpImmediate()
         {
             if (!_pendingPacketOwnedQuestResultFollowUpQuestId.HasValue ||
                 _pendingPacketOwnedQuestResultFollowUpQuestId.Value <= 0 ||

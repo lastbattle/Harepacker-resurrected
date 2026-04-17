@@ -956,6 +956,47 @@ namespace HaCreator.MapSimulator.Effects
 
             return true;
         }
+        internal static bool TryValidatePacketPayloadForType(int packetType, byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            return packetType switch
+            {
+                PacketTypeClock => TryParseClockPacketPayload(
+                    payload,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    strictInference: true),
+                PacketTypeStage => TryParseStagePacketPayload(
+                    payload,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    strictInference: true),
+                PacketTypeClear => TryParseTransferPacketPayload(
+                    payload,
+                    allowPortalName: true,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    strictInference: true),
+                PacketTypeTimeOver => TryParseTransferPacketPayload(
+                    payload,
+                    allowPortalName: false,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    strictInference: true),
+                _ => false
+            };
+        }
         private static List<(int PacketType, string Summary)> CollectPacketPayloadCandidates(byte[] payload)
         {
             payload ??= Array.Empty<byte>();

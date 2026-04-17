@@ -373,9 +373,12 @@ namespace HaCreator.MapSimulator.UI
             return isDropdownOpen && !hoveredInteractiveElement;
         }
 
-        internal static bool ShouldToggleWhisperPickerComboDropdownOnPress(bool comboToggleHovered)
+        internal static bool ShouldToggleWhisperPickerComboDropdownOnPress(
+            bool comboHovered,
+            bool comboToggleHovered)
         {
-            return comboToggleHovered;
+            // Client CCtrlComboBox::OnMouseButton routes combo left-click through BtClicked.
+            return comboHovered || comboToggleHovered;
         }
 
         internal static bool ShouldCommitHoveredWhisperPickerCandidateOnRelease(
@@ -2450,7 +2453,7 @@ namespace HaCreator.MapSimulator.UI
                 _pressedWhisperPickerCandidateTarget = hoveredPickerRegion?.WhisperTarget;
                 _pressedWhisperPickerButtonAction = hoveredButtonRegion?.Action;
                 _pressedWhisperPickerComboToggle = comboToggleHovered;
-                if (ShouldToggleWhisperPickerComboDropdownOnPress(comboToggleHovered))
+                if (ShouldToggleWhisperPickerComboDropdownOnPress(comboHovered, comboToggleHovered))
                 {
                     WhisperTargetPickerModalComboFocusRequested?.Invoke();
                     WhisperTargetPickerModalComboDropdownToggleRequested?.Invoke();

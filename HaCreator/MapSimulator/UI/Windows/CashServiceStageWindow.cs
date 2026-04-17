@@ -1448,8 +1448,18 @@ namespace HaCreator.MapSimulator.UI
             int itemId = reader.ReadInt32();
             int quantity = Math.Max(1, (int)reader.ReadInt16());
             int prepaidCost = Math.Max(0, reader.ReadInt32());
+            PacketCatalogEntry embeddedCashItemInfoEntry = TryReadOptionalCashItemInfoPacketEntry(
+                reader,
+                "Gift packet body",
+                "CCashShop gift",
+                "Gift body");
             _cashGiftLastSummary =
                 $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} x{quantity.ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} for {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            if (embeddedCashItemInfoEntry != null)
+            {
+                _cashGiftLastSummary += $" Embedded {embeddedCashItemInfoEntry.PacketFieldSummary}.";
+            }
+
             AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
             {
                 Title = $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}",
@@ -1458,7 +1468,12 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
                 StateLabel = "Gift sent",
                 ItemId = Math.Max(0, itemId),
-                Quantity = quantity
+                Quantity = quantity,
+                SerialNumber = embeddedCashItemInfoEntry?.SerialNumber ?? 0,
+                ListingId = embeddedCashItemInfoEntry?.ListingId ?? 0,
+                CommodityId = embeddedCashItemInfoEntry?.CommodityId ?? 0,
+                PacketSource = embeddedCashItemInfoEntry?.PacketSource ?? string.Empty,
+                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty
             });
             _cashGiftPacketEntries.Insert(0, new PacketCatalogEntry
             {
@@ -1468,7 +1483,12 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
                 StateLabel = "Gift sent",
                 ItemId = Math.Max(0, itemId),
-                Quantity = quantity
+                Quantity = quantity,
+                SerialNumber = embeddedCashItemInfoEntry?.SerialNumber ?? 0,
+                ListingId = embeddedCashItemInfoEntry?.ListingId ?? 0,
+                CommodityId = embeddedCashItemInfoEntry?.CommodityId ?? 0,
+                PacketSource = embeddedCashItemInfoEntry?.PacketSource ?? string.Empty,
+                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty
             });
             _noticeState = _cashGiftLastSummary;
             message = $"CCashShop::OnCashItemResGiftDone confirmed {_cashGiftLastSummary}";
@@ -1692,8 +1712,18 @@ namespace HaCreator.MapSimulator.UI
             int itemCount = Math.Max(0, (int)reader.ReadUInt16());
             int bonusCount = Math.Max(0, (int)reader.ReadUInt16());
             int prepaidCost = Math.Max(0, reader.ReadInt32());
+            PacketCatalogEntry embeddedCashItemInfoEntry = TryReadOptionalCashItemInfoPacketEntry(
+                reader,
+                "Gift package body",
+                "CCashShop gift package",
+                "Gift package body");
             _cashGiftLastSummary =
                 $"Gifted package {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s), {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count, and {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            if (embeddedCashItemInfoEntry != null)
+            {
+                _cashGiftLastSummary += $" Embedded {embeddedCashItemInfoEntry.PacketFieldSummary}.";
+            }
+
             AppendCashPacketCatalogEntry("Packet package", "Package", new PacketCatalogEntry
             {
                 Title = $"Gifted package {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}",
@@ -1702,7 +1732,12 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
                 StateLabel = "Gift package",
                 ItemId = Math.Max(0, itemId),
-                Quantity = Math.Max(1, itemCount)
+                Quantity = Math.Max(1, itemCount),
+                SerialNumber = embeddedCashItemInfoEntry?.SerialNumber ?? 0,
+                ListingId = embeddedCashItemInfoEntry?.ListingId ?? 0,
+                CommodityId = embeddedCashItemInfoEntry?.CommodityId ?? 0,
+                PacketSource = embeddedCashItemInfoEntry?.PacketSource ?? string.Empty,
+                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty
             });
             _cashGiftPacketEntries.Insert(0, new PacketCatalogEntry
             {
@@ -1712,7 +1747,12 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
                 StateLabel = "Gift package sent",
                 ItemId = Math.Max(0, itemId),
-                Quantity = Math.Max(1, itemCount)
+                Quantity = Math.Max(1, itemCount),
+                SerialNumber = embeddedCashItemInfoEntry?.SerialNumber ?? 0,
+                ListingId = embeddedCashItemInfoEntry?.ListingId ?? 0,
+                CommodityId = embeddedCashItemInfoEntry?.CommodityId ?? 0,
+                PacketSource = embeddedCashItemInfoEntry?.PacketSource ?? string.Empty,
+                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty
             });
             _noticeState = _cashGiftLastSummary;
             message = $"CCashShop::OnCashItemResGiftPackageDone confirmed {_cashGiftLastSummary}";
@@ -1824,16 +1864,31 @@ namespace HaCreator.MapSimulator.UI
             string requestedName = TryReadMapleString(reader, out string decodedName)
                 ? SanitizePacketString(decodedName, "requested name")
                 : string.Empty;
+            PacketCatalogEntry embeddedCashItemInfoEntry = TryReadOptionalCashItemInfoPacketEntry(
+                reader,
+                "Name-change packet body",
+                "CCashShop name-change",
+                "Renamed");
             _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(requestedName)
                 ? "Name-change purchase completed inside the dedicated Cash Shop stage."
                 : $"Name-change purchase completed for {requestedName}.";
+            if (embeddedCashItemInfoEntry != null)
+            {
+                _cashNameChangeLastSummary += $" Embedded {embeddedCashItemInfoEntry.PacketFieldSummary}.";
+            }
+
             AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
             {
                 Title = "Name change",
                 Detail = _cashNameChangeLastSummary,
                 Seller = string.IsNullOrWhiteSpace(requestedName) ? "CCashShop" : requestedName,
                 PriceLabel = requestedName,
-                StateLabel = "Renamed"
+                StateLabel = "Renamed",
+                SerialNumber = embeddedCashItemInfoEntry?.SerialNumber ?? 0,
+                ListingId = embeddedCashItemInfoEntry?.ListingId ?? 0,
+                CommodityId = embeddedCashItemInfoEntry?.CommodityId ?? 0,
+                PacketSource = embeddedCashItemInfoEntry?.PacketSource ?? string.Empty,
+                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty
             });
             _noticeState = _cashNameChangeLastSummary;
             message = $"CCashShop::OnCashItemNameChangeResBuyDone confirmed {_cashNameChangeLastSummary}";
@@ -1857,16 +1912,31 @@ namespace HaCreator.MapSimulator.UI
             string targetName = TryReadMapleString(reader, out string decodedName)
                 ? SanitizePacketString(decodedName, "transfer target")
                 : string.Empty;
+            PacketCatalogEntry embeddedCashItemInfoEntry = TryReadOptionalCashItemInfoPacketEntry(
+                reader,
+                "Transfer-world packet body",
+                "CCashShop transfer-world",
+                "Transferred");
             _cashTransferWorldLastSummary = worldId > 0 || !string.IsNullOrWhiteSpace(targetName)
                 ? $"Transfer-world purchase completed{(worldId > 0 ? $" for world {worldId.ToString(CultureInfo.InvariantCulture)}" : string.Empty)}{(!string.IsNullOrWhiteSpace(targetName) ? $" on {targetName}" : string.Empty)}."
                 : "Transfer-world purchase completed inside the dedicated Cash Shop stage.";
+            if (embeddedCashItemInfoEntry != null)
+            {
+                _cashTransferWorldLastSummary += $" Embedded {embeddedCashItemInfoEntry.PacketFieldSummary}.";
+            }
+
             AppendCashPacketCatalogEntry("Packet transfer", "Transfer", new PacketCatalogEntry
             {
                 Title = "Transfer world",
                 Detail = _cashTransferWorldLastSummary,
                 Seller = string.IsNullOrWhiteSpace(targetName) ? "CCashShop" : targetName,
                 PriceLabel = worldId > 0 ? $"World {worldId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
-                StateLabel = "Transferred"
+                StateLabel = "Transferred",
+                SerialNumber = embeddedCashItemInfoEntry?.SerialNumber ?? 0,
+                ListingId = embeddedCashItemInfoEntry?.ListingId ?? 0,
+                CommodityId = embeddedCashItemInfoEntry?.CommodityId ?? 0,
+                PacketSource = embeddedCashItemInfoEntry?.PacketSource ?? string.Empty,
+                PacketFieldSummary = embeddedCashItemInfoEntry?.PacketFieldSummary ?? string.Empty
             });
             _noticeState = _cashTransferWorldLastSummary;
             message = $"CCashShop::OnCashItemResTransferWorldDone confirmed {_cashTransferWorldLastSummary}";
@@ -3381,6 +3451,62 @@ namespace HaCreator.MapSimulator.UI
                 DiscountRate = Math.Max(0, reader.ReadInt32())
             };
             return true;
+        }
+
+        private static bool TryReadOptionalCashItemInfoPacketSnapshot(BinaryReader reader, out CashItemInfoPacketSnapshot snapshot)
+        {
+            snapshot = null;
+            if (reader?.BaseStream == null)
+            {
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < CashItemInfoPacketByteLength)
+            {
+                return false;
+            }
+
+            long initialPosition = stream.Position;
+            if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot decodedSnapshot)
+                || !IsPlausibleCashItemInfoPacketSnapshot(decodedSnapshot))
+            {
+                stream.Position = initialPosition;
+                return false;
+            }
+
+            snapshot = decodedSnapshot;
+            return true;
+        }
+
+        private static bool IsPlausibleCashItemInfoPacketSnapshot(CashItemInfoPacketSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return false;
+            }
+
+            return (snapshot.SerialNumber > 0 || snapshot.ItemId > 0 || snapshot.CommodityId > 0)
+                && snapshot.Quantity > 0
+                && snapshot.Quantity <= short.MaxValue
+                && snapshot.PaybackRate >= 0
+                && snapshot.DiscountRate >= 0;
+        }
+
+        private PacketCatalogEntry TryReadOptionalCashItemInfoPacketEntry(
+            BinaryReader reader,
+            string titlePrefix,
+            string seller,
+            string stateLabel)
+        {
+            if (!TryReadOptionalCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
+            {
+                return null;
+            }
+
+            PacketCatalogEntry entry = BuildCashItemInfoPacketEntry(snapshot, titlePrefix, seller, stateLabel);
+            AppendCashPacketCatalogEntry("Packet purchase", "Buy", ClonePacketCatalogEntry(entry, stateLabel));
+            return entry;
         }
 
         private static bool TryReadGiftListPacketSnapshot(BinaryReader reader, int rowIndex, out GiftListPacketSnapshot snapshot)

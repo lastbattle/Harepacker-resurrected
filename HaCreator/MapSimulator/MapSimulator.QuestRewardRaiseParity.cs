@@ -684,6 +684,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, packet.Payload);
             ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
             if (packet.Success)
             {
@@ -707,6 +708,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, packet.Payload);
             ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
             if (packet.Success)
             {
@@ -776,6 +778,50 @@ namespace HaCreator.MapSimulator
             };
             activeRaise.PlacedPieces.Add(placedPiece);
             return placedPiece;
+        }
+
+        private void EnsureQuestRewardRaisePieceRequestId(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePlacedPiece placedPiece,
+            QuestRewardRaisePacketPayload payload)
+        {
+            if (activeRaise?.PlacedPieces == null || placedPiece == null)
+            {
+                return;
+            }
+
+            int currentRequestId = Math.Max(0, placedPiece.RequestId);
+            if (currentRequestId > 0 && IsQuestRewardRaisePieceRequestIdUnique(activeRaise, placedPiece, currentRequestId))
+            {
+                return;
+            }
+
+            int inboundRequestId = Math.Max(0, payload?.PieceRequestId ?? 0);
+            if (inboundRequestId > 0 && IsQuestRewardRaisePieceRequestIdUnique(activeRaise, placedPiece, inboundRequestId))
+            {
+                placedPiece.RequestId = inboundRequestId;
+                return;
+            }
+
+            int syntheticRequestId;
+            do
+            {
+                syntheticRequestId = GetNextQuestRewardRaiseRequestId();
+            }
+            while (!IsQuestRewardRaisePieceRequestIdUnique(activeRaise, placedPiece, syntheticRequestId));
+
+            placedPiece.RequestId = syntheticRequestId;
+        }
+
+        private static bool IsQuestRewardRaisePieceRequestIdUnique(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePlacedPiece placedPiece,
+            int requestId)
+        {
+            return requestId > 0
+                && activeRaise?.PlacedPieces?.All(piece =>
+                    ReferenceEquals(piece, placedPiece)
+                    || piece.RequestId != requestId) != false;
         }
 
         private int ResolveSyntheticQuestRewardRaiseRequestId(

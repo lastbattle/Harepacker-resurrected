@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Fields
 
     public static class FieldDropRequestEvaluator
     {
+        public const int ClientChangeSlotPositionRequestOpcode = 77;
         public const int ClientDropMoneyRequestOpcode = 106;
         public const int ClientMaxMesoDropAmount = 50_000;
 
@@ -109,6 +110,21 @@ namespace HaCreator.MapSimulator.Fields
             byte[] payload = new byte[sizeof(int) * 2];
             BitConverter.GetBytes(currentTimeMs).CopyTo(payload, 0);
             BitConverter.GetBytes(amount).CopyTo(payload, sizeof(int));
+            return payload;
+        }
+
+        public static byte[] BuildClientItemDropRequestPayload(
+            int currentTimeMs,
+            InventoryType inventoryType,
+            int sourceSlotPosition,
+            int dropCount)
+        {
+            byte[] payload = new byte[sizeof(int) + sizeof(byte) + sizeof(short) * 3];
+            BitConverter.GetBytes(currentTimeMs).CopyTo(payload, 0);
+            payload[sizeof(int)] = (byte)inventoryType;
+            BitConverter.GetBytes((short)sourceSlotPosition).CopyTo(payload, sizeof(int) + sizeof(byte));
+            BitConverter.GetBytes((short)0).CopyTo(payload, sizeof(int) + sizeof(byte) + sizeof(short));
+            BitConverter.GetBytes((short)dropCount).CopyTo(payload, sizeof(int) + sizeof(byte) + sizeof(short) * 2);
             return payload;
         }
 

@@ -21,9 +21,15 @@ internal static class SummonClientPostEffectRules
     private const float ClientConfirmedReactiveChainMaxDistance = 600f;
     private const int ClientConfirmedReactiveChainTargetInset = 10;
 
-    public static bool ShouldRegisterAttackTileOverlay(int skillId, SkillAnimation zoneAnimation)
+    public static bool ShouldRegisterAttackTileOverlay(
+        int skillId,
+        SkillData skillData,
+        SkillAnimation zoneAnimation,
+        int skillLevel,
+        int ownerCharacterLevel)
     {
-        if (zoneAnimation?.Frames.Count <= 0)
+        if (zoneAnimation?.Frames.Count <= 0
+            && !HasAuthoredTileOverlayPath(skillData, skillLevel, ownerCharacterLevel))
         {
             return false;
         }
@@ -32,7 +38,8 @@ internal static class SummonClientPostEffectRules
                || skillId == ClientConfirmedPhoenixCurrentSkillId
                || skillId == ClientConfirmedSilverHawkLegacySkillId
                || skillId == ClientConfirmedFrostpreyLegacySkillId
-               || skillId == ClientConfirmedFrostpreyCurrentSkillId;
+               || skillId == ClientConfirmedFrostpreyCurrentSkillId
+               || HasAuthoredTileOverlayPath(skillData, skillLevel, ownerCharacterLevel);
     }
 
     public static bool ShouldRegisterReactiveAttackChainEffect(int skillId, SkillData skillData)
@@ -333,6 +340,44 @@ internal static class SummonClientPostEffectRules
 
         return projectile.LevelBallUolPaths?.Values.Any(static path => !string.IsNullOrWhiteSpace(path)) == true
                || projectile.LevelFlipBallUolPaths?.Values.Any(static path => !string.IsNullOrWhiteSpace(path)) == true;
+    }
+
+    private static bool HasAuthoredTileOverlayPath(
+        SkillData skillData,
+        int skillLevel,
+        int ownerCharacterLevel)
+    {
+        if (skillData?.ZoneEffect == null)
+        {
+            return false;
+        }
+
+        int resolvedSkillLevel = Math.Max(1, skillLevel);
+        int resolvedOwnerCharacterLevel = Math.Max(1, ownerCharacterLevel);
+        string tileUolPath = skillData.ZoneEffect.ResolveTileUolPath(resolvedSkillLevel, resolvedOwnerCharacterLevel);
+        if (HasTileFamilyMarker(tileUolPath))
+        {
+            return true;
+        }
+
+        string variantPath = skillData.ZoneEffect.ResolveAnimationVariantPath(
+            resolvedSkillLevel,
+            resolvedOwnerCharacterLevel,
+            skillData.MaxLevel);
+        return HasTileFamilyMarker(variantPath);
+    }
+
+    private static bool HasTileFamilyMarker(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        string normalizedPath = path.Replace('\\', '/');
+        return normalizedPath.Contains("/tile/", StringComparison.OrdinalIgnoreCase)
+               || normalizedPath.EndsWith("/tile", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedPath, "tile", StringComparison.OrdinalIgnoreCase);
     }
 
     private static SkillAnimation ResolveSummonNamedEffectAnimation(SkillData skillData, bool secondary)

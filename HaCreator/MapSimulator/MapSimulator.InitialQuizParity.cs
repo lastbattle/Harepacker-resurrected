@@ -801,6 +801,17 @@ namespace HaCreator.MapSimulator
             return !ownerCapturesWindowInput;
         }
 
+        internal static bool ShouldInitialQuizOwnerOverrideNpcOverlayInput(bool ownerCapturesWindowInput)
+        {
+            return ownerCapturesWindowInput;
+        }
+
+        internal static bool ShouldBlockInitialQuizOwnerInputForNpcOverlayModal(bool ownerCapturesWindowInput, bool npcOverlayBlocksUnderlyingInput)
+        {
+            return !ShouldInitialQuizOwnerOverrideNpcOverlayInput(ownerCapturesWindowInput)
+                && npcOverlayBlocksUnderlyingInput;
+        }
+
         private void HandleInitialQuizOwnerCommittedText(string text)
         {
             if (!ShouldCaptureInitialQuizOwnerTextInput())

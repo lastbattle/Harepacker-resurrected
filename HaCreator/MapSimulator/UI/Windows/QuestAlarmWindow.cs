@@ -631,7 +631,7 @@ namespace HaCreator.MapSimulator.UI
             RefreshFrame(refreshedSnapshot);
             UpdateButtonStates();
 
-            if (opened && refreshedSnapshot.Entries.Count > 0)
+            if (opened)
             {
                 Show();
             }

@@ -1079,10 +1079,15 @@ namespace HaCreator.MapSimulator
             int itemId,
             InventorySlotData slot)
         {
-            int stableIdentity = slot?.PendingRequestId ?? 0;
-            if (stableIdentity == 0 && slot?.CashItemSerialNumber is long cashSerialNumber)
+            int stableIdentity = 0;
+            if (slot?.CashItemSerialNumber is long cashSerialNumber)
             {
                 stableIdentity = unchecked((int)(cashSerialNumber & 0xFFF));
+            }
+
+            if (stableIdentity == 0)
+            {
+                stableIdentity = slot?.PendingRequestId ?? 0;
             }
 
             if (stableIdentity == 0 && slot?.OwnerCharacterId is int ownerCharacterId && ownerCharacterId > 0)
@@ -1143,9 +1148,9 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (slot.PendingRequestId != 0)
+            if (slot.TooltipPart?.ClientItemToken.GetValueOrDefault() != 0)
             {
-                itemToken = slot.PendingRequestId;
+                itemToken = slot.TooltipPart.ClientItemToken.Value;
                 return true;
             }
 
@@ -1153,6 +1158,12 @@ namespace HaCreator.MapSimulator
             {
                 itemToken = unchecked((int)cashItemSerialNumber);
                 return itemToken != 0;
+            }
+
+            if (slot.PendingRequestId != 0)
+            {
+                itemToken = slot.PendingRequestId;
+                return true;
             }
 
             return false;

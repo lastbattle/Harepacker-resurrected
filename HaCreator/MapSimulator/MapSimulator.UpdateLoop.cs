@@ -374,9 +374,12 @@ namespace HaCreator.MapSimulator
             if (isWindowActive)
             {
                 _npcInteractionOverlay?.PumpPacketQuestResultModalHost();
-                bool packetQuestResultModalBlocksInput = _npcInteractionOverlay?.BlocksUnderlyingInput == true;
+                bool initialQuizCapturesWindowInput = DoesInitialQuizOwnerCaptureWindowInput();
+                bool initialQuizOverridesNpcOverlayInput = ShouldInitialQuizOwnerOverrideNpcOverlayInput(initialQuizCapturesWindowInput);
+                bool packetQuestResultModalBlocksInput = ShouldBlockInitialQuizOwnerInputForNpcOverlayModal(
+                    initialQuizCapturesWindowInput,
+                    _npcInteractionOverlay?.BlocksUnderlyingInput == true);
                 bool initialQuizMouseConsumed =
-                    !packetQuestResultModalBlocksInput &&
                     HandleInitialQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
                 bool speedQuizMouseConsumed =
                     !packetQuestResultModalBlocksInput &&
@@ -384,7 +387,7 @@ namespace HaCreator.MapSimulator
                 bool dedicatedOwnerMouseConsumed =
                     !packetQuestResultModalBlocksInput &&
                     HandlePacketScriptDedicatedOwnerMouse(newMouseState, _oldMouseState, currTickCount);
-                NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
+                NpcInteractionOverlayResult npcOverlayResult = !initialQuizOverridesNpcOverlayInput && _npcInteractionOverlay != null
                     ? _npcInteractionOverlay.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight)
                     : default;
                 HandlePacketOwnedQuestResultOverlayClose(npcOverlayResult.CloseKind);
@@ -542,7 +545,9 @@ namespace HaCreator.MapSimulator
 
             // Handle chat input (returns true if chat consumed the input)
 
-            NpcInteractionOverlayResult npcKeyboardResult = isWindowActive && _npcInteractionOverlay != null
+            bool initialQuizCapturesWindowInputForKeyboard = DoesInitialQuizOwnerCaptureWindowInput();
+            bool initialQuizOverridesNpcOverlayKeyboard = ShouldInitialQuizOwnerOverrideNpcOverlayInput(initialQuizCapturesWindowInputForKeyboard);
+            NpcInteractionOverlayResult npcKeyboardResult = isWindowActive && !initialQuizOverridesNpcOverlayKeyboard && _npcInteractionOverlay != null
                 ? _npcInteractionOverlay.HandleKeyboard(newKeyboardState, _oldKeyboardState)
                 : default;
             HandlePacketOwnedQuestResultOverlayClose(npcKeyboardResult.CloseKind);
@@ -553,10 +558,11 @@ namespace HaCreator.MapSimulator
                 HandleNpcOverlayInputSubmission(npcKeyboardResult.InputSubmission);
             }
 
-            bool packetQuestResultModalBlocksKeyboard = _npcInteractionOverlay?.BlocksUnderlyingInput == true;
+            bool packetQuestResultModalBlocksKeyboard = ShouldBlockInitialQuizOwnerInputForNpcOverlayModal(
+                initialQuizCapturesWindowInputForKeyboard,
+                _npcInteractionOverlay?.BlocksUnderlyingInput == true);
             bool initialQuizKeyboardConsumed =
                 isWindowActive &&
-                !packetQuestResultModalBlocksKeyboard &&
                 HandleInitialQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
             bool speedQuizKeyboardConsumed =
                 isWindowActive &&

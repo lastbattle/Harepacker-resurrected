@@ -650,7 +650,12 @@ namespace HaCreator.MapSimulator.Fields
                 fogColor,
                 drawDarkLayer,
                 restorePreviousClientOwnedViewranges: false,
-                resetPreviousClientOwnedViewrangesForCurrentFrame: false);
+                resetPreviousClientOwnedViewrangesForCurrentFrame: false,
+                sourceX: 0,
+                sourceY: 0,
+                sourceWidth: width,
+                sourceHeight: height,
+                usesRemoveAlphaCopy: true);
         }
 
         private void DrawClientOwnedViewrangeFogAtTopLeft(
@@ -660,12 +665,15 @@ namespace HaCreator.MapSimulator.Fields
             Color fogColor,
             bool drawClientOwnedDarkLayer,
             bool restorePreviousClientOwnedViewranges,
-            bool resetPreviousClientOwnedViewrangesForCurrentFrame)
+            bool resetPreviousClientOwnedViewrangesForCurrentFrame,
+            int sourceX,
+            int sourceY,
+            int sourceWidth,
+            int sourceHeight,
+            bool usesRemoveAlphaCopy)
         {
             int width = _clientOwnedViewrangeTexture.Width;
             int height = _clientOwnedViewrangeTexture.Height;
-            int right = left + width;
-            int bottom = top + height;
 
             if (restorePreviousClientOwnedViewranges)
             {
@@ -677,16 +685,47 @@ namespace HaCreator.MapSimulator.Fields
                 ResetClientOwnedPreviousMaskTopLeftsForCurrentFrame();
             }
 
+            if (!TryResolveClientOwnedViewrangeCopyRectangles(
+                left,
+                top,
+                width,
+                height,
+                sourceX,
+                sourceY,
+                sourceWidth,
+                sourceHeight,
+                GetClientOwnedDarkLayerBounds(),
+                out Rectangle destinationRect,
+                out Rectangle sourceRect))
+            {
+                return;
+            }
+
             // CField_LimitedView::DrawViewrange restores prior m_lpPrev entries
             // with the small-dark canvas, clears m_lpPrev, then copies
             // Viewrange/0 over the current user positions while appending each
             // current top-left back into m_lpPrev.
             if (drawClientOwnedDarkLayer)
             {
-                DrawClientOwnedDarkLayerAroundCurrentViewrange(spriteBatch, left, top, right, bottom, fogColor);
+                DrawClientOwnedDarkLayerAroundCurrentViewrange(
+                    spriteBatch,
+                    destinationRect.Left,
+                    destinationRect.Top,
+                    destinationRect.Right,
+                    destinationRect.Bottom,
+                    fogColor);
             }
 
-            spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, fogColor.A));
+            Color tint = new(byte.MaxValue, byte.MaxValue, byte.MaxValue, fogColor.A);
+            if (usesRemoveAlphaCopy)
+            {
+                // SpriteBatch alpha blending approximates the COM remove-alpha copy
+                // used by CField_LimitedView for the viewrange mask blit.
+                spriteBatch.Draw(_clientOwnedViewrangeTexture, destinationRect, sourceRect, tint);
+                return;
+            }
+
+            spriteBatch.Draw(_clientOwnedViewrangeTexture, destinationRect, sourceRect, tint);
         }
 
         private void DrawClientOwnedDarkLayerAroundCurrentViewrange(SpriteBatch spriteBatch, int left, int top, int right, int bottom, Color fogColor)
@@ -1048,6 +1087,77 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedPreviousMaskTopLefts.Add(topLeft);
         }
 
+        internal static bool TryResolveClientOwnedViewrangeCopyRectangles(
+            int left,
+            int top,
+            int textureWidth,
+            int textureHeight,
+            int sourceX,
+            int sourceY,
+            int sourceWidth,
+            int sourceHeight,
+            Rectangle darkLayerBounds,
+            out Rectangle destinationRect,
+            out Rectangle sourceRect)
+        {
+            destinationRect = Rectangle.Empty;
+            sourceRect = Rectangle.Empty;
+
+            if (textureWidth <= 0 || textureHeight <= 0 || darkLayerBounds.Width <= 0 || darkLayerBounds.Height <= 0)
+            {
+                return false;
+            }
+
+            int normalizedSourceX = Math.Clamp(sourceX, 0, textureWidth);
+            int normalizedSourceY = Math.Clamp(sourceY, 0, textureHeight);
+            int normalizedSourceWidth = sourceWidth > 0 ? sourceWidth : textureWidth - normalizedSourceX;
+            int normalizedSourceHeight = sourceHeight > 0 ? sourceHeight : textureHeight - normalizedSourceY;
+            normalizedSourceWidth = Math.Clamp(normalizedSourceWidth, 0, textureWidth - normalizedSourceX);
+            normalizedSourceHeight = Math.Clamp(normalizedSourceHeight, 0, textureHeight - normalizedSourceY);
+            if (normalizedSourceWidth <= 0 || normalizedSourceHeight <= 0)
+            {
+                return false;
+            }
+
+            sourceRect = new Rectangle(normalizedSourceX, normalizedSourceY, normalizedSourceWidth, normalizedSourceHeight);
+
+            Rectangle unclippedDestination = new(
+                left + normalizedSourceX,
+                top + normalizedSourceY,
+                normalizedSourceWidth,
+                normalizedSourceHeight);
+
+            if (!TryIntersectRectangles(unclippedDestination, darkLayerBounds, out destinationRect))
+            {
+                return false;
+            }
+
+            int clippedOffsetX = destinationRect.Left - unclippedDestination.Left;
+            int clippedOffsetY = destinationRect.Top - unclippedDestination.Top;
+            sourceRect = new Rectangle(
+                sourceRect.X + clippedOffsetX,
+                sourceRect.Y + clippedOffsetY,
+                destinationRect.Width,
+                destinationRect.Height);
+            return sourceRect.Width > 0 && sourceRect.Height > 0;
+        }
+
+        private static bool TryIntersectRectangles(Rectangle a, Rectangle b, out Rectangle intersection)
+        {
+            int left = Math.Max(a.Left, b.Left);
+            int top = Math.Max(a.Top, b.Top);
+            int right = Math.Min(a.Right, b.Right);
+            int bottom = Math.Min(a.Bottom, b.Bottom);
+            if (right <= left || bottom <= top)
+            {
+                intersection = Rectangle.Empty;
+                return false;
+            }
+
+            intersection = new Rectangle(left, top, right - left, bottom - top);
+            return true;
+        }
+
         private void ExecuteClientOwnedDrawViewrangeOperationPlan(
             SpriteBatch spriteBatch,
             Color fogColor,
@@ -1077,7 +1187,12 @@ namespace HaCreator.MapSimulator.Fields
                             fogColor,
                             drawClientOwnedDarkLayer: operation.Kind == ClientOwnedDrawViewrangeOperationKind.CopyLocalViewrange,
                             restorePreviousClientOwnedViewranges: false,
-                            resetPreviousClientOwnedViewrangesForCurrentFrame: false);
+                            resetPreviousClientOwnedViewrangesForCurrentFrame: false,
+                            operation.SourceX,
+                            operation.SourceY,
+                            operation.SourceWidth,
+                            operation.SourceHeight,
+                            operation.UsesRemoveAlphaCopy);
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory:
                         TrackClientOwnedCurrentMaskTopLeft(operation.TopLeft);

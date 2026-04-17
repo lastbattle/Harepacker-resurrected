@@ -1053,6 +1053,15 @@ namespace HaCreator.MapSimulator.Interaction
         bool HasQuestStateGate,
         int? RandomTimeSeconds)
     {
+        private const int StageAffectedMapPriorityAliasStringPoolId = 0x0B11;
+        private const int StageAffectedMapQuestIdAliasStringPoolId = 0x1113;
+        private const int StageAffectedMapFieldIdStringPoolId = 0x17DB;
+        private const int StageAffectedMapQuestIdStringPoolId = 0x17DC;
+        private const int StageAffectedMapQuestStateStringPoolId = 0x17DD;
+        private const int StageAffectedMapRandomTimeStringPoolId = 0x17DE;
+        private const int StageAffectedMapStageKeywordStringPoolId = 0x17DF;
+        private const int StageAffectedMapPriorityStringPoolId = 0x17E0;
+
         internal static ContextOwnedStageAffectedMapRow Empty { get; } = new(
             StageKeyword: null,
             Priority: null,
@@ -1063,23 +1072,47 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal ContextOwnedStageAffectedMapRow Merge(WzImageProperty property)
         {
-            string stageKeyword = ReadString(property["stageKeyword"]) ?? StageKeyword;
-            int? priority = ReadInt(property["priority"]) ?? Priority;
-            int? questId = ReadInt(property["questID"]) ?? QuestId;
-            int? questState = ReadInt(property["questState"]) ?? QuestState;
-            int? randomTimeSeconds = ReadInt(property["randTime"]) ?? RandomTimeSeconds;
+            WzImageProperty stageKeywordProperty = ResolveClientProperty(
+                property,
+                StageAffectedMapStageKeywordStringPoolId,
+                "stageKeyword");
+            WzImageProperty priorityProperty = ResolveFirstClientProperty(
+                property,
+                (StageAffectedMapPriorityStringPoolId, "priority"),
+                (StageAffectedMapPriorityAliasStringPoolId, "Priority"));
+            WzImageProperty questIdProperty = ResolveFirstClientProperty(
+                property,
+                (StageAffectedMapQuestIdStringPoolId, "questID"),
+                (StageAffectedMapQuestIdAliasStringPoolId, "questId"));
+            WzImageProperty questStateProperty = ResolveClientProperty(
+                property,
+                StageAffectedMapQuestStateStringPoolId,
+                "questState");
+            WzImageProperty randomTimeProperty = ResolveClientProperty(
+                property,
+                StageAffectedMapRandomTimeStringPoolId,
+                "randTime");
+
+            string stageKeyword = ReadString(stageKeywordProperty) ?? StageKeyword;
+            int? priority = ReadInt(priorityProperty) ?? Priority;
+            int? questId = ReadInt(questIdProperty) ?? QuestId;
+            int? questState = ReadInt(questStateProperty) ?? QuestState;
+            int? randomTimeSeconds = ReadInt(randomTimeProperty) ?? RandomTimeSeconds;
             return new ContextOwnedStageAffectedMapRow(
                 stageKeyword,
                 priority,
                 questId,
                 questState,
-                HasQuestStateGate || property["questState"] != null,
+                HasQuestStateGate || questStateProperty != null,
                 randomTimeSeconds);
         }
 
         internal int ResolveFieldId(WzImageProperty property)
         {
-            int? currentFieldId = ReadInt(property?["fieldID"]);
+            int? currentFieldId = ReadInt(ResolveClientProperty(
+                property,
+                StageAffectedMapFieldIdStringPoolId,
+                "fieldID"));
             if (currentFieldId.HasValue)
             {
                 return currentFieldId.Value;
@@ -1131,6 +1164,46 @@ namespace HaCreator.MapSimulator.Interaction
             return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
                 ? parsed
                 : null;
+        }
+
+        private static WzImageProperty ResolveClientProperty(
+            WzImageProperty parent,
+            int stringPoolId,
+            string fallbackName)
+        {
+            if (parent == null)
+            {
+                return null;
+            }
+
+            string resolvedName = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackName);
+            if (!string.IsNullOrWhiteSpace(resolvedName) && parent[resolvedName] is WzImageProperty resolvedProperty)
+            {
+                return resolvedProperty;
+            }
+
+            return parent[fallbackName];
+        }
+
+        private static WzImageProperty ResolveFirstClientProperty(
+            WzImageProperty parent,
+            params (int StringPoolId, string FallbackName)[] candidates)
+        {
+            if (parent == null || candidates == null)
+            {
+                return null;
+            }
+
+            foreach ((int stringPoolId, string fallbackName) in candidates)
+            {
+                WzImageProperty property = ResolveClientProperty(parent, stringPoolId, fallbackName);
+                if (property != null)
+                {
+                    return property;
+                }
+            }
+
+            return null;
         }
     }
 

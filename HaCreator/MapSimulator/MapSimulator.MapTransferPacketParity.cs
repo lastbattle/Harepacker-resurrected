@@ -108,11 +108,20 @@ namespace HaCreator.MapSimulator
                     }
                 }
 
+                MapTransferDestinationBook responseBook = previewResponse.CanTransferContinent
+                    ? MapTransferDestinationBook.Continent
+                    : MapTransferDestinationBook.Regular;
+                IReadOnlyList<int> preApplyFieldList = _mapTransferRuntime.SnapshotFieldList(targetBuild, responseBook);
                 bool applied = _mapTransferRuntime.ApplyMapTransferResultPayload(targetBuild, message.Payload, out MapTransferRuntimeResponse response);
                 if (!applied)
                 {
                     _mapTransferOfficialSessionBridge.RecordDispatchResult(message.Source, success: false, "map transfer result payload could not be decoded");
                     continue;
+                }
+
+                if (request == null)
+                {
+                    request = MapTransferOfficialSessionResultResolver.InferRequestFromAuthoritativeDelta(response, preApplyFieldList);
                 }
 
                 response = MapTransferOfficialSessionResultResolver.Resolve(
@@ -474,7 +483,7 @@ namespace HaCreator.MapSimulator
                 return HandleMapTransferPacketCommand(args.Skip(1).ToArray());
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer [status|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|packet [request <rawOpcode114Hex>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer [status|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]]");
         }
 
         private ChatCommandHandler.CommandResult HandleMapTransferSessionCommand(string[] args)
@@ -600,9 +609,25 @@ namespace HaCreator.MapSimulator
                     : ChatCommandHandler.CommandResult.Error(requestStatus);
             }
 
+            if (args.Length >= 2 && string.Equals(args[0], "clientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                string rawPacketHex = string.Concat(args.Skip(1));
+                if (!MapTransferPacketCodec.TryParseRawPacketHex(rawPacketHex, out byte[] rawPacket, out string parseError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(parseError);
+                }
+
+                return _mapTransferOfficialSessionBridge.TryObserveClientRawPacket(
+                    rawPacket,
+                    "maptransfer:command",
+                    out string clientRawStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(clientRawStatus)
+                    : ChatCommandHandler.CommandResult.Error(clientRawStatus);
+            }
+
             if (args.Length < 3 || !string.Equals(args[0], "result", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer packet [request <rawOpcode114Hex>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]");
             }
 
             if (!byte.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte resultCode))

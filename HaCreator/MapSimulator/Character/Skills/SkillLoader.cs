@@ -558,6 +558,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             skill.ActionName = skill.ActionNames.FirstOrDefault() ?? string.Empty;
             skill.IsPassiveSkillData = GetInt(skillNode, "psd") == 1;
             ParseFinalAttackTriggers(skill, skillNode);
+            skill.ElementAttributeToken = ResolveSkillElementAttributeToken(skillNode);
+            skill.Element = ResolvePrimarySkillElement(skill.ElementAttributeToken);
 
             // Basic properties from info node
             var infoNode = skillNode["info"];
@@ -615,6 +617,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ReflectsIncomingDamage = GetInt(infoNode, "PADReflect") == 1
                                                || GetInt(infoNode, "MADReflect") == 1;
             }
+            if (string.IsNullOrWhiteSpace(skill.ElementAttributeToken))
+            {
+                skill.ElementAttributeToken = ResolveSkillElementAttributeToken(infoNode);
+                skill.Element = ResolvePrimarySkillElement(skill.ElementAttributeToken);
+            }
             skill.ClientSummonedUolPath ??= ResolveClientSummonedUolPath(skillNode, infoNode);
 
             // Check common nodes
@@ -649,6 +656,44 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Determine skill type from properties
             DetermineSkillType(skill, skillNode);
+        }
+
+        private static string ResolveSkillElementAttributeToken(WzImageProperty node)
+        {
+            return node == null
+                ? string.Empty
+                : (GetString(node, "elemAttr") ?? string.Empty).Trim();
+        }
+
+        private static SkillElement ResolvePrimarySkillElement(string elementAttributeToken)
+        {
+            if (string.IsNullOrWhiteSpace(elementAttributeToken))
+            {
+                return SkillElement.Physical;
+            }
+
+            foreach (char token in elementAttributeToken.Trim())
+            {
+                switch (char.ToLowerInvariant(token))
+                {
+                    case 'f':
+                        return SkillElement.Fire;
+                    case 'i':
+                        return SkillElement.Ice;
+                    case 'l':
+                        return SkillElement.Lightning;
+                    case 's':
+                        return SkillElement.Poison;
+                    case 'h':
+                        return SkillElement.Holy;
+                    case 'd':
+                        return SkillElement.Dark;
+                    case 'p':
+                        return SkillElement.Physical;
+                }
+            }
+
+            return SkillElement.Physical;
         }
 
         private static void FinalizeMovementClassification(SkillData skill)
@@ -2828,6 +2873,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetInt(pieceNode, "rotate")));
             }
 
+            if (pieces.Count == 0 && ShadowPartnerClientActionResolver.IsClientActionPieceNode(pieceOwnerNode))
+            {
+                pieces.Add(new ShadowPartnerClientActionResolver.ShadowPartnerActionPiece(
+                    0,
+                    pieceOwnerNode["action"]?.GetString(),
+                    GetInt(pieceOwnerNode, "frame"),
+                    pieceOwnerNode["delay"] != null ? GetInt(pieceOwnerNode, "delay") : ShadowPartnerClientActionResolver.ClientActionManInitDefaultPieceDelayMs,
+                    GetInt(pieceOwnerNode, "flip") != 0,
+                    GetVector(pieceOwnerNode, "move"),
+                    GetInt(pieceOwnerNode, "rotate")));
+            }
+
             if (pieces.Count == 0)
             {
                 return false;
@@ -2858,7 +2915,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 pieces.Add(new ShadowPartnerClientActionResolver.ShadowPartnerActionPiece(
                     nextSlotIndex++,
                     sourcePiece.PieceActionName,
-                    0,
+                    sourcePiece.SourceFrameIndex,
                     sourcePiece.DelayOverrideMs,
                     sourcePiece.Flip,
                     sourcePiece.Move,
@@ -2997,22 +3054,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool ShouldLoopShadowPartnerAction(string actionName)
         {
-            if (string.IsNullOrWhiteSpace(actionName))
-            {
-                return false;
-            }
-
-            if (actionName.StartsWith("create", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(actionName, "dead", StringComparison.OrdinalIgnoreCase)
-                || actionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
-                || actionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
-                || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return true;
+            return ShadowPartnerClientActionResolver.ShouldLoopShadowPartnerAction(actionName);
         }
 
         private SkillAnimation LoadSuddenDeathRepeatAnimation(SkillData skill, WzImageProperty skillNode)
@@ -5477,7 +5519,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return normalizedMountedRootPath;
             }
 
-            return string.Join("/", parts);
+            return NormalizeClientSummonedUolPathSegments(parts);
         }
 
         private static string NormalizeClientSummonedUolFullPath(string summonedUolFullPath)
@@ -5789,24 +5831,60 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
-            string normalizedPath = NormalizeClientSummonedUolPath(stringProperty.Value);
-            if (string.IsNullOrWhiteSpace(normalizedPath))
+            var yieldedSkillIds = new HashSet<int>();
+            foreach (int parsedLinkedSkillId in ParseLinkedSkillIds(stringProperty.Value))
+            {
+                if (parsedLinkedSkillId > 0 && yieldedSkillIds.Add(parsedLinkedSkillId))
+                {
+                    yield return parsedLinkedSkillId;
+                }
+            }
+
+            var processedPathTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string pathToken in EnumerateClientSummonedUolPathTokensFromValue(stringProperty.Value))
+            {
+                if (string.IsNullOrWhiteSpace(pathToken)
+                    || !processedPathTokens.Add(pathToken))
+                {
+                    continue;
+                }
+
+                string normalizedPath = NormalizeClientSummonedUolPath(pathToken);
+                if (string.IsNullOrWhiteSpace(normalizedPath))
+                {
+                    continue;
+                }
+
+                if (TryParseClientSummonedUolRootSkillId(normalizedPath, out int rootSkillId)
+                    && yieldedSkillIds.Add(rootSkillId))
+                {
+                    yield return rootSkillId;
+                }
+
+                foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath))
+                {
+                    if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolPathTokensFromValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
             {
                 yield break;
             }
 
-            var yieldedSkillIds = new HashSet<int>();
-            if (TryParseClientSummonedUolRootSkillId(normalizedPath, out int rootSkillId)
-                && yieldedSkillIds.Add(rootSkillId))
+            yield return value;
+            foreach (string token in value.Split(new[] { '&', '|', ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                yield return rootSkillId;
-            }
-
-            foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath))
-            {
-                if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
+                string trimmedToken = token.Trim();
+                if (!string.IsNullOrWhiteSpace(trimmedToken))
                 {
-                    yield return linkedSkillId;
+                    yield return trimmedToken;
                 }
             }
         }
@@ -5918,6 +5996,43 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             normalizedPath = string.Join("/", normalizedParts);
             return true;
+        }
+
+        private static string NormalizeClientSummonedUolPathSegments(IEnumerable<string> parts)
+        {
+            if (parts == null)
+            {
+                return null;
+            }
+
+            var normalizedParts = new List<string>();
+            foreach (string part in parts)
+            {
+                if (string.IsNullOrWhiteSpace(part) || part.Equals(".", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (part.Equals("..", StringComparison.Ordinal))
+                {
+                    if (normalizedParts.Count > 0)
+                    {
+                        normalizedParts.RemoveAt(normalizedParts.Count - 1);
+                    }
+
+                    continue;
+                }
+
+                normalizedParts.Add(part);
+            }
+
+            if (normalizedParts.Count == 0
+                || !normalizedParts[0].Equals("Skill", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return string.Join("/", normalizedParts);
         }
 
         internal static bool LooksLikeStandaloneSummonSourceProperty(WzImageProperty skillNode)

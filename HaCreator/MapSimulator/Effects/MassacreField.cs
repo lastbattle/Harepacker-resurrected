@@ -1916,8 +1916,10 @@ namespace HaCreator.MapSimulator.Effects
             return currentMode switch
             {
                 MassacreMapMode.Bonus => MassacreRoundOutcome.Clear,
-                MassacreMapMode.Main when _showedClearEffect => MassacreRoundOutcome.Clear,
-                MassacreMapMode.Main => MassacreRoundOutcome.Fail,
+                // WZ marks the result wrapper through `info/onUserEnter = Massacre_result`, but does not
+                // encode a clear/fail branch there. Keep direct Main->Result transitions packet-owned
+                // unless an explicit clear carryover (bonus-wrapper path) or prior owner signal exists.
+                MassacreMapMode.Main => MassacreRoundOutcome.None,
                 _ => _pendingResultOutcome
             };
         }

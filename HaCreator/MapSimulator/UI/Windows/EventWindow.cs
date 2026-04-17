@@ -363,8 +363,36 @@ namespace HaCreator.MapSimulator.UI
                 EventRowTextLayout textLayout = ResolveEventRowTextLayout(bounds, slotBounds);
                 DrawTrimmedText(sprite, entry.Title, textLayout.TitleX, textLayout.TitleY, textLayout.TitleMaxWidth, Color.White);
                 DrawTrimmedText(sprite, entry.StatusText, textLayout.StatusX, textLayout.StatusY, textLayout.StatusMaxWidth, new Color(255, 228, 151));
-                DrawWrappedText(sprite, entry.Detail, textLayout.DetailX, textLayout.DetailY, textLayout.DetailWidth, new Color(224, 224, 224));
+                DrawWrappedText(
+                    sprite,
+                    ResolveEventRowDetailText(entry),
+                    textLayout.DetailX,
+                    textLayout.DetailY,
+                    textLayout.DetailWidth,
+                    new Color(224, 224, 224),
+                    maxLines: 2);
             }
+        }
+
+        private static string ResolveEventRowDetailText(EventEntrySnapshot entry)
+        {
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            string alarmText = entry.AlarmText?.Trim() ?? string.Empty;
+            string detailText = entry.Detail?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(alarmText) && !string.IsNullOrWhiteSpace(detailText))
+            {
+                return string.Equals(alarmText, detailText, StringComparison.Ordinal)
+                    ? alarmText
+                    : string.Concat(alarmText, Environment.NewLine, detailText);
+            }
+
+            return !string.IsNullOrWhiteSpace(alarmText)
+                ? alarmText
+                : detailText;
         }
 
         private void DrawCalendar(SpriteBatch sprite, EventWindowSnapshot snapshot, int contentOffsetY)
@@ -1314,7 +1342,7 @@ namespace HaCreator.MapSimulator.UI
                 new Color(224, 224, 224));
         }
 
-        private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)
+        private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color, int maxLines = int.MaxValue)
         {
             if (_font == null || string.IsNullOrWhiteSpace(text))
             {
@@ -1322,10 +1350,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float drawY = y;
+            int renderedLineCount = 0;
             foreach (string line in WrapText(text, maxWidth))
             {
+                if (renderedLineCount >= Math.Max(1, maxLines))
+                {
+                    break;
+                }
+
                 sprite.DrawString(_font, line, new Vector2(x, drawY), color);
                 drawY += _font.LineSpacing;
+                renderedLineCount++;
             }
         }
 

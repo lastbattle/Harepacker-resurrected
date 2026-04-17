@@ -21,7 +21,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class NpcDialogueTextFormatter
     {
-        private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)(?:#l|(?=(?:\s|#(?:[bkrgdenmc])#?)*#L-?\d+#)|\z)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)(?:#l|(?=(?:\s|#(?:[bkrgdenmcEI])#?|#(?:[!?,.;:)])#?)*#L-?\d+#)|\z)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemCountRegex = new(@"#c(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -62,7 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])#?", RegexOptions.Compiled);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex MalformedPunctuationTagRegex = new(@"#(?<punct>!)#?", RegexOptions.Compiled);
+        private static readonly Regex MalformedPunctuationTagRegex = new(@"#(?<punct>[!?,.;:)])#?", RegexOptions.Compiled);
         private static readonly Regex LiteralWordHashRegex = new(@"#(?=[A-Z][A-Za-z]+\b)", RegexOptions.Compiled);
 
         public static string Format(string text, NpcDialogueFormattingContext context = null)

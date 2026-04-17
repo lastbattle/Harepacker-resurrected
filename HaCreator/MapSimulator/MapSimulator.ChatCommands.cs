@@ -2501,7 +2501,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "maptransfer",
                 "Inspect or drive the map-transfer packet/session bridge",
-                "/maptransfer [status|session ...|packet result <resultCode> <regular|continent> [mapIds...]]",
+                "/maptransfer [status|session ...|packet <request|clientraw|result> ...]",
                 HandleMapTransferCommand);
 
 
@@ -3238,8 +3238,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 3
-                                || !int.TryParse(args[2], out int discoverRemotePort)
-                                || discoverRemotePort <= 0)
+                                || !GuildBossSessionCommandParsing.TryParseRemotePort(args[2], out int discoverRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.DiscoverUsage);
                             }
@@ -3249,7 +3248,7 @@ namespace HaCreator.MapSimulator
                             int? localPortFilter = null;
                             if (args.Length >= 5)
                             {
-                                if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                if (!GuildBossSessionCommandParsing.TryParseLocalPortFilter(args[4], out int parsedLocalPort))
                                 {
                                     return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.DiscoverUsage);
                                 }
@@ -3273,8 +3272,7 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 5
                                 || !GuildBossSessionCommandParsing.TryParseProxyListenPort(args[2], out int listenPort)
-                                || !int.TryParse(args[4], out int remotePort)
-                                || remotePort <= 0)
+                                || !GuildBossSessionCommandParsing.TryParseRemotePort(args[4], out int remotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.StartUsage);
                             }
@@ -3291,8 +3289,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "attach", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 3
-                                || !int.TryParse(args[2], out int attachRemotePort)
-                                || attachRemotePort <= 0)
+                                || !GuildBossSessionCommandParsing.TryParseRemotePort(args[2], out int attachRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.AttachUsage);
                             }
@@ -3302,7 +3299,7 @@ namespace HaCreator.MapSimulator
                             int? attachLocalPortFilter = null;
                             if (args.Length >= 5)
                             {
-                                if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
+                                if (!GuildBossSessionCommandParsing.TryParseLocalPortFilter(args[4], out int parsedAttachLocalPort))
                                 {
                                     return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.AttachUsage);
                                 }
@@ -3330,8 +3327,7 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4
                                 || !GuildBossSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
-                                || !int.TryParse(args[3], out int attachProxyRemotePort)
-                                || attachProxyRemotePort <= 0)
+                                || !GuildBossSessionCommandParsing.TryParseRemotePort(args[3], out int attachProxyRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.AttachProxyUsage);
                             }
@@ -3341,7 +3337,7 @@ namespace HaCreator.MapSimulator
                             int? attachProxyLocalPortFilter = null;
                             if (args.Length >= 6)
                             {
-                                if (!int.TryParse(args[5], out int parsedAttachProxyLocalPort) || parsedAttachProxyLocalPort <= 0)
+                                if (!GuildBossSessionCommandParsing.TryParseLocalPortFilter(args[5], out int parsedAttachProxyLocalPort))
                                 {
                                     return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.AttachProxyUsage);
                                 }
@@ -3369,8 +3365,7 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4
                                 || !GuildBossSessionCommandParsing.TryParseProxyListenPort(args[2], out int autoListenPort)
-                                || !int.TryParse(args[3], out int autoRemotePort)
-                                || autoRemotePort <= 0)
+                                || !GuildBossSessionCommandParsing.TryParseRemotePort(args[3], out int autoRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.StartAutoUsage);
                             }
@@ -3380,7 +3375,7 @@ namespace HaCreator.MapSimulator
                             int? localPortFilter = null;
                             if (args.Length >= 6)
                             {
-                                if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                if (!GuildBossSessionCommandParsing.TryParseLocalPortFilter(args[5], out int parsedLocalPort))
                                 {
                                     return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.StartAutoUsage);
                                 }
@@ -7602,7 +7597,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Guild BBS runtime",
 
-                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]",
+                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash|board> <payloadhex=..|payloadb64=..>|packetraw <authority|cash|board> <hex>|packet clear <authority|cash|board|all>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -7784,14 +7779,14 @@ namespace HaCreator.MapSimulator
                         case "packet":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet <authority|cash|clear> [...]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet <authority|cash|board|clear> [...]");
                             }
 
                             if (string.Equals(args[1], "clear", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (args.Length < 3)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet clear <authority|cash|all>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet clear <authority|cash|board|all>");
                                 }
 
                                 if (string.Equals(args[2], "authority", StringComparison.OrdinalIgnoreCase))
@@ -7804,14 +7799,20 @@ namespace HaCreator.MapSimulator
                                     return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ClearCashOwnershipPacket());
                                 }
 
+                                if (string.Equals(args[2], "board", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ClearBoardPacket());
+                                }
+
                                 if (string.Equals(args[2], "all", StringComparison.OrdinalIgnoreCase))
                                 {
                                     string authorityMessage = _guildBbsRuntime.ClearPermissionMaskOverride();
                                     string cashMessage = _guildBbsRuntime.ClearCashOwnershipPacket();
-                                    return ChatCommandHandler.CommandResult.Ok($"{authorityMessage} {cashMessage}");
+                                    string boardMessage = _guildBbsRuntime.ClearBoardPacket();
+                                    return ChatCommandHandler.CommandResult.Ok($"{authorityMessage} {cashMessage} {boardMessage}");
                                 }
 
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet clear <authority|cash|all>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet clear <authority|cash|board|all>");
 
                             }
 
@@ -7832,16 +7833,21 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ApplyCashOwnershipPacket(guildBbsPacketPayload));
                             }
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet <authority|cash> <payloadhex=..|payloadb64=..>");
+                            if (string.Equals(args[1], "board", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ApplyBoardPacket(guildBbsPacketPayload));
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet <authority|cash|board> <payloadhex=..|payloadb64=..>");
                         case "packetraw":
                             if (args.Length < 3)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packetraw <authority|cash> <hex bytes>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packetraw <authority|cash|board> <hex bytes>");
                             }
 
                             if (!TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out byte[] guildBbsRawPayload))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packetraw <authority|cash> <hex bytes>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packetraw <authority|cash|board> <hex bytes>");
                             }
 
                             if (string.Equals(args[1], "authority", StringComparison.OrdinalIgnoreCase))
@@ -7854,11 +7860,16 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ApplyCashOwnershipPacket(guildBbsRawPayload));
                             }
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packetraw <authority|cash> <hex bytes>");
+                            if (string.Equals(args[1], "board", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_guildBbsRuntime.ApplyBoardPacket(guildBbsRawPayload));
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packetraw <authority|cash|board> <hex bytes>");
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash|board> <payloadhex=..|payloadb64=..>|packetraw <authority|cash|board> <hex>|packet clear <authority|cash|board|all>]");
                     }
 
                 });

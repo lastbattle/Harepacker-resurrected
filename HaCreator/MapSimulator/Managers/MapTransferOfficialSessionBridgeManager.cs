@@ -294,6 +294,23 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        internal bool TryObserveClientRawPacket(byte[] rawPacket, string source, out string status)
+        {
+            if (MapTransferPacketCodec.TryDecodeOutboundRequestPacket(rawPacket, out _, out _))
+            {
+                return TryObserveOutboundRequestPacket(rawPacket, source, out status);
+            }
+
+            if (MapTransferPacketCodec.TryDecodeInboundResultPacket(rawPacket, out byte[] payload, out _))
+            {
+                return TryQueueInjectedResultPayload(payload, source, out status);
+            }
+
+            status = $"Map transfer client raw packet must be opcode {MapTransferPacketCodec.OutboundRequestOpcode} or {MapTransferPacketCodec.InboundResultOpcode}.";
+            LastStatus = status;
+            return false;
+        }
+
         private MapTransferRuntimeRequest SnapshotObservedOutboundRegisterMapId(MapTransferRuntimeRequest request)
         {
             if (request?.Type != MapTransferRuntimeRequestType.Register || request.MapId > 0)

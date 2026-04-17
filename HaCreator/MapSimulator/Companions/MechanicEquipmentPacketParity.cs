@@ -213,8 +213,19 @@ namespace HaCreator.MapSimulator.Companions
                             _ = reader.ReadInt32();
                             break;
                         case 0:
-                            rejectReason = "Inventory-operation add-slot entries are not recovered for mechanic completion matching.";
-                            return false;
+                        {
+                            if (!TryReadClientInventoryOperationAddEntry(reader, out int addedItemId, out rejectReason))
+                            {
+                                return false;
+                            }
+
+                            if (TryMatchesMechanicInventoryOperationAdd(request, inventoryType, fromPosition, addedItemId, out rejectReason))
+                            {
+                                return true;
+                            }
+
+                            break;
+                        }
                         default:
                             rejectReason = $"Inventory-operation mode {operationMode} is unsupported for mechanic completion matching.";
                             return false;
@@ -227,7 +238,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            rejectReason = "Inventory-operation payload did not include a mechanic swap matching the active request.";
+            rejectReason = "Inventory-operation payload did not include a mechanic add-or-swap entry matching the active request.";
             return false;
         }
 
@@ -924,6 +935,187 @@ namespace HaCreator.MapSimulator.Companions
 
             rejectReason = "Unsupported mechanic request kind for inventory-operation swap matching.";
             return false;
+        }
+
+        private static bool TryMatchesMechanicInventoryOperationAdd(
+            EquipmentChangeRequest request,
+            byte inventoryType,
+            short targetPosition,
+            int addedItemId,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request.Kind == EquipmentChangeRequestKind.InventoryToCompanion)
+            {
+                if (inventoryType != ClientEquipInventoryType)
+                {
+                    rejectReason = "Mechanic equip-in inventory-operation add entry did not target the equip inventory.";
+                    return false;
+                }
+
+                if (!request.TargetMechanicSlot.HasValue)
+                {
+                    rejectReason = "Mechanic equip-in request is missing target mechanic slot metadata.";
+                    return false;
+                }
+
+                short expectedTargetPosition =
+                    unchecked((short)-MechanicEquipmentSlotMap.GetBodyPart(request.TargetMechanicSlot.Value));
+                if (targetPosition != expectedTargetPosition)
+                {
+                    rejectReason = "Inventory-operation add entry did not target the requested mechanic slot.";
+                    return false;
+                }
+
+                if (addedItemId != request.ItemId)
+                {
+                    rejectReason = "Inventory-operation add entry did not carry the requested mechanic machine-part item id.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (request.Kind == EquipmentChangeRequestKind.CompanionToInventory)
+            {
+                if (!request.SourceMechanicSlot.HasValue)
+                {
+                    rejectReason = "Mechanic drag-back-out request is missing source mechanic slot metadata.";
+                    return false;
+                }
+
+                if (inventoryType != ClientEquipInventoryType)
+                {
+                    rejectReason = "Mechanic drag-back-out inventory-operation add entry did not target the equip inventory.";
+                    return false;
+                }
+
+                if (targetPosition <= 0)
+                {
+                    rejectReason = "Inventory-operation add entry did not land in a positive inventory slot.";
+                    return false;
+                }
+
+                if (addedItemId != request.ItemId)
+                {
+                    rejectReason = "Inventory-operation add entry did not carry the requested mechanic machine-part item id.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            rejectReason = "Unsupported mechanic request kind for inventory-operation add matching.";
+            return false;
+        }
+
+        private static bool TryReadClientInventoryOperationAddEntry(
+            BinaryReader reader,
+            out int itemId,
+            out string rejectReason)
+        {
+            itemId = 0;
+            rejectReason = null;
+            try
+            {
+                byte slotType = reader.ReadByte();
+                if (slotType is not 1 and not 2 and not 3)
+                {
+                    rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
+                    return false;
+                }
+
+                itemId = reader.ReadInt32();
+                bool hasCashSerial = reader.ReadByte() != 0;
+                if (hasCashSerial)
+                {
+                    _ = reader.ReadInt64();
+                }
+
+                _ = reader.ReadInt64(); // dateExpire
+                switch (slotType)
+                {
+                    case 1:
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        for (int i = 0; i < 14; i++)
+                        {
+                            _ = reader.ReadInt16();
+                        }
+
+                        _ = ReadMapleString(reader);
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt32();
+                        return true;
+                    case 2:
+                        _ = reader.ReadUInt16();
+                        _ = ReadMapleString(reader);
+                        _ = reader.ReadInt16();
+                        if ((itemId / 10000) is 207 or 233)
+                        {
+                            _ = reader.ReadInt64();
+                        }
+
+                        return true;
+                    case 3:
+                        if (reader.ReadBytes(13).Length != 13)
+                        {
+                            rejectReason = "Inventory-operation add entry is truncated.";
+                            return false;
+                        }
+
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadUInt16();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt16();
+                        return true;
+                    default:
+                        rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
+                        return false;
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                rejectReason = "Inventory-operation add entry is truncated.";
+                return false;
+            }
+            catch (IOException)
+            {
+                rejectReason = "Inventory-operation add entry is truncated.";
+                return false;
+            }
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            if (length == 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] bytes = reader.ReadBytes(length);
+            return bytes.Length == length
+                ? System.Text.Encoding.ASCII.GetString(bytes)
+                : string.Empty;
         }
     }
 }

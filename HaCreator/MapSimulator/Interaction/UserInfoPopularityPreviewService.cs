@@ -10,6 +10,21 @@ namespace HaCreator.MapSimulator.Interaction
         private const int PendingResolveDelayMs = 900;
         private PendingPopularityRequest? _pendingRequest;
 
+        internal bool CanRequest(UserInfoUI.UserInfoActionContext context, UserInfoUI.PopularityChangeDirection direction)
+        {
+            if (!context.IsRemoteTarget || context.Build == null || string.IsNullOrWhiteSpace(context.CharacterName))
+            {
+                return false;
+            }
+
+            if (direction == UserInfoUI.PopularityChangeDirection.Down && context.Build.Fame <= 0)
+            {
+                return false;
+            }
+
+            return !_pendingRequest.HasValue;
+        }
+
         internal string HandleRequest(UserInfoUI.UserInfoActionContext context, UserInfoUI.PopularityChangeDirection direction, int currentTick)
         {
             if (!context.IsRemoteTarget)
@@ -28,13 +43,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"{context.CharacterName} is already at 0 Fame.";
             }
 
-            if (_pendingRequest.HasValue)
+            if (TryGetPendingGateMessage(context.CharacterName, out string pendingMessage))
             {
-                PendingPopularityRequest pending = _pendingRequest.Value;
-                string pendingDirection = pending.Direction == UserInfoUI.PopularityChangeDirection.Up ? "up" : "down";
-                return string.Equals(pending.TargetName, context.CharacterName, StringComparison.OrdinalIgnoreCase)
-                    ? $"Popularity {pendingDirection} request for {pending.TargetName} is already waiting for the delayed result branch."
-                    : $"Popularity {pendingDirection} request for {pending.TargetName} is already waiting for the delayed result branch.";
+                return pendingMessage;
             }
 
             _pendingRequest = new PendingPopularityRequest(
@@ -88,6 +99,22 @@ namespace HaCreator.MapSimulator.Interaction
 
             string directionLabel = pending.Direction == UserInfoUI.PopularityChangeDirection.Up ? "up" : "down";
             return $"Popularity {directionLabel} result applied for {pending.TargetName}. Fame is now {updatedFame}.";
+        }
+
+        private bool TryGetPendingGateMessage(string requestedTargetName, out string message)
+        {
+            message = null;
+            if (!_pendingRequest.HasValue)
+            {
+                return false;
+            }
+
+            PendingPopularityRequest pending = _pendingRequest.Value;
+            string pendingDirection = pending.Direction == UserInfoUI.PopularityChangeDirection.Up ? "up" : "down";
+            message = string.Equals(pending.TargetName, requestedTargetName, StringComparison.OrdinalIgnoreCase)
+                ? $"Popularity {pendingDirection} request for {pending.TargetName} is already waiting for the delayed result branch."
+                : $"Popularity {pendingDirection} request for {pending.TargetName} is already waiting for the delayed result branch.";
+            return true;
         }
 
         private readonly record struct PendingPopularityRequest(

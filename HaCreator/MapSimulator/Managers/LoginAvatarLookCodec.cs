@@ -466,7 +466,7 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsWeaponCategory(int category)
         {
             int bucket = category / 10;
-            return bucket == 13 || bucket == 14 || bucket == 16 || bucket == 17;
+            return bucket == 13 || bucket == 14 || bucket == 15 || bucket == 16 || bucket == 17;
         }
     }
 }

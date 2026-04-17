@@ -907,11 +907,86 @@ namespace HaCreator.MapSimulator.Pools
             return statuses;
         }
 
+        internal static bool ShouldProjectHostileStatusesToLocalPlayer(
+            SkillData skill,
+            SkillLevelData levelData)
+        {
+            if (skill == null || levelData == null)
+            {
+                return false;
+            }
+
+            bool hasExplicitHostileStatusMetadata =
+                HasExplicitHostilePlayerStatusMetadata(skill, levelData);
+            if (skill.Target is SkillTarget.Self or SkillTarget.Party)
+            {
+                return hasExplicitHostileStatusMetadata;
+            }
+
+            if (hasExplicitHostileStatusMetadata)
+            {
+                return true;
+            }
+
+            if (IsFriendlyPlayerAreaSkill(skill, supportSkills: null, levelData))
+            {
+                return false;
+            }
+
+            return IsHostilePlayerAreaSkill(skill, supportSkills: null, levelData);
+        }
+
         private static int ResolveHostilePlayerAreaPrimaryStatusPropPercent(SkillLevelData levelData)
         {
             return levelData?.Prop > 0
                 ? Math.Clamp(levelData.Prop, 0, 100)
                 : 100;
+        }
+
+        private static bool HasExplicitHostilePlayerStatusMetadata(
+            SkillData skill,
+            SkillLevelData levelData)
+        {
+            if (UsesHostileDotOrBodyAttackMetadata(skill))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.DebuffMessageToken))
+            {
+                return true;
+            }
+
+            if (ContainsToken(
+                    skill?.AffectedSkillEffect,
+                    "amplifyDamage",
+                    "stun",
+                    "freeze",
+                    "seal",
+                    "slow",
+                    "weak",
+                    "curse",
+                    "reverse",
+                    "undead",
+                    "dark",
+                    "blind",
+                    "poison",
+                    "burn"))
+            {
+                return true;
+            }
+
+            return levelData != null
+                   && (levelData.DotDamage > 0
+                       || levelData.DotTime > 0
+                       || levelData.Speed < 0
+                       || levelData.Jump < 0
+                       || levelData.PAD < 0
+                       || levelData.MAD < 0
+                       || levelData.PDD < 0
+                       || levelData.MDD < 0
+                       || levelData.ACC < 0
+                       || levelData.EVA < 0);
         }
 
         private static int ResolveHostilePlayerAreaSecondaryStatusPropPercent(

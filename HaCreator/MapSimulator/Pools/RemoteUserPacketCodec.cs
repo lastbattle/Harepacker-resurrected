@@ -3394,6 +3394,16 @@ namespace HaCreator.MapSimulator.Pools
 
             if (weaponChargeMetadataOffset >= 0
                 && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatMetadata(
+                    rawPayload,
+                    weaponChargeMetadataOffset,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (weaponChargeMetadataOffset >= 0
+                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     rawPayload,
                     weaponChargeMetadataOffset,

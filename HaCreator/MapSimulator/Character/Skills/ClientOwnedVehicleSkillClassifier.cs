@@ -82,6 +82,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             "tired"
         };
 
+        private static readonly string[] SharedClientOwnedVehicleVehicleIdOnlyActionNames =
+            ResolveClientRawActionNames(
+                // IDA `IsAbleTamingMobAction` admits raw action 42 for mounted action coverage
+                // before vehicle-specific branches (including 1932000 and 1932016). Keep this
+                // as owner-preservation only for mounts that already own the seam.
+                42 // paralyze
+            );
+
         private static readonly string[] MechanicClientOwnedVehicleMountedMoveActions =
         {
             "alert",
@@ -111,7 +119,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             ResolveClientRawActionNames(
                 9,   // swingT1
                 10,  // swingT2
-                42,  // paralyze
                 45,  // shoot6
                 46,  // arrowRain
                 56,  // burster1
@@ -439,6 +446,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsBattleshipVehicleOwnedCurrentActionName(string actionName, bool includeSupportActions = false)
         {
             return IsBattleshipVehicleActionName(actionName, includeSupportActions)
+                   || ContainsActionName(SharedClientOwnedVehicleVehicleIdOnlyActionNames, actionName)
                    || IsMountedMoveActionName(actionName);
         }
 
@@ -510,6 +518,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return IsMountedMoveActionName(actionName)
                    || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName)
+                   || ContainsActionName(SharedClientOwnedVehicleVehicleIdOnlyActionNames, actionName)
                    || ContainsActionName(ClientConfirmedMechanicVehicleCurrentActionNames, actionName)
                    || ContainsActionName(ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames, actionName)
                    || IsClientAdmittedMechanicVehicleOneTimeActionName(actionName);

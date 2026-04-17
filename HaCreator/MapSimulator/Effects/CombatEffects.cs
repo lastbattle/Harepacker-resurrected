@@ -594,6 +594,11 @@ namespace HaCreator.MapSimulator.Effects
         public void AddDamageNumber(int damage, float x, float y, bool isCritical, bool isMiss, int currentTime,
             int comboIndex = 0, DamageColorType colorType = DamageColorType.Red, string specialTextName = null)
         {
+            if (!DamageNumberRenderer.IsSupportedColorType(colorType))
+            {
+                return;
+            }
+
             // Use WZ renderer if available
             if (_useWzDamageNumbers && _wzDamageRenderer != null)
             {

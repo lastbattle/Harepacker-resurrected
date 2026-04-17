@@ -132,6 +132,7 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedBalloonItemIconMarkerSuffix = "}}";
         private const string PacketOwnedBalloonUiCanvasMarkerPrefix = "{{UICANVAS:";
         private const string PacketOwnedBalloonUiCanvasMarkerSuffix = "}}";
+        private static readonly Color PacketOwnedBalloonMarkupBlack = new(0, 0, 0);
         private static readonly Color PacketOwnedBalloonMarkupRed = new(255, 0, 0);
         private static readonly Color PacketOwnedBalloonMarkupGreen = new(0, 255, 0);
         private static readonly Color PacketOwnedBalloonMarkupBlue = new(0, 0, 255);
@@ -899,6 +900,13 @@ namespace HaCreator.MapSimulator
                     "select" => 3,
                     "reward" => 8,
                     "prob" => 6,
+                    "default" => 0,
+                    "black" => 0,
+                    "red" => 2,
+                    "green" => 4,
+                    "blue" => 6,
+                    "purple" => 8,
+                    "magenta" => 8,
                     _ => -1
                 };
             }
@@ -908,6 +916,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            // CUserLocal::CBalloonMsg::Init allocates 12 font-table slots in paired styles.
             Color resolvedColor = tableId switch
             {
                 0 or 1 => baseColor,
@@ -915,14 +924,14 @@ namespace HaCreator.MapSimulator
                 4 or 5 => PacketOwnedBalloonMarkupGreen,
                 6 or 7 => PacketOwnedBalloonMarkupBlue,
                 8 or 9 => PacketOwnedBalloonMarkupPurple,
-                10 or 11 => baseColor,
+                10 or 11 => PacketOwnedBalloonMarkupBlack,
                 _ => baseColor
             };
 
             style = new PacketOwnedBalloonTextStyle(
                 resolvedColor,
                 tableId % 2 == 1,
-                tableId >= 8 ? 0.92f : 1f);
+                1f);
             return true;
         }
 
@@ -4551,10 +4560,16 @@ namespace HaCreator.MapSimulator
             int expectedItemId = 0,
             int expectedRequestIndex = -1)
         {
-            if (!hasPendingFieldHazardRequest
-                || !TryDecodeFieldHazardPetConsumeResultPayload(payload, out FieldHazardPetConsumeInboundResult result, out _))
+            if (!hasPendingFieldHazardRequest)
             {
                 return PacketOwned1026PetConsumeRouting.QuestRewardFallback;
+            }
+
+            if (!TryDecodeFieldHazardPetConsumeResultPayload(payload, out FieldHazardPetConsumeInboundResult result, out _))
+            {
+                return TryDecodeFieldHazardPetConsumeResultKind(payload, out _)
+                    ? PacketOwned1026PetConsumeRouting.DedicatedPetConsumeResult
+                    : PacketOwned1026PetConsumeRouting.QuestRewardFallback;
             }
 
             return MatchesFieldHazardPetConsumeInboundResult(
@@ -4564,6 +4579,20 @@ namespace HaCreator.MapSimulator
                     result)
                 ? PacketOwned1026PetConsumeRouting.TargetedPetConsumeResult
                 : PacketOwned1026PetConsumeRouting.DedicatedPetConsumeResult;
+        }
+
+        private static bool TryDecodeFieldHazardPetConsumeResultKind(
+            byte[] payload,
+            out FieldHazardPetConsumeInboundResultKind kind)
+        {
+            kind = default;
+            if (payload == null || payload.Length < sizeof(byte))
+            {
+                return false;
+            }
+
+            kind = (FieldHazardPetConsumeInboundResultKind)payload[0];
+            return Enum.IsDefined(typeof(FieldHazardPetConsumeInboundResultKind), kind);
         }
 
         private bool ShouldHandlePacketOwned1026AsPetConsumeResult(byte[] payload)

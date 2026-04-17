@@ -52,6 +52,15 @@ namespace HaCreator.MapSimulator.Interaction
         public string RadioScheduleLastMutationSource { get; private set; } = "fallback";
         private readonly List<string> _recentRadioScheduleMutations = new();
         private const int MaxRecentRadioScheduleMutations = 8;
+        public bool HasRevivePremiumSafetyCharmContextValue { get; private set; }
+        public bool RevivePremiumSafetyCharmContextValue { get; private set; }
+        public int RevivePremiumSafetyCharmBoundCharacterId { get; private set; }
+        public int RevivePremiumSafetyCharmLastObservedRuntimeCharacterId { get; private set; }
+        public int RevivePremiumSafetyCharmMutationSequence { get; private set; }
+        public int RevivePremiumSafetyCharmLastMutationTick { get; private set; } = int.MinValue;
+        public string RevivePremiumSafetyCharmLastMutationSource { get; private set; } = "fallback";
+        private readonly List<string> _recentRevivePremiumSafetyCharmMutations = new();
+        private const int MaxRecentRevivePremiumSafetyCharmMutations = 8;
         public bool HasPersistedApspState =>
             BoundCharacterId > 0
             || ApspReceiveContextToken > 0
@@ -91,6 +100,7 @@ namespace HaCreator.MapSimulator.Interaction
             RadioCreateLayerLastMutationSource = "fallback";
             _recentRadioCreateLayerMutations.Clear();
             ResetRadioScheduleState(0);
+            ResetRevivePremiumSafetyCharmState(0);
             ClearChairContext();
         }
 
@@ -437,6 +447,96 @@ namespace HaCreator.MapSimulator.Interaction
                 .ToArray();
         }
 
+        public void ObserveRevivePremiumSafetyCharmRuntimeCharacterId(int runtimeCharacterId)
+        {
+            RevivePremiumSafetyCharmLastObservedRuntimeCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+        }
+
+        public void EnsureRevivePremiumSafetyCharmInitializedFromRuntime(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            ObserveRevivePremiumSafetyCharmRuntimeCharacterId(resolvedCharacterId);
+            if (resolvedCharacterId > 0 && RevivePremiumSafetyCharmBoundCharacterId <= 0)
+            {
+                RevivePremiumSafetyCharmBoundCharacterId = resolvedCharacterId;
+            }
+        }
+
+        public bool RequiresRevivePremiumSafetyCharmCharacterReset(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            return resolvedCharacterId > 0
+                && RevivePremiumSafetyCharmBoundCharacterId > 0
+                && RevivePremiumSafetyCharmBoundCharacterId != resolvedCharacterId;
+        }
+
+        public void ResetRevivePremiumSafetyCharmForCharacter(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            ObserveRevivePremiumSafetyCharmRuntimeCharacterId(resolvedCharacterId);
+            ResetRevivePremiumSafetyCharmState(resolvedCharacterId);
+            RecordRevivePremiumSafetyCharmMutation("runtime-character-reset", int.MinValue);
+        }
+
+        public void SetRevivePremiumSafetyCharmContextValue(bool armed, string source, int currentTick, int runtimeCharacterId)
+        {
+            EnsureRevivePremiumSafetyCharmInitializedFromRuntime(runtimeCharacterId);
+            HasRevivePremiumSafetyCharmContextValue = true;
+            RevivePremiumSafetyCharmContextValue = armed;
+            RecordRevivePremiumSafetyCharmMutation(source, currentTick);
+        }
+
+        public void ClearRevivePremiumSafetyCharmContextValue(string source, int currentTick, int runtimeCharacterId)
+        {
+            EnsureRevivePremiumSafetyCharmInitializedFromRuntime(runtimeCharacterId);
+            HasRevivePremiumSafetyCharmContextValue = false;
+            RevivePremiumSafetyCharmContextValue = false;
+            RecordRevivePremiumSafetyCharmMutation(source, currentTick);
+        }
+
+        public bool ResolveRevivePremiumSafetyCharmContextValue(bool fallback)
+        {
+            return HasRevivePremiumSafetyCharmContextValue
+                ? RevivePremiumSafetyCharmContextValue
+                : fallback;
+        }
+
+        public string DescribeRevivePremiumSafetyCharmContext(int contextSlot)
+        {
+            string value = HasRevivePremiumSafetyCharmContextValue
+                ? (RevivePremiumSafetyCharmContextValue ? "1" : "0")
+                : "unset";
+            string source = HasRevivePremiumSafetyCharmContextValue
+                ? "packet-owned context state"
+                : "fallback";
+            string boundCharacter = RevivePremiumSafetyCharmBoundCharacterId > 0
+                ? RevivePremiumSafetyCharmBoundCharacterId.ToString()
+                : "unset";
+            string runtimeCharacter = RevivePremiumSafetyCharmLastObservedRuntimeCharacterId > 0
+                ? RevivePremiumSafetyCharmLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            string mutationTick = RevivePremiumSafetyCharmLastMutationTick == int.MinValue
+                ? "idle"
+                : RevivePremiumSafetyCharmLastMutationTick.ToString();
+            return
+                $"Packet-owned local utility CWvsContext[{contextSlot}] (revive premium safety-charm armed): {value} via {source}, " +
+                $"boundCharacter={boundCharacter}, runtimeCharacter={runtimeCharacter}, " +
+                $"mutationSeq={RevivePremiumSafetyCharmMutationSequence}, lastMutation={RevivePremiumSafetyCharmLastMutationSource}@{mutationTick}.";
+        }
+
+        public IReadOnlyList<string> GetRecentRevivePremiumSafetyCharmMutations(int maxCount = 3)
+        {
+            if (maxCount <= 0 || _recentRevivePremiumSafetyCharmMutations.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            int takeCount = Math.Min(maxCount, _recentRevivePremiumSafetyCharmMutations.Count);
+            return _recentRevivePremiumSafetyCharmMutations
+                .Skip(Math.Max(0, _recentRevivePremiumSafetyCharmMutations.Count - takeCount))
+                .ToArray();
+        }
+
         public void ObserveChairSitResult(int currentTick)
         {
             ChairExclusiveRequestSent = false;
@@ -658,6 +758,17 @@ namespace HaCreator.MapSimulator.Interaction
             _recentRadioScheduleMutations.Clear();
         }
 
+        private void ResetRevivePremiumSafetyCharmState(int boundCharacterId)
+        {
+            RevivePremiumSafetyCharmBoundCharacterId = boundCharacterId;
+            HasRevivePremiumSafetyCharmContextValue = false;
+            RevivePremiumSafetyCharmContextValue = false;
+            RevivePremiumSafetyCharmMutationSequence = 0;
+            RevivePremiumSafetyCharmLastMutationTick = int.MinValue;
+            RevivePremiumSafetyCharmLastMutationSource = "fallback";
+            _recentRevivePremiumSafetyCharmMutations.Clear();
+        }
+
         private void RecordRadioCreateLayerMutation(string source, int currentTick)
         {
             RadioCreateLayerMutationSequence++;
@@ -709,6 +820,33 @@ namespace HaCreator.MapSimulator.Interaction
             if (_recentRadioScheduleMutations.Count > MaxRecentRadioScheduleMutations)
             {
                 _recentRadioScheduleMutations.RemoveAt(0);
+            }
+        }
+
+        private void RecordRevivePremiumSafetyCharmMutation(string source, int currentTick)
+        {
+            RevivePremiumSafetyCharmMutationSequence++;
+            RevivePremiumSafetyCharmLastMutationSource = string.IsNullOrWhiteSpace(source)
+                ? "unknown"
+                : source.Trim();
+            RevivePremiumSafetyCharmLastMutationTick = currentTick;
+            string value = HasRevivePremiumSafetyCharmContextValue
+                ? (RevivePremiumSafetyCharmContextValue ? "1" : "0")
+                : "unset";
+            string tick = currentTick == int.MinValue
+                ? "idle"
+                : currentTick.ToString();
+            string boundCharacter = RevivePremiumSafetyCharmBoundCharacterId > 0
+                ? RevivePremiumSafetyCharmBoundCharacterId.ToString()
+                : "unset";
+            string runtimeCharacter = RevivePremiumSafetyCharmLastObservedRuntimeCharacterId > 0
+                ? RevivePremiumSafetyCharmLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            _recentRevivePremiumSafetyCharmMutations.Add(
+                $"seq={RevivePremiumSafetyCharmMutationSequence} value={value} source={RevivePremiumSafetyCharmLastMutationSource} tick={tick} boundCharacter={boundCharacter} runtimeCharacter={runtimeCharacter}");
+            if (_recentRevivePremiumSafetyCharmMutations.Count > MaxRecentRevivePremiumSafetyCharmMutations)
+            {
+                _recentRevivePremiumSafetyCharmMutations.RemoveAt(0);
             }
         }
 

@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
+using MapleLib.Img;
 using MapleLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -8982,6 +8983,10 @@ namespace HaCreator.MapSimulator.Loaders
             int clientOwnerWidth,
             int clientOwnerHeight)
         {
+            string currentDirectoryPath = Program.DataSource?.VersionInfo?.DirectoryPath;
+            IReadOnlyList<string> fallbackUiDirectories = AccountMoreInfoOwnerStringPoolText
+                .EnumerateFallbackUiDataSourceDirectories(currentDirectoryPath);
+
             foreach (AccountMoreInfoBackgroundResourceCandidate backgroundCandidate in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundResourceCandidates())
             {
                 IDXObject candidateFrame = LoadWindowCanvasLayerFromClientUiPath(
@@ -8989,7 +8994,16 @@ namespace HaCreator.MapSimulator.Loaders
                     uiWindow1Image,
                     uiWindow2Image,
                     device,
-                    out _);
+                    out Point candidateOffset);
+                if (candidateFrame == null)
+                {
+                    candidateFrame = TryLoadAccountMoreInfoBackgroundFromFallbackUiDataSources(
+                        backgroundCandidate.Path,
+                        fallbackUiDirectories,
+                        device,
+                        out candidateOffset);
+                }
+
                 Texture2D candidateTexture = candidateFrame?.Texture;
                 if (candidateTexture == null)
                 {
@@ -9004,6 +9018,7 @@ namespace HaCreator.MapSimulator.Loaders
                 Texture2D clientSizedTexture = CreateAccountMoreInfoClientSizedBackgroundTexture(
                     device,
                     candidateTexture,
+                    candidateOffset,
                     clientOwnerWidth,
                     clientOwnerHeight);
                 if (clientSizedTexture != null)
@@ -9015,9 +9030,52 @@ namespace HaCreator.MapSimulator.Loaders
             return null;
         }
 
+        private static IDXObject TryLoadAccountMoreInfoBackgroundFromFallbackUiDataSources(
+            string clientUiPath,
+            IReadOnlyList<string> fallbackUiDirectories,
+            GraphicsDevice device,
+            out Point offset)
+        {
+            offset = Point.Zero;
+            if (string.IsNullOrWhiteSpace(clientUiPath)
+                || device == null
+                || fallbackUiDirectories == null
+                || fallbackUiDirectories.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (string directory in fallbackUiDirectories)
+            {
+                try
+                {
+                    using ImgFileSystemDataSource fallbackDataSource = new(directory);
+                    WzImage fallbackUiWindow1Image = fallbackDataSource.GetImage("UI", "UIWindow.img");
+                    WzImage fallbackUiWindow2Image = fallbackDataSource.GetImage("UI", "UIWindow2.img");
+                    IDXObject frame = LoadWindowCanvasLayerFromClientUiPath(
+                        clientUiPath,
+                        fallbackUiWindow1Image,
+                        fallbackUiWindow2Image,
+                        device,
+                        out offset);
+                    if (frame != null)
+                    {
+                        return frame;
+                    }
+                }
+                catch
+                {
+                    // Ignore malformed or incompatible sibling data sources and keep searching.
+                }
+            }
+
+            return null;
+        }
+
         private static Texture2D CreateAccountMoreInfoClientSizedBackgroundTexture(
             GraphicsDevice device,
             Texture2D sourceTexture,
+            Point sourceOffset,
             int clientOwnerWidth,
             int clientOwnerHeight)
         {
@@ -9026,7 +9084,9 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
-            if (sourceTexture.Width == clientOwnerWidth && sourceTexture.Height == clientOwnerHeight)
+            if (sourceTexture.Width == clientOwnerWidth
+                && sourceTexture.Height == clientOwnerHeight
+                && sourceOffset == Point.Zero)
             {
                 return sourceTexture;
             }
@@ -9035,16 +9095,25 @@ namespace HaCreator.MapSimulator.Loaders
             Color[] sourceData = new Color[sourceTexture.Width * sourceTexture.Height];
             sourceTexture.GetData(sourceData);
 
-            int copyWidth = Math.Min(clientOwnerWidth, sourceTexture.Width);
-            int copyHeight = Math.Min(clientOwnerHeight, sourceTexture.Height);
+            int destinationStartX = Math.Max(0, sourceOffset.X);
+            int destinationStartY = Math.Max(0, sourceOffset.Y);
+            int sourceStartX = Math.Max(0, -sourceOffset.X);
+            int sourceStartY = Math.Max(0, -sourceOffset.Y);
+            int copyWidth = Math.Min(clientOwnerWidth - destinationStartX, sourceTexture.Width - sourceStartX);
+            int copyHeight = Math.Min(clientOwnerHeight - destinationStartY, sourceTexture.Height - sourceStartY);
+            if (copyWidth <= 0 || copyHeight <= 0)
+            {
+                return new Texture2D(device, clientOwnerWidth, clientOwnerHeight);
+            }
+
             for (int y = 0; y < copyHeight; y++)
             {
                 for (int x = 0; x < copyWidth; x++)
                 {
-                    Color sourceColor = sourceData[(y * sourceTexture.Width) + x];
+                    Color sourceColor = sourceData[((sourceStartY + y) * sourceTexture.Width) + (sourceStartX + x)];
                     if (sourceColor.A != 0)
                     {
-                        clientFrameData[(y * clientOwnerWidth) + x] = sourceColor;
+                        clientFrameData[((destinationStartY + y) * clientOwnerWidth) + (destinationStartX + x)] = sourceColor;
                     }
                 }
             }

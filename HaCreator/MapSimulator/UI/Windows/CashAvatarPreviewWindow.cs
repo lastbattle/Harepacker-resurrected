@@ -165,11 +165,23 @@ namespace HaCreator.MapSimulator.UI
             {
                 HandleBuyAvatar();
             }
+            else if (Pressed(keyboardState, Keys.B))
+            {
+                HandleBuyAvatar();
+            }
             else if (Pressed(keyboardState, Keys.Home))
             {
                 HandleDefaultAvatar();
             }
+            else if (Pressed(keyboardState, Keys.D))
+            {
+                HandleDefaultAvatar();
+            }
             else if (Pressed(keyboardState, Keys.Delete))
+            {
+                HandleTakeoffAvatar();
+            }
+            else if (Pressed(keyboardState, Keys.T))
             {
                 HandleTakeoffAvatar();
             }

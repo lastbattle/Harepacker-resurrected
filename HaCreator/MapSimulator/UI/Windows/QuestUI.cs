@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCategoryButtonTopInset = 5;
         private const int ClientCategoryTextLeft = 31;
         private const int ClientCategoryCountRight = 188;
+        private const int ClientCategoryCountInnerGap = 3;
         private const int ClientCategoryTrailingTextGap = 3;
         private const int TAB_AVAILABLE = 0;
         private const int TAB_IN_PROGRESS = 1;
@@ -1362,7 +1363,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawText(sprite, leaderText, new Vector2(left, top), color, scale, (int)Math.Ceiling(width));
+            DrawCategoryText(sprite, leaderText, new Vector2(left, top), color, scale, emphasized: false);
         }
 
         private string BuildCategoryLeaderText(float width, float scale)
@@ -1373,7 +1374,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             const string leaderUnit = ".";
-            float unitWidth = MeasureClientText(leaderUnit, scale).X;
+            float unitWidth = MeasureCategoryText(leaderUnit, scale, emphasized: false).X;
             if (unitWidth <= 0f)
             {
                 return string.Empty;
@@ -1385,7 +1386,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static int ResolveClientCategoryCountLeft(float countWidth)
         {
-            return Math.Max(ClientCategoryTextLeft, ClientCategoryCountRight - Math.Max(0, (int)MathF.Ceiling(countWidth)));
+            int countLaneWidth = Math.Max(0, (int)MathF.Ceiling(countWidth)) + ClientCategoryCountInnerGap;
+            return Math.Max(ClientCategoryTextLeft, ClientCategoryCountRight - countLaneWidth);
         }
 
         internal static int ResolveClientCategoryMaxCountWidth()
@@ -1673,12 +1675,9 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetCategoryRowTextTopOffset(CategoryButtonSlot slot)
         {
-            if (slot == null)
-            {
-                return 4;
-            }
-
-            return slot.HasVisibleRowBelow ? 4 : 3;
+            _ = slot;
+            // `CUIQuestInfo::Draw` writes category row text at y = 56 + (22 * rowIndex).
+            return 0;
         }
 
         private string FitSingleLineText(string text, float maxWidth, float scale)

@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.Interaction
         };
 
         private const ulong CharacterDataSkillRecordFlag = 0x100UL;
+        private const ulong CharacterDataStatFlag = 0x1UL;
         private const ulong CharacterDataSkillExpirationFlag = 0x200UL;
         private const ulong CharacterDataMiniGameRecordFlag = 0x400UL;
         private const ulong CharacterDataRelationshipRecordFlag = 0x800UL;
@@ -39,6 +40,12 @@ namespace HaCreator.MapSimulator.Interaction
         private const ulong CharacterDataInt16ValueRecordFlag = 0x8000UL;
         private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
         private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
+        private const ulong CharacterDataTwoIntValueRecordFlag = 0x100000UL;
+        private const ulong CharacterDataNewYearCardRecordFlag = 0x40000UL;
+        private const ulong CharacterDataQuestExRecordFlag = 0x80000UL;
+        private const ulong CharacterDataWildHunterInfoFlag = 0x200000UL;
+        private const ulong CharacterDataQuestCompleteRecordFlag = 0x400000UL;
+        private const ulong CharacterDataVisitorQuestRecordFlag = 0x800000UL;
         private const int CharacterDataMiniGameRecordByteLength = 0x14;
         private const int CharacterDataCoupleRecordByteLength = 0x21;
         private const int CharacterDataFriendRecordByteLength = 0x25;
@@ -289,7 +296,7 @@ namespace HaCreator.MapSimulator.Interaction
                     WriteCharacterDataInventorySlotLimits(writer, inventorySlotLimits);
                 }
 
-                if ((effectiveCharacterDataFlags & 0x100000UL) != 0)
+                if ((effectiveCharacterDataFlags & CharacterDataTwoIntValueRecordFlag) != 0)
                 {
                     writer.Write(preInventoryHeaderValue1 ?? 0);
                     writer.Write(preInventoryHeaderValue2 ?? 0);
@@ -1154,7 +1161,8 @@ namespace HaCreator.MapSimulator.Interaction
                     BackwardUpdatePrimaryRemovedSerialNumberCount = backwardUpdatePrimaryRemovedSerialNumbers.Count,
                     BackwardUpdatePrimaryRemovedSerialNumbers = backwardUpdatePrimaryRemovedSerialNumbers,
                     BackwardUpdateSecondaryRemovedSerialNumberCount = backwardUpdateSecondaryRemovedSerialNumbers.Count,
-                    BackwardUpdateSecondaryRemovedSerialNumbers = backwardUpdateSecondaryRemovedSerialNumbers
+                    BackwardUpdateSecondaryRemovedSerialNumbers = backwardUpdateSecondaryRemovedSerialNumbers,
+                    DecodedSectionFlags = CharacterDataStatFlag
                 };
 
                 snapshot = DecodeCharacterDataOwnedPreludeSections(reader, characterDataFlags, snapshot);
@@ -1193,12 +1201,14 @@ namespace HaCreator.MapSimulator.Interaction
             ulong characterDataFlags,
             PacketCharacterDataSnapshot snapshot)
         {
+            ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
             if ((characterDataFlags & 0x2UL) != 0)
             {
                 snapshot = snapshot with
                 {
                     Meso = Math.Max(0, reader.ReadInt32())
                 };
+                decodedSectionFlags |= 0x2UL;
             }
 
             if ((characterDataFlags & 0x80UL) != 0)
@@ -1207,18 +1217,27 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     InventorySlotLimits = ReadCharacterDataInventorySlotLimits(reader)
                 };
+                decodedSectionFlags |= 0x80UL;
             }
 
-            if ((characterDataFlags & 0x100000UL) != 0)
+            if ((characterDataFlags & CharacterDataTwoIntValueRecordFlag) != 0)
             {
+                PacketCharacterDataTwoIntValueRecord twoIntValueRecord = new(
+                    reader.ReadInt32(),
+                    reader.ReadInt32());
                 snapshot = snapshot with
                 {
-                    PreInventoryHeaderValue1 = reader.ReadInt32(),
-                    PreInventoryHeaderValue2 = reader.ReadInt32()
+                    PreInventoryHeaderValue1 = twoIntValueRecord.Value1,
+                    PreInventoryHeaderValue2 = twoIntValueRecord.Value2,
+                    TwoIntValueRecord = twoIntValueRecord
                 };
+                decodedSectionFlags |= CharacterDataTwoIntValueRecordFlag;
             }
 
-            return snapshot;
+            return snapshot with
+            {
+                DecodedSectionFlags = decodedSectionFlags
+            };
         }
 
         private static IReadOnlyDictionary<InventoryType, int> ReadCharacterDataInventorySlotLimits(BinaryReader reader)
@@ -1242,6 +1261,7 @@ namespace HaCreator.MapSimulator.Interaction
             long startPosition = reader.BaseStream.Position;
             try
             {
+                ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
                 Dictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> inventoryItemsByType = new();
                 for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
                 {
@@ -1264,6 +1284,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                         decoratedSnapshot = equipDecoratedSnapshot;
                         inventoryItemsByType[inventoryType] = equipItems;
+                        decodedSectionFlags |= CharacterDataInventorySectionFlags[inventoryIndex];
                         continue;
                     }
 
@@ -1273,11 +1294,13 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     inventoryItemsByType[inventoryType] = inventoryItems;
+                    decodedSectionFlags |= CharacterDataInventorySectionFlags[inventoryIndex];
                 }
 
                 decoratedSnapshot = decoratedSnapshot with
                 {
-                    InventoryItemsByType = inventoryItemsByType
+                    InventoryItemsByType = inventoryItemsByType,
+                    DecodedSectionFlags = decodedSectionFlags
                 };
                 return true;
             }
@@ -1538,35 +1561,44 @@ namespace HaCreator.MapSimulator.Interaction
                 : 0;
             int bestScore = int.MinValue;
             int bestOpaqueByteCount = int.MaxValue;
+            bool bestDecodedInt16ValueRecords = false;
             long bestPosition = startPosition;
             PacketCharacterDataSnapshot bestSnapshot = null;
-            int minOpaqueByteCount = hasInt16ValueRecordSection
-                ? sizeof(ushort)
-                : 0;
+            int minOpaqueByteCount = 0;
             for (int opaqueByteCount = minOpaqueByteCount; opaqueByteCount <= maxOpaqueByteCount; opaqueByteCount++)
             {
-                reader.BaseStream.Position = startPosition;
-                if (!TryDecodeKnownCharacterDataTailSectionsCandidate(
-                        reader,
-                        characterDataFlags,
-                        snapshot,
-                        remainingBytes,
-                        opaqueByteCount,
-                        decodeInt16ValueRecords: false,
-                        out PacketCharacterDataSnapshot candidateSnapshot))
+                for (int decodeVariant = hasInt16ValueRecordSection ? 1 : 0; decodeVariant >= 0; decodeVariant--)
                 {
-                    continue;
-                }
+                    bool decodeInt16ValueRecords = hasInt16ValueRecordSection && decodeVariant == 1;
+                    reader.BaseStream.Position = startPosition;
+                    if (!TryDecodeKnownCharacterDataTailSectionsCandidate(
+                            reader,
+                            characterDataFlags,
+                            snapshot,
+                            remainingBytes,
+                            opaqueByteCount,
+                            decodeInt16ValueRecords,
+                            out PacketCharacterDataSnapshot candidateSnapshot))
+                    {
+                        continue;
+                    }
 
-                long trailingBytes = reader.BaseStream.Length - reader.BaseStream.Position;
-                int candidateScore = GetKnownCharacterDataTailCandidateScore(trailingBytes);
-                if (candidateScore > bestScore ||
-                    (candidateScore == bestScore && opaqueByteCount < bestOpaqueByteCount))
-                {
-                    bestScore = candidateScore;
-                    bestOpaqueByteCount = opaqueByteCount;
-                    bestPosition = reader.BaseStream.Position;
-                    bestSnapshot = candidateSnapshot;
+                    long trailingBytes = reader.BaseStream.Length - reader.BaseStream.Position;
+                    int candidateScore = GetKnownCharacterDataTailCandidateScore(trailingBytes);
+                    if (candidateScore > bestScore ||
+                        (candidateScore == bestScore &&
+                         decodeInt16ValueRecords &&
+                         !bestDecodedInt16ValueRecords) ||
+                        (candidateScore == bestScore &&
+                         decodeInt16ValueRecords == bestDecodedInt16ValueRecords &&
+                         opaqueByteCount < bestOpaqueByteCount))
+                    {
+                        bestScore = candidateScore;
+                        bestOpaqueByteCount = opaqueByteCount;
+                        bestDecodedInt16ValueRecords = decodeInt16ValueRecords;
+                        bestPosition = reader.BaseStream.Position;
+                        bestSnapshot = candidateSnapshot;
+                    }
                 }
             }
 
@@ -1598,6 +1630,7 @@ namespace HaCreator.MapSimulator.Interaction
                 byte[] opaquePreMapTransferBytes = opaqueByteCount == 0
                     ? Array.Empty<byte>()
                     : remainingBytes.Take(opaqueByteCount).ToArray();
+                ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
                 ulong opaquePreMapTransferFlags = decodeInt16ValueRecords
                     ? 0
                     : characterDataFlags & CharacterDataInt16ValueRecordFlag;
@@ -1643,6 +1676,7 @@ namespace HaCreator.MapSimulator.Interaction
                         Int16ValueRecordEntries = int16ValueRecordEntries,
                         Int16ValueRecords = int16ValueRecords
                     };
+                    decodedSectionFlags |= CharacterDataInt16ValueRecordFlag;
                 }
 
                 if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
@@ -1653,6 +1687,7 @@ namespace HaCreator.MapSimulator.Interaction
                         QuestRecordCount = questRecords.Count,
                         QuestRecordValues = questRecords
                     };
+                    decodedSectionFlags |= CharacterDataQuestRecordFlag;
                 }
 
                 if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0)
@@ -1663,9 +1698,11 @@ namespace HaCreator.MapSimulator.Interaction
                         ShortFileTimeRecordCount = shortFileTimeRecords.Count,
                         ShortFileTimeRecords = shortFileTimeRecords
                     };
+                    decodedSectionFlags |= CharacterDataShortFileTimeRecordFlag;
                 }
 
                 decoratedSnapshot = DecodeCharacterDataLeadingTailSections(reader, characterDataFlags, decoratedSnapshot);
+                decodedSectionFlags = decoratedSnapshot.DecodedSectionFlags;
 
                 if ((characterDataFlags & CharacterDataMapTransferFlag) != 0)
                 {
@@ -1674,9 +1711,10 @@ namespace HaCreator.MapSimulator.Interaction
                         RegularMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.RegularCapacity),
                         ContinentMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.ContinentCapacity)
                     };
+                    decodedSectionFlags |= CharacterDataMapTransferFlag;
                 }
 
-                if ((characterDataFlags & 0x40000UL) != 0)
+                if ((characterDataFlags & CharacterDataNewYearCardRecordFlag) != 0)
                 {
                     IReadOnlyList<PacketCharacterDataNewYearCardRecord> newYearCardRecords = ReadCharacterDataNewYearCardRecords(reader);
                     decoratedSnapshot = decoratedSnapshot with
@@ -1684,9 +1722,10 @@ namespace HaCreator.MapSimulator.Interaction
                         NewYearCardRecordCount = newYearCardRecords.Count,
                         NewYearCardRecords = newYearCardRecords
                     };
+                    decodedSectionFlags |= CharacterDataNewYearCardRecordFlag;
                 }
 
-                if ((characterDataFlags & 0x80000UL) != 0)
+                if ((characterDataFlags & CharacterDataQuestExRecordFlag) != 0)
                 {
                     IReadOnlyDictionary<int, string> questExRecords = ReadCharacterDataQuestStringRecords(reader);
 
@@ -1695,9 +1734,10 @@ namespace HaCreator.MapSimulator.Interaction
                         QuestExRecordCount = questExRecords.Count,
                         QuestExRecordValues = questExRecords
                     };
+                    decodedSectionFlags |= CharacterDataQuestExRecordFlag;
                 }
 
-                if ((characterDataFlags & 0x200000UL) != 0 &&
+                if ((characterDataFlags & CharacterDataWildHunterInfoFlag) != 0 &&
                     decoratedSnapshot.JobId / 100 == 33)
                 {
                     PacketCharacterDataWildHunterInfo wildHunterInfo = ReadCharacterDataWildHunterInfo(reader);
@@ -1706,9 +1746,10 @@ namespace HaCreator.MapSimulator.Interaction
                         HasWildHunterInfo = true,
                         WildHunterInfo = wildHunterInfo
                     };
+                    decodedSectionFlags |= CharacterDataWildHunterInfoFlag;
                 }
 
-                if ((characterDataFlags & 0x400000UL) != 0)
+                if ((characterDataFlags & CharacterDataQuestCompleteRecordFlag) != 0)
                 {
                     IReadOnlyDictionary<int, long> questCompleteRecords = ReadCharacterDataQuestCompleteRecords(reader);
 
@@ -1717,9 +1758,10 @@ namespace HaCreator.MapSimulator.Interaction
                         QuestCompleteRecordCount = questCompleteRecords.Count,
                         QuestCompleteRecords = questCompleteRecords
                     };
+                    decodedSectionFlags |= CharacterDataQuestCompleteRecordFlag;
                 }
 
-                if ((characterDataFlags & 0x800000UL) != 0)
+                if ((characterDataFlags & CharacterDataVisitorQuestRecordFlag) != 0)
                 {
                     IReadOnlyDictionary<int, int> visitorQuestRecords = ReadCharacterDataUInt16ValueRecords(reader);
 
@@ -1728,8 +1770,13 @@ namespace HaCreator.MapSimulator.Interaction
                         VisitorQuestRecordCount = visitorQuestRecords.Count,
                         VisitorQuestRecords = visitorQuestRecords
                     };
+                    decodedSectionFlags |= CharacterDataVisitorQuestRecordFlag;
                 }
 
+                decoratedSnapshot = decoratedSnapshot with
+                {
+                    DecodedSectionFlags = decodedSectionFlags
+                };
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -1821,6 +1868,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int skillExpirationRecordCount = 0;
                 int skillCooldownRecordCount = 0;
                 int skillMasterLevelRecordCount = 0;
+                ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
 
                 if ((characterDataFlags & CharacterDataSkillRecordFlag) != 0)
                 {
@@ -1833,6 +1881,7 @@ namespace HaCreator.MapSimulator.Interaction
                         out rawSkillMasterLevels);
                     skillRecordCount = skillRecordEntries?.Count ?? 0;
                     skillMasterLevelRecordCount = rawSkillMasterLevels?.Count ?? 0;
+                    decodedSectionFlags |= CharacterDataSkillRecordFlag;
                 }
 
                 if ((characterDataFlags & CharacterDataSkillExpirationFlag) != 0)
@@ -1840,6 +1889,7 @@ namespace HaCreator.MapSimulator.Interaction
                     skillExpirationRecordEntries = ReadCharacterDataSkillExpirationRecords(reader, out skillExpirations);
                     skillExpirationRecordCount = skillExpirationRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordExpirations(skillRecordEntries, skillExpirations);
+                    decodedSectionFlags |= CharacterDataSkillExpirationFlag;
                 }
 
                 if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
@@ -1847,6 +1897,7 @@ namespace HaCreator.MapSimulator.Interaction
                     skillCooldownRecordEntries = ReadCharacterDataInt16ValueRecords(reader, out skillCooldowns);
                     skillCooldownRecordCount = skillCooldownRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordCooldowns(skillRecordEntries, skillCooldowns);
+                    decodedSectionFlags |= CharacterDataSkillCooldownFlag;
                 }
 
                 decoratedSnapshot = snapshot with
@@ -1870,7 +1921,8 @@ namespace HaCreator.MapSimulator.Interaction
                     QuestRecordCount = 0,
                     QuestRecordValues = null,
                     ShortFileTimeRecordCount = 0,
-                    ShortFileTimeRecords = null
+                    ShortFileTimeRecords = null,
+                    DecodedSectionFlags = decodedSectionFlags
                 };
                 return true;
             }
@@ -2212,6 +2264,7 @@ namespace HaCreator.MapSimulator.Interaction
             ulong characterDataFlags,
             PacketCharacterDataSnapshot snapshot)
         {
+            ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
             IReadOnlyList<PacketCharacterDataFixedClientRecord> miniGameRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             IReadOnlyList<PacketCharacterDataFixedClientRecord> coupleRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             IReadOnlyList<PacketCharacterDataFixedClientRecord> friendRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
@@ -2222,6 +2275,7 @@ namespace HaCreator.MapSimulator.Interaction
                     reader,
                     PacketCharacterDataFixedClientRecord.MiniGameOwner,
                     CharacterDataMiniGameRecordByteLength);
+                decodedSectionFlags |= CharacterDataMiniGameRecordFlag;
             }
 
             if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0)
@@ -2238,6 +2292,7 @@ namespace HaCreator.MapSimulator.Interaction
                     reader,
                     PacketCharacterDataFixedClientRecord.MarriageOwner,
                     CharacterDataMarriageRecordByteLength);
+                decodedSectionFlags |= CharacterDataRelationshipRecordFlag;
             }
 
             return snapshot with
@@ -2253,7 +2308,8 @@ namespace HaCreator.MapSimulator.Interaction
                 FriendRecords = ExtractFixedClientRecordBytes(friendRecords),
                 MarriageRecordCount = marriageRecords.Count,
                 MarriageRecordEntries = marriageRecords,
-                MarriageRecords = ExtractFixedClientRecordBytes(marriageRecords)
+                MarriageRecords = ExtractFixedClientRecordBytes(marriageRecords),
+                DecodedSectionFlags = decodedSectionFlags
             };
         }
 
@@ -2691,6 +2747,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal byte SelectedCapturedMobIndex => ModeLowDigit;
 
+        internal bool IsRiding => RidingType != 0;
+
         internal int ActiveCapturedMobIndex =>
             SelectedCapturedMobIndex < (CapturedMobIds?.Count ?? 0)
                 ? SelectedCapturedMobIndex
@@ -2740,6 +2798,7 @@ namespace HaCreator.MapSimulator.Interaction
         int BackwardUpdateSecondaryRemovedSerialNumberCount = 0,
         IReadOnlyList<long> BackwardUpdateSecondaryRemovedSerialNumbers = null,
         int? Meso = null,
+        PacketCharacterDataTwoIntValueRecord? TwoIntValueRecord = null,
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
         IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> InventoryItemsByType = null,
         LoginAvatarLook AvatarLook = null,
@@ -2795,7 +2854,12 @@ namespace HaCreator.MapSimulator.Interaction
         int QuestCompleteRecordCount = 0,
         IReadOnlyDictionary<int, long> QuestCompleteRecords = null,
         int VisitorQuestRecordCount = 0,
-        IReadOnlyDictionary<int, int> VisitorQuestRecords = null);
+        IReadOnlyDictionary<int, int> VisitorQuestRecords = null,
+        ulong DecodedSectionFlags = 0);
+
+    internal readonly record struct PacketCharacterDataTwoIntValueRecord(
+        int Value1,
+        int Value2);
 
     internal readonly record struct PacketCharacterDataItemSlot(
         InventoryType InventoryType,

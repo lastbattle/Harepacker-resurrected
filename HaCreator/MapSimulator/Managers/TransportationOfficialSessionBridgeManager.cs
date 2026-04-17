@@ -539,9 +539,19 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] rawPacket = TransportationFieldInitRequestCodec.BuildRawFieldInitPacket(fieldId, shipKind);
-            if (!TrySendRawPacket(rawPacket, out status, countAsTypedSend: true))
+            if (!TrySendRawPacket(
+                rawPacket,
+                out status,
+                countAsTypedSend: true,
+                allowDeferredQueueWhenPassive: true,
+                out bool queuedForDeferredInjection))
             {
                 return false;
+            }
+
+            if (queuedForDeferredInjection)
+            {
+                return true;
             }
 
             status = $"Injected {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)} into live session {_activePair?.RemoteEndpoint ?? "unknown-remote"}.";
@@ -564,7 +574,12 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendRawPacket(byte[] rawPacket, out string status)
         {
-            return TrySendRawPacket(rawPacket, out status, countAsTypedSend: true);
+            return TrySendRawPacket(
+                rawPacket,
+                out status,
+                countAsTypedSend: true,
+                allowDeferredQueueWhenPassive: true,
+                out _);
         }
 
         public bool TryQueueRawPacket(byte[] rawPacket, out string status)
@@ -905,11 +920,32 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private bool TrySendRawPacket(byte[] rawPacket, out string status, bool countAsTypedSend = false)
+        private bool TrySendRawPacket(
+            byte[] rawPacket,
+            out string status,
+            bool countAsTypedSend,
+            bool allowDeferredQueueWhenPassive,
+            out bool queuedForDeferredInjection)
         {
+            queuedForDeferredInjection = false;
             BridgePair pair = _activePair;
             if (HasPassiveEstablishedSocketPair)
             {
+                if (allowDeferredQueueWhenPassive)
+                {
+                    if (!TryQueueRawPacket(rawPacket, out string queueStatus))
+                    {
+                        status = queueStatus;
+                        LastStatus = status;
+                        return false;
+                    }
+
+                    queuedForDeferredInjection = true;
+                    status = $"Transport official-session bridge cannot inject into an already-established Maple socket pair after the handshake, so it deferred this send request. {queueStatus}";
+                    LastStatus = status;
+                    return true;
+                }
+
                 status = $"Transport official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject outbound transport packets into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
                 LastStatus = status;
                 return false;

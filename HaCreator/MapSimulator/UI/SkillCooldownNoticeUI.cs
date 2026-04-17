@@ -14,7 +14,6 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class SkillCooldownNoticeUI
     {
-        private const int ReferenceClientHeight = 578;
         internal readonly record struct NoticeFrameCandidate(
             string Name,
             bool HasTop,
@@ -387,10 +386,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 spriteBatch.Draw(_frameTop, new Rectangle(panelRect.X, panelRect.Y, _panelWidth, _topHeight), color);
                 int centerHeight = Math.Max(0, panelRect.Height - _topHeight - _bottomHeight);
-                if (centerHeight > 0)
-                {
-                    spriteBatch.Draw(_frameCenter, new Rectangle(panelRect.X, panelRect.Y + _topHeight, _panelWidth, centerHeight), color);
-                }
+                DrawTiledNoticeCenter(spriteBatch, panelRect.X, panelRect.Y + _topHeight, centerHeight, color);
 
                 spriteBatch.Draw(_frameBottom, new Rectangle(panelRect.X, panelRect.Bottom - _bottomHeight, _panelWidth, _bottomHeight), color);
                 return;
@@ -497,12 +493,26 @@ namespace HaCreator.MapSimulator.UI
 
         internal static int ResolveTopMarginForClientParity(int screenHeight)
         {
-            if (screenHeight <= 0)
+            return TopMargin;
+        }
+
+        private void DrawTiledNoticeCenter(SpriteBatch spriteBatch, int x, int startY, int centerHeight, Color color)
+        {
+            if (_frameCenter == null || centerHeight <= 0)
             {
-                return TopMargin;
+                return;
             }
 
-            return Math.Max(24, (int)Math.Round(screenHeight * (TopMargin / (float)ReferenceClientHeight)));
+            int sourceHeight = Math.Max(1, _frameCenter.Height);
+            int drawnHeight = 0;
+            while (drawnHeight < centerHeight)
+            {
+                int segmentHeight = Math.Min(sourceHeight, centerHeight - drawnHeight);
+                Rectangle destinationRect = new Rectangle(x, startY + drawnHeight, _panelWidth, segmentHeight);
+                Rectangle sourceRect = new Rectangle(0, 0, _frameCenter.Width, segmentHeight);
+                spriteBatch.Draw(_frameCenter, destinationRect, sourceRect, color);
+                drawnHeight += segmentHeight;
+            }
         }
 
         private void UpdateFrameLayoutMetrics()

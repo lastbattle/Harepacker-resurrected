@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string Sender { get; init; } = string.Empty;
         public string MemoText { get; init; } = string.Empty;
         public bool IsQuickDelivery { get; init; }
+        public byte QuickDeliveryRawFlag { get; init; }
+        public byte[] QuickDeliveryReservedBytes { get; init; } = Array.Empty<byte>();
         public DateTimeOffset? ExpirationTimestampUtc { get; init; }
         public bool IsRead { get; init; }
         public bool IsKept { get; init; }
@@ -44,6 +46,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ParcelMesoOffset = 0x11;
         private const int ParcelExpiryTimestampOffset = 0x15;
         private const int ParcelQuickDeliveryOffset = 0x1D;
+        private const int ParcelQuickDeliveryReservedOffset = ParcelQuickDeliveryOffset + 1;
+        private const int ParcelQuickDeliveryReservedLength = 3;
         private const int ParcelMemoOffset = 0x21;
         private const int ParcelMemoLength = ParcelFixedBodyLength - ParcelMemoOffset;
         private const int MinimumMemoCandidateLength = 4;
@@ -162,7 +166,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             DateTimeOffset? expirationTimestampUtc = TryDecodeExpirationTimestamp(parcelBytes);
-            bool isQuickDelivery = parcelBytes.Length > ParcelQuickDeliveryOffset && parcelBytes[ParcelQuickDeliveryOffset] != 0;
+            byte quickDeliveryRawFlag = parcelBytes.Length > ParcelQuickDeliveryOffset
+                ? parcelBytes[ParcelQuickDeliveryOffset]
+                : (byte)0;
+            byte[] quickDeliveryReservedBytes = ReadFixedBytes(parcelBytes, ParcelQuickDeliveryReservedOffset, ParcelQuickDeliveryReservedLength);
+            bool isQuickDelivery = quickDeliveryRawFlag != 0;
 
             entry = new PacketOwnedParcelDecodedEntry
             {
@@ -170,6 +178,8 @@ namespace HaCreator.MapSimulator.Interaction
                 Sender = string.IsNullOrWhiteSpace(sender) ? "Maple Delivery Service" : sender,
                 MemoText = memoText,
                 IsQuickDelivery = isQuickDelivery,
+                QuickDeliveryRawFlag = quickDeliveryRawFlag,
+                QuickDeliveryReservedBytes = quickDeliveryReservedBytes,
                 ExpirationTimestampUtc = expirationTimestampUtc,
                 IsRead = postBodyState.IsRead,
                 IsKept = postBodyState.IsKept,
@@ -395,6 +405,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return Encoding.ASCII.GetString(slice).TrimEnd('\0', ' ');
+        }
+
+        private static byte[] ReadFixedBytes(ReadOnlySpan<byte> bytes, int offset, int length)
+        {
+            if (offset < 0 || length <= 0 || offset >= bytes.Length)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int safeLength = Math.Min(length, bytes.Length - offset);
+            return bytes.Slice(offset, safeLength).ToArray();
         }
 
         private static DateTimeOffset? TryDecodeExpirationTimestamp(ReadOnlySpan<byte> bytes)

@@ -555,7 +555,7 @@ namespace HaCreator.MapSimulator.Managers
                 return 0;
             }
 
-            return Math.Min(delta, 5000);
+            return delta;
         }
 
         private void UpdateDeferredTouchFlushScheduleAfterSendUnsafe(PendingTouchRequest sent, int currentTick)

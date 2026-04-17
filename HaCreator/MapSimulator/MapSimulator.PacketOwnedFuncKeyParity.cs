@@ -1463,8 +1463,17 @@ namespace HaCreator.MapSimulator
         private bool TryUsePacketOwnedFuncKeyItem(int itemId, int currentTime)
         {
             InventoryType inventoryType = ResolvePacketOwnedHotkeyInventoryType(itemId);
-            return inventoryType != InventoryType.NONE
-                && TryUseConsumableInventoryItem(itemId, inventoryType, currentTime);
+            if (inventoryType == InventoryType.NONE)
+            {
+                return false;
+            }
+
+            if (TryRejectOnlyPickupInventoryUse(itemId, inventoryType, currentTime))
+            {
+                return false;
+            }
+
+            return TryUseConsumableInventoryItem(itemId, inventoryType, currentTime);
         }
 
         private void ShowPacketOwnedProfessionWindow()

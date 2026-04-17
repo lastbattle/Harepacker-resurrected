@@ -118,6 +118,13 @@ namespace HaCreator.MapSimulator.Managers
             return destinations;
         }
 
+        public IReadOnlyList<int> SnapshotFieldList(CharacterBuild build, MapTransferDestinationBook book)
+        {
+            CharacterRuntimeBooks runtimeBooks = GetOrCreateBooks(build);
+            int[] slots = GetSlots(runtimeBooks, book);
+            return (int[])slots.Clone();
+        }
+
         public MapTransferRuntimeDispatchResult SendMapTransferRequest(CharacterBuild build, MapTransferRuntimeRequest request)
         {
             if (request == null)

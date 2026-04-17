@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using System;
+using System.Buffers.Binary;
 
 namespace HaCreator.MapSimulator
 {
@@ -9,6 +10,7 @@ namespace HaCreator.MapSimulator
         private const int ItemUpgradeOwnerResultFallbackDelayMs = 750;
         private const int ItemUpgradeOwnerResultApplyDelayMs = 50;
         private const int ItemUpgradeOwnerExclusiveRequestCooldownMs = 500;
+        private const int ItemUpgradeOwnerRequestPayloadLength = sizeof(int) * 3;
         private const byte ItemUpgradePacketResultCodeFail = 0;
         private const byte ItemUpgradePacketResultCodeSuccess = 1;
 
@@ -24,6 +26,9 @@ namespace HaCreator.MapSimulator
             public bool? ForcedSuccess { get; set; }
             public bool PacketOwnedResultObserved { get; set; }
             public byte? PacketOwnedResultCode { get; set; }
+            public byte[] EncodedRequestPayload { get; init; } = Array.Empty<byte>();
+            public int RequestItemToken { get; init; }
+            public int RequestSlotPosition { get; init; }
         }
 
         private void WireItemUpgradeOwnerCallbacks(ItemUpgradeUI itemUpgradeWindow)
@@ -44,7 +49,7 @@ namespace HaCreator.MapSimulator
                 ShowUtilityFeedbackMessage(busyNotice);
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
                 {
-                    itemUpgradeWindow.SetPacketOwnedRequestPending(busyNotice);
+                    itemUpgradeWindow.SetOwnerStatusMessage(busyNotice, success: false);
                 }
 
                 return true;
@@ -56,28 +61,39 @@ namespace HaCreator.MapSimulator
                 ShowUtilityFeedbackMessage(blockedNotice);
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
                 {
-                    itemUpgradeWindow.SetPacketOwnedRequestPending(blockedNotice);
+                    itemUpgradeWindow.SetOwnerStatusMessage(blockedNotice, success: false);
                 }
 
                 return true;
             }
+
+            int requestItemToken = ResolveItemUpgradeRequestItemToken(request);
+            int requestSlotPosition = Math.Max(0, request.ConsumableSlotIndex + 1);
+            byte[] encodedRequestPayload = BuildItemUpgradeRequestPayload(
+                requestItemToken,
+                requestSlotPosition,
+                currTickCount);
 
             _pendingItemUpgradeOwnerRequest = new PendingItemUpgradeOwnerRequestState
             {
                 Request = request,
                 RequestedAtTick = currTickCount,
                 ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultFallbackDelayMs,
-                ForcedSuccess = null
+                ForcedSuccess = null,
+                EncodedRequestPayload = encodedRequestPayload,
+                RequestItemToken = requestItemToken,
+                RequestSlotPosition = requestSlotPosition
             };
             _itemUpgradeOwnerRequestSent = true;
             StampPacketOwnedUtilityRequestState();
 
+            string payloadHex = Convert.ToHexString(encodedRequestPayload);
             string statusMessage = $"Enhancement request sent for {request.EquipName} with {request.ConsumableName}.";
             ShowUtilityFeedbackMessage(statusMessage);
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindowVisible)
             {
                 itemUpgradeWindowVisible.SetPacketOwnedRequestPending(
-                    $"{statusMessage} Waiting for packet-owned result.");
+                    $"{statusMessage} Waiting for packet-owned result. Encoded request body (itemTI, slot, tick): {payloadHex}.");
             }
 
             return true;
@@ -181,9 +197,79 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private int ResolveItemUpgradeRequestItemToken(ItemUpgradeUI.ItemUpgradeOwnerRequest request)
+        {
+            if (request.EquipItemToken > 0)
+            {
+                return request.EquipItemToken;
+            }
+
+            if (uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryRuntime)
+            {
+                var slots = inventoryRuntime.GetSlots(request.ConsumableInventoryType);
+                if (slots != null
+                    && request.ConsumableSlotIndex >= 0
+                    && request.ConsumableSlotIndex < slots.Count)
+                {
+                    InventorySlotData slot = slots[request.ConsumableSlotIndex];
+                    if (slot != null
+                        && slot.ItemId == request.ConsumableItemId
+                        && slot.ClientItemToken.GetValueOrDefault() > 0)
+                    {
+                        return slot.ClientItemToken.Value;
+                    }
+                }
+            }
+
+            return request.ConsumableItemId;
+        }
+
+        private static byte[] BuildItemUpgradeRequestPayload(int itemToken, int slotPosition, int updateTick)
+        {
+            byte[] payload = new byte[ItemUpgradeOwnerRequestPayloadLength];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), itemToken);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)), Math.Max(0, slotPosition));
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 2, sizeof(int)), updateTick);
+            return payload;
+        }
+
+        private static bool TryDecodeItemUpgradeRequestPayload(
+            byte[] payload,
+            out int itemToken,
+            out int slotPosition,
+            out int updateTick)
+        {
+            itemToken = 0;
+            slotPosition = 0;
+            updateTick = 0;
+            if (payload == null || payload.Length < ItemUpgradeOwnerRequestPayloadLength)
+            {
+                return false;
+            }
+
+            itemToken = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            slotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)));
+            updateTick = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(int) * 2, sizeof(int)));
+            return true;
+        }
+
         internal static bool TryDecodeItemUpgradeResultPayloadForTests(byte[] payload, out byte resultCode)
         {
             return TryDecodeItemUpgradeResultPayload(payload, out resultCode);
+        }
+
+        internal static byte[] BuildItemUpgradeRequestPayloadForTests(int itemToken, int slotPosition, int updateTick)
+        {
+            return BuildItemUpgradeRequestPayload(itemToken, slotPosition, updateTick);
+        }
+
+        internal static bool TryDecodeItemUpgradeRequestPayloadForTests(
+            byte[] payload,
+            out int itemToken,
+            out int slotPosition,
+            out int updateTick)
+        {
+            return TryDecodeItemUpgradeRequestPayload(payload, out itemToken, out slotPosition, out updateTick);
         }
 
         private static bool TryMapItemUpgradeResultCode(byte resultCode, out bool success)

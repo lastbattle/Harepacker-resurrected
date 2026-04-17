@@ -1895,6 +1895,7 @@ namespace HaCreator.MapSimulator.Character
         {
             GenericBeginner,
             BeginnerWarriorLike,
+            XenonHybrid,
             Warrior,
             Magician,
             BowmanBow,
@@ -2104,6 +2105,7 @@ namespace HaCreator.MapSimulator.Character
                         BuffStatType.Dexterity,
                         Math.Max(1, Level),
                         BuffStatType.Strength),
+                    AutoAssignStrategy.XenonHybrid => TryAutoAssignXenonPoint(),
                     AutoAssignStrategy.Warrior => TryAutoAssignTowardsTarget(
                         BuffStatType.Dexterity,
                         GetWarriorStyleDexTarget(),
@@ -2592,6 +2594,11 @@ namespace HaCreator.MapSimulator.Character
                 return AutoAssignStrategy.BeginnerWarriorLike;
             }
 
+            if (IsXenonJob(absoluteJobId))
+            {
+                return AutoAssignStrategy.XenonHybrid;
+            }
+
             return ResolveAutoAssignClass(Job) switch
             {
                 AutoAssignClassWarrior => AutoAssignStrategy.Warrior,
@@ -2775,6 +2782,28 @@ namespace HaCreator.MapSimulator.Character
                    || IncreasePrimaryStat(BuffStatType.Intelligence);
         }
 
+        private bool TryAutoAssignXenonPoint()
+        {
+            int minStat = Math.Min(STR, Math.Min(DEX, LUK));
+            if (STR == minStat)
+            {
+                return IncreasePrimaryStat(BuffStatType.Strength)
+                       || IncreasePrimaryStat(BuffStatType.Dexterity)
+                       || IncreasePrimaryStat(BuffStatType.Luck);
+            }
+
+            if (DEX == minStat)
+            {
+                return IncreasePrimaryStat(BuffStatType.Dexterity)
+                       || IncreasePrimaryStat(BuffStatType.Luck)
+                       || IncreasePrimaryStat(BuffStatType.Strength);
+            }
+
+            return IncreasePrimaryStat(BuffStatType.Luck)
+                   || IncreasePrimaryStat(BuffStatType.Strength)
+                   || IncreasePrimaryStat(BuffStatType.Dexterity);
+        }
+
         private static int ApplyRateBonus(int value, int percent)
         {
             if (percent == 0)
@@ -2941,7 +2970,7 @@ namespace HaCreator.MapSimulator.Character
                 2 or 12 or 22 or 27 or 32 => AutoAssignClassMagician,
                 3 or 13 or 23 or 33 or 63 => AutoAssignClassBowman,
                 4 or 14 or 24 or 64 => AutoAssignClassThief,
-                5 or 15 or 25 or 35 or 65 or 155 => AutoAssignClassPirate,
+                5 or 15 or 25 or 35 or 36 or 65 or 155 => AutoAssignClassPirate,
                 37 or 41 or 101 or 151 => AutoAssignClassWarrior,
                 42 or 142 or 152 => AutoAssignClassMagician,
                 // Hero branches use job-root starters before their first advancement.
@@ -2953,7 +2982,7 @@ namespace HaCreator.MapSimulator.Character
                 20 when absoluteJobId == 2005 => AutoAssignClassPirate,
                 // Resistance uses a shared Citizen beginner plus the Demon beginner root.
                 30 when absoluteJobId == 3001 => AutoAssignClassWarrior,
-                30 when absoluteJobId == 3002 => AutoAssignClassBeginner,
+                30 when absoluteJobId == 3002 => AutoAssignClassPirate,
                 40 when absoluteJobId == 4001 => AutoAssignClassWarrior,
                 40 when absoluteJobId == 4002 => AutoAssignClassMagician,
                 // Post-Big Bang roots keep their own beginner ids before advancing into later job branches.
@@ -2968,6 +2997,11 @@ namespace HaCreator.MapSimulator.Character
                 150 when absoluteJobId == 15002 => AutoAssignClassWarrior,
                 _ => AutoAssignClassBeginner
             };
+        }
+
+        private static bool IsXenonJob(int absoluteJobId)
+        {
+            return absoluteJobId == 3002 || absoluteJobId / 100 == 36;
         }
 
         private JobArchetype ResolveJobArchetype()

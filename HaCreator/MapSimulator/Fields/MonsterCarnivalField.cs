@@ -1068,6 +1068,13 @@ namespace HaCreator.MapSimulator.Fields
             public Texture2D ListMiddle { get; init; }
             public Texture2D ListSummary { get; init; }
             public Texture2D ListBottom { get; init; }
+            public Texture2D SubTop { get; init; }
+            public Texture2D SubCenter { get; init; }
+            public Texture2D SubBottom { get; init; }
+            public Texture2D SubOkButtonNormal { get; init; }
+            public Texture2D SubOkButtonDisabled { get; init; }
+            public Texture2D SubLockEnabled { get; init; }
+            public Texture2D SubLockDisabled { get; init; }
             public Texture2D SideButtonNormal { get; init; }
             public Texture2D SideButtonDisabled { get; init; }
             public Texture2D TabMobEnabled { get; init; }
@@ -1082,7 +1089,10 @@ namespace HaCreator.MapSimulator.Fields
                 || ListTop != null
                 || ListMiddle != null
                 || ListSummary != null
-                || ListBottom != null;
+                || ListBottom != null
+                || SubTop != null
+                || SubCenter != null
+                || SubBottom != null;
         }
 
         private static readonly MonsterCarnivalHudMetrics DefaultHudMetrics = new(

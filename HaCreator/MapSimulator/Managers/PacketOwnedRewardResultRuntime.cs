@@ -94,13 +94,13 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public static string FormatMesoGiveSucceededText(int mesoAmount)
+        public static string FormatMesoGiveSucceededText(uint mesoAmount)
         {
             string format = ResolveTextFormat(
                 MesoGiveSucceededStringPoolId,
                 "You have received {0:N0} mesos.",
                 1);
-            return FormatInvariant(format, mesoAmount);
+            return FormatInvariant(format, (ulong)mesoAmount);
         }
 
         public static string GetMesoGiveFailedText()

@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
         public int InboundFromLocalUtilityCount { get; private set; }
         public int InboundFromAdminShopInboxCount { get; private set; }
         public int LastInboundPacketType { get; private set; } = -1;
+        public int WishlistSearchStateToken { get; private set; }
         public int LastSubtype { get; private set; } = -1;
         public int LastResultCode { get; private set; } = -1;
         public bool LastResultHadResultCode { get; private set; }
@@ -93,6 +94,7 @@ namespace HaCreator.MapSimulator.UI
             LastOwnerState = ownerState ?? string.Empty;
             LastCloseOpenedWishlist = false;
             ClearPendingWishlistRegister();
+            TouchWishlistSearchStateToken();
         }
 
         public void RecordInboundPacket(int packetType, string source)
@@ -112,16 +114,19 @@ namespace HaCreator.MapSimulator.UI
             if (IsOfficialSessionSource(source))
             {
                 InboundFromOfficialSessionCount++;
+                TouchWishlistSearchStateToken();
                 return;
             }
 
             if (IsAdminShopInboxSource(source))
             {
                 InboundFromAdminShopInboxCount++;
+                TouchWishlistSearchStateToken();
                 return;
             }
 
             InboundFromLocalUtilityCount++;
+            TouchWishlistSearchStateToken();
         }
 
         public void RejectOpen(
@@ -152,6 +157,7 @@ namespace HaCreator.MapSimulator.UI
 
             LastOwnerState = ownerState ?? LastOwnerState;
             LastCloseOpenedWishlist = false;
+            TouchWishlistSearchStateToken();
         }
 
         public void RecordLocalClose(string outboundSummary, string ownerState = null, bool openedWishlistBeforeClose = false)
@@ -171,6 +177,7 @@ namespace HaCreator.MapSimulator.UI
             LastCloseOpenedWishlist = openedWishlistBeforeClose;
             CloseCount++;
             ClearPendingWishlistRegister();
+            TouchWishlistSearchStateToken();
         }
 
         public void RecordBlockedByOwner(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string blockingOwner)
@@ -199,6 +206,7 @@ namespace HaCreator.MapSimulator.UI
             LastCloseOpenedWishlist = false;
             ClearPendingWishlistRegister();
             BlockedByOwnerCount++;
+            TouchWishlistSearchStateToken();
         }
 
         public void RecordResultPacket(byte subtype, byte resultCode, int trailingByteCount = 0, bool hasResultCode = true)
@@ -209,6 +217,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultHadResultCode = hasResultCode;
             ResultTrailingByteCount = Math.Max(0, trailingByteCount);
             WouldDisconnect = false;
+            TouchWishlistSearchStateToken();
         }
 
         public void RecordResultIgnoredByOwner(byte subtype, byte resultCode, string ownerState, int trailingByteCount = 0, bool hasResultCode = true)
@@ -225,21 +234,40 @@ namespace HaCreator.MapSimulator.UI
             OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
             LastOwnerState = ownerState ?? string.Empty;
             ClearPendingWishlistRegister();
+            TouchWishlistSearchStateToken();
         }
 
         public void SetWaitingForResult(bool waitingForResult)
         {
+            if (IsWaitingForResult == waitingForResult)
+            {
+                return;
+            }
+
             IsWaitingForResult = waitingForResult;
+            TouchWishlistSearchStateToken();
         }
 
         public void ClearWaitingForResult()
         {
+            if (!IsWaitingForResult)
+            {
+                return;
+            }
+
             IsWaitingForResult = false;
+            TouchWishlistSearchStateToken();
         }
 
         public void MarkDisconnectHazard()
         {
+            if (WouldDisconnect)
+            {
+                return;
+            }
+
             WouldDisconnect = true;
+            TouchWishlistSearchStateToken();
         }
 
         public void SetLastNotice(string noticeText)
@@ -261,16 +289,30 @@ namespace HaCreator.MapSimulator.UI
 
         public void RecordPendingWishlistRegister(int itemId, string title, string categoryLabel)
         {
+            bool changed = PendingWishlistRegisterItemId != Math.Max(0, itemId)
+                || !string.Equals(PendingWishlistRegisterTitle, title ?? string.Empty, StringComparison.Ordinal)
+                || !string.Equals(PendingWishlistRegisterCategoryLabel, categoryLabel ?? string.Empty, StringComparison.Ordinal);
             PendingWishlistRegisterItemId = Math.Max(0, itemId);
             PendingWishlistRegisterTitle = title ?? string.Empty;
             PendingWishlistRegisterCategoryLabel = categoryLabel ?? string.Empty;
+            if (changed)
+            {
+                TouchWishlistSearchStateToken();
+            }
         }
 
         public void ClearPendingWishlistRegister()
         {
+            bool hadPending = PendingWishlistRegisterItemId > 0
+                || !string.IsNullOrWhiteSpace(PendingWishlistRegisterTitle)
+                || !string.IsNullOrWhiteSpace(PendingWishlistRegisterCategoryLabel);
             PendingWishlistRegisterItemId = 0;
             PendingWishlistRegisterTitle = string.Empty;
             PendingWishlistRegisterCategoryLabel = string.Empty;
+            if (hadPending)
+            {
+                TouchWishlistSearchStateToken();
+            }
         }
 
         public void SetLastOutboundSummary(string outboundSummary)
@@ -286,6 +328,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 LastOwnerState = ownerState;
             }
+
+            TouchWishlistSearchStateToken();
         }
 
         public void RecordOwnerSurfaceHidden(
@@ -298,6 +342,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 LastOwnerState = ownerState;
             }
+
+            TouchWishlistSearchStateToken();
         }
 
         public bool ShouldAcceptResultPacketAtOwnerGate(bool ownerSurfaceCurrentlyVisible)
@@ -333,6 +379,7 @@ namespace HaCreator.MapSimulator.UI
         public string BuildWishlistSearchSessionSignature()
         {
             return string.Join("|",
+                WishlistSearchStateToken,
                 IsActive ? "1" : "0",
                 IsWaitingForResult ? "1" : "0",
                 WouldDisconnect ? "1" : "0",
@@ -401,7 +448,7 @@ namespace HaCreator.MapSimulator.UI
             string pendingText = HasPendingWishlistRegister
                 ? $", pending {DescribePendingWishlistRegister()}"
                 : string.Empty;
-            return $"{packetText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}";
+            return $"token {WishlistSearchStateToken}, {packetText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}";
         }
 
         public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
@@ -425,7 +472,7 @@ namespace HaCreator.MapSimulator.UI
             string resultTailText = ResultTrailingByteCount > 0
                 ? $", result tail {ResultTrailingByteCount} byte(s)"
                 : string.Empty;
-            lines.Add($"{visibilityText}, {DescribeDisconnectHazard()}{blockedText}{inboundText}{tailText}{resultTailText}");
+            lines.Add($"token {WishlistSearchStateToken}, {visibilityText}, {DescribeDisconnectHazard()}{blockedText}{inboundText}{tailText}{resultTailText}");
 
             string phaseText = DescribeWishlistSearchPhase();
             if (!string.IsNullOrWhiteSpace(LastNotice))
@@ -515,7 +562,14 @@ namespace HaCreator.MapSimulator.UI
 
             if (!AdminShopDialogClientParityText.HandlesResultSubtype((byte)LastSubtype))
             {
-                return $"subtype {LastSubtype} ignored";
+                return LastResultHadResultCode
+                    ? $"subtype {LastSubtype}, code {LastResultCode}"
+                    : $"subtype {LastSubtype}, no result code";
+            }
+
+            if (!LastResultHadResultCode)
+            {
+                return $"subtype {LastSubtype}, no result code";
             }
 
             string label = AdminShopDialogClientParityText.BuildResultStateLabel((byte)Math.Max(0, LastResultCode));
@@ -615,6 +669,13 @@ namespace HaCreator.MapSimulator.UI
                 ? string.Empty
                 : $" in {PendingWishlistRegisterCategoryLabel}";
             return $"wishlist register {itemText}{titleText}{categoryText}";
+        }
+
+        private void TouchWishlistSearchStateToken()
+        {
+            WishlistSearchStateToken = WishlistSearchStateToken == int.MaxValue
+                ? 1
+                : WishlistSearchStateToken + 1;
         }
     }
 }

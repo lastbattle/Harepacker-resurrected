@@ -8,6 +8,8 @@ namespace HaCreator.MapSimulator.Pools
 {
     internal static class PacketOwnedSummonUpdateRules
     {
+        private const byte ClientTeslaForcedMoveAction = 0x2A;
+
         public static SummonMovementStyle ResolveEffectiveMovementStyle(ActiveSummon summon)
         {
             if (summon == null)
@@ -184,6 +186,23 @@ namespace HaCreator.MapSimulator.Pools
             return !packetFacingLeft;
         }
 
+        internal static byte ResolvePacketOwnedRuntimeMoveActionRaw(
+            ActiveSummon summon,
+            byte packetMoveActionRaw,
+            int teslaCoilSkillId)
+        {
+            if (summon?.SkillId != teslaCoilSkillId
+                || (summon.TeslaCoilState != 1 && summon.TeslaCoilState != 2))
+            {
+                return packetMoveActionRaw;
+            }
+
+            byte facingBit = (byte)(((packetMoveActionRaw != 0
+                    ? packetMoveActionRaw
+                    : (summon.FacingRight ? 0 : 1)) & 1));
+            return (byte)(ClientTeslaForcedMoveAction | facingBit);
+        }
+
         public static bool ShouldRegisterClientOwnedAttackTileOverlay(
             ActiveSummon summon,
             int skillLevel,
@@ -193,10 +212,15 @@ namespace HaCreator.MapSimulator.Pools
                 summon?.SkillData,
                 skillLevel > 0 ? skillLevel : summon?.Level ?? 1,
                 ownerCharacterLevel);
+            int resolvedSkillLevel = skillLevel > 0 ? skillLevel : summon?.Level ?? 1;
+            int resolvedOwnerCharacterLevel = Math.Max(1, ownerCharacterLevel);
             return summon != null
                    && SummonClientPostEffectRules.ShouldRegisterAttackTileOverlay(
                        summon.SkillId,
-                       zoneAnimation);
+                       summon.SkillData,
+                       zoneAnimation,
+                       resolvedSkillLevel,
+                       resolvedOwnerCharacterLevel);
         }
 
         public static bool ShouldRegisterClientOwnedReactiveAttackChainEffect(ActiveSummon summon)

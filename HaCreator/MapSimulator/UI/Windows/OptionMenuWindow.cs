@@ -2026,7 +2026,9 @@ namespace HaCreator.MapSimulator.UI
                     return;
                 }
 
-                session.Bindings[row.Action.Value] = StepJoypadBinding(row.Action.Value, GetJoypadBinding(session, row.Action.Value), direction);
+                session.Bindings[row.Action.Value] = row.IsClientCombo
+                    ? StepClientJoypadComboBinding(session, row.Action.Value, GetJoypadBinding(session, row.Action.Value), direction)
+                    : StepJoypadBinding(row.Action.Value, GetJoypadBinding(session, row.Action.Value), direction);
                 _statusMessage = row.IsClientCombo
                     ? $"{row.Label}: {FormatClientJoypadComboSelection(session, row.Action.Value)} ({FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}). Left or right cycles the staged client combo item; A arms live capture."
                     : $"{row.Label}: {FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}. Left or right cycles the staged shared-button binding; A arms live capture.";
@@ -2088,7 +2090,10 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            foreach (Buttons candidate in PlayerInput.GetConfigurableGamepadButtons(action))
+            IReadOnlyList<Buttons> candidates = GetJoypadClientCoreSlotIndex(action) >= 0
+                ? GetClientComboAllowedButtons(session, action)
+                : PlayerInput.GetConfigurableGamepadButtons(action);
+            foreach (Buttons candidate in candidates)
             {
                 if (IsConfiguredButtonDown(_currentJoypadCaptureState, candidate, session)
                     && !IsConfiguredButtonDown(_previousJoypadCaptureState, candidate, session))
@@ -2122,6 +2127,41 @@ namespace HaCreator.MapSimulator.UI
             };
             orderedButtons.AddRange(allowedButtons);
             return GetSteppedValue(orderedButtons, current, direction);
+        }
+
+        private static Buttons StepClientJoypadComboBinding(JoypadSessionSnapshot session, InputAction action, Buttons current, int direction)
+        {
+            IReadOnlyList<Buttons> allowedButtons = GetClientComboAllowedButtons(session, action);
+            List<Buttons> orderedButtons = new(allowedButtons.Count + 1)
+            {
+                0,
+            };
+            orderedButtons.AddRange(allowedButtons);
+            return GetSteppedValue(orderedButtons, current, direction);
+        }
+
+        private static IReadOnlyList<Buttons> GetClientComboAllowedButtons(JoypadSessionSnapshot session, InputAction action)
+        {
+            IReadOnlyList<Buttons> allowedButtons = PlayerInput.GetConfigurableGamepadButtons(action);
+            int detectedButtonCount = ResolveClientJoypadButtonCount(session);
+            int maxCount = Math.Clamp(detectedButtonCount, 0, allowedButtons.Count);
+            if (maxCount <= 0)
+            {
+                return Array.Empty<Buttons>();
+            }
+
+            if (maxCount == allowedButtons.Count)
+            {
+                return allowedButtons;
+            }
+
+            Buttons[] subset = new Buttons[maxCount];
+            for (int i = 0; i < maxCount; i++)
+            {
+                subset[i] = allowedButtons[i];
+            }
+
+            return subset;
         }
 
         private static bool IsConfiguredButtonDown(GamePadState state, Buttons button, JoypadSessionSnapshot session)
@@ -3070,7 +3110,7 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            IReadOnlyList<Buttons> allowedButtons = PlayerInput.GetConfigurableGamepadButtons(action);
+            IReadOnlyList<Buttons> allowedButtons = GetClientComboAllowedButtons(session, action);
             int index = -1;
             for (int i = 0; i < allowedButtons.Count; i++)
             {

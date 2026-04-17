@@ -627,6 +627,21 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void SetOwnerStatusMessage(string statusMessage, bool? success = null)
+        {
+            _packetOwnedRequestPending = false;
+            _presentationState = WindowPresentationState.Idle;
+            _presentationElapsedMs = 0;
+            _presentationDurationMs = 0;
+            _presentationUsesSharedOverlay = false;
+            _presentationResult = default;
+            _statusMessage = string.IsNullOrWhiteSpace(statusMessage)
+                ? BuildReadyStatusMessage()
+                : statusMessage;
+            _lastUpgradeSucceeded = success;
+            UpdateButtonStates();
+        }
+
         public bool TryCreatePreparedUpgradeOwnerRequest(
             out ItemUpgradeOwnerRequest request,
             out ItemUpgradeAttemptResult validationResult)
@@ -707,6 +722,7 @@ namespace HaCreator.MapSimulator.UI
             request = new ItemUpgradeOwnerRequest(
                 selection.Key,
                 selectedPart?.ItemId ?? 0,
+                selectedPart?.ClientItemToken.GetValueOrDefault() ?? 0,
                 ResolveItemName(selectedPart),
                 consumable.ItemId,
                 consumable.Name,
@@ -4039,6 +4055,7 @@ namespace HaCreator.MapSimulator.UI
             public ItemUpgradeOwnerRequest(
                 EquipSlot slot,
                 int equipItemId,
+                int equipItemToken,
                 string equipName,
                 int consumableItemId,
                 string consumableName,
@@ -4053,6 +4070,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 Slot = slot;
                 EquipItemId = equipItemId;
+                EquipItemToken = equipItemToken;
                 EquipName = string.IsNullOrWhiteSpace(equipName) ? "Equipment" : equipName;
                 ConsumableItemId = consumableItemId;
                 ConsumableName = string.IsNullOrWhiteSpace(consumableName) ? "Enhancement item" : consumableName;
@@ -4068,6 +4086,7 @@ namespace HaCreator.MapSimulator.UI
 
             public EquipSlot Slot { get; }
             public int EquipItemId { get; }
+            public int EquipItemToken { get; }
             public string EquipName { get; }
             public int ConsumableItemId { get; }
             public string ConsumableName { get; }

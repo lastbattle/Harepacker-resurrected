@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator
         private int _remoteDropPacketServerTickAnchor;
         private string _remoteDropPacketServerClockSource = "hostUtc";
         private int _remoteDropPacketServerClockFieldId;
+        private readonly System.Collections.Generic.Dictionary<int, int> _observedDropPartyActorParents = new();
 
         private ChatCommandHandler.CommandResult ApplyRemoteDropPacketCommand(int packetType, byte[] payload)
         {
@@ -145,6 +146,7 @@ namespace HaCreator.MapSimulator
             _remoteDropPacketRuntime.BindField(mapId, () =>
             {
                 _dropPool?.ClearPacketDrops();
+                ClearObservedDropPartyActorLinks();
                 if (ShouldClearRemoteDropPacketServerClockOnFieldBind(
                     mapId,
                     _remoteDropPacketServerClockSource,
@@ -281,7 +283,8 @@ namespace HaCreator.MapSimulator
                 _socialListRuntime.ClientPartyId,
                 _playerManager?.Player?.Build?.Id ?? 0,
                 _socialListRuntime.IsTrackedPartyActor,
-                IsTrackedDropPartyActor);
+                IsTrackedDropPartyActor,
+                AreObservedDropPartyActorsLinked);
         }
 
         internal static bool AreDropActorsInSameParty(
@@ -290,7 +293,8 @@ namespace HaCreator.MapSimulator
             int localPartyId,
             int localCharacterId,
             Func<int, bool> trackedPartyActorEvaluator,
-            Func<int, bool> legacyTrackedActorEvaluator)
+            Func<int, bool> legacyTrackedActorEvaluator,
+            Func<int, int, bool> observedPartyLinkEvaluator = null)
         {
             if (ownerId <= 0 || actorId <= 0)
             {
@@ -321,7 +325,81 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (observedPartyLinkEvaluator?.Invoke(ownerId, actorId) == true)
+            {
+                return true;
+            }
+
             return false;
+        }
+
+        private void RegisterObservedDropPartyActorLink(int firstActorId, int secondActorId)
+        {
+            RegisterObservedDropPartyActorLink(_observedDropPartyActorParents, firstActorId, secondActorId);
+        }
+
+        private void ClearObservedDropPartyActorLinks()
+        {
+            _observedDropPartyActorParents.Clear();
+        }
+
+        private bool AreObservedDropPartyActorsLinked(int firstActorId, int secondActorId)
+        {
+            return AreObservedDropPartyActorsLinked(_observedDropPartyActorParents, firstActorId, secondActorId);
+        }
+
+        internal static void RegisterObservedDropPartyActorLink(
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            int firstActorId,
+            int secondActorId)
+        {
+            if (actorParents == null || firstActorId <= 0 || secondActorId <= 0)
+            {
+                return;
+            }
+
+            int firstRoot = FindObservedDropPartyActorRoot(actorParents, firstActorId);
+            int secondRoot = FindObservedDropPartyActorRoot(actorParents, secondActorId);
+            if (firstRoot == secondRoot)
+            {
+                return;
+            }
+
+            actorParents[secondRoot] = firstRoot;
+        }
+
+        internal static bool AreObservedDropPartyActorsLinked(
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            int firstActorId,
+            int secondActorId)
+        {
+            if (actorParents == null || firstActorId <= 0 || secondActorId <= 0)
+            {
+                return false;
+            }
+
+            return FindObservedDropPartyActorRoot(actorParents, firstActorId)
+                == FindObservedDropPartyActorRoot(actorParents, secondActorId);
+        }
+
+        private static int FindObservedDropPartyActorRoot(
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            int actorId)
+        {
+            if (!actorParents.TryGetValue(actorId, out int parentActorId))
+            {
+                actorParents[actorId] = actorId;
+                return actorId;
+            }
+
+            if (parentActorId == actorId)
+            {
+                return actorId;
+            }
+
+            int rootActorId = FindObservedDropPartyActorRoot(actorParents, parentActorId);
+            actorParents[actorId] = rootActorId;
+            return rootActorId;
         }
 
         internal static bool ShouldSurfacePickupNotice(

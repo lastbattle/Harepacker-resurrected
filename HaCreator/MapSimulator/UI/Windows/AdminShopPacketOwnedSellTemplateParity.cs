@@ -44,6 +44,23 @@ namespace HaCreator.MapSimulator.UI
             return !requiresInventorySource || position > 0;
         }
 
+        internal static int ResolveSourceRequestCountCap(
+            bool honorConfiguredMaxRequestCount,
+            int configuredMaxRequestCount,
+            int sourceItemQuantity,
+            int selectedSlotQuantity)
+        {
+            int requestUnit = Math.Max(1, sourceItemQuantity);
+            int stackCountCap = Math.Max(1, Math.Max(0, selectedSlotQuantity) / requestUnit);
+            if (!honorConfiguredMaxRequestCount)
+            {
+                return stackCountCap;
+            }
+
+            int configuredCap = Math.Max(1, configuredMaxRequestCount);
+            return Math.Max(1, Math.Min(configuredCap, stackCountCap));
+        }
+
         internal static int SelectBestPacketOwnedCommodityMetadataSerial(
             int packetSerialNumber,
             int packetItemId,

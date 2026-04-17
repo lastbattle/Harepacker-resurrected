@@ -1463,7 +1463,7 @@ namespace HaCreator.MapSimulator.Pools
                     data.PacketHitStartTime = 0;
                     data.PacketStateEndTime = 0;
                     data.PacketAnimationEndTime = 0;
-                    data.PacketAnimationSourceState = -1;
+                    ClearPacketVisualOwnershipState(data);
                     data.PacketPendingVisualState = -1;
                     data.PacketProperEventIndex = -1;
                     data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
@@ -2353,8 +2353,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketHitStartTime = 0;
             data.PacketStateEndTime = 0;
             data.PacketAnimationEndTime = 0;
-            data.PacketAnimationSourceState = -1;
-            data.PacketHitAnimationState = -1;
+            ClearPacketVisualOwnershipState(data);
             data.PacketPendingVisualState = applyAnimationState ? -1 : state;
             data.PacketAnimationPhase = applyAnimationState
                 ? PacketReactorAnimationPhase.Idle
@@ -3613,6 +3612,17 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketHitAnimationState = -1;
         }
 
+        internal static void ClearPacketVisualOwnershipState(ReactorRuntimeData data)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            data.PacketAnimationSourceState = -1;
+            data.PacketHitAnimationState = -1;
+        }
+
         private static string BuildReactorHitSoundDescriptor(ReactorItem reactor, int sourceState)
         {
             string templateId = reactor?.ReactorInstance?.ReactorInfo?.ID;
@@ -3772,8 +3782,7 @@ namespace HaCreator.MapSimulator.Pools
                 reactor.SetAnimationState(data.VisualState, currentTick, restartIfSameState: true);
             }
 
-            data.PacketAnimationSourceState = -1;
-            data.PacketHitAnimationState = -1;
+            ClearPacketVisualOwnershipState(data);
             data.PacketStateEndTime = 0;
             data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
             data.State = ReactorState.Active;

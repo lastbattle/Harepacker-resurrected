@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.Interaction
         Notice16 = 16,
         Notice17 = 17,
         Notice18 = 18,
+        NoOp19 = 19,
         NoticeNamed = 22,
         Notice29 = 29,
         Notice37 = 37,
@@ -125,6 +126,10 @@ namespace HaCreator.MapSimulator.Interaction
         Notice34 = 34,
         Notice36 = 36,
         MemberJobLevel = 39,
+        PqRewardSelectSuccess = 40,
+        PqRewardSelectFail = 41,
+        PqRewardReceive = 42,
+        PqRewardRequestFail = 43,
         Notice44 = 44,
         NoticeOptionalMessage = 45,
         TownPortal = 46,
@@ -665,6 +670,18 @@ namespace HaCreator.MapSimulator.Interaction
                         packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x014F, kind));
                         return true;
 
+                    case SocialListClientPartyResultKind.NoOp19:
+                        packet = new SocialListClientPartyResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<SocialListClientPartyEntry>(),
+                            0,
+                            0,
+                            0,
+                            null,
+                            $"Client OnPartyResult({(byte)kind}) carried a non-roster branch and did not mutate the party list.");
+                        return true;
+
                     case SocialListClientPartyResultKind.NoticeNamed:
                     {
                         string characterName = reader.ReadMapleString16().Trim();
@@ -705,6 +722,65 @@ namespace HaCreator.MapSimulator.Interaction
                         packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), memberId, level, jobId, null, null);
                         return true;
                     }
+
+                    case SocialListClientPartyResultKind.PqRewardSelectSuccess:
+                    {
+                        int actorId = reader.ReadInt32();
+                        string actorName = reader.ReadMapleString16().Trim();
+                        int selectedRewardSlot = reader.ReadByte();
+                        string summary = string.IsNullOrWhiteSpace(actorName)
+                            ? $"Client OnPartyResult({(byte)kind}) applied PQ reward slot {selectedRewardSlot} for member #{actorId}."
+                            : $"Client OnPartyResult({(byte)kind}) applied PQ reward slot {selectedRewardSlot} for {actorName} (#{actorId}).";
+                        packet = new SocialListClientPartyResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<SocialListClientPartyEntry>(),
+                            actorId,
+                            selectedRewardSlot,
+                            0,
+                            actorName,
+                            summary);
+                        return true;
+                    }
+
+                    case SocialListClientPartyResultKind.PqRewardSelectFail:
+                    {
+                        int failureCode = reader.ReadByte();
+                        packet = new SocialListClientPartyResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<SocialListClientPartyEntry>(),
+                            0,
+                            failureCode,
+                            0,
+                            null,
+                            $"Client OnPartyResult({(byte)kind}) reported a PQ reward selection failure code {failureCode}.");
+                        return true;
+                    }
+
+                    case SocialListClientPartyResultKind.PqRewardReceive:
+                        packet = new SocialListClientPartyResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<SocialListClientPartyEntry>(),
+                            0,
+                            reader.RemainingLength,
+                            0,
+                            null,
+                            $"Client OnPartyResult({(byte)kind}) delivered a PQ reward payload ({reader.RemainingLength} byte(s)).");
+                        return true;
+
+                    case SocialListClientPartyResultKind.PqRewardRequestFail:
+                        packet = new SocialListClientPartyResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<SocialListClientPartyEntry>(),
+                            0,
+                            reader.RemainingLength,
+                            0,
+                            null,
+                            $"Client OnPartyResult({(byte)kind}) reported a PQ reward request failure payload ({reader.RemainingLength} byte(s)).");
+                        return true;
 
                     case SocialListClientPartyResultKind.Notice32:
                         packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x0FF9, kind));
@@ -1387,6 +1463,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             public bool HasRemaining => _offset < _payload.Length;
+            public int RemainingLength => _payload.Length - _offset;
 
             public byte ReadByte()
             {

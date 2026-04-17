@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClassCompetitionUrlTemplateStringPoolId = 0x11DC;
         private const int PacketOwnedClassCompetitionMaxRemotePageLines = 12;
         private const int PacketOwnedClassCompetitionMaxRemoteLadderLines = 12;
+        private const int PacketOwnedDeliveryUniqueModelessNoticeStringPoolId = 0x98;
         private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
         private const int PacketOwnedSkillLearnFailureSoundStringPoolId = 0x0508;
         private const int PacketOwnedSkillLearnMasteryBookLabelStringPoolId = 0x0F2F;
@@ -552,7 +553,10 @@ namespace HaCreator.MapSimulator
             string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.QuestDelivery);
             if (!string.IsNullOrWhiteSpace(blockingOwner))
             {
-                string message = $"{itemName} delivery was routed to the status-bar chat path because {blockingOwner} is already open.";
+                string statusBarNotice = MapleStoryStringPool.GetOrFallback(
+                    PacketOwnedDeliveryUniqueModelessNoticeStringPoolId,
+                    "Another utility dialog is already active, so quest delivery stayed on the status-bar chat path.");
+                string message = $"{statusBarNotice} Active owner: {blockingOwner}.";
                 NotifyEventAlarmOwnerActivity("packet-owned delivery quest");
                 ShowUtilityFeedbackMessage(message);
                 return message;
@@ -1095,7 +1099,7 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
             _lastClassCompetitionOpenTick = Environment.TickCount;
             bool hadNavigatedPage = _lastClassCompetitionLoggedIn && !string.IsNullOrWhiteSpace(_lastClassCompetitionUrl);
-            RefreshClassCompetitionRuntimeState(forceAuthRequest: true);
+            RefreshClassCompetitionRuntimeState(forceAuthRequest: false);
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ClassCompetition) is not UIWindowBase window)
             {
@@ -1594,20 +1598,58 @@ namespace HaCreator.MapSimulator
                 lines.Add($"NavigateUrl target: {_lastClassCompetitionUrl}");
             }
 
+            bool hasRemoteSnapshot =
+                _lastClassCompetitionRemotePageTick != int.MinValue
+                && (!string.IsNullOrWhiteSpace(_lastClassCompetitionRemoteNavigateUrl)
+                    || !string.IsNullOrWhiteSpace(_lastClassCompetitionRemotePageSource)
+                    || _lastClassCompetitionRemotePageLines.Count > 0
+                    || _lastClassCompetitionRemoteLadderLines.Count > 0);
+            if (hasRemoteSnapshot)
+            {
+                if (!string.IsNullOrWhiteSpace(_lastClassCompetitionRemoteNavigateUrl))
+                {
+                    lines.Add($"Remote NavigateUrl snapshot: {_lastClassCompetitionRemoteNavigateUrl}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(_lastClassCompetitionRemotePageSource))
+                {
+                    lines.Add($"Remote snapshot source: {_lastClassCompetitionRemotePageSource}");
+                }
+
+                lines.Add($"Remote snapshot tick: {_lastClassCompetitionRemotePageTick}");
+                for (int i = 0; i < _lastClassCompetitionRemotePageLines.Count && i < PacketOwnedClassCompetitionMaxRemotePageLines; i++)
+                {
+                    lines.Add(_lastClassCompetitionRemotePageLines[i]);
+                }
+            }
+
             if (build != null)
             {
                 lines.Add($"{build.Name}  Lv.{Math.Max(1, build.Level)}  {build.JobName}");
                 lines.Add($"Map {(_mapBoard?.MapInfo?.id ?? 0)}  Fame {build.Fame}  HP {Math.Max(0, build.HP)}/{Math.Max(1, build.MaxHP)}");
                 lines.Add($"Local ladder context: world {(build.WorldRank > 0 ? $"#{build.WorldRank}" : "local only")}  job {(build.JobRank > 0 ? $"#{build.JobRank}" : "local only")}");
                 lines.Add($"Combat seed: PAD {build.TotalAttack}  MAD {build.TotalMagicAttack}  ACC {build.TotalAccuracy}  EVA {build.TotalAvoidability}");
-                lines.AddRange(BuildClassCompetitionSeededStandingLines(build));
+                if (_lastClassCompetitionRemoteLadderLines.Count > 0)
+                {
+                    lines.Add("Remote ladder snapshot:");
+                    for (int i = 0; i < _lastClassCompetitionRemoteLadderLines.Count && i < PacketOwnedClassCompetitionMaxRemoteLadderLines; i++)
+                    {
+                        lines.Add(_lastClassCompetitionRemoteLadderLines[i]);
+                    }
+                }
+                else
+                {
+                    lines.AddRange(BuildClassCompetitionSeededStandingLines(build));
+                }
             }
             else
             {
                 lines.Add("No active player build is bound to the simulator.");
             }
 
-            lines.Add("This owner still has no live server-fed auth or ladder payload, so the first NavigateUrl and later auth refresh cadence match the client more closely while standings remain seeded from the active local build instead of a remote page response.");
+            lines.Add(hasRemoteSnapshot
+                ? "Remote class-competition snapshot rows are packet-authored into this owner, but live CWebWnd payloads and true server auth keys are still not simulated end to end."
+                : "This owner still has no live server-fed auth or ladder payload, so the first NavigateUrl and later auth refresh cadence match the client more closely while standings remain seeded from the active local build instead of a remote page response.");
 
             if (_lastClassCompetitionOpenTick != int.MinValue)
             {
@@ -1849,6 +1891,58 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedClassCompetitionRemotePagePayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryDecodePacketOwnedClassCompetitionRemotePagePayload(payload, out ClassCompetitionRemotePagePayload remotePayload, out string decodeError))
+            {
+                message = decodeError ?? "Class-competition remote-page payload could not be decoded.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            int now = Environment.TickCount;
+            if (string.Equals(remotePayload.Source, "clear", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastClassCompetitionRemotePageLines.Clear();
+                _lastClassCompetitionRemoteLadderLines.Clear();
+                _lastClassCompetitionRemoteNavigateUrl = string.Empty;
+                _lastClassCompetitionRemotePageSource = "cleared";
+                _lastClassCompetitionRemotePageTick = now;
+                message = "Cleared packet-authored class-competition remote-page snapshot state.";
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(remotePayload.AuthKey)
+                && TryNormalizeClassCompetitionAuthKey(remotePayload.AuthKey, out string normalizedAuthKey))
+            {
+                ApplyClassCompetitionAuthCache(normalizedAuthKey, "packet class-competition remote-page auth");
+            }
+
+            _lastClassCompetitionRemoteNavigateUrl = remotePayload.NavigateUrl ?? string.Empty;
+            _lastClassCompetitionRemotePageSource = string.IsNullOrWhiteSpace(remotePayload.Source)
+                ? "packet class-competition remote-page payload"
+                : remotePayload.Source.Trim();
+            _lastClassCompetitionRemotePageTick = now;
+            _lastClassCompetitionRemotePageLines.Clear();
+            _lastClassCompetitionRemotePageLines.AddRange(
+                NormalizeClassCompetitionRemoteLines(remotePayload.PageLines, PacketOwnedClassCompetitionMaxRemotePageLines));
+            _lastClassCompetitionRemoteLadderLines.Clear();
+            _lastClassCompetitionRemoteLadderLines.AddRange(
+                NormalizeClassCompetitionRemoteLines(remotePayload.LadderLines, PacketOwnedClassCompetitionMaxRemoteLadderLines));
+
+            if (!string.IsNullOrWhiteSpace(_lastClassCompetitionRemoteNavigateUrl)
+                && string.IsNullOrWhiteSpace(_lastClassCompetitionUrl))
+            {
+                _lastClassCompetitionUrl = _lastClassCompetitionRemoteNavigateUrl;
+                _lastClassCompetitionLoggedIn = true;
+                _lastClassCompetitionNavigateTick = now;
+            }
+
+            message = $"Applied packet-authored class-competition remote-page snapshot with {_lastClassCompetitionRemotePageLines.Count} page line(s) and {_lastClassCompetitionRemoteLadderLines.Count} ladder line(s).";
+            return true;
+        }
+
         private static bool TryDecodeClassCompetitionAuthKeyPayload(byte[] payload, out string authKey, out string detail)
         {
             authKey = string.Empty;
@@ -2029,6 +2123,238 @@ namespace HaCreator.MapSimulator
 
             authKey = normalized;
             return true;
+        }
+
+        internal static bool TryDecodePacketOwnedClassCompetitionRemotePagePayloadForTests(
+            byte[] payload,
+            out ClassCompetitionRemotePagePayload remotePayload,
+            out string error)
+        {
+            return TryDecodePacketOwnedClassCompetitionRemotePagePayload(payload, out remotePayload, out error);
+        }
+
+        private static bool TryDecodePacketOwnedClassCompetitionRemotePagePayload(
+            byte[] payload,
+            out ClassCompetitionRemotePagePayload remotePayload,
+            out string error)
+        {
+            remotePayload = null;
+            error = "Class-competition remote-page payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (TryDecodePacketOwnedStringPayload(payload, out string decodedText))
+            {
+                string normalizedText = decodedText.Trim();
+                if (string.Equals(normalizedText, "clear", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalizedText, "reset", StringComparison.OrdinalIgnoreCase))
+                {
+                    remotePayload = new ClassCompetitionRemotePagePayload
+                    {
+                        Source = "clear"
+                    };
+                    error = null;
+                    return true;
+                }
+
+                if (TryDecodePacketOwnedClassCompetitionRemotePageJsonPayload(normalizedText, out remotePayload))
+                {
+                    error = null;
+                    return true;
+                }
+
+                remotePayload = DecodePacketOwnedClassCompetitionRemotePageTextPayload(normalizedText);
+                if (remotePayload != null)
+                {
+                    error = null;
+                    return true;
+                }
+            }
+
+            error = "Class-competition remote-page payload did not decode as a MapleString/UTF-8 text payload with usable content.";
+            return false;
+        }
+
+        private static bool TryDecodePacketOwnedClassCompetitionRemotePageJsonPayload(
+            string text,
+            out ClassCompetitionRemotePagePayload remotePayload)
+        {
+            remotePayload = null;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(text);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    return false;
+                }
+
+                JsonElement root = document.RootElement;
+                string authKey = TryGetClassCompetitionRemoteStringProperty(root, "authKey");
+                string navigateUrl = TryGetClassCompetitionRemoteStringProperty(root, "navigateUrl")
+                    ?? TryGetClassCompetitionRemoteStringProperty(root, "url");
+                string source = TryGetClassCompetitionRemoteStringProperty(root, "source");
+                IReadOnlyList<string> pageLines = NormalizeClassCompetitionRemoteLines(
+                    TryGetClassCompetitionRemoteStringListProperty(root, "pageLines")
+                        ?? TryGetClassCompetitionRemoteStringListProperty(root, "lines"),
+                    PacketOwnedClassCompetitionMaxRemotePageLines);
+                IReadOnlyList<string> ladderLines = NormalizeClassCompetitionRemoteLines(
+                    TryGetClassCompetitionRemoteStringListProperty(root, "ladderLines")
+                        ?? TryGetClassCompetitionRemoteStringListProperty(root, "ladder"),
+                    PacketOwnedClassCompetitionMaxRemoteLadderLines);
+                if (string.IsNullOrWhiteSpace(authKey)
+                    && string.IsNullOrWhiteSpace(navigateUrl)
+                    && string.IsNullOrWhiteSpace(source)
+                    && pageLines.Count == 0
+                    && ladderLines.Count == 0)
+                {
+                    return false;
+                }
+
+                remotePayload = new ClassCompetitionRemotePagePayload
+                {
+                    AuthKey = authKey ?? string.Empty,
+                    NavigateUrl = navigateUrl ?? string.Empty,
+                    Source = source ?? string.Empty,
+                    PageLines = pageLines,
+                    LadderLines = ladderLines
+                };
+                return true;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        private static ClassCompetitionRemotePagePayload DecodePacketOwnedClassCompetitionRemotePageTextPayload(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            string authKey = string.Empty;
+            string navigateUrl = string.Empty;
+            string source = string.Empty;
+            var pageLines = new List<string>();
+            var ladderLines = new List<string>();
+            string[] lines = text.Split(
+                new[] { "\r\n", "\n" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (line.StartsWith("auth=", StringComparison.OrdinalIgnoreCase))
+                {
+                    authKey = line["auth=".Length..].Trim();
+                    continue;
+                }
+
+                if (line.StartsWith("url=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("navigate=", StringComparison.OrdinalIgnoreCase))
+                {
+                    int separator = line.IndexOf('=');
+                    if (separator >= 0 && separator < line.Length - 1)
+                    {
+                        navigateUrl = line[(separator + 1)..].Trim();
+                    }
+
+                    continue;
+                }
+
+                if (line.StartsWith("source=", StringComparison.OrdinalIgnoreCase))
+                {
+                    source = line["source=".Length..].Trim();
+                    continue;
+                }
+
+                if (line.StartsWith("ladder:", StringComparison.OrdinalIgnoreCase))
+                {
+                    ladderLines.Add(line["ladder:".Length..].Trim());
+                    continue;
+                }
+
+                pageLines.Add(line);
+            }
+
+            IReadOnlyList<string> normalizedPageLines = NormalizeClassCompetitionRemoteLines(pageLines, PacketOwnedClassCompetitionMaxRemotePageLines);
+            IReadOnlyList<string> normalizedLadderLines = NormalizeClassCompetitionRemoteLines(ladderLines, PacketOwnedClassCompetitionMaxRemoteLadderLines);
+            if (string.IsNullOrWhiteSpace(authKey)
+                && string.IsNullOrWhiteSpace(navigateUrl)
+                && string.IsNullOrWhiteSpace(source)
+                && normalizedPageLines.Count == 0
+                && normalizedLadderLines.Count == 0)
+            {
+                return null;
+            }
+
+            return new ClassCompetitionRemotePagePayload
+            {
+                AuthKey = authKey,
+                NavigateUrl = navigateUrl,
+                Source = source,
+                PageLines = normalizedPageLines,
+                LadderLines = normalizedLadderLines
+            };
+        }
+
+        private static string TryGetClassCompetitionRemoteStringProperty(JsonElement root, string propertyName)
+        {
+            if (root.TryGetProperty(propertyName, out JsonElement value)
+                && value.ValueKind == JsonValueKind.String)
+            {
+                return value.GetString()?.Trim();
+            }
+
+            return null;
+        }
+
+        private static IReadOnlyList<string> TryGetClassCompetitionRemoteStringListProperty(JsonElement root, string propertyName)
+        {
+            if (!root.TryGetProperty(propertyName, out JsonElement listElement)
+                || listElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var lines = new List<string>();
+            foreach (JsonElement item in listElement.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    string value = item.GetString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        lines.Add(value.Trim());
+                    }
+                }
+            }
+
+            return lines;
+        }
+
+        private static IReadOnlyList<string> NormalizeClassCompetitionRemoteLines(
+            IEnumerable<string> lines,
+            int maxCount)
+        {
+            if (lines == null || maxCount <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            return lines
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => line.Trim())
+                .Where(line => line.Length > 0)
+                .Take(maxCount)
+                .ToArray();
         }
 
         private string BuildClassCompetitionAuthKey(int issuedAtTick)
@@ -2928,6 +3254,9 @@ namespace HaCreator.MapSimulator
                 case PacketOwnedClassCompetitionAuthRequestOpcode:
                     return TryApplyPacketOwnedClassCompetitionAuthPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.ClassCompetitionRemotePagePacketType:
+                    return TryApplyPacketOwnedClassCompetitionRemotePagePayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.MakerResultClientPacketType:
                     return TryApplyPacketOwnedMakerResultPayload(payload, out message);
 
@@ -2956,7 +3285,7 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedSg88ManualAttackConfirmPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.InventoryOperationClientPacketType:
-                    return TryApplyPacketOwnedInventoryOperationForMechanicPayload(payload, out message);
+                    return TryApplyPacketOwnedInventoryOperationAuthorityPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.MechanicEquipStatePacketType:
                     return TryApplyPacketOwnedMechanicEquipPayload(payload, out message);
@@ -3139,9 +3468,10 @@ namespace HaCreator.MapSimulator
             }
 
             StampPacketOwnedUtilityRequestState();
-            string noticeText = PacketOwnedRewardResultRuntime.FormatMesoGiveSucceededText(mesoAmount);
+            uint normalizedMesoAmount = mesoAmount < 0 ? 0u : (uint)mesoAmount;
+            string noticeText = PacketOwnedRewardResultRuntime.FormatMesoGiveSucceededText(normalizedMesoAmount);
             ShowPacketOwnedRewardResultNotice(noticeText);
-            message = $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
+            message = $"Applied packet-owned meso-give success for {normalizedMesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
             return true;
         }
 
@@ -5182,6 +5512,31 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private string TryHandleMessengerLeaveActionThroughClientSeam()
+        {
+            return TryMirrorMessengerLeaveClientRequest(out string mirroredMessage)
+                ? mirroredMessage
+                : _messengerRuntime.LeaveMessenger();
+        }
+
+        private MessengerDeleteResult TryHandleMessengerCloseRequestThroughClientSeam(bool fromExitPrompt)
+        {
+            if (TryMirrorMessengerLeaveClientRequest(out string mirroredMessage))
+            {
+                if (fromExitPrompt)
+                {
+                    _messengerRuntime.CancelExitPrompt();
+                }
+
+                MessengerSnapshot snapshot = _messengerRuntime.BuildSnapshot(Environment.TickCount);
+                return new MessengerDeleteResult(mirroredMessage, snapshot.ShouldCloseWindow);
+            }
+
+            return fromExitPrompt
+                ? _messengerRuntime.ConfirmExitPrompt()
+                : _messengerRuntime.TryDeleteMessenger();
+        }
+
         private bool TryMirrorMessengerClaimClientRequest(string claimArguments, out string message, bool queueOnly = false)
         {
             message = null;
@@ -5674,9 +6029,21 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                timeValue = reader.BaseStream.Position <= reader.BaseStream.Length - sizeof(int)
-                    ? reader.ReadInt32()
-                    : 0;
+                if (reader.BaseStream.Position <= reader.BaseStream.Length - sizeof(uint))
+                {
+                    uint decodedTimeValue = reader.ReadUInt32();
+                    if (decodedTimeValue > int.MaxValue)
+                    {
+                        message = "Radio-schedule client payload timeValue exceeded the supported signed playback range.";
+                        return false;
+                    }
+
+                    timeValue = (int)decodedTimeValue;
+                }
+                else
+                {
+                    timeValue = 0;
+                }
                 if (requireExactClientPayload && reader.BaseStream.Position != reader.BaseStream.Length)
                 {
                     message = "Radio-schedule client payload contained trailing bytes after DecodeStr and Decode4 timeValue.";
@@ -6699,16 +7066,16 @@ namespace HaCreator.MapSimulator
                 return normalizedFallback;
             }
 
-            if (propertyContainer["Name"] is WzStringProperty clientNameProperty
-                && !string.IsNullOrWhiteSpace(clientNameProperty.Value))
-            {
-                return clientNameProperty.Value.Trim();
-            }
-
             if (propertyContainer["name"] is WzStringProperty nameProperty
                 && !string.IsNullOrWhiteSpace(nameProperty.Value))
             {
                 return nameProperty.Value.Trim();
+            }
+
+            if (propertyContainer["Name"] is WzStringProperty clientNameProperty
+                && !string.IsNullOrWhiteSpace(clientNameProperty.Value))
+            {
+                return clientNameProperty.Value.Trim();
             }
 
             return normalizedFallback;
@@ -11900,15 +12267,32 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryApplyPacketOwnedInventoryOperationForMechanicPayload(byte[] payload, out string message)
+        private bool TryApplyPacketOwnedInventoryOperationAuthorityPayload(byte[] payload, out string message)
         {
-            if (!TryQueueMechanicAuthorityResultFromInventoryOperationPayload(payload, out message))
+            if (TryQueueCharacterAuthorityResultFromInventoryOperationPayload(payload, out message))
             {
-                return false;
+                StampPacketOwnedUtilityRequestState();
+                return true;
             }
 
-            StampPacketOwnedUtilityRequestState();
-            return true;
+            string characterRejectReason = message;
+            if (TryQueueMechanicAuthorityResultFromInventoryOperationPayload(payload, out message))
+            {
+                StampPacketOwnedUtilityRequestState();
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(characterRejectReason)
+                && !string.IsNullOrWhiteSpace(message))
+            {
+                message = $"{characterRejectReason} {message}";
+            }
+            else if (!string.IsNullOrWhiteSpace(characterRejectReason))
+            {
+                message = characterRejectReason;
+            }
+
+            return false;
         }
 
         private bool TryResolvePacketOwnedTutorDisplayState(
@@ -13167,7 +13551,7 @@ namespace HaCreator.MapSimulator
             hasOwnerState = false;
             ownerState = new PacketOwnedRankingOwnerStateSnapshot();
             summary = string.Empty;
-            message = "Ranking-page binary payload did not match the owner-row envelope.";
+            message = "Ranking-page binary payload did not match the owner-row envelope or compact row payload.";
             if (payload == null || payload.Length < 8)
             {
                 return false;
@@ -13182,7 +13566,14 @@ namespace HaCreator.MapSimulator
                     || reader.ReadByte() != (byte)'K'
                     || reader.ReadByte() != 1)
                 {
-                    return false;
+                    return TryDecodePacketOwnedRankingPageCompactBinaryPayload(
+                        payload,
+                        out clearRequested,
+                        out entries,
+                        out hasOwnerState,
+                        out ownerState,
+                        out summary,
+                        out message);
                 }
 
                 byte flags = reader.ReadByte();
@@ -13265,11 +13656,134 @@ namespace HaCreator.MapSimulator
             }
             catch
             {
+                return TryDecodePacketOwnedRankingPageCompactBinaryPayload(
+                    payload,
+                    out clearRequested,
+                    out entries,
+                    out hasOwnerState,
+                    out ownerState,
+                    out summary,
+                    out message);
+            }
+        }
+
+        private static bool TryDecodePacketOwnedRankingPageCompactBinaryPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out RankingEntrySnapshot[] entries,
+            out bool hasOwnerState,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            entries = Array.Empty<RankingEntrySnapshot>();
+            hasOwnerState = false;
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+            summary = string.Empty;
+            message = "Ranking-page binary payload did not match the compact row payload.";
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                int rowCount = reader.ReadUInt16();
+                if (rowCount < 0 || rowCount > 100)
+                {
+                    return false;
+                }
+
+                List<RankingEntrySnapshot> parsedEntries = new(rowCount);
+                for (int i = 0; i < rowCount; i++)
+                {
+                    string label = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string value = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string detail = ReadPacketOwnedMapleString(reader)?.Trim();
+                    if (!string.IsNullOrWhiteSpace(label))
+                    {
+                        parsedEntries.Add(CreatePacketOwnedRankingEntry(label, value, detail));
+                    }
+                }
+
+                if (reader.BaseStream.Position < reader.BaseStream.Length)
+                {
+                    byte flags = reader.ReadByte();
+                    clearRequested = (flags & 0x1) != 0;
+                    bool includesOwnerState = (flags & 0x2) != 0;
+                    if ((flags & 0xFC) != 0)
+                    {
+                        return false;
+                    }
+
+                    if (includesOwnerState)
+                    {
+                        string serverHost = ReadPacketOwnedMapleString(reader)?.Trim();
+                        int templateId = reader.ReadInt32();
+                        int worldId = reader.ReadInt32();
+                        int characterId = reader.ReadInt32();
+                        bool isLoading = reader.ReadByte() != 0;
+                        string navigateUrl = string.Empty;
+                        string navigationCaption = string.Empty;
+                        string navigationHostText = string.Empty;
+                        string navigationRequestText = string.Empty;
+                        if (!string.IsNullOrWhiteSpace(serverHost))
+                        {
+                            navigateUrl = ProgressionUtilityParityRules.ResolveRankingLandingUrl(
+                                serverHost,
+                                templateId,
+                                worldId,
+                                characterId,
+                                out _);
+                            navigationCaption = ProgressionUtilityParityRules.FormatRankingLandingTemplateSeed(templateId, out _);
+                            navigationHostText = $"get_server_string_0 => {serverHost}";
+                            navigationRequestText = ProgressionUtilityParityRules.FormatRankingRequestParameters(worldId, characterId);
+                        }
+
+                        ownerState = new PacketOwnedRankingOwnerStateSnapshot
+                        {
+                            NavigationCaption = navigationCaption,
+                            NavigationSeedText = string.IsNullOrWhiteSpace(navigateUrl) ? string.Empty : $"NavigateUrl => {navigateUrl}",
+                            NavigateUrl = navigateUrl,
+                            NavigationHostText = navigationHostText,
+                            NavigationRequestText = navigationRequestText,
+                            NavigationStateText = isLoading
+                                ? "Packet-authored compact binary CWebWnd loading state remains active before NavigateUrl completes."
+                                : string.IsNullOrWhiteSpace(navigateUrl)
+                                    ? string.Empty
+                                    : "Packet-authored compact binary CWebWnd owner resolved the ranking landing request.",
+                            ServerHost = serverHost,
+                            TemplateId = templateId,
+                            WorldId = worldId,
+                            CharacterId = characterId,
+                            IsLoading = isLoading
+                        };
+                        hasOwnerState = ownerState.HasAnyState;
+                    }
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                entries = parsedEntries.ToArray();
+                summary = clearRequested
+                    ? "Cleared packet-authored compact binary CUIRanking page rows."
+                    : $"Applied packet-authored compact binary CUIRanking page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
+                message = summary;
+                return clearRequested || entries.Length > 0 || hasOwnerState;
+            }
+            catch
+            {
                 entries = Array.Empty<RankingEntrySnapshot>();
                 hasOwnerState = false;
                 ownerState = new PacketOwnedRankingOwnerStateSnapshot();
                 summary = string.Empty;
-                message = "Ranking-page binary payload did not match the owner-row envelope.";
+                message = "Ranking-page binary payload did not match the compact row payload.";
                 return false;
             }
         }
@@ -13514,7 +14028,7 @@ namespace HaCreator.MapSimulator
             replaceAlarmLines = true;
             alarmLines = Array.Empty<EventAlarmLineSnapshot>();
             summary = string.Empty;
-            message = "Event-calendar binary payload did not match the owner-row envelope.";
+            message = "Event-calendar binary payload did not match the owner-row envelope or compact row payload.";
             if (payload == null || payload.Length < 8)
             {
                 return false;
@@ -13528,7 +14042,16 @@ namespace HaCreator.MapSimulator
                     || reader.ReadByte() != (byte)'V'
                     || reader.ReadByte() != (byte)'C')
                 {
-                    return false;
+                    return TryDecodePacketOwnedEventCalendarCompactBinaryPayload(
+                        payload,
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines,
+                        out summary,
+                        out message);
                 }
 
                 byte version = reader.ReadByte();
@@ -13634,11 +14157,155 @@ namespace HaCreator.MapSimulator
             }
             catch
             {
+                return TryDecodePacketOwnedEventCalendarCompactBinaryPayload(
+                    payload,
+                    out clearRequested,
+                    out replaceExistingEntries,
+                    out entries,
+                    out hasAlarmLines,
+                    out replaceAlarmLines,
+                    out alarmLines,
+                    out summary,
+                    out message);
+            }
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactBinaryPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            replaceExistingEntries = true;
+            entries = Array.Empty<EventEntrySnapshot>();
+            hasAlarmLines = false;
+            replaceAlarmLines = true;
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            summary = string.Empty;
+            message = "Event-calendar binary payload did not match the compact row payload.";
+            if (payload == null || payload.Length < 4)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                int rowCount = reader.ReadUInt16();
+                if (rowCount < 0 || rowCount > 100)
+                {
+                    return false;
+                }
+
+                byte flags = reader.ReadByte();
+                clearRequested = (flags & 0x1) != 0;
+                replaceExistingEntries = (flags & 0x2) != 0;
+                bool includesAlarmLines = (flags & 0x4) != 0;
+                replaceAlarmLines = (flags & 0x8) != 0;
+                bool includesInlineAlarmText = (flags & 0x10) != 0;
+                if ((flags & 0xE0) != 0)
+                {
+                    return false;
+                }
+
+                List<EventEntrySnapshot> parsedEntries = new(rowCount);
+                for (int i = 0; i < rowCount; i++)
+                {
+                    int year = reader.ReadUInt16();
+                    int month = reader.ReadByte();
+                    int day = reader.ReadByte();
+                    EventEntryStatus status = DecodePacketOwnedEventCalendarBinaryStatus(reader.ReadByte());
+                    string title = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string detail = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string statusText = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string alarmText = includesInlineAlarmText
+                        ? ReadPacketOwnedMapleString(reader)?.Trim()
+                        : string.Empty;
+                    if (!TryCreatePacketOwnedEventCalendarBinaryDate(year, month, day, out DateTime scheduledAt)
+                        || string.IsNullOrWhiteSpace(title))
+                    {
+                        continue;
+                    }
+
+                    parsedEntries.Add(CreatePacketOwnedEventCalendarEntry(
+                        scheduledAt,
+                        title,
+                        detail,
+                        status,
+                        string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText,
+                        int.MinValue,
+                        ResolvePacketOwnedEventEntrySortPriority(status),
+                        parsedEntries.Count,
+                        alarmText: alarmText));
+                }
+
+                if (includesAlarmLines)
+                {
+                    int lineCount = reader.ReadUInt16();
+                    if (lineCount < 0 || lineCount > EventAlarmOwnerMaxVisibleLines)
+                    {
+                        return false;
+                    }
+
+                    List<EventAlarmLineSnapshot> parsedLines = new(lineCount);
+                    for (int i = 0; i < lineCount; i++)
+                    {
+                        string text = ReadPacketOwnedMapleString(reader)?.Trim();
+                        int left = reader.ReadInt16();
+                        int top = reader.ReadInt16();
+                        byte lineFlags = reader.ReadByte();
+                        int colorArgb = reader.ReadInt32();
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            continue;
+                        }
+
+                        parsedLines.Add(new EventAlarmLineSnapshot
+                        {
+                            Text = text,
+                            Left = left,
+                            Top = top,
+                            IsHighlighted = (lineFlags & 0x1) != 0,
+                            TextColorArgb = colorArgb == 0 ? null : colorArgb
+                        });
+                    }
+
+                    alarmLines = parsedLines.ToArray();
+                    hasAlarmLines = alarmLines.Length > 0;
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                entries = parsedEntries.ToArray();
+                if (!clearRequested && !hasAlarmLines && entries.Length > 0)
+                {
+                    alarmLines = BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+                    hasAlarmLines = alarmLines.Length > 0;
+                }
+
+                summary = clearRequested
+                    ? "Cleared packet-authored compact binary event-calendar entries."
+                    : $"Applied packet-authored compact binary event-calendar payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s).";
+                message = summary;
+                return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
+            }
+            catch
+            {
                 entries = Array.Empty<EventEntrySnapshot>();
                 alarmLines = Array.Empty<EventAlarmLineSnapshot>();
                 hasAlarmLines = false;
                 summary = string.Empty;
-                message = "Event-calendar binary payload did not match the owner-row envelope.";
+                message = "Event-calendar binary payload did not match the compact row payload.";
                 return false;
             }
         }
@@ -15515,6 +16182,13 @@ namespace HaCreator.MapSimulator
                     break;
                 case "classcompetition":
                     applied = TryApplyPacketOwnedClassCompetitionPagePayload(payload, out message);
+                    break;
+                case "classcompetitionpage":
+                case "classcompetitionweb":
+                case "classcompetitionremote":
+                case "classcompetitionladder":
+                case "classpagepayload":
+                    applied = TryApplyPacketOwnedClassCompetitionRemotePagePayload(payload, out message);
                     break;
                 case "classcompetitionauth":
                 case "classcompetitionkey":

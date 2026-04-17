@@ -268,6 +268,7 @@ namespace HaCreator.MapSimulator.Companions
             _actionLayerZ = ResolveClientDragonActionLayerZ(owner.GetCurrentLayerZ(currentTime));
             bool suppressedForMap = ShouldSuppressForCurrentMap();
             bool suppressedForMount = ShouldSuppressForCurrentMount(owner);
+            bool ownerUpdateVisible = ResolveClientOwnerUpdateVisibility(owner?.IsAlive == true, suppressedForMap);
             _isSuppressed = suppressedForMap || suppressedForMount;
             ApplyQuestInfoState(_questInfoStateProvider?.Invoke());
 
@@ -330,7 +331,7 @@ namespace HaCreator.MapSimulator.Companions
             OwnerPhaseContext ownerPhaseContext = _ownerPhaseContextProvider?.Invoke() ?? OwnerPhaseContext.NoLocalUser;
             _actionLayerColor = ResolveClientActionLayerColorAfterOwnerUpdate(
                 ResolveClientActionLayerColor(Color.White, _alpha, null),
-                ownerUpdateVisible: !suppressedForMap,
+                ownerUpdateVisible: ownerUpdateVisible,
                 hasLocalUser: ownerPhaseContext.HasLocalUser,
                 ownerMatchesLocalPhase: ownerPhaseContext.OwnerMatchesLocalPhase,
                 ownerPhaseAlpha: ownerPhaseContext.PhaseAlpha,
@@ -1331,6 +1332,11 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return ResolveClientActionLayerColorCap(currentColor, ownerPhaseAlpha);
+        }
+
+        internal static bool ResolveClientOwnerUpdateVisibility(bool ownerUpdated, bool suppressedForMap)
+        {
+            return ownerUpdated && !suppressedForMap;
         }
 
         private void UpdateAuxiliaryLayers(PlayerCharacter owner, int currentTime)

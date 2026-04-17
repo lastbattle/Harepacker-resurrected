@@ -1048,7 +1048,8 @@ namespace HaCreator.MapSimulator
 
         internal static bool IsCharacterEquipmentAuthorityPacketType(int packetType)
         {
-            return packetType == LocalUtilityPacketInboxManager.CharacterEquipStatePacketType;
+            return packetType == LocalUtilityPacketInboxManager.CharacterEquipStatePacketType
+                   || packetType == CharacterEquipmentPacketParity.ClientInventoryOperationPacketType;
         }
 
         internal static bool TryValidateCharacterEquipmentAuthorityPacketContext(
@@ -1798,6 +1799,61 @@ namespace HaCreator.MapSimulator
                     pendingEnvelope.Request.RequestId,
                     pendingEnvelope.Request.RequestedAtTick,
                     AuthorityResultKind: MechanicEquipAuthorityResultKind.LocalRequestAccept),
+                out message);
+        }
+
+        private bool TryQueueCharacterAuthorityResultFromInventoryOperationPayload(
+            byte[] payload,
+            out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "Inventory-operation payload is empty.";
+                return false;
+            }
+
+            PendingEquipmentChangeEnvelope pendingEnvelope = null;
+            foreach (PendingEquipmentChangeEnvelope envelope in _pendingEquipmentChangeRequests.Values)
+            {
+                if (envelope?.Request == null
+                    || !envelope.AwaitingCharacterPacketAuthority
+                    || !IsCharacterEquipmentRequest(envelope.Request))
+                {
+                    continue;
+                }
+
+                pendingEnvelope = envelope;
+                break;
+            }
+
+            if (pendingEnvelope?.Request == null)
+            {
+                message = "Inventory-operation payload did not match an active character equipment packet-owned request.";
+                return false;
+            }
+
+            if (!CharacterEquipmentPacketParity.TryRecognizeClientInventoryOperationCompletion(
+                    pendingEnvelope.Request,
+                    payload,
+                    out string rejectReason))
+            {
+                message = rejectReason;
+                return false;
+            }
+
+            return TryQueuePacketOwnedCharacterAuthorityResult(
+                new CharacterEquipmentAuthorityPayload(
+                    CharacterEquipmentAuthorityPayloadMode.AuthorityResult,
+                    pendingEnvelope.Request.RequestId,
+                    pendingEnvelope.Request.RequestedAtTick,
+                    OwnerKind: pendingEnvelope.Request.OwnerKind,
+                    OwnerSessionId: pendingEnvelope.Request.OwnerSessionId,
+                    ExpectedCharacterId: pendingEnvelope.Request.ExpectedCharacterId,
+                    ResultKind: CharacterEquipmentAuthorityResultKind.LocalRequestAccept,
+                    AuthorityPacketType: CharacterEquipmentPacketParity.ClientInventoryOperationPacketType,
+                    HasResultRequestContext: true,
+                    HasOwnerSessionContext: true),
                 out message);
         }
 

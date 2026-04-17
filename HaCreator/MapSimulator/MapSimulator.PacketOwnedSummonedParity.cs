@@ -340,7 +340,7 @@ namespace HaCreator.MapSimulator
             return routedCount;
         }
 
-        internal static bool TryRouteLocalPacketOwnedSelfDestructAttackToRuntime(
+        internal static bool TryRoutePacketOwnedSelfDestructAttackToRuntime(
             PacketOwnedSelfDestructAttackRequest request,
             Func<PacketOwnedSelfDestructAttackRequest, bool> tryApplyPacketOwnedSelfDestructAttack)
         {
@@ -366,6 +366,15 @@ namespace HaCreator.MapSimulator
                 TargetMobIds = resolvedTargetMobIds
             };
             return tryApplyPacketOwnedSelfDestructAttack(normalizedRequest);
+        }
+
+        internal static bool TryRouteLocalPacketOwnedSelfDestructAttackToRuntime(
+            PacketOwnedSelfDestructAttackRequest request,
+            Func<PacketOwnedSelfDestructAttackRequest, bool> tryApplyPacketOwnedSelfDestructAttack)
+        {
+            return TryRoutePacketOwnedSelfDestructAttackToRuntime(
+                request,
+                tryApplyPacketOwnedSelfDestructAttack);
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedSummonedCommand(string[] args)

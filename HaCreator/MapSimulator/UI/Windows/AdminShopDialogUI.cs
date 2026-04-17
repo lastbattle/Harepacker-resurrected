@@ -1625,6 +1625,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_packetOwnedAdminShopSession.IsActive)
             {
+                RecordPacketOwnedAdminShopOwnerSurfaceShown();
                 _footerMessage = BuildPacketOwnedAdminShopStateSummary();
                 UpdateRowButtons();
                 UpdateActionButtonStates();

@@ -962,8 +962,8 @@ namespace HaCreator.MapSimulator.UI
 
             int lineWidth = MeasureCollectionTextWidth(line, styleIndex, measureTextWidth);
             return alignment == CollectionBookTextAlignment.Center
-                ? left + Math.Max(0, (width - lineWidth) / 2)
-                : left + Math.Max(0, width - lineWidth);
+                ? left + ((width - lineWidth) / 2)
+                : left + (width - lineWidth);
         }
 
         private static int MeasureCollectionTextWidth(string text, int styleIndex, Func<string, int, float> measureTextWidth = null)

@@ -13,6 +13,12 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0B02] = "%d",
             [0x0B0C] = "%d:%02d",
             [0x1A15] = "%d",
+            // Recovered from MapleStory.exe v95 `CMob::AngerGaugeFullChargeEffect`.
+            // Keep the mob-template and anger-gauge effect ids explicit here so the
+            // owner seam can keep formatting `Mob/%07d.img/AngerGaugeEffect` from the
+            // client StringPool ids even when generated-table ordering drifts.
+            [0x03CE] = "Mob/%07d.img",
+            [0x0C2F] = "AngerGaugeEffect",
             // Recovered from MapleStory.exe v95 `CWvsContext::OnDropPickUpMessage`.
             // The generated table drifts for several pickup-notice ids, so pin the
             // verified screen/chat strings here to keep pickup notice formatting on the
@@ -124,6 +130,21 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0BB9] = "Will you delete this map from the\r\nteleport list?\r\n[%s]",
             [0x0BBA] = "Will you teleport to this map?\r\n[%s]",
             [0x0BD3] = "You cannot go to that place.",
+            // Recovered from MapleStory.exe v95 `CField::OnTransferFieldReqIgnored`
+            // (`0x52f3b0`) and `CField::OnTransferChannelReqIgnored` (`0x52f5f0`).
+            // The generated table drifts heavily in these ranges in this workspace,
+            // so pin the packet-owned transfer ignored reason families explicitly.
+            [0x0181] = "The portal is closed for now.",
+            [0x0BD4] = "This map cannot be entered right now.",
+            [0x0BEF] = "The transfer request was ignored by the client warning path.",
+            [0x0D30] = "Another channel transfer is already pending.",
+            [0x0D31] = "The selected channel is unavailable.",
+            [0x1299] = "The current field blocks channel change.",
+            [0x12DA] = "The selected channel rejected the transfer.",
+            [0x12DC] = "Channel change is unavailable right now.",
+            [0x155B] = "The current field rules block map transfer right now.",
+            [0x168B] = "The transfer portal is not ready yet.",
+            [0x1A83] = "The requested field transfer is unavailable.",
             // Recovered from MapleStory.exe v95 StringPool::ms_aString via StringPool::GetString
             // using ms_aKey (0xB98830). These ids are radio-owner literals that were still null
             // in the generated table for this workspace, but the simulator now needs the exact
@@ -356,6 +377,10 @@ namespace HaCreator.MapSimulator.Interaction
             // HUD, timerboard, key animation, gauge, and result-owner surfaces stay on the
             // client-backed resource paths.
             [0x14EC] = "killing/clear",
+            // Recovered from MapleStory.exe v95 `CWvsContext::OnSessionValue`. The cooldown
+            // animation-displayer owner branch compares this key before dispatching
+            // `CAnimationDisplayer::Effect_Cool`.
+            [0x14F1] = "massacre_cool",
             [0x14EE] = "Map/Obj/etc.img/killing/backgrnd",
             [0x1510] = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/close",
             [0x1511] = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/ing",

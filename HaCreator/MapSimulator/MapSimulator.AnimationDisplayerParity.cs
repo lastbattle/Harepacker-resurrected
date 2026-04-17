@@ -36,6 +36,8 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerVioletCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoViolet0";
         private const string AnimationDisplayerCatchEffectBaseUol = "Effect/BasicEff.img/Catch";
         private const string AnimationDisplayerCoolEffectUol = "Effect/BasicEff.img/CoolHit/cool";
+        private const int AnimationDisplayerSessionValueCoolKeyStringPoolId = 0x14F1;
+        private const string AnimationDisplayerSessionValueCoolFallbackKey = "massacre_cool";
         private const int AnimationDisplayerFallingFallbackDurationMs = 1000;
         private const int AnimationDisplayerExplosionFallbackIntervalMs = 100;
         private const int AnimationDisplayerExplosionFallbackCount = 1;
@@ -119,6 +121,7 @@ namespace HaCreator.MapSimulator
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
+        private int _animationDisplayerSessionValueCoolRank;
         private int _packetOwnedAnimationDisplayerFollowDriverId;
 
         internal enum AnimationDisplayerTransientEffectKind
@@ -527,6 +530,7 @@ namespace HaCreator.MapSimulator
             ClearAnimationDisplayerFollowAnimations();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
             _animationDisplayerLocalQuestDeliveryItemId = 0;
+            _animationDisplayerSessionValueCoolRank = 0;
             _packetOwnedAnimationDisplayerFollowDriverId = 0;
             ResetAnimationDisplayerLocalFadeLayer();
         }
@@ -795,6 +799,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!DamageNumberRenderer.IsSupportedColorType(colorType))
+            {
+                return;
+            }
+
             string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
             if (!string.Equals(resolvedSpecialTextName, "Miss", StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(resolvedSpecialTextName, "guard", StringComparison.OrdinalIgnoreCase)
@@ -826,6 +835,12 @@ namespace HaCreator.MapSimulator
             if (ownerCharacterId <= 0 || getPosition == null)
             {
                 message = "Combat-feedback animation owner is missing.";
+                return false;
+            }
+
+            if (!DamageNumberRenderer.IsSupportedColorType(colorType))
+            {
+                message = $"Unsupported combat-feedback color type {(int)colorType}.";
                 return false;
             }
 
@@ -984,6 +999,111 @@ namespace HaCreator.MapSimulator
                 out _);
         }
 
+        private void HandleAnimationDisplayerCatchRegistrationRequested(
+            SkillManager.AnimationDisplayerCatchRegistrationRequest request)
+        {
+            if (_animationEffects == null || request.TargetMobId <= 0)
+            {
+                return;
+            }
+
+            MobItem target = _mobPool?.GetMob(request.TargetMobId);
+            if (target == null)
+            {
+                return;
+            }
+
+            _ = TryRegisterAnimationDisplayerCatch(
+                request.Success,
+                request.TargetMobId,
+                () => target.GetDamageNumberAnchor(verticalPadding: 0),
+                request.RequestedAt,
+                out _);
+        }
+
+        private bool TryApplyAnimationDisplayerSessionValueCoolOwner(
+            string key,
+            string value,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string coolKey = MapleStoryStringPool.GetOrFallback(
+                AnimationDisplayerSessionValueCoolKeyStringPoolId,
+                AnimationDisplayerSessionValueCoolFallbackKey);
+            int previousCoolRank = _animationDisplayerSessionValueCoolRank;
+            if (string.Equals(key.Trim(), coolKey.Trim(), StringComparison.Ordinal)
+                && int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int observedCoolRank))
+            {
+                _animationDisplayerSessionValueCoolRank = observedCoolRank;
+            }
+
+            if (!ShouldRegisterAnimationDisplayerSessionValueCool(
+                    key,
+                    value,
+                    previousCoolRank,
+                    coolKey,
+                    out int currentCoolRank))
+            {
+                return false;
+            }
+
+            if (!TryResolveAnimationDisplayerOwner(
+                    "local",
+                    out int ownerCharacterId,
+                    out Func<Vector2> getPosition,
+                    out _))
+            {
+                return false;
+            }
+
+            bool registered = TryRegisterAnimationDisplayerCool(
+                ownerCharacterId,
+                getPosition,
+                currentTime,
+                out string registrationMessage);
+            if (!registered)
+            {
+                return false;
+            }
+
+            message = $"{registrationMessage} session={key} rank={currentCoolRank}";
+            return true;
+        }
+
+        internal static bool ShouldRegisterAnimationDisplayerSessionValueCool(
+            string key,
+            string value,
+            int previousCoolRank,
+            string expectedKey,
+            out int currentCoolRank)
+        {
+            currentCoolRank = previousCoolRank;
+            if (string.IsNullOrWhiteSpace(key)
+                || string.IsNullOrWhiteSpace(value)
+                || string.IsNullOrWhiteSpace(expectedKey))
+            {
+                return false;
+            }
+
+            if (!string.Equals(key.Trim(), expectedKey.Trim(), StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out currentCoolRank))
+            {
+                return false;
+            }
+
+            return currentCoolRank > previousCoolRank;
+        }
+
         private void HandleAnimationDisplayerMobProjectileRegistration(
             MobAttackSystem.AnimationDisplayerProjectileRegistrationRequest request)
         {
@@ -1031,7 +1151,21 @@ namespace HaCreator.MapSimulator
             }
 
             string ownerName = isMobSwallowOwner ? "mob-swallow" : "mob-bullet";
-            message = $"Resolved {ownerName} animation-displayer owner frames from {resolvedEffectUol}.";
+            Vector2 fallbackPosition = request.GetPosition();
+            Func<bool> getFlip = request.GetFacingRight == null
+                ? null
+                : () => !request.GetFacingRight();
+            bool fallbackFlip = request.GetFacingRight != null && !request.GetFacingRight();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                request.GetPosition,
+                getFlip,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip,
+                request.CurrentTime);
+
+            message = $"Registered {ownerName} animation-displayer owner frames from {resolvedEffectUol}.";
             return true;
         }
 
@@ -1353,7 +1487,14 @@ namespace HaCreator.MapSimulator
                 ?? state?.OverlaySecondaryAnimation
                 ?? state?.UnderFaceAnimation
                 ?? state?.UnderFaceSecondaryAnimation);
-            endFrames = null;
+            endFrames = BuildAnimationDisplayerFramesFromSkillAnimation(
+                state?.Skill?.AvatarOverlayFinishEffect
+                ?? state?.Skill?.AvatarUnderFaceFinishEffect
+                ?? state?.Skill?.AvatarLadderFinishEffect
+                ?? state?.Skill?.KeydownEndEffect
+                ?? state?.Skill?.KeydownEndSecondaryEffect
+                ?? state?.Skill?.StopEffect
+                ?? state?.Skill?.StopSecondaryEffect);
 
             if (!Animation.AnimationEffects.HasFrames(repeatFrames)
                 && Animation.AnimationEffects.HasFrames(startFrames))

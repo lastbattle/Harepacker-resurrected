@@ -1624,9 +1624,9 @@ namespace HaCreator.MapSimulator.Fields
             switch (packetType)
             {
                 case MemoryGameReadyPacketType:
-                    return TryApplyRemoteReadyPacket(isReady: true, out message);
+                    return TryApplyGuestReadyPacket(isReady: true, out message);
                 case MemoryGameCancelReadyPacketType:
-                    return TryApplyRemoteReadyPacket(isReady: false, out message);
+                    return TryApplyGuestReadyPacket(isReady: false, out message);
                 case MemoryGameStartPacketType:
                     return TryApplyStartPacket(reader, tickCount, out message);
                 case MemoryGameTurnUpCardPacketType:
@@ -1690,13 +1690,13 @@ namespace HaCreator.MapSimulator.Fields
         }
 
 
-        private bool TryApplyRemoteReadyPacket(bool isReady, out string message)
+        private bool TryApplyGuestReadyPacket(bool isReady, out string message)
         {
-            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
-            bool handled = TrySetReady(remotePlayerIndex, isReady, out message);
+            const int guestPlayerIndex = 1;
+            bool handled = TrySetReady(guestPlayerIndex, isReady, out message);
             if (handled)
             {
-                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {ResolveRemotePlayerName()} {(isReady ? "is ready." : "canceled ready.")}");
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {ResolveParticipantName(guestPlayerIndex)} {(isReady ? "is ready." : "canceled ready.")}");
             }
 
 

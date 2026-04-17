@@ -99,6 +99,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            bool animationDisplayerCoolApplied = TryApplyAnimationDisplayerSessionValueCoolOwner(
+                key,
+                value,
+                currentTick,
+                out string animationDisplayerCoolMessage);
+
             bool releasedPendingImpact = TryApplyPendingPortalSessionValueImpact(
                 key,
                 value,
@@ -116,13 +122,25 @@ namespace HaCreator.MapSimulator
                 string impactSuffix = releasedPendingImpact
                     ? " Released the pending portal session-value impact before the field virtual owner ran."
                     : string.Empty;
-                message = $"CWvsContext::OnSessionValue applied {key}={value} ({target}).{impactSuffix}";
+                string coolSuffix = animationDisplayerCoolApplied
+                    ? $" {animationDisplayerCoolMessage}."
+                    : string.Empty;
+                message = $"CWvsContext::OnSessionValue applied {key}={value} ({target}).{impactSuffix}{coolSuffix}";
                 return true;
             }
 
             if (releasedPendingImpact)
             {
-                message = $"CWvsContext::OnSessionValue released pending portal session-value impact for {key}={value} before any active session owner accepted it.";
+                string coolSuffix = animationDisplayerCoolApplied
+                    ? $" {animationDisplayerCoolMessage}."
+                    : string.Empty;
+                message = $"CWvsContext::OnSessionValue released pending portal session-value impact for {key}={value} before any active session owner accepted it.{coolSuffix}";
+                return true;
+            }
+
+            if (animationDisplayerCoolApplied)
+            {
+                message = $"CWvsContext::OnSessionValue applied {animationDisplayerCoolMessage}, but no active session owner accepted {key}={value}.";
                 return true;
             }
 
@@ -391,6 +409,26 @@ namespace HaCreator.MapSimulator
         {
             _pendingPortalSessionValueImpacts.Clear();
             _lastPortalSessionValueRequestSentTick = int.MinValue;
+        }
+
+        private void ConsumePendingPortalSessionValueImpactsFromTransferLifecycle()
+        {
+            if (!ShouldConsumePendingPortalSessionValueImpactsForTransferLifecycle(
+                    _pendingPortalSessionValueImpacts.Count,
+                    _lastPortalSessionValueRequestSentTick))
+            {
+                return;
+            }
+
+            ClearPendingPortalSessionValueImpacts();
+        }
+
+        internal static bool ShouldConsumePendingPortalSessionValueImpactsForTransferLifecycle(
+            int pendingImpactCount,
+            int lastRequestSentTick)
+        {
+            return pendingImpactCount > 0
+                || lastRequestSentTick != int.MinValue;
         }
 
         private bool TryApplyPendingPortalSessionValueImpact(

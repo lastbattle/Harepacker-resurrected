@@ -89,6 +89,77 @@ namespace HaCreator.MapSimulator.Managers
             return typeFallbackIndex;
         }
 
+        internal static MapTransferRuntimeRequest InferRequestFromAuthoritativeDelta(
+            MapTransferRuntimeResponse authoritativeResponse,
+            IReadOnlyList<int> previousFieldList)
+        {
+            if (authoritativeResponse?.Applied != true ||
+                authoritativeResponse.ResultType == MapTransferRuntimeResultType.None)
+            {
+                return null;
+            }
+
+            IReadOnlyList<int> currentFieldList = authoritativeResponse.FieldList ?? Array.Empty<int>();
+            if (currentFieldList.Count == 0)
+            {
+                return null;
+            }
+
+            int[] previousSlots = BuildNormalizedSlotArray(previousFieldList, currentFieldList.Count);
+            int[] currentSlots = BuildNormalizedSlotArray(currentFieldList, currentFieldList.Count);
+            List<int> changedSlots = new();
+            for (int slotIndex = 0; slotIndex < currentSlots.Length; slotIndex++)
+            {
+                if (previousSlots[slotIndex] != currentSlots[slotIndex])
+                {
+                    changedSlots.Add(slotIndex);
+                }
+            }
+
+            if (changedSlots.Count == 0)
+            {
+                return null;
+            }
+
+            MapTransferRuntimeRequestType requestType = authoritativeResponse.ResultType switch
+            {
+                MapTransferRuntimeResultType.RegisterApplied => MapTransferRuntimeRequestType.Register,
+                MapTransferRuntimeResultType.DeleteApplied => MapTransferRuntimeRequestType.Delete,
+                _ => (MapTransferRuntimeRequestType)(-1)
+            };
+            if (requestType != MapTransferRuntimeRequestType.Register &&
+                requestType != MapTransferRuntimeRequestType.Delete)
+            {
+                return null;
+            }
+
+            int slot = requestType == MapTransferRuntimeRequestType.Register
+                ? ResolveRegisterSlot(changedSlots, previousSlots, currentSlots)
+                : ResolveDeleteSlot(changedSlots, previousSlots, currentSlots);
+            if (slot < 0 || slot >= currentSlots.Length)
+            {
+                return null;
+            }
+
+            int mapId = requestType == MapTransferRuntimeRequestType.Register
+                ? currentSlots[slot]
+                : previousSlots[slot];
+            if (mapId <= 0 || mapId == MapTransferRuntimeManager.EmptyDestinationMapId)
+            {
+                return null;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = requestType,
+                Book = authoritativeResponse.CanTransferContinent
+                    ? MapTransferDestinationBook.Continent
+                    : MapTransferDestinationBook.Regular,
+                MapId = mapId,
+                SlotIndex = slot
+            };
+        }
+
         private static MapTransferRuntimeRequestType? InferRequestTypeFromFailureResultCode(
             MapTransferRuntimePacketResultCode packetResultCode)
         {
@@ -198,6 +269,66 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return -1;
+        }
+
+        private static int[] BuildNormalizedSlotArray(IReadOnlyList<int> source, int count)
+        {
+            int[] slots = new int[Math.Max(0, count)];
+            Array.Fill(slots, MapTransferRuntimeManager.EmptyDestinationMapId);
+            if (source == null || source.Count == 0)
+            {
+                return slots;
+            }
+
+            int maxCount = Math.Min(slots.Length, source.Count);
+            for (int index = 0; index < maxCount; index++)
+            {
+                int mapId = source[index];
+                if (mapId > 0)
+                {
+                    slots[index] = mapId;
+                }
+            }
+
+            return slots;
+        }
+
+        private static int ResolveRegisterSlot(
+            IReadOnlyList<int> changedSlots,
+            IReadOnlyList<int> previousSlots,
+            IReadOnlyList<int> currentSlots)
+        {
+            for (int i = 0; i < changedSlots.Count; i++)
+            {
+                int slot = changedSlots[i];
+                if (currentSlots[slot] > 0 &&
+                    currentSlots[slot] != MapTransferRuntimeManager.EmptyDestinationMapId &&
+                    currentSlots[slot] != previousSlots[slot])
+                {
+                    return slot;
+                }
+            }
+
+            return changedSlots[0];
+        }
+
+        private static int ResolveDeleteSlot(
+            IReadOnlyList<int> changedSlots,
+            IReadOnlyList<int> previousSlots,
+            IReadOnlyList<int> currentSlots)
+        {
+            for (int i = 0; i < changedSlots.Count; i++)
+            {
+                int slot = changedSlots[i];
+                if (previousSlots[slot] > 0 &&
+                    previousSlots[slot] != MapTransferRuntimeManager.EmptyDestinationMapId &&
+                    (currentSlots[slot] <= 0 || currentSlots[slot] == MapTransferRuntimeManager.EmptyDestinationMapId))
+                {
+                    return slot;
+                }
+            }
+
+            return changedSlots[0];
         }
     }
 }

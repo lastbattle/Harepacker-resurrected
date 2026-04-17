@@ -388,7 +388,7 @@ namespace HaCreator.MapSimulator
 
             if (RemoteAffectedAreaSupportResolver.ResolveHostilePlayerAreaStatuses(skill, levelData).Count > 0)
             {
-                return true;
+                return RemoteAffectedAreaSupportResolver.ShouldProjectHostileStatusesToLocalPlayer(skill, levelData);
             }
 
             if (ResolveRemoteAffectedAreaFallbackDamage(skill, levelData) <= 0)

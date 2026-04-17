@@ -142,6 +142,19 @@ namespace HaCreator.MapSimulator.Interaction
         private const int CoupleSharedChatStringPoolId = 0x72D;
         private const int CoupleNoticeUnavailableStringPoolId = 0xA1;
         private const int JukeBoxMessageStringPoolId = 0x1AC3;
+        private const int TransferFieldIgnoredPortalClosedStringPoolId = 0x181;
+        private const int TransferFieldIgnoredUnavailableStringPoolId = 0xBD3;
+        private const int TransferFieldIgnoredBlockedStringPoolId = 0x1A83;
+        private const int TransferFieldIgnoredModalBlockedStringPoolId = 0xBD4;
+        private const int TransferFieldIgnoredRuleBlockedStringPoolId = 0x155B;
+        private const int TransferFieldIgnoredPortalNotReadyStringPoolId = 0x168B;
+        private const int TransferFieldIgnoredWarningModalStringPoolId = 0xBEF;
+        private const int TransferChannelIgnoredPendingStringPoolId = 0xD30;
+        private const int TransferChannelIgnoredUnavailableStringPoolId = 0xD31;
+        private const int TransferChannelIgnoredFieldBlockedStringPoolId = 0x1299;
+        private const int TransferChannelIgnoredRejectedStringPoolId = 0x12DA;
+        private const int TransferChannelIgnoredDelayedStringPoolId = 0x12DC;
+        private const int SummonItemUnavailableNoticeStringPoolId = 0x121;
         private const string ZakumTimerBeforeFallback = "The Zakum Shrine will close if you do not summon Zakum in {0} minutes.";
         private const string ZakumTimerWarningFallback = "The Zakum Shrine will close in {0} minutes.";
         private const string ZakumTimerExpiredFallback = "The Zakum Shrine has closed.";
@@ -166,6 +179,19 @@ namespace HaCreator.MapSimulator.Interaction
         private const string CoupleSharedChatFallback = "{0}: {1}";
         private const string CoupleNoticeUnavailableFallback = "Couple notice is unavailable.";
         private const string JukeBoxMessageFallback = "{0} played {1} through the field jukebox.";
+        private const string TransferFieldIgnoredPortalClosedFallback = "The portal is closed for now.";
+        private const string TransferFieldIgnoredUnavailableFallback = "You cannot go to that place.";
+        private const string TransferFieldIgnoredBlockedFallback = "The requested field transfer is unavailable.";
+        private const string TransferFieldIgnoredModalBlockedFallback = "This map cannot be entered right now.";
+        private const string TransferFieldIgnoredRuleBlockedFallback = "The current field rules block map transfer right now.";
+        private const string TransferFieldIgnoredPortalNotReadyFallback = "The transfer portal is not ready yet.";
+        private const string TransferFieldIgnoredWarningModalFallback = "The transfer request was ignored by the client warning path.";
+        private const string TransferChannelIgnoredPendingFallback = "Another channel transfer is already pending.";
+        private const string TransferChannelIgnoredUnavailableFallback = "The selected channel is unavailable.";
+        private const string TransferChannelIgnoredFieldBlockedFallback = "The current field blocks channel change.";
+        private const string TransferChannelIgnoredRejectedFallback = "The selected channel rejected the transfer.";
+        private const string TransferChannelIgnoredDelayedFallback = "Channel change is unavailable right now.";
+        private const string SummonItemUnavailableNoticeFallback = "The summon item cannot be used in this field.";
         private const int HorntailBossHpFirstBodyMobId = 8810118;
         private const int HorntailBossHpLastBodyMobId = 8810122;
         private static readonly Encoding SwindleEncoding = Encoding.Default;
@@ -1139,20 +1165,37 @@ namespace HaCreator.MapSimulator.Interaction
             byte reason = reader.ReadByte();
             string text = reason switch
             {
-                1 => "Another field transfer is already pending.",
-                2 => "This map cannot be entered right now.",
-                3 or 5 => "The requested field transfer is unavailable.",
-                4 => "This field transfer was blocked by a packet-owned client notice.",
-                6 => "The current field rules block map transfer right now.",
-                7 => "The transfer portal is not ready yet.",
-                8 => "The transfer request was ignored by the client warning path.",
+                1 => MapleStoryStringPool.GetOrFallback(
+                    TransferFieldIgnoredPortalClosedStringPoolId,
+                    TransferFieldIgnoredPortalClosedFallback),
+                2 => MapleStoryStringPool.GetOrFallback(
+                    TransferFieldIgnoredUnavailableStringPoolId,
+                    TransferFieldIgnoredUnavailableFallback),
+                3 or 5 => MapleStoryStringPool.GetOrFallback(
+                    TransferFieldIgnoredBlockedStringPoolId,
+                    TransferFieldIgnoredBlockedFallback),
+                4 => MapleStoryStringPool.GetOrFallback(
+                    TransferFieldIgnoredModalBlockedStringPoolId,
+                    TransferFieldIgnoredModalBlockedFallback),
+                6 => MapleStoryStringPool.GetOrFallback(
+                    TransferFieldIgnoredRuleBlockedStringPoolId,
+                    TransferFieldIgnoredRuleBlockedFallback),
+                7 => MapleStoryStringPool.GetOrFallback(
+                    TransferFieldIgnoredPortalNotReadyStringPoolId,
+                    TransferFieldIgnoredPortalNotReadyFallback),
+                8 => MapleStoryStringPool.GetOrFallback(
+                    TransferFieldIgnoredWarningModalStringPoolId,
+                    TransferFieldIgnoredWarningModalFallback),
                 _ => $"Field transfer request was ignored with reason {reason}."
             };
             _lastTransferFailureMessage = text;
-            callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
             if (reason is 4 or 8)
             {
                 callbacks?.ShowModalWarning?.Invoke(text);
+            }
+            else
+            {
+                callbacks?.AddClientChatMessage?.Invoke(text, 12, null);
             }
 
             _statusMessage = "Applied packet-owned transfer-field failure feedback.";
@@ -1167,15 +1210,25 @@ namespace HaCreator.MapSimulator.Interaction
             byte reason = reader.ReadByte();
             string text = reason switch
             {
-                1 => "Another channel transfer is already pending.",
-                2 => "The selected channel is unavailable.",
-                3 => "The current field blocks channel change.",
-                4 => "The selected channel rejected the transfer.",
-                5 => "Channel change is unavailable right now.",
+                1 => MapleStoryStringPool.GetOrFallback(
+                    TransferChannelIgnoredPendingStringPoolId,
+                    TransferChannelIgnoredPendingFallback),
+                2 => MapleStoryStringPool.GetOrFallback(
+                    TransferChannelIgnoredUnavailableStringPoolId,
+                    TransferChannelIgnoredUnavailableFallback),
+                3 => MapleStoryStringPool.GetOrFallback(
+                    TransferChannelIgnoredFieldBlockedStringPoolId,
+                    TransferChannelIgnoredFieldBlockedFallback),
+                4 => MapleStoryStringPool.GetOrFallback(
+                    TransferChannelIgnoredRejectedStringPoolId,
+                    TransferChannelIgnoredRejectedFallback),
+                5 => MapleStoryStringPool.GetOrFallback(
+                    TransferChannelIgnoredDelayedStringPoolId,
+                    TransferChannelIgnoredDelayedFallback),
                 _ => $"Channel transfer request was ignored with reason {reason}."
             };
             _lastTransferFailureMessage = text;
-            callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
+            callbacks?.AddClientChatMessage?.Invoke(text, 12, null);
             _statusMessage = "Applied packet-owned transfer-channel failure feedback.";
             message = _statusMessage;
             return true;
@@ -1186,15 +1239,17 @@ namespace HaCreator.MapSimulator.Interaction
             using MemoryStream stream = new(payload, writable: false);
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             bool ignored = reader.ReadByte() != 0;
-            string text = ignored
-                ? "Summon item use was ignored."
-                : "The summon item cannot be used in this field.";
-            callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
-            if (!ignored)
+            if (ignored)
             {
-                callbacks?.ShowModalWarning?.Invoke(text);
+                _statusMessage = "Ignored packet-owned summon-item unavailable feedback because the packet flag marked it available.";
+                message = _statusMessage;
+                return true;
             }
 
+            string text = MapleStoryStringPool.GetOrFallback(
+                SummonItemUnavailableNoticeStringPoolId,
+                SummonItemUnavailableNoticeFallback);
+            callbacks?.ShowModalWarning?.Invoke(text);
             _statusMessage = "Applied packet-owned summon-item availability feedback.";
             message = _statusMessage;
             return true;
