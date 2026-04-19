@@ -2686,6 +2686,10 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildDecodedItemBodyDetails(entry),
                 Convert.ToHexString(entry.RawEncodedBytes ?? Array.Empty<byte>()),
                 Convert.ToHexString(entry.BodyEncodedBytes ?? Array.Empty<byte>()),
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
                 entry.EncodedByteLength);
             return true;
         }

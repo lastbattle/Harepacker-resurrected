@@ -28035,10 +28035,13 @@ namespace HaCreator.MapSimulator
 
         private void HandleSkillMacroClientForwardedNonFunctionPhysicalKeyStateChanged(Keys key, bool keyDown, bool controlHeld, bool shiftHeld)
         {
+            Func<InputAction, KeyBinding> bindingResolver = _playerManager?.Input != null
+                ? _playerManager.Input.GetBinding
+                : null;
             if (!TryResolveSkillMacroForwardedNonFunctionHotkeySlotForTesting(
                     key,
                     controlHeld,
-                    _playerManager?.Input?.GetBinding,
+                    bindingResolver,
                     out int hotkeySlot))
             {
                 return;
@@ -31440,8 +31443,8 @@ namespace HaCreator.MapSimulator
             _playerManager.SetAffectedAreaPool(_affectedAreaPool);
             _playerManager.SetRemoteAffectedAreaDamageBlockEvaluator(IsRemoteAffectedAreaProtectionActive);
             _playerManager.SetRemoteAffectedAreaDamageShareHandler(ApplyRemoteAffectedAreaDamageShareToOwner);
-            _playerManager.SetAffectedAreaOwnerPartyMembershipEvaluator(IsAffectedAreaOwnerPartyMember);
-            _playerManager.SetAffectedAreaOwnerTeamMembershipEvaluator(IsAffectedAreaOwnerSameTeamMember);
+            _playerManager.SetAffectedAreaOwnerPartyMembershipEvaluator(ownerId => IsAffectedAreaOwnerPartyMember(0, ownerId));
+            _playerManager.SetAffectedAreaOwnerTeamMembershipEvaluator(ownerId => IsAffectedAreaOwnerSameTeamMember(0, ownerId));
 
 
 
@@ -31830,7 +31833,7 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.SetAdditionalStateRestrictionMessageProvider(GetPlayerSkillStateRestrictionMessage);
             _playerManager.Skills.SetCurrentMapInfoProvider(() => _mapBoard?.MapInfo);
             _playerManager.Skills.SetExternalFriendlySupportSummonsProvider(
-                () => _summonedPool.GetSupportSummonsAffectingLocalPlayer(IsAffectedAreaOwnerPartyMember));
+                () => _summonedPool.GetSupportSummonsAffectingLocalPlayer(ownerId => IsAffectedAreaOwnerPartyMember(0, ownerId)));
 
             _playerManager.Skills.SetFieldSkillRestrictionEvaluator(
                 skill => FieldSkillRestrictionEvaluator.CanUseSkill(

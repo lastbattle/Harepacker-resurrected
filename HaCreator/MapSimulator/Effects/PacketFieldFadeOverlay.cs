@@ -16,7 +16,7 @@ namespace HaCreator.MapSimulator.Effects
         public int HoldMs => TryGetLatestEntry(out FadeEntry entry) ? entry.HoldMs : 0;
         public int FadeOutMs => TryGetLatestEntry(out FadeEntry entry) ? entry.FadeOutMs : 0;
         public int StartedAt => TryGetLatestEntry(out FadeEntry entry) ? entry.StartedAt : 0;
-        public int FadeOutStartsAt => TryGetLatestEntry(out FadeEntry entry) ? entry.FadeOutStartsAt : int.MinValue;
+        public int FadeOutStartsAt => TryGetLatestEntry(out FadeEntry entry) ? entry.GetFadeOutStartsAt() : int.MinValue;
         public int ExpiresAt => TryGetLatestEntry(out FadeEntry entry) ? entry.ExpiresAt : int.MinValue;
 
         public bool Start(int fadeInMs, int holdMs, int fadeOutMs, int startingAlpha, int layerZ, int currentTickCount)

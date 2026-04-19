@@ -2302,6 +2302,38 @@ namespace HaCreator.MapSimulator.Interaction
             public string Description { get; }
         }
 
+        private sealed class PendingFamilyPrivilegeRequest
+        {
+            public PendingFamilyPrivilegeRequest(
+                FamilyEntitlementType type,
+                int targetMemberId,
+                string targetName,
+                string targetLocation,
+                Vector2 targetPosition,
+                string requesterLocation,
+                Vector2 requesterPosition,
+                bool requiresCrossMapTransfer)
+            {
+                Type = type;
+                TargetMemberId = targetMemberId;
+                TargetName = string.IsNullOrWhiteSpace(targetName) ? "member" : targetName.Trim();
+                TargetLocation = string.IsNullOrWhiteSpace(targetLocation) ? string.Empty : targetLocation.Trim();
+                TargetPosition = targetPosition;
+                RequesterLocation = string.IsNullOrWhiteSpace(requesterLocation) ? string.Empty : requesterLocation.Trim();
+                RequesterPosition = requesterPosition;
+                RequiresCrossMapTransfer = requiresCrossMapTransfer;
+            }
+
+            public FamilyEntitlementType Type { get; }
+            public int TargetMemberId { get; }
+            public string TargetName { get; }
+            public string TargetLocation { get; }
+            public Vector2 TargetPosition { get; }
+            public string RequesterLocation { get; }
+            public Vector2 RequesterPosition { get; }
+            public bool RequiresCrossMapTransfer { get; }
+        }
+
         private sealed class FamilyAuthorityState
         {
             private FamilyAuthorityState(

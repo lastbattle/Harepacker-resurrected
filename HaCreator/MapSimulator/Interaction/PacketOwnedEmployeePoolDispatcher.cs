@@ -324,7 +324,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return new SocialRoomEmployeePoolCodec.RoutingHint(
                 pooledEmployee?.EmployerId ?? 0,
-                pooledEmployee?.MiniRoomType ?? 0,
+                pooledEmployee?.TemplateId ?? 0,
+                (byte)(pooledEmployee?.MiniRoomType ?? 0),
                 pooledEmployee?.MiniRoomSerial ?? 0,
                 pooledEmployee?.NameTag ?? string.Empty,
                 pooledEmployee?.BalloonTitle ?? string.Empty);

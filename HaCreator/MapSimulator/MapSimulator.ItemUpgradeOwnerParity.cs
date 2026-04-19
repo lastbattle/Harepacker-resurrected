@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Character;
 using System;
 using System.Buffers.Binary;
 using System.Globalization;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.MapSimulator
 {
@@ -287,9 +288,9 @@ namespace HaCreator.MapSimulator
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
             {
-                if (_itemUpgradeOwnerLastUpgradeStateValue != int.MinValue &&
-                    itemUpgradeWindow.TryResolveUpgradeSlotState(slot, out int totalSlots, out _))
+                if (_itemUpgradeOwnerLastUpgradeStateValue != int.MinValue)
                 {
+                    int totalSlots = Math.Max(1, itemUpgradeWindow.ResolveProjectedRemainingUpgradeSlotCountAfterRecovery(slot));
                     return ResolveItemUpgradeRecoveredSlotCountArgumentFromPacketState(
                         totalSlots,
                         _itemUpgradeOwnerLastUpgradeStateValue);

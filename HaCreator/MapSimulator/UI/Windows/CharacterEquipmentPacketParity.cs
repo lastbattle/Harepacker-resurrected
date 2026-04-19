@@ -162,13 +162,14 @@ namespace HaCreator.MapSimulator.UI
                                 return false;
                             }
 
+                            string addMismatchRejectReason = null;
                             bool isMatchingAddEntry = matchedByHeader
                                 || TryMatchesCharacterInventoryOperationAdd(
                                     request,
                                     inventoryType,
                                     fromPosition,
                                     addedItemId,
-                                    out string addMismatchRejectReason);
+                                    out addMismatchRejectReason);
                             if (isMatchingAddEntry)
                             {
                                 sawMatchingAddEntry = true;

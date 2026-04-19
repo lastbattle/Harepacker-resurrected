@@ -68,7 +68,7 @@ namespace HaCreator.MapSimulator.UI
             public int ControlId { get; init; } = 1006;
             public int FontStringPoolId { get; init; } = 0x1A25;
             public Point Position { get; init; } = new(ChatEditX, ChatEditY);
-            public Size Size { get; init; } = new(ChatEditWidth, ChatEditHeight);
+            public System.Drawing.Size Size { get; init; } = new(ChatEditWidth, ChatEditHeight);
             public int MaxLength { get; init; } = ChatMaxLength;
             public bool HasFocus { get; set; }
             public bool SoftKeyboardActive { get; set; }

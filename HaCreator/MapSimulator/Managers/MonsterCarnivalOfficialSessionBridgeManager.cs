@@ -837,13 +837,13 @@ namespace HaCreator.MapSimulator.Managers
                     out byte[] nestedMappedPayload,
                     out string nestedMappingEvidence))
             {
-                int relayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
-                byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
+                int nestedRelayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+                byte[] nestedRelayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
                     nestedMappedPacketType,
                     nestedMappedPayload);
                 message = new MonsterCarnivalPacketInboxMessage(
-                    relayOpcode,
-                    relayPayload,
+                    nestedRelayOpcode,
+                    nestedRelayPayload,
                     source,
                     $"packetraw {Convert.ToHexString(rawPacket)}",
                     nestedMappedPacketType);
@@ -1050,12 +1050,12 @@ namespace HaCreator.MapSimulator.Managers
                     out byte[] nestedMappedPayload,
                     out _))
             {
-                byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
+                byte[] nestedRelayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
                     nestedMappedPacketType,
                     nestedMappedPayload);
                 message = new MonsterCarnivalPacketInboxMessage(
                     SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
-                    relayPayload,
+                    nestedRelayPayload,
                     source,
                     $"packetraw {Convert.ToHexString(rawPacket)}",
                     nestedMappedPacketType);

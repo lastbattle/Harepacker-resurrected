@@ -21366,6 +21366,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 jaguarRideOwnershipActive: jaguarRideOwnershipActive,
                 activeSkillMountSkillId: activeSkillMountSkillId,
                 activeSkillMountItemId: activeSkillMountItemId,
+                lastKnownActiveJaguarMountItemId: lastKnownActiveJaguarMountItemId,
                 equippedMountItemId: equippedMountItemId);
         }
 
@@ -21375,6 +21376,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool jaguarRideOwnershipActive,
             int activeSkillMountSkillId,
             int activeSkillMountItemId,
+            int lastKnownActiveJaguarMountItemId,
             int equippedMountItemId)
         {
             if (CanAutoDeployWildHunterMine(mountedStatePart, actionName))

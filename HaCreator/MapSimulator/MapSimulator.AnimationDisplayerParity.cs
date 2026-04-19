@@ -2824,7 +2824,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return _remoteUserPool?.TryApplyOneTimeAction(characterId, actionName, currentTime, out _) == true;
+            return _remoteUserPool?.TrySetAction(characterId, actionName, null, out _) == true;
         }
 
         private bool TryApplyAnimationDisplayerReservedRemoteUtilityEquipOwnerEffect(

@@ -1059,6 +1059,7 @@ namespace HaCreator.MapSimulator.Effects
                 participant.PortableChairItemId,
                 participant.PortableChairPairCharacterId,
                 participant.TemporaryStats,
+                participant.TemporaryStatRevision,
                 participant.PacketOwnedItemEffectItemId,
                 participant.PacketOwnedItemEffectRevision,
                 participant.AvatarModifiedState,

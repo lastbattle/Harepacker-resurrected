@@ -2491,7 +2491,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (canvasProperty?["origin"] is WzVectorProperty originProperty)
             {
-                return new Point(originProperty.X, originProperty.Y);
+                return new Point(originProperty.X?.Value ?? 0, originProperty.Y?.Value ?? 0);
             }
 
             return Point.Zero;

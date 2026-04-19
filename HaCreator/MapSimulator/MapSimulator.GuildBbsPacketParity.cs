@@ -296,9 +296,22 @@ namespace HaCreator.MapSimulator
                 for (int i = 0; i < payloads.Count; i++)
                 {
                     byte[] payload = payloads[i] ?? Array.Empty<byte>();
-                    bool dispatched = queueOnly
-                        ? _guildBbsOfficialSessionBridge.TryQueueOutboundPacket(GuildBbsOutboundRequestOpcode, payload, out string dispatchStatus)
-                        : _guildBbsOfficialSessionBridge.TrySendOutboundPacket(GuildBbsOutboundRequestOpcode, payload, out string dispatchStatus);
+                    bool dispatched;
+                    string dispatchStatus;
+                    if (queueOnly)
+                    {
+                        dispatched = _guildBbsOfficialSessionBridge.TryQueueOutboundPacket(
+                            GuildBbsOutboundRequestOpcode,
+                            payload,
+                            out dispatchStatus);
+                    }
+                    else
+                    {
+                        dispatched = _guildBbsOfficialSessionBridge.TrySendOutboundPacket(
+                            GuildBbsOutboundRequestOpcode,
+                            payload,
+                            out dispatchStatus);
+                    }
                     if (!dispatched)
                     {
                         allSucceeded = false;
