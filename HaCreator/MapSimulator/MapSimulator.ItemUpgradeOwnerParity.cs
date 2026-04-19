@@ -208,6 +208,12 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedItemUpgradeResultPayload(byte[] payload, out string message)
         {
             message = null;
+
+            // CUIItemUpgrade::OnItemUpgradeResult clears request-sent and stamps the
+            // exclusive resend timer immediately when the result packet arrives,
+            // before any Decode* branch handling.
+            ClearItemUpgradeOwnerRequestState(currTickCount);
+
             if (!TryDecodeItemUpgradeResultPayloadState(payload, out ItemUpgradeResultDecodeState decodeState, out string decodeError))
             {
                 message = decodeError;
@@ -219,10 +225,6 @@ namespace HaCreator.MapSimulator
                 _itemUpgradeOwnerLastResultValue = decodeState.OutcomeResultValue;
                 _itemUpgradeOwnerLastUpgradeStateValue = decodeState.OutcomeUpgradeState;
             }
-
-            // CUIItemUpgrade::OnItemUpgradeResult clears request-sent and stamps the
-            // exclusive resend timer immediately when the result packet arrives.
-            ClearItemUpgradeOwnerRequestState(currTickCount);
 
             if (_pendingItemUpgradeOwnerRequest == null)
             {
@@ -413,6 +415,14 @@ namespace HaCreator.MapSimulator
             if (resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot ||
                 resultCode == ItemUpgradePacketResultCodeClientRejected)
             {
+                if (payload.Length != ItemUpgradeResultReasonPayloadLength)
+                {
+                    decodeError = payload.Length > ItemUpgradeResultReasonPayloadLength
+                        ? $"Packet-owned item-upgrade result code {resultCode} contains unexpected trailing bytes after the required reason payload field."
+                        : $"Packet-owned item-upgrade result code {resultCode} requires a reason payload field.";
+                    return false;
+                }
+
                 if (!TryDecodeItemUpgradeResultReasonCode(payload, out int reasonCode))
                 {
                     decodeError = $"Packet-owned item-upgrade result code {resultCode} requires a reason payload field.";
@@ -427,6 +437,14 @@ namespace HaCreator.MapSimulator
                     OutcomeResultValue: 0,
                     OutcomeUpgradeState: 0);
                 return true;
+            }
+
+            if (payload.Length != ItemUpgradeResultOutcomePayloadLength)
+            {
+                decodeError = payload.Length > ItemUpgradeResultOutcomePayloadLength
+                    ? $"Packet-owned item-upgrade result code {resultCode} contains unexpected trailing bytes after the required outcome-state payload fields."
+                    : $"Packet-owned item-upgrade result code {resultCode} requires outcome-state payload fields.";
+                return false;
             }
 
             if (!TryDecodeItemUpgradeResultOutcomeState(payload, out int packetResultValue, out int packetUpgradeState))

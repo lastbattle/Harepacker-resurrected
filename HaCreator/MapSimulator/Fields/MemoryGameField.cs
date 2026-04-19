@@ -1831,6 +1831,12 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Leave-booking packets (56/57) are only valid during an active Match Cards round.";
+                return false;
+            }
+
 
             _leaveBookingStates[playerIndex] = booked;
             string playerName = ResolveParticipantName(playerIndex);
@@ -1868,6 +1874,18 @@ namespace HaCreator.MapSimulator.Fields
                 if (_stage != RoomStage.Lobby)
                 {
                     message = "Ban requests are only valid while the Match Cards room is in the lobby.";
+                    return false;
+                }
+
+                if (_localPlayerIndex != 0)
+                {
+                    message = "Only the Match Cards room owner can send ban request packet (60).";
+                    return false;
+                }
+
+                if (!TryResolveBanTargetName(0, out _))
+                {
+                    message = "No participant is available to ban.";
                     return false;
                 }
 
@@ -1911,6 +1929,12 @@ namespace HaCreator.MapSimulator.Fields
             if (_stage != RoomStage.Lobby)
             {
                 message = "Start requests are only valid from the Match Cards lobby.";
+                return false;
+            }
+
+            if (_localPlayerIndex != 0)
+            {
+                message = "Only the Match Cards room owner can send start packet (61).";
                 return false;
             }
 
@@ -2840,6 +2864,27 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             message = null;
+            return true;
+        }
+
+        private bool TryResolveBanTargetName(int requesterIndex, out string targetName)
+        {
+            targetName = null;
+            if (!IsValidPlayerIndex(requesterIndex))
+            {
+                return false;
+            }
+
+            int targetIndex = requesterIndex == 0 ? 1 : 0;
+            string resolvedName = ResolveParticipantName(targetIndex);
+            if (string.IsNullOrWhiteSpace(resolvedName)
+                || (targetIndex == 1 && string.Equals(resolvedName, "Opponent", StringComparison.Ordinal))
+                || (targetIndex == 0 && string.Equals(resolvedName, "Player", StringComparison.Ordinal)))
+            {
+                return false;
+            }
+
+            targetName = resolvedName;
             return true;
         }
 

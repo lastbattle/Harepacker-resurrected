@@ -828,6 +828,7 @@ namespace HaCreator.MapSimulator.UI
             byte subtype,
             byte resultCode,
             int trailingByteCount,
+            string trailingPayloadSignature,
             bool hasResultCode,
             string blockingOwner)
         {
@@ -849,6 +850,7 @@ namespace HaCreator.MapSimulator.UI
                 ownerState,
                 trailingByteCount,
                 hasResultCode,
+                trailingPayloadSignature: trailingPayloadSignature,
                 keepSessionActive,
                 preservedVisibilityState);
             _pendingPacketOwnedAdminShopResult = false;
@@ -900,7 +902,12 @@ namespace HaCreator.MapSimulator.UI
             message = "Packet-owned admin-shop result could not be applied.";
             noticeText = string.Empty;
             reopenRequested = false;
-            _packetOwnedAdminShopSession.RecordResultPacket(subtype, resultCode, trailingByteCount, hasResultCode);
+            _packetOwnedAdminShopSession.RecordResultPacket(
+                subtype,
+                resultCode,
+                trailingByteCount,
+                hasResultCode,
+                trailingPayloadSignature);
             CapturePacketOwnedWishlistSearchSnapshot(
                 subtype,
                 resultCode,
@@ -4260,9 +4267,13 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopPacketOwnedWishlistSearchResultRow packetRow = rowIndex < packetRows.Count
                     ? packetRows[rowIndex]
                     : null;
-                if (itemId <= 0
-                    || !wishlistRowsByItemId.TryGetValue(itemId, out List<AdminShopEntry> candidates)
-                    || candidates.Count == 0)
+                if (!TryResolvePacketOwnedWishlistCandidate(
+                        wishlistRowsByItemId,
+                        itemCursorByItemId,
+                        seenEntryKeys,
+                        packetRow,
+                        itemId,
+                        out AdminShopEntry candidate))
                 {
                     if (TryBuildPacketOwnedWishlistSyntheticResult(
                             snapshot,
@@ -4286,39 +4297,36 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int cursor = itemCursorByItemId.TryGetValue(itemId, out int resolvedCursor)
-                    ? resolvedCursor
-                    : 0;
-                while (cursor < candidates.Count)
+                WishlistSearchResult result = BuildWishlistSearchResult(candidate, int.MaxValue - results.Count);
+                if (result != null)
                 {
-                    AdminShopEntry candidate = candidates[cursor++];
-                    string entryKey = GetEntryKey(candidate);
-                    if (string.IsNullOrWhiteSpace(entryKey) || !seenEntryKeys.Add(entryKey))
-                    {
-                        continue;
-                    }
-
-                    itemCursorByItemId[itemId] = cursor;
-                    WishlistSearchResult result = BuildWishlistSearchResult(candidate, int.MaxValue - results.Count);
-                    if (result != null)
-                    {
-                        result = ApplyPacketOwnedWishlistRowMetadata(
-                            result,
-                            packetRow,
-                            requestedCategoryLabel,
-                            snapshot.ServiceSessionId,
-                            snapshot.SearchSessionId,
-                            hasLiveCatalogBinding: true);
-                        _packetOwnedWishlistSearchResultsByEntryKey[result.EntryKey] = result;
-                        results.Add(result);
-                    }
-
-                    break;
+                    result = ApplyPacketOwnedWishlistRowMetadata(
+                        result,
+                        packetRow,
+                        requestedCategoryLabel,
+                        snapshot.ServiceSessionId,
+                        snapshot.SearchSessionId,
+                        hasLiveCatalogBinding: true);
+                    _packetOwnedWishlistSearchResultsByEntryKey[result.EntryKey] = result;
+                    results.Add(result);
                 }
-
-                if (!itemCursorByItemId.ContainsKey(itemId))
+                else if (!TryBuildPacketOwnedWishlistSyntheticResult(
+                            snapshot,
+                            packetRow,
+                            rowIndex,
+                            requestedCategoryLabel,
+                            out WishlistSearchResult syntheticResult))
                 {
                     unresolvedItemCount++;
+                }
+                else
+                {
+                    string syntheticEntryKey = syntheticResult.EntryKey;
+                    if (!string.IsNullOrWhiteSpace(syntheticEntryKey) && seenEntryKeys.Add(syntheticEntryKey))
+                    {
+                        _packetOwnedWishlistSearchResultsByEntryKey[syntheticEntryKey] = syntheticResult;
+                        results.Add(syntheticResult);
+                    }
                 }
             }
 
@@ -4332,6 +4340,66 @@ namespace HaCreator.MapSimulator.UI
                 ? $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog."
                 : $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}.";
             return true;
+        }
+
+        private static bool TryResolvePacketOwnedWishlistCandidate(
+            IReadOnlyDictionary<int, List<AdminShopEntry>> wishlistRowsByItemId,
+            IDictionary<int, int> itemCursorByItemId,
+            ISet<string> seenEntryKeys,
+            AdminShopPacketOwnedWishlistSearchResultRow packetRow,
+            int fallbackItemId,
+            out AdminShopEntry candidate)
+        {
+            candidate = null;
+            if (wishlistRowsByItemId == null || wishlistRowsByItemId.Count == 0)
+            {
+                return false;
+            }
+
+            HashSet<int> rowItemIds = new();
+            if (packetRow?.ResultItemId > 0)
+            {
+                rowItemIds.Add(packetRow.ResultItemId);
+            }
+
+            if (packetRow?.ItemId > 0)
+            {
+                rowItemIds.Add(packetRow.ItemId);
+            }
+
+            if (fallbackItemId > 0)
+            {
+                rowItemIds.Add(fallbackItemId);
+            }
+
+            foreach (int rowItemId in rowItemIds)
+            {
+                if (!wishlistRowsByItemId.TryGetValue(rowItemId, out List<AdminShopEntry> candidates)
+                    || candidates == null
+                    || candidates.Count == 0)
+                {
+                    continue;
+                }
+
+                int cursor = itemCursorByItemId.TryGetValue(rowItemId, out int resolvedCursor)
+                    ? resolvedCursor
+                    : 0;
+                while (cursor < candidates.Count)
+                {
+                    AdminShopEntry rowCandidate = candidates[cursor++];
+                    string entryKey = GetEntryKey(rowCandidate);
+                    if (string.IsNullOrWhiteSpace(entryKey) || !seenEntryKeys.Add(entryKey))
+                    {
+                        continue;
+                    }
+
+                    itemCursorByItemId[rowItemId] = cursor;
+                    candidate = rowCandidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string BuildPacketOwnedWishlistSyntheticEntryKey(
@@ -4591,7 +4659,47 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> leftRows = left.ResultRows ?? Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
+            IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> rightRows = right.ResultRows ?? Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
+            if (leftRows.Count != rightRows.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < leftRows.Count; i++)
+            {
+                if (!ArePacketOwnedWishlistResultRowsEquivalent(leftRows[i], rightRows[i]))
+                {
+                    return false;
+                }
+            }
+
             return true;
+        }
+
+        private static bool ArePacketOwnedWishlistResultRowsEquivalent(
+            AdminShopPacketOwnedWishlistSearchResultRow left,
+            AdminShopPacketOwnedWishlistSearchResultRow right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return true;
+            }
+
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            return left.ItemId == right.ItemId
+                   && left.ResultItemId == right.ResultItemId
+                   && left.Price == right.Price
+                   && left.AlreadyWishlisted == right.AlreadyWishlisted
+                   && string.Equals(left.Title, right.Title, StringComparison.Ordinal)
+                   && string.Equals(left.Seller, right.Seller, StringComparison.Ordinal)
+                   && string.Equals(left.Detail, right.Detail, StringComparison.Ordinal)
+                   && string.Equals(left.CategoryKey, right.CategoryKey, StringComparison.Ordinal)
+                   && string.Equals(left.PriceLabel, right.PriceLabel, StringComparison.Ordinal);
         }
 
         private string BuildPacketOwnedWishlistSearchSnapshotSummary()
@@ -5295,6 +5403,7 @@ namespace HaCreator.MapSimulator.UI
                             isCashItem,
                             isNotForSale,
                             isQuestItem,
+                            slot.IsCashOwnershipLocked,
                             slot.CashItemSerialNumber))
                     {
                         continue;
@@ -5335,6 +5444,7 @@ namespace HaCreator.MapSimulator.UI
                             isCashItem,
                             isNotForSale,
                             isQuestItem,
+                            slot.IsCashOwnershipLocked,
                             slot.CashItemSerialNumber))
                     {
                         continue;
@@ -8114,6 +8224,7 @@ namespace HaCreator.MapSimulator.UI
                         isCashItem,
                         isNotForSale,
                         isQuestItem,
+                        slot.IsCashOwnershipLocked,
                         slot.CashItemSerialNumber))
                 {
                     continue;

@@ -367,29 +367,22 @@ namespace HaCreator.MapSimulator
             }
 
             PacketScriptOwnerLayer cover = snapshot.Mode == 0 ? _packetScriptSlideMenuType0Cover : _packetScriptSlideMenuType1Cover;
-            if (cover?.Texture != null)
-            {
-                Vector2 position = new(selectionBounds.Center.X - (cover.Texture.Width * 0.5f) - cover.Origin.X, selectionBounds.Center.Y - (cover.Texture.Height * 0.5f) - cover.Origin.Y);
-                _spriteBatch.Draw(cover.Texture, position, Color.White);
-            }
-            else
+            bool allowZeroOriginAnchors = snapshot.Mode == 0;
+            bool drewCover = TryDrawPacketScriptOwnerAnchoredLayer(ownerBounds, cover, allowZeroOriginAnchors, out Rectangle coverBounds);
+            if (!drewCover)
             {
                 DrawPacketScriptOwnerFrame(selectionBounds, new Color(255, 245, 225, 210), new Color(146, 104, 62));
+                coverBounds = selectionBounds;
             }
 
             PacketScriptOwnerLayer choiceFrame = snapshot.Mode == 0 ? _packetScriptSlideMenuType0Choice : _packetScriptSlideMenuType1Choice;
-            if (choiceFrame?.Texture != null)
-            {
-                Vector2 position = new(selectionBounds.X + 6 - choiceFrame.Origin.X, selectionBounds.Center.Y - (choiceFrame.Texture.Height * 0.5f) - choiceFrame.Origin.Y);
-                _spriteBatch.Draw(choiceFrame.Texture, position, Color.White);
-            }
+            _ = TryDrawPacketScriptOwnerAnchoredLayer(ownerBounds, choiceFrame, allowZeroOriginAnchors, out _);
 
-            DrawPacketScriptSlideMenuMainChoiceButton(snapshot, selectionBounds);
+            DrawPacketScriptSlideMenuMainChoiceButton(snapshot, coverBounds);
 
             if (snapshot.Mode == 0 && _packetScriptSlideMenuType0Recommend?.Texture != null)
             {
-                Vector2 position = new(ownerBounds.Right - _packetScriptSlideMenuType0Recommend.Texture.Width - 16 - _packetScriptSlideMenuType0Recommend.Origin.X, ownerBounds.Y + 18 - _packetScriptSlideMenuType0Recommend.Origin.Y);
-                _spriteBatch.Draw(_packetScriptSlideMenuType0Recommend.Texture, position, Color.White);
+                _ = TryDrawPacketScriptOwnerAnchoredLayer(ownerBounds, _packetScriptSlideMenuType0Recommend, allowZeroOriginAnchors: true, out _);
             }
         }
 
@@ -773,6 +766,28 @@ namespace HaCreator.MapSimulator
             }
 
             return fallback;
+        }
+
+        private bool TryDrawPacketScriptOwnerAnchoredLayer(
+            Rectangle ownerBounds,
+            PacketScriptOwnerLayer layer,
+            bool allowZeroOriginAnchors,
+            out Rectangle drawBounds)
+        {
+            drawBounds = Rectangle.Empty;
+            if (layer?.Texture == null ||
+                !TryResolvePacketScriptOwnerAnchoredBounds(
+                    ownerBounds,
+                    layer.Origin,
+                    new Point(layer.Texture.Width, layer.Texture.Height),
+                    allowZeroOriginAnchors,
+                    out drawBounds))
+            {
+                return false;
+            }
+
+            _spriteBatch.Draw(layer.Texture, drawBounds, Color.White);
+            return true;
         }
 
         private void EnsurePacketScriptDedicatedOwnerVisualsLoaded()

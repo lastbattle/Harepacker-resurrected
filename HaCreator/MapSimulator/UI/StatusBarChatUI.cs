@@ -371,9 +371,14 @@ namespace HaCreator.MapSimulator.UI
             PageNext = 4
         }
 
-        internal static bool ShouldCloseWhisperPickerDropdownOnOutsidePress(bool isDropdownOpen, bool hoveredInteractiveElement)
+        internal static bool ShouldCloseWhisperPickerDropdownOnOutsidePress(
+            bool isDropdownOpen,
+            bool hoveredInteractiveElement,
+            bool dropdownHovered = false)
         {
-            return isDropdownOpen && !hoveredInteractiveElement;
+            // CCtrlComboBoxSelect owns pointer input while the select window is open.
+            // A click inside the open dropdown chrome should not be treated as an outside press.
+            return isDropdownOpen && !(hoveredInteractiveElement || dropdownHovered);
         }
 
         internal static bool ShouldToggleWhisperPickerComboDropdownOnPress(
@@ -421,6 +426,24 @@ namespace HaCreator.MapSimulator.UI
         {
             // Client CCtrlComboBoxSelect::OnMouseButton resolves delete row index as (ry / 16 + scrollbar curPos).
             return firstVisibleIndex + visibleRowIndex;
+        }
+
+        internal static int ResolveWhisperPickerClientComboRowIndexFromReleaseY(
+            int releaseY,
+            Rectangle dropdownBounds,
+            int firstVisibleIndex,
+            int candidateCount,
+            int rowHeight = StatusBarChatLayoutRules.ClientWhisperPickerModalComboDropdownRowHeight)
+        {
+            if (candidateCount <= 0 || rowHeight <= 0)
+            {
+                return -1;
+            }
+
+            int relativeY = releaseY - dropdownBounds.Y;
+            int visibleRowIndex = relativeY / rowHeight;
+            int clientRowIndex = firstVisibleIndex + visibleRowIndex;
+            return Math.Clamp(clientRowIndex, 0, candidateCount - 1);
         }
 
         internal static bool ShouldKeepWhisperPickerDropdownScrollThumbCapture(
@@ -2388,6 +2411,7 @@ namespace HaCreator.MapSimulator.UI
             WhisperTargetHitRegion hoveredRegion = FindWhisperTargetHitRegion(mouseState.X, mouseState.Y);
             WhisperPickerHitRegion hoveredPickerRegion = FindWhisperPickerHitRegion(mouseState.X, mouseState.Y);
             WhisperPickerButtonHitRegion hoveredButtonRegion = FindWhisperPickerButtonHitRegion(mouseState.X, mouseState.Y);
+            int hoveredPickerClientRowIndex = ResolveHoveredWhisperPickerClientComboRowIndex(mouseState.Y, hoveredPickerRegion);
             bool promptHovered = _whisperPromptBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool comboHovered = _whisperPickerComboBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool comboToggleHovered = _whisperPickerComboToggleBounds?.Contains(mouseState.X, mouseState.Y) == true;
@@ -2404,7 +2428,9 @@ namespace HaCreator.MapSimulator.UI
                 || hoveredPickerRegion != null
                 || hoveredButtonRegion != null
                 || promptHovered
-                || comboHovered;
+                || comboHovered
+                || comboToggleHovered
+                || dropdownHovered;
 
             if (dropdownHovered && hoveredPickerRegion != null)
             {
@@ -2428,22 +2454,15 @@ namespace HaCreator.MapSimulator.UI
 
             if (isRightRelease
                 && dropdownHovered
-                && hoveredPickerRegion != null
+                && hoveredPickerClientRowIndex >= 0
                 && ShouldDeleteHoveredWhisperPickerCandidateOnRightRelease(
                     _pressedRightWhisperPickerCandidateTarget,
-                    hoveredPickerRegion.WhisperTarget))
+                    hoveredPickerRegion?.WhisperTarget))
             {
                 ResetWhisperPickerPointerCaptureState();
                 _pressedRightWhisperPickerCandidateTarget = null;
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
-                if (hoveredPickerRegion.ClientComboDeleteIndex >= 0)
-                {
-                    WhisperTargetPickerModalComboDropdownDeleteIndexRequested?.Invoke(hoveredPickerRegion.ClientComboDeleteIndex);
-                }
-                else
-                {
-                    WhisperTargetPickerModalComboDropdownDeleteRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
-                }
+                WhisperTargetPickerModalComboDropdownDeleteIndexRequested?.Invoke(hoveredPickerClientRowIndex);
                 return true;
             }
 
@@ -2461,7 +2480,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (ShouldCloseWhisperPickerDropdownOnOutsidePress(
                         _whisperPickerDropdownBounds.HasValue,
-                        hoveredInteractiveElement))
+                        hoveredInteractiveElement,
+                        dropdownHovered))
                 {
                     ResetWhisperPickerPointerCaptureState();
                     WhisperTargetPickerModalComboDropdownCloseRequested?.Invoke();
@@ -2545,9 +2565,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 ResetWhisperPickerPointerCaptureState();
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
-                if (hoveredPickerRegion.ClientComboDeleteIndex >= 0)
+                if (hoveredPickerClientRowIndex >= 0)
                 {
-                    WhisperTargetPickerModalComboDropdownSelectIndexRequested?.Invoke(hoveredPickerRegion.ClientComboDeleteIndex);
+                    WhisperTargetPickerModalComboDropdownSelectIndexRequested?.Invoke(hoveredPickerClientRowIndex);
                 }
                 else
                 {
@@ -2581,6 +2601,44 @@ namespace HaCreator.MapSimulator.UI
 
             WhisperTargetRequested?.Invoke(hoveredRegion.WhisperTarget);
             return true;
+        }
+
+        private int ResolveHoveredWhisperPickerClientComboRowIndex(
+            int mouseY,
+            WhisperPickerHitRegion hoveredPickerRegion)
+        {
+            if (hoveredPickerRegion != null && hoveredPickerRegion.ClientComboDeleteIndex >= 0)
+            {
+                return hoveredPickerRegion.ClientComboDeleteIndex;
+            }
+
+            if (!_whisperPickerDropdownBounds.HasValue)
+            {
+                return -1;
+            }
+
+            MapSimulatorChatRenderState chatState = _chatStateProvider?.Invoke();
+            IReadOnlyList<string> candidates = chatState?.WhisperCandidates;
+            int candidateCount = candidates?.Count ?? 0;
+            if (chatState == null
+                || !chatState.IsWhisperTargetPickerActive
+                || chatState.WhisperTargetPickerPresentation != MapSimulatorChat.WhisperTargetPickerPresentation.Modal
+                || !chatState.IsWhisperTargetPickerComboDropdownOpen
+                || candidateCount <= 0)
+            {
+                return -1;
+            }
+
+            int firstVisibleIndex = MapSimulatorChat.ClampWhisperTargetPickerFirstVisibleIndex(
+                chatState.WhisperTargetPickerFirstVisibleIndex,
+                candidateCount,
+                WhisperPickerVisibleRows);
+            return ResolveWhisperPickerClientComboRowIndexFromReleaseY(
+                mouseY,
+                _whisperPickerDropdownBounds.Value,
+                firstVisibleIndex,
+                candidateCount,
+                ResolveWhisperPickerModalComboDropdownRowHeight());
         }
 
         private bool HandleWhisperPickerDropdownScrollbarInteraction(MouseState mouseState)

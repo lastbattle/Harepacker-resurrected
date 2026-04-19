@@ -46,6 +46,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D[] _calendarGridTextures;
         private readonly Texture2D[] _calendarNumberTextures;
         private readonly Texture2D[] _calendarSelectedNumberTextures;
+        private readonly Point _contentLayerOffset;
+        private readonly Point _calendarOverlayOffset;
+        private readonly Point _calendarGridOffset;
         private readonly Point _statusLaneAnchorOffset;
         private readonly int _statusLaneMaxWidth;
         private UIObject _allButton;
@@ -78,7 +81,7 @@ namespace HaCreator.MapSimulator.UI
             string windowName,
             Texture2D normalRowTexture,
             Texture2D selectedRowTexture)
-            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(226, 5), 57)
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(11, 88), new Point(6, 23), new Point(12, 68), new Point(226, 5), 57)
         {
         }
 
@@ -96,6 +99,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] calendarGridTextures,
             Texture2D[] calendarNumberTextures,
             Texture2D[] calendarSelectedNumberTextures,
+            Point contentLayerOffset,
+            Point calendarOverlayOffset,
+            Point calendarGridOffset,
             Point statusLaneAnchorOffset,
             int statusLaneMaxWidth)
             : base(frame)
@@ -112,6 +118,9 @@ namespace HaCreator.MapSimulator.UI
             _calendarGridTextures = calendarGridTextures ?? Array.Empty<Texture2D>();
             _calendarNumberTextures = calendarNumberTextures ?? Array.Empty<Texture2D>();
             _calendarSelectedNumberTextures = calendarSelectedNumberTextures ?? Array.Empty<Texture2D>();
+            _contentLayerOffset = new Point(Math.Max(0, contentLayerOffset.X), Math.Max(0, contentLayerOffset.Y));
+            _calendarOverlayOffset = new Point(Math.Max(0, calendarOverlayOffset.X), Math.Max(0, calendarOverlayOffset.Y));
+            _calendarGridOffset = new Point(Math.Max(0, calendarGridOffset.X), Math.Max(0, calendarGridOffset.Y));
             _statusLaneAnchorOffset = statusLaneAnchorOffset;
             _statusLaneMaxWidth = Math.Max(40, statusLaneMaxWidth);
         }
@@ -421,17 +430,23 @@ namespace HaCreator.MapSimulator.UI
             Texture2D overlayTexture = ResolveCalendarOverlayTexture();
             if (overlayTexture != null)
             {
-                // WZ evidence: EventList/calendar/bg/*/backgrnd2 uses origin (-6, -23),
-                // so the authored overlay anchor sits at base + (6, 23).
-                sprite.Draw(overlayTexture, new Vector2(calendarBounds.X + 6, calendarBounds.Y + 23), Color.White);
+                sprite.Draw(
+                    overlayTexture,
+                    new Vector2(
+                        calendarBounds.X + _calendarOverlayOffset.X,
+                        calendarBounds.Y + _calendarOverlayOffset.Y),
+                    Color.White);
             }
 
             Texture2D gridTexture = ResolveCalendarGridTexture();
             if (gridTexture != null)
             {
-                // WZ evidence: EventList/calendar/bg/*/backgrnd3 uses origin (-12, -68),
-                // so the authored content anchor sits at base + (12, 68).
-                sprite.Draw(gridTexture, new Vector2(calendarBounds.X + 12, calendarBounds.Y + 68), Color.White);
+                sprite.Draw(
+                    gridTexture,
+                    new Vector2(
+                        calendarBounds.X + _calendarGridOffset.X,
+                        calendarBounds.Y + _calendarGridOffset.Y),
+                    Color.White);
             }
 
             sprite.DrawString(_font, month.ToString("MMMM yyyy"), new Vector2(calendarBounds.X + 12, calendarBounds.Y + 10), new Color(255, 228, 151));
@@ -852,7 +867,8 @@ namespace HaCreator.MapSimulator.UI
                 GetContentTop(snapshot),
                 visibleIndex,
                 _normalRowTexture?.Width ?? _selectedRowTexture?.Width ?? 288,
-                _normalRowTexture?.Height ?? _selectedRowTexture?.Height ?? 78);
+                _normalRowTexture?.Height ?? _selectedRowTexture?.Height ?? 78,
+                _contentLayerOffset);
         }
 
         internal readonly struct EventRowTextLayout
@@ -890,11 +906,18 @@ namespace HaCreator.MapSimulator.UI
             public int StatusMaxWidth { get; }
         }
 
-        internal static Rectangle ResolveEventRowBounds(int windowX, int windowY, int contentTop, int visibleIndex, int authoredRowWidth, int authoredRowHeight)
+        internal static Rectangle ResolveEventRowBounds(
+            int windowX,
+            int windowY,
+            int contentTop,
+            int visibleIndex,
+            int authoredRowWidth,
+            int authoredRowHeight,
+            Point contentLayerOffset)
         {
             // WZ evidence: UIWindow2.img/EventList/main/event/normal is 288x78 with origin (0,0).
             return new Rectangle(
-                windowX + 16,
+                windowX + Math.Max(0, contentLayerOffset.X + 5),
                 windowY + contentTop + (Math.Max(0, visibleIndex) * 82),
                 Math.Max(1, authoredRowWidth),
                 Math.Max(1, authoredRowHeight));
@@ -1424,8 +1447,8 @@ namespace HaCreator.MapSimulator.UI
                 return GetContentTop(snapshot ?? _currentSnapshot);
             }
 
-            int x = Position.X + 18;
-            int stripTop = Position.Y + 84;
+            int x = Position.X + Math.Max(0, _contentLayerOffset.X + 7);
+            int stripTop = Position.Y + Math.Max(0, _contentLayerOffset.Y - 4);
             int stripWidth = 198; // Client evidence: CUIEventAlarm::Draw clips m_aCT lines to width 198.
 
             int visibleLines = Math.Min(3, snapshot.AlarmLines.Count);
@@ -1482,11 +1505,11 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_font == null || snapshot?.AlarmLines == null || snapshot.AlarmLines.Count == 0)
             {
-                return 94;
+                return Math.Max(0, _contentLayerOffset.Y + 6);
             }
 
             int visibleLines = Math.Min(3, snapshot.AlarmLines.Count);
-            int stripTop = 84;
+            int stripTop = Math.Max(0, _contentLayerOffset.Y - 4);
             int maxLineTop = 0;
             for (int i = 0; i < visibleLines; i++)
             {

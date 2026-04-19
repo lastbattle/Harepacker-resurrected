@@ -34,6 +34,8 @@ namespace HaCreator.MapSimulator.UI
         public int DecodedItemCount { get; private set; }
         public int TrailingByteCount { get; private set; }
         public int ResultTrailingByteCount { get; private set; }
+        public string TrailingPayloadSignature { get; private set; } = "none";
+        public string ResultTrailingPayloadSignature { get; private set; } = "none";
         public int OpenCount { get; private set; }
         public int CloseCount { get; private set; }
         public int BlockedByOwnerCount { get; private set; }
@@ -87,6 +89,8 @@ namespace HaCreator.MapSimulator.UI
             DecodedItemCount = snapshot.CommodityCount;
             TrailingByteCount = snapshot.TrailingByteCount;
             ResultTrailingByteCount = 0;
+            TrailingPayloadSignature = NormalizePayloadSignature(snapshot.TrailingPayloadSignature);
+            ResultTrailingPayloadSignature = "none";
             OpenCount++;
             LastSubtype = -1;
             LastResultCode = -1;
@@ -148,6 +152,8 @@ namespace HaCreator.MapSimulator.UI
             NpcTemplateId = 0;
             TrailingByteCount = 0;
             ResultTrailingByteCount = 0;
+            TrailingPayloadSignature = "none";
+            ResultTrailingPayloadSignature = "none";
             AskItemWishlist = false;
             LastSubtype = -1;
             LastResultCode = -1;
@@ -172,6 +178,7 @@ namespace HaCreator.MapSimulator.UI
             WouldDisconnect = false;
             OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
             ResultTrailingByteCount = 0;
+            ResultTrailingPayloadSignature = "none";
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
@@ -197,6 +204,8 @@ namespace HaCreator.MapSimulator.UI
             DecodedItemCount = Math.Max(0, snapshot.CommodityCount);
             TrailingByteCount = Math.Max(0, snapshot.TrailingByteCount);
             ResultTrailingByteCount = 0;
+            TrailingPayloadSignature = NormalizePayloadSignature(snapshot.TrailingPayloadSignature);
+            ResultTrailingPayloadSignature = "none";
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
@@ -214,13 +223,21 @@ namespace HaCreator.MapSimulator.UI
             TouchWishlistSearchStateToken();
         }
 
-        public void RecordResultPacket(byte subtype, byte resultCode, int trailingByteCount = 0, bool hasResultCode = true)
+        public void RecordResultPacket(
+            byte subtype,
+            byte resultCode,
+            int trailingByteCount = 0,
+            bool hasResultCode = true,
+            string trailingPayloadSignature = null)
         {
             ResultCount++;
             LastSubtype = subtype;
             LastResultCode = resultCode;
             LastResultHadResultCode = hasResultCode;
             ResultTrailingByteCount = Math.Max(0, trailingByteCount);
+            ResultTrailingPayloadSignature = trailingByteCount > 0
+                ? NormalizePayloadSignature(trailingPayloadSignature)
+                : "none";
             WouldDisconnect = false;
             TouchWishlistSearchStateToken();
         }
@@ -231,6 +248,7 @@ namespace HaCreator.MapSimulator.UI
             string ownerState,
             int trailingByteCount = 0,
             bool hasResultCode = true,
+            string trailingPayloadSignature = null,
             bool keepSessionActive = false,
             AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden)
         {
@@ -239,6 +257,9 @@ namespace HaCreator.MapSimulator.UI
             LastResultCode = resultCode;
             LastResultHadResultCode = hasResultCode;
             ResultTrailingByteCount = Math.Max(0, trailingByteCount);
+            ResultTrailingPayloadSignature = trailingByteCount > 0
+                ? NormalizePayloadSignature(trailingPayloadSignature)
+                : "none";
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
@@ -413,6 +434,8 @@ namespace HaCreator.MapSimulator.UI
                 DecodedItemCount,
                 TrailingByteCount,
                 ResultTrailingByteCount,
+                TrailingPayloadSignature ?? "none",
+                ResultTrailingPayloadSignature ?? "none",
                 LastResultHadResultCode ? "1" : "0",
                 CloseCount,
                 LastCloseOpenedWishlist ? "1" : "0",
@@ -482,10 +505,10 @@ namespace HaCreator.MapSimulator.UI
                 ? $", inbound {InboundPacketCount}"
                 : string.Empty;
             string tailText = TrailingByteCount > 0
-                ? $", tail {TrailingByteCount} byte(s)"
+                ? $", tail {TrailingByteCount} byte(s) ({TrailingPayloadSignature})"
                 : string.Empty;
             string resultTailText = ResultTrailingByteCount > 0
-                ? $", result tail {ResultTrailingByteCount} byte(s)"
+                ? $", result tail {ResultTrailingByteCount} byte(s) ({ResultTrailingPayloadSignature})"
                 : string.Empty;
             lines.Add($"token {WishlistSearchStateToken}, {visibilityText}, {DescribeDisconnectHazard()}{blockedText}{inboundText}{tailText}{resultTailText}");
 
@@ -539,10 +562,10 @@ namespace HaCreator.MapSimulator.UI
                 : "no disconnect hazard recorded";
             string wishlistText = AskItemWishlist ? "wishlist prompt on" : "wishlist prompt off";
             string trailingText = TrailingByteCount > 0
-                ? $", opaque tail {TrailingByteCount} byte(s)"
+                ? $", opaque tail {TrailingByteCount} byte(s) ({TrailingPayloadSignature})"
                 : string.Empty;
             string resultTrailingText = ResultTrailingByteCount > 0
-                ? $", result opaque tail {ResultTrailingByteCount} byte(s)"
+                ? $", result opaque tail {ResultTrailingByteCount} byte(s) ({ResultTrailingPayloadSignature})"
                 : string.Empty;
             string waitText = IsWaitingForResult
                 ? ", waiting for packet 366"
@@ -658,6 +681,13 @@ namespace HaCreator.MapSimulator.UI
             string normalized = source.Trim();
             return normalized.StartsWith("admin-shop", StringComparison.OrdinalIgnoreCase)
                 || normalized.IndexOf("adminshop", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string NormalizePayloadSignature(string signature)
+        {
+            return string.IsNullOrWhiteSpace(signature)
+                ? "none"
+                : signature.Trim();
         }
 
         private string DescribeInboundSourceSummary()

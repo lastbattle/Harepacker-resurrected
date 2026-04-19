@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _weddingRemoteNameTagRevisionByCharacterId = new();
         private readonly Dictionary<int, int> _weddingRemoteProfileMetadataRevisionByCharacterId = new();
         private readonly Dictionary<int, int> _weddingRemoteGuildMarkRevisionByCharacterId = new();
+        private readonly Dictionary<int, int> _weddingRemoteTemporaryStatRevisionByCharacterId = new();
 
         private void SyncWeddingRemoteActorsToSharedPool(WeddingField field)
         {
@@ -85,11 +86,18 @@ namespace HaCreator.MapSimulator
                     out _,
                     snapshot.PortableChairPairCharacterId);
 
-                _remoteUserPool.TryApplyTemporaryStatSnapshot(
+                if (ShouldSyncWeddingTemporaryStatMetadata(
+                    _weddingRemoteTemporaryStatRevisionByCharacterId,
                     characterId,
-                    snapshot.TemporaryStats,
-                    delay: 0,
-                    out _);
+                    snapshot.TemporaryStatRevision))
+                {
+                    _remoteUserPool.TryApplyTemporaryStatSnapshot(
+                        characterId,
+                        snapshot.TemporaryStats,
+                        delay: 0,
+                        out _);
+                    _weddingRemoteTemporaryStatRevisionByCharacterId[characterId] = snapshot.TemporaryStatRevision;
+                }
                 SyncAnimationDisplayerRemoteUserState(characterId);
 
                 if (snapshot.AvatarModifiedState is RemoteUserAvatarModifiedPacket avatarModifiedState
@@ -151,6 +159,11 @@ namespace HaCreator.MapSimulator
             {
                 _weddingRemoteGuildMarkRevisionByCharacterId.Remove(characterId);
             }
+
+            foreach (int characterId in _weddingRemoteTemporaryStatRevisionByCharacterId.Keys.Except(desiredCharacterIds).ToArray())
+            {
+                _weddingRemoteTemporaryStatRevisionByCharacterId.Remove(characterId);
+            }
         }
 
         private void ClearWeddingRemoteActorsFromSharedPool()
@@ -161,6 +174,7 @@ namespace HaCreator.MapSimulator
             _weddingRemoteNameTagRevisionByCharacterId.Clear();
             _weddingRemoteProfileMetadataRevisionByCharacterId.Clear();
             _weddingRemoteGuildMarkRevisionByCharacterId.Clear();
+            _weddingRemoteTemporaryStatRevisionByCharacterId.Clear();
         }
 
         internal static bool ShouldSyncWeddingNameTagMetadata(
@@ -191,6 +205,16 @@ namespace HaCreator.MapSimulator
             return syncedGuildMarkRevisionByCharacterId == null
                 || !syncedGuildMarkRevisionByCharacterId.TryGetValue(characterId, out int syncedRevision)
                 || syncedRevision != participantGuildMarkRevision;
+        }
+
+        internal static bool ShouldSyncWeddingTemporaryStatMetadata(
+            IReadOnlyDictionary<int, int> syncedTemporaryStatRevisionByCharacterId,
+            int characterId,
+            int participantTemporaryStatRevision)
+        {
+            return syncedTemporaryStatRevisionByCharacterId == null
+                || !syncedTemporaryStatRevisionByCharacterId.TryGetValue(characterId, out int syncedRevision)
+                || syncedRevision != participantTemporaryStatRevision;
         }
 
         internal static bool TryApplyWeddingRemoteProfileMetadata(

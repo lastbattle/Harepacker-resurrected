@@ -1259,6 +1259,7 @@ namespace HaCreator.MapSimulator
             bool isWindowActive,
             bool suppressInput)
         {
+            SkillManager skills = _playerManager?.Skills;
             if (!isWindowActive
                 || suppressInput
                 || !_packetOwnedFuncKeyConfigLoaded
@@ -1267,11 +1268,12 @@ namespace HaCreator.MapSimulator
                 || _playerManager?.IsPlayerActive != true
                 || _playerManager?.Player is not PlayerCharacter player
                 || !player.IsAlive
-                || _playerManager.Skills == null)
+                || skills == null)
             {
                 return;
             }
 
+            using var cancelBatchScope = skills.BeginClientCancelBatchScope();
             foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedCurrentMappedEntries())
             {
                 if (entry.Type == PacketOwnedFuncKeyFunctionType
@@ -1330,7 +1332,7 @@ namespace HaCreator.MapSimulator
                 if (entry.Type == PacketOwnedFuncKeySkillType
                     && WasPacketOwnedFuncKeyReleased(keyboardState, previousKeyboardState, key))
                 {
-                    _playerManager.Skills.ReleasePacketOwnedFuncKeySkillIfActive(entry.Id, currentTime, ownerInputToken);
+                    skills.ReleasePacketOwnedFuncKeySkillIfActive(entry.Id, currentTime, ownerInputToken);
                 }
             }
         }

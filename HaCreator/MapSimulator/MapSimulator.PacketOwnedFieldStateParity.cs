@@ -856,10 +856,7 @@ namespace HaCreator.MapSimulator
 
         private QuestWindowDetailState GetQuestWindowDetailStateWithPacketState(int questId)
         {
-            QuestDetailDeliveryType deliveryTypeOverride =
-                _lastDeliveryQuestId == questId
-                    ? _lastPacketOwnedDeliveryType
-                    : QuestDetailDeliveryType.None;
+            QuestDetailDeliveryType deliveryTypeOverride = ResolvePacketOwnedQuestDeliveryTypeHint(questId);
             QuestWindowDetailState state = deliveryTypeOverride != QuestDetailDeliveryType.None
                 ? _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build, deliveryTypeOverride)
                 : _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build);

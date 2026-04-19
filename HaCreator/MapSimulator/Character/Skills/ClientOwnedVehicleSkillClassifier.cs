@@ -113,8 +113,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 118, // firestrike
                 119, // flamegear
                 132, // tripleSwing
-                133, // finalCharge
-                144  // comboJudgement
+                133  // finalCharge
             );
 
         private static readonly string[] ClientConfirmedMechanicAndEventVehicleType2OnlyActionNames =

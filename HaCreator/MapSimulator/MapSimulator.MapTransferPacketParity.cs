@@ -583,7 +583,7 @@ namespace HaCreator.MapSimulator
                 return HandleMapTransferPacketCommand(args.Skip(1).ToArray());
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer [status|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer [status|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|clientrawseq <opcodeFramedHex1;opcodeFramedHex2;...>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]]");
         }
 
         private ChatCommandHandler.CommandResult HandleMapTransferSessionCommand(string[] args)
@@ -725,9 +725,40 @@ namespace HaCreator.MapSimulator
                     : ChatCommandHandler.CommandResult.Error(clientRawStatus);
             }
 
+            if (args.Length >= 2 && string.Equals(args[0], "clientrawseq", StringComparison.OrdinalIgnoreCase))
+            {
+                string rawPacketSequence = string.Join(" ", args.Skip(1));
+                if (!MapTransferPacketCodec.TryParseRawPacketHexSequence(rawPacketSequence, out IReadOnlyList<byte[]> rawPackets, out string parseError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(parseError);
+                }
+
+                int acceptedCount = 0;
+                List<string> failures = new();
+                for (int packetIndex = 0; packetIndex < rawPackets.Count; packetIndex++)
+                {
+                    string packetSource = $"maptransfer:command:{packetIndex + 1}";
+                    if (_mapTransferOfficialSessionBridge.TryObserveClientRawPacket(rawPackets[packetIndex], packetSource, out _))
+                    {
+                        acceptedCount++;
+                        continue;
+                    }
+
+                    failures.Add($"packet #{packetIndex + 1} could not be decoded as opcode 114 or 69");
+                }
+
+                if (failures.Count > 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error(string.Join("; ", failures));
+                }
+
+                return ChatCommandHandler.CommandResult.Ok(
+                    $"Queued {acceptedCount} map transfer packet(s) through the opcode-framed 114/69 client-raw intake path.");
+            }
+
             if (args.Length < 3 || !string.Equals(args[0], "result", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|clientrawseq <opcodeFramedHex1;opcodeFramedHex2;...>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]");
             }
 
             if (!byte.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte resultCode))
@@ -743,7 +774,7 @@ namespace HaCreator.MapSimulator
                 !args[2].Equals("0", StringComparison.OrdinalIgnoreCase) &&
                 !args[2].Equals("false", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer packet [request <rawOpcode114Hex>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer packet [request <rawOpcode114Hex>|clientraw <opcodeFramedHex>|clientrawseq <opcodeFramedHex1;opcodeFramedHex2;...>|result <resultCode> <regular|continent> [mapId1 mapId2 ...]]");
             }
 
             List<int> fieldList = new();

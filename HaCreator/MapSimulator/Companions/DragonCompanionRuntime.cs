@@ -125,6 +125,7 @@ namespace HaCreator.MapSimulator.Companions
         private Func<bool> _dragonFuryVisibleProvider;
         private Func<OwnerPhaseContext> _ownerPhaseContextProvider;
         private Func<Vector2, int?> _actionLayerOwnerZProvider;
+        private bool? _wrapperOwnedNoDragonSuppression;
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
         private int _currentActionStartTime;
@@ -226,6 +227,11 @@ namespace HaCreator.MapSimulator.Companions
         public void SetCurrentMapInfoProvider(Func<MapInfo> currentMapInfoProvider)
         {
             _currentMapInfoProvider = currentMapInfoProvider;
+        }
+
+        public void SetWrapperOwnedNoDragonSuppression(bool? suppressDragonPresentation)
+        {
+            _wrapperOwnedNoDragonSuppression = suppressDragonPresentation;
         }
 
         public void SetQuestInfoStateProvider(Func<int?> questInfoStateProvider)
@@ -717,12 +723,17 @@ namespace HaCreator.MapSimulator.Companions
         private bool ShouldSuppressForCurrentMap()
         {
             MapInfo mapInfo = _currentMapInfoProvider?.Invoke();
-            return ShouldSuppressForMapInfo(mapInfo);
+            return ResolveNoDragonSuppression(_wrapperOwnedNoDragonSuppression, mapInfo);
         }
 
         private static bool ShouldSuppressForMapInfo(MapInfo mapInfo)
         {
             return MapSimulator.SuppressesDragonPresentation(mapInfo);
+        }
+
+        internal static bool ResolveNoDragonSuppression(bool? wrapperOwnedSuppression, MapInfo mapInfo)
+        {
+            return wrapperOwnedSuppression ?? ShouldSuppressForMapInfo(mapInfo);
         }
 
         private bool ShouldSuppress(PlayerCharacter owner)

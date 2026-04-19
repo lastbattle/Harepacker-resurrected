@@ -1245,6 +1245,16 @@ namespace HaCreator.MapSimulator.AI
             return _runtimeAngerGaugeFullChargeEffectIntervalMs <= 0;
         }
 
+        internal void RecordAngerGaugeFullChargeEffectRegistration(int currentTick)
+        {
+            if (!HasAngerGauge)
+            {
+                return;
+            }
+
+            _fullChargeEffectStartTime = currentTick;
+        }
+
         /// <summary>
         /// Check if mob skill effect should apply this frame (based on skill timing)
         /// </summary>

@@ -257,6 +257,12 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
+                if (IsRecoverableWrapperLeaf(child))
+                {
+                    sawRecoverableAliasChild = true;
+                    continue;
+                }
+
                 if (IsNestedAliasContainer(child, allowWrapperContainerNames: true))
                 {
                     sawRecoverableAliasChild = true;
@@ -333,6 +339,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return sawNestedAlias;
+        }
+
+        private static bool IsRecoverableWrapperLeaf(WzImageProperty property)
+        {
+            if (property == null || !IsAliasWrapperContainerName(property.Name))
+            {
+                return false;
+            }
+
+            IReadOnlyList<WzImageProperty> children = property.WzProperties;
+            return children == null || children.Count == 0
+                ? !string.IsNullOrWhiteSpace(property.GetString())
+                : false;
         }
 
         private static bool IsAliasWrapperContainerName(string propertyName)

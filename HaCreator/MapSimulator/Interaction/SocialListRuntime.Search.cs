@@ -69,6 +69,19 @@ namespace HaCreator.MapSimulator.Interaction
             ClampSearchSelection(_searchCurrentTab);
         }
 
+        internal int? ResolveCharacterInfoSearchLaunchOption(string characterName, bool isRemoteTarget)
+        {
+            if (!isRemoteTarget)
+            {
+                return null;
+            }
+
+            EnsureSearchSeedData();
+            return HasCharacterInfoPartyLaunchEntry(characterName)
+                ? (int)SocialSearchTab.Party
+                : (int)SocialSearchTab.PartyMember;
+        }
+
         internal void OpenGuildSearchWindow()
         {
             EnsureGuildSearchSeedData();
@@ -522,6 +535,35 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string name = launch.Name.Trim();
+            return TryFindCharacterInfoPartyLaunchEntryIndexCore(partyEntries, name, out index);
+        }
+
+        private bool HasCharacterInfoPartyLaunchEntry(string characterName)
+        {
+            if (!_searchEntriesByTab.TryGetValue(SocialSearchTab.Party, out List<SocialSearchEntryState> partyEntries)
+                || partyEntries == null
+                || partyEntries.Count == 0
+                || string.IsNullOrWhiteSpace(characterName))
+            {
+                return false;
+            }
+
+            return TryFindCharacterInfoPartyLaunchEntryIndexCore(partyEntries, characterName.Trim(), out _);
+        }
+
+        private static bool TryFindCharacterInfoPartyLaunchEntryIndexCore(
+            IReadOnlyList<SocialSearchEntryState> partyEntries,
+            string name,
+            out int index)
+        {
+            index = -1;
+            if (partyEntries == null
+                || partyEntries.Count == 0
+                || string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
             for (int i = 0; i < partyEntries.Count; i++)
             {
                 SocialSearchEntryState entry = partyEntries[i];

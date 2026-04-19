@@ -79,6 +79,8 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeSubmission.Reject(tamingMobRestrictionRejectReason);
             }
 
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+
             if (_pendingEquipmentChangeRequests.Count > 0)
             {
                 return EquipmentChangeSubmission.Reject("An equipment change is already pending.");

@@ -4740,6 +4740,22 @@ namespace HaCreator.MapSimulator
                 == PacketOwned1026PetConsumeRouting.TargetedPetConsumeResult;
         }
 
+        internal static bool ShouldKeepPacketOwned1026OnDedicatedPetConsumeOwner(
+            bool hasOwnedFieldHazardRequest,
+            byte[] payload,
+            int expectedSlot,
+            int expectedItemId,
+            int expectedRequestIndex)
+        {
+            return ClassifyPacketOwned1026PetConsumeRouting(
+                    hasOwnedFieldHazardRequest,
+                    payload,
+                    expectedSlot,
+                    expectedItemId,
+                    expectedRequestIndex)
+                != PacketOwned1026PetConsumeRouting.QuestRewardFallback;
+        }
+
         internal static PacketOwned1026PetConsumeRouting ClassifyPacketOwned1026PetConsumeRouting(
             bool hasPendingFieldHazardRequest,
             byte[] payload,
@@ -4784,14 +4800,42 @@ namespace HaCreator.MapSimulator
 
         private bool ShouldHandlePacketOwned1026AsPetConsumeResult(byte[] payload)
         {
-            if (!_pendingFieldHazardPetAutoConsumeRequest.HasValue)
+            if (!TryGetFieldHazardPetConsumeRoutingOwnerRequest(
+                    currTickCount,
+                    out FieldHazardPetAutoConsumeRequest ownerRequest,
+                    out _))
             {
                 return false;
             }
 
-            return ShouldHandlePacketOwned1026AsPetConsumeResult(
-                hasPendingFieldHazardRequest: true,
-                payload);
+            return ShouldKeepPacketOwned1026OnDedicatedPetConsumeOwner(
+                hasOwnedFieldHazardRequest: true,
+                payload,
+                ownerRequest.InventoryClientSlotIndex,
+                ownerRequest.Candidate.ItemId,
+                ownerRequest.RequestIndex);
+        }
+
+        private bool TryGetFieldHazardPetConsumeRoutingOwnerRequest(
+            int currentTickCount,
+            out FieldHazardPetAutoConsumeRequest request,
+            out bool isRecentClosedRequest)
+        {
+            isRecentClosedRequest = false;
+            if (_pendingFieldHazardPetAutoConsumeRequest.HasValue)
+            {
+                request = _pendingFieldHazardPetAutoConsumeRequest.Value;
+                return true;
+            }
+
+            if (TryGetRecentClosedFieldHazardPetAutoConsumeRequest(currentTickCount, out request))
+            {
+                isRecentClosedRequest = true;
+                return true;
+            }
+
+            request = default;
+            return false;
         }
 
         private static string DescribePacketOwnedFadeAlpha(int alpha)

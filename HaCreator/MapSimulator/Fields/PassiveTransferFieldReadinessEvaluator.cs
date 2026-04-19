@@ -140,9 +140,12 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanQueuePassiveTransferFieldRequest(
             bool hasClientOwnedOneTimeAction,
-            bool hasPassiveTransferFieldPortalCollision)
+            bool hasPassiveTransferFieldPortalCollision,
+            bool allowsTransferField)
         {
-            return hasClientOwnedOneTimeAction && hasPassiveTransferFieldPortalCollision;
+            return hasClientOwnedOneTimeAction
+                   && hasPassiveTransferFieldPortalCollision
+                   && allowsTransferField;
         }
 
         public static bool ShouldClearQueuedRetryOnChairGetUp(

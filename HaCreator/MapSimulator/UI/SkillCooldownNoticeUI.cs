@@ -257,7 +257,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (existingEntry == null)
             {
-                while (_notices.Count >= MaxNotices)
+                int maxNotices = ResolveMaxConcurrentNoticesForClientParity();
+                while (_notices.Count >= maxNotices)
                 {
                     _notices.RemoveAt(_notices.Count - 1);
                 }
@@ -569,6 +570,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 WeatherMessageInfo message = weatherMessages[i];
                 if (message == null)
+                {
+                    continue;
+                }
+
+                if (message.OwnerKind != WeatherMessageOwnerKind.StatusBarItemMsg)
                 {
                     continue;
                 }

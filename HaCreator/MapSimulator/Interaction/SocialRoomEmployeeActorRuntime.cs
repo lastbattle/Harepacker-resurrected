@@ -78,8 +78,8 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
         private readonly Dictionary<int, NameTagAssets> _cashEmployeeNameTagCache = new();
         private readonly HashSet<int> _cashEmployeeNameTagMissingTemplates = new();
-        private readonly Dictionary<uint, EmployeeActionCacheEntry> _cashActionCache = new();
-        private readonly Dictionary<string, uint> _cashActionKeyByName = new(StringComparer.Ordinal);
+        private readonly Dictionary<ulong, EmployeeActionCacheEntry> _cashActionCache = new();
+        private readonly Dictionary<string, ulong> _cashActionKeyByName = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
@@ -737,7 +737,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return new List<IDXObject>();
             }
 
-            uint cacheKey = BuildEmployeeActionCacheKey(templateId, actionEntry.ClientActionIndex);
+            ulong cacheKey = BuildEmployeeActionCacheKey(templateId, actionEntry.ClientActionIndex);
             string actionCacheAlias = BuildEmployeeActionCacheAlias(templateId, actionEntry.ActionName);
 
             if (_cashActionCache.TryGetValue(cacheKey, out EmployeeActionCacheEntry cachedEntry)
@@ -747,7 +747,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return cachedEntry.Frames;
             }
 
-            if (_cashActionKeyByName.TryGetValue(actionCacheAlias, out uint aliasedCacheKey)
+            if (_cashActionKeyByName.TryGetValue(actionCacheAlias, out ulong aliasedCacheKey)
                 && _cashActionCache.TryGetValue(aliasedCacheKey, out EmployeeActionCacheEntry aliasedEntry)
                 && string.Equals(aliasedEntry.ActionName, actionEntry.ActionName, StringComparison.Ordinal))
             {
@@ -779,7 +779,7 @@ namespace HaCreator.MapSimulator.Interaction
             return entry.Frames;
         }
 
-        internal static uint BuildEmployeeActionCacheKeyForTesting(int templateId, int actionIndex)
+        internal static ulong BuildEmployeeActionCacheKeyForTesting(int templateId, int actionIndex)
         {
             return BuildEmployeeActionCacheKey(templateId, actionIndex);
         }
@@ -789,9 +789,14 @@ namespace HaCreator.MapSimulator.Interaction
             return EmployeeActionCatalog.NormalizeClientActionNames(actionNames);
         }
 
-        private static uint BuildEmployeeActionCacheKey(int templateId, int actionIndex)
+        private static ulong BuildEmployeeActionCacheKey(int templateId, int actionIndex)
         {
-            return ((uint)Math.Max(0, templateId) << 8) | (uint)Math.Max(0, actionIndex);
+            return ((ulong)(uint)Math.Max(0, templateId) << 32) | (uint)Math.Max(0, actionIndex);
+        }
+
+        private static int ExtractTemplateIdFromActionCacheKey(ulong cacheKey)
+        {
+            return (int)(cacheKey >> 32);
         }
 
         private static string BuildEmployeeActionCacheAlias(int templateId, string actionName)
@@ -799,7 +804,7 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{Math.Max(0, templateId)}:{NormalizeActionName(actionName)}";
         }
 
-        private void TouchEmployeeActionCacheEntry(uint cacheKey, EmployeeActionCacheEntry entry, string actionCacheAlias)
+        private void TouchEmployeeActionCacheEntry(ulong cacheKey, EmployeeActionCacheEntry entry, string actionCacheAlias)
         {
             if (entry == null)
             {
@@ -822,7 +827,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int removeCount = Math.Max(1, _cashActionCache.Count - MaxEmployeeActionCacheEntries);
-            KeyValuePair<uint, EmployeeActionCacheEntry>[] toRemove = _cashActionCache
+            KeyValuePair<ulong, EmployeeActionCacheEntry>[] toRemove = _cashActionCache
                 .OrderBy(pair => pair.Value?.LastAccessStamp ?? int.MinValue)
                 .ThenBy(pair => pair.Key)
                 .Take(removeCount)
@@ -830,13 +835,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < toRemove.Length; i++)
             {
-                KeyValuePair<uint, EmployeeActionCacheEntry> pair = toRemove[i];
+                KeyValuePair<ulong, EmployeeActionCacheEntry> pair = toRemove[i];
                 _cashActionCache.Remove(pair.Key);
 
                 string alias = BuildEmployeeActionCacheAlias(
-                    (int)(pair.Key >> 8),
+                    ExtractTemplateIdFromActionCacheKey(pair.Key),
                     pair.Value?.ActionName);
-                if (_cashActionKeyByName.TryGetValue(alias, out uint aliasKey)
+                if (_cashActionKeyByName.TryGetValue(alias, out ulong aliasKey)
                     && aliasKey == pair.Key)
                 {
                     _cashActionKeyByName.Remove(alias);

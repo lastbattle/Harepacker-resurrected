@@ -233,7 +233,7 @@ namespace HaCreator.MapSimulator.UI
             Point overlayOrigin = ResolveClientOwnedSurfaceOrigin(
                 renderWidth,
                 WorldOverlayTopMargin,
-                ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight, mediaFrames));
+                ResolveActiveSurfaceBounds(onFrames, mediaFrames));
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -626,6 +626,18 @@ namespace HaCreator.MapSimulator.UI
                 familyBounds.Top,
                 Math.Max(1, fallbackWidth),
                 Math.Max(1, familyBounds.Height));
+        }
+
+        internal static Rectangle ResolveActiveSurfaceBounds(
+            IReadOnlyList<MapleTvAnimationFrame> onFrames,
+            IReadOnlyList<MapleTvAnimationFrame> mediaFrames)
+        {
+            if (onFrames != null && onFrames.Count > 0)
+            {
+                return ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvIdleSurfaceHeight, onFrames);
+            }
+
+            return ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight, mediaFrames);
         }
 
         private static Rectangle NormalizeBounds(Rectangle bounds)

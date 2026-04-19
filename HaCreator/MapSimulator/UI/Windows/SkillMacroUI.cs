@@ -2464,12 +2464,6 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (ctrl && keyboardState.IsKeyDown(Keys.A) && _previousKeyboardState.IsKeyUp(Keys.A))
-            {
-                SelectAllNameText();
-                return;
-            }
-
             if (ctrl && keyboardState.IsKeyDown(Keys.C) && _previousKeyboardState.IsKeyUp(Keys.C))
             {
                 CopySelectedNameText(cutSelection: false);

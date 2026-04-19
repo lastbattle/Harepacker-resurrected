@@ -8691,6 +8691,58 @@ namespace HaCreator.MapSimulator
                         return runtime.TryDispatchTradingRoomPacketOwnedExceedLimit(currTickCount, out packetMessage);
                     }
 
+                    bool TrySendMerchantSessionRequest(byte requestSubtype, out string packetMessage, byte[] requestBody = null, string idaOwner = null)
+                    {
+                        byte[] outboundPacket = SocialRoomMerchantOfficialSessionBridgeManager.BuildMerchantOutboundPacket(requestSubtype, requestBody);
+                        if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(outboundPacket, out string bridgeStatus))
+                        {
+                            packetMessage = bridgeStatus;
+                            return false;
+                        }
+
+                        string ownerText = string.IsNullOrWhiteSpace(idaOwner) ? string.Empty : $" ({idaOwner})";
+                        packetMessage = $"{bridgeStatus} Mapped /socialroom packet action to opcode 144 subtype {requestSubtype}{ownerText}.";
+                        return true;
+                    }
+
+                    bool TrySendMerchantBuyRequest(int requestedIndex, out string packetMessage)
+                    {
+                        packetMessage = null;
+                        List<SocialRoomItemEntry> availableEntries = runtime.Items
+                            .Where(entry => !entry.IsClaimed && entry.MesoAmount > 0)
+                            .ToList();
+                        if (availableEntries.Count == 0)
+                        {
+                            packetMessage = "No purchasable merchant row is available to map onto CPersonalShopDlg::BuyItem.";
+                            return false;
+                        }
+
+                        int resolvedIndex = requestedIndex >= 0 && requestedIndex < availableEntries.Count ? requestedIndex : 0;
+                        SocialRoomItemEntry selectedEntry = availableEntries[resolvedIndex];
+                        int packetSlotIndex = selectedEntry.PacketSlotIndex ?? resolvedIndex;
+                        byte packetSlot = (byte)Math.Clamp(packetSlotIndex, byte.MinValue, byte.MaxValue);
+                        if (!InventoryItemMetadataResolver.TryResolveClientItemCrc(selectedEntry.ItemId, out uint itemCrc) || itemCrc == 0)
+                        {
+                            packetMessage = $"Could not resolve client item CRC for merchant row item {selectedEntry.ItemId}; unable to build CPersonalShopDlg::BuyItem request subtype 23.";
+                            return false;
+                        }
+
+                        byte[] buyPacket = SocialRoomMerchantOfficialSessionBridgeManager.BuildPersonalShopBuyOutboundPacket(
+                            buyFromEntrustedShop: false,
+                            packetSlot,
+                            bundleCount: 1,
+                            itemCrc);
+                        if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(buyPacket, out string bridgeStatus))
+                        {
+                            packetMessage = bridgeStatus;
+                            return false;
+                        }
+
+                        packetMessage =
+                            $"{bridgeStatus} Mapped /socialroom personalshop packet buy to CPersonalShopDlg::BuyItem (opcode 144 subtype 23, slot {packetSlot}, bundle 1, crc 0x{itemCrc:X8}).";
+                        return true;
+                    }
+
 
                     switch (kind)
                     {
@@ -8815,6 +8867,13 @@ namespace HaCreator.MapSimulator
                                 case "buy":
                                     int bundleIndex = args.Length > actionIndex + 1 && int.TryParse(args[actionIndex + 1], out int parsedBundleIndex) ? parsedBundleIndex : -1;
                                     string buyerName = args.Length > actionIndex + 2 ? args[actionIndex + 2] : null;
+                                    if (packetMode)
+                                    {
+                                        return TrySendMerchantBuyRequest(bundleIndex, out string packetOwnedBuyMessage)
+                                            ? ChatCommandHandler.CommandResult.Ok(packetOwnedBuyMessage)
+                                            : ChatCommandHandler.CommandResult.Error(packetOwnedBuyMessage);
+                                    }
+
                                     return Dispatch(SocialRoomPacketType.BuyItem, out string buyMessage, itemIndex: bundleIndex, actorName: buyerName)
                                         ? ChatCommandHandler.CommandResult.Ok(buyMessage)
                                         : ChatCommandHandler.CommandResult.Error(buyMessage);
@@ -8875,13 +8934,45 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(entrustedAutoMessage)
                                         : ChatCommandHandler.CommandResult.Error(entrustedAutoMessage);
                                 case "arrange":
+                                    if (packetMode)
+                                    {
+                                        return TrySendMerchantSessionRequest(
+                                                requestSubtype: 40,
+                                                out string entrustedArrangePacketMessage,
+                                                idaOwner: "CEntrustedShopDlg::OnArrange")
+                                            ? ChatCommandHandler.CommandResult.Ok(entrustedArrangePacketMessage)
+                                            : ChatCommandHandler.CommandResult.Error(entrustedArrangePacketMessage);
+                                    }
+
                                     return Dispatch(SocialRoomPacketType.ArrangeItems, out string entrustedArrangeMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(entrustedArrangeMessage)
                                         : ChatCommandHandler.CommandResult.Error(entrustedArrangeMessage);
                                 case "claim":
+                                    if (packetMode)
+                                    {
+                                        return TrySendMerchantSessionRequest(
+                                                requestSubtype: 43,
+                                                out string entrustedClaimPacketMessage,
+                                                idaOwner: "CEntrustedShopDlg::OnWithdrawMoney")
+                                            ? ChatCommandHandler.CommandResult.Ok(entrustedClaimPacketMessage)
+                                            : ChatCommandHandler.CommandResult.Error(entrustedClaimPacketMessage);
+                                    }
+
                                     return Dispatch(SocialRoomPacketType.ClaimMesos, out string entrustedClaimMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(entrustedClaimMessage)
                                         : ChatCommandHandler.CommandResult.Error(entrustedClaimMessage);
+                                case "close":
+                                    if (!packetMode)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Entrusted-shop close is packet-owned. Use /socialroom entrustedshop packet close.");
+                                    }
+
+                                    return TrySendMerchantSessionRequest(
+                                            requestSubtype: 39,
+                                            out string entrustedClosePacketMessage,
+                                            idaOwner: "CEntrustedShopDlg::OnGoOut")
+                                        ? ChatCommandHandler.CommandResult.Ok(entrustedClosePacketMessage)
+                                        : ChatCommandHandler.CommandResult.Error(entrustedClosePacketMessage);
                                 case "permit":
                                     if (args.Length > actionIndex + 1 && string.Equals(args[actionIndex + 1], "expire", StringComparison.OrdinalIgnoreCase))
                                     {
@@ -8900,7 +8991,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|mode|list <itemId> [qty] [price]|autolist|arrange|claim|close|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 

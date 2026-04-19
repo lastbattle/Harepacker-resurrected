@@ -131,17 +131,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawText(SpriteBatch sprite, string text, Vector2 position, Color color)
         {
-            if (string.IsNullOrWhiteSpace(text))
+            if (sprite == null || WindowFont == null || string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                WindowFont,
-                text,
-                position,
-                color);
+            // CUIRandomMesoBag::Draw calls IWzCanvas::DrawTextA directly for both lines.
+            sprite.DrawString(WindowFont, text, position, color);
         }
 
         private void DrawAmountText(SpriteBatch sprite, string text, Color color)

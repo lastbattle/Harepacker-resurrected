@@ -15,6 +15,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const int StringPoolDiscardResult = 0xF65;
         private const int StringPoolSendSuccess = 0xF66;
         private const int StringPoolQuickDeliveryDefaultMemo = 0xF57;
+        private const int StringPoolClaimWindowUnset = 0xF53;
+        private const int StringPoolClaimWindowExpired = 0xF54;
+        private const int StringPoolClaimWindowDaysRemaining = 0x1A17;
         private const int MaxPacketOwnedReceiveRows = 10;
 
         private enum MemoAttachmentKind
@@ -93,6 +96,7 @@ namespace HaCreator.MapSimulator.Interaction
                     Preview = BuildPreview(memo.Body),
                     DeliveredAtText = FormatTimestamp(memo.DeliveredAt),
                     ClaimDeadlineText = FormatClaimDeadline(memo.ExpirationTimestampUtc),
+                    ClaimDeadlineStatusText = BuildClaimDeadlineStatusText(memo),
                     StatusText = BuildStatusText(memo),
                     IsRead = memo.IsRead,
                     IsKept = memo.IsKept,
@@ -160,6 +164,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Subject = memo.Subject,
                 DeliveredAtText = FormatTimestamp(memo.DeliveredAt),
                 ClaimDeadlineText = FormatClaimDeadline(memo.ExpirationTimestampUtc),
+                ClaimDeadlineStatusText = BuildClaimDeadlineStatusText(memo),
                 StatusText = BuildStatusText(memo),
                 AttachmentSummary = BuildAttachmentSummary(memo.Attachment),
                 AttachmentDescription = BuildAttachmentDescription(memo),
@@ -733,6 +738,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (!IsWithinClientClaimWindow(memo))
+            {
+                if (TryGetClientClaimWindowDaysRemaining(memo, out int daysRemaining))
+                {
+                    message = daysRemaining >= 30
+                        ? MapleStoryStringPool.GetOrFallback(
+                            StringPoolClaimWindowUnset,
+                            "This parcel package cannot be claimed yet because it is outside the receive window.")
+                        : "This parcel package cannot be claimed right now.";
+                }
+                else
+                {
+                    message = "This parcel package cannot be claimed right now.";
+                }
+
+                return false;
+            }
+
             claimResult = new MemoMailboxClaimResult
             {
                 MemoId = memo.MemoId,
@@ -1202,6 +1225,12 @@ namespace HaCreator.MapSimulator.Interaction
                 description += IsExpired(memo)
                     ? $" Claim deadline passed at {memo.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}."
                     : $" Claim deadline: {memo.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}.";
+
+                string deadlineStatus = BuildClaimDeadlineStatusText(memo);
+                if (!string.IsNullOrWhiteSpace(deadlineStatus))
+                {
+                    description += $" ({deadlineStatus})";
+                }
             }
 
             return description;
@@ -1259,6 +1288,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return memo?.Attachment != null
                 && !memo.Attachment.IsClaimed
+                && IsWithinClientClaimWindow(memo)
                 && !IsExpired(memo);
         }
 
@@ -1266,6 +1296,57 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return memo?.ExpirationTimestampUtc.HasValue == true
                 && memo.ExpirationTimestampUtc.Value.ToLocalTime() <= DateTimeOffset.Now;
+        }
+
+        private static bool IsWithinClientClaimWindow(MemoState memo)
+        {
+            if (!TryGetClientClaimWindowDaysRemaining(memo, out int daysRemaining))
+            {
+                return true;
+            }
+
+            return daysRemaining >= 1 && daysRemaining < 30;
+        }
+
+        private static bool TryGetClientClaimWindowDaysRemaining(MemoState memo, out int daysRemaining)
+        {
+            daysRemaining = 0;
+            if (memo?.ExpirationTimestampUtc.HasValue != true)
+            {
+                return false;
+            }
+
+            // CTabReceive computes this as a signed FILETIME delta divided by one day (0xC92A69C000).
+            long ticksRemaining = memo.ExpirationTimestampUtc.Value.ToLocalTime().Ticks - DateTimeOffset.Now.Ticks;
+            daysRemaining = (int)(ticksRemaining / TimeSpan.TicksPerDay);
+            return true;
+        }
+
+        private static string BuildClaimDeadlineStatusText(MemoState memo)
+        {
+            if (!TryGetClientClaimWindowDaysRemaining(memo, out int daysRemaining))
+            {
+                return string.Empty;
+            }
+
+            if (daysRemaining >= 30)
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    StringPoolClaimWindowUnset,
+                    "Claim window unavailable");
+            }
+
+            if (daysRemaining < 1)
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    StringPoolClaimWindowExpired,
+                    "Expired");
+            }
+
+            string daysTemplate = MapleStoryStringPool.GetOrFallback(
+                StringPoolClaimWindowDaysRemaining,
+                "%d day(s) remaining");
+            return daysTemplate.Replace("%d", daysRemaining.ToString(), StringComparison.Ordinal);
         }
 
         private string BuildModeSummary()

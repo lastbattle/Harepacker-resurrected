@@ -378,6 +378,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, string> _packetOwnedQuestAlarmTitleTooltips = new();
         private readonly Dictionary<int, string> _questMateNames = new();
         private readonly HashSet<int> _packetOwnedAutoStartQuestRegistrations = new();
+        private readonly HashSet<int> _packetOwnedAutoCompletionAlertQuestRegistrations = new();
         private int _recentlyViewedQuestId;
         private int _lastObservedFieldEnterMapId;
         private Func<long> _mesoCountProvider;
@@ -791,12 +792,53 @@ namespace HaCreator.MapSimulator.Interaction
             bool isAutoStartQuest = definition.HasNormalAutoStart
                                     || definition.HasFieldEnterAutoStart
                                     || definition.HasEquipOnAutoStart;
+            bool isAutoCompletionAlertQuestRegistered =
+                RefreshPacketOwnedAutoCompletionAlertQuestRegistration(questId, definition);
             bool isAutoCompletionAlertQuest = PacketOwnedQuestStartRequest.ResolveIsAutoCompletionAlertQuest(
                 definition.HasAutoCompleteAlert,
-                definition.HasAutoPreCompleteAlert);
+                definition.HasAutoPreCompleteAlert,
+                isAutoCompletionAlertQuestRegistered);
             return PacketOwnedQuestStartRequest.ResolveIsAutoAlertQuest(
                 isAutoStartQuest,
                 isAutoCompletionAlertQuest);
+        }
+
+        public bool IsPacketOwnedAutoCompletionAlertQuestRegistered(int questId)
+        {
+            return questId > 0 && _packetOwnedAutoCompletionAlertQuestRegistrations.Contains(questId);
+        }
+
+        private bool RefreshPacketOwnedAutoCompletionAlertQuestRegistration(int questId, QuestDefinition definition)
+        {
+            if (questId <= 0 || definition == null)
+            {
+                _packetOwnedAutoCompletionAlertQuestRegistrations.Remove(questId);
+                return false;
+            }
+
+            bool isCandidate = PacketOwnedQuestStartRequest.ResolveIsAutoCompletionAlertQuest(
+                definition.HasAutoCompleteAlert,
+                definition.HasAutoPreCompleteAlert);
+            if (!isCandidate || GetQuestState(questId) != QuestStateType.Started)
+            {
+                _packetOwnedAutoCompletionAlertQuestRegistrations.Remove(questId);
+                return false;
+            }
+
+            bool hasCompletionDemandOutstanding = EvaluateCompletionIssues(definition, build: null).Count > 0;
+            bool shouldRegister = PacketOwnedQuestStartRequest.ResolveShouldRegisterAutoCompletionAlertQuest(
+                isCandidate,
+                hasCompletionDemandOutstanding);
+            if (shouldRegister)
+            {
+                _packetOwnedAutoCompletionAlertQuestRegistrations.Add(questId);
+            }
+            else
+            {
+                _packetOwnedAutoCompletionAlertQuestRegistrations.Remove(questId);
+            }
+
+            return shouldRegister;
         }
 
         public void PrimeQuestAlarmAutoRegisterActivity(IEnumerable<int> questIds)
@@ -2423,6 +2465,7 @@ namespace HaCreator.MapSimulator.Interaction
                         QuestId = item.Definition.QuestId,
                         Title = item.Definition.Name,
                         TooltipText = ResolvePacketOwnedQuestAlarmTitleTooltip(item.Definition.QuestId),
+                        IsRegistrationCandidate = IsClientQuestAlarmRegistrationCandidate(item.Definition),
                         StatusText = issues.Count == 0 ? "Ready" : "In progress",
                         UpdateSequence = GetQuestAlarmUpdateSequence(item.Definition.QuestId),
                         AutoRegisterActivitySequence = GetQuestAlarmAutoRegisterActivitySequence(item.Definition.QuestId),
@@ -3935,9 +3978,49 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     return matchedProperty;
                 }
+
+                string normalizedExpectedName = NormalizeConversationMetadataKey(propertyName);
+                if (string.IsNullOrWhiteSpace(normalizedExpectedName) || property.WzProperties == null)
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < property.WzProperties.Count; j++)
+                {
+                    WzImageProperty childProperty = property.WzProperties[j];
+                    if (childProperty == null)
+                    {
+                        continue;
+                    }
+
+                    if (NormalizeConversationMetadataKey(childProperty.Name) == normalizedExpectedName)
+                    {
+                        return childProperty;
+                    }
+                }
             }
 
             return null;
+        }
+
+        private static string NormalizeConversationMetadataKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder(value.Length);
+            for (int i = 0; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (char.IsLetterOrDigit(current))
+                {
+                    builder.Append(char.ToLowerInvariant(current));
+                }
+            }
+
+            return builder.ToString();
         }
 
         private static CharacterGenderType? ParseConversationVariantGender(WzImageProperty property)
@@ -10391,10 +10474,38 @@ namespace HaCreator.MapSimulator.Interaction
                    propertyName.Equals("info", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("message", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("illustration", StringComparison.OrdinalIgnoreCase) ||
-                   propertyName.Equals("npc", StringComparison.OrdinalIgnoreCase) ||
-                   propertyName.Equals("job", StringComparison.OrdinalIgnoreCase) ||
-                   propertyName.Equals("quest", StringComparison.OrdinalIgnoreCase) ||
+                   IsConversationVariantMetadataPropertyName(propertyName) ||
                    IsQuestActionDataPropertyName(propertyName);
+        }
+
+        private static bool IsConversationVariantMetadataPropertyName(string propertyName)
+        {
+            string normalized = NormalizeConversationMetadataKey(propertyName);
+            return normalized == "npc" ||
+                   normalized == "npcid" ||
+                   normalized == "job" ||
+                   normalized == "jobid" ||
+                   normalized == "quest" ||
+                   normalized == "subjob" ||
+                   normalized == "subjobflag" ||
+                   normalized == "subjobflags" ||
+                   normalized == "pop" ||
+                   normalized == "fame" ||
+                   normalized == "famemin" ||
+                   normalized == "minfame" ||
+                   normalized == "popmin" ||
+                   normalized == "famemax" ||
+                   normalized == "maxfame" ||
+                   normalized == "popmax" ||
+                   normalized == "lvmin" ||
+                   normalized == "minlevel" ||
+                   normalized == "levelmin" ||
+                   normalized == "lvmax" ||
+                   normalized == "maxlevel" ||
+                   normalized == "levelmax" ||
+                   normalized == "gender" ||
+                   normalized == "sex" ||
+                   normalized == "gendertype";
         }
 
         private static bool IsQuestActionDataPropertyName(string propertyName)
@@ -12752,8 +12863,23 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool IsClientQuestAlarmRegistrationCandidate(QuestDefinition definition)
         {
             return definition != null &&
-                   !IsClientQuestGuideSuppressedQuestId(definition.QuestId) &&
+                   definition.AreaCode != 51 &&
                    HasClientQuestAlarmCompletionDemand(definition);
+        }
+
+        internal static bool IsClientQuestAlarmRegistrationCandidateForTesting(
+            int areaCode,
+            int endMobDemandCount,
+            int endItemDemandCount,
+            int endMesoDemand,
+            int endQuestDemandCount)
+        {
+            return areaCode != 51 &&
+                   HasClientQuestAlarmCompletionDemand(
+                       Math.Max(0, endMobDemandCount),
+                       Math.Max(0, endItemDemandCount),
+                       Math.Max(0, endMesoDemand),
+                       Math.Max(0, endQuestDemandCount));
         }
 
         internal static bool HasClientQuestAlarmCompletionDemandForTesting(
@@ -12763,8 +12889,8 @@ namespace HaCreator.MapSimulator.Interaction
             int endMesoDemand,
             int endQuestDemandCount)
         {
-            return !IsClientQuestGuideSuppressedQuestId(questId) &&
-                   HasClientQuestAlarmCompletionDemand(
+            _ = questId;
+            return HasClientQuestAlarmCompletionDemand(
                        Math.Max(0, endMobDemandCount),
                        Math.Max(0, endItemDemandCount),
                        Math.Max(0, endMesoDemand),
@@ -12782,8 +12908,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasCurrentMeso,
             bool hasPrecedeQuestRecordOrComplete)
         {
-            return !IsClientQuestGuideSuppressedQuestId(questId) &&
-                   HasClientQuestAlarmAutoRegisterProgress(
+            _ = questId;
+            return HasClientQuestAlarmAutoRegisterProgress(
                        Math.Max(0, endMobDemandCount),
                        Math.Max(0, endItemDemandCount),
                        Math.Max(0, endMesoDemand),

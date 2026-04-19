@@ -151,6 +151,7 @@ namespace HaCreator.MapSimulator
             public int FlightStartTime { get; init; }
             public int ExplosionTime { get; init; }
             public Vector2 Origin { get; init; }
+            public Vector2 FlightOrigin { get; init; }
             public Vector2 Impact { get; init; }
             public int DragX { get; init; }
             public int DragY { get; init; }
@@ -194,7 +195,12 @@ namespace HaCreator.MapSimulator
         internal readonly record struct AnimationDisplayerFollowEquipmentCandidate(
             int ItemId,
             EquipSlot Slot,
-            int ClientEquipIndex);
+            int ClientEquipIndex,
+            bool IsHidden);
+
+        private readonly record struct AnimationDisplayerResolvedFollowEquipmentEntry(
+            AnimationDisplayerFollowEquipmentDefinition Definition,
+            int CandidateIdentity);
 
         private readonly record struct AnimationDisplayerSkillUseBranchRequest(
             string BranchName,
@@ -1157,6 +1163,32 @@ namespace HaCreator.MapSimulator
                 success ? "Success" : "Fail");
         }
 
+        internal static bool TryResolveAnimationDisplayerCatchSuccessFromEffectUol(
+            string effectUol,
+            out bool success)
+        {
+            success = false;
+            string normalizedEffectUol = NormalizeRemotePacketOwnedStringEffectUol(effectUol);
+            if (string.IsNullOrWhiteSpace(normalizedEffectUol))
+            {
+                return false;
+            }
+
+            if (normalizedEffectUol.IndexOf("/Catch/Success", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                success = true;
+                return true;
+            }
+
+            if (normalizedEffectUol.IndexOf("/Catch/Fail", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                success = false;
+                return true;
+            }
+
+            return false;
+        }
+
         internal static string ResolveAnimationDisplayerCoolEffectUol()
         {
             return AnimationDisplayerCoolEffectUol;
@@ -1899,6 +1931,7 @@ namespace HaCreator.MapSimulator
 
             if (!TryResolveAnimationDisplayerUserStateFrames(
                     ownerCharacterId,
+                    out int initialElapsedMs,
                     out List<IDXObject> startFrames,
                     out List<IDXObject> repeatFrames,
                     out List<IDXObject> endFrames))
@@ -1914,15 +1947,18 @@ namespace HaCreator.MapSimulator
                        getPosition,
                        offsetX: 0f,
                        offsetY: AnimationDisplayerUserStateOffsetY,
-                       currTickCount) >= 0;
+                       currTickCount,
+                       initialElapsedMs) >= 0;
         }
 
         private bool TryResolveAnimationDisplayerUserStateFrames(
             int ownerCharacterId,
+            out int initialElapsedMs,
             out List<IDXObject> startFrames,
             out List<IDXObject> repeatFrames,
             out List<IDXObject> endFrames)
         {
+            initialElapsedMs = 0;
             startFrames = null;
             repeatFrames = null;
             endFrames = null;
@@ -1930,10 +1966,12 @@ namespace HaCreator.MapSimulator
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             if (ownerCharacterId > 0
                 && ownerCharacterId == localCharacterId
-                && TryResolveAnimationDisplayerSpecificUserStateFrames(
+                && TryResolveAnimationDisplayerSpecificUserStateFramesForElapsed(
                     SkillManager.BuildAnimationDisplayerTemporaryStatAvatarEffectStatesForParity(
                         _playerManager?.Skills?.ActiveBuffs,
                         _playerManager?.Skills?.GetActiveDeferredAvatarEffectSkillIdForParity()),
+                    currTickCount,
+                    out initialElapsedMs,
                     out _,
                     out startFrames,
                     out repeatFrames,
@@ -1944,8 +1982,10 @@ namespace HaCreator.MapSimulator
 
             if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) == true
                 && actor != null
-                && TryResolveAnimationDisplayerSpecificUserStateFrames(
+                && TryResolveAnimationDisplayerSpecificUserStateFramesForElapsed(
                     BuildAnimationDisplayerSpecificUserStateCandidates(actor),
+                    currTickCount,
+                    out initialElapsedMs,
                     out _,
                     out startFrames,
                     out repeatFrames,
@@ -1955,6 +1995,62 @@ namespace HaCreator.MapSimulator
             }
 
             return TryGetAnimationDisplayerFrames("userstate:generic", AnimationDisplayerGenericUserStateEffectUol, out repeatFrames);
+        }
+
+        private static bool TryResolveAnimationDisplayerSpecificUserStateFramesForElapsed(
+            IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> candidateStates,
+            int currentTime,
+            out int initialElapsedMs,
+            out int resolvedSkillId,
+            out List<IDXObject> startFrames,
+            out List<IDXObject> repeatFrames,
+            out List<IDXObject> endFrames)
+        {
+            initialElapsedMs = 0;
+            resolvedSkillId = 0;
+            startFrames = null;
+            repeatFrames = null;
+            endFrames = null;
+
+            if (candidateStates == null || candidateStates.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < candidateStates.Count; i++)
+            {
+                RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state = candidateStates[i];
+                if (!TryBuildAnimationDisplayerSpecificUserStateFrames(
+                        state,
+                        out List<IDXObject> candidateStartFrames,
+                        out List<IDXObject> candidateRepeatFrames,
+                        out List<IDXObject> candidateEndFrames))
+                {
+                    continue;
+                }
+
+                resolvedSkillId = state.SkillId;
+                startFrames = candidateStartFrames;
+                repeatFrames = candidateRepeatFrames;
+                endFrames = candidateEndFrames;
+                initialElapsedMs = ResolveAnimationDisplayerSpecificUserStateInitialElapsed(state, currentTime);
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static int ResolveAnimationDisplayerSpecificUserStateInitialElapsed(
+            RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
+            int currentTime)
+        {
+            if (state == null
+                || state.AnimationStartTime == int.MinValue)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, currentTime - state.AnimationStartTime);
         }
 
         internal static IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> BuildAnimationDisplayerSpecificUserStateCandidates(
@@ -2143,13 +2239,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            IReadOnlyList<AnimationDisplayerFollowEquipmentDefinition> followDefinitions =
+            IReadOnlyList<AnimationDisplayerResolvedFollowEquipmentEntry> followDefinitions =
                 ResolveAnimationDisplayerFollowEquipmentDefinitions(ownerCharacterId);
             bool allowGenericFallback = ShouldAllowAnimationDisplayerGenericFollowFallback(registrationKey);
-            var definitionsToRegister = new List<AnimationDisplayerFollowEquipmentDefinition>(followDefinitions);
+            var definitionsToRegister = new List<AnimationDisplayerResolvedFollowEquipmentEntry>(followDefinitions);
             if (definitionsToRegister.Count == 0 && allowGenericFallback)
             {
-                definitionsToRegister.Add(null);
+                definitionsToRegister.Add(default);
             }
             else if (definitionsToRegister.Count == 0)
             {
@@ -2164,11 +2260,13 @@ namespace HaCreator.MapSimulator
             var resolvedEntries = new List<AnimationDisplayerFollowRegistrationEntry>(definitionsToRegister.Count);
             for (int definitionIndex = 0; definitionIndex < definitionsToRegister.Count; definitionIndex++)
             {
-                AnimationDisplayerFollowEquipmentDefinition followDefinition = definitionsToRegister[definitionIndex];
+                AnimationDisplayerResolvedFollowEquipmentEntry resolvedFollowDefinition = definitionsToRegister[definitionIndex];
+                AnimationDisplayerFollowEquipmentDefinition followDefinition = resolvedFollowDefinition.Definition;
                 int definitionKey = BuildAnimationDisplayerFollowRegistrationDefinitionKey(
                     followDefinition,
                     relativeEmission,
-                    definitionIndex);
+                    definitionIndex,
+                    resolvedFollowDefinition.CandidateIdentity);
 
                 if (TryDequeueAnimationDisplayerFollowRegistrationEntry(
                         existingEntriesByDefinitionKey,
@@ -2379,7 +2477,8 @@ namespace HaCreator.MapSimulator
         private static int BuildAnimationDisplayerFollowRegistrationDefinitionKey(
             AnimationDisplayerFollowEquipmentDefinition followDefinition,
             bool relativeEmission,
-            int registrationOrder)
+            int registrationOrder,
+            int candidateIdentity)
         {
             unchecked
             {
@@ -2389,8 +2488,30 @@ namespace HaCreator.MapSimulator
                 key = (key * 31) + (followDefinition?.ClientEquipIndex ?? -1);
                 key = (key * 31) + (relativeEmission ? 1 : 0);
                 key = (key * 31) + registrationOrder;
+                key = (key * 31) + candidateIdentity;
                 return key;
             }
+        }
+
+        internal static int BuildAnimationDisplayerFollowRegistrationDefinitionKeyForTesting(
+            int itemId,
+            EquipSlot slot,
+            int clientEquipIndex,
+            bool relativeEmission,
+            int registrationOrder,
+            int candidateIdentity)
+        {
+            var followDefinition = new AnimationDisplayerFollowEquipmentDefinition
+            {
+                ItemId = itemId,
+                SourceEquipSlot = slot,
+                ClientEquipIndex = clientEquipIndex
+            };
+            return BuildAnimationDisplayerFollowRegistrationDefinitionKey(
+                followDefinition,
+                relativeEmission,
+                registrationOrder,
+                candidateIdentity);
         }
 
         private bool TryRegisterAnimationDisplayerQuestDeliveryLocalUserState(int itemId)
@@ -2793,6 +2914,16 @@ namespace HaCreator.MapSimulator
             if (consumedReservedEntry)
             {
                 return true;
+            }
+
+            if (TryResolveAnimationDisplayerCatchSuccessFromEffectUol(effectUol, out bool catchSuccess))
+            {
+                return TryRegisterAnimationDisplayerCatch(
+                    catchSuccess,
+                    presentation.CharacterId,
+                    getPosition,
+                    presentation.CurrentTime,
+                    out _);
             }
 
             if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(effectUol, out int squibVariant))
@@ -3201,6 +3332,7 @@ namespace HaCreator.MapSimulator
                 FlightStartTime = flightStartTime,
                 ExplosionTime = explosionTime,
                 Origin = new Vector2(presentation.Target.X, presentation.Target.Y),
+                FlightOrigin = RemoteUserActorPool.ResolveRemoteGrenadeFlightOriginForParity(presentation),
                 Impact = presentation.Impact,
                 DragX = presentation.DragX,
                 DragY = presentation.DragY,
@@ -3302,7 +3434,7 @@ namespace HaCreator.MapSimulator
             if (isExploding)
             {
                 position = RemoteUserActorPool.ResolveRemoteGrenadePositionForParity(
-                    actor.Origin,
+                    actor.FlightOrigin,
                     actor.Impact,
                     actor.ExplosionTime - actor.FlightStartTime,
                     actor.ExplosionTime - actor.FlightStartTime,
@@ -3317,7 +3449,7 @@ namespace HaCreator.MapSimulator
             else
             {
                 position = RemoteUserActorPool.ResolveRemoteGrenadePositionForParity(
-                    actor.Origin,
+                    actor.FlightOrigin,
                     actor.Impact,
                     currentTime - actor.FlightStartTime,
                     actor.ExplosionTime - actor.FlightStartTime,
@@ -5060,7 +5192,7 @@ namespace HaCreator.MapSimulator
             return points;
         }
 
-        private IReadOnlyList<AnimationDisplayerFollowEquipmentDefinition> ResolveAnimationDisplayerFollowEquipmentDefinitions(int ownerCharacterId)
+        private IReadOnlyList<AnimationDisplayerResolvedFollowEquipmentEntry> ResolveAnimationDisplayerFollowEquipmentDefinitions(int ownerCharacterId)
         {
             CharacterBuild build = null;
             if (_playerManager?.Player?.Build?.Id == ownerCharacterId)
@@ -5075,14 +5207,14 @@ namespace HaCreator.MapSimulator
             return ResolveAnimationDisplayerFollowEquipmentDefinitions(build);
         }
 
-        private IReadOnlyList<AnimationDisplayerFollowEquipmentDefinition> ResolveAnimationDisplayerFollowEquipmentDefinitions(CharacterBuild build)
+        private IReadOnlyList<AnimationDisplayerResolvedFollowEquipmentEntry> ResolveAnimationDisplayerFollowEquipmentDefinitions(CharacterBuild build)
         {
             if (build == null)
             {
-                return Array.Empty<AnimationDisplayerFollowEquipmentDefinition>();
+                return Array.Empty<AnimationDisplayerResolvedFollowEquipmentEntry>();
             }
 
-            var definitions = new List<AnimationDisplayerFollowEquipmentDefinition>();
+            var definitions = new List<AnimationDisplayerResolvedFollowEquipmentEntry>();
             foreach (AnimationDisplayerFollowEquipmentCandidate candidate in EnumerateAnimationDisplayerFollowEquipmentCandidates(build))
             {
                 if (candidate.ItemId <= 0)
@@ -5090,12 +5222,13 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                int candidateIdentity = BuildAnimationDisplayerFollowCandidateIdentity(candidate);
                 (int ItemId, EquipSlot Slot) cacheKey = (candidate.ItemId, candidate.Slot);
                 if (_animationDisplayerFollowEquipmentCache.TryGetValue(cacheKey, out AnimationDisplayerFollowEquipmentDefinition cachedDefinition))
                 {
                     if (cachedDefinition != null)
                     {
-                        definitions.Add(cachedDefinition);
+                        definitions.Add(new AnimationDisplayerResolvedFollowEquipmentEntry(cachedDefinition, candidateIdentity));
                     }
 
                     continue;
@@ -5108,7 +5241,7 @@ namespace HaCreator.MapSimulator
                 _animationDisplayerFollowEquipmentCache[cacheKey] = loadedDefinition;
                 if (loadedDefinition != null)
                 {
-                    definitions.Add(loadedDefinition);
+                    definitions.Add(new AnimationDisplayerResolvedFollowEquipmentEntry(loadedDefinition, candidateIdentity));
                 }
             }
 
@@ -5127,13 +5260,26 @@ namespace HaCreator.MapSimulator
                 EquipSlot slot = AnimationDisplayerFollowCandidateEquipSlots[i];
                 if (build.Equipment.TryGetValue(slot, out CharacterPart visiblePart) && visiblePart?.ItemId > 0)
                 {
-                    yield return new AnimationDisplayerFollowEquipmentCandidate(visiblePart.ItemId, slot, i);
+                    yield return new AnimationDisplayerFollowEquipmentCandidate(visiblePart.ItemId, slot, i, IsHidden: false);
                 }
 
                 if (build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) && hiddenPart?.ItemId > 0)
                 {
-                    yield return new AnimationDisplayerFollowEquipmentCandidate(hiddenPart.ItemId, slot, i);
+                    yield return new AnimationDisplayerFollowEquipmentCandidate(hiddenPart.ItemId, slot, i, IsHidden: true);
                 }
+            }
+        }
+
+        internal static int BuildAnimationDisplayerFollowCandidateIdentity(AnimationDisplayerFollowEquipmentCandidate candidate)
+        {
+            unchecked
+            {
+                int identity = 17;
+                identity = (identity * 31) + candidate.ItemId;
+                identity = (identity * 31) + (int)candidate.Slot;
+                identity = (identity * 31) + candidate.ClientEquipIndex;
+                identity = (identity * 31) + (candidate.IsHidden ? 1 : 0);
+                return identity;
             }
         }
 
@@ -5153,6 +5299,7 @@ namespace HaCreator.MapSimulator
                     signature = (signature * 31) + candidate.ItemId;
                     signature = (signature * 31) + (int)candidate.Slot;
                     signature = (signature * 31) + candidate.ClientEquipIndex;
+                    signature = (signature * 31) + (candidate.IsHidden ? 1 : 0);
                 }
 
                 return signature;
@@ -6320,6 +6467,7 @@ namespace HaCreator.MapSimulator
         {
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             int registrationKey = BuildAnimationDisplayerPacketOwnedFollowRegistrationKey(localCharacterId);
+            ClearAnimationDisplayerStalePacketOwnedFollowRegistrations(registrationKey);
             if (_packetOwnedAnimationDisplayerFollowRegistrationKey != 0
                 && _packetOwnedAnimationDisplayerFollowRegistrationKey != registrationKey)
             {
@@ -6366,6 +6514,37 @@ namespace HaCreator.MapSimulator
             else
             {
                 _packetOwnedAnimationDisplayerFollowRegistrationKey = 0;
+            }
+        }
+
+        private void ClearAnimationDisplayerStalePacketOwnedFollowRegistrations(int activeRegistrationKey)
+        {
+            if (_animationDisplayerFollowAnimationIds.Count <= 0)
+            {
+                return;
+            }
+
+            List<int> staleKeys = null;
+            foreach (KeyValuePair<int, List<AnimationDisplayerFollowRegistrationEntry>> entry in _animationDisplayerFollowAnimationIds)
+            {
+                if (!IsAnimationDisplayerPacketOwnedFollowRegistrationKey(entry.Key)
+                    || entry.Key == activeRegistrationKey)
+                {
+                    continue;
+                }
+
+                staleKeys ??= new List<int>();
+                staleKeys.Add(entry.Key);
+            }
+
+            if (staleKeys == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < staleKeys.Count; i++)
+            {
+                ClearAnimationDisplayerFollowRegistration(staleKeys[i]);
             }
         }
 

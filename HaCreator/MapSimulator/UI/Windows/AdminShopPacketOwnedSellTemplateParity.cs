@@ -18,11 +18,13 @@ namespace HaCreator.MapSimulator.UI
             bool isCashItem,
             bool isNotForSale,
             bool isQuestItem,
+            bool isCashOwnershipLocked,
             long? cashItemSerialNumber)
         {
             return !isCashItem
                 && !isNotForSale
                 && !isQuestItem
+                && !isCashOwnershipLocked
                 && cashItemSerialNumber.GetValueOrDefault() == 0L;
         }
 

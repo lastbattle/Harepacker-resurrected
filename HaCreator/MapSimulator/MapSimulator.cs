@@ -5867,6 +5867,13 @@ namespace HaCreator.MapSimulator
         private bool TryUseInventoryItem(int itemId, InventoryType inventoryType, int currentTime)
 
         {
+            if (itemId <= 0 || inventoryType == InventoryType.NONE)
+            {
+                return false;
+            }
+
+            ReleaseActiveKeydownSkillForClientCancelIngress(currentTime);
+
             if (TryRejectOnlyPickupInventoryUse(itemId, inventoryType, currentTime))
             {
                 return false;
@@ -5961,6 +5968,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            ReleaseActiveKeydownSkillForClientCancelIngress(currentTime);
+
             if (TryRejectOnlyPickupInventoryUse(itemId, inventoryType, currentTime))
             {
                 return false;
@@ -5999,6 +6008,18 @@ namespace HaCreator.MapSimulator
             }
 
             return used;
+        }
+
+        private void ReleaseActiveKeydownSkillForClientCancelIngress(int currentTime)
+        {
+            var skills = _playerManager?.Skills;
+            if (skills == null)
+            {
+                return;
+            }
+
+            using var _ = skills.BeginClientCancelBatchScope();
+            skills.ReleaseActiveKeydownSkill(currentTime);
         }
 
         private bool TryRejectOnlyPickupInventoryUse(int itemId, InventoryType inventoryType, int currentTime)
@@ -22262,7 +22283,26 @@ namespace HaCreator.MapSimulator
 
                 if (consumeOnPickupMonsterCard)
                 {
-                    _monsterBookManager.RecordCardPickup(_playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build, itemId, 1);
+                    CharacterBuild activeBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
+                    int activeCharacterId = activeBuild?.Id ?? 0;
+                    string activeCharacterName = activeBuild?.Name;
+                    MonsterBookManager.CardPickupResult pickupResult = _monsterBookManager.RecordCardPickupWithResult(
+                        activeBuild,
+                        activeCharacterId,
+                        activeCharacterName,
+                        itemId,
+                        1,
+                        persistToDisk: false);
+                    if (pickupResult.Changed)
+                    {
+                        QueuePacketOwnedMonsterBookOwnershipSaveApply(
+                            activeBuild,
+                            activeCharacterId,
+                            activeCharacterName,
+                            pickupResult.Snapshot,
+                            "Consume-on-pickup Monster Card",
+                            showFeedback: false);
+                    }
                 }
                 else if (autoConsumePickedUpItem)
                 {
@@ -27500,6 +27540,7 @@ namespace HaCreator.MapSimulator
             // IDA: TryDoingMagicAttack still gates local area ownership through explicit skill-id branches.
             // Local affected-area ownership branch table recovered from TryDoingMagicAttack area-owner path.
             return skillId == 12111003
+                   || skillId == 12111005
                    || skillId == 2121007
                    || skillId == 2221001
                    || skillId == 2221007
@@ -27995,6 +28036,8 @@ namespace HaCreator.MapSimulator
 
             }
 
+        private readonly Dictionary<Keys, int> _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey = new();
+
         private bool TrySelectSkillMacroImeCandidate(int listIndex, int candidateIndex)
         {
             return Window != null
@@ -28050,14 +28093,19 @@ namespace HaCreator.MapSimulator
 
         private void HandleSkillMacroClientForwardedNonFunctionPhysicalKeyStateChanged(Keys key, bool keyDown, bool controlHeld, bool shiftHeld)
         {
+            Func<InputAction, KeyBinding> bindingResolver = _playerManager?.Input != null
+                ? _playerManager.Input.GetBinding
+                : null;
+            HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyState(
+                key,
+                keyDown,
+                controlHeld,
+                bindingResolver);
             if (!keyDown)
             {
                 return;
             }
 
-            Func<InputAction, KeyBinding> bindingResolver = _playerManager?.Input != null
-                ? _playerManager.Input.GetBinding
-                : null;
             if (!TryResolveSkillMacroForwardedUtilityFunctionIdForTesting(
                     key,
                     bindingResolver,
@@ -28067,6 +28115,51 @@ namespace HaCreator.MapSimulator
             }
 
             TryDispatchPacketOwnedRawFunctionEntry(clientFunctionId, currTickCount);
+        }
+
+        private void HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyState(
+            Keys key,
+            bool keyDown,
+            bool controlHeld,
+            Func<InputAction, KeyBinding> bindingResolver)
+        {
+            if (key == Keys.None
+                || SkillMacroOwnerKeyHandler.IsClientForwardedNonFunctionHotkeyPhysicalKey(key))
+            {
+                return;
+            }
+
+            if (keyDown)
+            {
+                if (!TryResolveSkillMacroForwardedNonFunctionHotkeySlotForTesting(
+                        key,
+                        controlHeld,
+                        bindingResolver,
+                        out int hotkeySlot))
+                {
+                    return;
+                }
+
+                _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey[key] = hotkeySlot;
+                HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, keyDown: true);
+                return;
+            }
+
+            if (_skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey.TryGetValue(key, out int releasedHotkeySlot))
+            {
+                _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey.Remove(key);
+                HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(releasedHotkeySlot, keyDown: false);
+                return;
+            }
+
+            if (TryResolveSkillMacroForwardedNonFunctionHotkeySlotForTesting(
+                    key,
+                    controlHeld,
+                    bindingResolver,
+                    out int fallbackHotkeySlot))
+            {
+                HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(fallbackHotkeySlot, keyDown: false);
+            }
         }
 
         internal static bool TryResolveSkillMacroForwardedUtilityFunctionIdForTesting(
@@ -28834,7 +28927,8 @@ namespace HaCreator.MapSimulator
         {
             return PassiveTransferFieldReadinessEvaluator.CanQueuePassiveTransferFieldRequest(
                 HasActivePassiveTransferFieldOneTimeAction(_playerManager?.Player),
-                HasPassiveTransferFieldPortalCollision());
+                HasPassiveTransferFieldPortalCollision(),
+                ResolvePassiveTransferFieldRuntimeTransferAllowance());
         }
 
         private static bool HasActivePassiveTransferFieldOneTimeAction(PlayerCharacter player)
@@ -29221,12 +29315,19 @@ namespace HaCreator.MapSimulator
         {
             RefreshCollisionScriptExclusiveRequestState(currentTime);
             if (portal == null
-                || _collisionScriptExclusiveRequestSent
+                || !CanSendExclRequestLike(
+                    _collisionScriptExclusiveRequestSent,
+                    _collisionScriptExclusiveRequestSentTick,
+                    currentTime,
+                    timeIntervalMs: 0,
+                    ignoreDeadState: false,
+                    isLocalCharacterAlive: IsLocalCharacterAliveForExclusiveRequest(_playerManager?.Player))
                 || ShouldBlockCollisionScriptPortalSendFromTransferExclusiveRequest(
                     _transferFieldExclusiveRequestSent,
                     _transferFieldExclusiveRequestSentTick,
                     currentTime,
-                    TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS))
+                    TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS,
+                    IsLocalCharacterAliveForExclusiveRequest(_playerManager?.Player)))
             {
                 return false;
             }
@@ -29789,7 +29890,13 @@ namespace HaCreator.MapSimulator
 
         private bool CanSendTransferFieldRequest(int currentTime)
         {
-            return !IsTransferFieldExclusiveRequestInFlight(currentTime);
+            return CanSendExclRequestLike(
+                _transferFieldExclusiveRequestSent,
+                _transferFieldExclusiveRequestSentTick,
+                currentTime,
+                TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS,
+                ignoreDeadState: false,
+                isLocalCharacterAlive: IsLocalCharacterAliveForExclusiveRequest(_playerManager?.Player));
         }
 
         private bool IsTransferFieldExclusiveRequestInFlight(int currentTime)
@@ -29805,13 +29912,47 @@ namespace HaCreator.MapSimulator
             bool transferExclusiveRequestSent,
             int transferExclusiveRequestSentTick,
             int currentTime,
-            int cooldownMs)
+            int cooldownMs,
+            bool isLocalCharacterAlive)
         {
-            return PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
+            return !CanSendExclRequestLike(
                 transferExclusiveRequestSent,
                 transferExclusiveRequestSentTick,
                 currentTime,
-                cooldownMs);
+                cooldownMs,
+                ignoreDeadState: false,
+                isLocalCharacterAlive);
+        }
+
+        internal static bool CanSendExclRequestLike(
+            bool exclusiveRequestSent,
+            int exclusiveRequestSentTick,
+            int currentTime,
+            int timeIntervalMs,
+            bool ignoreDeadState,
+            bool isLocalCharacterAlive)
+        {
+            if (exclusiveRequestSent)
+            {
+                return false;
+            }
+
+            if (!ignoreDeadState && !isLocalCharacterAlive)
+            {
+                return false;
+            }
+
+            if (exclusiveRequestSentTick == int.MinValue)
+            {
+                return true;
+            }
+
+            return unchecked(currentTime - exclusiveRequestSentTick) >= Math.Max(0, timeIntervalMs);
+        }
+
+        internal static bool IsLocalCharacterAliveForExclusiveRequest(PlayerCharacter player)
+        {
+            return player?.Build?.HP > 0;
         }
 
         private void SetTransferFieldExclusiveRequestSent(int currentTime)
@@ -33147,7 +33288,8 @@ namespace HaCreator.MapSimulator
             }
 
 
-            questAlarmWindow.TrackQuest(questId);
+            bool wasTracked = questAlarmWindow.IsQuestTracked(questId);
+            bool registered = questAlarmWindow.TrackQuest(questId);
 
             questAlarmWindow.Show();
 
@@ -33158,7 +33300,12 @@ namespace HaCreator.MapSimulator
             return new QuestWindowActionResult
             {
                 QuestId = questId,
-                Messages = new[] { "Tracking quest in the quest alarm window." }
+                Messages = new[]
+                {
+                    registered || wasTracked
+                        ? "Tracking quest in the quest alarm window."
+                        : "This quest cannot be registered in the quest alarm."
+                }
             };
         }
 
@@ -33795,6 +33942,13 @@ namespace HaCreator.MapSimulator
 
         public bool RemoveRemoteAffectedArea(int objectId)
         {
+            int removedOwnerId = 0;
+            if (objectId > 0
+                && _affectedAreaPool?.TryGetArea(objectId, out ActiveAffectedArea existingArea) == true)
+            {
+                removedOwnerId = existingArea?.OwnerId ?? 0;
+            }
+
             bool removed = _affectedAreaPool?.Remove(objectId, Environment.TickCount) == true;
             if (!removed || objectId <= 0)
             {
@@ -33805,6 +33959,23 @@ namespace HaCreator.MapSimulator
             _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Remove(objectId);
             _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Remove(objectId);
             _remoteAffectedAreaLocalPlayerTickTimes.Remove(objectId);
+
+            if (removedOwnerId > 0
+                && _affectedAreaPool != null
+                && !_affectedAreaPool.ActiveAreas.Any(area => area?.OwnerId == removedOwnerId))
+            {
+                if (!ShouldRetainRemoteAffectedAreaOwnerRuntimeState(
+                        removedOwnerId,
+                        activeOwnerIds: null,
+                        ResolveLiveRemoteAffectedAreaOwnerName,
+                        ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId))
+                {
+                    _remoteAffectedAreaOwnerNames.Remove(removedOwnerId);
+                    _remoteAffectedAreaBattlefieldOwnerTeams.Remove(removedOwnerId);
+                    _remoteAffectedAreaMonsterCarnivalOwnerTeams.Remove(removedOwnerId);
+                }
+            }
+
             return true;
         }
 
@@ -33938,7 +34109,11 @@ namespace HaCreator.MapSimulator
             // leak the message through weather overlays.
             if (noticeAccepted)
             {
-                _fieldEffects?.AddWeatherMessage(message, WeatherEffectType.None, currentTime);
+                _fieldEffects?.AddWeatherMessage(
+                    message,
+                    WeatherEffectType.None,
+                    currentTime,
+                    WeatherMessageOwnerKind.StatusBarItemMsg);
             }
 
         }
@@ -34355,7 +34530,11 @@ namespace HaCreator.MapSimulator
             }
             if (showOverlay)
             {
-                _fieldEffects.AddWeatherMessage(message, WeatherEffectType.None, currentTime);
+                _fieldEffects.AddWeatherMessage(
+                    message,
+                    WeatherEffectType.None,
+                    currentTime,
+                    WeatherMessageOwnerKind.StatusBarItemMsg);
             }
         }
 

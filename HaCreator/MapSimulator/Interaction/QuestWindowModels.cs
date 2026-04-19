@@ -274,6 +274,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int QuestId { get; init; }
         public string Title { get; init; } = string.Empty;
         public string TooltipText { get; init; } = string.Empty;
+        public bool IsRegistrationCandidate { get; init; }
         public string StatusText { get; init; } = string.Empty;
         public long UpdateSequence { get; init; }
         public long AutoRegisterActivitySequence { get; init; }

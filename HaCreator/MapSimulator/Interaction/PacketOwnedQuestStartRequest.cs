@@ -73,6 +73,26 @@ namespace HaCreator.MapSimulator.Interaction
             return hasQuestInfoAutoComplete || hasQuestInfoAutoPreComplete;
         }
 
+        internal static bool ResolveShouldRegisterAutoCompletionAlertQuest(
+            bool isAutoCompletionAlertQuestCandidate,
+            bool hasCompletionDemandOutstanding)
+        {
+            // CWvsContext::TryRegisterAutoCompletionAlertQuest only keeps quests in
+            // m_lAutoCompletionAlertQuest while completion demand is still unmet.
+            return isAutoCompletionAlertQuestCandidate && hasCompletionDemandOutstanding;
+        }
+
+        internal static bool ResolveIsAutoCompletionAlertQuest(
+            bool hasQuestInfoAutoComplete,
+            bool hasQuestInfoAutoPreComplete,
+            bool isRegisteredAutoCompletionAlertQuest)
+        {
+            bool isCandidate = ResolveIsAutoCompletionAlertQuest(
+                hasQuestInfoAutoComplete,
+                hasQuestInfoAutoPreComplete);
+            return isCandidate && isRegisteredAutoCompletionAlertQuest;
+        }
+
         internal static bool ResolveIsAutoAlertQuest(
             bool isAutoStartQuest,
             bool isAutoCompletionAlertQuest)

@@ -157,14 +157,22 @@ namespace HaCreator.MapSimulator.Effects
             // Add weather message if provided
             if (!string.IsNullOrEmpty(message))
             {
-                AddWeatherMessage(message, weatherType, currentTimeMs);
+                AddWeatherMessage(
+                    message,
+                    weatherType,
+                    currentTimeMs,
+                    WeatherMessageOwnerKind.StatusBarItemMsg);
             }
         }
 
         /// <summary>
         /// Add a weather message (WEATHERMSGINFO)
         /// </summary>
-        public void AddWeatherMessage(string message, WeatherEffectType weatherType, int currentTimeMs)
+        public void AddWeatherMessage(
+            string message,
+            WeatherEffectType weatherType,
+            int currentTimeMs,
+            WeatherMessageOwnerKind ownerKind = WeatherMessageOwnerKind.WeatherOverlay)
         {
             var msgInfo = new WeatherMessageInfo
             {
@@ -173,7 +181,8 @@ namespace HaCreator.MapSimulator.Effects
                 StartTime = currentTimeMs,
                 Duration = 5000, // 5 seconds display
                 FadeIn = true,
-                Alpha = 0f
+                Alpha = 0f,
+                OwnerKind = ownerKind
             };
             _weatherMessages.Add(msgInfo);
         }
@@ -789,6 +798,12 @@ namespace HaCreator.MapSimulator.Effects
         Custom = 99     // Custom item-based weather
     }
 
+    public enum WeatherMessageOwnerKind
+    {
+        WeatherOverlay = 0,
+        StatusBarItemMsg = 1
+    }
+
     /// <summary>
     /// Weather message info (WEATHERMSGINFO)
     /// </summary>
@@ -796,6 +811,7 @@ namespace HaCreator.MapSimulator.Effects
     {
         public string Message;
         public WeatherEffectType WeatherType;
+        public WeatherMessageOwnerKind OwnerKind;
         public int StartTime;
         public int Duration;
         public bool FadeIn;

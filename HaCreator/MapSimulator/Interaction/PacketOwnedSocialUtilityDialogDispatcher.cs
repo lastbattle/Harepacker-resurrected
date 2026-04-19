@@ -197,6 +197,50 @@ namespace HaCreator.MapSimulator.Interaction
             return built;
         }
 
+        internal bool IsPacketOwnedTrunkDialogOpen => _trunkDialogRuntime.IsOpen;
+
+        internal bool TryBuildTrunkGetItemOutboundRequest(
+            InventoryType inventoryType,
+            int ownerRowIndex,
+            InventorySlotData slotData,
+            out PacketOwnedNpcUtilityOutboundRequest request,
+            out string message)
+        {
+            bool built = _trunkDialogRuntime.TryBuildGetItemOutboundRequest(
+                inventoryType,
+                ownerRowIndex,
+                slotData,
+                out request,
+                out message);
+            _lastTrunkDispatchSummary = built
+                ? "CTrunkDlg::SendGetItemRequest mirrored the outbound body."
+                : $"CTrunkDlg::SendGetItemRequest was ignored. {message}";
+            _lastDispatchSummary = _lastTrunkDispatchSummary;
+            return built;
+        }
+
+        internal bool TryBuildTrunkPutItemOutboundRequest(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData slotData,
+            int requestedQuantity,
+            out PacketOwnedNpcUtilityOutboundRequest request,
+            out string message)
+        {
+            bool built = _trunkDialogRuntime.TryBuildPutItemOutboundRequest(
+                inventoryType,
+                inventoryRowIndex,
+                slotData,
+                requestedQuantity,
+                out request,
+                out message);
+            _lastTrunkDispatchSummary = built
+                ? "CTrunkDlg::SendPutItemRequest mirrored the outbound body."
+                : $"CTrunkDlg::SendPutItemRequest was ignored. {message}";
+            _lastDispatchSummary = _lastTrunkDispatchSummary;
+            return built;
+        }
+
         internal string DescribeMessengerStatus()
         {
             return $"{_messengerRuntime.DescribeStatus()} Dispatcher: {_lastMessengerDispatchSummary}";
@@ -705,6 +749,10 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedTrunkDialogRuntime
     {
+        private const int TrunkOutboundOpcode = 67;
+        private const byte TrunkGetItemMode = 4;
+        private const byte TrunkPutItemMode = 5;
+        private const byte TrunkCloseMode = 8;
         private const int TrunkDefaultNoticeStringPoolId = 0x0369;
         private const int TrunkResult10NoticeStringPoolId = 0x0366;
         private const int TrunkResult11And16NoticeStringPoolId = 0x1A8B;
@@ -725,6 +773,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _openCount;
         private int _refreshCount;
         private int _noticeCount;
+        private bool _requestInFlight;
 
         internal PacketOwnedTrunkDialogRuntime(Func<SimulatorStorageRuntime> storageRuntimeResolver)
         {
@@ -744,6 +793,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            _requestInFlight = false;
             LastSubtype = payload[0];
             switch (LastSubtype)
             {
@@ -805,6 +855,96 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Trunk packet-owner {(IsOpen ? "open" : "idle")}. Used slots={usedSlots}, meso={meso.ToString(CultureInfo.InvariantCulture)}, packets open={_openCount}, refresh={_refreshCount}, notice={_noticeCount}. Last subtype={LastSubtype.ToString(CultureInfo.InvariantCulture)}. {StatusMessage}";
         }
 
+        internal bool TryBuildGetItemOutboundRequest(
+            InventoryType inventoryType,
+            int ownerRowIndex,
+            InventorySlotData slotData,
+            out PacketOwnedNpcUtilityOutboundRequest request,
+            out string message)
+        {
+            request = default;
+            if (!IsOpen)
+            {
+                StatusMessage = "CTrunkDlg ignored SendGetItemRequest because the owner is closed.";
+                message = StatusMessage;
+                return false;
+            }
+
+            if (_requestInFlight)
+            {
+                StatusMessage = "CTrunkDlg ignored SendGetItemRequest because a prior trunk request is still in flight.";
+                message = StatusMessage;
+                return false;
+            }
+
+            if (slotData == null || slotData.ItemId <= 0)
+            {
+                StatusMessage = "CTrunkDlg ignored SendGetItemRequest because the selected storage row is unavailable.";
+                message = StatusMessage;
+                return false;
+            }
+
+            int itemType = ResolveTrunkItemType(slotData.ItemId, inventoryType);
+            byte trunkRow = ResolveStorageRowPosition(ownerRowIndex, slotData);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                TrunkOutboundOpcode,
+                BuildGetItemRequestPayload(itemType, trunkRow),
+                $"Mirrored CTrunkDlg::SendGetItemRequest (opcode 67, mode 4, itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}).");
+            _requestInFlight = true;
+            StatusMessage = $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}).";
+            message = StatusMessage;
+            return true;
+        }
+
+        internal bool TryBuildPutItemOutboundRequest(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData slotData,
+            int requestedQuantity,
+            out PacketOwnedNpcUtilityOutboundRequest request,
+            out string message)
+        {
+            request = default;
+            if (!IsOpen)
+            {
+                StatusMessage = "CTrunkDlg ignored SendPutItemRequest because the owner is closed.";
+                message = StatusMessage;
+                return false;
+            }
+
+            if (_requestInFlight)
+            {
+                StatusMessage = "CTrunkDlg ignored SendPutItemRequest because a prior trunk request is still in flight.";
+                message = StatusMessage;
+                return false;
+            }
+
+            if (slotData == null || slotData.ItemId <= 0)
+            {
+                StatusMessage = "CTrunkDlg ignored SendPutItemRequest because the selected inventory row is unavailable.";
+                message = StatusMessage;
+                return false;
+            }
+
+            bool treatSingly = inventoryType == InventoryType.EQUIP
+                || InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotData.MaxStackSize) <= 1;
+            int availableQuantity = Math.Max(1, slotData.Quantity);
+            int normalizedQuantity = treatSingly
+                ? 1
+                : Math.Clamp(requestedQuantity, 1, availableQuantity);
+            short inventoryPosition = ResolveInventoryPosition(inventoryRowIndex, slotData);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                TrunkOutboundOpcode,
+                BuildPutItemRequestPayload(inventoryPosition, slotData.ItemId, normalizedQuantity),
+                $"Mirrored CTrunkDlg::SendPutItemRequest (opcode 67, mode 5, pos {inventoryPosition.ToString(CultureInfo.InvariantCulture)}, item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)}, count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}).");
+            _requestInFlight = true;
+            StatusMessage = normalizedQuantity == availableQuantity
+                ? $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}."
+                : $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}.";
+            message = StatusMessage;
+            return true;
+        }
+
         internal bool TryBuildCloseOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
         {
             request = default;
@@ -816,10 +956,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             IsOpen = false;
+            _requestInFlight = false;
             StatusMessage = "CTrunkDlg::SetRet closed the owner and mirrored packet 67 [08].";
             request = new PacketOwnedNpcUtilityOutboundRequest(
-                67,
-                new byte[] { 8 },
+                TrunkOutboundOpcode,
+                new byte[] { TrunkCloseMode },
                 "Mirrored CTrunkDlg::SetRet close/return request (opcode 67, mode 8).");
             message = StatusMessage;
             return true;
@@ -971,7 +1112,9 @@ namespace HaCreator.MapSimulator.Interaction
                     rows.Add(new InventorySlotData
                     {
                         ItemId = reader.ReadInt32(),
-                        Quantity = Math.Max(1, reader.ReadInt32())
+                        Quantity = Math.Max(1, reader.ReadInt32()),
+                        PreferredInventoryType = type,
+                        ClientItemToken = i + 1
                     });
                 }
 
@@ -998,6 +1141,68 @@ namespace HaCreator.MapSimulator.Interaction
 
             value = Encoding.ASCII.GetString(reader.ReadBytes(length)).Trim();
             return true;
+        }
+
+        private static byte[] BuildGetItemRequestPayload(int itemType, byte trunkRow)
+        {
+            return new[]
+            {
+                TrunkGetItemMode,
+                unchecked((byte)Math.Clamp(itemType, 0, byte.MaxValue)),
+                trunkRow
+            };
+        }
+
+        private static byte[] BuildPutItemRequestPayload(short inventoryPosition, int itemId, int quantity)
+        {
+            ushort normalizedPosition = unchecked((ushort)Math.Max((short)0, inventoryPosition));
+            ushort normalizedQuantity = unchecked((ushort)Math.Clamp(quantity, 1, ushort.MaxValue));
+            byte[] payload = new byte[1 + sizeof(ushort) + sizeof(int) + sizeof(ushort)];
+            payload[0] = TrunkPutItemMode;
+            payload[1] = (byte)(normalizedPosition & 0xFF);
+            payload[2] = (byte)((normalizedPosition >> 8) & 0xFF);
+            payload[3] = (byte)(itemId & 0xFF);
+            payload[4] = (byte)((itemId >> 8) & 0xFF);
+            payload[5] = (byte)((itemId >> 16) & 0xFF);
+            payload[6] = (byte)((itemId >> 24) & 0xFF);
+            payload[7] = (byte)(normalizedQuantity & 0xFF);
+            payload[8] = (byte)((normalizedQuantity >> 8) & 0xFF);
+            return payload;
+        }
+
+        private static int ResolveTrunkItemType(int itemId, InventoryType inventoryType)
+        {
+            int itemTypeFromId = itemId > 0 ? itemId / 1000000 : 0;
+            if (itemTypeFromId > 0)
+            {
+                return itemTypeFromId;
+            }
+
+            return inventoryType switch
+            {
+                InventoryType.EQUIP => 1,
+                InventoryType.USE => 2,
+                InventoryType.SETUP => 3,
+                InventoryType.ETC => 4,
+                InventoryType.CASH => 5,
+                _ => 0
+            };
+        }
+
+        private static byte ResolveStorageRowPosition(int ownerRowIndex, InventorySlotData slotData)
+        {
+            int row = slotData?.ClientItemToken.GetValueOrDefault() > 0
+                ? slotData.ClientItemToken.Value
+                : ownerRowIndex + 1;
+            return unchecked((byte)Math.Clamp(row, 0, byte.MaxValue));
+        }
+
+        private static short ResolveInventoryPosition(int inventoryRowIndex, InventorySlotData slotData)
+        {
+            int position = slotData?.ClientItemToken.GetValueOrDefault() > 0
+                ? slotData.ClientItemToken.Value
+                : inventoryRowIndex + 1;
+            return unchecked((short)Math.Clamp(position, 0, short.MaxValue));
         }
     }
 }

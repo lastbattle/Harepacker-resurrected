@@ -535,6 +535,8 @@ namespace HaCreator.MapSimulator.Animation
             int snapshotRetentionMs = 0,
             bool ownsFrameTextures = false,
             Func<int, List<IDXObject>> snapshotFrameFactory = null,
+            Func<int, Vector2?> snapshotPositionFactory = null,
+            Func<int, bool?> snapshotFlipFactory = null,
             SecondaryMotionBlurAnimationState animationState = null)
         {
             if (!HasFrames(frames))
@@ -558,6 +560,8 @@ namespace HaCreator.MapSimulator.Animation
                 snapshotRetentionMs,
                 ownsFrameTextures,
                 snapshotFrameFactory,
+                snapshotPositionFactory,
+                snapshotFlipFactory,
                 animationState);
             _secondaryMotionBlurAnimations.Add(animation);
             return animation.Id;
@@ -1812,6 +1816,8 @@ namespace HaCreator.MapSimulator.Animation
         private bool _ownsFrameTextures;
         private bool _terminationRequested;
         private AnimationEffects.SecondaryMotionBlurAnimationState _state;
+        private Func<int, Vector2?> _snapshotPositionFactory;
+        private Func<int, bool?> _snapshotFlipFactory;
 
         public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
 
@@ -1846,12 +1852,16 @@ namespace HaCreator.MapSimulator.Animation
             int snapshotRetentionMs,
             bool ownsFrameTextures,
             Func<int, List<IDXObject>> snapshotFrameFactory,
+            Func<int, Vector2?> snapshotPositionFactory,
+            Func<int, bool?> snapshotFlipFactory,
             AnimationEffects.SecondaryMotionBlurAnimationState state)
         {
             _fallbackFrames = frames;
             _positionResolver = getOwnerPosition;
             _flipResolver = getOwnerFlip;
             _snapshotFrameFactory = snapshotFrameFactory;
+            _snapshotPositionFactory = snapshotPositionFactory;
+            _snapshotFlipFactory = snapshotFlipFactory;
             _fallbackPosition = fallbackPosition;
             _fallbackFlip = fallbackFlip;
             _follow = follow;
@@ -1886,9 +1896,23 @@ namespace HaCreator.MapSimulator.Animation
 
                 if (AnimationEffects.HasFrames(snapshotFrames))
                 {
+                    Vector2 snapshotPosition = _positionResolver?.Invoke() ?? _fallbackPosition;
+                    bool snapshotFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
+                    Vector2? samplePosition = _snapshotPositionFactory?.Invoke(_nextUpdateTime);
+                    bool? sampleFlip = _snapshotFlipFactory?.Invoke(_nextUpdateTime);
+                    if (samplePosition.HasValue)
+                    {
+                        snapshotPosition = samplePosition.Value;
+                    }
+
+                    if (sampleFlip.HasValue)
+                    {
+                        snapshotFlip = sampleFlip.Value;
+                    }
+
                     _snapshots.Add(new MotionBlurSnapshot(
-                        _positionResolver?.Invoke() ?? _fallbackPosition,
-                        _flipResolver?.Invoke() ?? _fallbackFlip,
+                        snapshotPosition,
+                        snapshotFlip,
                         _nextUpdateTime,
                         snapshotFrames));
                 }

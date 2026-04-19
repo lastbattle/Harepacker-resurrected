@@ -178,5 +178,125 @@ namespace HaCreator.MapSimulator.Interaction
             string inboundSet = string.Join("/", MapleTvInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
             return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket (405: OnSetMessage, 406: OnClearMessage, 407: OnSendMessageResult); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem.";
         }
+
+        internal static bool TryBuildRecoveredResultExpectation(
+            string ownerName,
+            int requestOpcode,
+            ReadOnlySpan<byte> payload,
+            out int[] expectedInboundOpcodes,
+            out byte[] expectedInboundSubtypes,
+            out string expectationSummary)
+        {
+            expectedInboundOpcodes = Array.Empty<int>();
+            expectedInboundSubtypes = Array.Empty<byte>();
+            expectationSummary = string.Empty;
+
+            if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                if (requestOpcode != MapleTvOutboundConsumeCashItemOpcode)
+                {
+                    return false;
+                }
+
+                expectedInboundOpcodes = new[] { (int)MapleTvInboundSendResultOpcode };
+                expectationSummary = "expect CMapleTVMan::OnSendMessageResult (opcode 407)";
+                return true;
+            }
+
+            if (requestOpcode != MessengerOutboundOpcode || payload.Length == 0)
+            {
+                return false;
+            }
+
+            byte requestSubtype = payload[0];
+            switch (requestSubtype)
+            {
+                case 0:
+                    expectedInboundOpcodes = new[] { (int)MessengerInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 1, 0, 7 };
+                    expectationSummary = "expect CUIMessenger::OnSelfEnterResult/OnEnter/OnAvatar (subtypes 1/0/7)";
+                    return true;
+                case 2:
+                    expectedInboundOpcodes = new[] { (int)MessengerInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 2 };
+                    expectationSummary = "expect CUIMessenger::OnLeave (subtype 2)";
+                    return true;
+                case 3:
+                    expectedInboundOpcodes = new[] { (int)MessengerInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 4 };
+                    expectationSummary = "expect CUIMessenger::OnInviteResult (subtype 4)";
+                    return true;
+                case 5:
+                    expectedInboundOpcodes = new[] { (int)MessengerInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 5 };
+                    expectationSummary = "expect CUIMessenger::OnBlocked (subtype 5)";
+                    return true;
+                case 6:
+                    expectedInboundOpcodes = new[] { (int)MessengerInboundOpcode };
+                    expectedInboundSubtypes = new byte[] { 6 };
+                    expectationSummary = "expect CUIMessenger::OnChat (subtype 6)";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        internal static bool TryDecodeRecoveredInboundBranch(
+            string ownerName,
+            int inboundOpcode,
+            ReadOnlySpan<byte> payload,
+            out byte inboundSubtype,
+            out byte resultCode,
+            out string branchSummary)
+        {
+            inboundSubtype = byte.MaxValue;
+            resultCode = byte.MaxValue;
+            branchSummary = string.Empty;
+
+            if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                switch (inboundOpcode)
+                {
+                    case MapleTvInboundSetMessageOpcode:
+                        branchSummary = "CMapleTVMan::OnSetMessage";
+                        return true;
+                    case MapleTvInboundClearMessageOpcode:
+                        branchSummary = "CMapleTVMan::OnClearMessage";
+                        return true;
+                    case MapleTvInboundSendResultOpcode:
+                        if (payload.Length >= 2)
+                        {
+                            bool showFeedback = payload[0] != 0;
+                            resultCode = payload[1];
+                            branchSummary = showFeedback
+                                ? $"CMapleTVMan::OnSendMessageResult code={resultCode}"
+                                : "CMapleTVMan::OnSendMessageResult without feedback";
+                        }
+                        else
+                        {
+                            branchSummary = "CMapleTVMan::OnSendMessageResult";
+                        }
+
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+
+            if (inboundOpcode != MessengerInboundOpcode || payload.Length == 0)
+            {
+                return false;
+            }
+
+            inboundSubtype = payload[0];
+            if (MessengerInboundSubtypeHandlers.TryGetValue(inboundSubtype, out string handlerName))
+            {
+                branchSummary = $"{handlerName} (subtype {inboundSubtype})";
+                return true;
+            }
+
+            branchSummary = $"CUIMessenger::OnPacket subtype {inboundSubtype}";
+            return true;
+        }
     }
 }

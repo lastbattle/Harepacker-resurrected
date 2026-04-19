@@ -2878,6 +2878,12 @@ namespace HaCreator.MapSimulator.Pools
                     static candidate => candidate.ContainsCurrentLocalUserPosition,
                     candidate => candidate.VisualState == initialState))
             {
+                if (TrySelectUniqueStrongestStateSignalCandidate(candidates, initialState, out index))
+                {
+                    selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
+                    return true;
+                }
+
                 return false;
             }
 
@@ -2987,6 +2993,63 @@ namespace HaCreator.MapSimulator.Pools
                 .OrderBy(static candidate => candidate.Index)
                 .Select(static candidate => candidate.Index)
                 .FirstOrDefault();
+            return index >= 0;
+        }
+
+        private static bool TrySelectUniqueStrongestStateSignalCandidate(
+            IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
+            int initialState,
+            out int index)
+        {
+            index = -1;
+            if (candidates == null || candidates.Count == 0)
+            {
+                return false;
+            }
+
+            int bestIndex = -1;
+            int bestScore = int.MinValue;
+            bool hasScoreTie = false;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                PacketEnterAuthoredReactorCandidate candidate = candidates[i];
+                int score = 0;
+                if (candidate.IsLocallyTouched)
+                {
+                    score++;
+                }
+
+                if (candidate.ContainsCurrentLocalUserPosition)
+                {
+                    score++;
+                }
+
+                if (candidate.VisualState == initialState)
+                {
+                    score++;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestIndex = candidate.Index;
+                    hasScoreTie = false;
+                    continue;
+                }
+
+                if (score == bestScore)
+                {
+                    hasScoreTie = true;
+                }
+            }
+
+            if (bestScore < 2 || hasScoreTie)
+            {
+                return false;
+            }
+
+            index = bestIndex;
             return index >= 0;
         }
 
@@ -3824,10 +3887,17 @@ namespace HaCreator.MapSimulator.Pools
             out int packetAnimationSourceState,
             out int packetHitAnimationState)
         {
-            packetAnimationSourceState = 0;
+            packetAnimationSourceState = fallbackAnimationOwnerState >= 0
+                ? fallbackAnimationOwnerState
+                : 0;
             packetHitAnimationState = -1;
             if (data == null)
             {
+                if (fallbackHitOwnerState >= 0
+                    && fallbackHitOwnerState != packetAnimationSourceState)
+                {
+                    packetHitAnimationState = fallbackHitOwnerState;
+                }
                 return;
             }
 

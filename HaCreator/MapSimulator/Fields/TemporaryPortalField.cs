@@ -309,8 +309,9 @@ namespace HaCreator.MapSimulator.Fields
                 key,
                 state,
                 metadata,
-                out RemoteTownPortalOwnerFieldObservation? ownerObservation)
-                ? ownerObservation?.SourceMapId ?? metadata?.SourceMapId
+                out RemoteTownPortalOwnerFieldObservation? ownerObservation,
+                out int? resolvedPreferredSourceMapId)
+                ? resolvedPreferredSourceMapId
                 : null;
             RemoteTownPortalResolvedDestination? refreshedDestination = ResolveRemoteTownPortalDestination(
                 townMapId,
@@ -1229,7 +1230,8 @@ namespace HaCreator.MapSimulator.Fields
                     key,
                     existingState,
                     metadata,
-                    out RemoteTownPortalOwnerFieldObservation? ownerObservation)
+                    out RemoteTownPortalOwnerFieldObservation? ownerObservation,
+                    out _)
                 || !ownerObservation.HasValue)
             {
                 return RemoteTownPortalObservationSource.InferredSourceField;
@@ -1528,8 +1530,9 @@ namespace HaCreator.MapSimulator.Fields
                 key,
                 existingState,
                 metadata,
-                out RemoteTownPortalOwnerFieldObservation? ownerObservation)
-                ? ownerObservation?.SourceMapId ?? metadata?.SourceMapId
+                out RemoteTownPortalOwnerFieldObservation? ownerObservation,
+                out int? resolvedPreferredSourceMapId)
+                ? resolvedPreferredSourceMapId
                 : null;
             return ResolveRemoteTownPortalDestination(
                 currentMapId,
@@ -1553,21 +1556,24 @@ namespace HaCreator.MapSimulator.Fields
                     key,
                     existingState,
                     metadata,
-                    out RemoteTownPortalOwnerFieldObservation? ownerObservation))
+                    out RemoteTownPortalOwnerFieldObservation? ownerObservation,
+                    out int? preferredSourceMapId))
             {
                 return null;
             }
 
-            return ownerObservation?.SourceMapId ?? metadata?.SourceMapId;
+            return preferredSourceMapId;
         }
 
         private bool TryResolvePreferredRemoteTownPortalSourceMapId(
             RemoteTownPortalOwnerTownKey key,
             RemoteTownPortalState? existingState,
             RemoteTownPortalFieldMetadata? metadata,
-            out RemoteTownPortalOwnerFieldObservation? ownerObservation)
+            out RemoteTownPortalOwnerFieldObservation? ownerObservation,
+            out int? preferredSourceMapId)
         {
             ownerObservation = null;
+            preferredSourceMapId = null;
             List<RemoteTownPortalOwnerFieldObservation[]> candidatesBySourceMap;
             if (_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>> observationsBySourceMap)
                 && observationsBySourceMap.Count > 0)
@@ -1582,7 +1588,7 @@ namespace HaCreator.MapSimulator.Fields
                 candidatesBySourceMap = new List<RemoteTownPortalOwnerFieldObservation[]>();
             }
 
-            int? preferredSourceMapId = SelectPreferredRemoteTownPortalSourceMapId(
+            preferredSourceMapId = SelectPreferredRemoteTownPortalSourceMapId(
                 existingState,
                 metadata,
                 candidatesBySourceMap);

@@ -2254,12 +2254,31 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             MINE_SKILL_ID
         };
+        private static readonly HashSet<int> ClientShowSkillEffectPlacementOwnedPointOffsetSkillIds = new()
+        {
+            MINE_SKILL_ID
+        };
         private static readonly HashSet<int> ClientDoActiveSkillPrepareFamilySkillIds = new()
         {
             // WZ anchors: `Skill/3510.img/skill/35101009` (`action/0=flamethrower2`, `keydown/*`)
             // and `Skill/3310.img/skill/33101005` (`info/type=98`) map to prepare family ownership.
             35101009,
             33101005
+        };
+        private static readonly HashSet<int> ClientDoActiveSkillPrepareBombSkillIds = new()
+        {
+            // `is_prepare_bomb_skill@0x6ee270` returns true exactly for:
+            // 4341003, 5201002, and 14111006.
+            4341003,
+            5201002,
+            14111006
+        };
+        private static readonly HashSet<int> ClientDoActiveSkillPrepareGroundedSkillIds = new()
+        {
+            // `CUserLocal::DoActiveSkill_Prepare@0x941710` applies an explicit
+            // no-foothold reject on this recovered mechanic subset.
+            35001001,
+            35101009
         };
         private static readonly HashSet<int> ClientDoActiveSkillSummonFamilySkillIds = new()
         {
@@ -3834,7 +3853,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool? facingRightOverride = showSkillEffectBLeftOverride.HasValue
                 ? ResolveClientShowSkillEffectFacingRightOverrideFromBLeft(showSkillEffectBLeftOverride.Value)
                 : ResolveClientLocalShowSkillEffectFacingRightOverride(skill);
-            Point? showSkillEffectPointOffsetOverride = ResolveClientLocalShowSkillEffectPointOffsetOverride(skill);
+            bool facingRightForPointOffset = showSkillEffectBLeftOverride.HasValue
+                ? ResolveClientShowSkillEffectFacingRightOverrideFromBLeft(showSkillEffectBLeftOverride.Value)
+                : _player.FacingRight;
+            Point? showSkillEffectPointOffsetOverride = ResolveClientLocalShowSkillEffectPointOffsetOverride(skill, facingRightForPointOffset);
 
             _currentCast = new SkillCastInfo
             {
@@ -8101,7 +8123,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return moveActionRawCode.HasValue ? moveActionRawCode.Value & 1 : 0;
         }
 
-        private Point? ResolveClientLocalShowSkillEffectPointOffsetOverride(SkillData skill)
+        private Point? ResolveClientLocalShowSkillEffectPointOffsetOverride(SkillData skill, bool facingRightForPlacement)
         {
             int? moveActionRawCode = null;
             if (_player?.TryGetCurrentClientRawActionCode(out int resolvedRawActionCode) == true)
@@ -8109,13 +8131,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 moveActionRawCode = resolvedRawActionCode;
             }
 
-            return ResolveClientLocalShowSkillEffectPointOffsetOverride(skill, moveActionRawCode);
+            Vector2 casterPosition = new(_player?.X ?? 0f, _player?.Y ?? 0f);
+            return ResolveClientLocalShowSkillEffectPointOffsetOverride(
+                skill,
+                moveActionRawCode,
+                casterPosition,
+                facingRightForPlacement,
+                TryResolveClientLocalShowSkillEffectPlacementPositionOverride);
         }
 
-        internal static Point? ResolveClientLocalShowSkillEffectPointOffsetOverride(SkillData skill, int? moveActionRawCode)
+        internal static Point? ResolveClientLocalShowSkillEffectPointOffsetOverride(
+            SkillData skill,
+            int? moveActionRawCode,
+            Vector2 casterPosition,
+            bool facingRightForPlacement,
+            Func<SkillData, Vector2, bool, Vector2?> tryResolvePlacementPositionOverride = null)
         {
-            if (skill?.SkillId <= 0
-                || !ClientShowSkillEffectPointOffsetXBySkillId.TryGetValue(skill.SkillId, out int offsetX))
+            if (skill?.SkillId <= 0)
+            {
+                return null;
+            }
+
+            if (tryResolvePlacementPositionOverride != null)
+            {
+                Vector2? placementPosition = tryResolvePlacementPositionOverride(skill, casterPosition, facingRightForPlacement);
+                if (placementPosition.HasValue)
+                {
+                    // `CUserLocal::DoActiveSkill_SummonMonster` computes caller-owned `ptOffset`
+                    // from the resolved world placement point before forwarding `ShowSkillEffect`.
+                    return ResolveClientShowSkillEffectPointOffsetFromWorldPositions(casterPosition, placementPosition.Value);
+                }
+            }
+
+            if (!ClientShowSkillEffectPointOffsetXBySkillId.TryGetValue(skill.SkillId, out int offsetX))
             {
                 return null;
             }
@@ -8126,6 +8174,35 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? -1
                 : 1;
             return new Point(offsetX * horizontalDirection, 0);
+        }
+
+        private Vector2? TryResolveClientLocalShowSkillEffectPlacementPositionOverride(
+            SkillData skill,
+            Vector2 casterPosition,
+            bool facingRightForPlacement)
+        {
+            if (skill?.SkillId <= 0
+                || !ClientShowSkillEffectPlacementOwnedPointOffsetSkillIds.Contains(skill.SkillId))
+            {
+                return null;
+            }
+
+            Vector2 resolvedPlacement = SummonMovementResolver.ResolveSpawnPositionForInstance(
+                skill.SkillId,
+                skill.SummonMovementStyle,
+                skill.SummonSpawnDistanceX,
+                casterPosition,
+                facingRightForPlacement,
+                instanceIndex: 0,
+                instanceCount: 1);
+            return SettleSummonOnFoothold(skill.SummonMovementStyle, resolvedPlacement);
+        }
+
+        internal static Point ResolveClientShowSkillEffectPointOffsetFromWorldPositions(Vector2 casterPosition, Vector2 effectOrigin)
+        {
+            return new Point(
+                (int)MathF.Round(effectOrigin.X - casterPosition.X),
+                (int)MathF.Round(effectOrigin.Y - casterPosition.Y));
         }
 
         internal static int? ResolveClientLocalShowSkillEffectDelayRateOverride(SkillData skill)
@@ -10371,11 +10448,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Keep constrained type-40 ownership on the rechecked non-direct
             // bound-jump profiles even when action rows are missing at runtime.
             return IsConstrainedType40IceDoubleJumpSkillId(skillId)
+                   || skillId is 3101003
+                       or 3201003
                    || skillId is 23001002
                        or 24001002
                        or 30010183
                        or 30010184
-                       or 5081003;
+                       or 5081003
+                       or 51001003;
         }
 
         private static bool IsConstrainedType40IceDoubleJumpSkillId(int skillId)
@@ -10645,6 +10725,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                        || skill.SkillId == PARTY_SHIELD_SKILL_ID);
         }
 
+        private static bool IsPrepareBombDoActiveSkillFamily(SkillData skill)
+        {
+            return skill?.SkillId > 0
+                   && ClientDoActiveSkillPrepareBombSkillIds.Contains(skill.SkillId);
+        }
+
         internal static int ResolveClientDoActiveSkillRequestThrottleIntervalMs(SkillData skill)
         {
             if (IsSmokeShellDoActiveSkillFamily(skill))
@@ -10680,6 +10766,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return "This heal skill cannot be used while on a ladder or rope.";
             }
 
+            if (lane == ClientDoActiveSkillExecutionLane.TownPortal && !isOnFoothold)
+            {
+                return "This town-portal skill requires foothold support.";
+            }
+
             if (IsSmokeShellDoActiveSkillFamily(skill))
             {
                 if (isOnLadderOrRope)
@@ -10690,6 +10781,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (!isOnFoothold && !isSwimming && !isUserFlying)
                 {
                     return "This invincible-zone skill requires foothold support.";
+                }
+            }
+
+            if (lane == ClientDoActiveSkillExecutionLane.Prepare)
+            {
+                bool isPrepareBombSkill = IsPrepareBombDoActiveSkillFamily(skill);
+                if (!isPrepareBombSkill && !isOnFoothold && !isSwimming && !isUserFlying)
+                {
+                    return "This prepare skill requires foothold support.";
+                }
+
+                if (ClientDoActiveSkillPrepareGroundedSkillIds.Contains(skill.SkillId) && !isOnFoothold)
+                {
+                    return "This prepare skill must be used from the ground.";
+                }
+
+                if ((isPrepareBombSkill || isSwimming || isUserFlying) && isOnLadderOrRope)
+                {
+                    return "This prepare skill cannot be used while on a ladder or rope.";
                 }
             }
 
@@ -14824,11 +14934,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             SkillAnimation effectAnimation = null)
         {
             int authoredDurationMs = ResolveBulletAnimationPresentationAuthoredDurationMs(animation, effectAnimation);
+            bool hasAuthoredDuration = authoredDurationMs > 0;
             if (projectile == null)
             {
                 return Math.Max(1, authoredDurationMs);
             }
 
+            int fallbackDurationMs;
             if (projectile.IsQueuedFinalAttack || projectile.IsQueuedSparkAttack)
             {
                 float distance = Vector2.Distance(sourcePoint, destinationPoint);
@@ -14837,15 +14949,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                     // `TryDoingSmoothingMovingShootAttack` derives the registered bullet
                     // presentation clock from source-to-hit distance before handing the
                     // delayed shot to CAnimationDisplayer.
-                    return Math.Max(
-                        Math.Max(1, authoredDurationMs),
-                        (int)MathF.Round(distance * 1.5f));
+                    fallbackDurationMs = Math.Max(1, (int)MathF.Round(distance * 1.5f));
+                    return hasAuthoredDuration
+                        ? Math.Min(fallbackDurationMs, authoredDurationMs)
+                        : fallbackDurationMs;
                 }
             }
 
-            return Math.Max(
-                Math.Max(1, authoredDurationMs),
-                (int)MathF.Round(projectile.Data?.LifeTime ?? 0f));
+            fallbackDurationMs = Math.Max(1, (int)MathF.Round(projectile.Data?.LifeTime ?? 0f));
+            return hasAuthoredDuration
+                ? Math.Min(fallbackDurationMs, authoredDurationMs)
+                : fallbackDurationMs;
         }
 
         internal static int ResolveBulletAnimationPresentationAuthoredDurationMs(
@@ -17728,7 +17842,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // `operator()(nOrder)` reads the live target order with no clamp.
                 // Keep the recovered lane explicit even when root `hit/*` data is missing:
                 // only the first target may consume the authored multiple-layer hit root.
-                if (Math.Max(0, targetOrder) == 0)
+                if (targetOrder == 0)
                 {
                     return ResolveIndexedTargetHitAnimation(
                         skill?.MultipleLayerTargetHitEffects,
@@ -17769,7 +17883,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (UsesClientFirstTargetHitAnimationSplit(skill.SkillId))
             {
-                int splitIndex = Math.Max(0, targetOrder) == 0 ? 0 : 1;
+                int splitIndex = targetOrder == 0 ? 0 : 1;
                 return ResolveIndexedTargetHitAnimation(
                     skill.TargetHitEffects,
                     splitIndex,
@@ -17781,7 +17895,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 return ResolveIndexedTargetHitAnimation(
                     skill.TargetHitEffects,
-                    Math.Max(0, targetOrder),
+                    targetOrder,
                     preserveFirstAuthoredFallback: false,
                     clampToLastIndex: false);
             }
@@ -26160,6 +26274,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return string.Equals(propertyName, "emhp", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "emmp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "PVPdamage", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "mastery", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "prop", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "mhpX", StringComparison.OrdinalIgnoreCase)
@@ -27586,9 +27701,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            if (!ShouldQueueWildHunterSwallowFollowUp(_swallowState.PendingFollowUpKind, followUpKind))
+            {
+                return;
+            }
+
             _swallowState.PendingFollowUpKind = followUpKind;
             _swallowState.PendingFollowUpSkillId = requestedSkillId;
             _swallowState.PendingFollowUpLevel = Math.Max(0, requestedLevel);
+        }
+
+        internal static bool ShouldQueueWildHunterSwallowFollowUp(
+            SwallowFollowUpRequestKind existingKind,
+            SwallowFollowUpRequestKind incomingKind)
+        {
+            if (incomingKind == SwallowFollowUpRequestKind.None)
+            {
+                return false;
+            }
+
+            // Preserve first-arrival follow-up intent while absorb confirmation is pending.
+            return existingKind == SwallowFollowUpRequestKind.None;
         }
 
         internal static SwallowFollowUpRequestKind ResolveWildHunterSwallowFollowUpRequestKind(int requestedSkillId)

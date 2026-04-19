@@ -1372,8 +1372,15 @@ namespace HaCreator.MapSimulator.UI
             using BinaryReader reader = new(stream);
             _ = reader.ReadByte();
             short giftCount = reader.ReadInt16();
+            int normalizedGiftCount = Math.Max(0, (int)giftCount);
+            long expectedGiftRowsLength = (long)normalizedGiftCount * GiftListPacketByteLength;
+            if (stream.Length - stream.Position < expectedGiftRowsLength)
+            {
+                return false;
+            }
+
             List<PacketCatalogEntry> entries = new();
-            for (int i = 0; i < Math.Max(0, (int)giftCount); i++)
+            for (int i = 0; i < normalizedGiftCount; i++)
             {
                 if (!TryReadGiftListPacketSnapshot(reader, i + 1, out GiftListPacketSnapshot snapshot))
                 {
@@ -1386,13 +1393,27 @@ namespace HaCreator.MapSimulator.UI
             _cashGiftPacketEntries.Clear();
             _cashGiftPacketEntries.AddRange(entries);
             ReplaceCashPacketCatalogEntries("Packet gifts", "Gift", entries);
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                (int)stream.Position,
+                maxCount: 4,
+                paneLabel: "Packet gifts",
+                browseModeLabel: "Gift",
+                titlePrefix: "Gift packet body",
+                seller: "CCashShop",
+                stateLabel: "Gift body");
             _cashGiftLastSummary = entries.Count > 0
                 ? $"Gift inbox owns {entries.Count.ToString(CultureInfo.InvariantCulture)} decoded GW_GiftList row(s). {entries[0].Detail}"
-                : $"Gift inbox owns {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} decoded GW_GiftList row(s).";
+                : $"Gift inbox owns {normalizedGiftCount.ToString(CultureInfo.InvariantCulture)} decoded GW_GiftList row(s).";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _cashGiftLastSummary += $" {trailingSummary}";
+            }
+
             _noticeState = entries.Count > 0
                 ? _cashGiftLastSummary
-                : $"Gift inbox refreshed with {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s).";
-            message = $"CCashShop::OnCashItemResLoadGiftDone decoded {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} GW_GiftList row(s) into the dedicated receive-gift flow.";
+                : $"Gift inbox refreshed with {normalizedGiftCount.ToString(CultureInfo.InvariantCulture)} gift row(s).";
+            message = $"CCashShop::OnCashItemResLoadGiftDone decoded {normalizedGiftCount.ToString(CultureInfo.InvariantCulture)} GW_GiftList row(s) into the dedicated receive-gift flow{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $"; {trailingSummary}")}.";
             return true;
         }
 
@@ -2013,7 +2034,21 @@ namespace HaCreator.MapSimulator.UI
             int maplePoint = Math.Max(0, BitConverter.ToInt32(payload, 1));
             _maplePoint = maplePoint;
             _noticeState = $"Cash-service Maple Point balance changed to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}.";
-            message = $"CCashShop::OnCashItemResChangeMaplePointDone updated the dedicated status owner to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)} Maple Points.";
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                1 + sizeof(int),
+                maxCount: 2,
+                paneLabel: "Packet maple-point",
+                browseModeLabel: "Point",
+                titlePrefix: "Maple-point packet body",
+                seller: "CCashShop",
+                stateLabel: "Point body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _noticeState += $" {trailingSummary}";
+            }
+
+            message = $"CCashShop::OnCashItemResChangeMaplePointDone updated the dedicated status owner to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)} Maple Points{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $"; {trailingSummary}")}.";
             return true;
         }
 
@@ -2032,8 +2067,17 @@ namespace HaCreator.MapSimulator.UI
             int prepaidRefund = Math.Max(0, reader.ReadInt32());
             _cashLockerItemCount = Math.Max(0, _cashLockerItemCount - 1);
             RemoveCashLockerPacketEntryBySerialNumber(serialNumber);
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                1 + sizeof(long) + sizeof(int),
+                maxCount: 2,
+                paneLabel: "Packet rebate",
+                browseModeLabel: "Rebate",
+                titlePrefix: "Rebate packet body",
+                seller: "CCSWnd_Locker",
+                stateLabel: "Rebate body");
             _noticeState =
-                $"Rebate removed locker serial {serialNumber.ToString(CultureInfo.InvariantCulture)} and returned {prepaidRefund.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+                $"Rebate removed locker serial {serialNumber.ToString(CultureInfo.InvariantCulture)} and returned {prepaidRefund.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $" {trailingSummary}")}";
             message = $"CCashShop::OnCashItemResRebateDone updated CCSWnd_Locker with {_noticeState}";
             return true;
         }
@@ -2219,7 +2263,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             applyValue(value);
-            _noticeState = $"{ownerName} updated the packet-owned counter to {value.ToString(CultureInfo.InvariantCulture)}.";
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                1 + sizeof(short),
+                maxCount: 2,
+                paneLabel: "Packet counter",
+                browseModeLabel: "Counter",
+                titlePrefix: "Counter packet body",
+                seller: "CCashShop",
+                stateLabel: "Counter body");
+            _noticeState = $"{ownerName} updated the packet-owned counter to {value.ToString(CultureInfo.InvariantCulture)}.{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $" {trailingSummary}")}";
             message = _noticeState;
             return true;
         }
@@ -2239,8 +2292,18 @@ namespace HaCreator.MapSimulator.UI
                 ? BitConverter.ToInt32(payload, remainCountOffset)
                 : BitConverter.ToInt16(payload, remainCountOffset);
             CashLimitGoodsCountChange change = new(itemId, commoditySerialNumber, remainCount);
+            int valueByteLength = payload.Length >= remainCountOffset + sizeof(int) ? sizeof(int) : sizeof(short);
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                remainCountOffset + valueByteLength,
+                maxCount: 2,
+                paneLabel: "Packet limit-goods",
+                browseModeLabel: "Limit",
+                titlePrefix: "Limit-goods packet body",
+                seller: "CCashShop",
+                stateLabel: "Limit body");
             _noticeState =
-                $"CCashShop::OnCashItemResLimitGoodsCountChanged updated item {change.ItemId.ToString(CultureInfo.InvariantCulture)}, commodity SN {change.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, remaining {change.RemainCount.ToString(CultureInfo.InvariantCulture)}.";
+                $"CCashShop::OnCashItemResLimitGoodsCountChanged updated item {change.ItemId.ToString(CultureInfo.InvariantCulture)}, commodity SN {change.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, remaining {change.RemainCount.ToString(CultureInfo.InvariantCulture)}.{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $" {trailingSummary}")}";
             message = _noticeState;
             return true;
         }
@@ -2263,8 +2326,22 @@ namespace HaCreator.MapSimulator.UI
                     ? BitConverter.ToInt16(payload, daysOffset)
                     : 0;
             CashEquipSlotExtension extension = new(partIndex, days);
+            int consumedDayBytes = payload.Length >= daysOffset + sizeof(int)
+                ? sizeof(int)
+                : payload.Length >= daysOffset + sizeof(short)
+                    ? sizeof(short)
+                    : 0;
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                daysOffset + consumedDayBytes,
+                maxCount: 2,
+                paneLabel: "Packet equip-slot-ext",
+                browseModeLabel: "Equip",
+                titlePrefix: "Equip-slot-ext packet body",
+                seller: "CCashShop",
+                stateLabel: "Equip body");
             _noticeState =
-                $"CCashShop::OnCashItemResEnableEquipSlotExtDone enabled equip slot extension part {extension.PartIndex.ToString(CultureInfo.InvariantCulture)} for {extension.Days.ToString(CultureInfo.InvariantCulture)} day(s).";
+                $"CCashShop::OnCashItemResEnableEquipSlotExtDone enabled equip slot extension part {extension.PartIndex.ToString(CultureInfo.InvariantCulture)} for {extension.Days.ToString(CultureInfo.InvariantCulture)} day(s).{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $" {trailingSummary}")}";
             message = _noticeState;
             return true;
         }
@@ -2863,7 +2940,8 @@ namespace HaCreator.MapSimulator.UI
 
             _cashOneADayItemDate = state.CurrentDate;
             _cashOneADayItemSerialNumber = state.CurrentCommoditySerialNumber;
-            _cashOneADayRewardPending = IsOneADayRewardPending(_cashOneADayItemSerialNumber);
+            bool packetOwnedPending = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 1) != 0;
+            _cashOneADayRewardPending = IsOneADayRewardPending(_cashOneADayItemSerialNumber) || packetOwnedPending;
             _cashOneADayPayloadLength = Math.Max(0, state.PayloadLength);
             _cashOneADayDecodedByteLength = Math.Max(0, state.DecodedByteLength);
             _cashOneADayTrailingByteCount = Math.Max(0, state.TrailingByteCount);
@@ -2876,10 +2954,13 @@ namespace HaCreator.MapSimulator.UI
             string currentLabel = _cashOneADayItemSerialNumber > 0
                 ? $"current SN {_cashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}"
                 : "no current item";
+            string rewardSessionState = state.HasPacketRewardSessionByte
+                ? $"packet reward-session 0x{(state.PacketRewardSessionByte & 0xFF):X2}"
+                : "no packet reward-session byte";
             _noticeState =
-                $"One-a-day owner loaded {currentLabel}, date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous slot(s) ({(_cashOneADayRewardPending ? "today lane armed" : "today lane idle")}).";
+                $"One-a-day owner loaded {currentLabel}, date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous slot(s) ({(_cashOneADayRewardPending ? "today lane armed" : "today lane idle")}, {rewardSessionState}).";
             return
-                $"CCashShop::OnOneADay decoded current date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, current SN {_cashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous entry(ies).";
+                $"CCashShop::OnOneADay decoded current date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, current SN {_cashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous entry(ies), and {(state.HasPacketRewardSessionByte ? $"reward-session byte 0x{(state.PacketRewardSessionByte & 0xFF):X2}" : "no reward-session byte")}.";
         }
 
         internal static bool IsOneADayRewardPending(int currentCommoditySerialNumber)
@@ -2926,13 +3007,14 @@ namespace HaCreator.MapSimulator.UI
 
                 int decodedByteLength = (int)stream.Position;
                 int trailingByteCount = (int)Math.Max(0L, stream.Length - stream.Position);
-                bool hasPacketRewardSessionByte = trailingByteCount == 1;
+                bool hasPacketRewardSessionByte = trailingByteCount >= 1;
                 int packetRewardSessionByte = 0;
                 if (hasPacketRewardSessionByte)
                 {
-                    packetRewardSessionByte = reader.ReadByte();
-                    trailingByteCount = 0;
-                    decodedByteLength = (int)stream.Position;
+                    byte[] trailingPayload = reader.ReadBytes(trailingByteCount);
+                    packetRewardSessionByte = trailingPayload[Math.Max(0, trailingPayload.Length - 1)];
+                    trailingByteCount = Math.Max(0, trailingPayload.Length - 1);
+                    decodedByteLength = payload.Length - trailingByteCount;
                 }
                 else if (trailingByteCount > 0)
                 {
@@ -3959,6 +4041,47 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return TryDecodeEmbeddedCashItemInfoSnapshots(trailingPayload, startOffset: 0, maxCount: maxCount);
+        }
+
+        private string AppendTrailingCashItemInfoFromPayload(
+            byte[] payload,
+            int startOffset,
+            int maxCount,
+            string paneLabel,
+            string browseModeLabel,
+            string titlePrefix,
+            string seller,
+            string stateLabel)
+        {
+            if (payload == null || startOffset < 0 || startOffset >= payload.Length)
+            {
+                return string.Empty;
+            }
+
+            List<CashItemInfoPacketSnapshot> snapshots = TryDecodeEmbeddedCashItemInfoSnapshots(payload, startOffset, maxCount);
+            string decodedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
+                snapshots,
+                paneLabel,
+                browseModeLabel,
+                titlePrefix,
+                seller,
+                stateLabel);
+            if (!string.IsNullOrWhiteSpace(decodedSummary))
+            {
+                return decodedSummary;
+            }
+
+            int trailingLength = payload.Length - startOffset;
+            if (trailingLength <= 0)
+            {
+                return string.Empty;
+            }
+
+            int previewLength = Math.Min(trailingLength, 24);
+            byte[] preview = new byte[previewLength];
+            Buffer.BlockCopy(payload, startOffset, preview, 0, previewLength);
+            string suffix = trailingLength > previewLength ? "..." : string.Empty;
+            return $"Trailing packet tail ({trailingLength.ToString(CultureInfo.InvariantCulture)} byte(s)) remained after primary decode: {Convert.ToHexString(preview)}{suffix}.";
         }
 
         private static List<CashItemInfoPacketSnapshot> TryDecodeEmbeddedCashItemInfoSnapshots(byte[] payload, int startOffset, int maxCount)

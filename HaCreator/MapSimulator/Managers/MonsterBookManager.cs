@@ -213,12 +213,12 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        public MonsterBookSnapshot RecordMobKill(CharacterBuild build, int mobId, int count = 1)
+        public MonsterBookSnapshot RecordMobKill(CharacterBuild build, int mobId, int count = 1, bool persistToDisk = true)
         {
-            return RecordMobKill(build, build?.Id ?? 0, build?.Name, mobId, count);
+            return RecordMobKill(build, build?.Id ?? 0, build?.Name, mobId, count, persistToDisk);
         }
 
-        public MonsterBookSnapshot RecordMobKill(CharacterBuild build, int characterId, string characterName, int mobId, int count = 1)
+        public MonsterBookSnapshot RecordMobKill(CharacterBuild build, int characterId, string characterName, int mobId, int count = 1, bool persistToDisk = true)
         {
             if (mobId <= 0 || count <= 0)
             {
@@ -240,7 +240,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             record.CardCountsByMob[definition.MobId] = nextCount;
-            SaveToDisk();
+            if (persistToDisk)
+            {
+                SaveToDisk();
+            }
+
             return GetSnapshot(build, characterId, characterName);
         }
 
@@ -249,9 +253,9 @@ namespace HaCreator.MapSimulator.Managers
             return RecordCardPickupWithResult(build, itemId, count).Snapshot;
         }
 
-        public CardPickupResult RecordCardPickupWithResult(CharacterBuild build, int itemId, int count = 1)
+        public CardPickupResult RecordCardPickupWithResult(CharacterBuild build, int itemId, int count = 1, bool persistToDisk = true)
         {
-            return RecordCardPickupWithResult(build, build?.Id ?? 0, build?.Name, itemId, count);
+            return RecordCardPickupWithResult(build, build?.Id ?? 0, build?.Name, itemId, count, persistToDisk);
         }
 
         public MonsterBookSnapshot RecordCardPickup(CharacterBuild build, int characterId, string characterName, int itemId, int count = 1)
@@ -259,7 +263,7 @@ namespace HaCreator.MapSimulator.Managers
             return RecordCardPickupWithResult(build, characterId, characterName, itemId, count).Snapshot;
         }
 
-        public CardPickupResult RecordCardPickupWithResult(CharacterBuild build, int characterId, string characterName, int itemId, int count = 1)
+        public CardPickupResult RecordCardPickupWithResult(CharacterBuild build, int characterId, string characterName, int itemId, int count = 1, bool persistToDisk = true)
         {
             if (itemId <= 0 || count <= 0)
             {
@@ -294,7 +298,7 @@ namespace HaCreator.MapSimulator.Managers
 
             MonsterBookRecord record = GetRecord(build, characterId, characterName, createIfMissing: true);
             record.CardCountsByMob.TryGetValue(definition.MobId, out int previousCopies);
-            MonsterBookSnapshot snapshot = RecordMobKill(build, characterId, characterName, definition.MobId, pickupCount);
+            MonsterBookSnapshot snapshot = RecordMobKill(build, characterId, characterName, definition.MobId, pickupCount, persistToDisk);
             int currentCopies = Math.Clamp(previousCopies + pickupCount, 0, 5);
             if (currentCopies == previousCopies)
             {
@@ -375,12 +379,12 @@ namespace HaCreator.MapSimulator.Managers
                 && definition?.IsClientConsumedOnPickupCard == true;
         }
 
-        public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int mobId, bool registered)
+        public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int mobId, bool registered, bool persistToDisk = true)
         {
-            return SetRegisteredCard(build, build?.Id ?? 0, build?.Name, mobId, registered);
+            return SetRegisteredCard(build, build?.Id ?? 0, build?.Name, mobId, registered, persistToDisk);
         }
 
-        public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int characterId, string characterName, int mobId, bool registered)
+        public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int characterId, string characterName, int mobId, bool registered, bool persistToDisk = true)
         {
             if (mobId <= 0 || !EnsureCatalogByMobId().ContainsKey(mobId))
             {
@@ -411,7 +415,7 @@ namespace HaCreator.MapSimulator.Managers
                 changed = record.RegisteredMobIds.Remove(mobId);
             }
 
-            if (changed)
+            if (changed && persistToDisk)
             {
                 SaveToDisk();
             }

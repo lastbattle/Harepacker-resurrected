@@ -512,9 +512,16 @@ namespace HaCreator.MapSimulator.Character
                 ["bluntSmash"] = new[] { "alert", "swingO3", "swingOF" },
                 ["demonTrace"] = new[] { "swingOF" },
                 ["elfrush"] = new[] { "alert", "swingO1" },
-                ["elfrush2"] = new[] { "alert", "swingO1" },
-                ["elfrush_final"] = new[] { "alert", "swingO1" },
-                ["elfrush_final2"] = new[] { "alert", "swingO1" },
+                // Character/00002000.img keeps `elfrush2` on an explicit body redirect
+                // chain (`swingO1`, then `swingP2`, `swingP1`, and `alert`) rather than
+                // the narrower `elfrush` (`alert`, `swingO1`) pair.
+                ["elfrush2"] = new[] { "swingO1", "swingP2", "swingP1", "alert" },
+                // `elfrush_final` and `elfrush_final2` body rows now resolve entirely
+                // through `swingTF` in Character/00002000.img. Keep that authored root
+                // first while preserving nearby checked backstops for templates that do
+                // not publish the full T-family swing surface.
+                ["elfrush_final"] = new[] { "swingTF", "swingT1", "alert", "swingO1" },
+                ["elfrush_final2"] = new[] { "swingTF", "swingT1", "alert", "swingO1" },
                 ["deathDraw"] = new[] { "alert", "swingO2", "swingOF", "swingO3" },
                 ["dealingRush"] = new[] { "swingPF", "swingO1" },
                 ["elfTornado"] = new[] { "alert", "swingPF", "swingTF" },
@@ -621,9 +628,10 @@ namespace HaCreator.MapSimulator.Character
                 // Character/00002000.img keeps the body redirect on `swingOF` and the
                 // checked Morph/*.img templates publish no verbatim `cannonJump` root.
                 ["cannonJump"] = new[] { "swingOF", "jump" },
-                // The client morph action table also carries `spiritJump`; current
-                // Morph/*.img surfaces publish generic jump instead of that raw root.
-                ["spiritJump"] = new[] { "jump" },
+                // The client morph action table also carries `spiritJump`, and
+                // Character/00002000.img keeps that body row on explicit redirects:
+                // `jump`, then `swingOF`, then `swingPF`.
+                ["spiritJump"] = new[] { "jump", "swingOF", "swingPF" },
                 // Character/00002000.img keeps `slayerDoubleJump` on `jump`, while
                 // Morph/*.img still has no verbatim slayer branch.
                 ["slayerDoubleJump"] = new[] { "jump" },

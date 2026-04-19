@@ -319,7 +319,11 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserMovePacket(int CharacterId, PlayerMovementSyncSnapshot Snapshot, byte MoveAction);
     public readonly record struct RemoteUserMoveActionPacket(int CharacterId, byte MoveAction);
     public readonly record struct RemoteUserPortableChairPacket(int CharacterId, int? ChairItemId, int? PairCharacterId);
-    public readonly record struct RemoteUserPortableChairRecordAddPacket(int CharacterId, int ChairItemId);
+    public readonly record struct RemoteUserPortableChairRecordAddPacket(
+        int CharacterId,
+        int ChairItemId,
+        int? PairCharacterId = null,
+        int? Status = null);
     public readonly record struct RemoteUserPortableChairRecordRemovePacket(int CharacterId);
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
     public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
@@ -579,6 +583,21 @@ namespace HaCreator.MapSimulator.Pools
         private const int HelperNamedPayloadMinimumLength = sizeof(int) + sizeof(byte) + sizeof(byte);
         private const int HelperMapleStringNamedPayloadMinimumLength = sizeof(int) + sizeof(ushort) + sizeof(byte);
         private const byte HelperMarkerClearValue = byte.MaxValue;
+        private static readonly HashSet<string> KnownHelperMarkerNames = new(StringComparer.Ordinal)
+        {
+            "another",
+            "user",
+            "friend",
+            "guild",
+            "guildmaster",
+            "match",
+            "party",
+            "partymaster",
+            "usertrader",
+            "anothertrader",
+            "clear",
+            "none"
+        };
 
         private const int OfficialEnterFieldSuffixLength = sizeof(int) * 6 + sizeof(short) * 2 + sizeof(byte);
 
@@ -1131,9 +1150,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             packet = default;
             error = null;
-            if (payload.Length != sizeof(int) * 2)
+            bool hasExtendedState = payload.Length == sizeof(int) * 4;
+            if (payload.Length != sizeof(int) * 2 && !hasExtendedState)
             {
-                error = $"Remote user couple-chair record add packet expects 8 bytes but received {payload.Length}.";
+                error = $"Remote user couple-chair record add packet expects 8 or 16 bytes but received {payload.Length}.";
                 return false;
             }
 
@@ -1142,6 +1162,24 @@ namespace HaCreator.MapSimulator.Pools
                 var reader = new PacketReader(payload);
                 int characterId = reader.ReadInt32();
                 int chairItemId = reader.ReadInt32();
+                int? pairCharacterId = null;
+                int? status = null;
+                if (hasExtendedState)
+                {
+                    int parsedPairCharacterId = reader.ReadInt32();
+                    int parsedStatus = reader.ReadInt32();
+
+                    if (parsedPairCharacterId > 0)
+                    {
+                        pairCharacterId = parsedPairCharacterId;
+                    }
+
+                    if (parsedStatus >= 0)
+                    {
+                        status = parsedStatus;
+                    }
+                }
+
                 if (characterId <= 0)
                 {
                     error = $"Remote user couple-chair record add packet character ID {characterId} is invalid.";
@@ -1154,7 +1192,7 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                packet = new RemoteUserPortableChairRecordAddPacket(characterId, chairItemId);
+                packet = new RemoteUserPortableChairRecordAddPacket(characterId, chairItemId, pairCharacterId, status);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1361,20 +1399,66 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
+            if (TryDecodeMapleStringPayload(payload, out string strictMapleString))
+            {
+                return strictMapleString;
+            }
+
+            // CUserRemote::OnHit packets can include one-byte branch markers before the
+            // optional string tail. Preserve the authored hit node path when present.
+            if (payload.Length > sizeof(ushort) + 1
+                && payload[0] <= 2
+                && TryDecodeMapleStringPayload(payload[1..], out string prefixedMapleString))
+            {
+                return prefixedMapleString;
+            }
+
+            string utf8 = TryDecodePrintableUtf8(payload);
+            if (!string.IsNullOrWhiteSpace(utf8))
+            {
+                return utf8;
+            }
+
+            if (payload.Length > 1 && payload[0] <= 2)
+            {
+                return TryDecodePrintableUtf8(payload[1..]);
+            }
+
+            return null;
+        }
+
+        private static bool TryDecodeMapleStringPayload(ReadOnlySpan<byte> payload, out string value)
+        {
+            value = null;
+
+            if (payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
             try
             {
-                if (payload.Length >= sizeof(ushort))
+                var reader = new PacketReader(payload);
+                string parsed = reader.ReadString16();
+                if (!string.IsNullOrWhiteSpace(parsed)
+                    && (reader.RemainingLength == 0 || IsAllZeroBytes(payload[reader.Offset..])))
                 {
-                    var reader = new PacketReader(payload);
-                    string value = reader.ReadString16();
-                    if (reader.RemainingLength == 0 && !string.IsNullOrWhiteSpace(value))
-                    {
-                        return value.Trim();
-                    }
+                    value = parsed.Trim();
+                    return true;
                 }
             }
             catch (InvalidOperationException)
             {
+            }
+
+            return false;
+        }
+
+        private static string TryDecodePrintableUtf8(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length == 0)
+            {
+                return null;
             }
 
             string utf8 = Encoding.UTF8.GetString(payload).TrimEnd('\0').Trim();
@@ -1392,6 +1476,19 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return utf8;
+        }
+
+        private static bool IsAllZeroBytes(ReadOnlySpan<byte> payload)
+        {
+            for (int i = 0; i < payload.Length; i++)
+            {
+                if (payload[i] != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         public static bool TryParseEffect(ReadOnlySpan<byte> payload, out RemoteUserEffectPacket packet, out string error)
@@ -1450,11 +1547,14 @@ namespace HaCreator.MapSimulator.Pools
                     case RemoteUserEffectSubtype.CarnivalReservedEffect:
                     case RemoteUserEffectSubtype.FieldSound:
                         {
-                            var payloadReader = new PacketReader(effectPayload);
-                            stringValue = payloadReader.ReadString16();
-                            if (payloadReader.RemainingLength != 0)
+                            if (!TryParseFlexibleEffectStringPayload(
+                                    effectType,
+                                    effectPayload,
+                                    allowSecondaryInt32: false,
+                                    out stringValue,
+                                    out secondaryInt32Value,
+                                    out error))
                             {
-                                error = $"Remote user effect subtype {effectType} has {payloadReader.RemainingLength} unread bytes remaining.";
                                 return false;
                             }
 
@@ -1486,12 +1586,14 @@ namespace HaCreator.MapSimulator.Pools
 
                     case RemoteUserEffectSubtype.StringEffect:
                         {
-                            var payloadReader = new PacketReader(effectPayload);
-                            stringValue = payloadReader.ReadString16();
-                            secondaryInt32Value = payloadReader.ReadInt32();
-                            if (payloadReader.RemainingLength != 0)
+                            if (!TryParseFlexibleEffectStringPayload(
+                                    effectType,
+                                    effectPayload,
+                                    allowSecondaryInt32: true,
+                                    out stringValue,
+                                    out secondaryInt32Value,
+                                    out error))
                             {
-                                error = $"Remote user effect subtype {effectType} has {payloadReader.RemainingLength} unread bytes remaining.";
                                 return false;
                             }
 
@@ -1502,10 +1604,20 @@ namespace HaCreator.MapSimulator.Pools
                         {
                             var payloadReader = new PacketReader(effectPayload);
                             int32Value = payloadReader.ReadInt32();
-                            stringValue = payloadReader.ReadString16();
-                            if (payloadReader.RemainingLength != 0)
+                            if (payloadReader.RemainingLength == 0)
                             {
-                                error = $"Remote user effect subtype {effectType} has {payloadReader.RemainingLength} unread bytes remaining.";
+                                // Client-owned path can still play item-use audio from the item id
+                                // even if a string-effect payload is omitted by the source.
+                                stringValue = null;
+                            }
+                            else if (!TryParseFlexibleEffectStringPayload(
+                                    effectType,
+                                    effectPayload.AsSpan(payloadReader.Offset),
+                                    allowSecondaryInt32: true,
+                                    out stringValue,
+                                    out secondaryInt32Value,
+                                    out error))
+                            {
                                 return false;
                             }
 
@@ -1546,6 +1658,57 @@ namespace HaCreator.MapSimulator.Pools
                 35120013 => 35121013,
                 _ => skillId
             };
+        }
+
+        private static bool TryParseFlexibleEffectStringPayload(
+            byte effectType,
+            ReadOnlySpan<byte> payload,
+            bool allowSecondaryInt32,
+            out string stringValue,
+            out int? secondaryInt32Value,
+            out string error)
+        {
+            stringValue = null;
+            secondaryInt32Value = null;
+            error = null;
+
+            if (payload.Length == 0)
+            {
+                return true;
+            }
+
+            try
+            {
+                var payloadReader = new PacketReader(payload);
+                string parsed = payloadReader.ReadString16();
+                ReadOnlySpan<byte> remaining = payload[payloadReader.Offset..];
+                if (remaining.Length == 0 || IsAllZeroBytes(remaining))
+                {
+                    stringValue = string.IsNullOrWhiteSpace(parsed) ? null : parsed.Trim();
+                    return true;
+                }
+
+                if (allowSecondaryInt32 && remaining.Length == sizeof(int))
+                {
+                    secondaryInt32Value = payloadReader.ReadInt32();
+                    stringValue = string.IsNullOrWhiteSpace(parsed) ? null : parsed.Trim();
+                    return true;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Fall back to plain-text parse below.
+            }
+
+            string utf8 = TryDecodePrintableUtf8(payload);
+            if (!string.IsNullOrWhiteSpace(utf8))
+            {
+                stringValue = utf8;
+                return true;
+            }
+
+            error = $"Remote user effect subtype {effectType} has an unsupported string payload shape ({payload.Length} byte(s)).";
+            return false;
         }
 
         public static bool TryParseUpgradeTombEffect(ReadOnlySpan<byte> payload, out RemoteUserUpgradeTombPacket packet, out string error)
@@ -2757,6 +2920,35 @@ namespace HaCreator.MapSimulator.Pools
                 for (int j = defaultHelperSegmentIndex + 1; j < segments.Length; j++)
                 {
                     string candidate = NormalizeHelperMarkerNameSegment(segments[j]);
+                    if (candidate.Length == 0
+                        || IsNumericHelperMarkerPathSegment(candidate)
+                        || !KnownHelperMarkerNames.Contains(candidate))
+                    {
+                        continue;
+                    }
+
+                    return candidate;
+                }
+            }
+
+            for (int i = segments.Length - 1; i >= 0; i--)
+            {
+                string candidate = NormalizeHelperMarkerNameSegment(segments[i]);
+                if (candidate.Length == 0
+                    || IsNumericHelperMarkerPathSegment(candidate)
+                    || !KnownHelperMarkerNames.Contains(candidate))
+                {
+                    continue;
+                }
+
+                return candidate;
+            }
+
+            if (defaultHelperSegmentIndex >= 0)
+            {
+                for (int j = defaultHelperSegmentIndex + 1; j < segments.Length; j++)
+                {
+                    string candidate = NormalizeHelperMarkerNameSegment(segments[j]);
                     if (candidate.Length == 0 || IsNumericHelperMarkerPathSegment(candidate))
                     {
                         continue;
@@ -3499,16 +3691,6 @@ namespace HaCreator.MapSimulator.Pools
                     weaponChargeMetadataOffset,
                     preferredSkillId: 0,
                     maxScanBytes: AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
-                    out chargeSkillId))
-            {
-                return true;
-            }
-
-            if (weaponChargeMetadataOffset >= 0
-                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
-                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
-                    rawPayload,
-                    weaponChargeMetadataOffset,
                     out chargeSkillId))
             {
                 return true;

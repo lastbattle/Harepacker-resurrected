@@ -262,6 +262,11 @@ namespace HaCreator.MapSimulator.Fields
                 return null;
             }
 
+            if (HasMobMassacreDisableSkillFlag(mapInfo))
+            {
+                return "Skills cannot be used while the Mu Lung Dojo massacre field disables skill usage.";
+            }
+
             string noSkillRestrictionMessage = GetNoSkillRestrictionMessage(mapInfo, skill, currentJobId);
             if (!string.IsNullOrWhiteSpace(noSkillRestrictionMessage))
             {
@@ -390,6 +395,13 @@ namespace HaCreator.MapSimulator.Fields
         {
             WzImageProperty property = FindInfoFieldProperty(mapInfo, "noCancelSkill");
             return TryReadInt(property, out int value) && value != 0;
+        }
+
+        private static bool HasMobMassacreDisableSkillFlag(MapInfo mapInfo)
+        {
+            WzImageProperty mobMassacreProperty = FindAdditionalFieldProperty(mapInfo, "mobMassacre");
+            WzImageProperty disableSkillProperty = mobMassacreProperty?["disableSkill"] as WzImageProperty;
+            return TryReadInt(disableSkillProperty, out int value) && value != 0;
         }
 
         private static WzImageProperty FindAdditionalFieldProperty(MapInfo mapInfo, string propertyName)

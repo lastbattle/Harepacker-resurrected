@@ -407,6 +407,12 @@ namespace HaCreator.MapSimulator
             var activeAreaIdsForLocalPlayerTicks = _remoteAffectedAreaLocalPlayerTickTimes.Count > 0
                 ? new System.Collections.Generic.HashSet<int>()
                 : null;
+            var activeAreaOwnerIds =
+                _remoteAffectedAreaOwnerNames.Count > 0
+                || _remoteAffectedAreaBattlefieldOwnerTeams.Count > 0
+                || _remoteAffectedAreaMonsterCarnivalOwnerTeams.Count > 0
+                    ? new System.Collections.Generic.HashSet<int>()
+                    : null;
 
             foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas.ToArray())
             {
@@ -416,6 +422,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 activeAreaIdsForLocalPlayerTicks?.Add(area.ObjectId);
+                if (area.OwnerId > 0)
+                {
+                    activeAreaOwnerIds?.Add(area.OwnerId);
+                }
+
                 CacheRemoteAffectedAreaOwnerRuntimeState(area.ObjectId, area.OwnerId);
 
                 switch (area.SourceKind)
@@ -434,7 +445,8 @@ namespace HaCreator.MapSimulator
             }
 
             PruneRemoteAffectedAreaLocalPlayerTickTimes(activeAreaIdsForLocalPlayerTicks);
-            PruneRemoteAffectedAreaOwnerRuntimeState(activeAreaIdsForLocalPlayerTicks);
+            PruneRemoteAffectedAreaOwnerAreaRuntimeSnapshots(activeAreaIdsForLocalPlayerTicks);
+            PruneRemoteAffectedAreaOwnerRuntimeState(activeAreaOwnerIds);
             _playerManager?.Skills?.SyncExternalAreaSupportBuffs(activeProjectedSupportAreaIds, currentTime);
         }
 
@@ -622,7 +634,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void PruneRemoteAffectedAreaOwnerRuntimeState(System.Collections.Generic.ISet<int> activeAreaIds)
+        private void PruneRemoteAffectedAreaOwnerAreaRuntimeSnapshots(System.Collections.Generic.ISet<int> activeAreaIds)
         {
             if (activeAreaIds == null || activeAreaIds.Count == 0)
             {
@@ -654,6 +666,81 @@ namespace HaCreator.MapSimulator
                 {
                     _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Remove(areaObjectId);
                 }
+            }
+        }
+
+        internal static bool ShouldRetainRemoteAffectedAreaOwnerRuntimeState(
+            int ownerId,
+            System.Collections.Generic.ISet<int> activeOwnerIds,
+            Func<int, string> resolveLiveOwnerName,
+            Func<int, int?> resolveRuntimeBattlefieldOwnerTeamId)
+        {
+            if (ownerId <= 0)
+            {
+                return false;
+            }
+
+            if (activeOwnerIds?.Contains(ownerId) == true)
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(resolveLiveOwnerName?.Invoke(ownerId)))
+            {
+                return true;
+            }
+
+            int? battlefieldTeamId = resolveRuntimeBattlefieldOwnerTeamId?.Invoke(ownerId);
+            return battlefieldTeamId.HasValue && battlefieldTeamId.Value >= 0;
+        }
+
+        private void PruneRemoteAffectedAreaOwnerRuntimeState(System.Collections.Generic.ISet<int> activeOwnerIds)
+        {
+            if (_remoteAffectedAreaOwnerNames.Count == 0
+                && _remoteAffectedAreaBattlefieldOwnerTeams.Count == 0
+                && _remoteAffectedAreaMonsterCarnivalOwnerTeams.Count == 0)
+            {
+                return;
+            }
+
+            if (activeOwnerIds == null || activeOwnerIds.Count == 0)
+            {
+                _remoteAffectedAreaOwnerNames.Clear();
+                _remoteAffectedAreaBattlefieldOwnerTeams.Clear();
+                _remoteAffectedAreaMonsterCarnivalOwnerTeams.Clear();
+                return;
+            }
+
+            var candidateOwnerIds = new System.Collections.Generic.HashSet<int>();
+            foreach (int ownerId in _remoteAffectedAreaOwnerNames.Keys)
+            {
+                candidateOwnerIds.Add(ownerId);
+            }
+
+            foreach (int ownerId in _remoteAffectedAreaBattlefieldOwnerTeams.Keys)
+            {
+                candidateOwnerIds.Add(ownerId);
+            }
+
+            foreach (int ownerId in _remoteAffectedAreaMonsterCarnivalOwnerTeams.Keys)
+            {
+                candidateOwnerIds.Add(ownerId);
+            }
+
+            foreach (int ownerId in candidateOwnerIds)
+            {
+                if (ShouldRetainRemoteAffectedAreaOwnerRuntimeState(
+                        ownerId,
+                        activeOwnerIds,
+                        ResolveLiveRemoteAffectedAreaOwnerName,
+                        ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId))
+                {
+                    continue;
+                }
+
+                _remoteAffectedAreaOwnerNames.Remove(ownerId);
+                _remoteAffectedAreaBattlefieldOwnerTeams.Remove(ownerId);
+                _remoteAffectedAreaMonsterCarnivalOwnerTeams.Remove(ownerId);
             }
         }
 

@@ -1714,6 +1714,8 @@ namespace HaCreator.MapSimulator.Interaction
                 out Dictionary<InventoryType, int> positionOutOfRangeByteCountsByType,
                 out Dictionary<InventoryType, int> positionSlotOverflowCountsByType,
                 out Dictionary<InventoryType, int> positionSlotOverflowByteCountsByType,
+                out Dictionary<InventoryType, int> positionCollisionCountsByType,
+                out Dictionary<InventoryType, int> positionCollisionByteCountsByType,
                 out int positionValidatedCount,
                 out int positionFallbackCount,
                 out int positionValidatedByteCount,
@@ -1721,7 +1723,9 @@ namespace HaCreator.MapSimulator.Interaction
                 out int positionOutOfRangeCount,
                 out int positionOutOfRangeByteCount,
                 out int positionSlotOverflowCount,
-                out int positionSlotOverflowByteCount);
+                out int positionSlotOverflowByteCount,
+                out int positionCollisionCount,
+                out int positionCollisionByteCount);
 
             return snapshot with
             {
@@ -1740,6 +1744,8 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePositionOutOfRangeCashItemByteCountsByType = positionOutOfRangeByteCountsByType,
                 BackwardUpdatePositionSlotOverflowCashItemCountsByType = positionSlotOverflowCountsByType,
                 BackwardUpdatePositionSlotOverflowCashItemByteCountsByType = positionSlotOverflowByteCountsByType,
+                BackwardUpdatePositionCollisionCashItemCountsByType = positionCollisionCountsByType,
+                BackwardUpdatePositionCollisionCashItemByteCountsByType = positionCollisionByteCountsByType,
                 BackwardUpdatePositionValidatedCashItemCount = positionValidatedCount,
                 BackwardUpdatePositionFallbackCashItemCount = positionFallbackCount,
                 BackwardUpdatePositionValidatedCashItemByteCount = positionValidatedByteCount,
@@ -1747,7 +1753,9 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePositionOutOfRangeCashItemCount = positionOutOfRangeCount,
                 BackwardUpdatePositionOutOfRangeCashItemByteCount = positionOutOfRangeByteCount,
                 BackwardUpdatePositionSlotOverflowCashItemCount = positionSlotOverflowCount,
-                BackwardUpdatePositionSlotOverflowCashItemByteCount = positionSlotOverflowByteCount
+                BackwardUpdatePositionSlotOverflowCashItemByteCount = positionSlotOverflowByteCount,
+                BackwardUpdatePositionCollisionCashItemCount = positionCollisionCount,
+                BackwardUpdatePositionCollisionCashItemByteCount = positionCollisionByteCount
             };
         }
 
@@ -1762,6 +1770,8 @@ namespace HaCreator.MapSimulator.Interaction
             out Dictionary<InventoryType, int> positionOutOfRangeByteCountsByType,
             out Dictionary<InventoryType, int> positionSlotOverflowCountsByType,
             out Dictionary<InventoryType, int> positionSlotOverflowByteCountsByType,
+            out Dictionary<InventoryType, int> positionCollisionCountsByType,
+            out Dictionary<InventoryType, int> positionCollisionByteCountsByType,
             out int positionValidatedCount,
             out int positionFallbackCount,
             out int positionValidatedByteCount,
@@ -1769,7 +1779,9 @@ namespace HaCreator.MapSimulator.Interaction
             out int positionOutOfRangeCount,
             out int positionOutOfRangeByteCount,
             out int positionSlotOverflowCount,
-            out int positionSlotOverflowByteCount)
+            out int positionSlotOverflowByteCount,
+            out int positionCollisionCount,
+            out int positionCollisionByteCount)
         {
             positionValidatedCountsByType = new Dictionary<InventoryType, int>();
             positionFallbackCountsByType = new Dictionary<InventoryType, int>();
@@ -1779,6 +1791,8 @@ namespace HaCreator.MapSimulator.Interaction
             positionOutOfRangeByteCountsByType = new Dictionary<InventoryType, int>();
             positionSlotOverflowCountsByType = new Dictionary<InventoryType, int>();
             positionSlotOverflowByteCountsByType = new Dictionary<InventoryType, int>();
+            positionCollisionCountsByType = new Dictionary<InventoryType, int>();
+            positionCollisionByteCountsByType = new Dictionary<InventoryType, int>();
             positionValidatedCount = 0;
             positionFallbackCount = 0;
             positionValidatedByteCount = 0;
@@ -1787,6 +1801,8 @@ namespace HaCreator.MapSimulator.Interaction
             positionOutOfRangeByteCount = 0;
             positionSlotOverflowCount = 0;
             positionSlotOverflowByteCount = 0;
+            positionCollisionCount = 0;
+            positionCollisionByteCount = 0;
 
             if (inventoryItemsByType == null)
             {
@@ -1810,7 +1826,10 @@ namespace HaCreator.MapSimulator.Interaction
                 int outOfRangeBytesForType = 0;
                 int slotOverflowForType = 0;
                 int slotOverflowBytesForType = 0;
+                int collisionForType = 0;
+                int collisionBytesForType = 0;
                 int slotCapacity = ResolveBackwardUpdateSlotCapacity(inventoryType, slots, inventorySlotLimits);
+                HashSet<short> reservedValidatedPositions = new();
                 for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
                 {
                     PacketCharacterDataItemSlot slot = slots[slotIndex];
@@ -1822,6 +1841,12 @@ namespace HaCreator.MapSimulator.Interaction
                     int slotByteCount = checked(sizeof(short) + Math.Max(0, slot.DecodedByteCount));
                     BackwardUpdateCashItemPositionEvaluation evaluation =
                         EvaluateBackwardUpdateCashItemPosition(inventoryType, slot.InventoryPosition, slotCapacity);
+                    if (evaluation == BackwardUpdateCashItemPositionEvaluation.Validated &&
+                        !reservedValidatedPositions.Add(slot.InventoryPosition))
+                    {
+                        evaluation = BackwardUpdateCashItemPositionEvaluation.Collision;
+                    }
+
                     if (evaluation == BackwardUpdateCashItemPositionEvaluation.Validated)
                     {
                         validatedForType++;
@@ -1835,6 +1860,11 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             slotOverflowForType++;
                             slotOverflowBytesForType = checked(slotOverflowBytesForType + slotByteCount);
+                        }
+                        else if (evaluation == BackwardUpdateCashItemPositionEvaluation.Collision)
+                        {
+                            collisionForType++;
+                            collisionBytesForType = checked(collisionBytesForType + slotByteCount);
                         }
                         else
                         {
@@ -1874,6 +1904,14 @@ namespace HaCreator.MapSimulator.Interaction
                     positionSlotOverflowByteCountsByType[inventoryType] = slotOverflowBytesForType;
                     positionSlotOverflowCount = checked(positionSlotOverflowCount + slotOverflowForType);
                     positionSlotOverflowByteCount = checked(positionSlotOverflowByteCount + slotOverflowBytesForType);
+                }
+
+                if (collisionForType > 0)
+                {
+                    positionCollisionCountsByType[inventoryType] = collisionForType;
+                    positionCollisionByteCountsByType[inventoryType] = collisionBytesForType;
+                    positionCollisionCount = checked(positionCollisionCount + collisionForType);
+                    positionCollisionByteCount = checked(positionCollisionByteCount + collisionBytesForType);
                 }
             }
         }
@@ -1931,7 +1969,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             Validated = 0,
             OutOfRange = 1,
-            SlotOverflow = 2
+            SlotOverflow = 2,
+            Collision = 3
         }
 
         private static void BuildBackwardUpdateRemovedSerialNumberMatchSummary(
@@ -3343,6 +3382,8 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionOutOfRangeCashItemByteCountsByType = null,
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionSlotOverflowCashItemCountsByType = null,
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionSlotOverflowCashItemByteCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionCollisionCashItemCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionCollisionCashItemByteCountsByType = null,
         int BackwardUpdatePositionValidatedCashItemCount = 0,
         int BackwardUpdatePositionFallbackCashItemCount = 0,
         int BackwardUpdatePositionValidatedCashItemByteCount = 0,
@@ -3351,6 +3392,8 @@ namespace HaCreator.MapSimulator.Interaction
         int BackwardUpdatePositionOutOfRangeCashItemByteCount = 0,
         int BackwardUpdatePositionSlotOverflowCashItemCount = 0,
         int BackwardUpdatePositionSlotOverflowCashItemByteCount = 0,
+        int BackwardUpdatePositionCollisionCashItemCount = 0,
+        int BackwardUpdatePositionCollisionCashItemByteCount = 0,
         LoginAvatarLook AvatarLook = null,
         int? PreInventoryHeaderValue1 = null,
         int? PreInventoryHeaderValue2 = null,

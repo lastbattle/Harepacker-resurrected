@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.Helpers;
 using System;
@@ -191,6 +192,16 @@ namespace HaCreator.MapSimulator
             out string status)
         {
             status = null;
+
+            string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetExpeditionPartyBossChangeRestrictionMessage(
+                _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                request.Kind);
+            if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
+            {
+                status = fieldRestrictionMessage;
+                return false;
+            }
+
             if (!ExpeditionIntermediaryPacketCodec.TryEncodeOutboundRequest(request, out ExpeditionIntermediaryEncodedOutboundPacket packet, out string encodeError))
             {
                 status = encodeError ?? $"Expedition request '{request.Kind}' could not be encoded.";

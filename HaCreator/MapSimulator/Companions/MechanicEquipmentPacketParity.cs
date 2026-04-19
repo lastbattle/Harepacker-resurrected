@@ -1429,21 +1429,34 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            short length = reader.ReadInt16();
-            if (length < 0)
+            short lengthToken = reader.ReadInt16();
+            if (lengthToken == 0)
+            {
+                value = string.Empty;
+                return true;
+            }
+
+            if (lengthToken > 0)
+            {
+                int byteLength = lengthToken;
+                if (!TryEnsureRemaining(stream, byteLength, out rejectReason))
+                {
+                    return false;
+                }
+
+                value = Encoding.ASCII.GetString(reader.ReadBytes(byteLength));
+                return true;
+            }
+
+            int charLength = -lengthToken;
+            int unicodeByteLength = charLength * sizeof(char);
+            if (charLength <= 0 || !TryEnsureRemaining(stream, unicodeByteLength, out rejectReason))
             {
                 rejectReason = "Inventory-operation add entry maple string length is invalid.";
                 return false;
             }
 
-            if (!TryEnsureRemaining(stream, length, out rejectReason))
-            {
-                return false;
-            }
-
-            value = length == 0
-                ? string.Empty
-                : Encoding.ASCII.GetString(reader.ReadBytes(length));
+            value = Encoding.Unicode.GetString(reader.ReadBytes(unicodeByteLength));
             return true;
         }
 

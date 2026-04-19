@@ -148,6 +148,15 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        internal static string GetExpeditionPartyBossChangeRestrictionMessage(
+            long fieldLimit,
+            ExpeditionIntermediaryOutboundRequestKind requestKind)
+        {
+            return requestKind == ExpeditionIntermediaryOutboundRequestKind.ChangePartyBoss
+                ? GetPartyBossRestrictionMessage(fieldLimit)
+                : null;
+        }
+
         public static string GetDropRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Drop_Limit.Check(fieldLimit)

@@ -504,7 +504,10 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _opcodeMappings[opcode] = packetType;
-            RememberLearnedOpcode(opcode, packetType, "manual");
+            if (ShouldRememberLearnedOpcode(opcode))
+            {
+                RememberLearnedOpcode(opcode, packetType, "manual");
+            }
             status = $"Mapped Dojo opcode {opcode} to {DescribePacketType(packetType)}.";
             LastStatus = status;
             return true;
@@ -760,7 +763,10 @@ namespace HaCreator.MapSimulator.Managers
                 _opcodeMappings[opcode] = packetType;
             }
 
-            RememberLearnedOpcode(opcode, packetType, nestedDecodeEvidence);
+            if (ShouldRememberLearnedOpcode(opcode))
+            {
+                RememberLearnedOpcode(opcode, packetType, nestedDecodeEvidence);
+            }
             message = new DojoPacketInboxMessage(
                 DojoPacketMessageKind.RawPacket,
                 value: 0,
@@ -1117,7 +1123,10 @@ namespace HaCreator.MapSimulator.Managers
                     _opcodeMappings[opcode] = inferredPacketType;
                 }
 
-                RememberLearnedOpcode(opcode, inferredPacketType, $"auto:{inferredReason}");
+                if (ShouldRememberLearnedOpcode(opcode))
+                {
+                    RememberLearnedOpcode(opcode, inferredPacketType, $"auto:{inferredReason}");
+                }
                 packetType = inferredPacketType;
                 mappingReason = $"auto:{inferredReason}";
                 LastStatus = ShouldPersistInferredOpcodeMapping(opcode)
@@ -1146,7 +1155,10 @@ namespace HaCreator.MapSimulator.Managers
                     _opcodeMappings[opcode] = packetType;
                 }
 
-                RememberLearnedOpcode(opcode, packetType, $"state:{stateReason}");
+                if (ShouldRememberLearnedOpcode(opcode))
+                {
+                    RememberLearnedOpcode(opcode, packetType, $"state:{stateReason}");
+                }
                 mappingReason = $"state:{stateReason}";
                 LastStatus = ShouldPersistInferredOpcodeMapping(opcode)
                     ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from field-state inference ({stateReason})."
@@ -1166,7 +1178,10 @@ namespace HaCreator.MapSimulator.Managers
 
                 packetType = inferredPacketType;
                 mappingReason = $"tentative:{inferredReason}";
-                RememberLearnedOpcode(opcode, packetType, mappingReason);
+                if (ShouldRememberLearnedOpcode(opcode))
+                {
+                    RememberLearnedOpcode(opcode, packetType, mappingReason);
+                }
                 LastStatus = $"Tentatively identified Dojo opcode {opcode} as {DescribePacketType(packetType)} from payload inference ({inferredReason}); waiting for stronger evidence before persisting the mapping.";
                 return true;
             }
@@ -1200,7 +1215,10 @@ namespace HaCreator.MapSimulator.Managers
                     _opcodeMappings[packet.Opcode] = packetType;
                 }
 
-                RememberLearnedOpcode(packet.Opcode, packetType, $"deferred:{evidence}");
+                if (ShouldRememberLearnedOpcode(packet.Opcode))
+                {
+                    RememberLearnedOpcode(packet.Opcode, packetType, $"deferred:{evidence}");
+                }
                 _pendingMessages.Enqueue(CreateRawPacketMessage(packet.RawPacket, packet.Source, packetType, packet.Payload));
                 RecordRecentPacket(packet.Opcode, packet.RawPacket, packetType, $"deferred:{evidence}");
                 ReceivedCount++;
@@ -1212,6 +1230,12 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         private static bool ShouldPersistInferredOpcodeMapping(int opcode)
+        {
+            return opcode != FieldSpecificDataOpcode
+                && opcode != CurrentWrapperRelayOpcode;
+        }
+
+        private static bool ShouldRememberLearnedOpcode(int opcode)
         {
             return opcode != FieldSpecificDataOpcode
                 && opcode != CurrentWrapperRelayOpcode;

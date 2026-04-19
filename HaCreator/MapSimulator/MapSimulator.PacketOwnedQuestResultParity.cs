@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator
         private int _pendingPacketOwnedStartQuestResponseSpeakerNpcId;
         private string _pendingPacketOwnedStartQuestResponseQuestName = string.Empty;
         private int _pendingPacketOwnedStartQuestResponseRequestedAtTick = int.MinValue;
+        private bool _packetOwnedQuestResultStartQuestRequestSent;
+        private int _packetOwnedQuestResultStartQuestRequestTick = int.MinValue;
         private readonly PacketQuestResultFadeWindowRuntime _packetQuestResultFadeWindowRuntime = new();
         private const int PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs = 500;
 
@@ -746,8 +748,7 @@ namespace HaCreator.MapSimulator
         {
             requestAccepted = false;
             int currentTick = currTickCount;
-            if (_packetOwnedUtilityRequestTick != int.MinValue &&
-                unchecked(currentTick - _packetOwnedUtilityRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs)
+            if (IsPacketOwnedQuestResultStartQuestRequestBlocked(currentTick))
             {
                 return $"Mirrored CWvsContext::StartQuest request remained blocked by the client 500 ms exclusive-request cooldown for {followUpQuestName}.";
             }
@@ -792,7 +793,7 @@ namespace HaCreator.MapSimulator
                     out string dispatchStatus))
             {
                 requestAccepted = true;
-                StampPacketOwnedUtilityRequestState();
+                MarkPacketOwnedQuestResultStartQuestRequestSent();
                 return $"{summary} Dispatched it through the live local-utility bridge. {dispatchStatus}";
             }
 
@@ -802,7 +803,7 @@ namespace HaCreator.MapSimulator
                     out string outboxStatus))
             {
                 requestAccepted = true;
-                StampPacketOwnedUtilityRequestState();
+                MarkPacketOwnedQuestResultStartQuestRequestSent();
                 return $"{summary} Dispatched it through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
             }
 
@@ -814,7 +815,7 @@ namespace HaCreator.MapSimulator
                     out deferredBridgeStatus))
             {
                 requestAccepted = true;
-                StampPacketOwnedUtilityRequestState();
+                MarkPacketOwnedQuestResultStartQuestRequestSent();
                 return $"{summary} Queued it for deferred official-session injection after the immediate bridge and outbox paths were unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
             }
 
@@ -824,7 +825,7 @@ namespace HaCreator.MapSimulator
                     out string queuedStatus))
             {
                 requestAccepted = true;
-                StampPacketOwnedUtilityRequestState();
+                MarkPacketOwnedQuestResultStartQuestRequestSent();
                 return $"{summary} Queued it for deferred generic local-utility outbox delivery after the immediate bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedStatus}";
             }
 
@@ -870,6 +871,7 @@ namespace HaCreator.MapSimulator
                 questId,
                 _playerManager?.Player?.Build);
             ApplyPacketOwnedQuestResultFollowUpStateChanges(result, questId);
+            ClearPacketOwnedQuestResultStartQuestRequestLatch();
 
             int ageMs = _pendingPacketOwnedStartQuestResponseRequestedAtTick == int.MinValue
                 ? 0
@@ -912,6 +914,40 @@ namespace HaCreator.MapSimulator
             RefreshQuestUiState();
             SelectQuestInActiveWindow(followUpQuestId);
             UpdateQuestDetailWindow();
+        }
+
+        private bool IsPacketOwnedQuestResultStartQuestRequestBlocked(int currentTick)
+        {
+            if (_packetOwnedQuestResultStartQuestRequestSent &&
+                _pendingPacketOwnedStartQuestResponseQuestId > 0 &&
+                _packetOwnedQuestResultStartQuestRequestTick != int.MinValue &&
+                unchecked(currentTick - _packetOwnedQuestResultStartQuestRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs)
+            {
+                return true;
+            }
+
+            if (_packetOwnedQuestResultStartQuestRequestTick != int.MinValue &&
+                unchecked(currentTick - _packetOwnedQuestResultStartQuestRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs)
+            {
+                return true;
+            }
+
+            return _packetOwnedUtilityRequestTick != int.MinValue &&
+                unchecked(currentTick - _packetOwnedUtilityRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs;
+        }
+
+        private void MarkPacketOwnedQuestResultStartQuestRequestSent()
+        {
+            _packetOwnedQuestResultStartQuestRequestSent = true;
+            _packetOwnedQuestResultStartQuestRequestTick = currTickCount;
+            StampPacketOwnedUtilityRequestState();
+        }
+
+        private void ClearPacketOwnedQuestResultStartQuestRequestLatch()
+        {
+            _packetOwnedQuestResultStartQuestRequestSent = false;
+            _packetOwnedQuestResultStartQuestRequestTick = currTickCount;
+            StampPacketOwnedUtilityRequestState();
         }
 
         private IReadOnlyList<int> ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot()

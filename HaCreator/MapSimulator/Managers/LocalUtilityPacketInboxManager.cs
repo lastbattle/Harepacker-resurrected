@@ -1136,6 +1136,10 @@ namespace HaCreator.MapSimulator.Managers
             if (token.Equals("monsterbooksync", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("monsterbookownershipsync", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("monsterbookownersync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbooksave", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbooksaveapply", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbooksaveresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookownershipsave", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("bookcollectionsync", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("bookownershipsync", StringComparison.OrdinalIgnoreCase))
             {

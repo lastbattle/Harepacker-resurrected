@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClassCompetitionMaxRemotePageLines = 12;
         private const int PacketOwnedClassCompetitionMaxRemoteLadderLines = 12;
         private const int PacketOwnedDeliveryUniqueModelessNoticeStringPoolId = 0x98;
+        private const int PacketOwnedQuestGuideUnavailableNoticeStringPoolId = 0x19EA;
         private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
         private const int PacketOwnedSkillLearnFailureSoundStringPoolId = 0x0508;
         private const int PacketOwnedSkillLearnMasteryBookLabelStringPoolId = 0x0F2F;
@@ -240,10 +241,12 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedActiveEffectItemId;
         private int _packetOwnedActiveEffectMotionBlurId = -1;
         private Animation.AnimationEffects.SecondaryMotionBlurAnimationState _packetOwnedActiveEffectMotionBlurState;
+        private IReadOnlyDictionary<AvatarRenderLayer, int> _packetOwnedActiveEffectMotionBlurLayerHandleIds;
         private int _lastDeliveryQuestId;
         private int _lastDeliveryItemId;
         private QuestDetailDeliveryType _lastPacketOwnedDeliveryType;
         private readonly List<int> _lastDeliveryDisallowedQuestIds = new();
+        private readonly Dictionary<int, QuestDetailDeliveryType> _packetOwnedDeliveryTypeHintsByQuestId = new();
         private int _lastQuestDemandItemQueryQuestId;
         private readonly List<int> _lastQuestDemandQueryVisibleItemIds = new();
         private readonly Dictionary<int, List<int>> _lastQuestDemandQueryVisibleItemMapIds = new();
@@ -430,6 +433,7 @@ namespace HaCreator.MapSimulator
         private string ApplyPacketQuestGuideLaunch(int questId, IReadOnlyDictionary<int, IReadOnlyList<int>> targetsByMobId)
         {
             StampPacketOwnedUtilityRequestState();
+            ClearQuestDemandItemQueryState(refreshWorldMap: false);
             ClearPacketQuestGuideTargets(refreshWorldMap: false);
 
             if (targetsByMobId != null)
@@ -451,7 +455,7 @@ namespace HaCreator.MapSimulator
             if (_packetQuestGuideTargetsByMobId.Count == 0)
             {
                 ClearPacketQuestGuideTargets();
-                const string notice = "Quest guide data did not contain any usable world-map mob targets.";
+                string notice = ResolvePacketQuestGuideUnavailableNotice();
                 NotifyEventAlarmOwnerActivity("packet-owned quest guide");
                 ShowUtilityFeedbackMessage(notice);
                 return notice;
@@ -472,7 +476,7 @@ namespace HaCreator.MapSimulator
             if (!TryResolveFirstQuestGuideTarget(out int mobId, out int mapId))
             {
                 ClearPacketQuestGuideTargets();
-                const string notice = "Quest guide data did not contain any usable world-map mob targets.";
+                string notice = ResolvePacketQuestGuideUnavailableNotice();
                 NotifyEventAlarmOwnerActivity("packet-owned quest guide");
                 ShowUtilityFeedbackMessage(notice);
                 return notice;
@@ -482,7 +486,7 @@ namespace HaCreator.MapSimulator
             if (!worldMapWindow.FocusSearchResult(WorldMapUI.SearchResultKind.Mob, mobName, mapId))
             {
                 ClearPacketQuestGuideTargets();
-                string notice = $"Quest guide data for {mobName} could not be resolved in the simulator world map.";
+                string notice = ResolvePacketQuestGuideUnavailableNotice();
                 NotifyEventAlarmOwnerActivity("packet-owned quest guide");
                 ShowUtilityFeedbackMessage(notice);
                 return notice;
@@ -496,8 +500,16 @@ namespace HaCreator.MapSimulator
 
         private string ResetPacketQuestGuideLaunch()
         {
+            ClearQuestDemandItemQueryState(refreshWorldMap: false);
             ClearPacketQuestGuideTargets();
             return "Cleared packet-authored quest guide demand state.";
+        }
+
+        private static string ResolvePacketQuestGuideUnavailableNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                PacketOwnedQuestGuideUnavailableNoticeStringPoolId,
+                "Quest guide data did not contain any usable world-map mob targets.");
         }
 
         private void AppendPacketQuestGuideSearchResults(List<WorldMapUI.SearchResultEntry> results, HashSet<string> seen)
@@ -540,6 +552,8 @@ namespace HaCreator.MapSimulator
             _lastDeliveryItemId = Math.Max(0, itemId);
             _lastPacketOwnedDeliveryType = packetOwnedDeliveryType;
             _lastDeliveryDisallowedQuestIds.Clear();
+            _packetOwnedDeliveryTypeHintsByQuestId.Clear();
+            SetPacketOwnedQuestDeliveryTypeHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
 
             if (disallowedQuestIds != null)
             {
@@ -613,6 +627,7 @@ namespace HaCreator.MapSimulator
         private string ApplyQuestDemandItemQueryLaunch(QuestDemandItemQueryState queryState, int preferredVisibleItemId = 0)
         {
             StampPacketOwnedUtilityRequestState();
+            ClearPacketQuestGuideTargets(refreshWorldMap: false);
             _lastQuestDemandItemQueryQuestId = Math.Max(0, queryState?.QuestId ?? 0);
             _lastQuestDemandQueryVisibleItemIds.Clear();
             _lastQuestDemandQueryVisibleItemMapIds.Clear();
@@ -1341,6 +1356,7 @@ namespace HaCreator.MapSimulator
                     DeliveryCashItemRuntimeSlotIndex = resolvedDeliverySlot ? deliveryRuntimeSlotIndex : -1,
                     DeliveryCashItemClientSlotIndex = resolvedDeliverySlot ? deliveryClientSlotIndex : 0
                 });
+                SetPacketOwnedQuestDeliveryTypeHint(snapshot.QuestId, ResolveDeliveryTypeForQuestDeliveryEntry(snapshot.CompletionPhase));
             }
 
             if (requestedQuestId > 0)
@@ -1426,6 +1442,7 @@ namespace HaCreator.MapSimulator
                     DeliveryCashItemRuntimeSlotIndex = resolvedDeliverySlot ? deliveryRuntimeSlotIndex : -1,
                     DeliveryCashItemClientSlotIndex = resolvedDeliverySlot ? deliveryClientSlotIndex : 0
                 });
+                SetPacketOwnedQuestDeliveryTypeHint(questId, state.DeliveryType);
             }
 
             return entries
@@ -1435,6 +1452,40 @@ namespace HaCreator.MapSimulator
                 .ThenBy(entry => entry.DisplayQuestId > 0 ? entry.DisplayQuestId : entry.QuestId)
                 .ThenBy(entry => entry.QuestId)
                 .ToArray();
+        }
+
+        private static QuestDetailDeliveryType ResolveDeliveryTypeForQuestDeliveryEntry(bool completionPhase)
+        {
+            return completionPhase
+                ? QuestDetailDeliveryType.Complete
+                : QuestDetailDeliveryType.Accept;
+        }
+
+        private void SetPacketOwnedQuestDeliveryTypeHint(int questId, QuestDetailDeliveryType deliveryType)
+        {
+            if (questId <= 0 || deliveryType == QuestDetailDeliveryType.None)
+            {
+                return;
+            }
+
+            _packetOwnedDeliveryTypeHintsByQuestId[questId] = deliveryType;
+        }
+
+        private QuestDetailDeliveryType ResolvePacketOwnedQuestDeliveryTypeHint(int questId)
+        {
+            if (questId <= 0)
+            {
+                return QuestDetailDeliveryType.None;
+            }
+
+            if (_packetOwnedDeliveryTypeHintsByQuestId.TryGetValue(questId, out QuestDetailDeliveryType deliveryType))
+            {
+                return deliveryType;
+            }
+
+            return _lastDeliveryQuestId == questId
+                ? _lastPacketOwnedDeliveryType
+                : QuestDetailDeliveryType.None;
         }
 
         private bool TryResolveQuestDeliveryCashItemSlot(
@@ -3943,7 +3994,7 @@ namespace HaCreator.MapSimulator
             }
 
             IReadOnlyDictionary<AvatarRenderLayer, int> simulatedLayerHandleIds =
-                CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds();
+                ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds();
             if (!TryCreatePacketOwnedActiveEffectMotionBlurFrame(
                     player,
                     currentTime,
@@ -4274,6 +4325,37 @@ namespace HaCreator.MapSimulator
             return handleIds;
         }
 
+        private IReadOnlyDictionary<AvatarRenderLayer, int> ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds()
+        {
+            if (IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMap(_packetOwnedActiveEffectMotionBlurLayerHandleIds))
+            {
+                return _packetOwnedActiveEffectMotionBlurLayerHandleIds;
+            }
+
+            _packetOwnedActiveEffectMotionBlurLayerHandleIds = CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds();
+            return _packetOwnedActiveEffectMotionBlurLayerHandleIds;
+        }
+
+        private static bool IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMap(
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+        {
+            if (layerHandleIds == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < PacketOwnedActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+            {
+                AvatarRenderLayer layer = PacketOwnedActiveEffectMotionBlurLayerCaptureOrder[i];
+                if (!layerHandleIds.TryGetValue(layer, out int handleId) || handleId <= 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static int NextPacketOwnedActiveEffectMotionBlurStateId()
         {
             return HaCreator.MapSimulator.Animation.SimulatedMotionBlurIdentitySource.NextAnimationStateId();
@@ -4287,6 +4369,20 @@ namespace HaCreator.MapSimulator
         internal static IReadOnlyDictionary<AvatarRenderLayer, int> CreatePacketOwnedActiveEffectMotionBlurLayerHandleIdsForTesting()
         {
             return CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds();
+        }
+
+        internal static bool IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMapForTesting(
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+        {
+            return IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMap(layerHandleIds);
+        }
+
+        internal static IReadOnlyDictionary<AvatarRenderLayer, int> ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIdsForTesting(
+            IReadOnlyDictionary<AvatarRenderLayer, int> existingLayerHandleIds)
+        {
+            return IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMap(existingLayerHandleIds)
+                ? existingLayerHandleIds
+                : CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds();
         }
 
         internal static int NextPacketOwnedActiveEffectMotionBlurStateIdForTesting()
@@ -12161,7 +12257,11 @@ namespace HaCreator.MapSimulator
 
             if (!string.IsNullOrWhiteSpace(packetMessage.ChatMessage))
             {
-                _chat?.AddMessage(packetMessage.ChatMessage, new Color(255, 228, 151), currentTime);
+                _chat?.AddMessage(
+                    packetMessage.ChatMessage,
+                    new Color(255, 228, 151),
+                    currentTime,
+                    packetMessage.ChatLogType);
             }
 
             if (!string.IsNullOrWhiteSpace(packetMessage.SecondaryScreenMessage))

@@ -424,6 +424,7 @@ namespace HaCreator.MapSimulator
                     resultSnapshot.Subtype,
                     resultSnapshot.ResultCode,
                     resultSnapshot.TrailingByteCount,
+                    resultSnapshot.TrailingPayloadSignature,
                     resultSnapshot.HasResultCode,
                     resultBlockingOwner);
                 return true;
@@ -435,6 +436,7 @@ namespace HaCreator.MapSimulator
                     resultSnapshot.Subtype,
                     resultSnapshot.ResultCode,
                     resultSnapshot.TrailingByteCount,
+                    resultSnapshot.TrailingPayloadSignature,
                     resultSnapshot.HasResultCode,
                     blockingOwner: null);
                 return true;

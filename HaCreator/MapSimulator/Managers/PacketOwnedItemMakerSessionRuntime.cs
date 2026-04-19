@@ -85,6 +85,11 @@ namespace HaCreator.MapSimulator.Managers
         private const byte CompactHiddenTailHasAdditions = 0x01;
         private const byte CompactHiddenTailHasRemovals = 0x02;
         private const byte CompactHiddenTailClearHidden = 0x04;
+        private enum HiddenRecipeEntryEncoding
+        {
+            Pair,
+            OutputOnly
+        }
 
         public static bool TryDecode(byte[] payload, out PacketOwnedItemMakerSession result, out string error)
         {
@@ -561,21 +566,44 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 clearsHiddenRecipes = (flags & CompactHiddenTailClearHidden) != 0;
-                if ((flags & CompactHiddenTailHasAdditions) != 0)
+                int hiddenTailPayloadLength = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
+                byte[] hiddenTailPayload = reader.ReadBytes(hiddenTailPayloadLength);
+                bool hasAdditions = (flags & CompactHiddenTailHasAdditions) != 0;
+                bool hasRemovals = (flags & CompactHiddenTailHasRemovals) != 0;
+                if (hasAdditions && hasRemovals)
                 {
-                    additions = ReadHiddenRecipeEntries16(
-                        reader,
-                        "Maker-session compact delta hidden recipe addition");
+                    if (!TryDecodeHiddenTailTwoLists(hiddenTailPayload, additionsFirst: true, out additions, out removals)
+                        && !TryDecodeHiddenTailTwoLists(hiddenTailPayload, additionsFirst: false, out additions, out removals))
+                    {
+                        return false;
+                    }
+                }
+                else if (hasAdditions)
+                {
+                    if (!TryDecodeHiddenTailSingleList(
+                            hiddenTailPayload,
+                            isAdditionList: true,
+                            out additions))
+                    {
+                        return false;
+                    }
+                }
+                else if (hasRemovals)
+                {
+                    if (!TryDecodeHiddenTailSingleList(
+                            hiddenTailPayload,
+                            isAdditionList: false,
+                            out removals))
+                    {
+                        return false;
+                    }
+                }
+                else if (hiddenTailPayload.Length != 0)
+                {
+                    return false;
                 }
 
-                if ((flags & CompactHiddenTailHasRemovals) != 0)
-                {
-                    removals = ReadHiddenRecipeRemovalEntries16(
-                        reader,
-                        "Maker-session compact delta hidden recipe removal");
-                }
-
-                return reader.BaseStream.Position == reader.BaseStream.Length;
+                return true;
             }
             catch (EndOfStreamException)
             {
@@ -596,36 +624,7 @@ namespace HaCreator.MapSimulator.Managers
             out List<PacketOwnedItemMakerSessionHiddenEntry> additions,
             out List<PacketOwnedItemMakerSessionHiddenEntry> removals)
         {
-            additions = null;
-            removals = null;
-            try
-            {
-                using MemoryStream stream = new(payload, writable: false);
-                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
-                additions = ReadHiddenRecipeEntries16(
-                    reader,
-                    "Maker-session compact delta hidden recipe addition");
-                if (reader.BaseStream.Position < reader.BaseStream.Length)
-                {
-                    removals = ReadHiddenRecipeRemovalEntries16(
-                        reader,
-                        "Maker-session compact delta hidden recipe removal");
-                }
-
-                return reader.BaseStream.Position == reader.BaseStream.Length;
-            }
-            catch (EndOfStreamException)
-            {
-                return false;
-            }
-            catch (IOException)
-            {
-                return false;
-            }
-            catch (InvalidDataException)
-            {
-                return false;
-            }
+            return TryDecodeHiddenTailTwoLists(payload, additionsFirst: true, out additions, out removals);
         }
 
         private static bool TryDecodeCompactHiddenTailSingleList(
@@ -707,6 +706,267 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (InvalidDataException)
             {
+                return false;
+            }
+        }
+
+        private static bool TryDecodeHiddenTailTwoLists(
+            byte[] payload,
+            bool additionsFirst,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> additions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> removals)
+        {
+            additions = null;
+            removals = null;
+            if (payload == null)
+            {
+                return false;
+            }
+
+            HiddenRecipeEntryEncoding[] firstListEncodings = additionsFirst
+                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                : new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly };
+            HiddenRecipeEntryEncoding[] secondListEncodings = additionsFirst
+                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                : new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly };
+
+            for (int firstEncodingIndex = 0; firstEncodingIndex < firstListEncodings.Length; firstEncodingIndex++)
+            {
+                HiddenRecipeEntryEncoding firstEncoding = firstListEncodings[firstEncodingIndex];
+                for (int secondEncodingIndex = 0; secondEncodingIndex < secondListEncodings.Length; secondEncodingIndex++)
+                {
+                    HiddenRecipeEntryEncoding secondEncoding = secondListEncodings[secondEncodingIndex];
+                    if (!TryDecodeHiddenTailTwoListsWithEncodings(
+                            payload,
+                            additionsFirst,
+                            firstEncoding,
+                            secondEncoding,
+                            out additions,
+                            out removals))
+                    {
+                        continue;
+                    }
+
+                    return true;
+                }
+            }
+
+            additions = null;
+            removals = null;
+            return false;
+        }
+
+        private static bool TryDecodeHiddenTailTwoListsWithEncodings(
+            byte[] payload,
+            bool additionsFirst,
+            HiddenRecipeEntryEncoding firstEncoding,
+            HiddenRecipeEntryEncoding secondEncoding,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> additions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> removals)
+        {
+            additions = null;
+            removals = null;
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                bool firstListRequiresPositiveOutput = additionsFirst;
+                bool secondListRequiresPositiveOutput = !additionsFirst;
+                if (!TryReadHiddenRecipeEntries16(
+                        reader,
+                        firstEncoding,
+                        requirePositiveOutputItemId: firstListRequiresPositiveOutput,
+                        "Maker-session compact delta hidden recipe first list",
+                        out List<PacketOwnedItemMakerSessionHiddenEntry> firstList))
+                {
+                    return false;
+                }
+
+                if (!TryReadHiddenRecipeEntries16(
+                        reader,
+                        secondEncoding,
+                        requirePositiveOutputItemId: secondListRequiresPositiveOutput,
+                        "Maker-session compact delta hidden recipe second list",
+                        out List<PacketOwnedItemMakerSessionHiddenEntry> secondList))
+                {
+                    return false;
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                if (additionsFirst)
+                {
+                    additions = firstList;
+                    removals = secondList;
+                }
+                else
+                {
+                    removals = firstList;
+                    additions = secondList;
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TryDecodeHiddenTailSingleList(
+            byte[] payload,
+            bool isAdditionList,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            entries = null;
+            if (payload == null)
+            {
+                return false;
+            }
+
+            HiddenRecipeEntryEncoding[] encodings = new[]
+            {
+                HiddenRecipeEntryEncoding.Pair,
+                HiddenRecipeEntryEncoding.OutputOnly
+            };
+            for (int i = 0; i < encodings.Length; i++)
+            {
+                if (!TryDecodeHiddenTailSingleListWithEncoding(
+                        payload,
+                        isAdditionList,
+                        encodings[i],
+                        out entries))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            entries = null;
+            return false;
+        }
+
+        private static bool TryDecodeHiddenTailSingleListWithEncoding(
+            byte[] payload,
+            bool isAdditionList,
+            HiddenRecipeEntryEncoding encoding,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            entries = null;
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                if (!TryReadHiddenRecipeEntries16(
+                        reader,
+                        encoding,
+                        requirePositiveOutputItemId: isAdditionList,
+                        "Maker-session compact delta hidden recipe list",
+                        out entries))
+                {
+                    return false;
+                }
+
+                return reader.BaseStream.Position == reader.BaseStream.Length;
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TryReadHiddenRecipeEntries16(
+            BinaryReader reader,
+            HiddenRecipeEntryEncoding encoding,
+            bool requirePositiveOutputItemId,
+            string label,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            entries = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                int count = ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
+                if (count <= 0)
+                {
+                    return true;
+                }
+
+                int entryWidth = encoding == HiddenRecipeEntryEncoding.Pair
+                    ? sizeof(int) * 2
+                    : sizeof(int);
+                long requiredBytes = (long)entryWidth * count;
+                if (reader.BaseStream.Length - reader.BaseStream.Position < requiredBytes)
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                entries = new List<PacketOwnedItemMakerSessionHiddenEntry>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    int bucketKey;
+                    int outputItemId;
+                    if (encoding == HiddenRecipeEntryEncoding.Pair)
+                    {
+                        bucketKey = reader.ReadInt32();
+                        outputItemId = reader.ReadInt32();
+                    }
+                    else
+                    {
+                        bucketKey = -1;
+                        outputItemId = reader.ReadInt32();
+                    }
+
+                    if (requirePositiveOutputItemId && outputItemId <= 0)
+                    {
+                        reader.BaseStream.Position = startPosition;
+                        return false;
+                    }
+
+                    entries.Add(new PacketOwnedItemMakerSessionHiddenEntry(bucketKey, outputItemId));
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (IOException)
+            {
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                reader.BaseStream.Position = startPosition;
                 return false;
             }
         }

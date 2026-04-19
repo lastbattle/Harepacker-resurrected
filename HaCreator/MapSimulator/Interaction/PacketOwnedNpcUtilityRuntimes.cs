@@ -2541,6 +2541,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int itemId = reader.ReadInt32();
+            long baseTailStartPosition = stream.Position;
             bool hasCashSerialNumber = reader.ReadByte() != 0;
             long cashSerialNumber = 0;
             if (hasCashSerialNumber)
@@ -2559,6 +2560,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             long baseExpirationTime = reader.ReadInt64();
+            byte[] baseTailBytes = CopyBytesFromStream(stream, baseTailStartPosition, checked((int)(stream.Position - baseTailStartPosition)));
 
             int quantity = 1;
             string title = string.Empty;
@@ -2566,11 +2568,14 @@ namespace HaCreator.MapSimulator.Interaction
             StoreBankEquipData equipData = null;
             StoreBankBundleData bundleData = null;
             StoreBankPetData petData = null;
+            byte[] equipTailBytes = Array.Empty<byte>();
+            byte[] bundleTailBytes = Array.Empty<byte>();
+            byte[] petTailBytes = Array.Empty<byte>();
             long bodyStartPosition = stream.Position;
             switch (slotType)
             {
                 case 1:
-                    if (!TryReadEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary, out equipData))
+                    if (!TryReadEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary, out equipData, out equipTailBytes))
                     {
                         return false;
                     }
@@ -2578,7 +2583,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 2:
-                    if (!TryReadBundleBody(reader, itemId, out quantity, out title, out metadataSummary, out bundleData))
+                    if (!TryReadBundleBody(reader, itemId, out quantity, out title, out metadataSummary, out bundleData, out bundleTailBytes))
                     {
                         return false;
                     }
@@ -2586,7 +2591,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 3:
-                    if (!TryReadPetBody(reader, out title, out metadataSummary, out petData))
+                    if (!TryReadPetBody(reader, out title, out metadataSummary, out petData, out petTailBytes))
                     {
                         return false;
                     }
@@ -2641,6 +2646,10 @@ namespace HaCreator.MapSimulator.Interaction
                 MetadataSummary = metadataSummary,
                 RawEncodedBytes = rawEncodedBytes,
                 BodyEncodedBytes = bodyEncodedBytes,
+                BaseTailBytes = baseTailBytes,
+                EquipTailBytes = equipTailBytes,
+                BundleTailBytes = bundleTailBytes,
+                PetTailBytes = petTailBytes,
                 EquipData = equipData,
                 BundleData = bundleData,
                 PetData = petData
@@ -2686,10 +2695,10 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildDecodedItemBodyDetails(entry),
                 Convert.ToHexString(entry.RawEncodedBytes ?? Array.Empty<byte>()),
                 Convert.ToHexString(entry.BodyEncodedBytes ?? Array.Empty<byte>()),
-                string.Empty,
-                string.Empty,
-                string.Empty,
-                string.Empty,
+                Convert.ToHexString(entry.BaseTailBytes ?? Array.Empty<byte>()),
+                Convert.ToHexString(entry.EquipTailBytes ?? Array.Empty<byte>()),
+                Convert.ToHexString(entry.BundleTailBytes ?? Array.Empty<byte>()),
+                Convert.ToHexString(entry.PetTailBytes ?? Array.Empty<byte>()),
                 entry.EncodedByteLength);
             return true;
         }
@@ -2727,6 +2736,10 @@ namespace HaCreator.MapSimulator.Interaction
                 MetadataSummary = item.MetadataSummary,
                 RawEncodedBytes = item.RawEncodedBytes?.ToArray() ?? Array.Empty<byte>(),
                 BodyEncodedBytes = item.BodyEncodedBytes?.ToArray() ?? Array.Empty<byte>(),
+                BaseTailBytes = item.BaseTailBytes?.ToArray() ?? Array.Empty<byte>(),
+                EquipTailBytes = item.EquipTailBytes?.ToArray() ?? Array.Empty<byte>(),
+                BundleTailBytes = item.BundleTailBytes?.ToArray() ?? Array.Empty<byte>(),
+                PetTailBytes = item.PetTailBytes?.ToArray() ?? Array.Empty<byte>(),
                 EquipData = item.EquipData,
                 BundleData = item.BundleData,
                 PetData = item.PetData
@@ -2848,11 +2861,12 @@ namespace HaCreator.MapSimulator.Interaction
             return InventoryItemMetadataResolver.ResolveMaxStack(inventoryType);
         }
 
-        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary, out StoreBankEquipData equipData)
+        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary, out StoreBankEquipData equipData, out byte[] tailBytes)
         {
             title = string.Empty;
             metadataSummary = string.Empty;
             equipData = null;
+            tailBytes = Array.Empty<byte>();
             Stream stream = reader.BaseStream;
             const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
             if (stream.Length - stream.Position < equipStatsByteLength)
@@ -2883,6 +2897,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             title = NormalizeStoreBankFixedString(title, maxClientBytesIncludingTerminator: 13);
+            long tailStartPosition = stream.Position;
 
             const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
             int requiredTailLength = tailLength + (hasCashSerialNumber ? 0 : sizeof(long)) + sizeof(long) + sizeof(int);
@@ -2985,15 +3000,17 @@ namespace HaCreator.MapSimulator.Interaction
                 EquippedTime = equippedTime,
                 PreviousBonusExpRate = previousBonusExpRate
             };
+            tailBytes = CopyBytesFromStream(stream, tailStartPosition, checked((int)(stream.Position - tailStartPosition)));
             return true;
         }
 
-        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary, out StoreBankBundleData bundleData)
+        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary, out StoreBankBundleData bundleData, out byte[] tailBytes)
         {
             quantity = 1;
             title = string.Empty;
             metadataSummary = string.Empty;
             bundleData = null;
+            tailBytes = Array.Empty<byte>();
             Stream stream = reader.BaseStream;
             if (stream.Length - stream.Position < sizeof(ushort))
             {
@@ -3007,6 +3024,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             title = NormalizeStoreBankFixedString(title, maxClientBytesIncludingTerminator: 13);
+            long tailStartPosition = stream.Position;
 
             if (stream.Length - stream.Position < sizeof(short))
             {
@@ -3028,6 +3046,7 @@ namespace HaCreator.MapSimulator.Interaction
                     Attribute = attribute,
                     RechargeableSerialNumber = rechargeableSerialNumber
                 };
+                tailBytes = CopyBytesFromStream(stream, tailStartPosition, checked((int)(stream.Position - tailStartPosition)));
                 return true;
             }
 
@@ -3037,14 +3056,16 @@ namespace HaCreator.MapSimulator.Interaction
                 Attribute = attribute,
                 RechargeableSerialNumber = 0
             };
+            tailBytes = CopyBytesFromStream(stream, tailStartPosition, checked((int)(stream.Position - tailStartPosition)));
             return true;
         }
 
-        private static bool TryReadPetBody(BinaryReader reader, out string title, out string metadataSummary, out StoreBankPetData petData)
+        private static bool TryReadPetBody(BinaryReader reader, out string title, out string metadataSummary, out StoreBankPetData petData, out byte[] tailBytes)
         {
             title = string.Empty;
             metadataSummary = string.Empty;
             petData = null;
+            tailBytes = Array.Empty<byte>();
             Stream stream = reader.BaseStream;
             const int petNameLength = 13;
             const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
@@ -3057,6 +3078,7 @@ namespace HaCreator.MapSimulator.Interaction
             title = NormalizeStoreBankFixedString(
                 Encoding.ASCII.GetString(petNameBytes),
                 maxClientBytesIncludingTerminator: petNameLength);
+            long tailStartPosition = stream.Position;
             byte level = reader.ReadByte();
             short closeness = reader.ReadInt16();
             byte fullness = reader.ReadByte();
@@ -3077,6 +3099,7 @@ namespace HaCreator.MapSimulator.Interaction
                 RemainingLife = remainingLife,
                 ItemAttribute = itemAttribute
             };
+            tailBytes = CopyBytesFromStream(stream, tailStartPosition, checked((int)(stream.Position - tailStartPosition)));
             return true;
         }
 

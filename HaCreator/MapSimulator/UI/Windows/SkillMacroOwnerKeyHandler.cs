@@ -69,6 +69,11 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        internal static bool IsClientForwardedNonFunctionHotkeyPhysicalKey(Keys key)
+        {
+            return TryGetClientForwardedPrimarySlotIndex(key, out _);
+        }
+
         internal static bool ShouldForwardClientOwnedNonFunctionKeyDownToParent(
             Keys key,
             bool controlHeld,

@@ -722,19 +722,18 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int opcode = BitConverter.ToUInt16(rawPacket, 0);
-            if (opcode != CurrentWrapperRelayOpcode
-                && opcode != PacketTypeIncGauge
-                && opcode != PacketTypeResult
-                && (mappedInboundOpcodes == null || !mappedInboundOpcodes.TryGetValue(opcode, out _)))
-            {
-                return false;
-            }
-
             byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
             if (mappedInboundOpcodes != null
                 && mappedInboundOpcodes.TryGetValue(opcode, out MassacrePacketInboxMessageKind mappedKind))
             {
                 return TryBuildMappedInboundMessage(opcode, mappedKind, payload, source, rawPacket, out message);
+            }
+
+            if (opcode != CurrentWrapperRelayOpcode
+                && opcode != PacketTypeIncGauge
+                && opcode != PacketTypeResult)
+            {
+                return TryDecodeNestedRelayMassacrePacket(payload, source, rawPacket, mappedInboundOpcodes, out message);
             }
 
             if (opcode != CurrentWrapperRelayOpcode)
@@ -749,6 +748,92 @@ namespace HaCreator.MapSimulator.Managers
                 $"packetraw {Convert.ToHexString(rawPacket)}",
                 packetType: opcode,
                 payload: payload);
+            return true;
+        }
+
+        private static bool TryDecodeNestedRelayMassacrePacket(
+            byte[] payload,
+            string source,
+            byte[] rawPacket,
+            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
+            out MassacrePacketInboxMessage message)
+        {
+            message = null;
+            payload ??= Array.Empty<byte>();
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int firstRelayPacketType,
+                    out byte[] firstRelayPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            if (TryBuildNestedRelayMessage(
+                    firstRelayPacketType,
+                    firstRelayPayload,
+                    source,
+                    rawPacket,
+                    mappedInboundOpcodes,
+                    out message))
+            {
+                return true;
+            }
+
+            if (firstRelayPacketType != CurrentWrapperRelayOpcode
+                || !SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    firstRelayPayload,
+                    out int secondRelayPacketType,
+                    out byte[] secondRelayPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            return TryBuildNestedRelayMessage(
+                secondRelayPacketType,
+                secondRelayPayload,
+                source,
+                rawPacket,
+                mappedInboundOpcodes,
+                out message);
+        }
+
+        private static bool TryBuildNestedRelayMessage(
+            int nestedPacketType,
+            byte[] nestedPayload,
+            string source,
+            byte[] rawPacket,
+            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
+            out MassacrePacketInboxMessage message)
+        {
+            message = null;
+            nestedPayload ??= Array.Empty<byte>();
+
+            if (mappedInboundOpcodes != null
+                && mappedInboundOpcodes.TryGetValue(nestedPacketType, out MassacrePacketInboxMessageKind mappedKind)
+                && TryBuildMappedInboundMessage(nestedPacketType, mappedKind, nestedPayload, source, rawPacket, out message))
+            {
+                return true;
+            }
+
+            if (nestedPacketType != CurrentWrapperRelayOpcode
+                && nestedPacketType != PacketTypeIncGauge
+                && nestedPacketType != PacketTypeResult)
+            {
+                return false;
+            }
+
+            byte[] relayPayload = nestedPacketType == CurrentWrapperRelayOpcode
+                ? nestedPayload
+                : SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(nestedPacketType, nestedPayload);
+
+            message = new MassacrePacketInboxMessage(
+                MassacrePacketInboxMessageKind.Packet,
+                source,
+                $"packetraw {Convert.ToHexString(rawPacket)}",
+                packetType: CurrentWrapperRelayOpcode,
+                payload: relayPayload);
             return true;
         }
 

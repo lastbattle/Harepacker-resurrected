@@ -251,20 +251,25 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        internal void TrackQuest(int questId)
+        internal bool TrackQuest(int questId)
         {
             if (questId <= 0)
             {
-                return;
+                return false;
             }
 
             EnsurePersistedStateLoaded();
+            if (!TryGetRegisterableQuestAlarmEntry(questId, out _))
+            {
+                return false;
+            }
+
             RefreshFilteredSnapshot();
             bool alreadyTracked = _trackedQuestIds.Contains(questId);
             if (!alreadyTracked && _trackedQuestIds.Count >= MaxVisibleEntries)
             {
                 StatusMessageRequested?.Invoke(_registrationLimitMessage);
-                return;
+                return false;
             }
 
             if (!alreadyTracked)
@@ -279,6 +284,7 @@ namespace HaCreator.MapSimulator.UI
             SetMinimized(false);
             UpdateButtonStates();
             SavePersistedState();
+            return true;
         }
 
         public override void Update(GameTime gameTime)
@@ -585,6 +591,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EnsurePersistedStateLoaded();
+            if (!TryGetRegisterableQuestAlarmEntry(questId, out _))
+            {
+                return false;
+            }
+
             return _trackedQuestIds.Contains(questId) || _trackedQuestIds.Count < MaxVisibleEntries;
         }
 
@@ -641,7 +652,9 @@ namespace HaCreator.MapSimulator.UI
                 for (int i = 0; i < registeredQuestIds.Count && _trackedQuestIds.Count < MaxVisibleEntries; i++)
                 {
                     int questId = registeredQuestIds[i];
-                    if (questId > 0 && !_trackedQuestIds.Contains(questId))
+                    if (questId > 0 &&
+                        !_trackedQuestIds.Contains(questId) &&
+                        TryGetRegisterableQuestAlarmEntry(questId, out _))
                     {
                         _trackedQuestIds.Add(questId);
                     }
@@ -762,7 +775,9 @@ namespace HaCreator.MapSimulator.UI
             bool stateChanged = false;
             int removedTrackedCount = _trackedQuestIds.RemoveAll(questId =>
             {
-                if (_activeQuestIdsBuffer.Contains(questId))
+                if (_activeQuestIdsBuffer.Contains(questId) &&
+                    _entryByQuestIdBuffer.TryGetValue(questId, out QuestAlarmEntrySnapshot entry) &&
+                    entry?.IsRegistrationCandidate == true)
                 {
                     return false;
                 }
@@ -775,7 +790,9 @@ namespace HaCreator.MapSimulator.UI
             List<int> removedHiddenAutoQuestIds = null;
             _hiddenAutoQuestIds.RemoveWhere(questId =>
             {
-                if (_activeQuestIdsBuffer.Contains(questId))
+                if (_activeQuestIdsBuffer.Contains(questId) &&
+                    _entryByQuestIdBuffer.TryGetValue(questId, out QuestAlarmEntrySnapshot entry) &&
+                    entry?.IsRegistrationCandidate == true)
                 {
                     return false;
                 }
@@ -1836,6 +1853,19 @@ namespace HaCreator.MapSimulator.UI
                         return true;
                     }
                 }
+            }
+
+            entry = null;
+            return false;
+        }
+
+        private bool TryGetRegisterableQuestAlarmEntry(int questId, out QuestAlarmEntrySnapshot entry)
+        {
+            QuestAlarmSnapshot sourceSnapshot = _snapshotProvider?.Invoke() ?? new QuestAlarmSnapshot();
+            if (TryGetQuestAlarmEntry(sourceSnapshot, questId, out entry) &&
+                entry?.IsRegistrationCandidate == true)
+            {
+                return true;
             }
 
             entry = null;

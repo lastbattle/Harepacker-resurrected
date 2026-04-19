@@ -4091,12 +4091,121 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (TryDispatchMiniRoomSubtype6LengthEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
             if (TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(nestedPayload, tickCount, out result))
             {
                 return true;
             }
 
             return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6LengthEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 4)
+            {
+                return false;
+            }
+
+            if (TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                nestedPayload,
+                prefixLength: 2,
+                payloadLength: nestedPayload[1],
+                envelopeSummary: $"room-type+len8 envelope roomType={nestedPayload[0]}",
+                tickCount,
+                out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 3,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort))),
+                    envelopeSummary: $"room-type+len16 envelope roomType={nestedPayload[0]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 3,
+                    payloadLength: nestedPayload[2],
+                    envelopeSummary: $"opcode+len8 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 6 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(2, sizeof(ushort))),
+                    envelopeSummary: $"opcode+len16 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+            byte[] nestedPayload,
+            int prefixLength,
+            int payloadLength,
+            string envelopeSummary,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || prefixLength < 1 || payloadLength <= 0)
+            {
+                return false;
+            }
+
+            if (nestedPayload.Length < prefixLength + payloadLength)
+            {
+                return false;
+            }
+
+            byte packetType = nestedPayload[prefixLength];
+            if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+            {
+                return false;
+            }
+
+            byte[] forwardedPayload = nestedPayload.Skip(prefixLength).Take(payloadLength).ToArray();
+            if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+            {
+                return false;
+            }
+
+            int trailingLength = nestedPayload.Length - (prefixLength + payloadLength);
+            result = result with
+            {
+                EnvelopeSummary = trailingLength > 0
+                    ? $"{envelopeSummary} len={payloadLength} trailing={trailingLength}B"
+                    : $"{envelopeSummary} len={payloadLength}",
+                ForwardedPayload = forwardedPayload,
+                RemainingBytes = checked(result.RemainingBytes + Math.Max(0, trailingLength))
+            };
+            return true;
         }
 
         private bool TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(

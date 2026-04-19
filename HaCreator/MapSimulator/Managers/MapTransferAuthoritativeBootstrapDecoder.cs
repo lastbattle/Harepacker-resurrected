@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int LogoutGiftConfigByteLength =
             sizeof(int) + (PacketStageTransitionRuntime.LogoutGiftEntryCount * sizeof(int));
         private const int SetFieldServerFileTimeByteLength = sizeof(long);
+        private const int MaximumOpaquePostMapTransferTailByteLength = 64;
         private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int);
         private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);
         private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
@@ -1128,7 +1129,9 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                return false;
+                // Keep map-transfer bootstrap recovery resilient when additional
+                // CharacterData tail bytes follow known sections.
+                return trailingByteCount > 0 && trailingByteCount <= MaximumOpaquePostMapTransferTailByteLength;
             }
             catch (Exception) when (payload.Length > 0)
             {

@@ -106,6 +106,7 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientComboHeight = 17;
         private const int JoypadClientComboFirstId = 1000;
         private const int JoypadClientDefaultButtonId = 1009;
+        private const int JoypadClientCloseButtonId = 8;
         private const int JoypadClientDefaultButtonLeft = 8;
         private const int JoypadClientOkButtonLeft = 74;
         private const int JoypadClientCancelButtonLeft = 120;
@@ -1715,6 +1716,16 @@ namespace HaCreator.MapSimulator.UI
             _selectedJoypadActionButton = JoypadActionButtonKind.None;
             ResetJoypadCaptureState(_stagedJoypadSession);
             Hide();
+        }
+
+        protected override void OnCloseButtonClicked(UIObject sender)
+        {
+            if (_mode == OptionMenuMode.Joypad)
+            {
+                _statusMessage = $"Button {JoypadClientCloseButtonId} / BtClose selected. Closing follows the same staged discard confirm branch as Escape/Back.";
+            }
+
+            DiscardAndHide();
         }
 
         private void HandleJoypadConfirmInput(JoypadSessionSnapshot session)

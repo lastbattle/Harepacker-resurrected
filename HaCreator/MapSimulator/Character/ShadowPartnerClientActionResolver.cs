@@ -291,6 +291,54 @@ namespace HaCreator.MapSimulator.Character
                     ("stabO1", 0, -300),
                     ("stabO1", 1, 420),
                     ("alert", 0, 90)),
+                // Additional mounted client-init action rows from Character/00002000.
+                // Keep these as built-in fallback piece plans so loader-owned event-delay
+                // shaping remains intact when mounted rows are missing from a dataset.
+                ["rush"] = CreateIndexedPieces(
+                    ("stabT1", 0, 100),
+                    ("stabT1", 2, 500)),
+                ["rush2"] = CreateIndexedPieces(
+                    ("stabOF", 0, 100),
+                    ("stabOF", 2, 500)),
+                ["magic6"] = CreateIndexedPieces(
+                    ("alert", 0, -300),
+                    ("alert", 1, 420)),
+                ["explosion"] = CreateIndexedPieces(
+                    ("alert", 0, 210),
+                    ("alert", 1, 210)),
+                ["iceStrike"] = CreateIndexedPieces(
+                    ("alert", 0, -390),
+                    ("alert", 1, 450),
+                    ("alert", 2, 450)),
+                ["burster1"] = CreateIndexedPieces(
+                    ("stabT1", 0, -300),
+                    ("stabT1", 1, -300),
+                    ("stabT1", 2, 150),
+                    ("stabTF", 1, 150)),
+                ["burster2"] = CreateIndexedPieces(
+                    ("stabT1", 0, -300),
+                    ("stabT1", 1, -300),
+                    ("stabT1", 2, 150),
+                    ("stabTF", 1, 150),
+                    ("stabT2", 2, 150)),
+                ["meteor"] = CreateIndexedPieces(
+                    ("alert", 0, -360),
+                    ("alert", 1, -1800),
+                    ("alert", 2, 1320)),
+                ["blizzard"] = CreateIndexedPieces(
+                    ("alert", 0, -360),
+                    ("alert", 1, -1800),
+                    ("alert", 2, 1320)),
+                ["genesis"] = CreateIndexedPieces(
+                    ("alert", 0, -900),
+                    ("alert", 1, -900),
+                    ("alert", 2, 900)),
+                ["chainlightning"] = CreateIndexedPieces(
+                    ("swingO3", 0, -540),
+                    ("stabO2", 1, 240)),
+                ["blast"] = CreateIndexedPieces(
+                    ("stabO2", 0, -540),
+                    ("stabO2", 1, 300)),
                 // `Character/00002000.img/alert8/0` is another mounted indexed-alert
                 // helper row; it reuses the authored jump helper frame with its own delay.
                 ["alert8"] = CreateIndexedPieces(

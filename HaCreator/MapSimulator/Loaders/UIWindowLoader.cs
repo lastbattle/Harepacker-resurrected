@@ -3704,12 +3704,74 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 MapSimulatorWindowNames.CashCouponDialog => LoadCanvasTexture(uiWindow2Image?["Coupon"] as WzSubProperty, "backgrnd", device)
                     ?? LoadCanvasTexture(uiWindow1Image?["Coupon"] as WzSubProperty, "backgrnd", device),
+                MapSimulatorWindowNames.CashPurchaseConfirmDialog => CreateCashPurchaseConfirmFrameTexture(cashShopImage, device)
+                    ?? LoadCanvasTexture(cashShopImage?["CSNotice"]?["1"] as WzSubProperty, "backgrnd", device),
+                MapSimulatorWindowNames.CashReceiveGiftDialog => LoadCanvasTexture(cashShopImage?["CSNotice"]?["3"] as WzSubProperty, "backgrnd", device),
                 MapSimulatorWindowNames.CashNameChangeLicenseDialog => LoadCanvasTexture(cashShopImage?["CSChangeName"]?["Base"] as WzSubProperty, "backgrndnotice", device)
                     ?? LoadCanvasTexture(cashShopImage?["CSChangeName"]?["Base"] as WzSubProperty, "backgrnd", device),
                 MapSimulatorWindowNames.CashTransferWorldLicenseDialog => LoadCanvasTexture(cashShopImage?["CSTransferWorld"]?["Base"] as WzSubProperty, "backgrndnotice", device)
                     ?? LoadCanvasTexture(cashShopImage?["CSTransferWorld"]?["Base"] as WzSubProperty, "backgrnd", device),
                 _ => null
             };
+        }
+
+        private static Texture2D CreateCashPurchaseConfirmFrameTexture(WzImage cashShopImage, GraphicsDevice device)
+        {
+            if (cashShopImage == null || device == null)
+            {
+                return null;
+            }
+
+            WzSubProperty csNotice0 = cashShopImage?["CSNotice"]?["0"] as WzSubProperty;
+            Texture2D topTexture = LoadCanvasTexture(csNotice0, "0", device);
+            Texture2D listHeaderTexture = LoadCanvasTexture(csNotice0, "1", device);
+            Texture2D separatorTexture = LoadCanvasTexture(csNotice0, "2", device);
+            Texture2D lineTexture = LoadCanvasTexture(csNotice0, "3", device);
+            Texture2D bottomTexture = LoadCanvasTexture(csNotice0, "4", device);
+            if (topTexture == null || listHeaderTexture == null || separatorTexture == null || lineTexture == null || bottomTexture == null)
+            {
+                return null;
+            }
+
+            // CConfirmPurchaseDlg::DrawBackgrnd composes CSNotice/0 pieces at runtime.
+            // Use a stitched shell from those same WZ canvases instead of a generic modal frame.
+            Texture2D[] segments = { topTexture, listHeaderTexture, separatorTexture, lineTexture, bottomTexture };
+            int width = segments.Max(texture => texture?.Width ?? 0);
+            int height = segments.Sum(texture => texture?.Height ?? 0);
+            if (width <= 0 || height <= 0)
+            {
+                return null;
+            }
+
+            Color[] outputData = Enumerable.Repeat(Color.Transparent, width * height).ToArray();
+            int yOffset = 0;
+            foreach (Texture2D segment in segments)
+            {
+                if (segment == null)
+                {
+                    continue;
+                }
+
+                int segmentWidth = segment.Width;
+                int segmentHeight = segment.Height;
+                int xOffset = Math.Max(0, (width - segmentWidth) / 2);
+                Color[] segmentData = GetTextureData(segment);
+                for (int y = 0; y < segmentHeight; y++)
+                {
+                    int sourceRow = y * segmentWidth;
+                    int destinationRow = (yOffset + y) * width;
+                    for (int x = 0; x < segmentWidth; x++)
+                    {
+                        outputData[destinationRow + xOffset + x] = segmentData[sourceRow + x];
+                    }
+                }
+
+                yOffset += segmentHeight;
+            }
+
+            Texture2D frameTexture = new(device, width, height);
+            frameTexture.SetData(outputData);
+            return frameTexture;
         }
 
         private static void RegisterItcStageChildWindows(
@@ -8845,6 +8907,9 @@ namespace HaCreator.MapSimulator.Loaders
                 },
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "normal", device).ToArray(),
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "select", device).ToArray(),
+                new Point(11, 88),
+                new Point(6, 23),
+                new Point(12, 68),
                 statusLaneAnchorOffset,
                 statusLaneWidth)
             {
@@ -9289,17 +9354,46 @@ namespace HaCreator.MapSimulator.Loaders
             // CWnd::SetBackgrnd creates a destination canvas and copies the source
             // canvas into it at (0,0); OnCreate for account-more-info passes a zero
             // draw offset, so we intentionally do not translate by source origin.
+            (int expandedWidth, int expandedHeight) = ResolveAccountMoreInfoSetBackgrndExpandedSizeForTesting(
+                sourceTexture.Width,
+                sourceTexture.Height,
+                clientOwnerWidth,
+                clientOwnerHeight);
+            if (expandedWidth <= 0 || expandedHeight <= 0)
+            {
+                return null;
+            }
+
             Color[] sourceData = new Color[sourceTexture.Width * sourceTexture.Height];
             sourceTexture.GetData(sourceData);
             Color[] clientFrameData = ComposeAccountMoreInfoBackgroundPixelsForTesting(
                 sourceData,
                 sourceTexture.Width,
                 sourceTexture.Height,
-                clientOwnerWidth,
-                clientOwnerHeight);
-            Texture2D clientSizedTexture = new Texture2D(device, clientOwnerWidth, clientOwnerHeight);
+                expandedWidth,
+                expandedHeight);
+            Texture2D clientSizedTexture = new Texture2D(device, expandedWidth, expandedHeight);
             clientSizedTexture.SetData(clientFrameData);
             return clientSizedTexture;
+        }
+
+        internal static (int Width, int Height) ResolveAccountMoreInfoSetBackgrndExpandedSizeForTesting(
+            int sourceWidth,
+            int sourceHeight,
+            int requestedWidth,
+            int requestedHeight)
+        {
+            if (sourceWidth <= 0 || sourceHeight <= 0)
+            {
+                return (0, 0);
+            }
+
+            // CWnd::SetBackgrnd calls IWzCanvas::Create with source dimensions plus
+            // expansion deltas; those paths do not shrink below the loaded source.
+            // Keep simulator composition aligned with that create/copy contract.
+            int width = Math.Max(sourceWidth, requestedWidth);
+            int height = Math.Max(sourceHeight, requestedHeight);
+            return (width, height);
         }
 
         internal static Color[] ComposeAccountMoreInfoBackgroundPixelsForTesting(

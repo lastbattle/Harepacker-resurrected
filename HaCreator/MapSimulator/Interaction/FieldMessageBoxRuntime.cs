@@ -2618,7 +2618,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             public bool Complete(int registrationId)
             {
-                return registrationId > 0 && _registrations.Remove(registrationId);
+                if (registrationId <= 0
+                    || !_registrations.Remove(registrationId, out ManagedOneTimeAnimationRegistration registration))
+                {
+                    return false;
+                }
+
+                registration.LayerObject?.RetireLeaveSurface();
+                return true;
             }
 
             public bool Contains(int registrationId)
@@ -2639,12 +2646,17 @@ namespace HaCreator.MapSimulator.Interaction
                     .ToArray();
                 foreach (int registrationId in expiredRegistrationIds)
                 {
-                    _registrations.Remove(registrationId);
+                    Complete(registrationId);
                 }
             }
 
             public void Clear()
             {
+                foreach (ManagedOneTimeAnimationRegistration registration in _registrations.Values)
+                {
+                    registration.LayerObject?.RetireLeaveSurface();
+                }
+
                 _registrations.Clear();
             }
         }
@@ -2652,6 +2664,11 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class ManagedMessageBoxLayerObject
         {
             public ManagedMessageBoxCanvas Canvas { get; set; }
+
+            public void RetireLeaveSurface()
+            {
+                Canvas = null;
+            }
         }
 
         private readonly record struct ManagedOneTimeAnimationRegistration(

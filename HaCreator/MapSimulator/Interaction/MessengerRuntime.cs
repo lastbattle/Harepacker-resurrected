@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BlinkDurationMs = 3000;
         private const int BlinkPulseIntervalMs = 180;
         private const int DeleteRequestGraceDelayMs = 550;
+        private const byte MessengerChatClaimType = 3;
+        private const string MessengerChatClaimContext = "Messenger";
         private static readonly MessengerContactDefinition[] ContactDefinitions =
         {
             new("Rondo", "Lith Harbor", 4, "Ready to board.", "Boarding soon. Meet me at the dock.", "Pirate", 34),
@@ -623,6 +625,56 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildClientChatClaimRequestPayload(
+            out byte[] payload,
+            out string targetCharacterName,
+            out byte claimType,
+            out string context,
+            out int chatLineCount,
+            out string status)
+        {
+            payload = null;
+            targetCharacterName = null;
+            claimType = MessengerChatClaimType;
+            context = MessengerChatClaimContext;
+            chatLineCount = 0;
+            status = null;
+
+            MessengerLogEntryState[] claimableEntries = GetClaimableLogEntries();
+            if (claimableEntries.Length == 0)
+            {
+                status = "No Messenger chat lines are available for claim submission.";
+                return false;
+            }
+
+            MessengerParticipantState localParticipant = GetLocalParticipant();
+            MessengerParticipantState targetParticipant = GetSelectedRemoteParticipant()
+                ?? ResolveClaimTargetFromEntries(claimableEntries, localParticipant?.Name)
+                ?? GetFallbackRemoteParticipant();
+            if (targetParticipant == null)
+            {
+                status = "Messenger claim request needs a remote participant target.";
+                return false;
+            }
+
+            string chatLog = BuildClaimChatLog(claimableEntries);
+            if (string.IsNullOrWhiteSpace(chatLog))
+            {
+                status = "Messenger claim request needs claimable chat text.";
+                return false;
+            }
+
+            targetCharacterName = targetParticipant.Name;
+            chatLineCount = claimableEntries.Length;
+            payload = MessengerPacketCodec.BuildClaimRequestPayload(
+                targetCharacterName,
+                claimType,
+                context,
+                chatLog);
+            status = $"Built CWvsContext::SendClaimRequest payload for {targetCharacterName} with {chatLineCount} Messenger chat line(s).";
+            return true;
+        }
+
         internal string QueueSessionOwnedInviteRequest(string contactName)
         {
             if (!TryResolveInviteRequestContact(contactName, allowNextContact: false, out MessengerContactState contact, out string message))
@@ -702,6 +754,36 @@ namespace HaCreator.MapSimulator.Interaction
                 currentTick,
                 $"Queued live Messenger leave for {localPlayerName}; close gate passed with only the local profile present.",
                 "Mirrored CUIMessenger::OnDestroy leave request (opcode 0x8F/2) after the local-only destroy gate passed.");
+            return _lastActionSummary;
+        }
+
+        internal string QueueSessionOwnedChatClaimRequest(
+            string targetCharacterName,
+            byte claimType,
+            string context,
+            int chatLineCount,
+            bool queuedOnly)
+        {
+            MessengerLogEntryState[] claimableEntries = GetClaimableLogEntries();
+            if (claimableEntries.Length == 0)
+            {
+                return "No Messenger chat lines are available for claim submission.";
+            }
+
+            int claimId = _nextClaimId++;
+            foreach (MessengerLogEntryState entry in claimableEntries)
+            {
+                entry.IsClaimed = true;
+            }
+
+            int appliedLineCount = Math.Min(chatLineCount, claimableEntries.Length);
+            string modeLabel = queuedOnly ? "Queued live" : "Submitted live";
+            _lastActionSummary =
+                $"{modeLabel} Messenger claim #{claimId} for {appliedLineCount} line(s) targeting {targetCharacterName}; waiting for the server-owned claim lifecycle.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary(
+                $"Mirrored CWvsContext::SendClaimRequest claim #{claimId} target={targetCharacterName} type={claimType} context={context} chatLines={appliedLineCount}.");
+            StartBlink(Environment.TickCount);
             return _lastActionSummary;
         }
 
@@ -1356,10 +1438,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string SubmitClaim()
         {
-            MessengerLogEntryState[] claimableEntries = _logEntries
-                .Where(entry => entry.CanClaim && !entry.IsClaimed)
-                .TakeLast(MaxClaimLogEntries)
-                .ToArray();
+            MessengerLogEntryState[] claimableEntries = GetClaimableLogEntries();
             if (claimableEntries.Length == 0)
             {
                 return "No Messenger chat lines are available for claim submission.";
@@ -1602,6 +1681,89 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string trimmed = name?.Trim();
             return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+        }
+
+        private MessengerLogEntryState[] GetClaimableLogEntries()
+        {
+            return _logEntries
+                .Where(entry => entry.CanClaim && !entry.IsClaimed)
+                .TakeLast(MaxClaimLogEntries)
+                .ToArray();
+        }
+
+        private MessengerParticipantState GetSelectedRemoteParticipant()
+        {
+            MessengerParticipantState selectedParticipant = GetParticipantAtSlot(_selectedSlot);
+            return selectedParticipant is { IsLocalPlayer: false }
+                ? selectedParticipant
+                : null;
+        }
+
+        private MessengerParticipantState GetFallbackRemoteParticipant()
+        {
+            return _participants
+                .Where(participant => participant is { IsLocalPlayer: false })
+                .OrderBy(participant => participant.SlotIndex)
+                .FirstOrDefault();
+        }
+
+        private MessengerParticipantState ResolveClaimTargetFromEntries(
+            IReadOnlyList<MessengerLogEntryState> claimableEntries,
+            string localParticipantName)
+        {
+            if (claimableEntries == null || claimableEntries.Count == 0)
+            {
+                return null;
+            }
+
+            for (int i = claimableEntries.Count - 1; i >= 0; i--)
+            {
+                MessengerLogEntryState entry = claimableEntries[i];
+                if (entry == null
+                    || entry.IsSystem
+                    || string.IsNullOrWhiteSpace(entry.Author)
+                    || string.Equals(entry.Author, localParticipantName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                MessengerParticipantState participant = _participants.FirstOrDefault(candidate =>
+                    !candidate.IsLocalPlayer
+                    && string.Equals(candidate.Name, entry.Author, StringComparison.OrdinalIgnoreCase));
+                if (participant != null)
+                {
+                    return participant;
+                }
+            }
+
+            return null;
+        }
+
+        private static string BuildClaimChatLog(IReadOnlyList<MessengerLogEntryState> claimableEntries)
+        {
+            if (claimableEntries == null || claimableEntries.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> lines = new(claimableEntries.Count);
+            foreach (MessengerLogEntryState entry in claimableEntries)
+            {
+                if (entry == null
+                    || entry.IsSystem
+                    || string.IsNullOrWhiteSpace(entry.Author)
+                    || string.IsNullOrWhiteSpace(entry.Message))
+                {
+                    continue;
+                }
+
+                string whisperPrefix = entry.IsWhisper && !string.IsNullOrWhiteSpace(entry.TargetName)
+                    ? $"[W:{entry.TargetName}] "
+                    : string.Empty;
+                lines.Add($"{whisperPrefix}{entry.Author} : {entry.Message}");
+            }
+
+            return lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);
         }
 
         private string HandleSlashCommand(string commandText)

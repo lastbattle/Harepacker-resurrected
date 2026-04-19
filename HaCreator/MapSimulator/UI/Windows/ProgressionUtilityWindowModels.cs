@@ -920,7 +920,7 @@ namespace HaCreator.MapSimulator.UI
                     lines[i],
                     resolvedLeft,
                     top + (i * ClientCollectionDetailLineStep),
-                    Math.Max(1, left + width - resolvedLeft),
+                    Math.Max(1, analyzerLineWidth),
                     styleIndex,
                     alignment,
                     role,

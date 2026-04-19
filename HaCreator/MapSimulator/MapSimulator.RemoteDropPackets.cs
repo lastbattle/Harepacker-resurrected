@@ -369,9 +369,33 @@ namespace HaCreator.MapSimulator
                 || observedPartyAnchorEvaluator?.Invoke(normalizedOwnerId) == true;
             bool observedTrackedActor = observedPartyAnchorEvaluator?.Invoke(actorId) == true
                 || observedPartyAnchorEvaluator?.Invoke(normalizedActorId) == true;
+            bool knownOwner = IsKnownDropPartyActor(
+                    ownerId,
+                    localPartyId,
+                    localCharacterId,
+                    trackedPartyActorEvaluator,
+                    legacyTrackedActorEvaluator)
+                || IsKnownDropPartyActor(
+                    normalizedOwnerId,
+                    localPartyId,
+                    localCharacterId,
+                    trackedPartyActorEvaluator,
+                    legacyTrackedActorEvaluator);
+            bool knownActor = IsKnownDropPartyActor(
+                    actorId,
+                    localPartyId,
+                    localCharacterId,
+                    trackedPartyActorEvaluator,
+                    legacyTrackedActorEvaluator)
+                || IsKnownDropPartyActor(
+                    normalizedActorId,
+                    localPartyId,
+                    localCharacterId,
+                    trackedPartyActorEvaluator,
+                    legacyTrackedActorEvaluator);
 
-            if ((packetTrackedOwner || legacyTrackedOwner || observedTrackedOwner)
-                && (packetTrackedActor || legacyTrackedActor || observedTrackedActor))
+            if ((knownOwner || packetTrackedOwner || legacyTrackedOwner || observedTrackedOwner)
+                && (knownActor || packetTrackedActor || legacyTrackedActor || observedTrackedActor))
             {
                 return true;
             }
@@ -382,9 +406,11 @@ namespace HaCreator.MapSimulator
                 || observedPartyLinkEvaluator?.Invoke(normalizedOwnerId, normalizedActorId) == true)
             {
                 return packetTrackedOwner
+                    || knownOwner
                     || legacyTrackedOwner
                     || observedTrackedOwner
                     || packetTrackedActor
+                    || knownActor
                     || legacyTrackedActor
                     || observedTrackedActor;
             }
@@ -474,6 +500,13 @@ namespace HaCreator.MapSimulator
                 slotIndex);
         }
 
+        private Vector2? ResolveObservedRemotePetPickupPosition(int petActorId)
+        {
+            return ResolveObservedRemotePetPickupPosition(
+                _observedRemotePetPickupActorPositions,
+                petActorId);
+        }
+
         internal static Vector2? ResolveObservedRemotePetPickupPosition(
             IReadOnlyDictionary<int, Vector2> observedPetActorPositions,
             int ownerCharacterId,
@@ -511,6 +544,21 @@ namespace HaCreator.MapSimulator
             }
 
             return closestPosition;
+        }
+
+        internal static Vector2? ResolveObservedRemotePetPickupPosition(
+            IReadOnlyDictionary<int, Vector2> observedPetActorPositions,
+            int petActorId)
+        {
+            if (!TryDecodeRemotePetPickupActorId(petActorId, out int ownerCharacterId, out int slotIndex))
+            {
+                return null;
+            }
+
+            return ResolveObservedRemotePetPickupPosition(
+                observedPetActorPositions,
+                ownerCharacterId,
+                slotIndex);
         }
 
         private void ClearObservedRemotePetPickupActorPositions()
@@ -928,6 +976,11 @@ namespace HaCreator.MapSimulator
                     if (ResolveObservedRemotePetPickupActorPosition(actorId) is Vector2 observedPetPosition)
                     {
                         return observedPetPosition;
+                    }
+
+                    if (ResolveObservedRemotePetPickupPosition(actorId) is Vector2 ownerScopedObservedPetPosition)
+                    {
+                        return ownerScopedObservedPetPosition;
                     }
 
                     if (_playerManager?.Pets?.ActivePets != null)

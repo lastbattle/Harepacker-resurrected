@@ -1682,9 +1682,22 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string NormalizeFieldChatText(string text)
         {
+            return NormalizeFieldChatText(text, static value => IsDbcsLeadByte(value));
+        }
+
+        private static string NormalizeFieldChatText(string text, Func<byte, bool> isDbcsLeadByte)
+        {
             if (string.IsNullOrEmpty(text))
             {
                 return string.Empty;
+            }
+
+            if (TryEncodeLosslessSwindleText(text, out byte[] encodedText))
+            {
+                byte[] normalizedBytes = NormalizeFieldChatBytes(encodedText, isDbcsLeadByte);
+                return normalizedBytes.Length == 0
+                    ? string.Empty
+                    : SwindleEncoding.GetString(normalizedBytes).Trim();
             }
 
             StringBuilder builder = new(text.Length);
@@ -1695,6 +1708,36 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return builder.ToString().Trim();
+        }
+
+        private static byte[] NormalizeFieldChatBytes(ReadOnlySpan<byte> sourceBytes, Func<byte, bool> isDbcsLeadByte)
+        {
+            if (sourceBytes.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            byte[] normalized = sourceBytes.ToArray();
+            for (int index = 0; index < normalized.Length;)
+            {
+                if (isDbcsLeadByte(normalized[index])
+                    && index + 1 < normalized.Length)
+                {
+                    normalized[index] = 0x20;
+                    normalized[index + 1] = 0x20;
+                    index += 2;
+                    continue;
+                }
+
+                if (normalized[index] < 0x20 || normalized[index] == 0x7F)
+                {
+                    normalized[index] = 0x20;
+                }
+
+                index++;
+            }
+
+            return normalized;
         }
 
         private static bool TryBuildWhisperFindMessage(
@@ -2376,6 +2419,16 @@ namespace HaCreator.MapSimulator.Interaction
                 ? encoded
                 : Array.Empty<byte>();
             return ContainsSwindleKeyword(filteredBytes, normalized, keyword);
+        }
+
+        internal static byte[] NormalizeFieldChatBytesForTest(byte[] sourceBytes, Func<byte, bool> isDbcsLeadByte)
+        {
+            return NormalizeFieldChatBytes(sourceBytes, isDbcsLeadByte);
+        }
+
+        internal static string NormalizeFieldChatTextForTest(string text, Func<byte, bool> isDbcsLeadByte)
+        {
+            return NormalizeFieldChatText(text, isDbcsLeadByte);
         }
 
         internal static string FilterSwindleCharacterTableForTest()

@@ -441,6 +441,31 @@ namespace HaCreator.MapSimulator
                 || resultEncodedSlotPosition.Value == pendingEncodedSlotPosition;
         }
 
+        internal static IReadOnlyList<int> BuildClientEquippedPositionOrder(IEnumerable<int> encodedPositions)
+        {
+            HashSet<int> uniquePositions = encodedPositions == null
+                ? new HashSet<int>()
+                : new HashSet<int>(encodedPositions);
+            if (uniquePositions.Count <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> ordered = uniquePositions
+                .Where(static position => position is <= -1 and >= -59)
+                .OrderByDescending(static position => position)
+                .ToList();
+
+            foreach (int overflowPosition in uniquePositions
+                         .Where(static position => position is > -1 or < -59)
+                         .OrderByDescending(static position => position))
+            {
+                ordered.Add(overflowPosition);
+            }
+
+            return ordered;
+        }
+
         internal static bool TryDecodeSyntheticResultPayload(
             byte[] payload,
             out ResultPayload result,
@@ -452,6 +477,16 @@ namespace HaCreator.MapSimulator
             if (payload == null || payload.Length == 0)
             {
                 return true;
+            }
+
+            if (TryDecodePrefixedRepairResultPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
             }
 
             if (TryDecodeJsonResultPayload(payload, out result, out error))
@@ -540,6 +575,44 @@ namespace HaCreator.MapSimulator
 
             result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
             return true;
+        }
+
+        private static bool TryDecodePrefixedRepairResultPayload(
+            byte[] payload,
+            out ResultPayload result,
+            out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length <= sizeof(short))
+            {
+                return false;
+            }
+
+            int prefixSize = 0;
+            if (payload.Length >= sizeof(int)
+                && BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))) == 1025)
+            {
+                prefixSize = sizeof(int);
+            }
+            else if (BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(0, sizeof(short))) == 1025)
+            {
+                prefixSize = sizeof(short);
+            }
+
+            if (prefixSize <= 0 || payload.Length <= prefixSize)
+            {
+                return false;
+            }
+
+            byte[] body = payload[prefixSize..];
+            if (body.Length <= 0)
+            {
+                error = "Repair-result payload has a 1025 packet-id prefix but no result body.";
+                return false;
+            }
+
+            return TryDecodeSyntheticResultPayload(body, out result, out error);
         }
 
         private static bool TryDecodeResultFirstPayload(byte[] payload, out ResultPayload result, out string error)

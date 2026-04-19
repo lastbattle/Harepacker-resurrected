@@ -267,7 +267,6 @@ namespace HaCreator.MapSimulator.UI
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
             _clientOwnedKeyDowns.Clear();
-            CancelImeComposition();
             SetFocus(_parentHandle);
         }
 
@@ -960,9 +959,9 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldCancelImeCompositionOnFocusChange(bool hasFocus)
         {
-            // The recovered anti-macro `CCtrlEdit::OnSetFocus(false)` path explicitly
-            // clears composition on blur.
-            return !hasFocus;
+            // `CCtrlEdit::OnSetFocus` clears composition on focus gain before
+            // `EnableIME(..., 0)`; the blur branch does not call clear-composition.
+            return hasFocus;
         }
 
         internal static bool ShouldForwardDeferredDownKeyToParentAfterIme(bool imeOwnedInputStateAfterKeyDown)

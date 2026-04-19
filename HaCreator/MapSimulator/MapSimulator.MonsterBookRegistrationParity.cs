@@ -16,6 +16,9 @@ namespace HaCreator.MapSimulator
         private const int MonsterBookRegistrationResponseDelayMs = 120;
         private const int MonsterBookRegistrationSyntheticResultTimeoutMs = 2000;
         private const int MonsterBookRegistrationOfficialSessionTimeoutMs = 5000;
+        // No recovered dedicated Monster Book save opcode is wired yet in this local utility seam,
+        // so save requests currently ride the ownership-sync channel contract.
+        private const int MonsterBookOwnershipSaveRequestOpcode = LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType;
         private PendingMonsterBookRegistrationRequest _pendingMonsterBookRegistrationRequest;
         private int _nextMonsterBookRegistrationRequestId = 1;
 
@@ -191,12 +194,21 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            _monsterBookManager.SetRegisteredCard(
+            MonsterBookSnapshot snapshot = _monsterBookManager.SetRegisteredCard(
                 request.Build,
                 request.CharacterId,
                 request.CharacterName,
                 request.MobId,
-                request.Registered);
+                request.Registered,
+                persistToDisk: false);
+
+            QueuePacketOwnedMonsterBookOwnershipSaveApply(
+                request.Build,
+                request.CharacterId,
+                request.CharacterName,
+                snapshot,
+                "CBookDlg register/release result",
+                showFeedback: false);
 
             string actionLabel = request.Registered ? "registered" : "released";
             string ownerLabel = string.IsNullOrWhiteSpace(request.CharacterName)
@@ -956,7 +968,7 @@ namespace HaCreator.MapSimulator
                 return root;
             }
 
-            foreach (string candidateName in new[] { "monsterBook", "book", "result", "registration", "ownershipSync", "payload", "data", "body" })
+            foreach (string candidateName in new[] { "monsterBook", "book", "result", "registration", "ownershipSync", "save", "saveResult", "payload", "data", "body" })
             {
                 if (!root.TryGetProperty(candidateName, out JsonElement nested))
                 {
@@ -995,8 +1007,139 @@ namespace HaCreator.MapSimulator
                 || element.TryGetProperty("clear", out _)
                 || element.TryGetProperty("clearRequested", out _)
                 || element.TryGetProperty("replaceExisting", out _)
+                || element.TryGetProperty("save", out _)
+                || element.TryGetProperty("saveResult", out _)
                 || element.TryGetProperty("registeredMobId", out _)
                 || element.TryGetProperty("selectedMobId", out _);
+        }
+
+        private void QueuePacketOwnedMonsterBookOwnershipSaveApply(
+            CharacterBuild build,
+            int characterId,
+            string characterName,
+            MonsterBookSnapshot snapshot,
+            string source,
+            bool showFeedback)
+        {
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            Dictionary<int, int> cardCountsByMob = BuildMonsterBookOwnedCountsByMob(snapshot);
+            byte[] savePayload = BuildMonsterBookOwnershipSaveSyncPayload(
+                characterId,
+                characterName,
+                snapshot.RegisteredCardMobId,
+                cardCountsByMob,
+                source);
+            string dispatchStatus = DispatchMonsterBookOwnershipSaveRequest(savePayload, source);
+            _localUtilityPacketInbox.EnqueueLocal(
+                LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType,
+                savePayload,
+                "monster-book-save");
+
+            if (showFeedback)
+            {
+                ShowUtilityFeedbackMessage(
+                    $"{dispatchStatus} Queued local ownership-save apply packet {LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType.ToString(CultureInfo.InvariantCulture)}.");
+            }
+        }
+
+        private string DispatchMonsterBookOwnershipSaveRequest(byte[] payload, string source)
+        {
+            string sourceLabel = string.IsNullOrWhiteSpace(source) ? "Monster Book ownership save" : source.Trim();
+            byte[] safePayload = payload ?? Array.Empty<byte>();
+            string payloadHex = safePayload.Length > 0 ? Convert.ToHexString(safePayload) : "<empty>";
+            string bridgeStatus = "Unavailable.";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(MonsterBookOwnershipSaveRequestOpcode, safePayload, out bridgeStatus))
+            {
+                return $"{sourceLabel} emitted opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] through the live local-utility bridge. {bridgeStatus}";
+            }
+
+            string outboxStatus = "Unavailable.";
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(MonsterBookOwnershipSaveRequestOpcode, safePayload, out outboxStatus))
+            {
+                return $"{sourceLabel} emitted opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    MonsterBookOwnershipSaveRequestOpcode,
+                    safePayload,
+                    out deferredBridgeStatus))
+            {
+                return $"{sourceLabel} queued opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] for deferred official-session injection after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(MonsterBookOwnershipSaveRequestOpcode, safePayload, out string queuedOutboxStatus))
+            {
+                return $"{sourceLabel} queued opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{sourceLabel} kept opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
+        }
+
+        private static byte[] BuildMonsterBookOwnershipSaveSyncPayload(
+            int characterId,
+            string characterName,
+            int registeredMobId,
+            IReadOnlyDictionary<int, int> cardCountsByMob,
+            string statusText)
+        {
+            return JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                ownershipSync = new
+                {
+                    replaceExisting = true,
+                    owner = new
+                    {
+                        characterId = characterId > 0 ? (int?)characterId : null,
+                        characterName = string.IsNullOrWhiteSpace(characterName) ? null : characterName.Trim()
+                    },
+                    registeredMobId = registeredMobId > 0 ? (int?)registeredMobId : null,
+                    cardCountsByMob = cardCountsByMob ?? new Dictionary<int, int>(),
+                    statusText = string.IsNullOrWhiteSpace(statusText)
+                        ? "Synthetic packet-owned Monster Book ownership save apply."
+                        : statusText.Trim()
+                }
+            });
+        }
+
+        internal static Dictionary<int, int> BuildMonsterBookOwnedCountsByMob(MonsterBookSnapshot snapshot)
+        {
+            Dictionary<int, int> counts = new();
+            if (snapshot?.Grades == null)
+            {
+                return counts;
+            }
+
+            foreach (MonsterBookGradeSnapshot grade in snapshot.Grades)
+            {
+                if (grade?.Pages == null)
+                {
+                    continue;
+                }
+
+                foreach (MonsterBookPageSnapshot page in grade.Pages)
+                {
+                    if (page?.Cards == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (MonsterBookCardSnapshot card in page.Cards)
+                    {
+                        if (card?.MobId > 0 && card.OwnedCopies > 0)
+                        {
+                            counts[card.MobId] = Math.Clamp(card.OwnedCopies, 0, 5);
+                        }
+                    }
+                }
+            }
+
+            return counts;
         }
 
         private static bool IsMonsterBookRegistrationResultJsonObject(JsonElement element)

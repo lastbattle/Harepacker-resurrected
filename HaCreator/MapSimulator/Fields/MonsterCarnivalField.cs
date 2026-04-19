@@ -1172,6 +1172,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _lastRequestTab;
         private int _lastRequestIndex;
         private string _lastRequestFailureChatRoute;
+        private string _lastMemberOutChatRoute;
         private bool _isVisible;
         private bool _enteredField;
         private string _localCharacterName;
@@ -1217,6 +1218,7 @@ namespace HaCreator.MapSimulator.Fields
         public string Season2SubDialogSummary => _season2SubDialogSummary;
         public MonsterCarnivalSeason2SubDialogPhase Season2SubDialogPhase => _season2SubDialogPhase;
         public string LastRequestFailureChatRoute => _lastRequestFailureChatRoute;
+        public string LastMemberOutChatRoute => _lastMemberOutChatRoute;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -1843,13 +1845,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             RegisterKnownCharacterTeam(characterName, team);
+            string ownerLabel = _definition?.ClientOwnerLabel ?? "CField_MonsterCarnival";
+            bool changedTeams = messageType == 6;
+            int memberOutStringPoolId = changedTeams ? 0x102A : 0x1029;
+            MonsterCarnivalStringPoolMessage teamLabel = GetTeamLabelMessage(team);
+            _lastMemberOutChatRoute =
+                $"{ownerLabel}::OnShowMemberOutMsg(type={messageType}) -> StringPool 0x{memberOutStringPoolId:X}/0x{teamLabel.StringPoolId:X} -> CUIStatusBar::ChatLogAdd(type=12,item=-1)";
             ShowStatus(BuildMemberOutMessage(messageType, team, characterName), tickCount);
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.MemberState,
-                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} updated member ownership for {FormatTeam(team)}.");
+                $"{ownerLabel} updated member ownership for {FormatTeam(team)} and routed OnShowMemberOutMsg through CUIStatusBar::ChatLogAdd(type=12,item=-1).");
             RecordRecoveredClientOwnerAction(
-                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnShowMemberOutMsg updated {FormatTeam(team)} member state.",
-                new[] { messageType == 6 ? 0x102A : 0x1029, GetTeamLabelMessage(team).StringPoolId });
+                $"{ownerLabel}::OnShowMemberOutMsg(type={messageType}) formatted StringPool 0x{memberOutStringPoolId:X} with team label 0x{teamLabel.StringPoolId:X} and routed the message to CUIStatusBar::ChatLogAdd(type=12,item=-1).",
+                new[] { memberOutStringPoolId, teamLabel.StringPoolId });
         }
 
         public bool TryApplyPacket(MonsterCarnivalPacketType packetType, byte[] payload, int currentTimeMs, out string errorMessage)
@@ -2189,6 +2197,7 @@ namespace HaCreator.MapSimulator.Fields
             _isVisible = false;
             _enteredField = false;
             _lastRequestFailureChatRoute = null;
+            _lastMemberOutChatRoute = null;
             _lastClientOwnerAction = null;
             _lastClientOwnerStringPoolIds = Array.Empty<int>();
             _variantActionTrail.Clear();
@@ -2217,6 +2226,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastRequestTab = -1;
             _lastRequestIndex = -1;
             _lastRequestFailureChatRoute = null;
+            _lastMemberOutChatRoute = null;
             ResetSeason2SubDialogState(null);
         }
 
@@ -2841,9 +2851,9 @@ namespace HaCreator.MapSimulator.Fields
 
             return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | ui={_uiWindowState.DescribeStatus()} | subDialog={DescribeSeason2SubDialogState()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | result StringPool=0x1020/0x1021/0x1022/0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | ui={_uiWindowState.DescribeStatus()} | subDialog={DescribeSeason2SubDialogState()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | result StringPool=0x1020/0x1021/0x1022/0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
         }

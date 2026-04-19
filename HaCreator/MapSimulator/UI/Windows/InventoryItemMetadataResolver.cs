@@ -1248,8 +1248,7 @@ namespace HaCreator.MapSimulator.UI
             return IsRunOnPickup(
                        itemProperty["spec"] as WzSubProperty,
                        itemProperty["specEx"] as WzSubProperty)
-                   && HasAuthoredNpcInteraction(itemProperty)
-                   && !IsNotConsumedOnUse(itemProperty["info"] as WzSubProperty);
+                   && HasAuthoredNpcInteraction(itemProperty);
         }
 
         private static bool ContainsPhrase(string text, string phrase)

@@ -45,6 +45,9 @@ namespace HaCreator.MapSimulator
             PacketOwnedLogoutGiftPredictQuitContextByteOffset - (PacketOwnedLogoutGiftPrecursorContextSlotCount * sizeof(int));
         private const int PacketOwnedLogoutGiftPrecursorLastContextByteOffset =
             PacketOwnedLogoutGiftPredictQuitContextByteOffset - sizeof(int);
+        private const string PacketOwnedLogoutGiftPrecursorFirstContextSymbol = "CWvsContext::dword_4098";
+        private const string PacketOwnedLogoutGiftPrecursorSecondContextSymbol = "CWvsContext::dword_409C";
+        private const string PacketOwnedLogoutGiftPrecursorThirdContextSymbol = "CWvsContext::dword_40A0";
 
         private readonly int[] _packetOwnedLogoutGiftCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
         private bool _packetOwnedLogoutGiftHasConfig;
@@ -1234,7 +1237,13 @@ namespace HaCreator.MapSimulator
                 return $"CWvsContext::dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}] (pre-`m_bPredictQuit`)";
             }
 
-            return $"CWvsContext::field_{byteOffset.ToString("X4", CultureInfo.InvariantCulture)} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)";
+            return dwordIndex switch
+            {
+                PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex => $"{PacketOwnedLogoutGiftPrecursorFirstContextSymbol} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)",
+                PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex + 1 => $"{PacketOwnedLogoutGiftPrecursorSecondContextSymbol} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)",
+                PacketOwnedLogoutGiftPrecursorLastContextDwordIndex => $"{PacketOwnedLogoutGiftPrecursorThirdContextSymbol} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)",
+                _ => $"CWvsContext::dword_{byteOffset.ToString("X4", CultureInfo.InvariantCulture)} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)",
+            };
         }
 
         private static IEnumerable<string> EnumeratePacketOwnedLogoutGiftButtonResourcePathCandidates()

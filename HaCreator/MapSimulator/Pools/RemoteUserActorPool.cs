@@ -292,6 +292,18 @@ namespace HaCreator.MapSimulator.Pools
             public IReadOnlyList<AssembledPart> Parts { get; init; } = Array.Empty<AssembledPart>();
         }
 
+        private readonly struct RemoteActiveEffectMotionBlurOwnerSample
+        {
+            public RemoteActiveEffectMotionBlurOwnerSample(Vector2 position, bool facingRight)
+            {
+                Position = position;
+                FacingRight = facingRight;
+            }
+
+            public Vector2 Position { get; }
+            public bool FacingRight { get; }
+        }
+
         private sealed class PendingRemoteTransientSkillUseAvatarEffectState
         {
             public int RegistrationKey { get; init; }
@@ -384,6 +396,8 @@ namespace HaCreator.MapSimulator.Pools
         private const int MonsterBombInitDelayMs = 450;
         private const int MonsterBombExplosionDelayMs = 950;
         private const int GenericGrenadeImpactScale = 600;
+        private const int GenericGrenadeFlightLaunchOffsetX = 1;
+        private const int GenericGrenadeFlightLaunchOffsetY = -20;
         private const int GrenadeDragScale = 100000;
         private static readonly int[] RemoteShadowPartnerSkillIds =
         {
@@ -4187,6 +4201,24 @@ namespace HaCreator.MapSimulator.Pools
             return presentation.FacingRight;
         }
 
+        public static Vector2 ResolveRemoteGrenadeFlightOriginForParity(RemoteGrenadePresentation presentation)
+        {
+            Vector2 spawnPoint = new(presentation.Target.X, presentation.Target.Y);
+            if (presentation.UsesMonsterBombGauge)
+            {
+                return spawnPoint;
+            }
+
+            // Client CGrenade::Init starts non-body-bomb vec-control at (x +/- 1, y - 20)
+            // while the object itself is still created at packet position (x, y).
+            int offsetX = presentation.FacingRight
+                ? GenericGrenadeFlightLaunchOffsetX
+                : -GenericGrenadeFlightLaunchOffsetX;
+            return new Vector2(
+                spawnPoint.X + offsetX,
+                spawnPoint.Y + GenericGrenadeFlightLaunchOffsetY);
+        }
+
         public static int ResolveRemoteGrenadeFlightStartTimeForParity(RemoteGrenadePresentation presentation)
         {
             return presentation.CurrentTime + Math.Max(0, presentation.InitDelayMs);
@@ -6929,6 +6961,10 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime);
             }
 
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds = ResolveRemoteActiveEffectMotionBlurLayerHandleIds(
+                actor.ActiveEffectMotionBlur?.SimulatedLayerHandleIds
+                ?? actor.ActiveEffectMotionBlurLayerHandleIds);
+            actor.ActiveEffectMotionBlurLayerHandleIds = layerHandleIds;
             actor.ActiveEffectMotionBlur = new RemoteActiveEffectMotionBlurState
             {
                 Definition = definition,
@@ -6939,7 +6975,7 @@ namespace HaCreator.MapSimulator.Pools
                     : currentTime,
                 OwnerActionName = ownerActionName,
                 OwnerFacingRight = ownerFacingRight,
-                SimulatedLayerHandleIds = CreateRemoteActiveEffectMotionBlurLayerHandleIds(),
+                SimulatedLayerHandleIds = layerHandleIds,
                 NextSampleTime = currentTime
             };
         }
@@ -6998,12 +7034,14 @@ namespace HaCreator.MapSimulator.Pools
                         state.SimulatedLayerHandleIds,
                         out List<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots))
                 {
+                    RemoteActiveEffectMotionBlurOwnerSample ownerSample =
+                        ResolveRemoteActiveEffectMotionBlurSnapshotOwnerState(actor, state.NextSampleTime);
                     state.Snapshots.Add(new RemoteActiveEffectMotionBlurSnapshot
                     {
                         Layers = layerSnapshots,
                         FeetOffset = frame.FeetOffset,
-                        Position = actor.Position,
-                        FacingRight = actor.FacingRight,
+                        Position = ownerSample.Position,
+                        FacingRight = ownerSample.FacingRight,
                         SampleTime = state.NextSampleTime
                     });
                 }
@@ -7021,6 +7059,34 @@ namespace HaCreator.MapSimulator.Pools
                     state.Snapshots.RemoveAt(i);
                 }
             }
+        }
+
+        private static RemoteActiveEffectMotionBlurOwnerSample ResolveRemoteActiveEffectMotionBlurSnapshotOwnerState(
+            RemoteUserActor actor,
+            int sampleTime)
+        {
+            return ResolveRemoteActiveEffectMotionBlurSnapshotOwnerState(
+                actor?.MovementSnapshot,
+                actor?.Position ?? Vector2.Zero,
+                actor?.FacingRight ?? true,
+                sampleTime);
+        }
+
+        private static RemoteActiveEffectMotionBlurOwnerSample ResolveRemoteActiveEffectMotionBlurSnapshotOwnerState(
+            PlayerMovementSyncSnapshot movementSnapshot,
+            Vector2 fallbackPosition,
+            bool fallbackFacingRight,
+            int sampleTime)
+        {
+            if (movementSnapshot != null)
+            {
+                PassivePositionSnapshot sample = movementSnapshot.SampleAtTime(sampleTime);
+                return new RemoteActiveEffectMotionBlurOwnerSample(
+                    new Vector2(sample.X, sample.Y),
+                    sample.FacingRight);
+            }
+
+            return new RemoteActiveEffectMotionBlurOwnerSample(fallbackPosition, fallbackFacingRight);
         }
 
         internal static bool TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
@@ -7113,6 +7179,37 @@ namespace HaCreator.MapSimulator.Pools
             return handleIds;
         }
 
+        private static IReadOnlyDictionary<AvatarRenderLayer, int> ResolveRemoteActiveEffectMotionBlurLayerHandleIds(
+            IReadOnlyDictionary<AvatarRenderLayer, int> existingLayerHandleIds)
+        {
+            if (IsCompleteRemoteActiveEffectMotionBlurLayerHandleIdMap(existingLayerHandleIds))
+            {
+                return existingLayerHandleIds;
+            }
+
+            return CreateRemoteActiveEffectMotionBlurLayerHandleIds();
+        }
+
+        private static bool IsCompleteRemoteActiveEffectMotionBlurLayerHandleIdMap(
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+        {
+            if (layerHandleIds == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < RemoteActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+            {
+                AvatarRenderLayer layer = RemoteActiveEffectMotionBlurLayerCaptureOrder[i];
+                if (!layerHandleIds.TryGetValue(layer, out int handleId) || handleId <= 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static int NextRemoteActiveEffectMotionBlurStateId()
         {
             return SimulatedMotionBlurIdentitySource.NextAnimationStateId();
@@ -7131,6 +7228,32 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteActiveEffectMotionBlurStateIdForTesting()
         {
             return NextRemoteActiveEffectMotionBlurStateId();
+        }
+
+        internal static bool IsCompleteRemoteActiveEffectMotionBlurLayerHandleIdMapForTesting(
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+        {
+            return IsCompleteRemoteActiveEffectMotionBlurLayerHandleIdMap(layerHandleIds);
+        }
+
+        internal static IReadOnlyDictionary<AvatarRenderLayer, int> ResolveRemoteActiveEffectMotionBlurLayerHandleIdsForTesting(
+            IReadOnlyDictionary<AvatarRenderLayer, int> existingLayerHandleIds)
+        {
+            return ResolveRemoteActiveEffectMotionBlurLayerHandleIds(existingLayerHandleIds);
+        }
+
+        internal static (Vector2 Position, bool FacingRight) ResolveRemoteActiveEffectMotionBlurSnapshotOwnerStateForTesting(
+            PlayerMovementSyncSnapshot movementSnapshot,
+            Vector2 fallbackPosition,
+            bool fallbackFacingRight,
+            int sampleTime)
+        {
+            RemoteActiveEffectMotionBlurOwnerSample sample = ResolveRemoteActiveEffectMotionBlurSnapshotOwnerState(
+                movementSnapshot,
+                fallbackPosition,
+                fallbackFacingRight,
+                sampleTime);
+            return (sample.Position, sample.FacingRight);
         }
 
         internal static IReadOnlyList<AssembledPart> ResolveRemoteActiveEffectMotionBlurLayerParts(
@@ -10239,12 +10362,18 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            float tailStartAlpha = ResolveRemoteTemporaryStatAvatarEffectTransitionAlpha(previousState, currentTime);
+            if (tailStartAlpha <= 0f)
+            {
+                return false;
+            }
+
             tailState = CloneRemoteTemporaryStatAvatarEffectState(previousState);
             ConfigureRemoteTemporaryStatAvatarEffectTransition(
                 tailState,
                 currentTime,
                 ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(previousState, currentState),
-                startAlpha: 1f,
+                startAlpha: tailStartAlpha,
                 endAlpha: 0f);
             return true;
         }
@@ -10590,6 +10719,13 @@ namespace HaCreator.MapSimulator.Pools
                 && !hiddenLikeClient
                 && !hasMechanicMode
                 && ShadowPartnerClientActionResolver.ShouldRenderClientShadowPartner(skillId, rawActionCode);
+        }
+
+        internal static bool ShouldUseRemoteShadowPartnerAttackObservationGateForTesting(
+            string observedPlayerActionName,
+            PlayerState state)
+        {
+            return ShouldUseRemoteShadowPartnerAttackObservationGate(observedPlayerActionName, state);
         }
 
         private static bool ShouldDrawRemoteShadowPartner(RemoteUserActor actor, int? rawActionCode = null)
@@ -11288,15 +11424,21 @@ namespace HaCreator.MapSimulator.Pools
                 presentation.ObservedPlayerFacingRight = actor.FacingRight;
                 presentation.ObservedRawActionCode = rawActionCode;
                 presentation.ObservedPlayerActionTriggerTime = actionTriggerTime;
-                bool hasResolvedObservedAttackAction = TryResolveRemoteShadowPartnerAttackAction(
-                    actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
+                bool observedAttackAction = ShouldUseRemoteShadowPartnerAttackObservationGate(
                     observedPlayerActionName,
-                    state,
-                    actor.Build?.GetWeapon()?.WeaponType,
-                    rawActionCode,
-                    actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames,
-                    out string resolvedObservedAttackAction,
-                    out SkillAnimation resolvedObservedAttackPlayback);
+                    state);
+                string resolvedObservedAttackAction = null;
+                SkillAnimation resolvedObservedAttackPlayback = null;
+                bool hasResolvedObservedAttackAction = observedAttackAction
+                                                     && TryResolveRemoteShadowPartnerAttackAction(
+                                                         actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
+                                                         observedPlayerActionName,
+                                                         state,
+                                                         actor.Build?.GetWeapon()?.WeaponType,
+                                                         rawActionCode,
+                                                         actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames,
+                                                         out resolvedObservedAttackAction,
+                                                         out resolvedObservedAttackPlayback);
 
                 string createActionName = ResolveRemoteShadowPartnerCreateActionName(
                     actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
@@ -11315,10 +11457,10 @@ namespace HaCreator.MapSimulator.Pools
                             playbackRawActionCode,
                             actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames));
 
-                    string queuedObservedAction = state == PlayerState.Attacking
+                    string queuedObservedAction = observedAttackAction
                         ? (hasResolvedObservedAttackAction ? resolvedObservedAttackAction : null)
                         : resolvedObservedAction;
-                    SkillAnimation queuedObservedPlayback = state == PlayerState.Attacking
+                    SkillAnimation queuedObservedPlayback = observedAttackAction
                         ? (hasResolvedObservedAttackAction ? resolvedObservedAttackPlayback : null)
                         : resolvedObservedPlayback;
                     if (!string.IsNullOrWhiteSpace(queuedObservedAction))
@@ -11326,7 +11468,7 @@ namespace HaCreator.MapSimulator.Pools
                         presentation.QueuedActionName = queuedObservedAction;
                         presentation.QueuedPlaybackAnimation = queuedObservedPlayback;
                         presentation.QueuedFacingRight = actor.FacingRight;
-                        presentation.QueuedForceReplay = state == PlayerState.Attacking && actionTriggerTime != int.MinValue;
+                        presentation.QueuedForceReplay = observedAttackAction && actionTriggerTime != int.MinValue;
                     }
 
                     return;
@@ -11338,7 +11480,7 @@ namespace HaCreator.MapSimulator.Pools
                     currentTime,
                     actor.FacingRight,
                     resolvedObservedPlayback,
-                    forceRestartWhenSameAction: state == PlayerState.Attacking && actionTriggerTime != int.MinValue);
+                    forceRestartWhenSameAction: observedAttackAction && actionTriggerTime != int.MinValue);
                 return;
             }
 
@@ -11360,7 +11502,7 @@ namespace HaCreator.MapSimulator.Pools
                 presentation.ObservedRawActionCode = rawActionCode;
                 presentation.ObservedPlayerActionTriggerTime = actionTriggerTime;
 
-                bool observedAttackAction = ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(observedPlayerActionName, state);
+                bool observedAttackAction = ShouldUseRemoteShadowPartnerAttackObservationGate(observedPlayerActionName, state);
                 if (observedAttackAction)
                 {
                     if (TryResolveRemoteShadowPartnerAttackAction(
@@ -11889,6 +12031,13 @@ namespace HaCreator.MapSimulator.Pools
             };
         }
 
+        private static bool ShouldUseRemoteShadowPartnerAttackObservationGate(
+            string observedPlayerActionName,
+            PlayerState state)
+        {
+            return ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(observedPlayerActionName, state);
+        }
+
         private static float ResolveRemoteShadowPartnerFrameAlpha(SkillFrame frame, int frameElapsedMs)
         {
             return ShadowPartnerClientActionResolver.ResolveFrameAlpha(frame, frameElapsedMs);
@@ -12293,17 +12442,6 @@ namespace HaCreator.MapSimulator.Pools
 
             if (snapshot.WeaponChargePayloadOffset >= 0
                 && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
-                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
-                    snapshot.RawPayload,
-                    snapshot.WeaponChargePayloadOffset,
-                    preferredSkillId,
-                    out int scopedChargeSkillId))
-            {
-                return scopedChargeSkillId;
-            }
-
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     sizeof(int) * 4,
@@ -12365,17 +12503,6 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.WeaponChargePayloadOffset,
                     preferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
-                    out chargeElement))
-            {
-                return true;
-            }
-
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
-                && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
-                    snapshot.RawPayload,
-                    snapshot.WeaponChargePayloadOffset,
-                    preferredSkillId,
                     out chargeElement))
             {
                 return true;
@@ -12866,6 +12993,7 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatFinalCutEffect { get; set; }
         public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
         public RemoteUserActorPool.RemoteActiveEffectMotionBlurState ActiveEffectMotionBlur { get; set; }
+        public IReadOnlyDictionary<AvatarRenderLayer, int> ActiveEffectMotionBlurLayerHandleIds { get; set; }
         public List<RemoteUserActorPool.RemoteTransientItemEffectState> TransientItemEffects { get; } = new();
         public List<RemoteUserActorPool.RemoteTransientSkillUseAvatarEffectState> TransientSkillUseAvatarEffects { get; } = new();
         public int MovingShootPreparedSkillId { get; set; }

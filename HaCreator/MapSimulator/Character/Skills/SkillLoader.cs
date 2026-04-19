@@ -5657,12 +5657,102 @@ namespace HaCreator.MapSimulator.Character.Skills
                             BuildClientSummonedUolCandidateContextPathParts(node, propertyName, skillNode));
                     }
                 }
+
+                foreach (ClientSummonedUolCandidateValue heuristicCandidate in EnumerateClientSummonedUolHeuristicCandidateValues(node, skillNode))
+                {
+                    yield return heuristicCandidate;
+                }
             }
+        }
+
+        private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolHeuristicCandidateValues(
+            WzImageProperty node,
+            WzImageProperty skillNode)
+        {
+            if (node == null)
+            {
+                yield break;
+            }
+
+            foreach ((WzImageProperty Property, string RelativePath) in EnumerateClientSummonedUolHeuristicCandidateProperties(node))
+            {
+                string value = GetClientSummonedUolCandidateValue(Property);
+                if (string.IsNullOrWhiteSpace(value)
+                    || !LooksLikeClientSummonedUolHeuristicCandidateValue(value))
+                {
+                    continue;
+                }
+
+                yield return new ClientSummonedUolCandidateValue(
+                    value,
+                    BuildClientSummonedUolCandidateContextPathParts(node, RelativePath, skillNode));
+            }
+        }
+
+        private static IEnumerable<(WzImageProperty Property, string RelativePath)> EnumerateClientSummonedUolHeuristicCandidateProperties(
+            WzImageProperty node)
+        {
+            if (node?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                if (IsClientSummonedUolCandidateValueProperty(child))
+                {
+                    yield return (child, child.Name);
+                }
+
+                if (!child.Name.Equals("info", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty leaf in child.WzProperties)
+                {
+                    if (leaf != null && IsClientSummonedUolCandidateValueProperty(leaf))
+                    {
+                        yield return (leaf, $"{child.Name}/{leaf.Name}");
+                    }
+                }
+            }
+        }
+
+        private static bool IsClientSummonedUolCandidateValueProperty(WzImageProperty property)
+        {
+            return property is WzStringProperty || property is WzUOLProperty;
+        }
+
+        private static bool LooksLikeClientSummonedUolHeuristicCandidateValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            if (value.IndexOf("summon", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            return value.IndexOf("/skill/", StringComparison.OrdinalIgnoreCase) >= 0
+                   && value.IndexOf(".img", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static string GetClientSummonedUolCandidateValue(WzImageProperty node, string propertyName)
         {
             WzImageProperty child = node?[propertyName];
+            return GetClientSummonedUolCandidateValue(child);
+        }
+
+        private static string GetClientSummonedUolCandidateValue(WzImageProperty child)
+        {
             switch (child)
             {
                 case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
@@ -5694,7 +5784,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .ToList();
             if (!string.IsNullOrWhiteSpace(propertyName))
             {
-                parts.Add(propertyName);
+                parts.AddRange(propertyName
+                    .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries));
             }
 
             return parts.ToArray();
@@ -5974,6 +6065,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Concat(new[] { "sSummonedUOL" })
                 .ToArray();
             return EnumerateNormalizedClientSummonedUolCandidatePaths(candidateValue, contextPathParts).ToArray();
+        }
+
+        internal static IReadOnlyList<string> ResolveClientSummonedUolPathsForTest(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode)
+        {
+            return ResolveClientSummonedUolPaths(skillNode, infoNode);
         }
 
         internal static string NormalizeClientSkillAssetUolCandidatePathForTest(

@@ -145,6 +145,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextClientRequestSequence = 1;
         private bool _hasPacketBoardState;
         private string _boardStateSourceLabel = "Simulator";
+        private int _packetTotalThreadCount = -1;
 
         public GuildBbsRuntime()
         {
@@ -258,11 +259,12 @@ namespace HaCreator.MapSimulator.Interaction
         public GuildBbsSnapshot BuildSnapshot()
         {
             IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
-            EnsureThreadPageInRange(orderedThreads.Count);
+            int resolvedThreadCount = ResolveEffectiveThreadCount(orderedThreads.Count);
+            EnsureThreadPageInRange(resolvedThreadCount);
 
             GuildBbsThreadState selectedThread = orderedThreads.FirstOrDefault(thread => thread.ThreadId == _selectedThreadId);
             GuildBbsThreadState noticeThread = orderedThreads.FirstOrDefault(thread => thread.IsNotice);
-            int threadPageCount = Math.Max(1, (int)Math.Ceiling(orderedThreads.Count / (double)VisibleThreadCount));
+            int threadPageCount = Math.Max(1, (int)Math.Ceiling(resolvedThreadCount / (double)VisibleThreadCount));
             IReadOnlyList<GuildBbsThreadEntrySnapshot> visibleThreads = orderedThreads
                 .Skip(_threadPageIndex * VisibleThreadCount)
                 .Take(VisibleThreadCount)
@@ -322,7 +324,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IsWriteMode = IsWriteMode,
                 SelectedThreadId = _selectedThreadId,
                 Threads = visibleThreads,
-                TotalThreadCount = orderedThreads.Count,
+                TotalThreadCount = resolvedThreadCount,
                 ThreadPageIndex = _threadPageIndex,
                 ThreadPageCount = threadPageCount,
                 SelectedThread = selectedThreadSnapshot,
@@ -757,7 +759,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string MoveThreadPage(int delta)
         {
-            int pageCount = Math.Max(1, (int)Math.Ceiling(_threads.Count / (double)VisibleThreadCount));
+            int pageCount = Math.Max(1, (int)Math.Ceiling(ResolveEffectiveThreadCount(_threads.Count) / (double)VisibleThreadCount));
             int nextPage = Math.Clamp(_threadPageIndex + delta, 0, pageCount - 1);
             if (nextPage == _threadPageIndex)
             {
@@ -765,12 +767,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _threadPageIndex = nextPage;
+            RecordClientRequest("load-list", BuildClientLoadListRequestPayload());
             return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
         }
 
         public string SetThreadPage(int pageIndex)
         {
-            int pageCount = Math.Max(1, (int)Math.Ceiling(_threads.Count / (double)VisibleThreadCount));
+            int pageCount = Math.Max(1, (int)Math.Ceiling(ResolveEffectiveThreadCount(_threads.Count) / (double)VisibleThreadCount));
             int nextPage = Math.Clamp(pageIndex, 0, pageCount - 1);
             if (nextPage == _threadPageIndex)
             {
@@ -778,6 +781,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _threadPageIndex = nextPage;
+            RecordClientRequest("load-list", BuildClientLoadListRequestPayload());
             return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
         }
 
@@ -2469,7 +2473,19 @@ namespace HaCreator.MapSimulator.Interaction
             _nextCommentId = 1;
             _hasPacketBoardState = false;
             _boardStateSourceLabel = "Simulator";
+            _packetTotalThreadCount = -1;
             SeedDefaultThreads();
+        }
+
+        private int ResolveEffectiveThreadCount(int visibleThreadCount)
+        {
+            int resolvedVisibleCount = Math.Max(0, visibleThreadCount);
+            if (!_hasPacketBoardState || _packetTotalThreadCount < 0)
+            {
+                return resolvedVisibleCount;
+            }
+
+            return Math.Max(_packetTotalThreadCount, resolvedVisibleCount);
         }
 
         private void SeedDefaultThreads()

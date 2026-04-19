@@ -606,7 +606,15 @@ namespace HaCreator.MapSimulator.Managers
             int packetType;
             lock (_sync)
             {
-                if (!_packetMap.TryGetValue(opcode, out packetType))
+                bool hasMappedPacketType = _packetMap.TryGetValue(opcode, out packetType);
+                if (hasMappedPacketType
+                    && ShouldRevalidateTutorOpcodeMappingForSourceNoLock(opcode, packetType, source, out string revalidationStatus))
+                {
+                    LastStatus = revalidationStatus;
+                    hasMappedPacketType = false;
+                }
+
+                if (!hasMappedPacketType)
                 {
                     if (IsOfficialRemoteOpcodeCoveredByV95OwnerTable(opcode))
                     {
@@ -738,6 +746,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             packetType = 0;
             reason = string.Empty;
+            if (!IsOfficialTutorLocalOpcodeCoveredByV95OwnerTable(opcode)
+                && !KnownNoHandlerLocalOwnerOpcodesV95.Contains(opcode))
+            {
+                return false;
+            }
+
             if (payload == null || payload.Length < sizeof(int) + 1)
             {
                 return false;
@@ -831,12 +845,49 @@ namespace HaCreator.MapSimulator.Managers
             evidence = _pendingTutorInferenceMap[opcode];
             if (!IsOfficialSessionSource(source))
             {
-                inferenceConfirmed = true;
+                inferenceConfirmed = false;
                 return true;
             }
 
             string buildTag = ResolveOfficialSessionBuildTag(source);
             inferenceConfirmed = evidence.ResolveOfficialSessionBuildObservationCount(buildTag) >= MinOfficialSessionTutorInferenceProofCount;
+            return true;
+        }
+
+        private bool ShouldRevalidateTutorOpcodeMappingForSourceNoLock(
+            ushort opcode,
+            int packetType,
+            string source,
+            out string status)
+        {
+            status = null;
+            if (!IsOfficialSessionSource(source))
+            {
+                return false;
+            }
+
+            if (packetType != (int)Pools.RemoteUserPacketType.UserTutorHire
+                && packetType != (int)Pools.RemoteUserPacketType.UserTutorMessage)
+            {
+                return false;
+            }
+
+            if (!_learnedPacketMap.TryGetValue(opcode, out LearnedOpcodeEntry learnedEntry)
+                || learnedEntry.IsManual)
+            {
+                return false;
+            }
+
+            string buildTag = ResolveOfficialSessionBuildTag(source);
+            int buildProof = learnedEntry.ResolveOfficialSessionBuildProofCount(buildTag);
+            if (buildProof >= MinOfficialSessionTutorInferenceProofCount)
+            {
+                return false;
+            }
+
+            _packetMap.Remove(opcode);
+            _pendingTutorInferenceMap.Remove(opcode);
+            status = $"Suspended learned tutor mapping for opcode {opcode} on build {buildTag}: official-session proof {buildProof}/{MinOfficialSessionTutorInferenceProofCount}. Awaiting build-specific tutor-owner evidence. {OfficialRemoteOwnerEvidence}";
             return true;
         }
 

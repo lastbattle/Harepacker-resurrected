@@ -4310,10 +4310,11 @@ namespace HaCreator.MapSimulator.Character
             string spawnActionName = ResolveShadowPartnerCreateActionName(skill.ShadowPartnerActionAnimations);
             bool useSpawnAction = !string.IsNullOrWhiteSpace(spawnActionName);
             int observedAttackTriggerTime = GetShadowPartnerObservedActionTriggerTime();
-            bool observedAttackActionResolved = State != PlayerState.Attacking;
+            bool observedAttackAction = ShouldUseShadowPartnerAttackObservationGate(CurrentActionName, State);
+            bool observedAttackActionResolved = !observedAttackAction;
             string resolvedAttackActionName = null;
             SkillAnimation resolvedAttackPlaybackAnimation = null;
-            if (State == PlayerState.Attacking
+            if (observedAttackAction
                 && TryResolveShadowPartnerAttackAction(
                     CurrentActionName,
                     out resolvedAttackActionName,
@@ -4325,13 +4326,13 @@ namespace HaCreator.MapSimulator.Character
             string queuedActionName = resolvedActionName;
             SkillAnimation queuedPlaybackAnimation = resolvedPlaybackAnimation;
             bool queuedForceReplay = false;
-            if (useSpawnAction && State == PlayerState.Attacking)
+            if (useSpawnAction && observedAttackAction)
             {
                 if (observedAttackActionResolved)
                 {
                     queuedActionName = resolvedAttackActionName;
                     queuedPlaybackAnimation = resolvedAttackPlaybackAnimation;
-                    queuedForceReplay = observedAttackTriggerTime != int.MinValue;
+                    queuedForceReplay = observedAttackAction && observedAttackTriggerTime != int.MinValue;
                 }
                 else
                 {
@@ -7350,17 +7351,6 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (lastInsertCanvasSourcePartsObjectId > 0
-                && sourcePartsObjectId != lastInsertCanvasSourcePartsObjectId)
-            {
-                if (sourceSignature <= 0
-                    || lastInsertedSourceSignature <= 0
-                    || sourceSignature != lastInsertedSourceSignature)
-                {
-                    return false;
-                }
-            }
-
             if (lastInsertCanvasOverlayTargetLayer.HasValue
                 && lastInsertCanvasOverlayTargetLayer.Value != overlayTargetLayer)
             {
@@ -7369,7 +7359,7 @@ namespace HaCreator.MapSimulator.Character
 
             if (lastInsertCanvasTime == int.MinValue)
             {
-                return false;
+                return true;
             }
 
             return true;
@@ -8001,7 +7991,7 @@ namespace HaCreator.MapSimulator.Character
                 _activeShadowPartner.ObservedPlayerFacingRight = FacingRight;
                 _activeShadowPartner.ObservedPlayerActionTriggerTime = actionTriggerTime;
                 RefreshShadowPartnerClientOffsetTarget(currentTime, FacingRight);
-                bool observedAttackAction = ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(playerActionName, State);
+                bool observedAttackAction = ShouldUseShadowPartnerAttackObservationGate(playerActionName, State);
                 if (observedAttackAction)
                 {
                     if (TryResolveShadowPartnerAttackAction(
@@ -8971,6 +8961,11 @@ namespace HaCreator.MapSimulator.Character
             return ShadowPartnerClientActionResolver.IsBlockingAction(actionName);
         }
 
+        private static bool ShouldUseShadowPartnerAttackObservationGate(string observedPlayerActionName, PlayerState state)
+        {
+            return ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(observedPlayerActionName, state);
+        }
+
         private bool IsShadowPartnerAttackAction(string actionName)
         {
             int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
@@ -9717,6 +9712,13 @@ namespace HaCreator.MapSimulator.Character
         internal static string ResolveShadowPartnerActionOwnerNameForTesting(string actionName)
         {
             return ResolveShadowPartnerActionOwnerName(actionName);
+        }
+
+        internal static bool ShouldUseShadowPartnerAttackObservationGateForTesting(
+            string observedPlayerActionName,
+            PlayerState state)
+        {
+            return ShouldUseShadowPartnerAttackObservationGate(observedPlayerActionName, state);
         }
 
         internal static string ResolveMirrorImageActionOwnerNameForTesting()

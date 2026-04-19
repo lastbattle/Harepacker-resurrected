@@ -583,29 +583,42 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            if (property is WzStringProperty stringProperty && !string.IsNullOrWhiteSpace(stringProperty.Value))
+            CollectStringValues(property, values);
+        }
+
+        private static bool CollectStringValues(WzImageProperty property, HashSet<string> values)
+        {
+            if (property == null || values == null)
             {
-                values.Add(stringProperty.Value.Trim());
-                return;
+                return false;
+            }
+
+            bool hasValue = false;
+            string directValue = property is WzStringProperty stringProperty
+                ? stringProperty.Value
+                : InfoTool.GetString(property);
+            if (!string.IsNullOrWhiteSpace(directValue))
+            {
+                values.Add(directValue.Trim());
+                hasValue = true;
             }
 
             foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
             {
-                string text = child is WzStringProperty childString
-                    ? childString.Value
-                    : InfoTool.GetString(child);
-                if (!string.IsNullOrWhiteSpace(text))
-                {
-                    values.Add(text.Trim());
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(child.Name)
+                bool childHasValue = CollectStringValues(child, values);
+                if (!childHasValue
+                    && !string.IsNullOrWhiteSpace(child.Name)
                     && !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
                 {
                     values.Add(child.Name.Trim());
+                    hasValue = true;
+                    continue;
                 }
+
+                hasValue |= childHasValue;
             }
+
+            return hasValue;
         }
 
         private static HashSet<int> ParseIntSet(params WzImageProperty[] properties)
@@ -631,34 +644,47 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            CollectIntValues(property, values);
+        }
+
+        private static bool CollectIntValues(WzImageProperty property, HashSet<int> values)
+        {
+            if (property == null || values == null)
+            {
+                return false;
+            }
+
+            bool hasValue = false;
             if (property is WzIntProperty intProperty)
             {
                 values.Add(intProperty.Value);
-                return;
+                hasValue = true;
             }
-
-            string direct = InfoTool.GetString(property);
-            if (int.TryParse(direct, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedDirect))
+            else
             {
-                values.Add(parsedDirect);
-                return;
+                string direct = InfoTool.GetString(property);
+                if (int.TryParse(direct, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedDirect))
+                {
+                    values.Add(parsedDirect);
+                    hasValue = true;
+                }
             }
 
             foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
             {
-                if (child is WzIntProperty childInt)
+                bool childHasValue = CollectIntValues(child, values);
+                if (!childHasValue
+                    && int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
                 {
-                    values.Add(childInt.Value);
+                    values.Add(parsed);
+                    hasValue = true;
                     continue;
                 }
 
-                string text = InfoTool.GetString(child);
-                if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
-                    || int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
-                {
-                    values.Add(parsed);
-                }
+                hasValue |= childHasValue;
             }
+
+            return hasValue;
         }
 
         private static Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> BuildAffectedMapCatalog(IEnumerable<WzImageProperty> roots)
@@ -775,7 +801,9 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (string.Equals(child.Name, "stageKeyword", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(child.Name, "keyword", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(child.Name, "aKeyword", StringComparison.OrdinalIgnoreCase))
+                    || string.Equals(child.Name, "aKeyword", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "stage", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "stageList", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
