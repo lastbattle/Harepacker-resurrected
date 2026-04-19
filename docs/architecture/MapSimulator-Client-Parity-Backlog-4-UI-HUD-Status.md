@@ -195,3 +195,5 @@ That keeps the backlog honest and prevents already-shipped work from reappearing
 
 
 
+
+Update for Chat log / whisper flows (status Partial): WZ evidence remains unchanged for UIWindow2.img UtilDlgEx list4/list5 origins and Basic.img ComboBox2/BtComboBox sizing. Client key evidence remains CCtrlComboBox::OnKey (0x4D9910) and CCtrlComboBoxSelect::OnKey (0x4D91F0). Modal combo dropdown open/toggle now seeds a valid current row when candidates exist, so Enter on an open dropdown accepts that seeded row into the edit lane and closes only the dropdown instead of falling through the modal confirm path with empty typed input. Focused coverage in UnitTest_MapSimulator/MapSimulatorChatWhisperModalKeyParityTests.cs now includes the seeded-selection Enter seam. Remaining gap is still concentrated in unrecovered IWzFont COM shaping/style behavior, deeper native combo edit/history lifecycle details inside ChangeWhisperTarget, and popup chrome/text metrics plus long-tail modal key choreography beyond the modeled toggle/selection/confirm seams.
