@@ -311,7 +311,17 @@ namespace HaCreator.MapSimulator.Managers
             PacketOwnedItemMakerSessionHiddenEntry entry,
             PacketOwnedItemMakerSessionHiddenEntry removal)
         {
-            if (removal.OutputItemId <= 0 || entry.OutputItemId != removal.OutputItemId)
+            if (removal.BucketKey < 0 && removal.OutputItemId <= 0)
+            {
+                return true;
+            }
+
+            if (removal.OutputItemId <= 0)
+            {
+                return removal.BucketKey >= 0 && entry.BucketKey == removal.BucketKey;
+            }
+
+            if (entry.OutputItemId != removal.OutputItemId)
             {
                 return false;
             }

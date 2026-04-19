@@ -318,9 +318,44 @@ namespace HaCreator.MapSimulator
         private static string FormatKnownLeadingCharacterDataTailSuffix(ulong matchedSectionFlags, int opaquePreMapTransferByteCount)
         {
             List<string> sections = new();
+            if ((matchedSectionFlags & 0x2UL) != 0)
+            {
+                sections.Add("meso");
+            }
+
+            if ((matchedSectionFlags & 0x80UL) != 0)
+            {
+                sections.Add("inventory slot limits");
+            }
+
             if ((matchedSectionFlags & 0x100000UL) != 0)
             {
                 sections.Add("the pre-inventory two-int header");
+            }
+
+            if ((matchedSectionFlags & 0x4UL) != 0)
+            {
+                sections.Add("equip inventory");
+            }
+
+            if ((matchedSectionFlags & 0x8UL) != 0)
+            {
+                sections.Add("use inventory");
+            }
+
+            if ((matchedSectionFlags & 0x10UL) != 0)
+            {
+                sections.Add("setup inventory");
+            }
+
+            if ((matchedSectionFlags & 0x20UL) != 0)
+            {
+                sections.Add("etc inventory");
+            }
+
+            if ((matchedSectionFlags & 0x40UL) != 0)
+            {
+                sections.Add("cash inventory");
             }
 
             if ((matchedSectionFlags & 0x100UL) != 0)

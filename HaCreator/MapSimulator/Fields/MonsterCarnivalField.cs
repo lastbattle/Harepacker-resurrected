@@ -1167,6 +1167,10 @@ namespace HaCreator.MapSimulator.Fields
         private bool _lastVariantDelegatedRawPacket;
         private string _lastVariantDelegatedOwner;
         private string _lastVariantDelegatedSummary;
+        private bool _season2SubDialogVisible;
+        private bool _season2SubDialogOkEnabled;
+        private bool _season2SubDialogSelectionLocked;
+        private string _season2SubDialogSummary;
         private GraphicsDevice _graphicsDevice;
         private MonsterCarnivalHudAssets _hudAssets = new();
 
@@ -1188,6 +1192,10 @@ namespace HaCreator.MapSimulator.Fields
         public MonsterCarnivalVariantSessionPhase VariantSessionPhase => _variantSessionPhase;
         public IReadOnlyList<string> VariantActionTrail => _variantActionTrail.ToArray();
         public MonsterCarnivalUiWindowState UiWindowState => _uiWindowState;
+        public bool Season2SubDialogVisible => _season2SubDialogVisible;
+        public bool Season2SubDialogOkEnabled => _season2SubDialogOkEnabled;
+        public bool Season2SubDialogSelectionLocked => _season2SubDialogSelectionLocked;
+        public string Season2SubDialogSummary => _season2SubDialogSummary;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -1597,6 +1605,90 @@ namespace HaCreator.MapSimulator.Fields
                 placement.ReactorHitCount = Math.Min(hitCount, placement.ReactorRequiredHits);
             }
 
+            return true;
+        }
+
+        public bool TryReconcileLiveGuardianPlacement(
+            int reactorId,
+            int worldX,
+            int worldY,
+            bool flip,
+            int hitCount,
+            int requiredHits,
+            out int slotIndex,
+            out string message)
+        {
+            slotIndex = -1;
+            message = null;
+
+            if (!_isVisible || _definition == null || reactorId <= 0)
+            {
+                return false;
+            }
+
+            if (!TryResolveCandidateGuardianTeamsFromReactorId(reactorId, out IReadOnlyList<MonsterCarnivalTeam> candidateTeams))
+            {
+                return false;
+            }
+
+            int resolvedRequiredHits = Math.Max(1, requiredHits);
+            int resolvedHitCount = Math.Clamp(hitCount, 0, resolvedRequiredHits);
+
+            foreach (KeyValuePair<int, MonsterCarnivalGuardianPlacement> trackedPlacement in _guardianPlacements)
+            {
+                MonsterCarnivalGuardianPlacement existingPlacement = trackedPlacement.Value;
+                if (existingPlacement == null || existingPlacement.ReactorId != reactorId)
+                {
+                    continue;
+                }
+
+                int distance = Math.Abs(existingPlacement.SpawnPoint.X - worldX) + Math.Abs(existingPlacement.SpawnPoint.Y - worldY);
+                if (distance > 96)
+                {
+                    continue;
+                }
+
+                existingPlacement.ReactorRequiredHits = resolvedRequiredHits;
+                existingPlacement.ReactorHitCount = resolvedHitCount;
+                slotIndex = trackedPlacement.Key;
+                message = $"Reconciled live guardian reactor {reactorId} into tracked slot {slotIndex + 1} ({FormatTeam(existingPlacement.Team)}).";
+                return true;
+            }
+
+            if (!TryResolveGuardianSlotFromLiveReactor(candidateTeams, worldX, worldY, flip, out int resolvedSlotIndex, out MonsterCarnivalGuardianSpawnPoint spawnPoint, out MonsterCarnivalTeam resolvedTeam))
+            {
+                return false;
+            }
+
+            MonsterCarnivalEntry entry = ResolveGuardianEntryForSlot(resolvedSlotIndex);
+            if (entry == null)
+            {
+                return false;
+            }
+
+            if (_guardianPlacements.TryGetValue(resolvedSlotIndex, out MonsterCarnivalGuardianPlacement displacedPlacement)
+                && displacedPlacement?.Entry != null)
+            {
+                SetEntryCount(
+                    _guardianCounts,
+                    displacedPlacement.Entry.Id,
+                    Math.Max(0, GetEntryCount(_guardianCounts, displacedPlacement.Entry.Id) - 1));
+            }
+
+            var placement = new MonsterCarnivalGuardianPlacement(entry, spawnPoint, reactorId, resolvedTeam)
+            {
+                ReactorRequiredHits = resolvedRequiredHits,
+                ReactorHitCount = resolvedHitCount
+            };
+
+            _guardianPlacements[resolvedSlotIndex] = placement;
+            _occupiedGuardianSlots.Add(resolvedSlotIndex);
+            SetEntryCount(_guardianCounts, entry.Id, GetEntryCount(_guardianCounts, entry.Id) + 1);
+
+            slotIndex = resolvedSlotIndex;
+            message =
+                $"Reconciled live guardian reactor {reactorId} at ({worldX}, {worldY}) into slot {slotIndex + 1} " +
+                $"for {FormatTeam(resolvedTeam)} with hit progress {resolvedHitCount}/{resolvedRequiredHits}.";
             return true;
         }
 
@@ -3011,6 +3103,104 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return Math.Max(1, _definition?.ReactorBlueRequiredHits ?? 1);
+        }
+
+        private bool TryResolveCandidateGuardianTeamsFromReactorId(int reactorId, out IReadOnlyList<MonsterCarnivalTeam> teams)
+        {
+            var resolved = new List<MonsterCarnivalTeam>(2);
+            if (_definition != null)
+            {
+                if (reactorId == Math.Max(0, _definition.ReactorRed))
+                {
+                    resolved.Add(MonsterCarnivalTeam.Team0);
+                }
+
+                if (reactorId == Math.Max(0, _definition.ReactorBlue))
+                {
+                    resolved.Add(MonsterCarnivalTeam.Team1);
+                }
+            }
+
+            if (resolved.Count == 0)
+            {
+                teams = Array.Empty<MonsterCarnivalTeam>();
+                return false;
+            }
+
+            teams = resolved;
+            return true;
+        }
+
+        private bool TryResolveGuardianSlotFromLiveReactor(
+            IReadOnlyList<MonsterCarnivalTeam> candidateTeams,
+            int worldX,
+            int worldY,
+            bool flip,
+            out int slotIndex,
+            out MonsterCarnivalGuardianSpawnPoint spawnPoint,
+            out MonsterCarnivalTeam resolvedTeam)
+        {
+            slotIndex = -1;
+            spawnPoint = default;
+            resolvedTeam = _localTeam;
+
+            IReadOnlyList<MonsterCarnivalGuardianSpawnPoint> positions = _definition?.GuardianSpawnPositions;
+            if (positions == null || positions.Count == 0 || candidateTeams == null || candidateTeams.Count == 0)
+            {
+                return false;
+            }
+
+            int expectedFacing = flip ? 1 : 0;
+            int bestScore = int.MaxValue;
+            foreach (MonsterCarnivalGuardianSpawnPoint candidate in positions)
+            {
+                if (_occupiedGuardianSlots.Contains(candidate.Index))
+                {
+                    continue;
+                }
+
+                foreach (MonsterCarnivalTeam candidateTeam in candidateTeams)
+                {
+                    if (candidate.Team.HasValue && candidate.Team.Value != candidateTeam)
+                    {
+                        continue;
+                    }
+
+                    int distance = Math.Abs(candidate.X - worldX) + Math.Abs(candidate.Y - worldY);
+                    int facingPenalty = candidate.Facing == expectedFacing ? 0 : 8;
+                    int score = distance + facingPenalty;
+                    if (score >= bestScore)
+                    {
+                        continue;
+                    }
+
+                    bestScore = score;
+                    slotIndex = candidate.Index;
+                    spawnPoint = candidate;
+                    resolvedTeam = candidate.Team ?? candidateTeam;
+                }
+            }
+
+            return slotIndex >= 0;
+        }
+
+        private MonsterCarnivalEntry ResolveGuardianEntryForSlot(int slotIndex)
+        {
+            IReadOnlyList<MonsterCarnivalEntry> entries = _definition?.GuardianEntries;
+            if (entries == null || entries.Count == 0)
+            {
+                return null;
+            }
+
+            MonsterCarnivalEntry exactEntry = entries.FirstOrDefault(candidate => candidate.Index == slotIndex);
+            if (exactEntry != null)
+            {
+                return exactEntry;
+            }
+
+            return entries
+                .OrderBy(candidate => Math.Abs(candidate.Index - slotIndex))
+                .FirstOrDefault();
         }
 
         private void RegisterKnownCharacterTeam(string characterName, MonsterCarnivalTeam team)

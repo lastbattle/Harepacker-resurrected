@@ -69,6 +69,12 @@ namespace HaCreator.MapSimulator.Animation
             public int SpawnZOrder { get; init; }
         }
 
+        internal sealed class SecondaryMotionBlurAnimationState
+        {
+            public bool TerminateRequested { get; set; }
+            public bool IsTerminated { get; internal set; }
+        }
+
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
         private readonly List<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayers = new();
         private readonly List<RepeatAnimation> _repeatAnimations = new();
@@ -500,7 +506,7 @@ namespace HaCreator.MapSimulator.Animation
             return animation.Id;
         }
 
-        public int RegisterMotionBlurAnimation(
+        internal int RegisterMotionBlurAnimation(
             List<IDXObject> frames,
             Func<Vector2> getOwnerPosition,
             Func<bool> getOwnerFlip,
@@ -514,7 +520,8 @@ namespace HaCreator.MapSimulator.Animation
             bool follow,
             int snapshotRetentionMs = 0,
             bool ownsFrameTextures = false,
-            Func<int, List<IDXObject>> snapshotFrameFactory = null)
+            Func<int, List<IDXObject>> snapshotFrameFactory = null,
+            SecondaryMotionBlurAnimationState animationState = null)
         {
             if (!HasFrames(frames))
             {
@@ -536,7 +543,8 @@ namespace HaCreator.MapSimulator.Animation
                 follow,
                 snapshotRetentionMs,
                 ownsFrameTextures,
-                snapshotFrameFactory);
+                snapshotFrameFactory,
+                animationState);
             _secondaryMotionBlurAnimations.Add(animation);
             return animation.Id;
         }
@@ -550,6 +558,7 @@ namespace HaCreator.MapSimulator.Animation
                     continue;
                 }
 
+                _secondaryMotionBlurAnimations[i].MarkTerminated();
                 _secondaryMotionBlurAnimations[i].Dispose();
                 _secondaryMotionBlurAnimations.RemoveAt(i);
                 return true;
@@ -965,6 +974,7 @@ namespace HaCreator.MapSimulator.Animation
             {
                 if (!_secondaryMotionBlurAnimations[i].Update(currentTimeMs))
                 {
+                    _secondaryMotionBlurAnimations[i].MarkTerminated();
                     _secondaryMotionBlurAnimations[i].Dispose();
                     _secondaryMotionBlurAnimations.RemoveAt(i);
                 }
@@ -1093,6 +1103,7 @@ namespace HaCreator.MapSimulator.Animation
             _secondaryHookChainAnimations.Clear();
             for (int i = 0; i < _secondaryMotionBlurAnimations.Count; i++)
             {
+                _secondaryMotionBlurAnimations[i].MarkTerminated();
                 _secondaryMotionBlurAnimations[i].Dispose();
             }
             _secondaryMotionBlurAnimations.Clear();
@@ -1148,6 +1159,7 @@ namespace HaCreator.MapSimulator.Animation
             _secondaryHookChainAnimations.Clear();
             for (int i = 0; i < _secondaryMotionBlurAnimations.Count; i++)
             {
+                _secondaryMotionBlurAnimations[i].MarkTerminated();
                 _secondaryMotionBlurAnimations[i].Dispose();
             }
             _secondaryMotionBlurAnimations.Clear();
@@ -1772,6 +1784,7 @@ namespace HaCreator.MapSimulator.Animation
         private bool _follow;
         private bool _ownsFrameTextures;
         private bool _terminationRequested;
+        private AnimationEffects.SecondaryMotionBlurAnimationState _state;
 
         public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
 
@@ -1805,7 +1818,8 @@ namespace HaCreator.MapSimulator.Animation
             bool follow,
             int snapshotRetentionMs,
             bool ownsFrameTextures,
-            Func<int, List<IDXObject>> snapshotFrameFactory)
+            Func<int, List<IDXObject>> snapshotFrameFactory,
+            AnimationEffects.SecondaryMotionBlurAnimationState state)
         {
             _fallbackFrames = frames;
             _positionResolver = getOwnerPosition;
@@ -1822,10 +1836,18 @@ namespace HaCreator.MapSimulator.Animation
             _alpha = alpha;
             _snapshotRetentionMs = Math.Max(0, snapshotRetentionMs);
             _terminationRequested = false;
+            _state = state ?? new AnimationEffects.SecondaryMotionBlurAnimationState();
+            _state.TerminateRequested = false;
+            _state.IsTerminated = false;
         }
 
         public bool Update(int currentTimeMs)
         {
+            if (_state?.TerminateRequested == true)
+            {
+                RequestTermination(currentTimeMs);
+            }
+
             _lastUpdateTime = currentTimeMs;
             while (currentTimeMs >= _nextUpdateTime && _nextUpdateTime < _endTime)
             {
@@ -1858,7 +1880,13 @@ namespace HaCreator.MapSimulator.Animation
                 }
             }
 
-            return currentTimeMs < _endTime || _snapshots.Count > 0;
+            bool isActive = currentTimeMs < _endTime || _snapshots.Count > 0;
+            if (!isActive && _state != null)
+            {
+                _state.IsTerminated = true;
+            }
+
+            return isActive;
         }
 
         public void RequestTermination(int currentTimeMs)
@@ -1869,8 +1897,22 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             _terminationRequested = true;
+            if (_state != null)
+            {
+                _state.TerminateRequested = true;
+            }
+
             _endTime = Math.Min(_endTime, currentTimeMs);
             _nextUpdateTime = Math.Max(_nextUpdateTime, _endTime);
+        }
+
+        public void MarkTerminated()
+        {
+            if (_state != null)
+            {
+                _state.IsTerminated = true;
+                _state.TerminateRequested = true;
+            }
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
@@ -2648,15 +2690,15 @@ namespace HaCreator.MapSimulator.Animation
             {
                 CanvasLayerInsertOperation operation = _insertOperations[i];
                 if (operation?.Texture == null
-                    || !TryResolveOperationDrawState(operation.Descriptor, out float alpha, out float riseOffset))
+                    || !TryResolveOperationDrawState(operation.Descriptor, out float alpha, out Point animatedOffset))
                 {
                     continue;
                 }
 
                 CanvasLayerRecoveredPositionSettings basePosition = ResolveContentBasePosition(operation.Descriptor.Content);
                 Vector2 position = new(
-                    basePosition.Left + mapShiftX + operation.Descriptor.Offset.X,
-                    basePosition.Top + mapShiftY + operation.Descriptor.Offset.Y + riseOffset);
+                    basePosition.Left + mapShiftX + animatedOffset.X,
+                    basePosition.Top + mapShiftY + animatedOffset.Y);
 
                 spriteBatch.Draw(operation.Texture, position, Color.White * alpha);
             }
@@ -2932,28 +2974,71 @@ namespace HaCreator.MapSimulator.Animation
         private bool TryResolveOperationDrawState(
             CanvasLayerInsertDescriptor descriptor,
             out float alpha,
-            out float riseOffset)
+            out Point animatedOffset)
+        {
+            return TryResolveRecoveredInsertState(
+                descriptor,
+                _elapsedMs,
+                out alpha,
+                out animatedOffset);
+        }
+
+        internal static bool TryResolveRecoveredInsertState(
+            CanvasLayerInsertDescriptor descriptor,
+            int elapsedMs,
+            out float alpha,
+            out Point animatedOffset)
         {
             alpha = 0f;
-            riseOffset = 0f;
+            animatedOffset = descriptor.Offset;
 
-            int localElapsedMs = _elapsedMs - descriptor.StartDelayMs;
-            int lifetimeMs = descriptor.HoldDurationMs + descriptor.FadeDurationMs;
+            int localElapsedMs = elapsedMs - descriptor.StartDelayMs;
+            int recoveredDurationMs = descriptor.RecoveredInsertCanvasSettings.DurationMs;
+            int fallbackDurationMs = descriptor.HoldDurationMs + descriptor.FadeDurationMs;
+            int lifetimeMs = recoveredDurationMs > 0
+                ? recoveredDurationMs
+                : Math.Max(0, fallbackDurationMs);
             if (localElapsedMs < 0 || localElapsedMs >= lifetimeMs)
             {
                 return false;
             }
 
-            float transitionProgress = 0f;
-            if (descriptor.FadeDurationMs > 0)
+            float transitionProgress = lifetimeMs > 0
+                ? Math.Clamp((float)localElapsedMs / lifetimeMs, 0f, 1f)
+                : 1f;
+            float startAlpha = ResolveRecoveredAlphaValue(
+                descriptor.StartAlpha,
+                descriptor.RecoveredInsertCanvasSettings.StartAlphaValue);
+            float endAlpha = ResolveRecoveredAlphaValue(
+                descriptor.EndAlpha,
+                descriptor.RecoveredInsertCanvasSettings.EndAlphaValue);
+            alpha = MathHelper.Lerp(startAlpha, endAlpha, transitionProgress);
+
+            Point startOffset = descriptor.RecoveredMoveSettings.StartOffset;
+            Point endOffset = descriptor.RecoveredMoveSettings.EndOffset;
+            if (startOffset == Point.Zero
+                && endOffset == Point.Zero
+                && descriptor.Offset != Point.Zero)
             {
-                int fadeElapsedMs = Math.Max(0, localElapsedMs - descriptor.HoldDurationMs);
-                transitionProgress = Math.Clamp((float)fadeElapsedMs / descriptor.FadeDurationMs, 0f, 1f);
-                riseOffset = -descriptor.RiseDistancePx * transitionProgress;
+                startOffset = descriptor.Offset;
+                endOffset = descriptor.Offset;
             }
 
-            alpha = MathHelper.Lerp(descriptor.StartAlpha, descriptor.EndAlpha, transitionProgress);
+            animatedOffset = new Point(
+                startOffset.X + (int)Math.Round(
+                    (endOffset.X - startOffset.X) * transitionProgress,
+                    MidpointRounding.AwayFromZero),
+                startOffset.Y + (int)Math.Round(
+                    (endOffset.Y - startOffset.Y) * transitionProgress,
+                    MidpointRounding.AwayFromZero));
             return alpha > 0f;
+        }
+
+        private static float ResolveRecoveredAlphaValue(float fallbackAlpha, int recoveredAlphaValue)
+        {
+            return recoveredAlphaValue >= 0 && recoveredAlphaValue <= 255
+                ? recoveredAlphaValue / 255f
+                : Math.Clamp(fallbackAlpha, 0f, 1f);
         }
     }
 

@@ -6,6 +6,11 @@ namespace HaCreator.MapSimulator.Character
 {
     internal static class MorphClientActionResolver
     {
+        // IDA (`CActionMan::Init`, 0x41beb0) still seeds the client morph action table by
+        // iterating raw actions [0, 273) and skipping raw action 55 before morph lookup.
+        private const int ClientMorphActionTableExclusiveUpperBound = 273;
+        private const int ClientMorphActionTableSkippedRawActionCode = 55;
+
         private static readonly string[] PirateMorphAuthoredAttackAliases =
         {
             "fist",
@@ -703,7 +708,10 @@ namespace HaCreator.MapSimulator.Character
                 ["tank_msummon2"] = new[] { "sit" },
                 ["tank_mRush"] = new[] { "sit" },
                 ["rbooster_pre"] = new[] { "sit" },
-                ["rbooster"] = new[] { "sit" },
+                // Character/00002000.img keeps `rbooster` on `alert` first
+                // (`rbooster/0/action = alert`), with `sit` remaining as the
+                // checked fallback posture surface.
+                ["rbooster"] = new[] { "alert", "sit" },
                 ["rbooster_after"] = new[] { "sit" },
                 ["drillrush"] = new[] { "sit" },
                 ["mbooster"] = new[] { "sit" },
@@ -1900,6 +1908,18 @@ namespace HaCreator.MapSimulator.Character
             return CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
                 ? rawActionCode
                 : int.MaxValue;
+        }
+
+        private static bool IsClientConfirmedMorphActionName(string actionName)
+        {
+            if (!CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
+            {
+                return false;
+            }
+
+            return rawActionCode >= 0
+                   && rawActionCode < ClientMorphActionTableExclusiveUpperBound
+                   && rawActionCode != ClientMorphActionTableSkippedRawActionCode;
         }
     }
 }

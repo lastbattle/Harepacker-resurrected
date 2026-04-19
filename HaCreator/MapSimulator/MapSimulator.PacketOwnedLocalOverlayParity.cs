@@ -4478,6 +4478,7 @@ namespace HaCreator.MapSimulator
             int slot = 0;
             int itemId = 0;
             int requestIndex = -1;
+            bool hasRequestIndex = false;
             string detail = string.Empty;
             int offset = sizeof(byte);
 
@@ -4493,32 +4494,61 @@ namespace HaCreator.MapSimulator
                 offset += sizeof(int);
             }
 
-            if (payload.Length >= offset + sizeof(byte))
-            {
-                requestIndex = payload[offset];
-                offset += sizeof(byte);
-            }
-
             if (payload.Length > offset)
             {
-                if (payload.Length < offset + sizeof(ushort))
+                bool parsedTail = false;
+                string tailDecodeError = null;
+
+                // Primary shape: request-index encoded as a single byte.
+                if (payload.Length >= offset + sizeof(byte)
+                    && TryDecodeFieldHazardPetConsumeResultDetail(
+                        payload,
+                        offset + sizeof(byte),
+                        out string byteIndexedDetail,
+                        out tailDecodeError))
                 {
-                    error = "Pet-consume result detail is missing its Maple-string length prefix.";
-                    return false;
+                    requestIndex = payload[offset];
+                    hasRequestIndex = true;
+                    detail = byteIndexedDetail;
+                    parsedTail = true;
                 }
 
-                ushort detailLength = BitConverter.ToUInt16(payload, offset);
-                offset += sizeof(ushort);
-                if (payload.Length != offset + detailLength)
+                // Alternate observed shape in mixed simulator/live traces: Int32 request-index.
+                if (!parsedTail
+                    && payload.Length >= offset + sizeof(int)
+                    && TryDecodeFieldHazardPetConsumeResultDetail(
+                        payload,
+                        offset + sizeof(int),
+                        out string intIndexedDetail,
+                        out tailDecodeError))
                 {
-                    error = "Pet-consume result Maple-string detail length does not match the payload size.";
-                    return false;
+                    requestIndex = BitConverter.ToInt32(payload, offset);
+                    hasRequestIndex = true;
+                    detail = intIndexedDetail;
+                    parsedTail = true;
                 }
 
-                detail = Encoding.Default.GetString(payload, offset, detailLength);
+                // Fallback shape: detail-only payload with no explicit request-index targeting.
+                if (!parsedTail
+                    && TryDecodeFieldHazardPetConsumeResultDetail(
+                        payload,
+                        offset,
+                        out string detailOnlyText,
+                        out tailDecodeError))
+                {
+                    requestIndex = -1;
+                    hasRequestIndex = false;
+                    detail = detailOnlyText;
+                    parsedTail = true;
+                }
+
+                if (!parsedTail)
+                {
+                    error = tailDecodeError ?? "Pet-consume result payload has an unsupported tail shape.";
+                    return false;
+                }
             }
 
-            bool hasRequestIndex = requestIndex >= 0;
             result = new FieldHazardPetConsumeInboundResult(
                 kind,
                 slot,
@@ -4526,6 +4556,49 @@ namespace HaCreator.MapSimulator
                 requestIndex,
                 hasRequestIndex,
                 detail);
+            return true;
+        }
+
+        private static bool TryDecodeFieldHazardPetConsumeResultDetail(
+            byte[] payload,
+            int detailOffset,
+            out string detail,
+            out string error)
+        {
+            detail = string.Empty;
+            error = null;
+            if (payload == null)
+            {
+                error = "Pet-consume result payload is missing.";
+                return false;
+            }
+
+            if (detailOffset < 0 || detailOffset > payload.Length)
+            {
+                error = "Pet-consume result detail offset is out of range.";
+                return false;
+            }
+
+            if (payload.Length == detailOffset)
+            {
+                return true;
+            }
+
+            if (payload.Length < detailOffset + sizeof(ushort))
+            {
+                error = "Pet-consume result detail is missing its Maple-string length prefix.";
+                return false;
+            }
+
+            ushort detailLength = BitConverter.ToUInt16(payload, detailOffset);
+            int detailDataOffset = detailOffset + sizeof(ushort);
+            if (payload.Length != detailDataOffset + detailLength)
+            {
+                error = "Pet-consume result Maple-string detail length does not match the payload size.";
+                return false;
+            }
+
+            detail = Encoding.Default.GetString(payload, detailDataOffset, detailLength);
             return true;
         }
 

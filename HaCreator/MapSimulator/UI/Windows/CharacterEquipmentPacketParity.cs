@@ -146,8 +146,9 @@ namespace HaCreator.MapSimulator.UI
                             break;
                         }
                         default:
-                            rejectReason = $"Inventory-operation mode {operationMode} is unsupported for character completion matching.";
-                            return false;
+                            // CWvsContext::OnInventoryOperation falls through for unknown modes after reading
+                            // the common operation header, so keep scanning instead of failing the completion lane.
+                            break;
                     }
                 }
             }

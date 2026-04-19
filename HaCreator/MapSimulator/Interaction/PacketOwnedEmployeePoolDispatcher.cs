@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class PacketOwnedEmployeePoolDispatcher
     {
         private readonly SocialRoomEmployeePoolRuntime _poolRuntime = new();
+        private readonly Dictionary<int, SocialRoomKind> _employerKindHints = new();
         private SocialRoomKind? _activeKind;
         private bool _hasPacketState;
         private int _lastKnownEmployerId;
@@ -29,6 +30,28 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _poolRuntime.Restore(snapshot.EmployeePoolEntries);
+            _employerKindHints.Clear();
+            if (snapshot.EmployeePoolEntries != null)
+            {
+                for (int i = 0; i < snapshot.EmployeePoolEntries.Count; i++)
+                {
+                    SocialRoomEmployeePoolEntrySnapshot entry = snapshot.EmployeePoolEntries[i];
+                    if (entry == null || entry.EmployerId <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (TryResolveMerchantKindFromMiniRoomType(entry.MiniRoomType, out SocialRoomKind hintedKind))
+                    {
+                        _employerKindHints[entry.EmployerId] = hintedKind;
+                    }
+                    else
+                    {
+                        _employerKindHints[entry.EmployerId] = snapshot.Kind;
+                    }
+                }
+            }
+
             _activeKind = snapshot.Kind;
             _hasPacketState = _poolRuntime.HasEntries;
             _lastKnownEmployerId = ResolveLastKnownEmployerId();
@@ -63,11 +86,19 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (handled && IsMerchantKind(kind))
             {
+                bool hasRoutingHint = SocialRoomEmployeePoolCodec.TryDecodeRoutingHint(opcode, payload, out SocialRoomEmployeePoolCodec.RoutingHint routingHint, out _);
                 if (SocialRoomEmployeePoolCodec.TryDecodeEmployerId(payload, out int employerId, out _)
                     && employerId > 0)
                 {
                     _poolRuntime.SetPreferredEmployerId(employerId);
                     _lastKnownEmployerId = employerId;
+                    TrackEmployerKindHint(employerId, kind, hasRoutingHint ? routingHint.MiniRoomType : (byte)0);
+
+                    if (opcode == SocialRoomEmployeeOfficialSessionBridgeManager.EmployeeLeaveFieldOpcode
+                        && !_poolRuntime.HasEmployer(employerId))
+                    {
+                        _employerKindHints.Remove(employerId);
+                    }
                 }
 
                 _hasPacketState = _poolRuntime.HasEntries;
@@ -85,6 +116,18 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyList<SocialRoomEmployeePoolEntrySnapshot> BuildSnapshots()
         {
             return _poolRuntime.BuildSnapshots();
+        }
+
+        internal bool TryResolveKindHintForEmployer(int employerId, out SocialRoomKind kind)
+        {
+            int normalizedEmployerId = Math.Max(0, employerId);
+            if (normalizedEmployerId > 0 && _employerKindHints.TryGetValue(normalizedEmployerId, out kind))
+            {
+                return true;
+            }
+
+            kind = default;
+            return false;
         }
 
         internal void SyncRuntime(
@@ -238,6 +281,43 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool IsMerchantKind(SocialRoomKind kind)
         {
             return kind == SocialRoomKind.PersonalShop || kind == SocialRoomKind.EntrustedShop;
+        }
+
+        private static bool TryResolveMerchantKindFromMiniRoomType(byte miniRoomType, out SocialRoomKind kind)
+        {
+            switch (miniRoomType)
+            {
+                case 3:
+                    kind = SocialRoomKind.PersonalShop;
+                    return true;
+                case 4:
+                case 5:
+                    kind = SocialRoomKind.EntrustedShop;
+                    return true;
+                default:
+                    kind = default;
+                    return false;
+            }
+        }
+
+        private void TrackEmployerKindHint(int employerId, SocialRoomKind fallbackKind, byte miniRoomTypeHint)
+        {
+            int normalizedEmployerId = Math.Max(0, employerId);
+            if (normalizedEmployerId <= 0)
+            {
+                return;
+            }
+
+            if (TryResolveMerchantKindFromMiniRoomType(miniRoomTypeHint, out SocialRoomKind hintedKind))
+            {
+                _employerKindHints[normalizedEmployerId] = hintedKind;
+                return;
+            }
+
+            if (IsMerchantKind(fallbackKind))
+            {
+                _employerKindHints[normalizedEmployerId] = fallbackKind;
+            }
         }
 
         private static SocialRoomEmployeePoolCodec.RoutingHint BuildRoutingHint(SocialRoomEmployeePoolEntryState pooledEmployee)

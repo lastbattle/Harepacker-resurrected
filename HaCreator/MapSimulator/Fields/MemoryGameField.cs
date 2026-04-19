@@ -1749,10 +1749,7 @@ namespace HaCreator.MapSimulator.Fields
 
             _localTieRequestSent = true;
             _localTieRequestSentThisTurn = true;
-            _statusMessage = "Tie request sent. Waiting for the opponent's response.";
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
-            SyncMiniRoomRuntime();
-            message = _statusMessage;
+            message = "Tie request packet (50) sent.";
             return true;
         }
 
@@ -1782,15 +1779,12 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _localGiveUpRequestSent = true;
-            _statusMessage = "Give-up request sent. Waiting for the server response.";
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
-            SyncMiniRoomRuntime();
-            message = _statusMessage;
+            message = "Give-up request packet (52) sent.";
             return true;
         }
 
 
-        private bool TryApplyLeaveBookingStatus(int playerIndex, bool booked, out string message)
+        private bool TryApplyLeaveBookingStatus(int playerIndex, bool booked, out string message, bool preserveStatusMessage = false)
         {
             if (!IsValidPlayerIndex(playerIndex))
             {
@@ -1801,30 +1795,29 @@ namespace HaCreator.MapSimulator.Fields
 
             _leaveBookingStates[playerIndex] = booked;
             string playerName = ResolveParticipantName(playerIndex);
-            _statusMessage = booked
-                ? $"{playerName} booked a leave request for the next round."
-                : $"{playerName} canceled the pending leave request.";
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            if (!preserveStatusMessage)
+            {
+                _statusMessage = booked
+                    ? $"{playerName} booked a leave request for the next round."
+                    : $"{playerName} canceled the pending leave request.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            }
+
             SyncMiniRoomRuntime();
-            message = _statusMessage;
+            message = preserveStatusMessage
+                ? (booked
+                    ? "Leave-booking packet (56) sent."
+                    : "Leave-booking cancel packet (57) sent.")
+                : _statusMessage;
             return true;
         }
 
         private bool TryApplyOutgoingTieResponse(byte[] packetBytes, int tickCount, out string message)
         {
             bool accepted = packetBytes.Length <= 1 || packetBytes[1] != 0;
-            if (accepted)
-            {
-                _statusMessage = "Accepted the opponent's tie request. Waiting for the server response.";
-                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
-                SyncMiniRoomRuntime();
-                message = _statusMessage;
-                return true;
-            }
-
-            _statusMessage = "Declined the opponent's tie request.";
-            SyncMiniRoomRuntime();
-            message = _statusMessage;
+            message = accepted
+                ? "Tie-response packet (51) sent with accept=1."
+                : "Tie-response packet (51) sent with accept=0.";
             return true;
         }
 
@@ -1839,11 +1832,7 @@ namespace HaCreator.MapSimulator.Fields
                     return false;
                 }
 
-                string targetName = ResolveParticipantName(_localPlayerIndex == 0 ? 1 : 0);
-                _statusMessage = $"Ban request sent for {targetName}. Waiting for the server response.";
-                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
-                SyncMiniRoomRuntime();
-                message = _statusMessage;
+                message = "Ban request packet (60) sent.";
                 return true;
             }
 
@@ -1860,9 +1849,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            _statusMessage = $"Turn-up request sent for card {cardIndex}. Waiting for the server response.";
-            SyncMiniRoomRuntime();
-            message = _statusMessage;
+            message = $"Turn-up request packet (60) sent for card {cardIndex}.";
             return true;
         }
 
@@ -1874,12 +1861,9 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            _statusMessage = isReady
-                ? "Ready request sent. Waiting for the server response."
-                : "Ready-cancel request sent. Waiting for the server response.";
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
-            SyncMiniRoomRuntime();
-            message = _statusMessage;
+            message = isReady
+                ? "Ready request packet (58) sent."
+                : "Ready-cancel request packet (59) sent.";
             return true;
         }
 
@@ -1897,10 +1881,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            _statusMessage = "Start request sent. Waiting for the server board shuffle.";
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
-            SyncMiniRoomRuntime();
-            message = _statusMessage;
+            message = "Start request packet (61) sent.";
             return true;
         }
 

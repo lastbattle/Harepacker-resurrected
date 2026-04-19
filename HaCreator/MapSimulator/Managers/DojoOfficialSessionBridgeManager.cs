@@ -601,6 +601,11 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (TryMapFieldSpecificDispatchPacket(rawPacket, source, opcode, payload, "field-specific", out message))
+            {
+                return true;
+            }
+
             string mappingReason = "configured";
             if (!_opcodeMappings.TryGetValue(opcode, out int packetType))
             {
@@ -646,6 +651,17 @@ namespace HaCreator.MapSimulator.Managers
 
             if (wrapperPacketType < DojoField.PacketTypeClock || wrapperPacketType > DojoField.PacketTypeTimeOver)
             {
+                if (TryMapFieldSpecificDispatchPacket(
+                        rawPacket,
+                        source,
+                        wrapperPacketType,
+                        wrapperPayload,
+                        "shared-relay:field-specific",
+                        out message))
+                {
+                    return true;
+                }
+
                 if (wrapperPacketType != FieldSpecificDataOpcode
                     || !TryInferInboundPacketType(wrapperPacketType, wrapperPayload, out int inferredPacketType, out string mappingReason))
                 {
@@ -679,6 +695,40 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus =
                 $"Decoded shared Dojo dispatch opcode {opcode} through the current-wrapper relay as {DescribePacketType(wrapperPacketType)} " +
                 $"using the wrapper packet id prefix instead of payload-only inference.";
+            return true;
+        }
+
+        private bool TryMapFieldSpecificDispatchPacket(
+            byte[] rawPacket,
+            string source,
+            int opcode,
+            byte[] payload,
+            string dispatchLabel,
+            out DojoPacketInboxMessage message)
+        {
+            message = null;
+            if (opcode != FieldSpecificDataOpcode)
+            {
+                return false;
+            }
+
+            if (!DojoField.TryDecodeFieldSpecificPacketPayload(payload, out int packetType, out byte[] packetPayload, out _))
+            {
+                return false;
+            }
+
+            string mappedDetail = $"{dispatchLabel}:prefix:{DescribePacketType(packetType)}";
+            message = new DojoPacketInboxMessage(
+                DojoPacketMessageKind.RawPacket,
+                value: 0,
+                option: string.Empty,
+                source: source,
+                rawText: $"packetraw {Convert.ToHexString(rawPacket)}",
+                packetType: packetType,
+                payload: packetPayload);
+            RecordRecentPacket(opcode, rawPacket, packetType, mappedDetail);
+            LastStatus =
+                $"Decoded Dojo dispatch opcode {opcode} via {dispatchLabel} packet-id prefix as {DescribePacketType(packetType)} before payload inference.";
             return true;
         }
 

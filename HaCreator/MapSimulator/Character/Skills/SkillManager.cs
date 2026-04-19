@@ -532,7 +532,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             "swingT1",
             "swingT2",
             "swingT3",
-            "swingTF"
+            "swingTF",
+            "swingT2PoleArm"
         };
         private static readonly string[] ClientRandomMovingShootPolearmSwingActionNames =
         {
@@ -2231,7 +2232,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int BEHOLDER_BUFF_PAD_ID = -13200094;
         private static readonly int[] PassiveWeaponSpecificStatWeaponCodes =
         {
-            30, 31, 32, 33, 34, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 52, 53, 56, 58
+            30, 31, 32, 33, 34, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 52, 53, 56, 57, 58
         };
         private const float TeslaTriangleMinimumEdgeLengthSq = 16f;
         private static readonly int[] WildHunterJaguarTamingMobCandidateIds =
@@ -2255,6 +2256,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private int _clientVehicleValidStartTime = int.MinValue;
         private readonly Dictionary<int, int> _recentOwnerAttackTargetTimes = new();
         private readonly HashSet<int> _activeRepeatSustainTimerCancelFamilyKeys = new();
+        private readonly HashSet<int> _activeClientTimerBatchCancelFamilyKeys = new();
+        private bool _isDispatchingClientTimerExpirationBatch;
 
         /// <summary>
         /// Queue a skill for execution (used by skill macros)
@@ -2684,6 +2687,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (ShouldSuppressClientTimerBatchCancelRequest(skillId))
+            {
+                return false;
+            }
+
             int normalizedPacketSkillId = ClientSkillCancelResolver.NormalizeClientCancelRequestSkillId(skillId);
             int[] cancelSkillIds = ResolveClientCancelRequestSkillIds(skillId);
             if (cancelSkillIds.Length == 0)
@@ -2716,6 +2724,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             OnClientSkillCancelRequested?.Invoke(normalizedPacketSkillId, skillId, currentTime);
 
             return true;
+        }
+
+        private bool ShouldSuppressClientTimerBatchCancelRequest(int skillId)
+        {
+            if (!_isDispatchingClientTimerExpirationBatch || skillId <= 0)
+            {
+                return false;
+            }
+
+            return !TryRegisterClientTimerBatchCancelFamily(
+                _activeClientTimerBatchCancelFamilyKeys,
+                skillId,
+                ResolveClientCancelRequestSkillIds);
+        }
+
+        internal static bool TryRegisterClientTimerBatchCancelFamily(
+            ISet<int> activeCancelFamilyKeys,
+            int skillId,
+            Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds)
+        {
+            if (activeCancelFamilyKeys == null || skillId <= 0)
+            {
+                return false;
+            }
+
+            int cancelFamilyKey = ResolveClientCancelFamilyBatchKey(skillId, resolveCancelRequestSkillIds);
+            if (cancelFamilyKey <= 0)
+            {
+                return false;
+            }
+
+            return activeCancelFamilyKeys.Add(cancelFamilyKey);
         }
 
         internal static bool ShouldDispatchClientSkillCancelRequestForParity(
@@ -9884,6 +9924,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ActionTextContains(actionName, "screw");
         }
 
+        private static bool IsConstrainedType40BoundJumpActionName(string actionName)
+        {
+            // Keep non-explicit type-40 ownership on flash-jump-authored action profiles.
+            return ActionTextContains(actionName, "doublejump")
+                   || ActionTextContains(actionName, "flash jump")
+                   || ActionTextContains(actionName, "archerdoublejump")
+                   || ActionTextContains(actionName, "icedoublejump");
+        }
+
         private static bool HasBoundJumpMovementProfile(
             SkillData skill,
             IEnumerable<string> candidateActions = null,
@@ -9904,8 +9953,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             candidateActions ??= EnumerateMovementActionCandidates(skill);
-            return candidateActions.Any(IsBoundJumpActionName)
-                   || IsBoundJumpActionName(movementActionName)
+            return candidateActions.Any(IsConstrainedType40BoundJumpActionName)
+                   || IsConstrainedType40BoundJumpActionName(movementActionName)
                    || SkillTextContains(skill, "flash jump");
         }
 
@@ -12634,6 +12683,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             TryRegisterSecondaryHookingChainOwner(skill, mob, currentTime);
 
             int? damagePercentOverride = ResolveTargetDamagePercentOverride(skill, levelData, targetOrder);
+            int? shuffledHitBranchOrdinal = TryResolveClientShuffledTargetHitAnimationOrdinal(skill);
             for (int i = 0; i < attackCount; i++)
             {
                 int damage = CalculateSkillDamage(skill, level, damagePercentOverride);
@@ -12660,7 +12710,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     impactAnimation ?? skill?.HitEffect,
                     targetOrder,
                     i,
-                    attackCount);
+                    attackCount,
+                    shuffledHitBranchOrdinal);
                 ShowSkillDamageNumber(mob, damage, isCritical, presentationTime, i, damagePresentationOffsetY);
                 SpawnHitEffect(
                     skill.SkillId,
@@ -14045,6 +14096,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static float ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitude(ActiveProjectile projectile)
         {
+            return ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitudeY(projectile);
+        }
+
+        internal static float ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitudeX(ActiveProjectile projectile)
+        {
+            const float defaultMaxMagnitude = 96f;
+            return defaultMaxMagnitude;
+        }
+
+        internal static float ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitudeY(ActiveProjectile projectile)
+        {
             const float defaultMaxMagnitude = 96f;
             if (projectile == null || (!projectile.IsQueuedFinalAttack && !projectile.IsQueuedSparkAttack))
             {
@@ -14052,18 +14114,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int laneOffsetY = ResolveQueuedFollowUpBulletSourceLaneOffsetY(projectile);
-            // Keep the client lane spread surface plus a small source nudge budget,
-            // while still rejecting large post-launch drift.
+            // Keep the client lane spread surface plus a small source nudge budget
+            // on the Y lane while still rejecting large post-launch drift.
             return Math.Max(defaultMaxMagnitude, MathF.Abs(laneOffsetY) + 32f);
         }
 
         internal static bool IsFiniteQueuedFollowUpSourceMicroOffset(Vector2 offset, ActiveProjectile projectile)
         {
-            float maxMagnitude = ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitude(projectile);
+            float maxMagnitudeX = ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitudeX(projectile);
+            float maxMagnitudeY = ResolveQueuedFollowUpSourceMicroOffsetMaxMagnitudeY(projectile);
             return float.IsFinite(offset.X)
                    && float.IsFinite(offset.Y)
-                   && MathF.Abs(offset.X) <= maxMagnitude
-                   && MathF.Abs(offset.Y) <= maxMagnitude;
+                   && MathF.Abs(offset.X) <= maxMagnitudeX
+                   && MathF.Abs(offset.Y) <= maxMagnitudeY;
         }
 
         internal static bool IsFiniteQueuedFollowUpSourceMicroOffset(Vector2 offset)
@@ -14469,6 +14532,40 @@ namespace HaCreator.MapSimulator.Character.Skills
                 presentation.SourcePoint,
                 presentation.DestinationPoint,
                 progress);
+        }
+
+        internal static Vector2 ResolveBulletAnimationInterpolatedPositionAfterStop(
+            BulletAnimationPresentation presentation,
+            int currentTime,
+            int? stopTime,
+            Vector2? stopPosition)
+        {
+            Vector2 interpolated = ResolveBulletAnimationInterpolatedPosition(
+                presentation,
+                currentTime);
+            if (presentation == null || !stopTime.HasValue || !stopPosition.HasValue)
+            {
+                return interpolated;
+            }
+
+            int registeredStart = presentation.StartTime;
+            int registeredEnd = presentation.EndTime;
+            int stop = Math.Clamp(stopTime.Value, registeredStart, registeredEnd);
+            if (currentTime <= stop || stop >= registeredEnd)
+            {
+                return currentTime >= registeredEnd
+                    ? presentation.DestinationPoint
+                    : stopPosition.Value;
+            }
+
+            float postStopProgress = MathHelper.Clamp(
+                (currentTime - stop) / (float)Math.Max(1, registeredEnd - stop),
+                0f,
+                1f);
+            return Vector2.Lerp(
+                stopPosition.Value,
+                presentation.DestinationPoint,
+                postStopProgress);
         }
 
         internal static bool ShouldUseQueuedFollowUpBulletPresentationPath(ActiveProjectile projectile)
@@ -15756,6 +15853,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (projectile != null && !projectile.IsExpired && !projectile.IsExploding)
             {
+                owner.StopTime = null;
+                owner.StopPosition = null;
                 owner.CurrentPosition = ResolveBulletAnimationOwnerCurrentPosition(
                     projectile,
                     owner.Presentation,
@@ -15765,14 +15864,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (projectile?.IsExploding == true || projectile?.IsExpired == true)
+            if (!owner.StopTime.HasValue && currentTime >= owner.Presentation.StartTime)
             {
-                owner.StopTime ??= currentTime;
+                owner.StopTime = currentTime;
+                owner.StopPosition = owner.PreviousPosition;
             }
 
-            owner.CurrentPosition = ResolveBulletAnimationInterpolatedPosition(
+            owner.CurrentPosition = ResolveBulletAnimationInterpolatedPositionAfterStop(
                 owner.Presentation,
-                currentTime);
+                currentTime,
+                owner.StopTime,
+                owner.StopPosition);
             owner.FacingRight = ResolveBulletAnimationFacing(
                 owner.Presentation,
                 owner.CurrentPosition,
@@ -16575,9 +16677,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 summon.LastAttackTime = currentTime;
-                // CUserPool::DoHealNearHealingRobot probes local first, then remote support robots,
-                // and stops once one robot successfully starts the heal request path.
-                break;
+                // Client `CUserPool::DoHealNearHealingRobot` probes the local robot first, then
+                // iterates party-member robots without a first-success short-circuit.
             }
         }
 
@@ -16846,7 +16947,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             SkillAnimation fallbackAnimation,
             int targetOrder,
             int damageIndex = 0,
-            int attackCount = 1)
+            int attackCount = 1,
+            int? shuffledHitBranchOrdinal = null)
         {
             if (skill?.TargetHitEffects == null || skill.TargetHitEffects.Count == 0)
             {
@@ -16868,6 +16970,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return multipleLayerAnimation;
                 }
+            }
+
+            if (UsesClientShuffledTargetHitAnimation(skill.SkillId))
+            {
+                return ResolveClientShuffledTargetHitAnimation(
+                           skill.TargetHitEffects,
+                           shuffledHitBranchOrdinal)
+                       ?? fallbackAnimation;
             }
 
             if (UsesClientFinalDamageLineSubHitAnimation(skill.SkillId))
@@ -16928,6 +17038,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == 15111004;
         }
 
+        internal static bool UsesClientShuffledTargetHitAnimation(int skillId)
+        {
+            // `CSkill_HitAni::CSkill_HitAni` routes `4211004` through `CreateShuffle`,
+            // which selects one random `asHitUOL` entry per target before damage lines.
+            return skillId == 4211004;
+        }
+
         internal static bool UsesClientTargetIndexedHitAnimation(int skillId)
         {
             // `CSkill_HitAni::operator()` is invoked with the live target loop index before
@@ -16975,6 +17092,83 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        internal static int? TryResolveClientShuffledTargetHitAnimationOrdinal(
+            SkillData skill,
+            int? shuffledHitBranchOrdinalOverride = null)
+        {
+            return UsesClientShuffledTargetHitAnimation(skill?.SkillId ?? 0)
+                ? ResolveClientShuffledTargetHitAnimationOrdinal(
+                    skill?.TargetHitEffects,
+                    shuffledHitBranchOrdinalOverride)
+                : null;
+        }
+
+        internal static int? ResolveClientShuffledTargetHitAnimationOrdinal(
+            IReadOnlyList<SkillAnimation> targetHitEffects,
+            int? shuffledHitBranchOrdinalOverride = null)
+        {
+            int authoredBranchCount = CountAuthoredClientTargetHitAnimationBranches(targetHitEffects);
+            if (authoredBranchCount <= 0)
+            {
+                return null;
+            }
+
+            return shuffledHitBranchOrdinalOverride.HasValue
+                ? Math.Clamp(shuffledHitBranchOrdinalOverride.Value, 0, authoredBranchCount - 1)
+                : Random.Next(authoredBranchCount);
+        }
+
+        internal static SkillAnimation ResolveClientShuffledTargetHitAnimation(
+            IReadOnlyList<SkillAnimation> targetHitEffects,
+            int? shuffledHitBranchOrdinal = null)
+        {
+            int? resolvedOrdinal = ResolveClientShuffledTargetHitAnimationOrdinal(
+                targetHitEffects,
+                shuffledHitBranchOrdinal);
+            if (!resolvedOrdinal.HasValue)
+            {
+                return null;
+            }
+
+            int remaining = resolvedOrdinal.Value;
+            foreach (SkillAnimation animation in targetHitEffects)
+            {
+                if (animation == null)
+                {
+                    continue;
+                }
+
+                if (remaining == 0)
+                {
+                    return animation;
+                }
+
+                remaining--;
+            }
+
+            return null;
+        }
+
+        private static int CountAuthoredClientTargetHitAnimationBranches(
+            IReadOnlyList<SkillAnimation> targetHitEffects)
+        {
+            if (targetHitEffects == null || targetHitEffects.Count == 0)
+            {
+                return 0;
+            }
+
+            int authoredBranchCount = 0;
+            foreach (SkillAnimation animation in targetHitEffects)
+            {
+                if (animation != null)
+                {
+                    authoredBranchCount++;
+                }
+            }
+
+            return authoredBranchCount;
         }
 
         private static SkillAnimation ResolveIndexedTargetHitAnimation(
@@ -23923,6 +24117,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (IsDirectBuffIconFamilyProperty(propertyName)
+                && IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel))
+            {
+                label = TransformBuffLabel;
+                return true;
+            }
+
             if ((isX || isY || isZ || isU || isV || isW)
                 && activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
                 && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "PDD", "MDD", "ACC", "EVA"))
@@ -24070,6 +24271,48 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static bool IsVehicleTransformPlaceholderContext(
+            IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel)
+        {
+            if (activeTemporaryStatsByLabel == null
+                || activeTemporaryStatsByLabel.Count == 0
+                || !activeTemporaryStatsByLabel.ContainsKey(TransformBuffLabel))
+            {
+                return false;
+            }
+
+            if (!HasAnyActiveTemporaryStats(
+                    activeTemporaryStatsByLabel,
+                    "PAD",
+                    "PDD",
+                    "MAD",
+                    "MDD",
+                    MaxHpBuffLabel,
+                    MaxMpBuffLabel))
+            {
+                return false;
+            }
+
+            foreach (string activeLabel in activeTemporaryStatsByLabel.Keys)
+            {
+                if (string.IsNullOrWhiteSpace(activeLabel)
+                    || string.Equals(activeLabel, TransformBuffLabel, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(activeLabel, "PAD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(activeLabel, "PDD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(activeLabel, "MAD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(activeLabel, "MDD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(activeLabel, MaxHpBuffLabel, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(activeLabel, MaxMpBuffLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return true;
         }
 
         private static bool TryResolveRollOfTheDicePlaceholderTemporaryStatLabel(
@@ -24660,6 +24903,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             BuffTemporaryStatPresentation familyOwnerTemporaryStat,
             ISet<string> directBuffIconEligibleLabels)
         {
+            if (ShouldPreferSkillIconForTransformFamily(
+                    temporaryStats,
+                    primaryTemporaryStat,
+                    familyOwnerTemporaryStat))
+            {
+                return null;
+            }
+
             if (HasResolvedExplicitBuffIcon(primaryTemporaryStat, directBuffIconEligibleLabels))
             {
                 return primaryTemporaryStat;
@@ -24685,6 +24936,46 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private static bool ShouldPreferSkillIconForTransformFamily(
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats,
+            BuffTemporaryStatPresentation primaryTemporaryStat,
+            BuffTemporaryStatPresentation familyOwnerTemporaryStat)
+        {
+            if (!string.Equals(primaryTemporaryStat?.Label, TransformBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(familyOwnerTemporaryStat?.Label, TransformBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || temporaryStats == null
+                || temporaryStats.Count == 0)
+            {
+                return false;
+            }
+
+            bool hasVehicleStatFamily = false;
+            for (int i = 0; i < temporaryStats.Count; i++)
+            {
+                string label = temporaryStats[i]?.Label;
+                if (string.IsNullOrWhiteSpace(label)
+                    || string.Equals(label, TransformBuffLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (string.Equals(label, "PAD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(label, "PDD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(label, "MAD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(label, "MDD", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(label, MaxHpBuffLabel, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(label, MaxMpBuffLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    hasVehicleStatFamily = true;
+                    continue;
+                }
+
+                return false;
+            }
+
+            return hasVehicleStatFamily;
         }
 
         private static BuffTemporaryStatPresentation ResolveDisplayOwnerTemporaryStat(
@@ -25354,6 +25645,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 56 => mentions("shining rod mastery")
                       || mentions("shining rod expert")
                       || mentionsFamilyWithGenericWeaponMastery("shining rod", "shining rods"),
+                57 => mentions("desperado mastery")
+                      || mentions("desperado expert")
+                      || mentionsFamilyWithGenericWeaponMastery("desperado", "desperados"),
                 58 => mentions("soul shooter mastery")
                       || mentions("soul shooter expert")
                       || mentionsFamilyWithGenericWeaponMastery("soul shooter", "soul shooters"),
@@ -27096,45 +27390,55 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Select(timer => new ClientSkillTimerExpiration(timer.SkillId, timer.Source, timer.ExpireTime, timer.TimerKey))
                 .ToArray();
 
-            OnClientSkillTimersExpiredBatch?.Invoke(expirations);
-            RouteExpiredRepeatSustainTimerBatchToClientCancel(
-                expirations,
-                ResolveClientCancelRequestSkillIds,
-                RequestClientSkillCancelFromRepeatSustainTimer);
-            RouteExpiredCycloneTimerBatchToClientCancel(
-                expirations,
-                ResolveClientCancelRequestSkillIds,
-                (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
-            RouteExpiredSkillZoneTimerBatchToClientCancel(
-                expirations,
-                TryPrimeExpiredLocalSkillZoneNaturalExpiry,
-                ResolveClientCancelRequestSkillIds,
-                (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
-            RouteExpiredLocalSummonTimerBatchToClientCancel(
-                expirations,
-                TryPrimeExpiredLocalSummonNaturalExpiry,
-                ResolveClientCancelRequestSkillIds,
-                (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
-            RouteExpiredBuffTimerBatchToClientCancel(
-                expirations,
-                ResolveClientCancelRequestSkillIds,
-                (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
-
-            foreach (ClientSkillTimer timer in orderedTimers)
+            _isDispatchingClientTimerExpirationBatch = true;
+            _activeClientTimerBatchCancelFamilyKeys.Clear();
+            try
             {
-                OnClientSkillTimerExpired?.Invoke(timer.SkillId, timer.Source);
-                if (string.Equals(timer.Source, ClientTimerSourceSummonExpire, StringComparison.Ordinal)
-                    && timer.TimerKey > 0)
-                {
-                    continue;
-                }
+                OnClientSkillTimersExpiredBatch?.Invoke(expirations);
+                RouteExpiredRepeatSustainTimerBatchToClientCancel(
+                    expirations,
+                    ResolveClientCancelRequestSkillIds,
+                    RequestClientSkillCancelFromRepeatSustainTimer);
+                RouteExpiredCycloneTimerBatchToClientCancel(
+                    expirations,
+                    ResolveClientCancelRequestSkillIds,
+                    (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
+                RouteExpiredSkillZoneTimerBatchToClientCancel(
+                    expirations,
+                    TryPrimeExpiredLocalSkillZoneNaturalExpiry,
+                    ResolveClientCancelRequestSkillIds,
+                    (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
+                RouteExpiredLocalSummonTimerBatchToClientCancel(
+                    expirations,
+                    TryPrimeExpiredLocalSummonNaturalExpiry,
+                    ResolveClientCancelRequestSkillIds,
+                    (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
+                RouteExpiredBuffTimerBatchToClientCancel(
+                    expirations,
+                    ResolveClientCancelRequestSkillIds,
+                    (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
 
-                if (string.Equals(timer.Source, ClientTimerSourceRepeatSustainEnd, StringComparison.Ordinal))
+                foreach (ClientSkillTimer timer in orderedTimers)
                 {
-                    continue;
-                }
+                    OnClientSkillTimerExpired?.Invoke(timer.SkillId, timer.Source);
+                    if (string.Equals(timer.Source, ClientTimerSourceSummonExpire, StringComparison.Ordinal)
+                        && timer.TimerKey > 0)
+                    {
+                        continue;
+                    }
 
-                timer.OnExpired(currentTime);
+                    if (string.Equals(timer.Source, ClientTimerSourceRepeatSustainEnd, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    timer.OnExpired(currentTime);
+                }
+            }
+            finally
+            {
+                _activeClientTimerBatchCancelFamilyKeys.Clear();
+                _isDispatchingClientTimerExpirationBatch = false;
             }
         }
 

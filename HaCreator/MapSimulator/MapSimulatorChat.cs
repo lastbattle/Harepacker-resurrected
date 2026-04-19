@@ -2520,19 +2520,30 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (key == Keys.Left || key == Keys.Right)
-            {
-                ToggleWhisperTargetPickerModalComboDropdown();
-                return true;
-            }
-
-            if (key != Keys.Down || _isWhisperTargetPickerComboDropdownOpen)
+            if (!ShouldToggleWhisperTargetPickerModalComboDropdownOnArrowKey(
+                    _isWhisperTargetPickerComboDropdownOpen,
+                    key))
             {
                 return false;
             }
 
             ToggleWhisperTargetPickerModalComboDropdown();
             return true;
+        }
+
+        internal static bool ShouldToggleWhisperTargetPickerModalComboDropdownOnArrowKey(
+            bool isDropdownOpen,
+            Keys key)
+        {
+            // Client CCtrlComboBox::OnKey routes VK_LEFT/VK_RIGHT/VK_DOWN through BtClicked
+            // only on the combo owner path. When the select window is already open,
+            // CCtrlComboBoxSelect::OnKey owns VK_UP/VK_DOWN/VK_RETURN and forwards others.
+            if (isDropdownOpen)
+            {
+                return false;
+            }
+
+            return key == Keys.Left || key == Keys.Right || key == Keys.Down;
         }
 
         internal static int ResolveWhisperTargetPickerFirstVisibleIndex(

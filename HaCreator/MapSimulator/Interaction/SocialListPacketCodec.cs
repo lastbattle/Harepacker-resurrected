@@ -63,7 +63,10 @@ namespace HaCreator.MapSimulator.Interaction
         string GroupName,
         int ChannelId,
         byte Flag,
-        bool InShop);
+        bool InShop,
+        bool IsListenBlocked = false,
+        bool IsTalkBlocked = false,
+        bool HasBlockState = false);
 
     internal enum SocialListClientFriendResultKind : byte
     {
@@ -489,6 +492,26 @@ namespace HaCreator.MapSimulator.Interaction
                             entries[i] = entries[i] with { InShop = inShop };
                         }
 
+                        for (int i = 0; i < entries.Count; i++)
+                        {
+                            bool isListenBlocked = reader.ReadInt32() != 0;
+                            entries[i] = entries[i] with
+                            {
+                                IsListenBlocked = isListenBlocked,
+                                HasBlockState = true
+                            };
+                        }
+
+                        for (int i = 0; i < entries.Count; i++)
+                        {
+                            bool isTalkBlocked = reader.ReadInt32() != 0;
+                            entries[i] = entries[i] with
+                            {
+                                IsTalkBlocked = isTalkBlocked,
+                                HasBlockState = true
+                            };
+                        }
+
                         packet = new SocialListClientFriendResultPacket(kind, entries, null, 0, 0, 0, null);
                         return true;
                     }
@@ -803,7 +826,15 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
 
                     case SocialListClientPartyResultKind.Notice44:
-                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x13D6, kind));
+                        packet = new SocialListClientPartyResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<SocialListClientPartyEntry>(),
+                            0,
+                            0,
+                            0,
+                            null,
+                            $"{ResolvePartyResultNoticeText(0x13D6, kind)} {ResolvePartyResultNoticeText(0x017B, SocialListClientPartyResultKind.Notice37)}".Trim());
                         return true;
 
                     case SocialListClientPartyResultKind.NoticeOptionalMessage:

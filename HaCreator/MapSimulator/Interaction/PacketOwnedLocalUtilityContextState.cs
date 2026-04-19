@@ -393,6 +393,43 @@ namespace HaCreator.MapSimulator.Interaction
             RecordRadioScheduleMutation("runtime-character-reset", int.MinValue);
         }
 
+        public void RestoreRadioScheduleState(
+            int boundCharacterId,
+            bool hasContextValue,
+            string trackDescriptor,
+            int timeValue,
+            int mutationSequence,
+            string mutationSource,
+            int mutationTick,
+            int runtimeCharacterId)
+        {
+            int resolvedBoundCharacterId = NormalizeCharacterId(boundCharacterId);
+            ObserveRadioScheduleRuntimeCharacterId(runtimeCharacterId);
+            RadioScheduleBoundCharacterId = resolvedBoundCharacterId;
+            HasRadioScheduleContextValue = hasContextValue;
+            RadioScheduleTrackDescriptor = hasContextValue && !string.IsNullOrWhiteSpace(trackDescriptor)
+                ? trackDescriptor.Trim()
+                : string.Empty;
+            RadioScheduleTimeValue = hasContextValue ? Math.Max(0, timeValue) : 0;
+            RadioScheduleMutationSequence = Math.Max(0, mutationSequence);
+            RadioScheduleLastMutationSource = string.IsNullOrWhiteSpace(mutationSource)
+                ? "persisted-restore"
+                : mutationSource.Trim();
+            RadioScheduleLastMutationTick = mutationTick;
+            _recentRadioScheduleMutations.Clear();
+            string value = HasRadioScheduleContextValue
+                ? $"{RadioScheduleTrackDescriptor}@{RadioScheduleTimeValue}s"
+                : "unset";
+            string tick = RadioScheduleLastMutationTick == int.MinValue
+                ? "persisted"
+                : RadioScheduleLastMutationTick.ToString();
+            string runtimeCharacter = RadioScheduleLastObservedRuntimeCharacterId > 0
+                ? RadioScheduleLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            _recentRadioScheduleMutations.Add(
+                $"seq={RadioScheduleMutationSequence} value={value} source={RadioScheduleLastMutationSource} tick={tick} boundCharacter={resolvedBoundCharacterId} runtimeCharacter={runtimeCharacter}");
+        }
+
         public void SetRadioScheduleContextValue(
             string trackDescriptor,
             int timeValue,

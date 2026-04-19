@@ -134,6 +134,7 @@ namespace HaCreator.MapSimulator.UI
         internal event Action<int> QuestRequested;
         internal event Action<int, bool> QuestLogRequested;
         internal event Action<int> QuestRecentUpdateAcknowledged;
+        internal event Action<int> QuestTitleTooltipCleared;
         internal event Action<string> StatusMessageRequested;
         internal event Action QuestDeleted;
         internal event Action TrackerCleared;
@@ -603,6 +604,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             QuestRecentUpdateAcknowledged?.Invoke(questId);
+            QuestTitleTooltipCleared?.Invoke(questId);
             ResetSelectionAfterMutation();
             QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
             HandleEmptySnapshotVisibility(refreshedSnapshot);
@@ -624,6 +626,9 @@ namespace HaCreator.MapSimulator.UI
             HashSet<int> previousTrackedQuestIds = _trackedQuestIds.Count == 0
                 ? null
                 : _trackedQuestIds.ToHashSet();
+            HashSet<int> previousHiddenAutoQuestIds = clearHiddenAutoTombstones && _hiddenAutoQuestIds.Count > 0
+                ? _hiddenAutoQuestIds.ToHashSet()
+                : null;
 
             _trackedQuestIds.Clear();
             if (clearHiddenAutoTombstones)
@@ -649,6 +654,15 @@ namespace HaCreator.MapSimulator.UI
                 foreach (int removedQuestId in previousTrackedQuestIds)
                 {
                     QuestRecentUpdateAcknowledged?.Invoke(removedQuestId);
+                    QuestTitleTooltipCleared?.Invoke(removedQuestId);
+                }
+            }
+
+            if (previousHiddenAutoQuestIds != null)
+            {
+                foreach (int removedQuestId in previousHiddenAutoQuestIds)
+                {
+                    QuestTitleTooltipCleared?.Invoke(removedQuestId);
                 }
             }
 
@@ -719,6 +733,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_trackedQuestIds.Count > 0 || _hiddenAutoQuestIds.Count > 0)
                 {
+                    NotifyQuestTooltipCleared(_trackedQuestIds);
+                    NotifyQuestTooltipCleared(_hiddenAutoQuestIds);
                     _trackedQuestIds.Clear();
                     _hiddenAutoQuestIds.Clear();
                     SavePersistedState();
@@ -741,8 +757,34 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool stateChanged = false;
-            stateChanged |= _trackedQuestIds.RemoveAll(questId => !_activeQuestIdsBuffer.Contains(questId)) > 0;
-            stateChanged |= _hiddenAutoQuestIds.RemoveWhere(questId => !_activeQuestIdsBuffer.Contains(questId)) > 0;
+            int removedTrackedCount = _trackedQuestIds.RemoveAll(questId =>
+            {
+                if (_activeQuestIdsBuffer.Contains(questId))
+                {
+                    return false;
+                }
+
+                QuestTitleTooltipCleared?.Invoke(questId);
+                return true;
+            });
+            stateChanged |= removedTrackedCount > 0;
+            List<int> removedHiddenAutoQuestIds = null;
+            _hiddenAutoQuestIds.RemoveWhere(questId =>
+            {
+                if (_activeQuestIdsBuffer.Contains(questId))
+                {
+                    return false;
+                }
+
+                removedHiddenAutoQuestIds ??= new List<int>();
+                removedHiddenAutoQuestIds.Add(questId);
+                return true;
+            });
+            if (removedHiddenAutoQuestIds != null)
+            {
+                NotifyQuestTooltipCleared(removedHiddenAutoQuestIds);
+                stateChanged = true;
+            }
 
             _filteredEntriesBuffer.Clear();
             int trackedCount = 0;
@@ -1465,6 +1507,7 @@ namespace HaCreator.MapSimulator.UI
             QuestAlarmSnapshot snapshot = RefreshFilteredSnapshot();
             string questTitle = TryGetQuestTitle(snapshot, questId);
             QuestRecentUpdateAcknowledged?.Invoke(questId);
+            QuestTitleTooltipCleared?.Invoke(questId);
             _trackedQuestIds.Remove(questId);
             _hiddenAutoQuestIds.Add(questId);
 
@@ -1486,6 +1529,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 return;
             }
+
+            NotifyQuestTooltipCleared(_trackedQuestIds);
+            NotifyQuestTooltipCleared(_hiddenAutoQuestIds);
 
             foreach (QuestAlarmEntrySnapshot entry in fullSnapshot.Entries ?? Array.Empty<QuestAlarmEntrySnapshot>())
             {
@@ -1864,6 +1910,23 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return line.IsComplete ? ProgressGreenColor : ProgressOrangeColor;
+        }
+
+        private void NotifyQuestTooltipCleared(IEnumerable<int> questIds)
+        {
+            if (questIds == null)
+            {
+                return;
+            }
+
+            HashSet<int> notifiedQuestIds = new();
+            foreach (int questId in questIds)
+            {
+                if (questId > 0 && notifiedQuestIds.Add(questId))
+                {
+                    QuestTitleTooltipCleared?.Invoke(questId);
+                }
+            }
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

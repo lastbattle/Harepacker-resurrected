@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.UI
         private const int SkillBookCursorYOffset = 20;
         private const int QuickSlotCursorYOffset = 20;
         private const int StatusBarCooldownTrayCursorYOffset = -128;
+        private const int StatusBarOffBarCooldownTrayCursorXOffset = 20;
         private const int StatusBarOffBarCooldownTrayCursorYOffset = 20;
         private const int MountedSkillTooltipFrameWidth = 193;
         private const int MountedSkillTooltipFrameHeight = 102;
@@ -77,7 +78,9 @@ namespace HaCreator.MapSimulator.UI
                 SkillTooltipAnchorOwner.SkillBook => new Point(cursorPosition.X, cursorPosition.Y + SkillBookCursorYOffset),
                 SkillTooltipAnchorOwner.QuickSlot => new Point(cursorPosition.X, cursorPosition.Y + QuickSlotCursorYOffset),
                 SkillTooltipAnchorOwner.StatusBarCooldownTray => new Point(cursorPosition.X, cursorPosition.Y + StatusBarCooldownTrayCursorYOffset),
-                SkillTooltipAnchorOwner.StatusBarOffBarCooldownTray => new Point(cursorPosition.X, cursorPosition.Y + StatusBarOffBarCooldownTrayCursorYOffset),
+                SkillTooltipAnchorOwner.StatusBarOffBarCooldownTray => new Point(
+                    cursorPosition.X + StatusBarOffBarCooldownTrayCursorXOffset,
+                    cursorPosition.Y + StatusBarOffBarCooldownTrayCursorYOffset),
                 _ => new Point(cursorPosition.X + LegacyTooltipOffsetX, cursorPosition.Y + LegacyTooltipOffsetY)
             };
         }

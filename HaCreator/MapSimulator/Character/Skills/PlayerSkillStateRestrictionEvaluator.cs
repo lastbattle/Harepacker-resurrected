@@ -59,6 +59,63 @@ namespace HaCreator.MapSimulator.Character.Skills
             1932036,
             1932015
         };
+        private static readonly HashSet<int> ClientMeleeAirborneNoFootholdForbiddenSkillIds = new()
+        {
+            1009,
+            1020,
+            1121001,
+            1121006,
+            1221007,
+            1311006,
+            1321001,
+            1321003,
+            15111003,
+            15111004,
+            20000014,
+            20000015,
+            20001009,
+            20001020,
+            20011009,
+            20011020,
+            21000002,
+            21100001,
+            21100002,
+            21110007,
+            21110008,
+            21120009,
+            21120010,
+            30001009,
+            30001020,
+            32001007,
+            32001008,
+            32001009,
+            32001010,
+            32001011,
+            33111002,
+            35001003,
+            35121004,
+            4211002,
+            4221001,
+            4311003,
+            4321000,
+            4321001,
+            4331000,
+            4331004,
+            4331005,
+            4341002,
+            4341004,
+            5101002,
+            5101004,
+            5111006,
+            5121001,
+            5121004,
+            5121005,
+            5121007,
+            5221003,
+            3120010,
+            10001009,
+            10001020
+        };
 
         public static bool CanUseSkill(PlayerCharacter player, SkillData skill)
         {
@@ -160,6 +217,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
+            string meleeAirborneRestrictionMessage = GetClientMeleeAirborneNoFootholdRestrictionMessage(player, skill);
+            if (!string.IsNullOrWhiteSpace(meleeAirborneRestrictionMessage))
+            {
+                return meleeAirborneRestrictionMessage;
+            }
+
             if (ShouldBlockClientShootAttackOnLadderOrRope(
                     skill,
                     player.Build?.GetWeapon()?.ItemId ?? 0,
@@ -190,6 +253,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private static string GetClientMeleeAirborneNoFootholdRestrictionMessage(PlayerCharacter player, SkillData skill)
+        {
+            return ShouldBlockClientMeleeAirborneNoFoothold(skill?.SkillId ?? 0, player?.Physics?.IsOnFoothold() == true, player?.Physics?.IsUserFlying() == true)
+                ? "This skill cannot be used while airborne without foothold support."
+                : null;
+        }
+
+        internal static bool ShouldBlockClientMeleeAirborneNoFoothold(int skillId, bool isOnFoothold, bool isUserFlying)
+        {
+            return !isOnFoothold
+                   && !isUserFlying
+                   && ClientMeleeAirborneNoFootholdForbiddenSkillIds.Contains(skillId);
         }
 
         private static string GetMagicAttackAirborneRestrictionMessage(PlayerCharacter player, SkillData skill)

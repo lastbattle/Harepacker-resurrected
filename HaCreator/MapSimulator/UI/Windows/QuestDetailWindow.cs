@@ -60,7 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 4;
         private const int TOOLTIP_FALLBACK_WIDTH = 220;
         private static readonly Regex RichTextTokenRegex = new(
-            @"(\{\{ITEMICON:\d+\}\}|\{\{UICANVAS:[^}]+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\{\{QUESTREF:[^}]+\}\}|\r?\n|\s+)",
+            @"(\{\{ITEMICON:\d+\}\}|\{\{UICANVAS:[^}]+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\{\{QUESTREF:[^}]+\}\}|\{\{QUESTFONT:[^}]+\}\}|\{\{QUESTFONTSIZE:-?\d+(?:\.\d+)?\}\}|\r?\n|\s+)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly string _windowName;
@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<string, TimeLimitIndicatorStyle> _timeLimitIndicatorStyles = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Texture2D> _questSurfaceTextures = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Texture2D> _inlineUiCanvasTextures = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, ClientTextRasterizer> _customDetailTextRasterizers = new(StringComparer.Ordinal);
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
 
@@ -1005,7 +1006,17 @@ namespace HaCreator.MapSimulator.UI
                         Color tokenColor = token.Kind == RichTextTokenKind.Reference
                             ? new Color(164, 238, 255)
                             : drawStyle.Color;
-                        DrawTextLineClipped(sprite, token.Text, drawPosition, tokenColor, clipRect, scale, drawStyle.Emphasized, lane);
+                        DrawTextLineClipped(
+                            sprite,
+                            token.Text,
+                            drawPosition,
+                            tokenColor,
+                            clipRect,
+                            scale,
+                            drawStyle.Emphasized,
+                            lane,
+                            drawStyle.FontFamily,
+                            drawStyle.FontPixelSize);
                     }
                 },
                 color);
@@ -1068,7 +1079,7 @@ namespace HaCreator.MapSimulator.UI
             float currentY = position.Y;
             float lineStartX = position.X;
             float lineHeight = baselineHeight;
-            RichTextStyleState currentStyle = new(defaultColor, false);
+            RichTextStyleState currentStyle = new(defaultColor, false, null, null);
             bool lineHasContent = false;
 
             foreach (RichTextToken token in EnumerateRichTextTokens(text, scale))
@@ -1085,6 +1096,18 @@ namespace HaCreator.MapSimulator.UI
                 if (token.Kind == RichTextTokenKind.Style)
                 {
                     currentStyle = ApplyQuestDetailStyle(token.StyleTag, currentStyle, defaultColor);
+                    continue;
+                }
+
+                if (token.Kind == RichTextTokenKind.Font)
+                {
+                    currentStyle = ApplyQuestDetailFontName(token.FontName, currentStyle);
+                    continue;
+                }
+
+                if (token.Kind == RichTextTokenKind.FontSize)
+                {
+                    currentStyle = ApplyQuestDetailFontSize(token.FontSize, currentStyle);
                     continue;
                 }
 
@@ -1134,7 +1157,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (token.Kind == RichTextTokenKind.Text || token.Kind == RichTextTokenKind.Space)
             {
-                return MeasureText(token.Text, scale, style.Emphasized, lane);
+                return MeasureText(token.Text, scale, style.Emphasized, lane, style.FontFamily, style.FontPixelSize);
             }
 
             return new Vector2(token.Width, token.Height);
@@ -1299,7 +1322,75 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (TryParseQuestFontMarker(value, out string fontName))
+            {
+                token = RichTextToken.FontToken(fontName);
+                return true;
+            }
+
+            if (TryParseQuestFontSizeMarker(value, out float fontPixelSize))
+            {
+                token = RichTextToken.FontSizeToken(fontPixelSize);
+                return true;
+            }
+
             return false;
+        }
+
+        private static bool TryParseQuestFontMarker(string value, out string fontName)
+        {
+            fontName = string.Empty;
+            const string questFontPrefix = "{{QUESTFONT:";
+            if (string.IsNullOrWhiteSpace(value) ||
+                !value.StartsWith(questFontPrefix, StringComparison.OrdinalIgnoreCase) ||
+                !value.EndsWith("}}", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string parsedFontName = value.Substring(questFontPrefix.Length, value.Length - questFontPrefix.Length - 2).Trim();
+            if (string.IsNullOrWhiteSpace(parsedFontName))
+            {
+                return false;
+            }
+
+            fontName = parsedFontName;
+            return true;
+        }
+
+        private static bool TryParseQuestFontSizeMarker(string value, out float fontPixelSize)
+        {
+            fontPixelSize = 0f;
+            const string questFontSizePrefix = "{{QUESTFONTSIZE:";
+            if (string.IsNullOrWhiteSpace(value) ||
+                !value.StartsWith(questFontSizePrefix, StringComparison.OrdinalIgnoreCase) ||
+                !value.EndsWith("}}", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!float.TryParse(
+                    value.Substring(questFontSizePrefix.Length, value.Length - questFontSizePrefix.Length - 2),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out float parsedFontSize) ||
+                parsedFontSize <= 0f)
+            {
+                return false;
+            }
+
+            fontPixelSize = parsedFontSize;
+            return true;
+        }
+
+        internal static bool TryParseQuestFontMarkerForTesting(string value, out string fontName)
+        {
+            return TryParseQuestFontMarker(value, out fontName);
+        }
+
+        internal static bool TryParseQuestFontSizeMarkerForTesting(string value, out float fontPixelSize)
+        {
+            return TryParseQuestFontSizeMarker(value, out fontPixelSize);
         }
 
         internal static bool TryParseQuestInlineReferenceTokenForTesting(string payload, out QuestDetailInlineReference reference)
@@ -1355,6 +1446,27 @@ namespace HaCreator.MapSimulator.UI
                 "e" => currentStyle with { Emphasized = true },
                 "n" => currentStyle with { Emphasized = false },
                 _ => currentStyle with { Color = ResolveQuestDetailStyleColor(normalizedTag, defaultColor) }
+            };
+        }
+
+        private static RichTextStyleState ApplyQuestDetailFontName(string fontName, RichTextStyleState currentStyle)
+        {
+            string normalizedFontName = fontName?.Trim();
+            return string.IsNullOrWhiteSpace(normalizedFontName)
+                ? currentStyle
+                : currentStyle with { FontFamily = normalizedFontName };
+        }
+
+        private static RichTextStyleState ApplyQuestDetailFontSize(float fontPixelSize, RichTextStyleState currentStyle)
+        {
+            if (fontPixelSize <= 0f)
+            {
+                return currentStyle;
+            }
+
+            return currentStyle with
+            {
+                FontPixelSize = MathHelper.Clamp(fontPixelSize, 6f, 48f)
             };
         }
 
@@ -2087,14 +2199,16 @@ namespace HaCreator.MapSimulator.UI
             Rectangle clipRect,
             float scale,
             bool emphasized = false,
-            QuestDetailTextLane lane = QuestDetailTextLane.Detail)
+            QuestDetailTextLane lane = QuestDetailTextLane.Detail,
+            string fontFamilyOverride = null,
+            float? fontPixelSizeOverride = null)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return;
             }
 
-            Vector2 textSize = MeasureText(text, scale, emphasized, lane);
+            Vector2 textSize = MeasureText(text, scale, emphasized, lane, fontFamilyOverride, fontPixelSizeOverride);
             Rectangle lineRect = new(
                 (int)position.X,
                 (int)position.Y,
@@ -2105,7 +2219,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawTextLine(sprite, text, position, color, scale, emphasized, lane);
+            DrawTextLine(sprite, text, position, color, scale, emphasized, lane, fontFamilyOverride, fontPixelSizeOverride);
         }
 
         private void DrawTextLine(
@@ -2115,14 +2229,20 @@ namespace HaCreator.MapSimulator.UI
             Color color,
             float scale,
             bool emphasized = false,
-            QuestDetailTextLane lane = QuestDetailTextLane.Detail)
+            QuestDetailTextLane lane = QuestDetailTextLane.Detail,
+            string fontFamilyOverride = null,
+            float? fontPixelSizeOverride = null)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return;
             }
 
-            ClientTextRasterizer rasterizer = ResolveQuestDetailTextRasterizer(lane, emphasized);
+            ClientTextRasterizer rasterizer = ResolveQuestDetailTextRasterizer(
+                lane,
+                emphasized,
+                fontFamilyOverride,
+                fontPixelSizeOverride);
             if (rasterizer != null)
             {
                 rasterizer.DrawString(sprite, text, position, color, scale);
@@ -2141,14 +2261,20 @@ namespace HaCreator.MapSimulator.UI
             string text,
             float scale,
             bool emphasized = false,
-            QuestDetailTextLane lane = QuestDetailTextLane.Detail)
+            QuestDetailTextLane lane = QuestDetailTextLane.Detail,
+            string fontFamilyOverride = null,
+            float? fontPixelSizeOverride = null)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return Vector2.Zero;
             }
 
-            ClientTextRasterizer rasterizer = ResolveQuestDetailTextRasterizer(lane, emphasized);
+            ClientTextRasterizer rasterizer = ResolveQuestDetailTextRasterizer(
+                lane,
+                emphasized,
+                fontFamilyOverride,
+                fontPixelSizeOverride);
             if (rasterizer != null)
             {
                 return rasterizer.MeasureString(text, scale);
@@ -2180,7 +2306,11 @@ namespace HaCreator.MapSimulator.UI
                 ?? _detailTip?.Texture?.GraphicsDevice;
         }
 
-        private ClientTextRasterizer ResolveQuestDetailTextRasterizer(QuestDetailTextLane lane, bool emphasized)
+        private ClientTextRasterizer ResolveQuestDetailTextRasterizer(
+            QuestDetailTextLane lane,
+            bool emphasized,
+            string fontFamilyOverride = null,
+            float? fontPixelSizeOverride = null)
         {
             GraphicsDevice graphicsDevice = GetTextGraphicsDevice();
             if (graphicsDevice == null)
@@ -2188,7 +2318,33 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            if (emphasized || lane == QuestDetailTextLane.DetailStrong)
+            bool useBold = emphasized || lane == QuestDetailTextLane.DetailStrong;
+            string normalizedFontFamilyOverride = fontFamilyOverride?.Trim();
+            bool hasFontFamilyOverride = !string.IsNullOrWhiteSpace(normalizedFontFamilyOverride);
+            bool hasFontSizeOverride = fontPixelSizeOverride.HasValue && fontPixelSizeOverride.Value > 0f;
+            if (hasFontFamilyOverride || hasFontSizeOverride)
+            {
+                float basePointSize = hasFontSizeOverride
+                    ? MathHelper.Clamp(fontPixelSizeOverride.Value, 6f, 48f)
+                    : GetLaneBasePointSize(lane);
+                string customKey = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{(int)lane}|{(useBold ? 1 : 0)}|{basePointSize:F2}|{normalizedFontFamilyOverride ?? string.Empty}");
+                if (_customDetailTextRasterizers.TryGetValue(customKey, out ClientTextRasterizer customRasterizer))
+                {
+                    return customRasterizer;
+                }
+
+                customRasterizer = new ClientTextRasterizer(
+                    graphicsDevice,
+                    fontFamily: hasFontFamilyOverride ? normalizedFontFamilyOverride : null,
+                    basePointSize: basePointSize,
+                    fontStyle: useBold ? SD.FontStyle.Bold : SD.FontStyle.Regular);
+                _customDetailTextRasterizers[customKey] = customRasterizer;
+                return customRasterizer;
+            }
+
+            if (useBold)
             {
                 _clientDetailBoldTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, basePointSize: 11f, fontStyle: SD.FontStyle.Bold);
                 return _clientDetailBoldTextRasterizer;
@@ -2212,6 +2368,16 @@ namespace HaCreator.MapSimulator.UI
                     _clientDetailTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, basePointSize: 11f);
                     return _clientDetailTextRasterizer;
             }
+        }
+
+        private static float GetLaneBasePointSize(QuestDetailTextLane lane)
+        {
+            return lane switch
+            {
+                QuestDetailTextLane.Title => 13f,
+                QuestDetailTextLane.Navigation => 10f,
+                _ => 11f
+            };
         }
 
         private void RegisterQuestSurfaceTexture(string surfaceKey, Texture2D texture)
@@ -2993,6 +3159,8 @@ namespace HaCreator.MapSimulator.UI
             Icon,
             Surface,
             Style,
+            Font,
+            FontSize,
             Reference,
             NewLine
         }
@@ -3009,7 +3177,9 @@ namespace HaCreator.MapSimulator.UI
                 int width,
                 int height,
                 int? itemId = null,
-                QuestDetailInlineReference? inlineReference = null)
+                QuestDetailInlineReference? inlineReference = null,
+                string fontName = null,
+                float fontSize = 0f)
             {
                 Kind = kind;
                 Text = text;
@@ -3019,6 +3189,8 @@ namespace HaCreator.MapSimulator.UI
                 Height = Math.Max(0, height);
                 ItemId = itemId;
                 InlineReference = inlineReference;
+                FontName = fontName;
+                FontSize = fontSize;
             }
 
             public RichTextTokenKind Kind { get; }
@@ -3029,6 +3201,8 @@ namespace HaCreator.MapSimulator.UI
             public int Height { get; }
             public int? ItemId { get; }
             public QuestDetailInlineReference? InlineReference { get; }
+            public string FontName { get; }
+            public float FontSize { get; }
 
             public static RichTextToken StyleToken(string styleTag)
             {
@@ -3039,8 +3213,18 @@ namespace HaCreator.MapSimulator.UI
             {
                 return new RichTextToken(RichTextTokenKind.Reference, label, null, null, width, height, inlineReference: inlineReference);
             }
+
+            public static RichTextToken FontToken(string fontName)
+            {
+                return new RichTextToken(RichTextTokenKind.Font, null, null, null, 0, 0, fontName: fontName);
+            }
+
+            public static RichTextToken FontSizeToken(float fontSize)
+            {
+                return new RichTextToken(RichTextTokenKind.FontSize, null, null, null, 0, 0, fontSize: fontSize);
+            }
         }
 
-        private readonly record struct RichTextStyleState(Color Color, bool Emphasized);
+        private readonly record struct RichTextStyleState(Color Color, bool Emphasized, string FontFamily, float? FontPixelSize);
     }
 }

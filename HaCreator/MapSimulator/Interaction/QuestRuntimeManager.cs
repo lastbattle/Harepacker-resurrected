@@ -1931,10 +1931,35 @@ namespace HaCreator.MapSimulator.Interaction
             return TryAcceptFromQuestWindow(questId, build, null);
         }
 
+        public QuestWindowActionResult TryStartFromPacketOwnedQuestResult(int questId, CharacterBuild build)
+        {
+            return TryAcceptQuestInternal(
+                questId,
+                build,
+                selectedChoiceRewards: null,
+                enforceStartRequirements: false,
+                publishQuestWindowScripts: false);
+        }
+
         public QuestWindowActionResult TryAcceptFromQuestWindow(
             int questId,
             CharacterBuild build,
             IReadOnlyDictionary<int, int> selectedChoiceRewards)
+        {
+            return TryAcceptQuestInternal(
+                questId,
+                build,
+                selectedChoiceRewards,
+                enforceStartRequirements: true,
+                publishQuestWindowScripts: true);
+        }
+
+        private QuestWindowActionResult TryAcceptQuestInternal(
+            int questId,
+            CharacterBuild build,
+            IReadOnlyDictionary<int, int> selectedChoiceRewards,
+            bool enforceStartRequirements,
+            bool publishQuestWindowScripts)
         {
             EnsureDefinitionsLoaded();
             if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
@@ -1955,19 +1980,24 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
-            List<string> issues = EvaluateStartIssues(definition, build);
-            if (issues.Count > 0)
+            if (enforceStartRequirements)
             {
-                return new QuestWindowActionResult
+                List<string> issues = EvaluateStartIssues(definition, build);
+                if (issues.Count > 0)
                 {
-                    QuestId = questId,
-                    Messages = issues
-                };
+                    return new QuestWindowActionResult
+                    {
+                        QuestId = questId,
+                        Messages = issues
+                    };
+                }
             }
 
             var messages = new List<string>
             {
-                $"Accepted quest: {definition.Name}"
+                enforceStartRequirements
+                    ? $"Accepted quest: {definition.Name}"
+                    : $"Packet-owned StartQuest accepted: {definition.Name}"
             };
             QuestRewardResolution rewardResolution = ResolveQuestRewardItems(
                 definition.StartActions.RewardItems,
@@ -2039,14 +2069,18 @@ namespace HaCreator.MapSimulator.Interaction
                 StateChanged = true,
                 QuestId = questId,
                 Messages = messages,
-                PublishedScriptNames = BuildQuestWindowPublishedScriptNames(
-                    QuestWindowActionKind.Accept,
-                    definition.StartScriptNames,
-                    definition.StartActions?.NpcActionName),
-                PublishedScriptPublications = BuildQuestWindowPublishedScriptPublications(
-                    QuestWindowActionKind.Accept,
-                    definition.StartScriptPublications,
-                    definition.StartActions?.NpcActionName)
+                PublishedScriptNames = publishQuestWindowScripts
+                    ? BuildQuestWindowPublishedScriptNames(
+                        QuestWindowActionKind.Accept,
+                        definition.StartScriptNames,
+                        definition.StartActions?.NpcActionName)
+                    : Array.Empty<string>(),
+                PublishedScriptPublications = publishQuestWindowScripts
+                    ? BuildQuestWindowPublishedScriptPublications(
+                        QuestWindowActionKind.Accept,
+                        definition.StartScriptPublications,
+                        definition.StartActions?.NpcActionName)
+                    : Array.Empty<FieldObjectScriptPublication>()
             };
         }
 
@@ -3915,6 +3949,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (TryGetStopPages(stopPages, "info", out IReadOnlyList<NpcInteractionPage> infoPages))
             {
                 return infoPages;
+            }
+
+            if (TryGetFirstNumericStopPages(stopPages, out IReadOnlyList<NpcInteractionPage> numericPages))
+            {
+                return numericPages;
             }
 
             return Array.Empty<NpcInteractionPage>();
@@ -9997,6 +10036,25 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        private static bool TryGetFirstNumericStopPages(
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
+            out IReadOnlyList<NpcInteractionPage> pages)
+        {
+            for (int branchIndex = 0; branchIndex <= 3; branchIndex++)
+            {
+                if (TryGetStopPages(
+                        stopPages,
+                        branchIndex.ToString(CultureInfo.InvariantCulture),
+                        out pages))
+                {
+                    return true;
+                }
+            }
+
+            pages = Array.Empty<NpcInteractionPage>();
+            return false;
+        }
+
         private bool HasMissingItems(IReadOnlyList<QuestItemRequirement> requirements)
         {
             if (requirements == null)
@@ -12074,6 +12132,57 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return GetPreferredOutstandingItemRequirement(requirements, preferVisibleRequirements: true)
                 ?? requirements?.FirstOrDefault(static requirement => requirement != null && !requirement.IsSecret);
+        }
+
+        public bool IsQuestDeliveryRequirementItem(int questId, int itemId, QuestDetailDeliveryType deliveryType)
+        {
+            if (questId <= 0 || itemId <= 0 || deliveryType == QuestDetailDeliveryType.None)
+            {
+                return false;
+            }
+
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition) || definition == null)
+            {
+                return false;
+            }
+
+            QuestStateType state = GetQuestState(questId);
+            IReadOnlyList<QuestItemRequirement> requirements;
+            bool hasDeliveryNpc;
+            switch (deliveryType)
+            {
+                case QuestDetailDeliveryType.Accept:
+                    if (state != QuestStateType.Not_Started)
+                    {
+                        return false;
+                    }
+
+                    requirements = definition.StartItemRequirements;
+                    hasDeliveryNpc = definition.StartNpcId.HasValue;
+                    break;
+                case QuestDetailDeliveryType.Complete:
+                    if (state != QuestStateType.Started)
+                    {
+                        return false;
+                    }
+
+                    requirements = definition.EndItemRequirements;
+                    hasDeliveryNpc = definition.EndNpcId.HasValue;
+                    break;
+                default:
+                    return false;
+            }
+
+            if (!hasDeliveryNpc || requirements == null || requirements.Count == 0)
+            {
+                return false;
+            }
+
+            return requirements.Any(requirement =>
+                requirement != null &&
+                !requirement.IsSecret &&
+                requirement.ItemId == itemId);
         }
 
         private QuestItemRequirement GetPreferredOutstandingItemRequirement(

@@ -2152,7 +2152,7 @@ namespace HaCreator.MapSimulator.Fields
                 return RemoteTownPortalVisualPhase.Stable;
             }
 
-            return RemoteTownPortalVisualPhase.Opening;
+            return RemoteTownPortalVisualPhase.Stable;
         }
 
         private static byte ResolveRemoteTownPortalCreateState(

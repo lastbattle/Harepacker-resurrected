@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator
             public int ModifierItemId { get; init; }
             public InventoryType InventoryType { get; init; }
             public int SlotIndex { get; init; }
+            public int? ObservedClientItemToken { get; init; }
             public string Source { get; init; } = string.Empty;
         }
 
@@ -53,6 +54,7 @@ namespace HaCreator.MapSimulator
             public int ModifierItemId { get; init; }
             public InventoryType ModifierInventoryType { get; init; }
             public int ModifierSlotIndex { get; init; } = -1;
+            public int? ObservedClientItemToken { get; init; }
             public string Source { get; init; } = string.Empty;
             public int RequestedAtTick { get; init; }
             public int ReadyAtTick { get; init; }
@@ -113,7 +115,12 @@ namespace HaCreator.MapSimulator
             vegaSpellWindow.ResultPopupStarted = HandleVegaSpellResultPopupStarted;
         }
 
-        private void QueueVegaSpellWindowLaunch(int itemId, InventoryType inventoryType, int slotIndex, string source)
+        private void QueueVegaSpellWindowLaunch(
+            int itemId,
+            InventoryType inventoryType,
+            int slotIndex,
+            string source,
+            int? observedClientItemToken = null)
         {
             if (!ItemUpgradeUI.IsVegaSpellConsumable(itemId))
             {
@@ -126,6 +133,7 @@ namespace HaCreator.MapSimulator
                 ModifierItemId = itemId,
                 ModifierInventoryType = inventoryType,
                 ModifierSlotIndex = slotIndex,
+                ObservedClientItemToken = observedClientItemToken,
                 Source = string.IsNullOrWhiteSpace(source) ? "inventory-use" : source.Trim(),
                 RequestedAtTick = currTickCount,
                 ReadyAtTick = currTickCount + VegaOwnerLaunchDelayMs
@@ -159,6 +167,7 @@ namespace HaCreator.MapSimulator
                 ModifierItemId = itemId,
                 InventoryType = inventoryType,
                 SlotIndex = slotIndex,
+                ObservedClientItemToken = modifierItemToken != 0 ? modifierItemToken : null,
                 Source = string.IsNullOrWhiteSpace(source) ? "consume-cash-item request" : source.Trim()
             };
             StampPacketOwnedUtilityRequestState();
@@ -185,6 +194,7 @@ namespace HaCreator.MapSimulator
                 ModifierItemId = itemId,
                 InventoryType = inventoryType,
                 SlotIndex = slotIndex,
+                ObservedClientItemToken = modifierItemToken != 0 ? modifierItemToken : null,
                 Source = string.IsNullOrWhiteSpace(source) ? "consume-cash-item request" : source.Trim()
             };
             StampPacketOwnedUtilityRequestState();
@@ -252,6 +262,7 @@ namespace HaCreator.MapSimulator
                 ModifierItemId = launchState.ModifierItemId,
                 InventoryType = launchState.ModifierInventoryType,
                 SlotIndex = launchState.ModifierSlotIndex,
+                ObservedClientItemToken = launchState.ObservedClientItemToken,
                 Source = launchState.Source
             };
             vegaSpellWindow.PrepareModifierSelection(launchState.ModifierItemId);
@@ -738,7 +749,8 @@ namespace HaCreator.MapSimulator
                 launchPayload.ModifierItemId,
                 launchPayload.InventoryType,
                 launchPayload.SlotIndex,
-                launchPayload.Source);
+                launchPayload.Source,
+                launchPayload.ModifierItemToken != 0 ? launchPayload.ModifierItemToken : null);
             message = launchPayload.HasExplicitSlot
                 ? $"Queued packet-owned Vega launch for modifier {launchPayload.ModifierItemId} from {launchPayload.InventoryType} slot #{launchPayload.SlotIndex + 1}."
                 : $"Queued packet-owned Vega launch for modifier {launchPayload.ModifierItemId}.";
@@ -890,11 +902,28 @@ namespace HaCreator.MapSimulator
                 equipItemToken,
                 modifierInventoryType,
                 modifierSlotIndex,
-                BuildVegaInventoryItemToken(modifierInventoryType, modifierSlotIndex, request.ModifierItemId, modifierSlot),
+                ResolveVegaModifierRequestItemToken(modifierInventoryType, modifierSlotIndex, request.ModifierItemId, modifierSlot),
                 scrollInventoryType,
                 scrollSlotIndex,
                 BuildVegaInventoryItemToken(scrollInventoryType, scrollSlotIndex, request.ScrollItemId, scrollSlot));
             return true;
+        }
+
+        private int ResolveVegaModifierRequestItemToken(
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            InventorySlotData slot)
+        {
+            return ResolveVegaModifierRequestItemToken(
+                _activeVegaModifierSelection?.ObservedClientItemToken,
+                _activeVegaModifierSelection?.ModifierItemId ?? 0,
+                _activeVegaModifierSelection?.InventoryType ?? InventoryType.NONE,
+                _activeVegaModifierSelection?.SlotIndex ?? -1,
+                inventoryType,
+                slotIndex,
+                itemId,
+                slot);
         }
 
         private bool TryResolveVegaModifierSlotPosition(
@@ -1134,6 +1163,27 @@ namespace HaCreator.MapSimulator
             return BuildVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
         }
 
+        private static int ResolveVegaModifierRequestItemToken(
+            int? observedClientItemToken,
+            int observedItemId,
+            InventoryType observedInventoryType,
+            int observedSlotIndex,
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            InventorySlotData slot)
+        {
+            if (observedClientItemToken.GetValueOrDefault() != 0
+                && observedItemId == itemId
+                && observedInventoryType == inventoryType
+                && observedSlotIndex == slotIndex)
+            {
+                return observedClientItemToken.Value;
+            }
+
+            return BuildVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
+        }
+
         private static bool TryResolveClientAuthoredVegaInventoryItemToken(InventorySlotData slot, out int itemToken)
         {
             itemToken = 0;
@@ -1264,6 +1314,27 @@ namespace HaCreator.MapSimulator
             return BuildVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
         }
 
+        internal static int ResolveVegaModifierRequestItemTokenForTests(
+            int? observedClientItemToken,
+            int observedItemId,
+            InventoryType observedInventoryType,
+            int observedSlotIndex,
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            InventorySlotData slot)
+        {
+            return ResolveVegaModifierRequestItemToken(
+                observedClientItemToken,
+                observedItemId,
+                observedInventoryType,
+                observedSlotIndex,
+                inventoryType,
+                slotIndex,
+                itemId,
+                slot);
+        }
+
         internal static bool TryDecodeVegaLaunchPayloadForTests(
             byte[] payload,
             int fallbackModifierItemId,
@@ -1273,6 +1344,29 @@ namespace HaCreator.MapSimulator
             out InventoryType inventoryType,
             out int slotIndex,
             out bool hasExplicitSlot)
+        {
+            return TryDecodeVegaLaunchPayloadForTests(
+                payload,
+                fallbackModifierItemId,
+                fallbackInventoryType,
+                fallbackSlotIndex,
+                out modifierItemId,
+                out inventoryType,
+                out slotIndex,
+                out hasExplicitSlot,
+                out _);
+        }
+
+        internal static bool TryDecodeVegaLaunchPayloadForTests(
+            byte[] payload,
+            int fallbackModifierItemId,
+            InventoryType fallbackInventoryType,
+            int fallbackSlotIndex,
+            out int modifierItemId,
+            out InventoryType inventoryType,
+            out int slotIndex,
+            out bool hasExplicitSlot,
+            out int modifierItemToken)
         {
             bool decoded = TryDecodeVegaLaunchPayload(
                 payload,
@@ -1284,6 +1378,7 @@ namespace HaCreator.MapSimulator
             inventoryType = launchPayload.InventoryType;
             slotIndex = launchPayload.SlotIndex;
             hasExplicitSlot = launchPayload.HasExplicitSlot;
+            modifierItemToken = launchPayload.ModifierItemToken;
             return decoded;
         }
 
@@ -1355,6 +1450,7 @@ namespace HaCreator.MapSimulator
             InventoryType InventoryType,
             int SlotIndex,
             bool HasExplicitSlot,
+            int ModifierItemToken,
             string Source);
 
         private bool TryApplyPendingVegaPacketOwnedResult(
@@ -1557,7 +1653,7 @@ namespace HaCreator.MapSimulator
             int fallbackSlotIndex,
             out VegaLaunchPayload launchPayload)
         {
-            launchPayload = new VegaLaunchPayload(0, InventoryType.NONE, -1, false, "packet-owned launch");
+            launchPayload = new VegaLaunchPayload(0, InventoryType.NONE, -1, false, 0, "packet-owned launch");
 
             int modifierItemId = 0;
             int modifierOffset = -1;
@@ -1588,6 +1684,7 @@ namespace HaCreator.MapSimulator
             InventoryType inventoryType = fallbackInventoryType;
             int slotIndex = fallbackSlotIndex;
             bool hasExplicitSlot = false;
+            int modifierItemToken = 0;
             bool decodedConsumeCashPrefix = false;
             if (payload != null && modifierOffset >= 0)
             {
@@ -1626,6 +1723,12 @@ namespace HaCreator.MapSimulator
                         slotIndex = encodedSlotIndex;
                         hasExplicitSlot = true;
                     }
+
+                    if (payload.Length >= explicitSlotTailOffset + (sizeof(int) * 3))
+                    {
+                        modifierItemToken = BinaryPrimitives.ReadInt32LittleEndian(
+                            payload.AsSpan(explicitSlotTailOffset + (sizeof(int) * 2), sizeof(int)));
+                    }
                 }
                 else if (!decodedConsumeCashPrefix && payload.Length >= nextOffset + sizeof(short))
                 {
@@ -1643,6 +1746,7 @@ namespace HaCreator.MapSimulator
                 inventoryType,
                 slotIndex,
                 hasExplicitSlot,
+                modifierItemToken,
                 "packet-owned launch");
             return true;
         }

@@ -17,12 +17,18 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort MapleTvOutboundConsumeCashItemOpcode = 85;
 
         private static readonly ushort[] MessengerInboundOpcodeSet = { MessengerInboundOpcode };
+        private static readonly ushort[] MessengerOutboundOpcodeSet =
+        {
+            MessengerOutboundOpcode,
+            MessengerClaimRequestOpcode
+        };
         private static readonly ushort[] MapleTvInboundOpcodeSet =
         {
             MapleTvInboundSetMessageOpcode,
             MapleTvInboundClearMessageOpcode,
             MapleTvInboundSendResultOpcode
         };
+        private static readonly ushort[] MapleTvOutboundOpcodeSet = { MapleTvOutboundConsumeCashItemOpcode };
 
         private static readonly IReadOnlyDictionary<byte, string> MessengerInboundSubtypeHandlers =
             new Dictionary<byte, string>
@@ -67,6 +73,62 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return recovered.Count > 0 ? recovered[0] : requestedOpcode;
+        }
+
+        internal static IReadOnlyList<ushort> GetRecoveredOutboundOpcodes(string ownerName)
+        {
+            if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                return MapleTvOutboundOpcodeSet;
+            }
+
+            return MessengerOutboundOpcodeSet;
+        }
+
+        internal static bool IsRecoveredInboundOpcode(string ownerName, ushort opcode)
+        {
+            return opcode != 0 && GetRecoveredInboundOpcodes(ownerName).Contains(opcode);
+        }
+
+        internal static bool TryResolveRecoveredInboundOpcodeToken(string ownerName, string token, out ushort inboundOpcode)
+        {
+            inboundOpcode = ResolveRecoveredInboundOpcode(ownerName, 0);
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return true;
+            }
+
+            string normalizedToken = token.Trim();
+            if (string.Equals(normalizedToken, "table", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "default", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (!ushort.TryParse(normalizedToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort parsedOpcode))
+            {
+                return false;
+            }
+
+            if (!IsRecoveredInboundOpcode(ownerName, parsedOpcode))
+            {
+                return false;
+            }
+
+            inboundOpcode = parsedOpcode;
+            return true;
+        }
+
+        internal static string DescribeRecoveredInboundOpcodeSet(string ownerName)
+        {
+            IReadOnlyList<ushort> recovered = GetRecoveredInboundOpcodes(ownerName);
+            if (recovered.Count == 0)
+            {
+                return $"No recovered {ownerName} inbound opcodes are registered.";
+            }
+
+            return $"Recovered {ownerName} inbound opcodes are {string.Join("/", recovered.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)))}.";
         }
 
         internal static string DescribeRecoveredPacketTable(string ownerName)

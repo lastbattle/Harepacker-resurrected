@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool ShouldShowParcelOwnerAfterLastPacket => _parcelDialogRuntime.ShouldShowOwnerWindowAfterApply;
 
         internal ParcelAlarmPromptSnapshot LastParcelAlarmPrompt => _parcelDialogRuntime.LastAlarmPrompt;
+        internal IReadOnlyList<string> LastParcelArrivalNotices => _parcelDialogRuntime.LastArrivalNotices;
 
         internal bool TryDeliverParcel(
             string sender,
@@ -343,6 +344,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class PacketOwnedParcelDialogRuntime
     {
         private readonly MemoMailboxManager _memoMailbox;
+        private readonly List<string> _lastArrivalNotices = new();
         private int _openCount;
         private int _noticeCount;
         private int _arrivalNoticeCount;
@@ -362,12 +364,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal string StatusMessage { get; private set; } = "CParcelDlg::OnPacket idle.";
         internal bool ShouldShowOwnerWindowAfterApply { get; private set; }
         internal ParcelAlarmPromptSnapshot LastAlarmPrompt { get; private set; }
+        internal IReadOnlyList<string> LastArrivalNotices => _lastArrivalNotices;
 
         internal bool TryApplyPacket(byte[] payload, out string message)
         {
             message = null;
             ShouldShowOwnerWindowAfterApply = false;
             LastAlarmPrompt = null;
+            _lastArrivalNotices.Clear();
             if (payload == null || payload.Length == 0)
             {
                 message = "Parcel dialog packet payload must contain a subtype byte.";
@@ -508,6 +512,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _arrivalNoticeCount += session.ArrivalNoticeEntries.Count;
                 _lastAlarmSender = session.ArrivalNoticeEntries[0].Sender ?? string.Empty;
+                _lastArrivalNotices.AddRange(BuildArrivalNotices(session.ArrivalNoticeEntries));
             }
 
             string arrivalSummary = DescribeArrivalNoticeSummary(session.ArrivalNoticeEntries);
@@ -627,38 +632,53 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            PacketOwnedParcelDecodedEntry firstEntry = arrivalEntries[0];
-            string sender = firstEntry?.Sender;
-            if (string.IsNullOrWhiteSpace(sender))
-            {
-                return $", plus {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s)";
-            }
-
-            string detail = firstEntry switch
-            {
-                { AttachmentItemId: > 0, AttachmentMeso: > 0 } => $" carrying {DescribeItemAttachment(firstEntry)} and {firstEntry.AttachmentMeso.ToString("N0", CultureInfo.InvariantCulture)} meso",
-                { AttachmentItemId: > 0 } => $" carrying {DescribeItemAttachment(firstEntry)}",
-                { HasMesoAttachment: true, AttachmentMeso: > 0 } => $" carrying {firstEntry.AttachmentMeso.ToString("N0", CultureInfo.InvariantCulture)} meso",
-                { IsQuickDelivery: true } => " on the quick-delivery branch",
-                _ => string.Empty
-            };
-            return $", plus {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s) led by {sender}{detail}";
+            return $", and dispatched {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s)";
         }
 
-        private static string DescribeItemAttachment(PacketOwnedParcelDecodedEntry entry)
+        private static IReadOnlyList<string> BuildArrivalNotices(IReadOnlyList<PacketOwnedParcelDecodedEntry> arrivalEntries)
         {
-            if (entry == null || entry.AttachmentItemId <= 0)
+            if (arrivalEntries == null || arrivalEntries.Count == 0)
             {
-                return "an item attachment";
+                return Array.Empty<string>();
             }
 
-            string itemName = global::HaCreator.Program.InfoManager?.ItemNameCache != null
-                              && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(entry.AttachmentItemId, out Tuple<string, string, string> itemInfo)
+            var notices = new List<string>(arrivalEntries.Count);
+            for (int i = 0; i < arrivalEntries.Count; i++)
+            {
+                notices.Add(BuildArrivalNotice(arrivalEntries[i]));
+            }
+
+            return notices;
+        }
+
+        private static string BuildArrivalNotice(PacketOwnedParcelDecodedEntry entry)
+        {
+            StringBuilder noticeBuilder = new(PacketOwnedSocialUtilityStringPoolText.ResolveParcelArrivalSenderNotice(entry?.Sender));
+            if (entry?.AttachmentMeso > 0)
+            {
+                noticeBuilder.Append(PacketOwnedSocialUtilityStringPoolText.ResolveParcelArrivalMesoNotice(entry.AttachmentMeso));
+            }
+
+            if (entry?.HasItemAttachment == true)
+            {
+                noticeBuilder.Append(PacketOwnedSocialUtilityStringPoolText.ResolveParcelArrivalItemNotice(ResolveArrivalItemName(entry.AttachmentItemId)));
+            }
+
+            return noticeBuilder.ToString();
+        }
+
+        private static string ResolveArrivalItemName(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return "item";
+            }
+
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                              && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
                               && !string.IsNullOrWhiteSpace(itemInfo.Item2)
                 ? itemInfo.Item2
-                : $"item {entry.AttachmentItemId.ToString(CultureInfo.InvariantCulture)}";
-            int quantity = Math.Max(1, entry.AttachmentQuantity);
-            return $"{itemName} x{quantity.ToString(CultureInfo.InvariantCulture)}";
+                : $"item {itemId.ToString(CultureInfo.InvariantCulture)}";
         }
 
         private static bool TryReadPacketString(BinaryReader reader, out string value)

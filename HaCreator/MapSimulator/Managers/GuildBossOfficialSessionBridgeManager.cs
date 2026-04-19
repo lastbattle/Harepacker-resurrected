@@ -207,7 +207,8 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
-                StopInternal(clearPending: true);
+                bool preservePendingForPassiveHandoff = _passiveEstablishedSession.HasValue && _pendingOutboundRequests.Count > 0;
+                StopInternal(clearPending: !preservePendingForPassiveHandoff);
 
                 try
                 {
@@ -357,7 +358,8 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                StopInternal(clearPending: true);
+                bool preservePendingForPassiveHandoff = _passiveEstablishedSession.HasValue && _pendingOutboundRequests.Count > 0;
+                StopInternal(clearPending: !preservePendingForPassiveHandoff);
                 _passiveEstablishedSession = candidate;
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
                 RemotePort = candidate.RemoteEndpoint.Port;
@@ -482,13 +484,6 @@ namespace HaCreator.MapSimulator.Managers
         public bool TrySendOrQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out bool queued, out string status)
         {
             queued = false;
-            if (HasPassiveEstablishedSocketPair && !IsRunning)
-            {
-                status = $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot queue or inject opcode {OutboundPulleyRequestOpcode} for an already-established Maple socket pair until `/guildboss session attachproxy ...`, `start`, or `startauto` arms a localhost proxy for a new Maple handshake.";
-                LastStatus = status;
-                return false;
-            }
-
             if (HasConnectedSession)
             {
                 return TrySendPulleyRequest(request, out status);
@@ -505,14 +500,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
         {
-            if (HasPassiveEstablishedSocketPair && !IsRunning)
-            {
-                status = $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot queue opcode {OutboundPulleyRequestOpcode} without an armed localhost proxy; use `/guildboss session attachproxy ...`, `start`, or `startauto` first.";
-                LastStatus = status;
-                return false;
-            }
-
-            if (!IsRunning && !HasAttachedClient)
+            if (!IsRunning && !HasAttachedClient && !HasPassiveEstablishedSocketPair)
             {
                 status = "Guild boss official-session bridge is not armed for deferred live-session injection.";
                 LastStatus = status;

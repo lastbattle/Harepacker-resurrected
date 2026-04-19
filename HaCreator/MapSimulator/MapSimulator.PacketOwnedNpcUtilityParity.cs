@@ -916,11 +916,7 @@ namespace HaCreator.MapSimulator
             {
                 case "show":
                 case "open":
-                    return ChatCommandHandler.CommandResult.Ok(
-                        ShowPacketOwnedUniqueUtilityWindow(
-                            MapSimulatorWindowNames.BattleRecord,
-                            "Battle Record",
-                            BuildPacketOwnedBattleRecordFooter()));
+                    return HandlePacketOwnedBattleRecordShowCommand();
 
                 case "on":
                 case "start":
@@ -1044,6 +1040,30 @@ namespace HaCreator.MapSimulator
                     request,
                     localMessage,
                     hasOutbound ? null : localMessage));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordShowCommand()
+        {
+            bool hasOpenOutbound = _packetOwnedBattleRecordRuntime.TryBuildOwnerOpenOutboundRequest(
+                out PacketOwnedNpcUtilityOutboundRequest openRequest,
+                out string openMessage);
+            string showMessage = ShowPacketOwnedUniqueUtilityWindow(
+                MapSimulatorWindowNames.BattleRecord,
+                "Battle Record",
+                BuildPacketOwnedBattleRecordFooter());
+            if (!hasOpenOutbound)
+            {
+                return ChatCommandHandler.CommandResult.Ok(string.IsNullOrWhiteSpace(openMessage)
+                    ? showMessage
+                    : $"{showMessage} {openMessage}");
+            }
+
+            return ChatCommandHandler.CommandResult.Ok(
+                DispatchPacketOwnedBattleRecordOutboundRequest(
+                    hasOpenOutbound,
+                    openRequest,
+                    showMessage,
+                    null));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordIncludeCommand(string[] args, int option)

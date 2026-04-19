@@ -3526,7 +3526,9 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            int sourceState = ResolvePacketHitAnimationState(data);
+            int sourceState = ResolvePacketHitAnimationState(
+                data,
+                reactor.GetActiveAnimationState());
             int packetProperEventIndex = data.PacketProperEventIndex;
             if (!TryResolvePacketLoadLayerProperEventIndex(
                     packetProperEventIndex,
@@ -3609,6 +3611,15 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolvePacketHitAnimationState(ReactorRuntimeData data)
         {
+            return ResolvePacketHitAnimationState(
+                data,
+                data?.VisualState ?? 0);
+        }
+
+        internal static int ResolvePacketHitAnimationState(
+            ReactorRuntimeData data,
+            int fallbackAnimationOwnerState)
+        {
             if (data == null)
             {
                 return 0;
@@ -3618,7 +3629,7 @@ namespace HaCreator.MapSimulator.Pools
                 ? data.PacketHitAnimationState
                 : data.PacketAnimationSourceState >= 0
                     ? data.PacketAnimationSourceState
-                    : data.VisualState;
+                    : fallbackAnimationOwnerState;
         }
 
         internal static void CommitPacketLayerSourceOwnership(ReactorRuntimeData data, int visualState)
@@ -3677,6 +3688,15 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolvePacketVisualOwnershipSourceState(ReactorRuntimeData data)
         {
+            return ResolvePacketVisualOwnershipSourceState(
+                data,
+                data?.VisualState ?? 0);
+        }
+
+        internal static int ResolvePacketVisualOwnershipSourceState(
+            ReactorRuntimeData data,
+            int fallbackAnimationOwnerState)
+        {
             if (data == null)
             {
                 return 0;
@@ -3692,7 +3712,7 @@ namespace HaCreator.MapSimulator.Pools
                 return data.PacketAnimationSourceState;
             }
 
-            return data.VisualState;
+            return fallbackAnimationOwnerState;
         }
 
         internal static void ResolvePacketVisualOwnershipSourceStatesForMutation(

@@ -8,6 +8,13 @@ namespace HaCreator.MapSimulator.Managers
 {
     internal static class MapTransferAuthoritativeBootstrapDecoder
     {
+        private const ulong CharacterDataMesoFlag = 0x2UL;
+        private const ulong CharacterDataEquipInventoryFlag = 0x4UL;
+        private const ulong CharacterDataUseInventoryFlag = 0x8UL;
+        private const ulong CharacterDataSetupInventoryFlag = 0x10UL;
+        private const ulong CharacterDataEtcInventoryFlag = 0x20UL;
+        private const ulong CharacterDataCashInventoryFlag = 0x40UL;
+        private const ulong CharacterDataInventorySlotLimitsFlag = 0x80UL;
         private const ulong CharacterDataSkillRecordFlag = 0x100UL;
         private const ulong CharacterDataSkillExpirationFlag = 0x200UL;
         private const ulong CharacterDataMiniGameRecordFlag = 0x400UL;
@@ -24,6 +31,8 @@ namespace HaCreator.MapSimulator.Managers
         private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);
         private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
         private const int TwoIntValueRecordByteLength = sizeof(int) + sizeof(int);
+        private const int MesoRecordByteLength = sizeof(int);
+        private const int InventorySlotLimitRecordByteLength = 5 * sizeof(byte);
         private const int ShortFileTimeRecordByteLength = sizeof(ushort) + sizeof(long);
         private const int MiniGameRecordByteLength = 0x14;
         private const int CoupleRecordByteLength = 0x21;
@@ -442,6 +451,24 @@ namespace HaCreator.MapSimulator.Managers
                 new(0, -1, 0)
             };
 
+            if ((characterDataFlags & CharacterDataMesoFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(
+                    candidateStarts,
+                    payload,
+                    GetExactNextOffsets(TrySkipMesoRecord),
+                    CharacterDataMesoFlag);
+            }
+
+            if ((characterDataFlags & CharacterDataInventorySlotLimitsFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(
+                    candidateStarts,
+                    payload,
+                    GetExactNextOffsets(TrySkipInventorySlotLimitsRecord),
+                    CharacterDataInventorySlotLimitsFlag);
+            }
+
             if ((characterDataFlags & CharacterDataTwoIntValueRecordFlag) != 0)
             {
                 candidateStarts = ExtendKnownLeadingOffsets(
@@ -449,6 +476,51 @@ namespace HaCreator.MapSimulator.Managers
                     payload,
                     GetExactNextOffsets(TrySkipTwoIntValueRecord),
                     CharacterDataTwoIntValueRecordFlag);
+            }
+
+            if ((characterDataFlags & CharacterDataEquipInventoryFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(
+                    candidateStarts,
+                    payload,
+                    GetExactNextOffsets(TrySkipInventorySection),
+                    CharacterDataEquipInventoryFlag);
+            }
+
+            if ((characterDataFlags & CharacterDataUseInventoryFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(
+                    candidateStarts,
+                    payload,
+                    GetExactNextOffsets(TrySkipInventorySection),
+                    CharacterDataUseInventoryFlag);
+            }
+
+            if ((characterDataFlags & CharacterDataSetupInventoryFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(
+                    candidateStarts,
+                    payload,
+                    GetExactNextOffsets(TrySkipInventorySection),
+                    CharacterDataSetupInventoryFlag);
+            }
+
+            if ((characterDataFlags & CharacterDataEtcInventoryFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(
+                    candidateStarts,
+                    payload,
+                    GetExactNextOffsets(TrySkipInventorySection),
+                    CharacterDataEtcInventoryFlag);
+            }
+
+            if ((characterDataFlags & CharacterDataCashInventoryFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(
+                    candidateStarts,
+                    payload,
+                    GetExactNextOffsets(TrySkipInventorySection),
+                    CharacterDataCashInventoryFlag);
             }
 
             if ((characterDataFlags & CharacterDataSkillRecordFlag) != 0)
@@ -657,6 +729,189 @@ namespace HaCreator.MapSimulator.Managers
 
             offsets.Add(nextOffset);
             return offsets;
+        }
+
+        private static bool TrySkipMesoRecord(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || payload.Length - offset < MesoRecordByteLength)
+            {
+                return false;
+            }
+
+            nextOffset = offset + MesoRecordByteLength;
+            return true;
+        }
+
+        private static bool TrySkipInventorySlotLimitsRecord(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || payload.Length - offset < InventorySlotLimitRecordByteLength)
+            {
+                return false;
+            }
+
+            nextOffset = offset + InventorySlotLimitRecordByteLength;
+            return true;
+        }
+
+        private static bool TrySkipInventorySection(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length)
+            {
+                return false;
+            }
+
+            int cursor = offset;
+            while (true)
+            {
+                if (payload.Length - cursor < sizeof(short))
+                {
+                    return false;
+                }
+
+                short inventoryPosition = BitConverter.ToInt16(payload.Slice(cursor, sizeof(short)));
+                cursor += sizeof(short);
+                if (inventoryPosition == 0)
+                {
+                    nextOffset = cursor;
+                    return true;
+                }
+
+                if (!TrySkipInventoryItemSlot(payload, cursor, out cursor))
+                {
+                    return false;
+                }
+            }
+        }
+
+        private static bool TrySkipInventoryItemSlot(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || payload.Length - offset < sizeof(byte) + sizeof(int) + sizeof(byte))
+            {
+                return false;
+            }
+
+            int cursor = offset;
+            byte itemType = payload[cursor];
+            cursor += sizeof(byte);
+            int itemId = BitConverter.ToInt32(payload.Slice(cursor, sizeof(int)));
+            cursor += sizeof(int);
+            bool hasCashSerial = payload[cursor] != 0;
+            cursor += sizeof(byte);
+
+            if (hasCashSerial)
+            {
+                if (payload.Length - cursor < sizeof(long))
+                {
+                    return false;
+                }
+
+                cursor += sizeof(long);
+            }
+
+            if (payload.Length - cursor < sizeof(long))
+            {
+                return false;
+            }
+
+            cursor += sizeof(long); // dateExpire
+            switch (itemType)
+            {
+                case 1:
+                    if (payload.Length - cursor < sizeof(byte) + sizeof(byte))
+                    {
+                        return false;
+                    }
+
+                    cursor += sizeof(byte) + sizeof(byte);
+                    if (payload.Length - cursor < 14 * sizeof(short))
+                    {
+                        return false;
+                    }
+
+                    cursor += 14 * sizeof(short);
+                    if (!TrySkipMapleString(payload, cursor, out cursor))
+                    {
+                        return false;
+                    }
+
+                    int equipTrailerByteLength = sizeof(short) + sizeof(byte) + sizeof(byte) + (3 * sizeof(int))
+                        + (2 * sizeof(byte)) + (5 * sizeof(short)) + (2 * sizeof(long)) + sizeof(int);
+                    if (payload.Length - cursor < equipTrailerByteLength)
+                    {
+                        return false;
+                    }
+
+                    cursor += equipTrailerByteLength;
+                    break;
+                case 2:
+                    int useBaseByteLength = sizeof(ushort);
+                    if (payload.Length - cursor < useBaseByteLength)
+                    {
+                        return false;
+                    }
+
+                    cursor += useBaseByteLength;
+                    if (!TrySkipMapleString(payload, cursor, out cursor))
+                    {
+                        return false;
+                    }
+
+                    if (payload.Length - cursor < sizeof(short))
+                    {
+                        return false;
+                    }
+
+                    cursor += sizeof(short);
+                    if ((itemId / 10000) is 207 or 233)
+                    {
+                        if (payload.Length - cursor < sizeof(long))
+                        {
+                            return false;
+                        }
+
+                        cursor += sizeof(long);
+                    }
+
+                    break;
+                case 3:
+                    int petByteLength = 13 + sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long)
+                        + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
+                    if (payload.Length - cursor < petByteLength)
+                    {
+                        return false;
+                    }
+
+                    cursor += petByteLength;
+                    break;
+                default:
+                    return false;
+            }
+
+            nextOffset = cursor;
+            return true;
+        }
+
+        private static bool TrySkipMapleString(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort length = BitConverter.ToUInt16(payload.Slice(offset, sizeof(ushort)));
+            int cursor = offset + sizeof(ushort);
+            if (payload.Length - cursor < length)
+            {
+                return false;
+            }
+
+            nextOffset = cursor + length;
+            return true;
         }
 
         private static bool TrySkipSkillExpirationRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)

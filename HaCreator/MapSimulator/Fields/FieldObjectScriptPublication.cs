@@ -257,6 +257,13 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
+                if (ShouldTreatPropertyNameAsScriptAlias(child.Name)
+                    && IsBooleanLikeStateLeaf(child))
+                {
+                    sawNestedAlias = true;
+                    continue;
+                }
+
                 if (!IsNestedAliasContainer(child, allowWrapperContainerNames: true))
                 {
                     return false;

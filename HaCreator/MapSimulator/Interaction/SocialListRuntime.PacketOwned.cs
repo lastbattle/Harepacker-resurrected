@@ -23,6 +23,28 @@ namespace HaCreator.MapSimulator.Interaction
                 : _lastPendingRequestByTab.TryGetValue(tab, out string pendingRequest) && !string.IsNullOrWhiteSpace(pendingRequest);
         }
 
+        internal bool UsesPacketOwnedPartyAdmissionContext()
+        {
+            return IsPacketOwned(SocialListTab.Party);
+        }
+
+        internal bool HasPacketOwnedPartyAdmissionContext()
+        {
+            return IsPacketOwned(SocialListTab.Party)
+                && _clientPartyId > 0;
+        }
+
+        internal bool UsesPacketOwnedExpeditionAdmissionContext()
+        {
+            return _expeditionIntermediary.PacketOwned;
+        }
+
+        internal bool HasPacketOwnedExpeditionAdmissionContext()
+        {
+            return _expeditionIntermediary.PacketOwned
+                && _expeditionIntermediary.HasActiveExpedition;
+        }
+
         private SocialEntryState MergePacketOwnedLocalEntry(SocialEntryState existingEntry, SocialEntryState localEntry)
         {
             if (localEntry == null)

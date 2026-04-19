@@ -5929,14 +5929,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield return linkedSkillId;
             }
 
-            foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromClientSummonedUolValueProperty(resolvedProperty))
+            foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromClientSummonedUolValueProperty(resolvedProperty, parts))
             {
                 yield return linkedSkillId;
             }
         }
 
         private static IEnumerable<int> EnumerateLinkedSkillIdsFromClientSummonedUolValueProperty(
-            WzImageProperty resolvedProperty)
+            WzImageProperty resolvedProperty,
+            string[] resolvedPathParts = null)
         {
             if (resolvedProperty == null)
             {
@@ -5970,7 +5971,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
                     }
 
-                    string normalizedPath = NormalizeClientSummonedUolPath(pathToken);
+                    string normalizedPath = NormalizeClientSummonedUolPathToken(pathToken, resolvedPathParts);
                     if (string.IsNullOrWhiteSpace(normalizedPath))
                     {
                         continue;
@@ -5991,6 +5992,83 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
                 }
             }
+        }
+
+        private static string NormalizeClientSummonedUolPathToken(string token, string[] resolvedPathParts)
+        {
+            string normalizedPath = NormalizeClientSummonedUolPath(token);
+            if (!string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return normalizedPath;
+            }
+
+            if (!LooksLikeClientSummonedUolRelativePathToken(token)
+                || resolvedPathParts == null
+                || resolvedPathParts.Length == 0)
+            {
+                return null;
+            }
+
+            string normalizedToken = token
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Replace('\\', '/')
+                .TrimStart('/');
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return null;
+            }
+
+            int contextLength = resolvedPathParts.Length - 1;
+            if (contextLength <= 0)
+            {
+                return null;
+            }
+
+            var combinedParts = new List<string>(contextLength + 8);
+            for (int i = 0; i < contextLength; i++)
+            {
+                combinedParts.Add(resolvedPathParts[i]);
+            }
+
+            foreach (string tokenPart in normalizedToken.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                combinedParts.Add(tokenPart);
+            }
+
+            string normalizedCombinedPath = NormalizeClientSummonedUolPathSegments(combinedParts);
+            if (string.IsNullOrWhiteSpace(normalizedCombinedPath))
+            {
+                return null;
+            }
+
+            string[] normalizedCombinedParts = normalizedCombinedPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (TryNormalizeMountedSkillRootClientSummonedUolParts(
+                    normalizedCombinedParts,
+                    out string normalizedMountedRootPath))
+            {
+                return normalizedMountedRootPath;
+            }
+
+            return normalizedCombinedPath;
+        }
+
+        private static bool LooksLikeClientSummonedUolRelativePathToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalizedToken = token
+                .Trim()
+                .Trim(ClientSummonedUolTokenTrimChars)
+                .Replace('\\', '/');
+
+            return normalizedToken.StartsWith(".", StringComparison.Ordinal)
+                   || normalizedToken.Contains("/")
+                   || normalizedToken.IndexOf(".img", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static IEnumerable<string> EnumerateClientSummonedUolValueTexts(WzImageProperty resolvedProperty)

@@ -159,5 +159,10 @@ namespace HaCreator.MapSimulator.Fields
                    && !state.IsAttractLocked
                    && state.IsOnFoothold;
         }
+
+        public static bool ShouldStopSkillMacroForQueuedReplay(bool canReplayHandleUpKeyDown)
+        {
+            return canReplayHandleUpKeyDown;
+        }
     }
 }

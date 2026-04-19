@@ -1521,7 +1521,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? string.Empty
                 : $",detail={trace.DecodedSg88FirstUseDecodeDetail}";
             return
-                $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},vecCtrl={decoded.VecCtrlState},replayParity={replayParity}{detailSuffix})";
+                $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},vecCtrl={decoded.VecCtrlState}({FormatByteHex(decoded.VecCtrlState)}),replayParity={replayParity}{detailSuffix})";
         }
 
         public string DescribeRecentSg88FirstUsePackets(int maxCount = 10)
@@ -1547,6 +1547,73 @@ namespace HaCreator.MapSimulator.Managers
                         Environment.NewLine,
                         entries.Select(entry =>
                             $"opcode=0x{entry.Opcode:X} payloadLen={entry.PayloadLength} observedAt={entry.ObservedAt} source={entry.Source}{FormatObservedSg88FirstUse(entry)} payloadHex={entry.PayloadHex}"));
+            }
+        }
+
+        public string DescribeRecentSg88FirstUseParitySummary(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
+            lock (_sync)
+            {
+                PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
+                PruneExpiredTeslaAttackCaptures(Environment.TickCount);
+                OutboundPacketTrace[] entries = _recentOutboundPackets
+                    .Where(entry => entry.Opcode == PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseSummonOpcode)
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                if (entries.Length == 0)
+                {
+                    return "Summoned official-session bridge SG-88 first-use summary is empty.";
+                }
+
+                int decodedCount = entries.Count(entry => entry.DecodedSg88FirstUseRequest.HasValue);
+                int replayMatchedCount = entries.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == true);
+                int replayMismatchCount = entries.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
+                int decodeFailedCount = entries.Length - decodedCount;
+
+                var decodedGroups = entries
+                    .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
+                    .GroupBy(entry => new
+                    {
+                        entry.DecodedSg88FirstUseRequest.Value.SkillLevel,
+                        entry.DecodedSg88FirstUseRequest.Value.MoveActionLowBit,
+                        entry.DecodedSg88FirstUseRequest.Value.VecCtrlState,
+                        ReplayParity = entry.DecodedSg88FirstUseReplayParityMatched == true ? "matched" : "mismatch"
+                    })
+                    .OrderByDescending(group => group.Count())
+                    .ThenBy(group => group.Key.SkillLevel)
+                    .ThenBy(group => group.Key.MoveActionLowBit)
+                    .ThenBy(group => group.Key.VecCtrlState)
+                    .ThenBy(group => group.Key.ReplayParity)
+                    .ToArray();
+                string decodedGroupText = decodedGroups.Length == 0
+                    ? "none"
+                    : string.Join(
+                        "; ",
+                        decodedGroups.Select(group =>
+                            $"count={group.Count()},level={group.Key.SkillLevel},moveLowBit={group.Key.MoveActionLowBit},vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}),replayParity={group.Key.ReplayParity}"));
+
+                var decodeFailureGroups = entries
+                    .Where(entry => !entry.DecodedSg88FirstUseRequest.HasValue)
+                    .GroupBy(entry => NormalizeSg88DecodeDetail(entry.DecodedSg88FirstUseDecodeDetail))
+                    .OrderByDescending(group => group.Count())
+                    .ThenBy(group => group.Key, StringComparer.Ordinal)
+                    .ToArray();
+                string decodeFailureText = decodeFailureGroups.Length == 0
+                    ? "none"
+                    : string.Join(
+                        "; ",
+                        decodeFailureGroups.Select(group =>
+                            $"count={group.Count()},detail={group.Key}"));
+
+                return "Summoned official-session bridge SG-88 first-use summary:"
+                    + Environment.NewLine
+                    + $"observed={entries.Length} decoded={decodedCount} replayMatched={replayMatchedCount} replayMismatch={replayMismatchCount} decodeFailed={decodeFailedCount}"
+                    + Environment.NewLine
+                    + $"decodedStates={decodedGroupText}"
+                    + Environment.NewLine
+                    + $"decodeFailures={decodeFailureText}";
             }
         }
 
@@ -1580,6 +1647,18 @@ namespace HaCreator.MapSimulator.Managers
                 ? "window-only"
                 : capture.RequestPacketEvidence;
             return $"0x{requestPacket.Opcode:X}@{requestPacket.ObservedAt}[{requestPacket.PayloadLength}] score={capture.RequestPacketScore} evidence={evidence} source={requestPacket.Source}";
+        }
+
+        private static string NormalizeSg88DecodeDetail(string decodeDetail)
+        {
+            return string.IsNullOrWhiteSpace(decodeDetail)
+                ? "decode-failed"
+                : decodeDetail.Trim();
+        }
+
+        private static string FormatByteHex(byte value)
+        {
+            return $"0x{value:X2}";
         }
 
         private void TryAssignSg88ManualAttackRequestPacket(

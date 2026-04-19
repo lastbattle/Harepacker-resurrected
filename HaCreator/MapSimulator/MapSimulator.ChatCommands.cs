@@ -5304,7 +5304,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|team <maple|story|0|1>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|team <maple|story|0|1>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]");
                     }
 
                 });
@@ -6972,8 +6972,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 3
-                                || !int.TryParse(args[2], out int discoverRemotePort)
-                                || discoverRemotePort <= 0)
+                                || !MassacreSessionCommandParsing.TryParseRemotePort(args[2], out int discoverRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.DiscoverUsage);
                             }
@@ -6982,7 +6981,7 @@ namespace HaCreator.MapSimulator
                             int? localPortFilter = null;
                             if (args.Length >= 5)
                             {
-                                if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                if (!MassacreSessionCommandParsing.TryParseLocalPortFilter(args[4], out int parsedLocalPort))
                                 {
                                     return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.DiscoverUsage);
                                 }
@@ -6998,8 +6997,7 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 5
                                 || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int listenPort)
-                                || !int.TryParse(args[4], out int remotePort)
-                                || remotePort <= 0)
+                                || !MassacreSessionCommandParsing.TryParseRemotePort(args[4], out int remotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.StartUsage);
                             }
@@ -7012,8 +7010,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "attach", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 3
-                                || !int.TryParse(args[2], out int attachRemotePort)
-                                || attachRemotePort <= 0)
+                                || !MassacreSessionCommandParsing.TryParseRemotePort(args[2], out int attachRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachUsage);
                             }
@@ -7022,7 +7019,7 @@ namespace HaCreator.MapSimulator
                             int? attachLocalPortFilter = null;
                             if (args.Length >= 5)
                             {
-                                if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
+                                if (!MassacreSessionCommandParsing.TryParseLocalPortFilter(args[4], out int parsedAttachLocalPort))
                                 {
                                     return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachUsage);
                                 }
@@ -7039,8 +7036,7 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4
                                 || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
-                                || !int.TryParse(args[3], out int attachProxyRemotePort)
-                                || attachProxyRemotePort <= 0)
+                                || !MassacreSessionCommandParsing.TryParseRemotePort(args[3], out int attachProxyRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachProxyUsage);
                             }
@@ -7049,7 +7045,7 @@ namespace HaCreator.MapSimulator
                             int? attachProxyLocalPortFilter = null;
                             if (args.Length >= 6)
                             {
-                                if (!int.TryParse(args[5], out int parsedAttachProxyLocalPort) || parsedAttachProxyLocalPort <= 0)
+                                if (!MassacreSessionCommandParsing.TryParseLocalPortFilter(args[5], out int parsedAttachProxyLocalPort))
                                 {
                                     return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachProxyUsage);
                                 }
@@ -7071,8 +7067,7 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4
                                 || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int autoListenPort)
-                                || !int.TryParse(args[3], out int autoRemotePort)
-                                || autoRemotePort <= 0)
+                                || !MassacreSessionCommandParsing.TryParseRemotePort(args[3], out int autoRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.StartAutoUsage);
                             }
@@ -7081,7 +7076,7 @@ namespace HaCreator.MapSimulator
                             int? localPortFilter = null;
                             if (args.Length >= 6)
                             {
-                                if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                if (!MassacreSessionCommandParsing.TryParseLocalPortFilter(args[5], out int parsedLocalPort))
                                 {
                                     return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.StartAutoUsage);
                                 }

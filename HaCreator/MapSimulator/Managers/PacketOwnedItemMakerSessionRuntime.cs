@@ -401,50 +401,29 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions = null;
-            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasAuthoritativeHiddenRecipeListValue)
-                && deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.AuthoritativeHiddenRecipeListValue))
+            List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals = null;
+            if (reader.BaseStream.Position < reader.BaseStream.Length)
             {
-                // Compact deltas can optionally append hidden additions and removals after the
-                // hidden-list override block. Preserve this extension while remaining wire-safe
-                // for packets that only carry the authority bit.
-                if (reader.BaseStream.Position < reader.BaseStream.Length)
+                // Some maker-session compact delta variants append hidden-list deltas without
+                // setting the hidden-list override bit. Keep this tail parser permissive and let
+                // state-runtime semantics decide whether entries mutate the authoritative roster.
+                hiddenRecipeAdditions = ReadHiddenRecipeEntries16(
+                    reader,
+                    "Maker-session compact delta hidden recipe addition");
+                if (hiddenRecipeAdditions?.Count > 0)
                 {
-                    hiddenRecipeAdditions = ReadHiddenRecipeEntries16(
-                        reader,
-                        "Maker-session compact delta hidden recipe addition");
-                    if (hiddenRecipeAdditions?.Count > 0)
-                    {
-                        deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions;
-                    }
+                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions;
                 }
+            }
 
-                if (reader.BaseStream.Position < reader.BaseStream.Length)
+            if (reader.BaseStream.Position < reader.BaseStream.Length)
+            {
+                hiddenRecipeRemovals = ReadHiddenRecipeRemovalEntries16(
+                    reader,
+                    "Maker-session compact delta hidden recipe removal");
+                if (hiddenRecipeRemovals?.Count > 0)
                 {
-                    List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals = ReadHiddenRecipeEntries16(
-                        reader,
-                        "Maker-session compact delta hidden recipe removal");
-                    if (hiddenRecipeRemovals?.Count > 0)
-                    {
-                        deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals;
-                        result = new PacketOwnedItemMakerSession
-                        {
-                            IsDeltaUpdate = true,
-                            DeltaFlags = deltaFlags,
-                            DisassemblyTargetAdditions = disassemblyTargetAdditions ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
-                            DisassemblyTargetRemovals = disassemblyTargetRemovals ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
-                            HiddenRecipeAdditions = hiddenRecipeAdditions ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>(),
-                            HiddenRecipeRemovals = hiddenRecipeRemovals
-                        };
-
-                        if (reader.BaseStream.Position != reader.BaseStream.Length)
-                        {
-                            error = $"Maker-session compact delta payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
-                            result = null;
-                            return false;
-                        }
-
-                        return true;
-                    }
+                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals;
                 }
             }
 
@@ -461,7 +440,7 @@ namespace HaCreator.MapSimulator.Managers
                 DisassemblyTargetAdditions = disassemblyTargetAdditions ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
                 DisassemblyTargetRemovals = disassemblyTargetRemovals ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
                 HiddenRecipeAdditions = hiddenRecipeAdditions ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>(),
-                HiddenRecipeRemovals = Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
+                HiddenRecipeRemovals = hiddenRecipeRemovals ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
             };
             return true;
         }
@@ -499,7 +478,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals))
             {
-                hiddenRecipeRemovals = ReadHiddenRecipeEntries(reader, "Maker-session delta hidden recipe removal");
+                hiddenRecipeRemovals = ReadHiddenRecipeRemovalEntries(reader, "Maker-session delta hidden recipe removal");
             }
 
             if (reader.BaseStream.Position != reader.BaseStream.Length)
@@ -605,6 +584,26 @@ namespace HaCreator.MapSimulator.Managers
             return entries;
         }
 
+        private static List<PacketOwnedItemMakerSessionHiddenEntry> ReadHiddenRecipeRemovalEntries(BinaryReader reader, string label)
+        {
+            int count = ReadNonNegativeCount(reader, $"{label} count is missing or negative.");
+            if (count <= 0)
+            {
+                return null;
+            }
+
+            List<PacketOwnedItemMakerSessionHiddenEntry> entries = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                EnsureReadable(reader, sizeof(int) * 2, $"{label} entry is truncated.");
+                int bucketKey = reader.ReadInt32();
+                int outputItemId = reader.ReadInt32();
+                entries.Add(new PacketOwnedItemMakerSessionHiddenEntry(bucketKey, outputItemId));
+            }
+
+            return entries;
+        }
+
         private static List<PacketOwnedItemMakerSessionHiddenEntry> ReadHiddenRecipeEntries16(BinaryReader reader, string label)
         {
             int count = ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
@@ -624,6 +623,26 @@ namespace HaCreator.MapSimulator.Managers
                     throw new InvalidDataException($"{label} entries must include a positive output item id.");
                 }
 
+                entries.Add(new PacketOwnedItemMakerSessionHiddenEntry(bucketKey, outputItemId));
+            }
+
+            return entries;
+        }
+
+        private static List<PacketOwnedItemMakerSessionHiddenEntry> ReadHiddenRecipeRemovalEntries16(BinaryReader reader, string label)
+        {
+            int count = ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
+            if (count <= 0)
+            {
+                return null;
+            }
+
+            List<PacketOwnedItemMakerSessionHiddenEntry> entries = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                EnsureReadable(reader, sizeof(int) * 2, $"{label} entry is truncated.");
+                int bucketKey = reader.ReadInt32();
+                int outputItemId = reader.ReadInt32();
                 entries.Add(new PacketOwnedItemMakerSessionHiddenEntry(bucketKey, outputItemId));
             }
 

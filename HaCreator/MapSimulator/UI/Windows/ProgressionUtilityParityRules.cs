@@ -33,7 +33,11 @@ namespace HaCreator.MapSimulator.UI
 
         internal static string ResolveRankingLandingUrl(string serverHost, int templateId, int worldId, int characterId, out bool usedResolvedTemplate)
         {
-            string normalizedHost = string.IsNullOrWhiteSpace(serverHost) ? "unknown" : serverHost.Trim();
+            string normalizedHost = NormalizeRankingServerHostSeed(serverHost);
+            if (string.IsNullOrWhiteSpace(normalizedHost))
+            {
+                normalizedHost = "unknown";
+            }
             int normalizedTemplateId = Math.Max(0, templateId);
             int normalizedWorldId = Math.Max(0, worldId);
             int normalizedCharacterId = Math.Max(0, characterId);
@@ -50,6 +54,42 @@ namespace HaCreator.MapSimulator.UI
                 normalizedHost,
                 normalizedWorldId,
                 normalizedCharacterId);
+        }
+
+        internal static string NormalizeRankingServerHostSeed(string serverHost)
+        {
+            if (string.IsNullOrWhiteSpace(serverHost))
+            {
+                return string.Empty;
+            }
+
+            string normalized = serverHost.Trim();
+            if (!normalized.Contains("://", StringComparison.Ordinal)
+                && Uri.TryCreate("http://" + normalized, UriKind.Absolute, out Uri syntheticUri))
+            {
+                normalized = syntheticUri.Host;
+            }
+            else if (Uri.TryCreate(normalized, UriKind.Absolute, out Uri uri))
+            {
+                normalized = uri.Host;
+            }
+            else
+            {
+                int slashIndex = normalized.IndexOfAny(new[] { '/', '\\', '?' });
+                if (slashIndex > 0)
+                {
+                    normalized = normalized[..slashIndex];
+                }
+            }
+
+            const string nexonSuffix = ".nexon.com";
+            if (normalized.EndsWith(nexonSuffix, StringComparison.OrdinalIgnoreCase)
+                && normalized.Length > nexonSuffix.Length)
+            {
+                normalized = normalized[..^nexonSuffix.Length];
+            }
+
+            return normalized.Trim();
         }
 
         internal static string FormatRankingLandingSeed(string serverHost, int templateId, int worldId, int characterId, out bool usedResolvedTemplate)

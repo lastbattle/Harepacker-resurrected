@@ -96,9 +96,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // IDA `CActionMan::LoadTamingMobAction` remaps these raw actions to mount-safe
                 // fallback actions before vehicle-family gating:
                 // 270 -> 43 (ladder2), 271 -> 2 (stand1), 272 -> 2 (stand1).
-                270, // braveslash1
-                271, // braveslash2
-                272  // braveslash3
+                270, // braveslash3
+                271, // braveslash4
+                272  // chargeBlow
             );
 
         private static readonly string[] MechanicClientOwnedVehicleMountedMoveActions =

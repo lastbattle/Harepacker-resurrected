@@ -9,10 +9,14 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const short ItemUpgradeOwnerRequestOpcode = 0x55;
         private const int ItemUpgradeOwnerResultFallbackDelayMs = 750;
         private const int ItemUpgradeOwnerResultApplyDelayMs = 50;
+        private const int ItemUpgradeOwnerExternalResultFallbackDelayMs = 3000;
         private const int ItemUpgradeOwnerExclusiveRequestCooldownMs = 500;
         private const int ItemUpgradeOwnerRequestPayloadLength = sizeof(int) * 3;
+        private const int ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength = sizeof(int) + sizeof(short) + sizeof(int);
+        private const int ItemUpgradeOwnerConsumeCashRequestPayloadLength = ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + ItemUpgradeOwnerRequestPayloadLength;
         private const int ItemUpgradeResultReasonPayloadLength = sizeof(byte) + sizeof(int);
         private const int ItemUpgradeResultOutcomePayloadLength = sizeof(byte) + (sizeof(int) * 2);
         private const byte ItemUpgradePacketResultCodeFail = 0;
@@ -83,12 +87,20 @@ namespace HaCreator.MapSimulator
                 requestItemToken,
                 requestSlotPosition,
                 currTickCount);
+            byte[] encodedConsumeCashRequestPayload = BuildItemUpgradeConsumeCashRequestPayload(
+                requestSlotPosition,
+                request.ConsumableItemId,
+                requestItemToken,
+                currTickCount);
+            string requestDispatchSummary = BuildItemUpgradeOutboundRequestDispatchLabel(
+                encodedConsumeCashRequestPayload,
+                out int responseDelayMs);
 
             _pendingItemUpgradeOwnerRequest = new PendingItemUpgradeOwnerRequestState
             {
                 Request = request,
                 RequestedAtTick = currTickCount,
-                ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultFallbackDelayMs,
+                ResultReadyAtTick = currTickCount + responseDelayMs,
                 ForcedSuccess = null,
                 EncodedRequestPayload = encodedRequestPayload,
                 RequestItemToken = requestItemToken,
@@ -103,7 +115,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindowVisible)
             {
                 itemUpgradeWindowVisible.SetPacketOwnedRequestPending(
-                    $"{statusMessage} Waiting for packet-owned result. Encoded request body (itemTI, slot, tick): {payloadHex}.");
+                    $"{statusMessage} Waiting for packet-owned result. Encoded request body (itemTI, slot, tick): {payloadHex}. {requestDispatchSummary}");
             }
 
             return true;
@@ -364,6 +376,73 @@ namespace HaCreator.MapSimulator
             return payload;
         }
 
+        private static byte[] BuildItemUpgradeConsumeCashRequestPayload(
+            int consumableSlotPosition,
+            int consumableItemId,
+            int itemToken,
+            int updateTick)
+        {
+            byte[] payload = new byte[ItemUpgradeOwnerConsumeCashRequestPayloadLength];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
+            BinaryPrimitives.WriteInt16LittleEndian(
+                payload.AsSpan(sizeof(int), sizeof(short)),
+                (short)Math.Clamp(consumableSlotPosition, short.MinValue, short.MaxValue));
+            BinaryPrimitives.WriteInt32LittleEndian(
+                payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)),
+                consumableItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(
+                payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength, sizeof(int)),
+                itemToken);
+            BinaryPrimitives.WriteInt32LittleEndian(
+                payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + sizeof(int), sizeof(int)),
+                Math.Max(0, consumableSlotPosition));
+            BinaryPrimitives.WriteInt32LittleEndian(
+                payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + (sizeof(int) * 2), sizeof(int)),
+                updateTick);
+            return payload;
+        }
+
+        private string BuildItemUpgradeOutboundRequestDispatchLabel(
+            byte[] payload,
+            out int responseDelayMs)
+        {
+            responseDelayMs = ItemUpgradeOwnerResultFallbackDelayMs;
+            string payloadHex = payload?.Length > 0 ? Convert.ToHexString(payload) : "<empty>";
+            string dispatchStatus = "live bridge unavailable";
+            string outboxStatus = "packet outbox unavailable";
+
+            if (payload != null &&
+                _localUtilityOfficialSessionBridge.TrySendOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out dispatchStatus))
+            {
+                responseDelayMs = ItemUpgradeOwnerExternalResultFallbackDelayMs;
+                return $"Mirrored item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}";
+            }
+
+            if (payload != null &&
+                _localUtilityPacketOutbox.TrySendOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out outboxStatus))
+            {
+                responseDelayMs = ItemUpgradeOwnerExternalResultFallbackDelayMs;
+                return $"Mirrored item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            }
+
+            if (payload != null &&
+                _localUtilityOfficialSessionBridge.IsRunning &&
+                _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out string queuedBridgeStatus))
+            {
+                responseDelayMs = ItemUpgradeOwnerExternalResultFallbackDelayMs;
+                return $"Queued item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] for deferred official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (payload != null &&
+                _localUtilityPacketOutbox.TryQueueOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out string queuedOutboxStatus))
+            {
+                responseDelayMs = ItemUpgradeOwnerExternalResultFallbackDelayMs;
+                return $"Queued item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"The item-upgrade owner kept opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted the request. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+        }
+
         private static bool TryDecodeItemUpgradeRequestPayload(
             byte[] payload,
             out int itemToken,
@@ -381,6 +460,35 @@ namespace HaCreator.MapSimulator
             itemToken = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
             slotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)));
             updateTick = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(int) * 2, sizeof(int)));
+            return true;
+        }
+
+        private static bool TryDecodeItemUpgradeConsumeCashRequestPayload(
+            byte[] payload,
+            out int useRequestTick,
+            out short consumeSlotPosition,
+            out int consumeItemId,
+            out int itemToken,
+            out int slotPosition,
+            out int updateTick)
+        {
+            useRequestTick = 0;
+            consumeSlotPosition = 0;
+            consumeItemId = 0;
+            itemToken = 0;
+            slotPosition = 0;
+            updateTick = 0;
+            if (payload == null || payload.Length < ItemUpgradeOwnerConsumeCashRequestPayloadLength)
+            {
+                return false;
+            }
+
+            useRequestTick = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            consumeSlotPosition = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(sizeof(int), sizeof(short)));
+            consumeItemId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)));
+            itemToken = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength, sizeof(int)));
+            slotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + sizeof(int), sizeof(int)));
+            updateTick = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + (sizeof(int) * 2), sizeof(int)));
             return true;
         }
 
@@ -409,6 +517,34 @@ namespace HaCreator.MapSimulator
             out int updateTick)
         {
             return TryDecodeItemUpgradeRequestPayload(payload, out itemToken, out slotPosition, out updateTick);
+        }
+
+        internal static byte[] BuildItemUpgradeConsumeCashRequestPayloadForTests(
+            int consumableSlotPosition,
+            int consumableItemId,
+            int itemToken,
+            int updateTick)
+        {
+            return BuildItemUpgradeConsumeCashRequestPayload(consumableSlotPosition, consumableItemId, itemToken, updateTick);
+        }
+
+        internal static bool TryDecodeItemUpgradeConsumeCashRequestPayloadForTests(
+            byte[] payload,
+            out int useRequestTick,
+            out short consumeSlotPosition,
+            out int consumeItemId,
+            out int itemToken,
+            out int slotPosition,
+            out int updateTick)
+        {
+            return TryDecodeItemUpgradeConsumeCashRequestPayload(
+                payload,
+                out useRequestTick,
+                out consumeSlotPosition,
+                out consumeItemId,
+                out itemToken,
+                out slotPosition,
+                out updateTick);
         }
 
         private static bool TryMapItemUpgradeResultCode(byte resultCode, out bool success)
@@ -478,6 +614,15 @@ namespace HaCreator.MapSimulator
             out string message)
         {
             return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(payload, resultCode, out message);
+        }
+
+        internal static bool TryResolveItemUpgradePacketOwnedNoticeOnlyResultForTests(
+            byte resultCode,
+            int? reasonCode,
+            int? resultValue,
+            out string message)
+        {
+            return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(resultCode, reasonCode, resultValue, out message);
         }
 
         internal static string ResolveItemUpgradeRecoveredSlotNoticeForTests(int remainingUpgradeCount)

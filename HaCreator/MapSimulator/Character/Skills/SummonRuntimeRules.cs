@@ -290,6 +290,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     assistType ?? ResolveAssistType(skill));
             }
 
+            string clientActionBranch = ResolveClientSummonedActionBranch(skill, normalizedAction);
+            if (!string.IsNullOrWhiteSpace(clientActionBranch))
+            {
+                return clientActionBranch;
+            }
+
             if (assistType.HasValue)
             {
                 string assistOwnedBranch = ResolveAssistOwnedPacketSkillBranch(skill, assistType.Value);

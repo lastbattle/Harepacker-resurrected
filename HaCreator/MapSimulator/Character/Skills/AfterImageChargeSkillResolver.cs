@@ -4,6 +4,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class AfterImageChargeSkillResolver
     {
+        internal const int ChargeMetadataScopedScanBytes = sizeof(int) * 4;
         private const int PageFireChargeSkillId = 1211004;
         private const int PageIceChargeSkillId = 1211006;
         private const int PageLightningChargeSkillId = 1211008;
@@ -110,8 +111,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             int preferredSkillId,
             out int chargeElement)
         {
+            return TryResolveChargeElementFromTemporaryStatPayload(
+                payload,
+                startOffset,
+                preferredSkillId,
+                maxScanBytes: 0,
+                out chargeElement);
+        }
+
+        internal static bool TryResolveChargeElementFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int maxScanBytes,
+            out int chargeElement)
+        {
             chargeElement = 0;
-            if (TryResolveChargeSkillIdFromTemporaryStatPayload(payload, startOffset, preferredSkillId, out int chargeSkillId)
+            if (TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    payload,
+                    startOffset,
+                    preferredSkillId,
+                    maxScanBytes,
+                    out int chargeSkillId)
                 && TryGetChargeElement(chargeSkillId, out chargeElement))
             {
                 return true;
@@ -149,6 +170,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             int preferredSkillId,
             out int chargeSkillId)
         {
+            return TryResolveChargeSkillIdFromTemporaryStatPayload(
+                payload,
+                startOffset,
+                preferredSkillId,
+                maxScanBytes: 0,
+                out chargeSkillId);
+        }
+
+        internal static bool TryResolveChargeSkillIdFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int maxScanBytes,
+            out int chargeSkillId)
+        {
             chargeSkillId = 0;
             if (payload.Length < sizeof(int)
                 || startOffset < 0
@@ -163,8 +199,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
             }
 
+            int scanEndExclusive = payload.Length;
+            if (maxScanBytes > 0)
+            {
+                long boundedEnd = (long)startOffset + maxScanBytes;
+                if (boundedEnd < scanEndExclusive)
+                {
+                    scanEndExclusive = (int)Math.Max(0, boundedEnd);
+                }
+            }
+
+            if (alignedStartOffset > scanEndExclusive - sizeof(int))
+            {
+                return false;
+            }
+
             int matchedChargeSkillId = 0;
-            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            for (int offset = alignedStartOffset; offset <= scanEndExclusive - sizeof(int); offset += sizeof(int))
             {
                 int candidateSkillId = payload[offset]
                     | (payload[offset + 1] << 8)

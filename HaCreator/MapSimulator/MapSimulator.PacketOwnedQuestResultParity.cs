@@ -706,7 +706,9 @@ namespace HaCreator.MapSimulator
 
             IReadOnlyList<int> availableQuestIdsBeforeFollowUp =
                 ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot();
-            QuestWindowActionResult result = _questRuntime.TryAcceptFromQuestWindow(followUpQuestId, _playerManager?.Player?.Build);
+            QuestWindowActionResult result = _questRuntime.TryStartFromPacketOwnedQuestResult(
+                followUpQuestId,
+                _playerManager?.Player?.Build);
             HandleQuestWindowActionResult(result);
 
             string resolvedQuestName = string.IsNullOrWhiteSpace(followUpQuestName)

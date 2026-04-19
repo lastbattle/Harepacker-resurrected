@@ -135,6 +135,13 @@ namespace HaCreator.MapSimulator.Pools
 
                 switch (reason)
                 {
+                    case PacketDropLeaveReason.OtherPickup:
+                        if (reader.Remaining >= sizeof(int))
+                        {
+                            actorId = reader.ReadInt();
+                        }
+                        break;
+
                     case PacketDropLeaveReason.PlayerPickup:
                     case PacketDropLeaveReason.MobPickup:
                     case PacketDropLeaveReason.PetPickup:
@@ -234,7 +241,8 @@ namespace HaCreator.MapSimulator.Pools
             int secondaryActorId = 0)
         {
             int length = 1 + 4;
-            if (reason == PacketDropLeaveReason.PlayerPickup
+            if (reason == PacketDropLeaveReason.OtherPickup
+                || reason == PacketDropLeaveReason.PlayerPickup
                 || reason == PacketDropLeaveReason.MobPickup
                 || reason == PacketDropLeaveReason.PetPickup)
             {
@@ -256,7 +264,8 @@ namespace HaCreator.MapSimulator.Pools
             BitConverter.TryWriteBytes(payload.AsSpan(offset, 4), dropId);
             offset += 4;
 
-            if (reason == PacketDropLeaveReason.PlayerPickup
+            if (reason == PacketDropLeaveReason.OtherPickup
+                || reason == PacketDropLeaveReason.PlayerPickup
                 || reason == PacketDropLeaveReason.MobPickup
                 || reason == PacketDropLeaveReason.PetPickup)
             {
@@ -297,6 +306,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             return value switch
             {
+                1 => PacketDropLeaveReason.OtherPickup,
                 2 => PacketDropLeaveReason.PlayerPickup,
                 3 => PacketDropLeaveReason.MobPickup,
                 4 => PacketDropLeaveReason.Explode,

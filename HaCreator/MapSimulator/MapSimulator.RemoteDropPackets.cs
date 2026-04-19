@@ -290,7 +290,8 @@ namespace HaCreator.MapSimulator
                 _socialListRuntime.IsTrackedPartyActor,
                 IsTrackedDropPartyActor,
                 AreObservedDropPartyActorsLinked,
-                IsObservedDropPartyActorPartyLinked);
+                IsObservedDropPartyActorPartyLinked,
+                ResolveDropPartyActorOwnerId);
         }
 
         internal static bool AreDropActorsInSameParty(
@@ -301,35 +302,59 @@ namespace HaCreator.MapSimulator
             Func<int, bool> trackedPartyActorEvaluator,
             Func<int, bool> legacyTrackedActorEvaluator,
             Func<int, int, bool> observedPartyLinkEvaluator = null,
-            Func<int, bool> observedPartyAnchorEvaluator = null)
+            Func<int, bool> observedPartyAnchorEvaluator = null,
+            Func<int, int> partyActorOwnerResolver = null)
         {
             if (ownerId <= 0 || actorId <= 0)
             {
                 return false;
             }
 
+            int normalizedOwnerId = NormalizeDropPartyActorId(ownerId, partyActorOwnerResolver);
+            int normalizedActorId = NormalizeDropPartyActorId(actorId, partyActorOwnerResolver);
+
             if (localPartyId > 0 && ownerId == localPartyId)
             {
-                return actorId == localCharacterId
-                    || actorId == localPartyId
-                    || trackedPartyActorEvaluator?.Invoke(actorId) == true
-                    || legacyTrackedActorEvaluator?.Invoke(actorId) == true
-                    || observedPartyAnchorEvaluator?.Invoke(actorId) == true;
+                return IsKnownDropPartyActor(
+                    actorId,
+                    localPartyId,
+                    localCharacterId,
+                    trackedPartyActorEvaluator,
+                    legacyTrackedActorEvaluator,
+                    observedPartyAnchorEvaluator)
+                    || IsKnownDropPartyActor(
+                        normalizedActorId,
+                        localPartyId,
+                        localCharacterId,
+                        trackedPartyActorEvaluator,
+                        legacyTrackedActorEvaluator,
+                        observedPartyAnchorEvaluator);
             }
 
-            if (ownerId == actorId)
+            if (ownerId == actorId
+                || normalizedOwnerId == normalizedActorId
+                || normalizedOwnerId == actorId
+                || ownerId == normalizedActorId)
             {
                 return true;
             }
 
-            bool packetTrackedOwner = trackedPartyActorEvaluator?.Invoke(ownerId) == true;
+            bool packetTrackedOwner = trackedPartyActorEvaluator?.Invoke(ownerId) == true
+                || trackedPartyActorEvaluator?.Invoke(normalizedOwnerId) == true;
             bool packetTrackedActor = actorId == localCharacterId
-                || trackedPartyActorEvaluator?.Invoke(actorId) == true;
-            bool legacyTrackedOwner = legacyTrackedActorEvaluator?.Invoke(ownerId) == true;
+                || normalizedActorId == localCharacterId
+                || trackedPartyActorEvaluator?.Invoke(actorId) == true
+                || trackedPartyActorEvaluator?.Invoke(normalizedActorId) == true;
+            bool legacyTrackedOwner = legacyTrackedActorEvaluator?.Invoke(ownerId) == true
+                || legacyTrackedActorEvaluator?.Invoke(normalizedOwnerId) == true;
             bool legacyTrackedActor = actorId == localCharacterId
-                || legacyTrackedActorEvaluator?.Invoke(actorId) == true;
-            bool observedTrackedOwner = observedPartyAnchorEvaluator?.Invoke(ownerId) == true;
-            bool observedTrackedActor = observedPartyAnchorEvaluator?.Invoke(actorId) == true;
+                || normalizedActorId == localCharacterId
+                || legacyTrackedActorEvaluator?.Invoke(actorId) == true
+                || legacyTrackedActorEvaluator?.Invoke(normalizedActorId) == true;
+            bool observedTrackedOwner = observedPartyAnchorEvaluator?.Invoke(ownerId) == true
+                || observedPartyAnchorEvaluator?.Invoke(normalizedOwnerId) == true;
+            bool observedTrackedActor = observedPartyAnchorEvaluator?.Invoke(actorId) == true
+                || observedPartyAnchorEvaluator?.Invoke(normalizedActorId) == true;
 
             if ((packetTrackedOwner || legacyTrackedOwner || observedTrackedOwner)
                 && (packetTrackedActor || legacyTrackedActor || observedTrackedActor))
@@ -337,12 +362,54 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (observedPartyLinkEvaluator?.Invoke(ownerId, actorId) == true)
+            if (observedPartyLinkEvaluator?.Invoke(ownerId, actorId) == true
+                || observedPartyLinkEvaluator?.Invoke(normalizedOwnerId, actorId) == true
+                || observedPartyLinkEvaluator?.Invoke(ownerId, normalizedActorId) == true
+                || observedPartyLinkEvaluator?.Invoke(normalizedOwnerId, normalizedActorId) == true)
             {
                 return true;
             }
 
             return false;
+        }
+
+        private int ResolveDropPartyActorOwnerId(int actorId)
+        {
+            if (actorId <= 0)
+            {
+                if (TryDecodeRemotePetPickupActorId(actorId, out int remotePetOwnerId, out _))
+                {
+                    return remotePetOwnerId;
+                }
+
+                return actorId;
+            }
+
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (localCharacterId > 0
+                && _playerManager?.Pets?.ActivePets != null)
+            {
+                foreach (var pet in _playerManager.Pets.ActivePets)
+                {
+                    if (pet?.RuntimeId == actorId)
+                    {
+                        return localCharacterId;
+                    }
+                }
+            }
+
+            return actorId;
+        }
+
+        private static int NormalizeDropPartyActorId(int actorId, Func<int, int> partyActorOwnerResolver)
+        {
+            if (actorId <= 0)
+            {
+                return partyActorOwnerResolver?.Invoke(actorId) ?? actorId;
+            }
+
+            int resolvedActorId = partyActorOwnerResolver?.Invoke(actorId) ?? actorId;
+            return resolvedActorId > 0 ? resolvedActorId : actorId;
         }
 
         private void RegisterObservedDropPartyActorLink(int firstActorId, int secondActorId)

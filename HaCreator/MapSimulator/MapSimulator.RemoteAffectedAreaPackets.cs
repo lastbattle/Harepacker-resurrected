@@ -124,22 +124,29 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (cachedOwnerTeams != null
-                && cachedOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedTeam))
-            {
-                team = cachedTeam;
-                return true;
-            }
-
             string ownerName = resolveOwnerName?.Invoke(ownerId);
             if (string.IsNullOrWhiteSpace(ownerName))
             {
+                if (cachedOwnerTeams != null
+                    && cachedOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedTeam))
+                {
+                    team = cachedTeam;
+                    return true;
+                }
+
                 return false;
             }
 
-            Fields.MonsterCarnivalTeam? resolvedTeam = resolveCharacterTeam?.Invoke(ownerName);
+            Fields.MonsterCarnivalTeam? resolvedTeam = resolveCharacterTeam?.Invoke(ownerName.Trim());
             if (!resolvedTeam.HasValue)
             {
+                if (cachedOwnerTeams != null
+                    && cachedOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedTeam))
+                {
+                    team = cachedTeam;
+                    return true;
+                }
+
                 return false;
             }
 
@@ -209,11 +216,6 @@ namespace HaCreator.MapSimulator
                 cachedBattlefieldOwnerTeams?[ownerId] = ownerBattlefieldTeamId;
             }
 
-            if (cachedCarnivalOwnerTeams?.ContainsKey(ownerId) == true)
-            {
-                return;
-            }
-
             string ownerNameForCarnival = !string.IsNullOrWhiteSpace(ownerName)
                 ? ownerName.Trim()
                 : ResolveRemoteAffectedAreaOwnerName(
@@ -229,7 +231,7 @@ namespace HaCreator.MapSimulator
                 resolveMonsterCarnivalOwnerTeamByName?.Invoke(ownerNameForCarnival);
             if (ownerCarnivalTeam.HasValue)
             {
-                cachedCarnivalOwnerTeams[ownerId] = ownerCarnivalTeam.Value;
+                cachedCarnivalOwnerTeams?[ownerId] = ownerCarnivalTeam.Value;
             }
         }
 

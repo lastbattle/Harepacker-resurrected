@@ -2008,16 +2008,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            if (TryFindPermissionMaskCandidate(payload, out GuildBbsPermissionMask decodedMask, out string decodedDetail))
+            if (TryDecodePermissionMaskField(payload, out GuildBbsPermissionMask decodedMask, out string decodedDetail))
             {
                 mask = decodedMask;
                 detail = decodedDetail;
                 return true;
             }
 
-            mask = NormalizePermissionMask((GuildBbsPermissionMask)payload[0]);
-            detail = $"Fell back to authority mask byte 0x{payload[0]:X2} at offset 0 because no exact packet-shaped mask field was found.";
-            return true;
+            detail = "Guild BBS authority packet did not match a client-shaped guild-member-grade value or an explicit mask field.";
+            return false;
         }
 
         private bool TryFindStructuredPermissionCandidate(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
@@ -2111,39 +2110,75 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryFindPermissionMaskCandidate(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
+        private bool TryDecodePermissionMaskField(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
         {
             mask = GuildBbsPermissionMask.None;
             detail = null;
-
-            for (int offset = 0; offset < payload.Length; offset++)
+            if (payload == null || payload.Length == 0)
             {
-                if (TryResolvePermissionMaskCandidate(payload[offset], out GuildBbsPermissionMask byteMask))
+                return false;
+            }
+
+            if (payload.Length == sizeof(byte))
+            {
+                if (TryResolvePermissionMaskCandidate(payload[0], out GuildBbsPermissionMask byteMask))
                 {
                     mask = byteMask;
-                    detail = $"Decoded authority mask byte 0x{payload[offset]:X2} at offset {offset}.";
+                    detail = $"Decoded authority mask byte 0x{payload[0]:X2} at offset 0.";
                     return true;
                 }
             }
 
-            for (int offset = 0; offset <= payload.Length - sizeof(short); offset++)
+            if (payload.Length == sizeof(byte) + sizeof(byte) && payload[0] == 1)
             {
-                ushort candidate = BitConverter.ToUInt16(payload, offset);
+                if (TryResolvePermissionMaskCandidate(payload[1], out GuildBbsPermissionMask prefixedByteMask))
+                {
+                    mask = prefixedByteMask;
+                    detail = $"Decoded count-prefixed authority mask byte 0x{payload[1]:X2}.";
+                    return true;
+                }
+            }
+
+            if (payload.Length == sizeof(short))
+            {
+                ushort candidate = BitConverter.ToUInt16(payload, 0);
                 if (TryResolvePermissionMaskCandidate(candidate, out GuildBbsPermissionMask shortMask))
                 {
                     mask = shortMask;
-                    detail = $"Decoded authority mask ushort 0x{candidate:X4} at offset {offset}.";
+                    detail = $"Decoded authority mask ushort 0x{candidate:X4} at offset 0.";
                     return true;
                 }
             }
 
-            for (int offset = 0; offset <= payload.Length - sizeof(int); offset++)
+            if (payload.Length == sizeof(byte) + sizeof(short) && payload[0] == sizeof(short))
             {
-                uint candidate = BitConverter.ToUInt32(payload, offset);
+                ushort candidate = BitConverter.ToUInt16(payload, 1);
+                if (TryResolvePermissionMaskCandidate(candidate, out GuildBbsPermissionMask prefixedShortMask))
+                {
+                    mask = prefixedShortMask;
+                    detail = $"Decoded count-prefixed authority mask ushort 0x{candidate:X4}.";
+                    return true;
+                }
+            }
+
+            if (payload.Length == sizeof(int))
+            {
+                uint candidate = BitConverter.ToUInt32(payload, 0);
                 if (TryResolvePermissionMaskCandidate(candidate, out GuildBbsPermissionMask intMask))
                 {
                     mask = intMask;
-                    detail = $"Decoded authority mask uint 0x{candidate:X8} at offset {offset}.";
+                    detail = $"Decoded authority mask uint 0x{candidate:X8} at offset 0.";
+                    return true;
+                }
+            }
+
+            if (payload.Length == sizeof(byte) + sizeof(int) && payload[0] == sizeof(int))
+            {
+                uint candidate = BitConverter.ToUInt32(payload, 1);
+                if (TryResolvePermissionMaskCandidate(candidate, out GuildBbsPermissionMask prefixedIntMask))
+                {
+                    mask = prefixedIntMask;
+                    detail = $"Decoded count-prefixed authority mask uint 0x{candidate:X8}.";
                     return true;
                 }
             }
@@ -2222,36 +2257,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            foreach (byte value in payload)
-            {
-                if (TryResolvePacketCashItemId(value, out int byteItemId))
-                {
-                    ownedItemIds.Add(byteItemId);
-                }
-            }
-
-            for (int offset = 0; offset <= payload.Length - sizeof(short); offset++)
-            {
-                short candidate = BitConverter.ToInt16(payload, offset);
-                if (TryResolvePacketCashItemId(candidate, out int shortItemId))
-                {
-                    ownedItemIds.Add(shortItemId);
-                }
-            }
-
-            for (int offset = 0; offset <= payload.Length - sizeof(int); offset++)
-            {
-                int candidate = BitConverter.ToInt32(payload, offset);
-                if (TryResolvePacketCashItemId(candidate, out int intItemId))
-                {
-                    ownedItemIds.Add(intItemId);
-                }
-            }
-
-            detail = ownedItemIds.Count == 0
-                ? "Decoded Guild BBS cash-entitlement packet with no owned emoticons."
-                : $"Decoded {ownedItemIds.Count} Guild BBS cash emoticon entitlement(s).";
-            return true;
+            detail = "Guild BBS cash-entitlement packet did not match a modeled flag-vector or count-prefixed id list shape.";
+            return false;
         }
 
         private bool TryFindStructuredCashOwnershipCandidate(byte[] payload, HashSet<int> ownedItemIds, out string detail)

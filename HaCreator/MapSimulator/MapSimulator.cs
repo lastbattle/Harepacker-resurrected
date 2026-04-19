@@ -4861,35 +4861,192 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            string selector = characterSelector.Trim();
+            bool selectorIsCharacterId = int.TryParse(selector, out int parsedCharacterId);
             RemoteUserActor actor = null;
-            bool found = int.TryParse(characterSelector, out int characterId)
-                ? _remoteUserPool.TryGetActor(characterId, out actor)
-                : _remoteUserPool.TryGetActorByName(characterSelector, out actor);
-            if (!found || actor?.Build == null)
-            {
-                return false;
-            }
+            bool foundActor = selectorIsCharacterId
+                ? _remoteUserPool.TryGetActor(parsedCharacterId, out actor)
+                : _remoteUserPool.TryGetActorByName(selector, out actor);
 
-            TryResolveCharacterInfoPresence(
-                actor.CharacterId,
-                actor.Name,
-                actor,
+            WeddingRemoteParticipantSnapshot? weddingSnapshot = TryGetCharacterInfoWeddingParticipantSnapshot(
+                selectorIsCharacterId ? parsedCharacterId : actor?.CharacterId ?? 0,
+                selectorIsCharacterId ? actor?.Name : selector,
+                out WeddingRemoteParticipantSnapshot resolvedWeddingSnapshot)
+                ? resolvedWeddingSnapshot
+                : null;
+
+            string resolvedName = !string.IsNullOrWhiteSpace(actor?.Name)
+                ? actor.Name.Trim()
+                : !string.IsNullOrWhiteSpace(weddingSnapshot?.Name)
+                    ? weddingSnapshot.Value.Name.Trim()
+                    : selectorIsCharacterId
+                        ? string.Empty
+                        : selector;
+            int resolvedCharacterId = actor?.CharacterId
+                ?? (weddingSnapshot?.CharacterId > 0
+                    ? weddingSnapshot.Value.CharacterId
+                    : (selectorIsCharacterId ? parsedCharacterId : 0));
+
+            SocialTrackedEntrySnapshot trackedEntry = ResolveRemoteCharacterInfoTrackedEntry(resolvedName);
+            MessengerRemoteParticipantSnapshot? messengerSnapshot = ResolveRemoteCharacterInfoMessengerSnapshot(resolvedName);
+            bool presenceResolved = TryResolveCharacterInfoPresence(
+                resolvedCharacterId,
+                resolvedName,
+                foundActor ? actor : null,
                 "Location unknown",
                 0,
                 out string locationSummary,
                 out int channel);
 
+            CharacterBuild inspectionBuild = actor?.Build?.Clone()
+                ?? weddingSnapshot?.Build?.Clone()
+                ?? CreateRemoteCharacterInfoInspectionFallbackBuild(
+                    resolvedCharacterId,
+                    resolvedName,
+                    trackedEntry,
+                    messengerSnapshot,
+                    allowNameOnlyFallback: presenceResolved);
+            if (inspectionBuild == null)
+            {
+                return false;
+            }
+
+            if (resolvedCharacterId > 0 && inspectionBuild.Id <= 0)
+            {
+                inspectionBuild.Id = resolvedCharacterId;
+            }
+
+            if (string.IsNullOrWhiteSpace(inspectionBuild.Name))
+            {
+                inspectionBuild.Name = string.IsNullOrWhiteSpace(resolvedName)
+                    ? $"Remote Character {Math.Max(1, resolvedCharacterId)}"
+                    : resolvedName;
+            }
+
             ShowCharacterInfoWindow(
                 inspectionTarget: new UserInfoUI.UserInfoInspectionTarget
                 {
-                    Build = actor.Build,
-                    CharacterId = actor.CharacterId,
-                    Name = actor.Name,
+                    Build = inspectionBuild,
+                    CharacterId = resolvedCharacterId > 0 ? resolvedCharacterId : inspectionBuild.Id,
+                    Name = inspectionBuild.Name,
                     LocationSummary = locationSummary,
                     Channel = channel,
-                    IsLiveRemoteTarget = actor.IsVisibleInWorld
+                    IsLiveRemoteTarget = actor?.IsVisibleInWorld == true
                 });
             return true;
+        }
+
+        private SocialTrackedEntrySnapshot ResolveRemoteCharacterInfoTrackedEntry(string characterName)
+        {
+            if (string.IsNullOrWhiteSpace(characterName) || _socialListRuntime == null)
+            {
+                return null;
+            }
+
+            return _socialListRuntime.TryFindTrackedEntry(characterName.Trim(), out SocialTrackedEntrySnapshot trackedEntry) && trackedEntry.IsOnline
+                ? trackedEntry
+                : null;
+        }
+
+        private MessengerRemoteParticipantSnapshot? ResolveRemoteCharacterInfoMessengerSnapshot(string characterName)
+        {
+            if (string.IsNullOrWhiteSpace(characterName) || _messengerRuntime == null)
+            {
+                return null;
+            }
+
+            string resolvedName = characterName.Trim();
+            IReadOnlyList<MessengerRemoteParticipantSnapshot> snapshots = _messengerRuntime.GetRemoteParticipantSnapshots();
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                MessengerRemoteParticipantSnapshot snapshot = snapshots[i];
+                if (!snapshot.IsOnline
+                    || !string.Equals(snapshot.Name, resolvedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return snapshot;
+            }
+
+            return null;
+        }
+
+        internal static CharacterBuild CreateRemoteCharacterInfoInspectionFallbackBuild(
+            int characterId,
+            string characterName,
+            SocialTrackedEntrySnapshot trackedEntry,
+            MessengerRemoteParticipantSnapshot? messengerSnapshot,
+            bool allowNameOnlyFallback = false)
+        {
+            string resolvedName = !string.IsNullOrWhiteSpace(characterName)
+                ? characterName.Trim()
+                : !string.IsNullOrWhiteSpace(trackedEntry?.Name)
+                    ? trackedEntry.Name.Trim()
+                    : messengerSnapshot.HasValue && !string.IsNullOrWhiteSpace(messengerSnapshot.Value.Name)
+                        ? messengerSnapshot.Value.Name.Trim()
+                        : string.Empty;
+            if (string.IsNullOrWhiteSpace(resolvedName))
+            {
+                return null;
+            }
+
+            bool hasLevelMetadata = false;
+            bool hasJobMetadata = false;
+            CharacterBuild build = new CharacterBuild
+            {
+                Id = Math.Max(0, characterId),
+                Name = resolvedName,
+                HasAuthoritativeProfileGuild = false,
+                HasAuthoritativeProfileAlliance = false,
+                HasAuthoritativeProfileFame = false,
+                HasAuthoritativeProfileWorldRank = false,
+                HasAuthoritativeProfileJobRank = false,
+                HasAuthoritativeProfileRide = false,
+                HasAuthoritativeProfileTraits = false,
+                HasAuthoritativeProfilePendantSlot = false,
+                HasAuthoritativeProfilePocketSlot = false,
+                HasAuthoritativeProfileMedal = false,
+                HasAuthoritativeProfileCollection = false,
+                HasAuthoritativeProfileMarriage = false
+            };
+
+            if (trackedEntry != null)
+            {
+                if (TryResolveCharacterInfoTrackedLevel(trackedEntry.PrimaryText, trackedEntry.SecondaryText, out int trackedLevel))
+                {
+                    build.Level = trackedLevel;
+                    hasLevelMetadata = true;
+                }
+
+                if (TryResolveCharacterInfoTrackedJobName(trackedEntry, out string trackedJobName))
+                {
+                    build.JobName = trackedJobName;
+                    hasJobMetadata = true;
+                }
+            }
+
+            if (messengerSnapshot.HasValue)
+            {
+                MessengerRemoteParticipantSnapshot snapshot = messengerSnapshot.Value;
+                if (!hasLevelMetadata && snapshot.Level > 0)
+                {
+                    build.Level = snapshot.Level;
+                    hasLevelMetadata = true;
+                }
+
+                if (!hasJobMetadata && !string.IsNullOrWhiteSpace(snapshot.JobName))
+                {
+                    build.JobName = snapshot.JobName.Trim();
+                    hasJobMetadata = true;
+                }
+            }
+
+            build.HasAuthoritativeProfileLevel = hasLevelMetadata;
+            build.HasAuthoritativeProfileJob = hasJobMetadata;
+            return hasLevelMetadata || hasJobMetadata || allowNameOnlyFallback
+                ? build
+                : null;
         }
 
         private bool TryResolveCharacterInfoPresence(
@@ -17211,6 +17368,7 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.ItemMakeRegistered += HandleRemoteItemMakeEffect;
             _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
             _remoteUserPool.MobAttackHitEffectRegistered += HandleRemoteMobAttackHitEffect;
+            _remoteUserPool.GrenadeRegistered += HandleRemoteGrenadeEffect;
             _remoteUserPool.FieldSoundRegistered += HandleRemoteFieldSoundEffect;
             _remoteUserPool.ClientSoundRegistered += HandleRemoteClientSoundEffect;
             _remoteUserPool.StringEffectRegistered += HandleRemoteStringEffect;
@@ -21152,9 +21310,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId);
-            bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName);
-            if (!hasNpcReference && !hasScript)
+            bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId)
+                                   && npcId > 0;
+            bool hasScriptPublications = InventoryItemMetadataResolver.TryResolveSpecScriptPublications(
+                itemId,
+                out IReadOnlyList<FieldObjectScriptPublication> scriptPublications);
+            bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScripts(itemId, out IReadOnlyList<string> scriptNames);
+            string scriptName = hasScript && scriptNames.Count > 0
+                ? scriptNames[0]
+                : null;
+            if (!hasNpcReference && !hasScript && !hasScriptPublications)
             {
                 return false;
             }
@@ -21167,8 +21332,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            scriptName ??= string.Empty;
-            if (!TryOpenItemAuthoredInventoryInteraction(itemId, npcId, scriptName))
+            if (!TryOpenItemAuthoredInventoryInteraction(
+                    itemId,
+                    npcId,
+                    scriptName,
+                    scriptNames,
+                    scriptPublications))
             {
                 return false;
             }
@@ -25288,6 +25457,8 @@ namespace HaCreator.MapSimulator
             }
 
             bool isRepresentedByDedicatedFieldActor = IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant);
+            bool hasEligibleMiniRoomOccupantRole = kind is not SocialRoomKind.MiniRoom
+                || IsMiniRoomOccupantRoleEligibleForSyntheticHelper(occupant?.Role);
             bool hasEligibleTraderOccupantRole = kind is not SocialRoomKind.PersonalShop
                 && kind is not SocialRoomKind.EntrustedShop
                 || isRepresentedByDedicatedFieldActor;
@@ -25300,6 +25471,7 @@ namespace HaCreator.MapSimulator
                 _remoteUserPool.TryGetPosition(occupantName, out _),
                 occupant?.AvatarBuild != null,
                 occupant != null,
+                hasEligibleMiniRoomOccupantRole,
                 hasEligibleTraderOccupantRole);
         }
 
@@ -25311,6 +25483,7 @@ namespace HaCreator.MapSimulator
             bool hasRemotePosition,
             bool hasAvatarBuild,
             bool hasOccupant,
+            bool hasEligibleMiniRoomOccupantRole,
             bool hasEligibleTraderOccupantRole)
         {
             if (kind is not SocialRoomKind.MiniRoom
@@ -25323,6 +25496,12 @@ namespace HaCreator.MapSimulator
             // Owner-window-only names without an active room occupant should not
             // be promoted into synthetic minimap helper markers.
             if (!hasOccupant)
+            {
+                return false;
+            }
+
+            if (kind == SocialRoomKind.MiniRoom
+                && !hasEligibleMiniRoomOccupantRole)
             {
                 return false;
             }
@@ -25349,6 +25528,13 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static bool IsMiniRoomOccupantRoleEligibleForSyntheticHelper(
+            SocialRoomOccupantRole? role)
+        {
+            return role is SocialRoomOccupantRole.Owner
+                or SocialRoomOccupantRole.Guest;
         }
 
         private bool HasVisibleRemoteTrackedUserActor(string occupantName)
@@ -26856,7 +27042,11 @@ namespace HaCreator.MapSimulator
         private static bool IsClientMagicLaneExplicitAreaSkillId(int skillId)
         {
             // IDA: TryDoingMagicAttack still gates local area ownership through explicit skill-id branches.
-            return skillId == 2121007
+            // Additional branch-table coverage from the same lane includes Flame Gear family and Ice Strike.
+            return skillId == 12111003
+                   || skillId == 12111005
+                   || skillId == 2121007
+                   || skillId == 2221001
                    || skillId == 2221007
                    || skillId == 2321008
                    || skillId == 22161001
@@ -26906,7 +27096,17 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            mask = token.Trim().ToLowerInvariant() switch
+            string trimmed = token?.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed)
+                && trimmed.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(trimmed.AsSpan(2), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int hexMask)
+                && hexMask >= 0)
+            {
+                mask = hexMask;
+                return true;
+            }
+
+            mask = trimmed?.ToLowerInvariant() switch
             {
                 "f" => 1,
                 "fire" => 1,
@@ -27325,6 +27525,29 @@ namespace HaCreator.MapSimulator
             }
 
             int hotkeySlot = SkillManager.FUNCTION_SLOT_OFFSET + functionKeyIndex;
+            if (keyDown)
+            {
+                skills.TryCastHotkey(hotkeySlot, currTickCount);
+            }
+            else
+            {
+                skills.ReleaseHotkeyIfActive(hotkeySlot, currTickCount);
+            }
+        }
+
+        private void HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(int hotkeySlot, bool keyDown)
+        {
+            if (hotkeySlot < 0 || hotkeySlot >= SkillManager.TOTAL_SLOT_COUNT)
+            {
+                return;
+            }
+
+            SkillManager skills = _playerManager?.Skills;
+            if (skills == null)
+            {
+                return;
+            }
+
             if (keyDown)
             {
                 skills.TryCastHotkey(hotkeySlot, currTickCount);
@@ -27755,8 +27978,13 @@ namespace HaCreator.MapSimulator
 
             if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
             {
-                StopSkillMacroForHandleUpKeyDown();
-                if (CanReplayPassiveTransferFieldUpKeyPath(currentTime))
+                bool canReplayHandleUpKeyDown = CanReplayPassiveTransferFieldUpKeyPath(currentTime);
+                if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForQueuedReplay(canReplayHandleUpKeyDown))
+                {
+                    StopSkillMacroForHandleUpKeyDown();
+                }
+
+                if (canReplayHandleUpKeyDown)
                 {
                     TryHandlePortalInteractCore(currentTime);
                 }
@@ -31109,6 +31337,7 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.SkillMacroWindow.OnMacroDeleted = _ => PersistSkillMacros();
                 uiWindowManager.SkillMacroWindow.OnImeCandidateSelected = TrySelectSkillMacroImeCandidate;
                 uiWindowManager.SkillMacroWindow.OnClientForwardedFunctionKeyStateChanged = HandleSkillMacroClientForwardedFunctionKeyStateChanged;
+                uiWindowManager.SkillMacroWindow.OnClientForwardedNonFunctionHotkeyStateChanged = HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged;
                 uiWindowManager.SkillMacroWindow.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
                 _playerManager.Skills.SetMacroResolver(index => uiWindowManager.SkillMacroWindow.GetMacro(index));
                 LoadPersistedSkillMacros();
@@ -31510,6 +31739,7 @@ namespace HaCreator.MapSimulator
                 questAlarmWindow.QuestRequested += OpenQuestFromAlarmWindow;
                 questAlarmWindow.QuestLogRequested += OpenQuestLogFromAlarmWindow;
                 questAlarmWindow.QuestRecentUpdateAcknowledged += _questRuntime.AcknowledgeQuestAlarmUpdate;
+                questAlarmWindow.QuestTitleTooltipCleared += _questRuntime.ClearPacketOwnedQuestAlarmTitleTooltip;
                 questAlarmWindow.QuestDeleted += ResetQuestDetailFromQuestAlarmMutation;
                 questAlarmWindow.TrackerCleared += ResetQuestDetailFromQuestAlarmMutation;
                 questAlarmWindow.StatusMessageRequested += message =>
@@ -31570,6 +31800,7 @@ namespace HaCreator.MapSimulator
                 storeBankWindow.SetFont(_fontChat);
                 storeBankWindow.SetFooterProvider(BuildPacketOwnedStoreBankFooter);
                 storeBankWindow.SetRuntime(_packetOwnedStoreBankRuntime);
+                storeBankWindow.SetItemIconProvider(LoadInventoryItemIcon);
                 storeBankWindow.SetGetAction(HandlePacketOwnedStoreBankGetButtonClick);
                 storeBankWindow.SetCloseAction(HandlePacketOwnedStoreBankCloseButtonClick);
             }
@@ -31940,8 +32171,14 @@ namespace HaCreator.MapSimulator
                 _activeQuestDetailQuestId > 0)
             {
                 QuestWindowDetailState detailState = GetQuestWindowDetailStateWithPacketState(_activeQuestDetailQuestId);
-                if (detailState?.TargetItemId == reference.TargetId &&
-                    detailState.DeliveryType != QuestDetailDeliveryType.None)
+                bool routesToDeliveryHandoff = detailState != null &&
+                                               detailState.DeliveryType != QuestDetailDeliveryType.None &&
+                                               (detailState.TargetItemId == reference.TargetId ||
+                                                _questRuntime.IsQuestDeliveryRequirementItem(
+                                                    _activeQuestDetailQuestId,
+                                                    reference.TargetId,
+                                                    detailState.DeliveryType));
+                if (routesToDeliveryHandoff)
                 {
                     bool completionPhase = detailState.DeliveryType == QuestDetailDeliveryType.Complete;
                     return HandleQuestDeliveryLocalHandoff(
@@ -32634,7 +32871,10 @@ namespace HaCreator.MapSimulator
                 EffectSkillId = castInfo.SkillId,
                 SourceSkillId = castInfo.SkillId,
                 RequestTime = castInfo.CastTime > 0 ? castInfo.CastTime : currTickCount,
-                BranchNames = castInfo.RequestedBranchNames,
+                BranchNames = ResolveAnimationDisplayerRequestedBranchNames(
+                    castInfo.RequestedBranchNames,
+                    castInfo.EffectAnimation,
+                    castInfo.SecondaryEffectAnimation),
                 WorldOrigin = new Microsoft.Xna.Framework.Vector2(castInfo.CasterX, castInfo.CasterY),
                 OriginOffset = castInfo.OriginOffset,
                 FollowOwnerPosition = castInfo.FollowOwnerPosition,
@@ -33855,10 +34095,21 @@ namespace HaCreator.MapSimulator
 
         private FieldEntryRestrictionContext BuildFieldEntryRestrictionContext()
         {
+            bool hasPartyContext = _socialListRuntime?.HasPartyAdmissionContext() == true;
+            bool hasExpeditionContext = _socialListRuntime?.HasExpeditionAdmissionContext() == true;
+            bool usesPacketOwnedPartyContext = _socialListRuntime?.UsesPacketOwnedPartyAdmissionContext() == true;
+            bool hasPacketOwnedPartyContext = _socialListRuntime?.HasPacketOwnedPartyAdmissionContext() == true;
+            bool usesPacketOwnedExpeditionContext = _socialListRuntime?.UsesPacketOwnedExpeditionAdmissionContext() == true;
+            bool hasPacketOwnedExpeditionContext = _socialListRuntime?.HasPacketOwnedExpeditionAdmissionContext() == true;
+
             return new FieldEntryRestrictionContext(
                 _playerManager?.Player?.Level ?? 1,
-                _socialListRuntime?.HasPartyAdmissionContext() == true,
-                _socialListRuntime?.HasExpeditionAdmissionContext() == true);
+                hasPartyContext,
+                hasExpeditionContext,
+                usesPacketOwnedPartyContext,
+                hasPacketOwnedPartyContext,
+                usesPacketOwnedExpeditionContext,
+                hasPacketOwnedExpeditionContext);
         }
 
 

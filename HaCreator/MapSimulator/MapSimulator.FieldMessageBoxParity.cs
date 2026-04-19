@@ -39,6 +39,64 @@ namespace HaCreator.MapSimulator
             return $"Field message-box session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}. {_fieldMessageBoxOfficialSessionBridge.LastStatus}";
         }
 
+        private bool TrySyncFieldMessageBoxOfficialSessionBridgeFromLocalUtility(out string status)
+        {
+            int resolvedRemotePort = _localUtilityOfficialSessionBridgeConfiguredRemotePort > 0
+                ? _localUtilityOfficialSessionBridgeConfiguredRemotePort
+                : _localUtilityOfficialSessionBridge.RemotePort;
+            if (resolvedRemotePort <= 0 || resolvedRemotePort > ushort.MaxValue)
+            {
+                status = "Message-box session bridge sync requires an active or configured local-utility official-session remote port.";
+                return false;
+            }
+
+            _fieldMessageBoxOfficialSessionBridgeEnabled = true;
+            _fieldMessageBoxOfficialSessionBridgeConfiguredListenPort = _fieldMessageBoxOfficialSessionBridgeConfiguredListenPort > 0
+                ? _fieldMessageBoxOfficialSessionBridgeConfiguredListenPort
+                : FieldMessageBoxOfficialSessionBridgeManager.DefaultListenPort;
+            _fieldMessageBoxOfficialSessionBridgeConfiguredRemotePort = resolvedRemotePort;
+
+            bool useDiscovery = _localUtilityOfficialSessionBridgeUseDiscovery
+                || (_localUtilityOfficialSessionBridgeEnabled && string.IsNullOrWhiteSpace(_localUtilityOfficialSessionBridgeConfiguredRemoteHost));
+            _fieldMessageBoxOfficialSessionBridgeUseDiscovery = useDiscovery;
+            if (useDiscovery)
+            {
+                _fieldMessageBoxOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                _fieldMessageBoxOfficialSessionBridgeConfiguredProcessSelector = _localUtilityOfficialSessionBridgeConfiguredProcessSelector;
+                _fieldMessageBoxOfficialSessionBridgeConfiguredLocalPort = _localUtilityOfficialSessionBridgeConfiguredLocalPort;
+                _nextFieldMessageBoxOfficialSessionBridgeDiscoveryRefreshAt = 0;
+                if (_fieldMessageBoxOfficialSessionBridge.TryStartFromDiscovery(
+                        _fieldMessageBoxOfficialSessionBridgeConfiguredListenPort,
+                        _fieldMessageBoxOfficialSessionBridgeConfiguredRemotePort,
+                        _fieldMessageBoxOfficialSessionBridgeConfiguredProcessSelector,
+                        _fieldMessageBoxOfficialSessionBridgeConfiguredLocalPort,
+                        out string discoverStatus))
+                {
+                    status = $"Synced message-box bridge from local-utility discovery settings. {discoverStatus}";
+                    return true;
+                }
+
+                status = $"Message-box bridge sync from local-utility discovery settings failed. {discoverStatus}";
+                return false;
+            }
+
+            string resolvedRemoteHost = !string.IsNullOrWhiteSpace(_localUtilityOfficialSessionBridgeConfiguredRemoteHost)
+                ? _localUtilityOfficialSessionBridgeConfiguredRemoteHost
+                : _localUtilityOfficialSessionBridge.RemoteHost;
+            if (string.IsNullOrWhiteSpace(resolvedRemoteHost))
+            {
+                status = "Message-box session bridge sync requires a configured local-utility official-session remote host.";
+                return false;
+            }
+
+            _fieldMessageBoxOfficialSessionBridgeConfiguredRemoteHost = resolvedRemoteHost;
+            _fieldMessageBoxOfficialSessionBridgeConfiguredProcessSelector = null;
+            _fieldMessageBoxOfficialSessionBridgeConfiguredLocalPort = null;
+            EnsureFieldMessageBoxOfficialSessionBridgeState(shouldRun: true);
+            status = $"Synced message-box bridge from local-utility direct-proxy settings. {DescribeFieldMessageBoxOfficialSessionBridgeStatus()}";
+            return _fieldMessageBoxOfficialSessionBridge.IsRunning;
+        }
+
         private void EnsureFieldMessageBoxOfficialSessionBridgeState(bool shouldRun)
         {
             if (!shouldRun || !_fieldMessageBoxOfficialSessionBridgeEnabled)
@@ -171,6 +229,13 @@ namespace HaCreator.MapSimulator
                 return _fieldMessageBoxOfficialSessionBridge.TryReplayRecentOutboundPacket(replayIndex, out string replayStatus)
                     ? ChatCommandHandler.CommandResult.Ok(replayStatus)
                     : ChatCommandHandler.CommandResult.Error(replayStatus);
+            }
+
+            if (string.Equals(args[0], "syncutility", StringComparison.OrdinalIgnoreCase))
+            {
+                return TrySyncFieldMessageBoxOfficialSessionBridgeFromLocalUtility(out string syncStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(syncStatus)
+                    : ChatCommandHandler.CommandResult.Error(syncStatus);
             }
 
             if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase)
@@ -345,7 +410,7 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Ok(DescribeFieldMessageBoxOfficialSessionBridgeStatus());
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /messagebox session [status|history [count]|clearhistory|replay <historyIndex>|send <opcode> [payloadhex=..|payloadb64=..]|sendraw <opcode-prefixed-hex>|<send|queue> consume <inventoryPosition> [itemId] <message>|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /messagebox session [status|history [count]|clearhistory|replay <historyIndex>|syncutility|send <opcode> [payloadhex=..|payloadb64=..]|sendraw <opcode-prefixed-hex>|<send|queue> consume <inventoryPosition> [itemId] <message>|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
         }
 
         private bool TryMirrorFieldMessageBoxConsumeCashItemUseClientRequest(
@@ -355,6 +420,14 @@ namespace HaCreator.MapSimulator
             bool queueOnly,
             out string message)
         {
+            string bridgeSyncNote = string.Empty;
+            if (!_fieldMessageBoxOfficialSessionBridgeEnabled)
+            {
+                bridgeSyncNote = TrySyncFieldMessageBoxOfficialSessionBridgeFromLocalUtility(out string bridgeSyncStatus)
+                    ? $" Message-box session bridge auto-sync succeeded. {bridgeSyncStatus}"
+                    : $" Message-box session bridge auto-sync unavailable. {bridgeSyncStatus}";
+            }
+
             if (!FieldMessageBoxRuntime.TryBuildConsumeCashItemUseRequestPayload(
                     currTickCount,
                     inventoryPosition,
@@ -375,7 +448,7 @@ namespace HaCreator.MapSimulator
                         payload,
                         out string queueStatus))
                 {
-                    message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred live delivery. {queueStatus}";
+                    message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred live delivery. {queueStatus}{bridgeSyncNote}";
                     return true;
                 }
 
@@ -384,11 +457,11 @@ namespace HaCreator.MapSimulator
                         payload,
                         out string outboxQueueStatus))
                 {
-                    message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after live queueing was unavailable. Bridge queue: {queueStatus} Deferred outbox: {outboxQueueStatus}";
+                    message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after live queueing was unavailable. Bridge queue: {queueStatus} Deferred outbox: {outboxQueueStatus}{bridgeSyncNote}";
                     return true;
                 }
 
-                message = $"Message-box consume request queueing failed for opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}]. Bridge queue: {queueStatus} Outbox queue: {outboxQueueStatus}";
+                message = $"Message-box consume request queueing failed for opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}]. Bridge queue: {queueStatus} Outbox queue: {outboxQueueStatus}{bridgeSyncNote}";
                 return false;
             }
 
@@ -398,7 +471,7 @@ namespace HaCreator.MapSimulator
                     payload,
                     out dispatchStatus))
             {
-                message = $"Dispatched CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}";
+                message = $"Dispatched CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}{bridgeSyncNote}";
                 return true;
             }
 
@@ -408,7 +481,7 @@ namespace HaCreator.MapSimulator
                     payload,
                     out outboxStatus))
             {
-                message = $"Dispatched CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+                message = $"Dispatched CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}{bridgeSyncNote}";
                 return true;
             }
 
@@ -419,7 +492,7 @@ namespace HaCreator.MapSimulator
                     payload,
                     out deferredBridgeStatus))
             {
-                message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred official-session bridge delivery after immediate dispatch was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
+                message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred official-session bridge delivery after immediate dispatch was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}{bridgeSyncNote}";
                 return true;
             }
 
@@ -428,11 +501,11 @@ namespace HaCreator.MapSimulator
                     payload,
                     out string deferredOutboxStatus))
             {
-                message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate dispatch was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}";
+                message = $"Queued CUserLocal::ConsumeCashItem message-box request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate dispatch was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}{bridgeSyncNote}";
                 return true;
             }
 
-            message = $"Message-box consume request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] remained simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}";
+            message = $"Message-box consume request opcode {FieldMessageBoxRuntime.ConsumeCashItemUseRequestOpcode} [{payloadHex}] remained simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}{bridgeSyncNote}";
             return false;
         }
     }

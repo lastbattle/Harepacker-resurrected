@@ -1428,16 +1428,23 @@ namespace HaCreator.MapSimulator.UI
             byte[] trailingPayload)
         {
             if (!_packetOwnedAdminShopSession.IsActive
-                || subtype != 4
-                || !hasResultCode
+                || subtype != 4)
+            {
+                return;
+            }
+
+            if (!hasResultCode
+                || resultCode != 0
                 || trailingPayload == null
                 || trailingPayload.Length == 0)
             {
+                ClearPacketOwnedWishlistSearchSnapshot();
                 return;
             }
 
             if (!AdminShopPacketOwnedWishlistSearchResultCodec.TryDecode(trailingPayload, out AdminShopPacketOwnedWishlistSearchSnapshot snapshot))
             {
+                ClearPacketOwnedWishlistSearchSnapshot();
                 return;
             }
 
@@ -4165,10 +4172,19 @@ namespace HaCreator.MapSimulator.UI
             AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
             if (!_packetOwnedAdminShopSession.IsActive
                 || snapshot?.ItemIds == null
-                || snapshot.ItemIds.Count <= 0
                 || !MatchesPacketOwnedWishlistSearchSnapshot(snapshot, trimmedQuery, categoryKey, priceRangeIndex))
             {
                 return false;
+            }
+
+            string sessionLabel = snapshot.ServiceSessionId >= 0 || snapshot.SearchSessionId >= 0
+                ? $"{Math.Max(-1, snapshot.ServiceSessionId).ToString(CultureInfo.InvariantCulture)}/{Math.Max(-1, snapshot.SearchSessionId).ToString(CultureInfo.InvariantCulture)}"
+                : "unresolved";
+            IReadOnlyList<int> packetItemIds = snapshot.ItemIds;
+            if (packetItemIds.Count <= 0)
+            {
+                summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; the packet-authored payload reported no result rows.";
+                return true;
             }
 
             Dictionary<int, List<AdminShopEntry>> wishlistRowsByItemId = _paneStates[AdminShopPane.Npc]
@@ -4185,17 +4201,20 @@ namespace HaCreator.MapSimulator.UI
                     group => group.Select(value => value.Entry).ToList());
             if (wishlistRowsByItemId.Count == 0)
             {
-                return false;
+                summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {packetItemIds.Count.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog.";
+                return true;
             }
 
             HashSet<string> seenEntryKeys = new(StringComparer.Ordinal);
             Dictionary<int, int> itemCursorByItemId = new();
-            foreach (int itemId in snapshot.ItemIds)
+            int unresolvedItemCount = 0;
+            foreach (int itemId in packetItemIds)
             {
                 if (itemId <= 0
                     || !wishlistRowsByItemId.TryGetValue(itemId, out List<AdminShopEntry> candidates)
                     || candidates.Count == 0)
                 {
+                    unresolvedItemCount++;
                     continue;
                 }
 
@@ -4220,17 +4239,22 @@ namespace HaCreator.MapSimulator.UI
 
                     break;
                 }
+
+                if (!itemCursorByItemId.ContainsKey(itemId))
+                {
+                    unresolvedItemCount++;
+                }
             }
 
             if (results.Count <= 0)
             {
-                return false;
+                summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog.";
+                return true;
             }
 
-            string sessionLabel = snapshot.ServiceSessionId >= 0 || snapshot.SearchSessionId >= 0
-                ? $"{Math.Max(-1, snapshot.ServiceSessionId).ToString(CultureInfo.InvariantCulture)}/{Math.Max(-1, snapshot.SearchSessionId).ToString(CultureInfo.InvariantCulture)}"
-                : "unresolved";
-            summary = $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}.";
+            summary = unresolvedItemCount > 0
+                ? $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog."
+                : $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}.";
             return true;
         }
 
@@ -5123,6 +5147,17 @@ namespace HaCreator.MapSimulator.UI
                 priceLabel = $"Need x{catalogEntry.SourceItemQuantity} ({stackQuantity} ready)";
             }
 
+            int maxRequestCount = catalogEntry.MaxRequestCount;
+            if (RequiresInventorySource(catalogEntry))
+            {
+                bool honorConfiguredMaxRequestCount = !catalogEntry.IsPacketOwnedSnapshotRow;
+                maxRequestCount = AdminShopPacketOwnedSellTemplateParity.ResolveSourceRequestCountCap(
+                    honorConfiguredMaxRequestCount,
+                    catalogEntry.MaxRequestCount,
+                    catalogEntry.SourceItemQuantity,
+                    stackQuantity);
+            }
+
             return new AdminShopEntry
             {
                 Title = catalogEntry.Title,
@@ -5146,7 +5181,7 @@ namespace HaCreator.MapSimulator.UI
                 WasPurchased = catalogEntry.WasPurchased,
                 CommoditySerialNumber = catalogEntry.CommoditySerialNumber,
                 CommodityOnSale = catalogEntry.CommodityOnSale,
-                MaxRequestCount = catalogEntry.MaxRequestCount,
+                MaxRequestCount = Math.Max(1, maxRequestCount),
                 SuccessMesoReward = catalogEntry.SuccessMesoReward,
                 SourceInventoryType = catalogEntry.SourceInventoryType,
                 SourceItemId = catalogEntry.SourceItemId,
@@ -5174,11 +5209,15 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private bool UsesPacketOwnedAdminShopCatalog(AdminShopServiceMode mode)
+        internal static bool ShouldUsePacketOwnedCatalog(AdminShopServiceMode mode, bool hasActiveSession)
         {
             return mode == AdminShopServiceMode.CashShop
-                && _packetOwnedAdminShopSession.IsActive
-                && _packetOwnedAdminShopRows.Count > 0;
+                && hasActiveSession;
+        }
+
+        private bool UsesPacketOwnedAdminShopCatalog(AdminShopServiceMode mode)
+        {
+            return ShouldUsePacketOwnedCatalog(mode, _packetOwnedAdminShopSession.IsActive);
         }
 
         private static AdminShopEntry CreateSourceTradeEntry(

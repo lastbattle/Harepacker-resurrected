@@ -2137,6 +2137,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Vector2 PreviousPosition { get; set; }
         public bool FacingRight { get; set; }
         public int? StopTime { get; set; }
+        public Vector2? StopPosition { get; set; }
         public int LastAfterimageUpdateTime { get; set; } = int.MinValue;
         public int NextAfterimageRepeatLayerId { get; set; } = 1;
         public List<ProjectileAfterimageLayer> AfterimageLayers { get; } = new();

@@ -1535,6 +1535,7 @@ namespace HaCreator.MapSimulator.Effects
             if (maskWordCount == 0)
             {
                 participant.TemporaryStats = default;
+                ApplyParticipantTemporaryStatPresentation(participant);
                 return true;
             }
 
@@ -1813,6 +1814,7 @@ namespace HaCreator.MapSimulator.Effects
 
             participant.Build.GuildName = string.IsNullOrWhiteSpace(guildName) ? string.Empty : guildName.Trim();
             participant.Build.HasAuthoritativeProfileGuild = true;
+            participant.ProfileMetadataRevision++;
             RefreshParticipantNameTag(participant);
         }
 
@@ -1824,10 +1826,12 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
+            bool metadataUpdated = false;
             if (packet.Level.HasValue && packet.Level.Value > 0)
             {
                 build.Level = Math.Max(1, packet.Level.Value);
                 build.HasAuthoritativeProfileLevel = true;
+                metadataUpdated = true;
             }
 
             if (packet.JobId.HasValue && packet.JobId.Value >= 0)
@@ -1835,12 +1839,14 @@ namespace HaCreator.MapSimulator.Effects
                 build.Job = packet.JobId.Value;
                 build.JobName = SkillDataLoader.GetJobName(packet.JobId.Value);
                 build.HasAuthoritativeProfileJob = true;
+                metadataUpdated = true;
             }
 
             if (packet.GuildName != null)
             {
                 build.GuildName = string.IsNullOrWhiteSpace(packet.GuildName) ? string.Empty : packet.GuildName.Trim();
                 build.HasAuthoritativeProfileGuild = true;
+                metadataUpdated = true;
                 RefreshParticipantNameTag(participant);
             }
 
@@ -1848,42 +1854,49 @@ namespace HaCreator.MapSimulator.Effects
             {
                 build.AllianceName = string.IsNullOrWhiteSpace(packet.AllianceName) ? string.Empty : packet.AllianceName.Trim();
                 build.HasAuthoritativeProfileAlliance = true;
+                metadataUpdated = true;
             }
 
             if (packet.Fame.HasValue)
             {
                 build.Fame = Math.Max(0, packet.Fame.Value);
                 build.HasAuthoritativeProfileFame = true;
+                metadataUpdated = true;
             }
 
             if (packet.WorldRank.HasValue)
             {
                 build.WorldRank = Math.Max(0, packet.WorldRank.Value);
                 build.HasAuthoritativeProfileWorldRank = true;
+                metadataUpdated = true;
             }
 
             if (packet.JobRank.HasValue)
             {
                 build.JobRank = Math.Max(0, packet.JobRank.Value);
                 build.HasAuthoritativeProfileJobRank = true;
+                metadataUpdated = true;
             }
 
             if (packet.HasRide.HasValue)
             {
                 build.HasMonsterRiding = packet.HasRide.Value;
                 build.HasAuthoritativeProfileRide = true;
+                metadataUpdated = true;
             }
 
             if (packet.HasPendantSlot.HasValue)
             {
                 build.HasPendantSlotExtension = packet.HasPendantSlot.Value;
                 build.HasAuthoritativeProfilePendantSlot = true;
+                metadataUpdated = true;
             }
 
             if (packet.HasPocketSlot.HasValue)
             {
                 build.HasPocketSlot = packet.HasPocketSlot.Value;
                 build.HasAuthoritativeProfilePocketSlot = true;
+                metadataUpdated = true;
             }
 
             bool hasTraitUpdate = false;
@@ -1891,36 +1904,42 @@ namespace HaCreator.MapSimulator.Effects
             {
                 build.TraitCharisma = Math.Max(0, packet.TraitCharisma.Value);
                 hasTraitUpdate = true;
+                metadataUpdated = true;
             }
 
             if (packet.TraitInsight.HasValue)
             {
                 build.TraitInsight = Math.Max(0, packet.TraitInsight.Value);
                 hasTraitUpdate = true;
+                metadataUpdated = true;
             }
 
             if (packet.TraitWill.HasValue)
             {
                 build.TraitWill = Math.Max(0, packet.TraitWill.Value);
                 hasTraitUpdate = true;
+                metadataUpdated = true;
             }
 
             if (packet.TraitCraft.HasValue)
             {
                 build.TraitCraft = Math.Max(0, packet.TraitCraft.Value);
                 hasTraitUpdate = true;
+                metadataUpdated = true;
             }
 
             if (packet.TraitSense.HasValue)
             {
                 build.TraitSense = Math.Max(0, packet.TraitSense.Value);
                 hasTraitUpdate = true;
+                metadataUpdated = true;
             }
 
             if (packet.TraitCharm.HasValue)
             {
                 build.TraitCharm = Math.Max(0, packet.TraitCharm.Value);
                 hasTraitUpdate = true;
+                metadataUpdated = true;
             }
 
             if (hasTraitUpdate)
@@ -1931,11 +1950,18 @@ namespace HaCreator.MapSimulator.Effects
             if (packet.HasMedal.HasValue)
             {
                 build.HasAuthoritativeProfileMedal = true;
+                metadataUpdated = true;
             }
 
             if (packet.HasCollection.HasValue)
             {
                 build.HasAuthoritativeProfileCollection = true;
+                metadataUpdated = true;
+            }
+
+            if (metadataUpdated)
+            {
+                participant.ProfileMetadataRevision++;
             }
         }
 
@@ -1955,6 +1981,7 @@ namespace HaCreator.MapSimulator.Effects
             participant.Build.GuildMarkBackgroundColor = markBackgroundColor;
             participant.Build.GuildMarkId = markId > 0 ? markId : null;
             participant.Build.GuildMarkColor = markColor;
+            participant.GuildMarkRevision++;
             RefreshParticipantNameTag(participant);
         }
 

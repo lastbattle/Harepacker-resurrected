@@ -576,8 +576,14 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return !string.IsNullOrWhiteSpace(
-                FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context));
+            FieldEntryRestrictionType restrictionType = FieldEntryRestrictionEvaluator.GetRestrictionType(mapInfo, context);
+            if (restrictionType != FieldEntryRestrictionType.LevelLimit)
+            {
+                return false;
+            }
+
+            int requiredLevel = mapInfo.lvLimit ?? 0;
+            return requiredLevel >= 7 && context.PlayerLevel < 7;
         }
 
         private static bool IsPortalScrollItem(InventoryType inventoryType, int itemId)

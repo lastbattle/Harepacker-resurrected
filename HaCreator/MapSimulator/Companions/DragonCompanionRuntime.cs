@@ -124,6 +124,7 @@ namespace HaCreator.MapSimulator.Companions
         private Func<int?> _questInfoStateProvider;
         private Func<bool> _dragonFuryVisibleProvider;
         private Func<OwnerPhaseContext> _ownerPhaseContextProvider;
+        private Func<Vector2, int?> _actionLayerOwnerZProvider;
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
         private int _currentActionStartTime;
@@ -232,6 +233,11 @@ namespace HaCreator.MapSimulator.Companions
             _dragonFuryVisibleProvider = dragonFuryVisibleProvider;
         }
 
+        public void SetActionLayerOwnerZProvider(Func<Vector2, int?> actionLayerOwnerZProvider)
+        {
+            _actionLayerOwnerZProvider = actionLayerOwnerZProvider;
+        }
+
         public void SetOwnerPhaseActionAlphaProvider(Func<int?> ownerPhaseActionAlphaProvider)
         {
             _ownerPhaseContextProvider = ownerPhaseActionAlphaProvider == null
@@ -272,7 +278,6 @@ namespace HaCreator.MapSimulator.Companions
             _facingRight = owner.FacingRight;
             _currentActionSpeed = owner.Build.GetEffectiveWeaponAttackSpeed();
             _worldAnchor = ResolveAnchor(owner, animationSet, currentTime);
-            _actionLayerZ = ResolveClientDragonActionLayerZ(owner.GetCurrentLayerZ(currentTime));
             bool suppressedForMap = ShouldSuppressForCurrentMap();
             bool suppressedForMount = ShouldSuppressForCurrentMount(owner);
             bool ownerUpdateVisible = ResolveClientOwnerUpdateVisibility(owner?.IsAlive == true, suppressedForMap);
@@ -334,6 +339,11 @@ namespace HaCreator.MapSimulator.Companions
                 SetCurrentAction(baseActionName, currentTime, preserveStartTimeWhenUnchanged: true);
             }
 
+            int ownerLayerZ = owner.GetCurrentLayerZ(currentTime);
+            int resolvedOwnerLayerZ = ResolveClientDragonActionLayerOwnerZ(
+                ownerLayerZ,
+                _actionLayerOwnerZProvider?.Invoke(_visualAnchor));
+            _actionLayerZ = ResolveClientDragonActionLayerZ(resolvedOwnerLayerZ);
             _alpha = ResolveClientLayerAlpha(!_isSuppressed);
             OwnerPhaseContext ownerPhaseContext = _ownerPhaseContextProvider?.Invoke() ?? OwnerPhaseContext.NoLocalUser;
             _actionLayerColor = ResolveClientActionLayerColorAfterOwnerUpdate(
@@ -1303,6 +1313,11 @@ namespace HaCreator.MapSimulator.Companions
         internal static int ResolveClientDragonActionLayerZ(int ownerLayerZ)
         {
             return ownerLayerZ - 1;
+        }
+
+        internal static int ResolveClientDragonActionLayerOwnerZ(int fallbackOwnerLayerZ, int? vecCtrlOwnerLayerZ)
+        {
+            return vecCtrlOwnerLayerZ ?? fallbackOwnerLayerZ;
         }
 
         internal static float ResolveOwnerPhaseClampedActionLayerAlpha(float actionLayerAlpha, int? ownerPhaseAlpha)

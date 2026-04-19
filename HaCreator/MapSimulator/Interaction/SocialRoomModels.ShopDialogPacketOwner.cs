@@ -122,23 +122,35 @@ namespace HaCreator.MapSimulator.Interaction
                         detail = $"{OwnerName} handled withdraw-money packet {packetType}, then forwarded it through {ForwardedOwnerName}. {Runtime.StatusMessage}";
                         break;
                     case EntrustedShopVisitListResultPacketType:
-                        handled = Runtime.TryApplyEntrustedVisitListPacket(reader, out detail);
-                        if (handled)
+                    {
+                        bool entrustedHandled = Runtime.TryApplyEntrustedVisitListPacket(reader, out string entrustedDetail);
+                        bool sharedHandled = Runtime.TryDispatchPersonalShopPacket(reader, packetType, tickCount, out string sharedDetail);
+                        forwarded = true;
+                        handled = entrustedHandled || sharedHandled;
+                        detail = entrustedHandled
+                            ? $"{OwnerName} handled visit-list packet {packetType}, then forwarded it through {ForwardedOwnerName}. {entrustedDetail}"
+                            : $"{OwnerName} could not decode visit-list packet {packetType}, but still forwarded it through {ForwardedOwnerName}. {entrustedDetail}";
+                        if (!string.IsNullOrWhiteSpace(sharedDetail))
                         {
-                            forwarded = true;
-                            detail = $"{OwnerName} handled visit-list packet {packetType}, then forwarded it through {ForwardedOwnerName}. {detail}";
+                            detail = $"{detail} Forwarded owner detail: {sharedDetail}";
                         }
-
                         break;
+                    }
                     case EntrustedShopBlackListResultPacketType:
-                        handled = Runtime.TryApplyEntrustedBlackListPacket(reader, out detail);
-                        if (handled)
+                    {
+                        bool entrustedHandled = Runtime.TryApplyEntrustedBlackListPacket(reader, out string entrustedDetail);
+                        bool sharedHandled = Runtime.TryDispatchPersonalShopPacket(reader, packetType, tickCount, out string sharedDetail);
+                        forwarded = true;
+                        handled = entrustedHandled || sharedHandled;
+                        detail = entrustedHandled
+                            ? $"{OwnerName} handled blacklist packet {packetType}, then forwarded it through {ForwardedOwnerName}. {entrustedDetail}"
+                            : $"{OwnerName} could not decode blacklist packet {packetType}, but still forwarded it through {ForwardedOwnerName}. {entrustedDetail}";
+                        if (!string.IsNullOrWhiteSpace(sharedDetail))
                         {
-                            forwarded = true;
-                            detail = $"{OwnerName} handled blacklist packet {packetType}, then forwarded it through {ForwardedOwnerName}. {detail}";
+                            detail = $"{detail} Forwarded owner detail: {sharedDetail}";
                         }
-
                         break;
+                    }
                     default:
                         forwarded = true;
                         handled = Runtime.TryDispatchPersonalShopPacket(reader, packetType, tickCount, out detail);

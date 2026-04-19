@@ -973,10 +973,11 @@ namespace HaCreator.MapSimulator.UI
                 return left + ClientCollectionTextAnalyzerMargin;
             }
 
-            int lineWidth = Math.Clamp(MeasureCollectionTextWidth(line, styleIndex, measureTextWidth), 0, Math.Max(0, width));
+            int lineWidth = MeasureCollectionTextWidth(line, styleIndex, measureTextWidth);
+            int analyzerLaneWidth = Math.Max(0, width);
             return alignment == CollectionBookTextAlignment.Center
-                ? left + ((width - lineWidth) / 2)
-                : left + (width - lineWidth);
+                ? left + ((analyzerLaneWidth - lineWidth) / 2)
+                : left + (analyzerLaneWidth - lineWidth);
         }
 
         private static int MeasureCollectionTextWidth(string text, int styleIndex, Func<string, int, float> measureTextWidth = null)

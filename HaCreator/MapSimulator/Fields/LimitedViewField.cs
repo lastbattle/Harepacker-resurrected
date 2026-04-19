@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.Fields
         internal const int ClientOwnedSmallDarkCanvasHeight = 316;
         internal const int ClientOwnedCanvasClassStringPoolId = 0x3D0;
         internal const int ClientOwnedViewrangePathStringPoolId = 0xE6E;
+        internal const int ClientOwnedDarkLayerColorArgb = unchecked((int)0xC006060A);
 
         internal enum ClientOwnedInitOperationKind
         {
@@ -1058,13 +1059,23 @@ namespace HaCreator.MapSimulator.Fields
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.InsertDarkCanvasIntoLayer, ClientOwnedDarkCanvasWidth, ClientOwnedDarkCanvasHeight),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.BindDarkLayerToGraphicsCenter),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.MoveDarkLayer, x: ClientOwnedDarkLayerOffsetX, y: ClientOwnedDarkLayerOffsetY),
-                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.SetDarkLayerColor, source: "0xC006060A"),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.SetDarkLayerColor, source: $"0x{unchecked((uint)ClientOwnedDarkLayerColorArgb):X8}"),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.SetDarkLayerZ, source: "-1"),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.CreateSmallDarkCanvas, smallDarkWidth, smallDarkHeight, source: $"StringPool[0x{ClientOwnedCanvasClassStringPoolId:X}]"),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.FillSmallDarkCanvasBlack, smallDarkWidth, smallDarkHeight),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.LoadViewrangeCanvas, smallDarkWidth, smallDarkHeight, source: source),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.DrawInitialViewrange, smallDarkWidth, smallDarkHeight)
             };
+        }
+
+        internal static Color ResolveClientOwnedDarkLayerColor()
+        {
+            uint argb = unchecked((uint)ClientOwnedDarkLayerColorArgb);
+            byte a = (byte)((argb >> 24) & 0xFF);
+            byte r = (byte)((argb >> 16) & 0xFF);
+            byte g = (byte)((argb >> 8) & 0xFF);
+            byte b = (byte)(argb & 0xFF);
+            return new Color(r, g, b, a);
         }
 
         internal void CommitClientOwnedUpdateParityMaskTopLefts(IReadOnlyList<Vector2> maskTopLefts)

@@ -3476,6 +3476,18 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     rawPayload,
                     weaponChargeMetadataOffset,
+                    preferredSkillId: 0,
+                    maxScanBytes: AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (weaponChargeMetadataOffset >= 0
+                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    rawPayload,
+                    weaponChargeMetadataOffset,
                     out chargeSkillId))
             {
                 return true;

@@ -237,6 +237,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedUtilityRequestTick = int.MinValue;
         private int _packetOwnedActiveEffectItemId;
         private int _packetOwnedActiveEffectMotionBlurId = -1;
+        private Animation.AnimationEffects.SecondaryMotionBlurAnimationState _packetOwnedActiveEffectMotionBlurState;
         private int _lastDeliveryQuestId;
         private int _lastDeliveryItemId;
         private QuestDetailDeliveryType _lastPacketOwnedDeliveryType;
@@ -3326,6 +3327,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.ItemUpgradeResultPacketType:
                     return TryApplyPacketOwnedItemUpgradeResultPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.MonsterBookRegistrationResultPacketType:
+                    return TryApplyPacketOwnedMonsterBookRegistrationResultPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.PetConsumeResultPacketType:
                     if (ShouldHandlePacketOwned1026AsPetConsumeResult(payload))
                     {
@@ -3841,6 +3845,12 @@ namespace HaCreator.MapSimulator
 
         private void ClearPacketOwnedActiveEffectItemMotionBlurOwner()
         {
+            if (_packetOwnedActiveEffectMotionBlurState != null)
+            {
+                _packetOwnedActiveEffectMotionBlurState.TerminateRequested = true;
+                _packetOwnedActiveEffectMotionBlurState = null;
+            }
+
             if (_packetOwnedActiveEffectMotionBlurId < 0)
             {
                 return;
@@ -3890,6 +3900,7 @@ namespace HaCreator.MapSimulator
                 player.Position.Y - feetOffset + snapshotBounds.Top);
             Func<bool> getFlip = () => player.FacingRight;
             Vector2 fallbackPosition = getPosition();
+            var state = new Animation.AnimationEffects.SecondaryMotionBlurAnimationState();
             Func<int, List<IDXObject>> snapshotFrameFactory = sampleTime =>
             {
                 return TryCreatePacketOwnedActiveEffectMotionBlurFramesAtSampleTime(
@@ -3914,13 +3925,15 @@ namespace HaCreator.MapSimulator
                 follow: definition.Follow,
                 snapshotRetentionMs: definition.DelayMs,
                 ownsFrameTextures: true,
-                snapshotFrameFactory: snapshotFrameFactory);
+                snapshotFrameFactory: snapshotFrameFactory,
+                animationState: state);
             if (_packetOwnedActiveEffectMotionBlurId < 0)
             {
                 message = "Motion blur owner registration failed.";
                 return false;
             }
 
+            _packetOwnedActiveEffectMotionBlurState = state;
             return true;
         }
 
@@ -5149,58 +5162,102 @@ namespace HaCreator.MapSimulator
                 return questIds;
             }
 
-            if (remaining >= sizeof(int))
+            if (TryDecodeCountPrefixedDeliveryQuestIdsWithOptionalType(
+                    reader,
+                    countWidth: sizeof(int),
+                    entryWidth: sizeof(int),
+                    out questIds)
+                || TryDecodeCountPrefixedDeliveryQuestIdsWithOptionalType(
+                    reader,
+                    countWidth: sizeof(int),
+                    entryWidth: sizeof(short),
+                    out questIds)
+                || TryDecodeCountPrefixedDeliveryQuestIdsWithOptionalType(
+                    reader,
+                    countWidth: sizeof(short),
+                    entryWidth: sizeof(int),
+                    out questIds)
+                || TryDecodeCountPrefixedDeliveryQuestIdsWithOptionalType(
+                    reader,
+                    countWidth: sizeof(short),
+                    entryWidth: sizeof(short),
+                    out questIds))
             {
-                int count = reader.ReadInt32();
-                int afterCount = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
+                return questIds;
+            }
+
+            return DecodePacketOwnedDisallowedDeliveryQuestIds(reader);
+        }
+
+        private static bool TryDecodeCountPrefixedDeliveryQuestIdsWithOptionalType(
+            BinaryReader reader,
+            int countWidth,
+            int entryWidth,
+            out List<int> questIds)
+        {
+            questIds = new List<int>();
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long listStart = reader.BaseStream.Position;
+            try
+            {
+                int remaining = (int)(reader.BaseStream.Length - listStart);
+                if (remaining < countWidth)
+                {
+                    return false;
+                }
+
+                int count = countWidth == sizeof(int)
+                    ? reader.ReadInt32()
+                    : reader.ReadUInt16();
                 if (count < 0)
                 {
                     throw new InvalidDataException("Delivery-quest payload declared a negative disallowed-quest count.");
                 }
 
-                if (count == 0)
+                int afterCount = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
+                long requiredBytesLong = (long)count * entryWidth;
+                if (requiredBytesLong > int.MaxValue)
                 {
-                    return questIds;
+                    return false;
                 }
 
-                if (afterCount == count * sizeof(int)
-                    || afterCount == (count * sizeof(int)) + sizeof(byte)
-                    || afterCount == (count * sizeof(int)) + sizeof(short)
-                    || afterCount == (count * sizeof(int)) + sizeof(int))
+                int requiredBytes = (int)requiredBytesLong;
+                int trailing = afterCount - requiredBytes;
+                if (trailing is not (0 or sizeof(byte) or sizeof(short) or sizeof(int)))
                 {
-                    for (int i = 0; i < count; i++)
+                    return false;
+                }
+
+                if (requiredBytes > afterCount)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < count; i++)
+                {
+                    int questId = entryWidth == sizeof(int)
+                        ? reader.ReadInt32()
+                        : reader.ReadUInt16();
+                    if (questId > 0)
                     {
-                        int questId = reader.ReadInt32();
-                        if (questId > 0)
-                        {
-                            questIds.Add(questId);
-                        }
+                        questIds.Add(questId);
                     }
-
-                    return questIds;
                 }
 
-                if (afterCount == count * sizeof(short)
-                    || afterCount == (count * sizeof(short)) + sizeof(byte)
-                    || afterCount == (count * sizeof(short)) + sizeof(short)
-                    || afterCount == (count * sizeof(short)) + sizeof(int))
-                {
-                    for (int i = 0; i < count; i++)
-                    {
-                        int questId = reader.ReadUInt16();
-                        if (questId > 0)
-                        {
-                            questIds.Add(questId);
-                        }
-                    }
-
-                    return questIds;
-                }
-
-                reader.BaseStream.Position = listStart;
+                return true;
             }
-
-            return DecodePacketOwnedDisallowedDeliveryQuestIds(reader);
+            finally
+            {
+                int bytesRemaining = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
+                if (bytesRemaining < 0)
+                {
+                    reader.BaseStream.Position = listStart;
+                }
+            }
         }
 
         private static bool IsRemainingPayloadExactDeliveryTypeDiscriminator(BinaryReader reader)
@@ -7719,11 +7776,14 @@ namespace HaCreator.MapSimulator
             bool hasPassiveTemporaryStatTrackingOwner =
                 _playerManager.Skills.HasActiveClientOwnedVehicleTemporaryStatOwnerForParity(PacketOwnedBattleshipSkillId);
             bool isVehiclePresentationActive = IsPacketOwnedBattleshipVehiclePresentationActive();
+            bool allowPassiveTemporaryStatBootstrap = hasPassiveTemporaryStatTrackingOwner
+                && isVehiclePresentationActive;
             bool hasPassiveTemporaryStatObject =
                 ResolvePacketOwnedBattleshipPassiveTemporaryStatObjectState(
                     hasPassiveTemporaryStatTrackingOwner,
                     isVehiclePresentationActive,
-                    allowBootstrap: recordPassiveTemporaryStatUpdate);
+                    allowBootstrap: allowPassiveTemporaryStatBootstrap,
+                    out bool bootstrappedPassiveTemporaryStatObject);
             if (!TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
                 || !ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
                     hasPassiveTemporaryStatObject,
@@ -7744,13 +7804,15 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            bool shouldRecordPassiveTemporaryStatUpdate = recordPassiveTemporaryStatUpdate
+                || bootstrappedPassiveTemporaryStatObject;
             _playerManager.Skills.SetAuthoritativeVehicleDurabilityPresentation(
                 PacketOwnedBattleshipSkillId,
                 currentValue,
                 maxValue,
                 currTickCount,
                 hasTemporaryObject: true,
-                recordPassiveTemporaryStatUpdate: recordPassiveTemporaryStatUpdate);
+                recordPassiveTemporaryStatUpdate: shouldRecordPassiveTemporaryStatUpdate);
 
             CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
             if (mountPart == null)
@@ -7793,8 +7855,10 @@ namespace HaCreator.MapSimulator
         private bool ResolvePacketOwnedBattleshipPassiveTemporaryStatObjectState(
             bool hasPassiveTemporaryStatTrackingOwner,
             bool isVehiclePresentationActive,
-            bool allowBootstrap)
+            bool allowBootstrap,
+            out bool bootstrappedPassiveTemporaryStatObject)
         {
+            bootstrappedPassiveTemporaryStatObject = false;
             if (!TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool hasPassiveTemporaryStatObject))
             {
                 return false;
@@ -7811,8 +7875,9 @@ namespace HaCreator.MapSimulator
             }
 
             _playerManager.Skills.EnsurePassiveVehicleTemporaryStatOwnerForParity(PacketOwnedBattleshipSkillId, currTickCount);
-            return TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out hasPassiveTemporaryStatObject)
+            bootstrappedPassiveTemporaryStatObject = TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out hasPassiveTemporaryStatObject)
                 && hasPassiveTemporaryStatObject;
+            return hasPassiveTemporaryStatObject;
         }
 
         private bool TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool hasPassiveTemporaryStatObject)
@@ -12686,8 +12751,34 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldConsumeCollisionScriptExclusiveResetFromInventoryOperationPayload(byte[] payload)
         {
-            return payload?.Length > 0
-                   && payload[0] != 0;
+            return TryDecodeInventoryOperationExclusiveResetMarker(
+                       payload,
+                       out bool resetMarker,
+                       out _)
+                   && resetMarker;
+        }
+
+        internal static bool TryDecodeInventoryOperationExclusiveResetMarker(
+            byte[] payload,
+            out bool resetMarker,
+            out byte operationCount)
+        {
+            resetMarker = false;
+            operationCount = 0;
+            if (payload == null || payload.Length < 2)
+            {
+                return false;
+            }
+
+            byte rawResetMarker = payload[0];
+            if (rawResetMarker > 1)
+            {
+                return false;
+            }
+
+            resetMarker = rawResetMarker == 1;
+            operationCount = payload[1];
+            return true;
         }
 
         private bool TryResolvePacketOwnedTutorDisplayState(

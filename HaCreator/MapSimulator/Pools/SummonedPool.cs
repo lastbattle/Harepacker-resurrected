@@ -5961,7 +5961,15 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (!TryNormalizePacketMobAttackGeneralEffectAbsolutePath(sourcePathToken, defaultCategory, out string normalizedSourcePath))
                     {
-                        return null;
+                        string relativeSourceBasePath = ResolvePacketMobAttackGeneralEffectRelativeSourceBasePath(current);
+                        if (!TryResolvePacketMobAttackGeneralEffectRelativeSourcePath(
+                                relativeSourceBasePath,
+                                sourcePathToken,
+                                defaultCategory,
+                                out normalizedSourcePath))
+                        {
+                            return null;
+                        }
                     }
 
                     current = ResolvePacketMobAttackGeneralEffectProperty(normalizedSourcePath);
@@ -5972,11 +5980,18 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     string directSourcePath = TryExtractPacketMobAttackSourcePathToken(
                         ResolvePacketMobAttackGeneralEffectSourceProperty(sourcePropertyContainer));
-                    if (!string.IsNullOrWhiteSpace(directSourcePath)
-                        && TryNormalizePacketMobAttackGeneralEffectAbsolutePath(directSourcePath, defaultCategory, out string normalizedDirectSourcePath))
+                    if (!string.IsNullOrWhiteSpace(directSourcePath))
                     {
-                        current = ResolvePacketMobAttackGeneralEffectProperty(normalizedDirectSourcePath);
-                        continue;
+                        if (TryNormalizePacketMobAttackGeneralEffectAbsolutePath(directSourcePath, defaultCategory, out string normalizedDirectSourcePath)
+                            || TryResolvePacketMobAttackGeneralEffectRelativeSourcePath(
+                                ResolvePacketMobAttackGeneralEffectRelativeSourceBasePath(sourcePropertyContainer),
+                                directSourcePath,
+                                defaultCategory,
+                                out normalizedDirectSourcePath))
+                        {
+                            current = ResolvePacketMobAttackGeneralEffectProperty(normalizedDirectSourcePath);
+                            continue;
+                        }
                     }
 
                     string sequenceSourceRootPath = TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(
@@ -6061,6 +6076,23 @@ namespace HaCreator.MapSimulator.Pools
             return null;
         }
 
+        private static string ResolvePacketMobAttackGeneralEffectRelativeSourceBasePath(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            if (IsPacketMobAttackSourcePropertySegment(property.Name)
+                && property.Parent is WzImageProperty parentProperty
+                && !string.IsNullOrWhiteSpace(parentProperty.FullPath))
+            {
+                return parentProperty.FullPath;
+            }
+
+            return property.FullPath;
+        }
+
         internal static string TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(
             IReadOnlyList<string> sourcePathTokens,
             string defaultCategory)
@@ -6071,16 +6103,38 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             var normalizedSourcePaths = new List<string>(sourcePathTokens.Count);
+            string previousNormalizedSourcePath = null;
             for (int i = 0; i < sourcePathTokens.Count; i++)
             {
                 string token = NormalizePacketMobAttackGeneralEffectPathToken(sourcePathTokens[i]);
-                if (string.IsNullOrWhiteSpace(token)
-                    || !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(token, defaultCategory, out string normalizedSourcePath))
+                if (string.IsNullOrWhiteSpace(token))
                 {
                     return null;
                 }
 
+                if (!TryNormalizePacketMobAttackGeneralEffectAbsolutePath(token, defaultCategory, out string normalizedSourcePath))
+                {
+                    if (string.IsNullOrWhiteSpace(previousNormalizedSourcePath))
+                    {
+                        return null;
+                    }
+
+                    string relativeToken = NormalizePacketMobAttackGeneralEffectColonPathSeparators(token) ?? token;
+                    if (!TryCombinePacketMobAttackGeneralEffectPath(
+                            previousNormalizedSourcePath,
+                            relativeToken,
+                            out string combinedSourcePath)
+                        || !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+                            combinedSourcePath,
+                            defaultCategory,
+                            out normalizedSourcePath))
+                    {
+                        return null;
+                    }
+                }
+
                 normalizedSourcePaths.Add(normalizedSourcePath);
+                previousNormalizedSourcePath = normalizedSourcePath;
             }
 
             if (normalizedSourcePaths.Count == 1)
@@ -6156,14 +6210,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             var sourcePathTokens = new List<string>();
-            for (int i = 0; ; i++)
+            foreach (WzImageProperty frameProperty in EnumeratePacketMobAttackGeneralEffectNumericFrameProperties(sourceProperty))
             {
-                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(sourceProperty[i.ToString()]);
-                if (frameProperty == null)
-                {
-                    break;
-                }
-
                 string sourcePathToken = TryExtractPacketMobAttackSourcePathToken(frameProperty);
                 if (string.IsNullOrWhiteSpace(sourcePathToken))
                 {
@@ -6191,6 +6239,34 @@ namespace HaCreator.MapSimulator.Pools
             return sourcePathTokens.Count == 0
                 ? null
                 : TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(sourcePathTokens, defaultCategory);
+        }
+
+        private static IEnumerable<WzImageProperty> EnumeratePacketMobAttackGeneralEffectNumericFrameProperties(
+            WzImageProperty sourceProperty)
+        {
+            if (sourceProperty?.WzProperties == null || sourceProperty.WzProperties.Count == 0)
+            {
+                yield break;
+            }
+
+            var indexedFrameProperties = new List<KeyValuePair<int, WzImageProperty>>();
+            foreach (WzImageProperty rawChildProperty in sourceProperty.WzProperties)
+            {
+                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(rawChildProperty);
+                if (frameProperty == null || !int.TryParse(frameProperty.Name, out int frameIndex))
+                {
+                    continue;
+                }
+
+                indexedFrameProperties.Add(new KeyValuePair<int, WzImageProperty>(frameIndex, frameProperty));
+            }
+
+            foreach (WzImageProperty frameProperty in indexedFrameProperties
+                         .OrderBy(static pair => pair.Key)
+                         .Select(static pair => pair.Value))
+            {
+                yield return frameProperty;
+            }
         }
 
         internal static bool TryResolvePacketMobAttackGeneralEffectRelativeSourcePath(
@@ -6473,7 +6549,8 @@ namespace HaCreator.MapSimulator.Pools
                 while (normalized.Length > 0
                        && (normalized[0] == '('
                            || normalized[0] == '['
-                           || normalized[0] == '{'))
+                           || normalized[0] == '{'
+                           || normalized[0] == '<'))
                 {
                     normalized = normalized.Substring(1).TrimStart();
                 }
@@ -6481,7 +6558,8 @@ namespace HaCreator.MapSimulator.Pools
                 while (normalized.Length > 0
                        && (normalized[^1] == ')'
                            || normalized[^1] == ']'
-                           || normalized[^1] == '}'))
+                           || normalized[^1] == '}'
+                           || normalized[^1] == '>'))
                 {
                     normalized = normalized.Substring(0, normalized.Length - 1).TrimEnd();
                 }

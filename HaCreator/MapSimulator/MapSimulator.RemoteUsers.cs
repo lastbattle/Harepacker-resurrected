@@ -186,9 +186,10 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inspect <characterId|name>");
             }
 
-            return TryShowRemoteCharacterInfoWindow(args[1])
-                ? ChatCommandHandler.CommandResult.Ok($"Opened Character Info for remote target {args[1]}.")
-                : ChatCommandHandler.CommandResult.Error($"Remote user {args[1]} was not found.");
+            string selector = string.Join(" ", args.Skip(1)).Trim();
+            return TryShowRemoteCharacterInfoWindow(selector)
+                ? ChatCommandHandler.CommandResult.Ok($"Opened Character Info for remote target {selector}.")
+                : ChatCommandHandler.CommandResult.Error($"Remote user {selector} was not found.");
         }
 
         private ChatCommandHandler.CommandResult HandleRemoteUserClearCommand()

@@ -223,9 +223,22 @@ namespace HaCreator.MapSimulator.Companions
                             break;
                         case 0:
                         {
-                            if (!TryReadClientInventoryOperationAddEntry(reader, out int addedItemId, out rejectReason))
+                            if (!TryReadClientInventoryOperationAddEntry(
+                                    request,
+                                    operationContext,
+                                    inventoryType,
+                                    fromPosition,
+                                    reader,
+                                    out int addedItemId,
+                                    out bool matchedByHeader,
+                                    out rejectReason))
                             {
                                 return false;
+                            }
+
+                            if (matchedByHeader)
+                            {
+                                return true;
                             }
 
                             if (TryMatchesMechanicInventoryOperationAdd(
@@ -1118,11 +1131,17 @@ namespace HaCreator.MapSimulator.Companions
         }
 
         private static bool TryReadClientInventoryOperationAddEntry(
+            EquipmentChangeRequest request,
+            MechanicInventoryOperationContext operationContext,
+            byte inventoryType,
+            short targetPosition,
             BinaryReader reader,
             out int itemId,
+            out bool matchedByHeader,
             out string rejectReason)
         {
             itemId = 0;
+            matchedByHeader = false;
             rejectReason = null;
             if (reader == null)
             {
@@ -1137,12 +1156,6 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             byte slotType = reader.ReadByte();
-            if (slotType is not 1 and not 2 and not 3)
-            {
-                rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
-                return false;
-            }
-
             itemId = reader.ReadInt32();
             bool hasCashSerial = reader.ReadByte() != 0;
             if (hasCashSerial)
@@ -1156,6 +1169,24 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _ = reader.ReadInt64(); // dateExpire
+            if (TryMatchesMechanicInventoryOperationAdd(
+                    request,
+                    operationContext,
+                    inventoryType,
+                    targetPosition,
+                    itemId,
+                    out _))
+            {
+                matchedByHeader = true;
+                return true;
+            }
+
+            if (slotType is not 1 and not 2 and not 3)
+            {
+                rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
+                return false;
+            }
+
             return slotType switch
             {
                 1 => TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, out rejectReason),
@@ -1170,23 +1201,50 @@ namespace HaCreator.MapSimulator.Companions
             bool hasCashSerial,
             out string rejectReason)
         {
+            long entryStart = reader?.BaseStream?.Position ?? 0;
+            if (TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, statFieldCount: 14, out rejectReason))
+            {
+                return true;
+            }
+
+            if (reader?.BaseStream is { CanSeek: true } stream)
+            {
+                stream.Position = entryStart;
+                return TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, statFieldCount: 15, out rejectReason);
+            }
+
+            return false;
+        }
+
+        private static bool TryReadClientInventoryOperationEquipBody(
+            BinaryReader reader,
+            bool hasCashSerial,
+            int statFieldCount,
+            out string rejectReason)
+        {
             rejectReason = null;
             Stream stream = reader.BaseStream;
-            const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 14);
-            if (!TryEnsureRemaining(stream, equipStatsByteLength, out rejectReason))
+            const int equipStatHeaderByteLength = sizeof(byte) * 2;
+            if (!TryEnsureRemaining(stream, equipStatHeaderByteLength + (sizeof(short) * statFieldCount), out rejectReason))
             {
                 return false;
             }
 
             _ = reader.ReadByte();
             _ = reader.ReadByte();
-            for (int i = 0; i < 14; i++)
+            for (int i = 0; i < statFieldCount; i++)
             {
                 _ = reader.ReadInt16();
             }
 
-            if (!TryReadClientMapleString(reader, out _, out rejectReason))
+            if (!TryReadClientMapleString(reader, out string title, out rejectReason))
             {
+                return false;
+            }
+
+            if (title.Length > 13)
+            {
+                rejectReason = "Inventory-operation equip add entry title is outside the expected client byte range.";
                 return false;
             }
 

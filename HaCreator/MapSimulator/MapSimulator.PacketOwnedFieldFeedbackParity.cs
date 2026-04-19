@@ -1349,23 +1349,20 @@ namespace HaCreator.MapSimulator
 
         private List<PacketOwnedUiFrame> ResolvePacketOwnedSummonEffectFrames(byte effectId)
         {
-            WzImage summonImage = Program.FindImage("Effect", "Summon.img");
-            List<PacketOwnedUiFrame> frames = LoadPacketOwnedAnimationFrames(
-                ResolvePacketOwnedPropertyPath(
-                    summonImage,
-                    ResolvePacketOwnedSummonEffectPropertyPath(effectId)));
-            if (frames?.Count > 0)
+            foreach ((string categoryName, string imageName, string propertyPath) in EnumeratePacketOwnedSummonEffectCandidates(effectId))
             {
-                return frames;
+                WzImage image = Program.FindImage(categoryName, imageName);
+                List<PacketOwnedUiFrame> frames = LoadPacketOwnedAnimationFrames(
+                    ResolvePacketOwnedPropertyPath(
+                        image,
+                        propertyPath));
+                if (frames?.Count > 0)
+                {
+                    return frames;
+                }
             }
 
-            if (!ShouldUsePacketOwnedNpcSummonFallback(effectId))
-            {
-                return null;
-            }
-
-            WzImage mapEffectImage = Program.FindImage("Effect", "MapEff.img");
-            return LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(mapEffectImage, "NpcSummon"));
+            return null;
         }
 
         private bool HasPacketOwnedSummonSoundAsset(byte effectId)
@@ -1626,15 +1623,46 @@ namespace HaCreator.MapSimulator
             return current as WzImageProperty;
         }
 
-        private static string ResolvePacketOwnedSummonEffectPropertyPath(byte effectId)
+        private static IEnumerable<(string CategoryName, string ImageName, string PropertyPath)> EnumeratePacketOwnedSummonEffectCandidates(byte effectId)
         {
-            return TryResolvePacketOwnedEffectUol(
+            HashSet<string> seenKeys = new(StringComparer.OrdinalIgnoreCase);
+            if (TryResolvePacketOwnedEffectUol(
                 PacketOwnedSummonEffectStringPoolId,
                 "Effect/Summon.img/{0}",
                 effectId.ToString(CultureInfo.InvariantCulture),
-                out (string CategoryName, string ImageName, string PropertyPath) candidate)
-                ? candidate.PropertyPath
-                : effectId.ToString(CultureInfo.InvariantCulture);
+                out (string CategoryName, string ImageName, string PropertyPath) stringPoolCandidate)
+                && !string.IsNullOrWhiteSpace(stringPoolCandidate.CategoryName)
+                && !string.IsNullOrWhiteSpace(stringPoolCandidate.ImageName)
+                && !string.IsNullOrWhiteSpace(stringPoolCandidate.PropertyPath))
+            {
+                string key = $"{stringPoolCandidate.CategoryName}:{stringPoolCandidate.ImageName}:{stringPoolCandidate.PropertyPath}";
+                if (seenKeys.Add(key))
+                {
+                    yield return stringPoolCandidate;
+                }
+            }
+
+            (string CategoryName, string ImageName, string PropertyPath) defaultCandidate = (
+                "Effect",
+                "Summon.img",
+                effectId.ToString(CultureInfo.InvariantCulture));
+            string defaultKey = $"{defaultCandidate.CategoryName}:{defaultCandidate.ImageName}:{defaultCandidate.PropertyPath}";
+            if (seenKeys.Add(defaultKey))
+            {
+                yield return defaultCandidate;
+            }
+
+            if (!ShouldUsePacketOwnedNpcSummonFallback(effectId))
+            {
+                yield break;
+            }
+
+            (string CategoryName, string ImageName, string PropertyPath) fallbackCandidate = ("Effect", "MapEff.img", "NpcSummon");
+            string fallbackKey = $"{fallbackCandidate.CategoryName}:{fallbackCandidate.ImageName}:{fallbackCandidate.PropertyPath}";
+            if (seenKeys.Add(fallbackKey))
+            {
+                yield return fallbackCandidate;
+            }
         }
 
         private static bool TryResolvePacketOwnedEffectUol(
@@ -1917,6 +1945,13 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldUsePacketOwnedNpcSummonFallback(byte effectId)
         {
             return PacketOwnedNpcSummonFallbackEffectIds.Contains(effectId);
+        }
+
+        internal static IReadOnlyList<string> GetPacketOwnedSummonEffectCandidatesForTest(byte effectId)
+        {
+            return EnumeratePacketOwnedSummonEffectCandidates(effectId)
+                .Select(static candidate => $"{candidate.CategoryName}:{candidate.ImageName}:{candidate.PropertyPath}")
+                .ToArray();
         }
 
         private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteLayerSourcePaths()

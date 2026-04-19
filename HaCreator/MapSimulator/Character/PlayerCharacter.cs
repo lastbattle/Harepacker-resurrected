@@ -6485,7 +6485,10 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
                 preparedLayer.RenderLayer,
-                preparedLayer.LastInsertCanvasSourceLayer);
+                preparedLayer.LastInsertCanvasSourceLayer,
+                preparedLayer.OverlayTargetLayer,
+                preparedLayer.LastInsertCanvasOverlayTargetLayer,
+                preparedLayer.LastInsertCanvasTime);
         }
 
         private MirrorImagePreparedSourceLayer CreatePreparedMirrorImageSourceLayer(
@@ -7245,7 +7248,10 @@ namespace HaCreator.MapSimulator.Character
             int preparedLayerObjectId,
             int lastInsertCanvasLayerObjectId,
             AvatarRenderLayer sourceLayer,
-            AvatarRenderLayer? lastInsertCanvasSourceLayer)
+            AvatarRenderLayer? lastInsertCanvasSourceLayer,
+            AvatarRenderLayer overlayTargetLayer,
+            AvatarRenderLayer? lastInsertCanvasOverlayTargetLayer,
+            int lastInsertCanvasTime)
         {
             if (lastInsertCanvasLayerObjectId <= 0)
             {
@@ -7260,6 +7266,17 @@ namespace HaCreator.MapSimulator.Character
 
             if (lastInsertCanvasSourceLayer.HasValue
                 && lastInsertCanvasSourceLayer.Value != sourceLayer)
+            {
+                return false;
+            }
+
+            if (lastInsertCanvasOverlayTargetLayer.HasValue
+                && lastInsertCanvasOverlayTargetLayer.Value != overlayTargetLayer)
+            {
+                return false;
+            }
+
+            if (lastInsertCanvasTime == int.MinValue)
             {
                 return false;
             }

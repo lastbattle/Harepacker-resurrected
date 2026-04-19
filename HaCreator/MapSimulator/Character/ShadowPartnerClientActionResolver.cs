@@ -1675,9 +1675,9 @@ namespace HaCreator.MapSimulator.Character
 
             if (animation?.Frames != null && animation.Frames.Count > 0)
             {
-                if (animation.ClientEventDelayMs.GetValueOrDefault() > 0)
+                if (animation.ClientEventDelayMs.HasValue)
                 {
-                    return animation.ClientEventDelayMs.Value;
+                    return Math.Max(0, animation.ClientEventDelayMs.Value);
                 }
 
                 int frameDelay = ResolvePlaybackFrameDurationMs(animation.Frames[0]?.Delay ?? 0);

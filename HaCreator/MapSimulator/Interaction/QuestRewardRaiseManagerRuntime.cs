@@ -232,11 +232,21 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            ownerItemId = Math.Max(0, ownerItemId);
-            maxDropCount = Math.Max(1, maxDropCount);
-
             _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
             bool isActiveQuest = ActiveRaise?.Prompt?.QuestId == questId;
+            ownerItemId = ResolvePositiveObservedValue(
+                ownerItemId,
+                isActiveQuest ? ActiveRaise.OwnerItemId : 0,
+                retainedState?.OwnerItemId ?? 0,
+                snapshot?.OwnerItemId ?? 0);
+            maxDropCount = Math.Max(
+                1,
+                ResolvePositiveObservedValue(
+                    maxDropCount,
+                    isActiveQuest ? ActiveRaise.MaxDropCount : 0,
+                    retainedState?.MaxDropCount ?? 0,
+                    snapshot?.MaxDropCount ?? 0));
             QuestRewardRaiseWindowMode resolvedDisplayMode = displayMode
                 ?? (isActiveQuest
                     ? ActiveRaise.DisplayMode
@@ -265,7 +275,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!isActiveQuest)
             {
-                if (_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
+                if (retainedState != null)
                 {
                     retainedState.OwnerItemId = ownerItemId;
                     retainedState.QrData = qrData;
@@ -330,9 +340,18 @@ namespace HaCreator.MapSimulator.Interaction
             bool isActiveQuest = ActiveRaise?.Prompt?.QuestId == questId;
             if (_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
             {
-                retainedState.ManagerSessionId = Math.Max(0, payload.ManagerSessionId);
-                retainedState.RequestId = Math.Max(0, payload.OwnerRequestId);
-                retainedState.OwnerItemId = Math.Max(0, payload.OwnerItemId);
+                retainedState.ManagerSessionId = ResolvePositiveObservedValue(
+                    payload.ManagerSessionId,
+                    retainedState.ManagerSessionId,
+                    snapshot?.ManagerSessionId ?? 0);
+                retainedState.RequestId = ResolvePositiveObservedValue(
+                    payload.OwnerRequestId,
+                    retainedState.RequestId,
+                    snapshot?.OwnerRequestId ?? 0);
+                retainedState.OwnerItemId = ResolvePositiveObservedValue(
+                    payload.OwnerItemId,
+                    retainedState.OwnerItemId,
+                    snapshot?.OwnerItemId ?? 0);
                 retainedState.QrData = payload.QrData;
                 retainedState.MaxDropCount = ResolveObservedMaxDropCount(retainedState, snapshot, payload);
                 retainedState.WindowMode = payload.WindowMode;
@@ -357,6 +376,24 @@ namespace HaCreator.MapSimulator.Interaction
                     : isActiveQuest ? ActiveRaise.AwaitingConfirmAck : snapshot?.AwaitingConfirmAck ?? false,
                 isActiveQuest ? ActiveRaise.AwaitingOwnerDestroyAck : snapshot?.AwaitingOwnerDestroyAck ?? false,
                 summary ?? string.Empty);
+        }
+
+        private static int ResolvePositiveObservedValue(int primaryValue, params int[] fallbackValues)
+        {
+            if (primaryValue > 0)
+            {
+                return primaryValue;
+            }
+
+            for (int i = 0; i < fallbackValues.Length; i++)
+            {
+                if (fallbackValues[i] > 0)
+                {
+                    return fallbackValues[i];
+                }
+            }
+
+            return 0;
         }
 
         public QuestRewardRaiseState DestroyByQuestId(int questId)

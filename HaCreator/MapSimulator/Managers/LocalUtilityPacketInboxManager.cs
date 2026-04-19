@@ -1096,7 +1096,10 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("funckeymap", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("keymap", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("funckeyinit", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("funckeyinit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("funckeymapinit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("oninit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cfunckeymappedmanoninit", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = FuncKeyMapInitPacketType;
                 return true;
@@ -1131,14 +1134,20 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("petconsumehp", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petconsumeitem", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("petautohp", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("petautohp", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petconsumeitemid", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetconsumeiteminit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cfunckeymappedmanonpetconsumeiteminit", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = PetConsumeItemInitPacketType;
                 return true;
             }
 
             if (token.Equals("petconsumemp", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("petautomp", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("petautomp", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petconsumempitemid", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetconsumempiteminit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cfunckeymappedmanonpetconsumempiteminit", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = PetConsumeMpItemInitPacketType;
                 return true;
@@ -1254,6 +1263,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestAlarmRegistrationSyncPacketType
                 || packetType == ItemUpgradeResultClientPacketType
                 || packetType == ItemUpgradeResultPacketType
+                || packetType == MonsterBookRegistrationResultPacketType
                 || packetType == ClassCompetitionRemotePagePacketType;
         }
 

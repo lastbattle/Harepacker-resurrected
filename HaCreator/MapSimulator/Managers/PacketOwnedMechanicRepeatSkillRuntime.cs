@@ -176,6 +176,106 @@ namespace HaCreator.MapSimulator.Managers
             out PacketOwnedSg88FirstUseRequest request,
             out string error)
         {
+            return TryDecodeSg88FirstUseRequestPayload(
+                payload,
+                requireCanonicalMoveActionLowBit: true,
+                out request,
+                out error);
+        }
+
+        public static bool TryDecodeSg88FirstUseRawPacket(
+            byte[] rawPacket,
+            out PacketOwnedSg88FirstUseRequest request,
+            out string error)
+        {
+            return TryDecodeSg88FirstUseRawPacketCore(
+                rawPacket,
+                requireCanonicalMoveActionLowBit: true,
+                out request,
+                out error);
+        }
+
+        public static bool TryDecodeSg88FirstUseRawPacketWithReplayParity(
+            byte[] rawPacket,
+            out PacketOwnedSg88FirstUseRequest request,
+            out bool replayParityMatched,
+            out string error)
+        {
+            request = default;
+            replayParityMatched = false;
+            if (!TryDecodeSg88FirstUseRawPacketCore(
+                    rawPacket,
+                    requireCanonicalMoveActionLowBit: false,
+                    out PacketOwnedSg88FirstUseRequest decoded,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!TryCreateSg88FirstUseRequest(
+                    decoded.RequestTime,
+                    decoded.SkillLevel,
+                    decoded.X,
+                    decoded.Y,
+                    decoded.MoveActionLowBit,
+                    decoded.VecCtrlState,
+                    out PacketOwnedSg88FirstUseRequest rebuilt,
+                    out string rebuildError))
+            {
+                error = $"SG-88 first-use replay parity failed to rebuild from decoded fields: {rebuildError}";
+                return false;
+            }
+
+            replayParityMatched = rawPacket.AsSpan().SequenceEqual(rebuilt.RawPacket);
+            request = decoded;
+            error = replayParityMatched
+                ? null
+                : BuildSg88FirstUseReplayParityMismatchDetail(rawPacket, rebuilt.RawPacket);
+            return true;
+        }
+
+        private static bool TryDecodeSg88FirstUseRawPacketCore(
+            byte[] rawPacket,
+            bool requireCanonicalMoveActionLowBit,
+            out PacketOwnedSg88FirstUseRequest request,
+            out string error)
+        {
+            request = default;
+            error = "SG-88 first-use raw packet is missing.";
+            int minimumLength = sizeof(ushort) + ((sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2);
+            if (rawPacket == null || rawPacket.Length != minimumLength)
+            {
+                return false;
+            }
+
+            ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
+            if (opcode != Sg88FirstUseSummonOpcode)
+            {
+                error = $"SG-88 first-use raw packet opcode must be {Sg88FirstUseSummonOpcode}, got {opcode}.";
+                return false;
+            }
+
+            byte[] payload = new byte[rawPacket.Length - sizeof(ushort)];
+            Buffer.BlockCopy(rawPacket, sizeof(ushort), payload, 0, payload.Length);
+            if (!TryDecodeSg88FirstUseRequestPayload(
+                    payload,
+                    requireCanonicalMoveActionLowBit,
+                    out PacketOwnedSg88FirstUseRequest decoded,
+                    out error))
+            {
+                return false;
+            }
+
+            request = decoded with { RawPacket = (byte[])rawPacket.Clone() };
+            return true;
+        }
+
+        private static bool TryDecodeSg88FirstUseRequestPayload(
+            byte[] payload,
+            bool requireCanonicalMoveActionLowBit,
+            out PacketOwnedSg88FirstUseRequest request,
+            out string error)
+        {
             request = default;
             error = "SG-88 first-use request payload is missing.";
             if (payload == null || payload.Length != ((sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2))
@@ -195,7 +295,8 @@ namespace HaCreator.MapSimulator.Managers
                 offset += sizeof(short);
                 short y = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
                 offset += sizeof(short);
-                byte moveActionLowBit = payload[offset++];
+                byte rawMoveActionByte = payload[offset++];
+                byte moveActionLowBit = (byte)(rawMoveActionByte & 1);
                 byte vecCtrlState = payload[offset];
 
                 if (skillId != Sg88SkillId)
@@ -204,7 +305,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                if ((moveActionLowBit & 0xFE) != 0)
+                if (requireCanonicalMoveActionLowBit && (rawMoveActionByte & 0xFE) != 0)
                 {
                     error = "SG-88 first-use payload move-action flag must keep only the low bit.";
                     return false;
@@ -234,70 +335,25 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public static bool TryDecodeSg88FirstUseRawPacket(
-            byte[] rawPacket,
-            out PacketOwnedSg88FirstUseRequest request,
-            out string error)
+        private static string BuildSg88FirstUseReplayParityMismatchDetail(byte[] observedRawPacket, byte[] rebuiltRawPacket)
         {
-            request = default;
-            error = "SG-88 first-use raw packet is missing.";
-            int minimumLength = sizeof(ushort) + ((sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2);
-            if (rawPacket == null || rawPacket.Length != minimumLength)
+            if (observedRawPacket == null || rebuiltRawPacket == null)
             {
-                return false;
+                return "SG-88 first-use replay parity mismatch between observed raw packet and rebuilt request packet.";
             }
 
-            ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
-            if (opcode != Sg88FirstUseSummonOpcode)
+            int comparedLength = Math.Min(observedRawPacket.Length, rebuiltRawPacket.Length);
+            for (int i = 0; i < comparedLength; i++)
             {
-                error = $"SG-88 first-use raw packet opcode must be {Sg88FirstUseSummonOpcode}, got {opcode}.";
-                return false;
+                if (observedRawPacket[i] == rebuiltRawPacket[i])
+                {
+                    continue;
+                }
+
+                return $"SG-88 first-use replay parity mismatch at byteIndex={i} observed=0x{observedRawPacket[i]:X2} rebuilt=0x{rebuiltRawPacket[i]:X2}.";
             }
 
-            byte[] payload = new byte[rawPacket.Length - sizeof(ushort)];
-            Buffer.BlockCopy(rawPacket, sizeof(ushort), payload, 0, payload.Length);
-            if (!TryDecodeSg88FirstUseRequestPayload(payload, out PacketOwnedSg88FirstUseRequest decoded, out error))
-            {
-                return false;
-            }
-
-            request = decoded with { RawPacket = (byte[])rawPacket.Clone() };
-            return true;
-        }
-
-        public static bool TryDecodeSg88FirstUseRawPacketWithReplayParity(
-            byte[] rawPacket,
-            out PacketOwnedSg88FirstUseRequest request,
-            out bool replayParityMatched,
-            out string error)
-        {
-            request = default;
-            replayParityMatched = false;
-            if (!TryDecodeSg88FirstUseRawPacket(rawPacket, out PacketOwnedSg88FirstUseRequest decoded, out error))
-            {
-                return false;
-            }
-
-            if (!TryCreateSg88FirstUseRequest(
-                    decoded.RequestTime,
-                    decoded.SkillLevel,
-                    decoded.X,
-                    decoded.Y,
-                    decoded.MoveActionLowBit,
-                    decoded.VecCtrlState,
-                    out PacketOwnedSg88FirstUseRequest rebuilt,
-                    out string rebuildError))
-            {
-                error = $"SG-88 first-use replay parity failed to rebuild from decoded fields: {rebuildError}";
-                return false;
-            }
-
-            replayParityMatched = rawPacket.AsSpan().SequenceEqual(rebuilt.RawPacket);
-            request = decoded;
-            error = replayParityMatched
-                ? null
-                : "SG-88 first-use replay parity mismatch between observed raw packet and rebuilt request packet.";
-            return true;
+            return $"SG-88 first-use replay parity length mismatch observedLen={observedRawPacket.Length} rebuiltLen={rebuiltRawPacket.Length}.";
         }
 
         public static bool TryDecodeRepeatSkillModeEndAck(

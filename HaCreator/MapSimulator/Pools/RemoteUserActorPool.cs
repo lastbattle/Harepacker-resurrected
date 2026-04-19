@@ -144,13 +144,35 @@ namespace HaCreator.MapSimulator.Pools
 
         public sealed class RemoteTemporaryStatAvatarEffectState
         {
-            public int SkillId { get; init; }
-            public SkillData Skill { get; init; }
-            public SkillAnimation OverlayAnimation { get; init; }
-            public SkillAnimation OverlaySecondaryAnimation { get; init; }
-            public SkillAnimation UnderFaceAnimation { get; init; }
-            public SkillAnimation UnderFaceSecondaryAnimation { get; init; }
-            public int AnimationStartTime { get; init; }
+            public int SkillId { get; set; }
+            public SkillData Skill { get; set; }
+            public SkillAnimation OverlayAnimation { get; set; }
+            public SkillAnimation OverlaySecondaryAnimation { get; set; }
+            public SkillAnimation UnderFaceAnimation { get; set; }
+            public SkillAnimation UnderFaceSecondaryAnimation { get; set; }
+            public int AnimationStartTime { get; set; }
+        }
+
+        private sealed class RemoteAuxiliaryLayerOwnerCounterState
+        {
+            public int SkillId { get; set; }
+            public string ActionName { get; set; }
+            public bool FacingRight { get; set; }
+            public int AnimationElapsedMs { get; set; }
+            public int LastUpdateTimeMs { get; set; }
+        }
+
+        private enum RemoteTemporaryStatAvatarEffectOwnerFamily
+        {
+            SoulArrow = 0,
+            WeaponCharge = 1,
+            Aura = 2,
+            MoreWild = 3,
+            Barrier = 4,
+            BlessingArmor = 5,
+            RepeatEffect = 6,
+            MagicShield = 7,
+            FinalCut = 8
         }
 
         public sealed class RemoteShadowPartnerPresentationState
@@ -381,6 +403,15 @@ namespace HaCreator.MapSimulator.Pools
             35001001,
             35101009
         };
+        private const string RemoteTemporaryStatSoulArrowActionOwnerName = "aux.remote.temporaryStat.soulArrow.persistent";
+        private const string RemoteTemporaryStatWeaponChargeActionOwnerName = "aux.remote.temporaryStat.weaponCharge.persistent";
+        private const string RemoteTemporaryStatAuraActionOwnerName = "aux.remote.temporaryStat.aura.persistent";
+        private const string RemoteTemporaryStatMoreWildActionOwnerName = "aux.remote.temporaryStat.moreWild.persistent";
+        private const string RemoteTemporaryStatBarrierActionOwnerName = "aux.remote.temporaryStat.barrier.persistent";
+        private const string RemoteTemporaryStatBlessingArmorActionOwnerName = "aux.remote.temporaryStat.blessingArmor.persistent";
+        private const string RemoteTemporaryStatRepeatEffectActionOwnerName = "aux.remote.temporaryStat.repeatEffect.persistent";
+        private const string RemoteTemporaryStatMagicShieldActionOwnerName = "aux.remote.temporaryStat.magicShield.persistent";
+        private const string RemoteTemporaryStatFinalCutActionOwnerName = "aux.remote.temporaryStat.finalCut.persistent";
         private static readonly Color RemoteShadowPartnerTint = new(255, 255, 255, 150);
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
         {
@@ -445,6 +476,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly HashSet<(int LeftId, int RightId)> _renderedCouplePairsBuffer = new();
         private readonly HashSet<(RemoteRelationshipOverlayType Type, int ItemId, int LeftId, int RightId)> _renderedItemEffectPairsBuffer = new();
         private readonly Dictionary<int, List<PendingRemoteTransientSkillUseAvatarEffectState>> _pendingTransientSkillUseAvatarEffectsByCharacterId = new();
+        private readonly Dictionary<int, Dictionary<string, RemoteAuxiliaryLayerOwnerCounterState>> _remoteAuxiliaryLayerOwnerCountersByCharacterId = new();
         private readonly Dictionary<int, bool> _remoteDamageReactiveSpecialBranchCache = new();
         private const int MakerSkillEffectStringPoolId = 0x931;
         private const int MakerResultMessageStringPoolId = 0x1493;
@@ -506,6 +538,7 @@ namespace HaCreator.MapSimulator.Pools
             _actorsById.Clear();
             _actorIdsByName.Clear();
             _pendingTransientSkillUseAvatarEffectsByCharacterId.Clear();
+            _remoteAuxiliaryLayerOwnerCountersByCharacterId.Clear();
             _portableChairPairRecordsByCharacterId.Clear();
             _localPortableChairPreferredPairCharacterId = null;
             ClearRelationshipRecordTables();
@@ -532,6 +565,7 @@ namespace HaCreator.MapSimulator.Pools
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
                     _pendingTransientSkillUseAvatarEffectsByCharacterId.Remove(characterId);
+                    _remoteAuxiliaryLayerOwnerCountersByCharacterId.Remove(characterId);
                 }
             }
         }
@@ -558,6 +592,7 @@ namespace HaCreator.MapSimulator.Pools
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
+                    _remoteAuxiliaryLayerOwnerCountersByCharacterId.Remove(characterId);
                 }
             }
         }
@@ -1493,6 +1528,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.Build.ActivePortableChair = null;
                 actor.PreferredPortableChairPairCharacterId = null;
+                ClearPortableChairPairRecord(characterId);
                 SetActorAction(actor, CharacterPart.GetActionString(CharacterAction.Stand1), allowSitFallback: false, Environment.TickCount);
                 SyncTemporaryStatPresentation(actor);
                 actor.ClearMeleeAfterImage();
@@ -1508,6 +1544,7 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.Build.ActivePortableChair = chair;
             actor.PreferredPortableChairPairCharacterId = pairCharacterId;
+            SyncPortableChairPairRecordFromSeatState(characterId, chair.ItemId, pairCharacterId);
 
             ApplyPortableChairMount(actor, chair);
             SetActorAction(actor, "sit", allowSitFallback: true, Environment.TickCount);
@@ -2685,6 +2722,15 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            string packetHitString = packet.HitString?.Trim();
+            if (!string.IsNullOrWhiteSpace(packetHitString))
+            {
+                // Client `CUserRemote::OnHit` can carry a pre-resolved MobAttackInfo::sHit string.
+                // Keep packet ownership for that authored path instead of forcing a local WZ lookup.
+                effectPath = packetHitString;
+                return true;
+            }
+
             int attackNumber = packet.AttackIndex + 1;
             if (attackNumber <= 0)
             {
@@ -3493,6 +3539,11 @@ namespace HaCreator.MapSimulator.Pools
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered maker-skill fixed effect {makerSkillEffectPath}.";
                     return true;
 
+                case RemoteUserEffectSubtype.NoOp:
+                    // CUser::OnEffect case 21 is an explicit no-op branch.
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} consumed as no-op.";
+                    return true;
+
                 case RemoteUserEffectSubtype.EffectByItem:
                     int itemEffectItemId = packet.Int32Value.GetValueOrDefault();
                     if (itemEffectItemId <= 0)
@@ -4113,6 +4164,7 @@ namespace HaCreator.MapSimulator.Pools
             _actorsById.Remove(characterId);
             _actorIdsByName.Remove(actor.Name);
             _pendingTransientSkillUseAvatarEffectsByCharacterId.Remove(characterId);
+            _remoteAuxiliaryLayerOwnerCountersByCharacterId.Remove(characterId);
             return true;
         }
 
@@ -5216,19 +5268,21 @@ namespace HaCreator.MapSimulator.Pools
             _helperMarkerCount = 0;
             foreach (RemoteUserActor actor in _actorsById.Values)
             {
+                bool hasFriendshipOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Friendship);
+                bool hasCoupleOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Couple);
+                bool hasMarriageOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
+                bool hasRelationshipHelperFallback = hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay;
                 if (!ShouldIncludePacketAuthoredMinimapHelper(
                         actor?.IsVisibleInWorld == true,
                         actor?.HiddenLikeClient == true,
                         actor?.HelperMarkerType.HasValue == true,
                         actor?.HasPacketAuthoredHelperState == true,
+                        hasRelationshipHelperFallback,
                         actor?.BattlefieldTeamId))
                 {
                     continue;
                 }
 
-                bool hasFriendshipOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Friendship);
-                bool hasCoupleOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Couple);
-                bool hasMarriageOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
                 MinimapUI.HelperMarkerType markerType = ResolvePacketAuthoredMinimapHelperMarker(
                     actor.HelperMarkerType,
                     hasFriendshipOverlay,
@@ -5252,12 +5306,14 @@ namespace HaCreator.MapSimulator.Pools
             bool hiddenLikeClient,
             bool hasExplicitHelperMarker,
             bool hasPacketAuthoredHelperState,
+            bool hasRelationshipHelperFallback,
             int? battlefieldTeamId)
         {
             return isVisibleInWorld
                 && !hiddenLikeClient
                 && (hasExplicitHelperMarker
-                    || battlefieldTeamId.HasValue);
+                    || battlefieldTeamId.HasValue
+                    || (!hasPacketAuthoredHelperState && hasRelationshipHelperFallback));
         }
 
         internal static MinimapUI.HelperMarkerType ResolvePacketAuthoredMinimapHelperMarker(
@@ -7757,6 +7813,22 @@ namespace HaCreator.MapSimulator.Pools
                 preferredPairCharacterId);
         }
 
+        private void SyncPortableChairPairRecordFromSeatState(int characterId, int chairItemId, int? preferredPairCharacterId)
+        {
+            if (IsCoupleChairRecordItemIdForClientParity(chairItemId))
+            {
+                SyncPortableChairPairRecord(characterId, chairItemId, preferredPairCharacterId);
+                return;
+            }
+
+            ClearPortableChairPairRecord(characterId);
+        }
+
+        internal static bool IsCoupleChairRecordItemIdForClientParity(int chairItemId)
+        {
+            return chairItemId > 0 && chairItemId / 1000 == 3012;
+        }
+
         private void ClearPortableChairPairRecord(int characterId)
         {
             if (characterId > 0)
@@ -8146,63 +8218,81 @@ namespace HaCreator.MapSimulator.Pools
             }
             ResolveRemoteSoulArrowSkill(actor, knownState, out int? soulArrowSkillId, out SkillData soulArrowSkill);
             actor.TemporaryStatSoulArrowEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatSoulArrowEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.SoulArrow,
                 soulArrowSkillId,
                 soulArrowSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             ResolveRemoteWeaponChargeSkill(actor, knownState, out int? weaponChargeSkillId, out SkillData weaponChargeSkill);
             actor.TemporaryStatWeaponChargeEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatWeaponChargeEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.WeaponCharge,
                 weaponChargeSkillId,
                 weaponChargeSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             ResolveRemoteAuraSkill(actor, knownState, out int? auraSkillId, out SkillData auraSkill);
             actor.TemporaryStatAuraEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatAuraEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.Aura,
                 auraSkillId,
                 auraSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             ResolveRemoteMoreWildDamageUpSkill(knownState, out int? moreWildDamageUpSkillId, out SkillData moreWildDamageUpSkill);
             actor.TemporaryStatMoreWildEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatMoreWildEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.MoreWild,
                 moreWildDamageUpSkillId,
                 moreWildDamageUpSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             ResolveRemoteBarrierSkill(actor, knownState, out int? barrierSkillId, out SkillData barrierSkill);
             actor.TemporaryStatBarrierEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatBarrierEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.Barrier,
                 barrierSkillId,
                 barrierSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             ResolveRemoteBlessingArmorSkill(actor, knownState, out int? blessingArmorSkillId, out SkillData blessingArmorSkill);
             actor.TemporaryStatBlessingArmorEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatBlessingArmorEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.BlessingArmor,
                 blessingArmorSkillId,
                 blessingArmorSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             ResolveRemoteRepeatEffectSkill(actor, knownState, out int? repeatEffectSkillId, out SkillData repeatEffectSkill);
             actor.TemporaryStatRepeatEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatRepeatEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.RepeatEffect,
                 repeatEffectSkillId,
                 repeatEffectSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             ResolveRemoteMagicShieldSkill(actor, knownState, out int? magicShieldSkillId, out SkillData magicShieldSkill);
             actor.TemporaryStatMagicShieldEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatMagicShieldEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.MagicShield,
                 magicShieldSkillId,
                 magicShieldSkill,
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             ResolveRemoteFinalCutSkill(actor, knownState, out int? finalCutSkillId, out SkillData finalCutSkill);
             actor.TemporaryStatFinalCutEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor,
                 actor.TemporaryStatFinalCutEffect,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.FinalCut,
                 finalCutSkillId,
                 finalCutSkill,
                 temporaryStatAnimationStartTime,
@@ -8251,6 +8341,143 @@ namespace HaCreator.MapSimulator.Pools
                 existingStartTime,
                 nextStartTime,
                 reseedTimelineFromPacket);
+        }
+
+        private static string ResolveRemoteTemporaryStatAvatarEffectOwnerName(RemoteTemporaryStatAvatarEffectOwnerFamily family)
+        {
+            return family switch
+            {
+                RemoteTemporaryStatAvatarEffectOwnerFamily.SoulArrow => RemoteTemporaryStatSoulArrowActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.WeaponCharge => RemoteTemporaryStatWeaponChargeActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.Aura => RemoteTemporaryStatAuraActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.MoreWild => RemoteTemporaryStatMoreWildActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.Barrier => RemoteTemporaryStatBarrierActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.BlessingArmor => RemoteTemporaryStatBlessingArmorActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.RepeatEffect => RemoteTemporaryStatRepeatEffectActionOwnerName,
+                RemoteTemporaryStatAvatarEffectOwnerFamily.MagicShield => RemoteTemporaryStatMagicShieldActionOwnerName,
+                _ => RemoteTemporaryStatFinalCutActionOwnerName
+            };
+        }
+
+        private static string ResolveRemoteTemporaryStatAvatarEffectActionName(RemoteUserActor actor)
+        {
+            if (!string.IsNullOrWhiteSpace(actor?.ActionName))
+            {
+                return actor.ActionName;
+            }
+
+            return CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
+        private static bool IsRemoteAuxiliaryLayerOwnerCounterContextMatch(
+            RemoteAuxiliaryLayerOwnerCounterState ownerCounter,
+            int skillId,
+            string actionName,
+            bool facingRight)
+        {
+            return ownerCounter != null
+                   && ownerCounter.SkillId == skillId
+                   && ownerCounter.FacingRight == facingRight
+                   && string.Equals(ownerCounter.ActionName, actionName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool TryRestoreRemoteAuxiliaryLayerOwnerCounter(
+            int characterId,
+            string ownerName,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            out int animationElapsedMs)
+        {
+            animationElapsedMs = 0;
+            if (characterId <= 0
+                || string.IsNullOrWhiteSpace(ownerName)
+                || !_remoteAuxiliaryLayerOwnerCountersByCharacterId.TryGetValue(
+                    characterId,
+                    out Dictionary<string, RemoteAuxiliaryLayerOwnerCounterState> ownerCounters)
+                || ownerCounters == null
+                || !ownerCounters.TryGetValue(ownerName, out RemoteAuxiliaryLayerOwnerCounterState ownerCounter)
+                || !IsRemoteAuxiliaryLayerOwnerCounterContextMatch(ownerCounter, skillId, actionName, facingRight))
+            {
+                return false;
+            }
+
+            animationElapsedMs = Math.Max(0, ownerCounter.AnimationElapsedMs);
+            return true;
+        }
+
+        private void StoreRemoteAuxiliaryLayerOwnerCounter(
+            int characterId,
+            string ownerName,
+            int skillId,
+            string actionName,
+            bool facingRight,
+            int animationElapsedMs,
+            int lastUpdateTimeMs)
+        {
+            if (characterId <= 0 || string.IsNullOrWhiteSpace(ownerName))
+            {
+                return;
+            }
+
+            if (!_remoteAuxiliaryLayerOwnerCountersByCharacterId.TryGetValue(
+                    characterId,
+                    out Dictionary<string, RemoteAuxiliaryLayerOwnerCounterState> ownerCounters))
+            {
+                ownerCounters = new Dictionary<string, RemoteAuxiliaryLayerOwnerCounterState>(
+                    StringComparer.OrdinalIgnoreCase);
+                _remoteAuxiliaryLayerOwnerCountersByCharacterId[characterId] = ownerCounters;
+            }
+
+            if (!ownerCounters.TryGetValue(ownerName, out RemoteAuxiliaryLayerOwnerCounterState ownerCounter))
+            {
+                ownerCounter = new RemoteAuxiliaryLayerOwnerCounterState();
+                ownerCounters[ownerName] = ownerCounter;
+            }
+
+            ownerCounter.SkillId = skillId;
+            ownerCounter.ActionName = actionName;
+            ownerCounter.FacingRight = facingRight;
+            ownerCounter.AnimationElapsedMs = Math.Max(0, animationElapsedMs);
+            ownerCounter.LastUpdateTimeMs = lastUpdateTimeMs;
+        }
+
+        internal static string ResolveRemoteTemporaryStatAvatarEffectOwnerNameForTesting(int familyCode)
+        {
+            RemoteTemporaryStatAvatarEffectOwnerFamily family = familyCode switch
+            {
+                0 => RemoteTemporaryStatAvatarEffectOwnerFamily.SoulArrow,
+                1 => RemoteTemporaryStatAvatarEffectOwnerFamily.WeaponCharge,
+                2 => RemoteTemporaryStatAvatarEffectOwnerFamily.Aura,
+                3 => RemoteTemporaryStatAvatarEffectOwnerFamily.MoreWild,
+                4 => RemoteTemporaryStatAvatarEffectOwnerFamily.Barrier,
+                5 => RemoteTemporaryStatAvatarEffectOwnerFamily.BlessingArmor,
+                6 => RemoteTemporaryStatAvatarEffectOwnerFamily.RepeatEffect,
+                7 => RemoteTemporaryStatAvatarEffectOwnerFamily.MagicShield,
+                _ => RemoteTemporaryStatAvatarEffectOwnerFamily.FinalCut
+            };
+
+            return ResolveRemoteTemporaryStatAvatarEffectOwnerName(family);
+        }
+
+        internal static bool IsRemoteAuxiliaryLayerOwnerCounterContextMatchForTesting(
+            int storedSkillId,
+            string storedActionName,
+            bool storedFacingRight,
+            int requestedSkillId,
+            string requestedActionName,
+            bool requestedFacingRight)
+        {
+            return IsRemoteAuxiliaryLayerOwnerCounterContextMatch(
+                new RemoteAuxiliaryLayerOwnerCounterState
+                {
+                    SkillId = storedSkillId,
+                    ActionName = storedActionName,
+                    FacingRight = storedFacingRight
+                },
+                requestedSkillId,
+                requestedActionName,
+                requestedFacingRight);
         }
 
         private static void SetActorAction(
@@ -8935,6 +9162,116 @@ namespace HaCreator.MapSimulator.Pools
                    || skill?.RepeatSecondaryEffect != null;
         }
 
+        private static bool HasAnyRemoteTemporaryStatAvatarEffectAnimation(RemoteTemporaryStatAvatarEffectState state)
+        {
+            return state?.OverlayAnimation != null
+                   || state?.OverlaySecondaryAnimation != null
+                   || state?.UnderFaceAnimation != null
+                   || state?.UnderFaceSecondaryAnimation != null;
+        }
+
+        private RemoteTemporaryStatAvatarEffectState UpdateRemoteTemporaryStatAvatarEffectState(
+            RemoteUserActor actor,
+            RemoteTemporaryStatAvatarEffectState existingState,
+            RemoteTemporaryStatAvatarEffectOwnerFamily ownerFamily,
+            int? skillId,
+            SkillData skill,
+            int currentTime,
+            bool reseedTimelineFromPacket)
+        {
+            string ownerName = ResolveRemoteTemporaryStatAvatarEffectOwnerName(ownerFamily);
+            string ownerActionName = ResolveRemoteTemporaryStatAvatarEffectActionName(actor);
+            bool ownerFacingRight = actor?.FacingRight ?? true;
+            int ownerCharacterId = actor?.CharacterId ?? 0;
+
+            if (skillId.HasValue
+                && skill != null
+                && existingState?.SkillId == skillId.Value
+                && HasAnyRemoteTemporaryStatAvatarEffectAnimation(existingState))
+            {
+                existingState.Skill = skill;
+                if (reseedTimelineFromPacket)
+                {
+                    existingState.AnimationStartTime = currentTime;
+                }
+
+                return existingState;
+            }
+
+            if (existingState != null && ownerCharacterId > 0)
+            {
+                StoreRemoteAuxiliaryLayerOwnerCounter(
+                    ownerCharacterId,
+                    ownerName,
+                    existingState.SkillId,
+                    ownerActionName,
+                    ownerFacingRight,
+                    Math.Max(0, currentTime - existingState.AnimationStartTime),
+                    currentTime);
+            }
+
+            if (!skillId.HasValue
+                || skill == null
+                || !TryCreateRemoteTemporaryStatAvatarEffectState(
+                    skillId.Value,
+                    skill,
+                    currentTime,
+                    out RemoteTemporaryStatAvatarEffectState nextState))
+            {
+                return null;
+            }
+
+            if (!reseedTimelineFromPacket
+                && ownerCharacterId > 0
+                && TryRestoreRemoteAuxiliaryLayerOwnerCounter(
+                    ownerCharacterId,
+                    ownerName,
+                    nextState.SkillId,
+                    ownerActionName,
+                    ownerFacingRight,
+                    out int restoredAnimationElapsedMs))
+            {
+                return new RemoteTemporaryStatAvatarEffectState
+                {
+                    SkillId = nextState.SkillId,
+                    Skill = nextState.Skill,
+                    OverlayAnimation = nextState.OverlayAnimation,
+                    OverlaySecondaryAnimation = nextState.OverlaySecondaryAnimation,
+                    UnderFaceAnimation = nextState.UnderFaceAnimation,
+                    UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
+                    AnimationStartTime = unchecked(currentTime - restoredAnimationElapsedMs)
+                };
+            }
+
+            if (existingState?.SkillId == skillId.Value)
+            {
+                if (!reseedTimelineFromPacket)
+                {
+                    // Mirror `CUser::UpdateAr01Effect` ownership: keep the current layer object
+                    // alive while the same skill remains active and no packet-owned reseed applies.
+                    return existingState;
+                }
+
+                return new RemoteTemporaryStatAvatarEffectState
+                {
+                    SkillId = nextState.SkillId,
+                    Skill = nextState.Skill,
+                    OverlayAnimation = nextState.OverlayAnimation,
+                    OverlaySecondaryAnimation = nextState.OverlaySecondaryAnimation,
+                    UnderFaceAnimation = nextState.UnderFaceAnimation,
+                    UnderFaceSecondaryAnimation = nextState.UnderFaceSecondaryAnimation,
+                    AnimationStartTime = ResolveRemoteTemporaryStatAvatarEffectAnimationStartTime(
+                        existingState.SkillId,
+                        nextState.SkillId,
+                        existingState.AnimationStartTime,
+                        nextState.AnimationStartTime,
+                        reseedTimelineFromPacket)
+                };
+            }
+
+            return nextState;
+        }
+
         private static RemoteTemporaryStatAvatarEffectState UpdateRemoteTemporaryStatAvatarEffectState(
             RemoteTemporaryStatAvatarEffectState existingState,
             int? skillId,
@@ -8942,6 +9279,20 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime,
             bool reseedTimelineFromPacket)
         {
+            if (skillId.HasValue
+                && skill != null
+                && existingState?.SkillId == skillId.Value
+                && HasAnyRemoteTemporaryStatAvatarEffectAnimation(existingState))
+            {
+                existingState.Skill = skill;
+                if (reseedTimelineFromPacket)
+                {
+                    existingState.AnimationStartTime = currentTime;
+                }
+
+                return existingState;
+            }
+
             if (!skillId.HasValue
                 || skill == null
                 || !TryCreateRemoteTemporaryStatAvatarEffectState(
@@ -8957,8 +9308,6 @@ namespace HaCreator.MapSimulator.Pools
             {
                 if (!reseedTimelineFromPacket)
                 {
-                    // Mirror `CUser::UpdateAr01Effect` ownership: keep the current layer object
-                    // alive while the same skill remains active and no packet-owned reseed applies.
                     return existingState;
                 }
 
@@ -10869,6 +11218,18 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.RawPayload,
                     snapshot.WeaponChargePayloadOffset,
                     preferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out int scopedWindowChargeSkillId))
+            {
+                return scopedWindowChargeSkillId;
+            }
+
+            if (snapshot.WeaponChargePayloadOffset >= 0
+                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    snapshot.WeaponChargePayloadOffset,
+                    preferredSkillId,
                     out int scopedChargeSkillId))
             {
                 return scopedChargeSkillId;
@@ -10913,6 +11274,18 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatMetadata(
                     snapshot.RawPayload,
                     snapshot.WeaponChargePayloadOffset,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (snapshot.WeaponChargePayloadOffset >= 0
+                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    snapshot.WeaponChargePayloadOffset,
+                    preferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
                     out chargeElement))
             {
                 return true;

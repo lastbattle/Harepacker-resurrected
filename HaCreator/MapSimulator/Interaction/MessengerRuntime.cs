@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<MessengerParticipantState> _participants = new(MaxParticipants);
         private readonly List<MessengerLogEntryState> _logEntries = new();
         private readonly Dictionary<string, MessengerContactState> _contacts = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Queue<PendingMessengerInviteState> _incomingInviteQueue = new();
         private int _selectedSlot;
         private int _lastPulseTick = int.MinValue;
         private int _nextPulseContactIndex;
@@ -39,6 +40,8 @@ namespace HaCreator.MapSimulator.Interaction
         private MessengerWindowState _windowState;
         private PendingMessengerInviteState _pendingInvite;
         private PendingMessengerInviteState _incomingInvite;
+        private int _incomingInviteAlarmCounter;
+        private int _incomingInviteCurrentStackIndex;
         private bool _deleteRequested;
         private bool _windowCloseReady;
         private bool _exitPromptActive;
@@ -318,7 +321,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_incomingInvite != null)
             {
-                return $"Messenger invite from {_incomingInvite.ContactName} is already waiting.";
+                PendingMessengerInviteState queuedInvite = BuildIncomingInviteState(contact, packet, Environment.TickCount);
+                _incomingInviteQueue.Enqueue(queuedInvite);
+                _lastActionSummary = $"Queued Messenger invite from {contact.Name} while {_incomingInvite.ContactName}'s alarm is still visible.";
+                AddSystemLog(_lastActionSummary);
+                StartBlink(Environment.TickCount);
+                RecordPacketSummary(
+                    $"Queued simulated Messenger invite packet from {contact.Name}; active invite {_incomingInvite.ContactName} remains visible (queue depth {_incomingInviteQueue.Count}).");
+                return _lastActionSummary;
             }
 
             if (!packet.SkipBlacklistAutoReject && IsBlacklistedName?.Invoke(contact.Name) == true)
@@ -333,20 +343,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return _lastActionSummary;
             }
 
-            _incomingInvite = new PendingMessengerInviteState(
-                _nextInviteId++,
-                contact.Name,
-                0,
-                true,
-                packet.InviteType,
-                packet.InviteSequence,
-                packet.SkipBlacklistAutoReject,
-                Environment.TickCount + InvitePromptLifetimeMs,
-                MessengerPacketCodec.BuildInvitePayload(
-                    contact.Name,
-                    packet.InviteType,
-                    packet.InviteSequence,
-                    packet.SkipBlacklistAutoReject));
+            _incomingInvite = BuildIncomingInviteState(contact, packet, Environment.TickCount);
+            _incomingInviteCurrentStackIndex = NextIncomingInviteStackIndex();
             _lastActionSummary = MessengerClientParityText.FormatIncomingInviteNotice(contact.Name);
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
@@ -379,6 +377,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!_contacts.TryGetValue(incomingInvite.ContactName, out MessengerContactState contact))
             {
+                PromoteQueuedIncomingInviteIfAvailable(Environment.TickCount);
                 return $"Invite target {incomingInvite.ContactName} is no longer available.";
             }
 
@@ -387,6 +386,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastActionSummary = $"{contact.Name} is offline, so the Messenger invite expired.";
                 AddSystemLog(_lastActionSummary);
                 RecordPacketSummary($"Rejected simulated Messenger invite packet from {contact.Name} because the sender is offline.");
+                PromoteQueuedIncomingInviteIfAvailable(Environment.TickCount);
                 return _lastActionSummary;
             }
 
@@ -395,10 +395,13 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastActionSummary = $"Cannot join {contact.Name}'s Messenger while another room is active.";
                 AddSystemLog(_lastActionSummary);
                 RecordPacketSummary($"Rejected simulated Messenger invite from {contact.Name} because the local room is busy.");
+                PromoteQueuedIncomingInviteIfAvailable(Environment.TickCount);
                 return _lastActionSummary;
             }
 
-            return JoinContact(contact, packetDriven: true, joinedViaIncomingInvite: true);
+            string joinResult = JoinContact(contact, packetDriven: true, joinedViaIncomingInvite: true);
+            PromoteQueuedIncomingInviteIfAvailable(Environment.TickCount);
+            return joinResult;
         }
 
         public string RejectIncomingInvite()
@@ -415,6 +418,7 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Sent simulated Messenger invite-reject packet to {incomingInvite.ContactName}.");
+            PromoteQueuedIncomingInviteIfAvailable(Environment.TickCount);
             TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the invite response cleared.");
             return _lastActionSummary;
         }
@@ -991,8 +995,15 @@ namespace HaCreator.MapSimulator.Interaction
                 _deleteRequested = true;
                 _deleteRequestedTick = currentTick;
                 _deleteDestroyReadyTick = currentTick + DeleteRequestGraceDelayMs;
-                string message = RejectIncomingInvite();
-                return new MessengerDeleteResult(message, _windowCloseReady);
+                string contactName = _incomingInvite.ContactName;
+                _incomingInvite = null;
+                _incomingInviteQueue.Clear();
+                _lastActionSummary = $"Rejected Messenger invite from {contactName}.";
+                AddSystemLog(_lastActionSummary);
+                StartBlink(currentTick);
+                RecordPacketSummary($"Rejected Messenger invite from {contactName} while processing TryDelete; cleared queued invite alarms.");
+                NotifyIncomingInvitePromptChanged();
+                return new MessengerDeleteResult(_lastActionSummary, _windowCloseReady);
             }
 
             TryCompleteDeferredDelete(currentTick);
@@ -1454,6 +1465,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastActionSummary = $"Messenger invite from {expiredContactName} expired after the FadeYesNo lifetime elapsed.";
                 RecordPacketSummary($"Expired simulated Messenger invite prompt from {expiredContactName} after {InvitePromptLifetimeMs} ms.");
                 NotifyIncomingInvitePromptChanged();
+                PromoteQueuedIncomingInviteIfAvailable(tickCount);
             }
 
             if (_pendingInvite != null
@@ -1684,7 +1696,10 @@ namespace HaCreator.MapSimulator.Interaction
                     MessengerClientParityText.GetInvitePromptTitle(),
                     _incomingInvite.InviteType,
                     _incomingInvite.InviteSequence,
-                    _incomingInvite.SkipBlacklistAutoReject));
+                    _incomingInvite.SkipBlacklistAutoReject,
+                    _incomingInviteCurrentStackIndex,
+                    _incomingInviteQueue.Count,
+                    _incomingInviteAlarmCounter));
         }
 
         private int FindParticipantIndex(string name)
@@ -2447,7 +2462,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (_incomingInvite != null)
             {
-                return $"Invite #{_incomingInvite.InviteId} from {_incomingInvite.ContactName}";
+                return _incomingInviteQueue.Count <= 0
+                    ? $"Invite #{_incomingInvite.InviteId} from {_incomingInvite.ContactName}"
+                    : $"Invite #{_incomingInvite.InviteId} from {_incomingInvite.ContactName} (+{_incomingInviteQueue.Count} queued)";
             }
 
             return _pendingInvite == null
@@ -2486,7 +2503,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (_incomingInvite != null)
             {
-                return $"{_incomingInvite.ContactName} invited you";
+                return _incomingInviteQueue.Count <= 0
+                    ? $"{_incomingInvite.ContactName} invited you"
+                    : $"{_incomingInvite.ContactName} invited you (+{_incomingInviteQueue.Count})";
             }
 
             if (_pendingInvite != null)
@@ -2614,6 +2633,51 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] PacketPayload = null,
             bool SessionOwned = false);
 
+        private PendingMessengerInviteState BuildIncomingInviteState(MessengerContactState contact, MessengerInvitePacket packet, int tickCount)
+        {
+            return new PendingMessengerInviteState(
+                _nextInviteId++,
+                contact.Name,
+                0,
+                true,
+                packet.InviteType,
+                packet.InviteSequence,
+                packet.SkipBlacklistAutoReject,
+                tickCount + InvitePromptLifetimeMs,
+                MessengerPacketCodec.BuildInvitePayload(
+                    contact.Name,
+                    packet.InviteType,
+                    packet.InviteSequence,
+                    packet.SkipBlacklistAutoReject));
+        }
+
+        private int NextIncomingInviteStackIndex()
+        {
+            _incomingInviteAlarmCounter = _incomingInviteAlarmCounter == int.MaxValue
+                ? 1
+                : _incomingInviteAlarmCounter + 1;
+            return Math.Clamp(_incomingInviteAlarmCounter - 1, 0, 6);
+        }
+
+        private void PromoteQueuedIncomingInviteIfAvailable(int tickCount)
+        {
+            if (_incomingInvite != null || _incomingInviteQueue.Count == 0)
+            {
+                return;
+            }
+
+            PendingMessengerInviteState queuedInvite = _incomingInviteQueue.Dequeue();
+            _incomingInvite = queuedInvite with
+            {
+                PromptExpireTick = tickCount + InvitePromptLifetimeMs
+            };
+            _incomingInviteCurrentStackIndex = NextIncomingInviteStackIndex();
+            _lastActionSummary = $"Promoted queued Messenger invite from {_incomingInvite.ContactName} into the active alarm.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Promoted queued Messenger invite from {_incomingInvite.ContactName}; remaining queued alarms {_incomingInviteQueue.Count}.");
+            NotifyIncomingInvitePromptChanged();
+        }
+
         private sealed record MessengerParticipantState
         {
             public int SlotIndex { get; init; }
@@ -2739,10 +2803,13 @@ namespace HaCreator.MapSimulator.Interaction
         string TitleText,
         byte InviteType,
         int InviteSequence,
-        bool SkipBlacklistAutoReject)
+        bool SkipBlacklistAutoReject,
+        int StackIndex,
+        int QueueCount,
+        int AlarmCounter)
     {
         public static MessengerIncomingInvitePromptState Hidden { get; } =
-            new(false, string.Empty, string.Empty, string.Empty, 0, 0, false);
+            new(false, string.Empty, string.Empty, string.Empty, 0, 0, false, 0, 0, 0);
     }
 
     internal sealed class MessengerParticipantSnapshot

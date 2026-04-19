@@ -204,9 +204,19 @@ namespace HaCreator.MapSimulator.Interaction
                     mode,
                     TryReadStageBackColor(periodNode),
                     ParseStageBackImages(periodNode),
-                    ParseStringSet(periodNode["stageKeyword"] ?? periodNode["keyword"] ?? periodNode["aKeyword"]),
-                    ParseIntSet(periodNode["enabledQuest"] ?? periodNode["aEnabledQuest"] ?? periodNode["questID"] ?? periodNode["quest"]),
-                    ParseIntSet(periodNode["affectedMap"] ?? periodNode["fieldID"] ?? periodNode["aAffectedMap"]));
+                    ParseStringSet(
+                        periodNode["stageKeyword"],
+                        periodNode["keyword"],
+                        periodNode["aKeyword"]),
+                    ParseIntSet(
+                        periodNode["enabledQuest"],
+                        periodNode["aEnabledQuest"],
+                        periodNode["questID"],
+                        periodNode["quest"]),
+                    ParseIntSet(
+                        periodNode["affectedMap"],
+                        periodNode["fieldID"],
+                        periodNode["aAffectedMap"]));
             }
 
             return periods;
@@ -550,10 +560,19 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackName);
         }
 
-        private static HashSet<string> ParseStringSet(WzImageProperty property)
+        private static HashSet<string> ParseStringSet(params WzImageProperty[] properties)
         {
             HashSet<string> values = new(StringComparer.Ordinal);
-            AppendStringValues(property, values);
+            if (properties == null)
+            {
+                return values;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                AppendStringValues(property, values);
+            }
+
             return values;
         }
 
@@ -589,10 +608,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static HashSet<int> ParseIntSet(WzImageProperty property)
+        private static HashSet<int> ParseIntSet(params WzImageProperty[] properties)
         {
             HashSet<int> values = new();
-            AppendIntValues(property, values);
+            if (properties == null)
+            {
+                return values;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                AppendIntValues(property, values);
+            }
+
             return values;
         }
 

@@ -174,8 +174,14 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryEncodeLegacyEquippedPosition(EquipSlot slot, out int encodedPosition)
         {
+            if (TryResolveLegacyBodyPart(slot, out int legacyBodyPart))
+            {
+                encodedPosition = -legacyBodyPart;
+                return true;
+            }
+
             int legacySlotPosition = (int)slot;
-            if (legacySlotPosition >= 0 && legacySlotPosition <= 59)
+            if (legacySlotPosition > 0 && legacySlotPosition <= 59)
             {
                 encodedPosition = -legacySlotPosition;
                 return true;
@@ -183,6 +189,41 @@ namespace HaCreator.MapSimulator
 
             encodedPosition = int.MinValue;
             return false;
+        }
+
+        private static bool TryResolveLegacyBodyPart(EquipSlot slot, out int bodyPart)
+        {
+            bodyPart = slot switch
+            {
+                EquipSlot.Cap => 1,
+                EquipSlot.FaceAccessory => 2,
+                EquipSlot.EyeAccessory => 3,
+                EquipSlot.Earrings => 4,
+                EquipSlot.Coat => 5,
+                EquipSlot.Longcoat => 5,
+                EquipSlot.Pants => 6,
+                EquipSlot.Shoes => 7,
+                EquipSlot.Glove => 8,
+                EquipSlot.Cape => 9,
+                EquipSlot.Shield => 10,
+                EquipSlot.Weapon => 11,
+                EquipSlot.Ring1 => 12,
+                EquipSlot.Ring2 => 13,
+                EquipSlot.Ring3 => 15,
+                EquipSlot.Ring4 => 16,
+                EquipSlot.Pendant => 17,
+                EquipSlot.TamingMob => 18,
+                EquipSlot.Saddle => 19,
+                EquipSlot.TamingMobAccessory => 20,
+                EquipSlot.Medal => 49,
+                EquipSlot.Belt => 50,
+                EquipSlot.Shoulder => 51,
+                EquipSlot.Pocket => 52,
+                EquipSlot.Badge => 53,
+                EquipSlot.Pendant2 => 59,
+                _ => 0
+            };
+            return bodyPart > 0 && bodyPart <= 59;
         }
 
         internal static IReadOnlyList<(string Key, bool Enabled)> ResolveRequiredJobBadgeStates(int requiredJobMask)

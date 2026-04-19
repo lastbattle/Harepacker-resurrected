@@ -126,6 +126,7 @@ namespace HaCreator.MapSimulator
         private int _animationDisplayerLocalQuestDeliveryItemId;
         private int _animationDisplayerSessionValueCoolRank;
         private int _packetOwnedAnimationDisplayerFollowDriverId;
+        private int _packetOwnedAnimationDisplayerFollowRegistrationKey;
 
         internal enum AnimationDisplayerTransientEffectKind
         {
@@ -600,9 +601,11 @@ namespace HaCreator.MapSimulator
             _animationEffects.ClearSecondarySkillAnimationOwners();
             ClearAnimationDisplayerFollowAnimations();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
+            _animationDisplayerRemoteGrenadeActors.Clear();
             _animationDisplayerLocalQuestDeliveryItemId = 0;
             _animationDisplayerSessionValueCoolRank = 0;
             _packetOwnedAnimationDisplayerFollowDriverId = 0;
+            _packetOwnedAnimationDisplayerFollowRegistrationKey = 0;
             ResetAnimationDisplayerLocalFadeLayer();
         }
 
@@ -1263,27 +1266,29 @@ namespace HaCreator.MapSimulator
 
             if (rootProperty is WzSubProperty rootSubProperty)
             {
-                int childCount = rootSubProperty.WzProperties?.Count ?? 0;
-                for (int index = 0; index < childCount; index++)
+                var children = rootSubProperty.WzProperties;
+                if (children != null)
                 {
-                    WzImageProperty child = WzInfoTools.GetRealProperty(
-                        rootSubProperty[index.ToString(CultureInfo.InvariantCulture)]);
-                    if (child == null)
+                    for (int index = 0; index < children.Count; index++)
                     {
-                        continue;
-                    }
+                        WzImageProperty child = WzInfoTools.GetRealProperty(children[index]);
+                        if (child == null)
+                        {
+                            continue;
+                        }
 
-                    string visualPath = NormalizeRemotePacketOwnedStringEffectUol(child["visual"]?.GetString());
-                    if (string.IsNullOrWhiteSpace(visualPath))
-                    {
-                        continue;
-                    }
+                        string visualPath = NormalizeRemotePacketOwnedStringEffectUol(child["visual"]?.GetString());
+                        if (string.IsNullOrWhiteSpace(visualPath))
+                        {
+                            continue;
+                        }
 
-                    metadata = new AnimationDisplayerReservedEffectMetadata(
-                        Type: child["type"]?.GetInt() ?? 0,
-                        StartDelayMs: Math.Max(0, child["start"]?.GetInt() ?? 0),
-                        VisualEffectUol: visualPath);
-                    return true;
+                        metadata = new AnimationDisplayerReservedEffectMetadata(
+                            Type: child["type"]?.GetInt() ?? 0,
+                            StartDelayMs: Math.Max(0, child["start"]?.GetInt() ?? 0),
+                            VisualEffectUol: visualPath);
+                        return true;
+                    }
                 }
             }
 
@@ -1298,6 +1303,27 @@ namespace HaCreator.MapSimulator
                 StartDelayMs: Math.Max(0, rootProperty["start"]?.GetInt() ?? 0),
                 VisualEffectUol: rootVisualPath);
             return true;
+        }
+
+        internal static int ResolveAnimationDisplayerReservedStartRegistrationTime(int currentTime, int startDelayMs)
+        {
+            if (startDelayMs <= 0)
+            {
+                return currentTime;
+            }
+
+            long delayed = (long)currentTime + startDelayMs;
+            if (delayed > int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            if (delayed < int.MinValue)
+            {
+                return int.MinValue;
+            }
+
+            return (int)delayed;
         }
 
         private bool TryRegisterAnimationDisplayerLocalCooldownReady(int currentTime)
@@ -1911,10 +1937,12 @@ namespace HaCreator.MapSimulator
 
             IReadOnlyList<AnimationDisplayerFollowEquipmentDefinition> followDefinitions =
                 ResolveAnimationDisplayerFollowEquipmentDefinitions(ownerCharacterId);
-            var definitionsToRegister = new List<AnimationDisplayerFollowEquipmentDefinition>(
-                followDefinitions.Count > 0
-                    ? followDefinitions
-                    : new[] { (AnimationDisplayerFollowEquipmentDefinition)null });
+            bool allowGenericFallback = ShouldAllowAnimationDisplayerGenericFollowFallback(registrationKey);
+            var definitionsToRegister = new List<AnimationDisplayerFollowEquipmentDefinition>(followDefinitions);
+            if (definitionsToRegister.Count == 0 && allowGenericFallback)
+            {
+                definitionsToRegister.Add(null);
+            }
             Func<bool> getOwnerFlip = ResolveAnimationDisplayerFollowOwnerFlip(ownerCharacterId);
             Func<bool> getOwnerMoveAction = ResolveAnimationDisplayerFollowOwnerMoveAction(ownerCharacterId);
 
@@ -2390,6 +2418,57 @@ namespace HaCreator.MapSimulator
                 return fallbackPosition;
             };
 
+            if (TryResolveAnimationDisplayerReservedEffectMetadata(
+                    effectUol,
+                    ResolveAnimationDisplayerProperty,
+                    out AnimationDisplayerReservedEffectMetadata reservedMetadata))
+            {
+                int registerTime = ResolveAnimationDisplayerReservedStartRegistrationTime(
+                    presentation.CurrentTime,
+                    reservedMetadata.StartDelayMs);
+
+                if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(
+                        reservedMetadata.VisualEffectUol,
+                        out int reservedSquibVariant))
+                {
+                    return TryRegisterAnimationDisplayerSquib(
+                        presentation.CharacterId,
+                        getPosition,
+                        reservedSquibVariant,
+                        registerTime,
+                        out _);
+                }
+
+                if (TryResolveAnimationDisplayerTransformedOnLadderFromEffectUol(
+                        reservedMetadata.VisualEffectUol,
+                        out bool reservedTransformedOnLadder))
+                {
+                    return TryRegisterAnimationDisplayerTransformed(
+                        presentation.CharacterId,
+                        getPosition,
+                        reservedTransformedOnLadder,
+                        registerTime,
+                        out _);
+                }
+
+                if (TryGetAnimationDisplayerFrames(
+                        $"reserved:{effectUol}:{reservedMetadata.Type}:{reservedMetadata.VisualEffectUol}",
+                        reservedMetadata.VisualEffectUol,
+                        out List<IDXObject> reservedFrames))
+                {
+                    Vector2 reservedFallbackPosition = getPosition();
+                    _animationEffects.AddOneTimeAttached(
+                        reservedFrames,
+                        getPosition,
+                        getFlip: null,
+                        reservedFallbackPosition.X,
+                        reservedFallbackPosition.Y,
+                        fallbackFlip: false,
+                        registerTime);
+                    return true;
+                }
+            }
+
             if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(effectUol, out int squibVariant))
             {
                 return TryRegisterAnimationDisplayerSquib(
@@ -2408,54 +2487,6 @@ namespace HaCreator.MapSimulator
                     transformedOnLadder,
                     presentation.CurrentTime,
                     out _);
-            }
-
-            if (TryResolveAnimationDisplayerReservedEffectMetadata(
-                    effectUol,
-                    ResolveAnimationDisplayerProperty,
-                    out AnimationDisplayerReservedEffectMetadata reservedMetadata))
-            {
-                if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(
-                        reservedMetadata.VisualEffectUol,
-                        out int reservedSquibVariant))
-                {
-                    return TryRegisterAnimationDisplayerSquib(
-                        presentation.CharacterId,
-                        getPosition,
-                        reservedSquibVariant,
-                        presentation.CurrentTime,
-                        out _);
-                }
-
-                if (TryResolveAnimationDisplayerTransformedOnLadderFromEffectUol(
-                        reservedMetadata.VisualEffectUol,
-                        out bool reservedTransformedOnLadder))
-                {
-                    return TryRegisterAnimationDisplayerTransformed(
-                        presentation.CharacterId,
-                        getPosition,
-                        reservedTransformedOnLadder,
-                        presentation.CurrentTime,
-                        out _);
-                }
-
-                if (TryGetAnimationDisplayerFrames(
-                        $"reserved:{effectUol}:{reservedMetadata.Type}:{reservedMetadata.VisualEffectUol}",
-                        reservedMetadata.VisualEffectUol,
-                        out List<IDXObject> reservedFrames))
-                {
-                    int registerTime = presentation.CurrentTime + reservedMetadata.StartDelayMs;
-                    Vector2 reservedFallbackPosition = getPosition();
-                    _animationEffects.AddOneTimeAttached(
-                        reservedFrames,
-                        getPosition,
-                        getFlip: null,
-                        reservedFallbackPosition.X,
-                        reservedFallbackPosition.Y,
-                        fallbackFlip: false,
-                        registerTime);
-                    return true;
-                }
             }
 
             return false;
@@ -2961,16 +2992,48 @@ namespace HaCreator.MapSimulator
             SkillCastInfo castInfo)
         {
             if (castInfo?.SkillData == null
-                || castInfo.SkillId <= 0
-                || castInfo.DelayRateOverride is not > 0)
+                || castInfo.SkillId <= 0)
             {
                 return false;
             }
 
             SkillData skill = castInfo.SkillData;
-            return !skill.IsAttack
-                   && !skill.IsPrepareSkill
-                   && !skill.IsKeydownSkill;
+            if (skill.IsAttack
+                || skill.IsPrepareSkill
+                || skill.IsKeydownSkill)
+            {
+                return false;
+            }
+
+            if (castInfo.DelayRateOverride is > 0)
+            {
+                return true;
+            }
+
+            return HasClientSkillEffectRequestShapingForTesting(
+                castInfo.RequestedBranchNames,
+                castInfo.OriginOffset,
+                castInfo.FollowOwnerFacing,
+                castInfo.FollowOwnerPosition);
+        }
+
+        internal static bool HasClientSkillEffectRequestShapingForTesting(
+            IReadOnlyList<string> requestedBranchNames,
+            Point originOffset,
+            bool followOwnerFacing,
+            bool followOwnerPosition)
+        {
+            if (requestedBranchNames != null && requestedBranchNames.Count > 0)
+            {
+                return true;
+            }
+
+            if (originOffset != Point.Zero)
+            {
+                return true;
+            }
+
+            return !followOwnerFacing || !followOwnerPosition;
         }
 
         private bool TryRegisterAnimationDisplayerLocalSkillUseRequest(SkillUseEffectRequest request)
@@ -4258,6 +4321,18 @@ namespace HaCreator.MapSimulator
                 : 0;
         }
 
+        internal static bool IsAnimationDisplayerPacketOwnedFollowRegistrationKey(int registrationKey)
+        {
+            return registrationKey < 0
+                   && (registrationKey & AnimationDisplayerPacketOwnedFollowRegistrationMask)
+                   == AnimationDisplayerPacketOwnedFollowRegistrationMask;
+        }
+
+        internal static bool ShouldAllowAnimationDisplayerGenericFollowFallback(int registrationKey)
+        {
+            return !IsAnimationDisplayerPacketOwnedFollowRegistrationKey(registrationKey);
+        }
+
         internal static IReadOnlyList<Vector2> BuildAnimationDisplayerFollowGenerationPoints(int radius, int pointCount)
         {
             int resolvedPointCount = Math.Max(1, pointCount);
@@ -5480,10 +5555,13 @@ namespace HaCreator.MapSimulator
             }
             _animationDisplayerFollowRegistrationSignatures.Remove(registrationKey);
 
-            if (registrationKey < 0
-                && (registrationKey & AnimationDisplayerPacketOwnedFollowRegistrationMask) == AnimationDisplayerPacketOwnedFollowRegistrationMask)
+            if (IsAnimationDisplayerPacketOwnedFollowRegistrationKey(registrationKey))
             {
                 _packetOwnedAnimationDisplayerFollowDriverId = 0;
+                if (_packetOwnedAnimationDisplayerFollowRegistrationKey == registrationKey)
+                {
+                    _packetOwnedAnimationDisplayerFollowRegistrationKey = 0;
+                }
             }
         }
 
@@ -5491,10 +5569,17 @@ namespace HaCreator.MapSimulator
         {
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             int registrationKey = BuildAnimationDisplayerPacketOwnedFollowRegistrationKey(localCharacterId);
+            if (_packetOwnedAnimationDisplayerFollowRegistrationKey != 0
+                && _packetOwnedAnimationDisplayerFollowRegistrationKey != registrationKey)
+            {
+                ClearAnimationDisplayerFollowRegistration(_packetOwnedAnimationDisplayerFollowRegistrationKey);
+            }
+
             if (localCharacterId <= 0 || registrationKey == 0)
             {
                 ClearAnimationDisplayerFollowRegistration(registrationKey);
                 _packetOwnedAnimationDisplayerFollowDriverId = 0;
+                _packetOwnedAnimationDisplayerFollowRegistrationKey = 0;
                 return;
             }
 
@@ -5503,6 +5588,7 @@ namespace HaCreator.MapSimulator
             {
                 ClearAnimationDisplayerFollowRegistration(registrationKey);
                 _packetOwnedAnimationDisplayerFollowDriverId = 0;
+                _packetOwnedAnimationDisplayerFollowRegistrationKey = 0;
                 return;
             }
 
@@ -5513,6 +5599,7 @@ namespace HaCreator.MapSimulator
                 && _animationDisplayerFollowRegistrationSignatures.TryGetValue(registrationKey, out int activeFollowSignature)
                 && activeFollowSignature == currentFollowSignature)
             {
+                _packetOwnedAnimationDisplayerFollowRegistrationKey = registrationKey;
                 return;
             }
 
@@ -5523,6 +5610,11 @@ namespace HaCreator.MapSimulator
                 relativeEmission: true))
             {
                 _packetOwnedAnimationDisplayerFollowDriverId = attachedDriverId;
+                _packetOwnedAnimationDisplayerFollowRegistrationKey = registrationKey;
+            }
+            else
+            {
+                _packetOwnedAnimationDisplayerFollowRegistrationKey = 0;
             }
         }
 

@@ -3110,6 +3110,7 @@ namespace HaCreator.MapSimulator.Character
                 // Shooters as dex-driven pirate weapons until their exact client coefficients are
                 // recovered.
                 56 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
+                57 => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f),
                 58 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
                 _ when UsesMagicFormulaByJob() => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 _ when UsesDexDrivenPirateWeapon() => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),

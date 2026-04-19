@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Managers
         private const string DefaultProcessName = "MapleStory";
         private const ushort V95HireTutorLocalOpcode = LocalUtilityPacketInboxManager.HireTutorClientPacketType;
         private const ushort V95TutorMsgLocalOpcode = LocalUtilityPacketInboxManager.TutorMsgClientPacketType;
+        private const int MinOfficialSessionTutorInferenceProofCount = 2;
 
         private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; tutor remains local under CUserLocal::OnPacket 255/256.";
 
@@ -73,6 +74,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<RemoteUserOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly Dictionary<ushort, int> _packetMap = new(DefaultPacketMap);
         private readonly Dictionary<ushort, LearnedOpcodeEntry> _learnedPacketMap = new();
+        private readonly Dictionary<ushort, PendingTutorInferenceEvidence> _pendingTutorInferenceMap = new();
         private readonly object _sync = new();
 
         private sealed class LearnedOpcodeEntry
@@ -124,6 +126,36 @@ namespace HaCreator.MapSimulator.Managers
                 return previewLength < payload.Length
                     ? $"{preview}..."
                     : preview;
+            }
+        }
+
+        private sealed class PendingTutorInferenceEvidence
+        {
+            public PendingTutorInferenceEvidence(int packetType, string reason, string source)
+            {
+                PacketType = packetType;
+                Reason = reason ?? string.Empty;
+                LastSource = string.IsNullOrWhiteSpace(source) ? "unknown-source" : source;
+                ObservationCount = 1;
+                OfficialSessionObservationCount = IsOfficialSessionSource(source) ? 1 : 0;
+            }
+
+            public int PacketType { get; private set; }
+            public string Reason { get; private set; }
+            public string LastSource { get; private set; }
+            public int ObservationCount { get; private set; }
+            public int OfficialSessionObservationCount { get; private set; }
+
+            public void Update(int packetType, string reason, string source)
+            {
+                PacketType = packetType;
+                Reason = reason ?? string.Empty;
+                LastSource = string.IsNullOrWhiteSpace(source) ? LastSource : source;
+                ObservationCount++;
+                if (IsOfficialSessionSource(source))
+                {
+                    OfficialSessionObservationCount++;
+                }
             }
         }
 

@@ -1163,26 +1163,30 @@ namespace HaCreator.MapSimulator.Interaction
                 return layout;
             }
 
-            IReadOnlyList<int> upperPath = BuildUpperPathMemberIds(focus);
-            if (upperPath.Count > 0)
+            FamilyMemberState parent = focus.ParentId.HasValue ? GetMember(focus.ParentId.Value) : null;
+            if (parent != null)
             {
-                layout[1] = upperPath[0];
-            }
-
-            if (upperPath.Count > 1)
-            {
-                layout[2] = upperPath[1];
+                layout[2] = parent.Id;
+                FamilyMemberState grandParent = parent.ParentId.HasValue ? GetMember(parent.ParentId.Value) : null;
+                if (grandParent != null)
+                {
+                    layout[1] = grandParent.Id;
+                }
             }
 
             layout[3] = focus.Id;
 
-            FamilyMemberState parent = focus.ParentId.HasValue ? GetMember(focus.ParentId.Value) : null;
-            FamilyMemberState sibling = parent == null
-                ? GetChildren(_familyHeadId).Select(GetMember).FirstOrDefault(member => member != null && member.Id != focus.Id)
-                : GetChildren(parent.Id).Select(GetMember).FirstOrDefault(member => member != null && member.Id != focus.Id);
-            if (sibling != null)
+            // CUIFamilyChart::DecodeLocalChart assigns slot 4 from the parent's second child entry.
+            if (parent != null)
             {
-                layout[4] = sibling.Id;
+                List<FamilyMemberState> parentChildren = GetChildren(parent.Id)
+                    .Select(GetMember)
+                    .Where(member => member != null)
+                    .ToList();
+                if (parentChildren.Count > 1)
+                {
+                    layout[4] = parentChildren[1].Id;
+                }
             }
 
             List<FamilyMemberState> children = GetChildren(focus.Id).Select(GetMember).Where(member => member != null).ToList();
@@ -1200,35 +1204,6 @@ namespace HaCreator.MapSimulator.Interaction
             LayoutGrandchildren(layout, children.ElementAtOrDefault(1), 9, 10);
 
             return layout;
-        }
-
-        private IReadOnlyList<int> BuildUpperPathMemberIds(FamilyMemberState focus)
-        {
-            if (focus == null)
-            {
-                return Array.Empty<int>();
-            }
-
-            List<int> path = new();
-            FamilyMemberState current = focus.ParentId.HasValue ? GetMember(focus.ParentId.Value) : null;
-            while (current != null && current.Id != _familyHeadId)
-            {
-                path.Add(current.Id);
-                current = current.ParentId.HasValue ? GetMember(current.ParentId.Value) : null;
-            }
-
-            if (path.Count == 0)
-            {
-                return Array.Empty<int>();
-            }
-
-            path.Reverse();
-            if (path.Count <= 2)
-            {
-                return path;
-            }
-
-            return path.Skip(path.Count - 2).ToArray();
         }
 
         private void LayoutGrandchildren(Dictionary<int, int> layout, FamilyMemberState member, int leftSlot, int rightSlot)

@@ -1592,11 +1592,19 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     if (!submission.NumericValue.HasValue)
                     {
-                        error = "Yes / No submissions require a numeric selection value.";
+                        // Client `CScriptMan::OnAskYesNo` encodes cancel/close as -1.
+                        writer.WriteByte(0xFF);
+                        break;
+                    }
+
+                    int responseValue = submission.NumericValue.Value;
+                    if (responseValue < -1 || responseValue > 1)
+                    {
+                        error = "Yes / No submissions require a numeric selection value of -1, 0, or 1.";
                         return false;
                     }
 
-                    writer.WriteByte(unchecked((byte)submission.NumericValue.Value));
+                    writer.WriteByte(unchecked((byte)(sbyte)responseValue));
                     break;
                 }
 

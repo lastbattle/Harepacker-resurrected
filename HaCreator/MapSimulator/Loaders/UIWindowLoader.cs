@@ -7825,20 +7825,21 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
-            WzSubProperty mediaRoot = mapleTvImage["TVmedia"] as WzSubProperty;
+            WzImageProperty mediaProperty = mapleTvImage["TVmedia"];
+            WzSubProperty mediaRoot = mediaProperty as WzSubProperty;
             Dictionary<int, IReadOnlyList<MapleTvAnimationFrame>> mediaFrames = new();
             Dictionary<int, IReadOnlyList<MapleTvAnimationFrame>> chatFrames = new();
             if (mediaRoot != null)
             {
                 foreach (WzImageProperty child in mediaRoot.WzProperties)
                 {
-                    if (!int.TryParse(child.Name, out int mediaIndex) || child is not WzSubProperty mediaProperty)
+                    if (!int.TryParse(child.Name, out int mediaIndex) || child is not WzSubProperty mediaSubProperty)
                     {
                         continue;
                     }
 
 
-                    IReadOnlyList<MapleTvAnimationFrame> frames = LoadMapleTvAnimationFrames(mediaProperty, device);
+                    IReadOnlyList<MapleTvAnimationFrame> frames = LoadMapleTvAnimationFrames(mediaSubProperty, device);
                     if (frames.Count > 0)
                     {
                         mediaFrames[mediaIndex] = frames;
@@ -7846,7 +7847,7 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            int explicitWzDefaultMediaIndex = ResolveExplicitMapleTvMediaIndex(mediaRoot, mediaFrames.Keys);
+            int explicitWzDefaultMediaIndex = ResolveExplicitMapleTvMediaIndex(mediaProperty, mediaFrames.Keys);
 
 
             IReadOnlyList<MapleTvAnimationFrame> defaultChatFrames = LoadMapleTvAnimationFrames(mapleTvImage["TVchat"] as WzSubProperty, device);
@@ -7940,21 +7941,96 @@ namespace HaCreator.MapSimulator.Loaders
             return resolution.MediaIndex;
         }
 
-        private static int ResolveExplicitMapleTvMediaIndex(WzSubProperty mediaRoot, IEnumerable<int> availableMediaIndices)
+        private static int ResolveExplicitMapleTvMediaIndex(WzImageProperty mediaProperty, IEnumerable<int> availableMediaIndices)
         {
-            if (mediaRoot == null)
+            if (mediaProperty == null)
             {
                 return -1;
             }
 
-            int directValue = mediaRoot.ReadValue(-1);
             HashSet<int> availableIndexSet = availableMediaIndices?
                 .Where(index => index >= 0)
                 .ToHashSet()
                 ?? new HashSet<int>();
-            return availableIndexSet.Contains(directValue)
-                ? directValue
-                : -1;
+            if (availableIndexSet.Count == 0)
+            {
+                return -1;
+            }
+
+            if (TryResolveMapleTvMediaIndexFromProperty(mediaProperty, availableIndexSet, out int directValue))
+            {
+                return directValue;
+            }
+
+            if (mediaProperty is not WzSubProperty mediaRoot)
+            {
+                return -1;
+            }
+
+            // Some exports surface the default branch as a scalar child under TVmedia.
+            // Keep this in the same init seam before falling back to branch-path inference.
+            foreach (string candidateName in new[] { "value", "default", "index", "media" })
+            {
+                if (TryResolveMapleTvMediaIndexFromProperty(mediaRoot[candidateName], availableIndexSet, out int candidateValue))
+                {
+                    return candidateValue;
+                }
+            }
+
+            foreach (WzImageProperty child in mediaRoot.WzProperties)
+            {
+                if (!TryResolveMapleTvMediaIndexFromProperty(child, availableIndexSet, out int candidateValue))
+                {
+                    continue;
+                }
+
+                return candidateValue;
+            }
+
+            return -1;
+        }
+
+        private static bool TryResolveMapleTvMediaIndexFromProperty(
+            WzImageProperty property,
+            ISet<int> availableIndices,
+            out int mediaIndex)
+        {
+            mediaIndex = -1;
+            if (property == null || availableIndices == null || availableIndices.Count == 0)
+            {
+                return false;
+            }
+
+            int candidateValue;
+            switch (property)
+            {
+                case WzIntProperty intProperty:
+                    candidateValue = intProperty.Value;
+                    break;
+
+                case WzShortProperty shortProperty:
+                    candidateValue = shortProperty.Value;
+                    break;
+
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    candidateValue = (int)longProperty.Value;
+                    break;
+
+                case WzStringProperty stringProperty when int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue):
+                    candidateValue = parsedValue;
+                    break;
+
+                default:
+                    return false;
+            }
+
+            if (!availableIndices.Contains(candidateValue))
+            {
+                return false;
+            }
+
+            mediaIndex = candidateValue;
+            return true;
         }
 
 
@@ -9026,7 +9102,7 @@ namespace HaCreator.MapSimulator.Loaders
             IReadOnlyList<string> fallbackUiDirectories = AccountMoreInfoOwnerStringPoolText
                 .EnumerateFallbackUiDataSourceDirectories(currentDirectoryPath);
 
-            foreach (AccountMoreInfoBackgroundResourceCandidate backgroundCandidate in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundResourceCandidates())
+            foreach (AccountMoreInfoBackgroundResourceCandidate backgroundCandidate in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundProbeCandidates())
             {
                 IDXObject candidateFrame = LoadWindowCanvasLayerFromClientUiPath(
                     backgroundCandidate.Path,
@@ -9034,13 +9110,20 @@ namespace HaCreator.MapSimulator.Loaders
                     uiWindow2Image,
                     device,
                     out Point candidateOffset);
+                string frameSourceDirectory = null;
+                if (candidateFrame?.Texture != null)
+                {
+                    frameSourceDirectory = currentDirectoryPath;
+                }
+
                 if (candidateFrame == null)
                 {
                     candidateFrame = TryLoadAccountMoreInfoBackgroundFromFallbackUiDataSources(
                         backgroundCandidate.Path,
                         fallbackUiDirectories,
                         device,
-                        out candidateOffset);
+                        out candidateOffset,
+                        out frameSourceDirectory);
                 }
 
                 Texture2D candidateTexture = candidateFrame?.Texture;
@@ -9049,6 +9132,7 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
+                AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(frameSourceDirectory);
                 if (backgroundCandidate.MirrorsClientSetBackgrnd)
                 {
                     return candidateFrame;
@@ -9073,9 +9157,11 @@ namespace HaCreator.MapSimulator.Loaders
             string clientUiPath,
             IReadOnlyList<string> fallbackUiDirectories,
             GraphicsDevice device,
-            out Point offset)
+            out Point offset,
+            out string sourceDirectoryPath)
         {
             offset = Point.Zero;
+            sourceDirectoryPath = null;
             if (string.IsNullOrWhiteSpace(clientUiPath)
                 || device == null
                 || fallbackUiDirectories == null
@@ -9099,6 +9185,7 @@ namespace HaCreator.MapSimulator.Loaders
                         out offset);
                     if (frame != null)
                     {
+                        sourceDirectoryPath = directory;
                         return frame;
                     }
                 }

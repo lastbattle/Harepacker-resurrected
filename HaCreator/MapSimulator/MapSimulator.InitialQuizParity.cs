@@ -202,6 +202,7 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerPressedOkButton = false;
                 _initialQuizOwnerHoveringOkButton = false;
                 SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Owner);
+                EnsureInitialQuizOwnerEditControl()?.EndMouseSelection();
                 return;
             }
 
@@ -219,8 +220,9 @@ namespace HaCreator.MapSimulator
             Rectangle okButtonBounds = ResolveInitialQuizOwnerOkButtonBounds(ownerBounds);
             Rectangle inputBounds = ResolveInitialQuizOwnerInputBounds(ownerBounds);
             Point cursor = new(mouseState.X, mouseState.Y);
-            _initialQuizOwnerHoveringOkButton = okButtonBounds.Contains(cursor);
             bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingMs);
+            bool cursorInInput = inputBounds.Contains(cursor);
+            _initialQuizOwnerHoveringOkButton = showInput && okButtonBounds.Contains(cursor);
             AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
 
             bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
@@ -237,15 +239,14 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                if (_initialQuizOwnerHoveringOkButton)
+                InitialQuizOwnerFocusTarget nextFocusTarget = ResolveInitialQuizOwnerMousePressFocusTarget(
+                    showInput,
+                    _initialQuizOwnerHoveringOkButton,
+                    cursorInInput);
+                SetInitialQuizOwnerFocusTarget(nextFocusTarget);
+                _initialQuizOwnerPressedOkButton = showInput && nextFocusTarget == InitialQuizOwnerFocusTarget.OkButton;
+                if (nextFocusTarget == InitialQuizOwnerFocusTarget.Input)
                 {
-                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.OkButton);
-                    _initialQuizOwnerPressedOkButton = showInput;
-                }
-                else if (showInput && inputBounds.Contains(cursor))
-                {
-                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Input);
-                    _initialQuizOwnerPressedOkButton = false;
                     if (editControl != null)
                     {
                         editControl.BeginSelectionAtMouseX(cursor.X, ownerBounds);
@@ -258,11 +259,6 @@ namespace HaCreator.MapSimulator
                             inputBounds,
                             cursor.X);
                     }
-                }
-                else
-                {
-                    SetInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget.Owner);
-                    _initialQuizOwnerPressedOkButton = false;
                 }
 
                 if (showInput)
@@ -1268,6 +1264,26 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldShowInitialQuizOwnerInput(int remainingMs)
         {
             return remainingMs > 0;
+        }
+
+        internal static InitialQuizOwnerFocusTarget ResolveInitialQuizOwnerMousePressFocusTarget(
+            bool showInput,
+            bool hoveringOkButton,
+            bool cursorInInput)
+        {
+            if (!showInput)
+            {
+                return InitialQuizOwnerFocusTarget.Owner;
+            }
+
+            if (hoveringOkButton)
+            {
+                return InitialQuizOwnerFocusTarget.OkButton;
+            }
+
+            return cursorInInput
+                ? InitialQuizOwnerFocusTarget.Input
+                : InitialQuizOwnerFocusTarget.Owner;
         }
 
         internal static InitialQuizOwnerFocusTarget ResolveNextInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget currentFocus)

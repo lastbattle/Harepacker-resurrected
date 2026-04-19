@@ -429,6 +429,14 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
+        private readonly record struct MiniRoomNestedEnvelopeDispatchResult(
+            bool Handled,
+            string OwnerName,
+            string Message,
+            byte PacketType,
+            int RemainingBytes,
+            string EnvelopeSummary,
+            byte[] ForwardedPayload);
         private enum TradePacketAttributeKind
         {
             Equip,
@@ -2720,11 +2728,122 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
+            string semanticSummary = BuildResidualTradePacketSemanticSummary(leftover, label);
             const int previewByteCount = 24;
             string preview = BitConverter.ToString(leftover, 0, Math.Min(previewByteCount, leftover.Length));
-            return leftover.Length > previewByteCount
+            string hexSummary = leftover.Length > previewByteCount
                 ? $"{label} {leftover.Length}B {preview}..."
                 : $"{label} {leftover.Length}B {preview}";
+            return string.IsNullOrWhiteSpace(semanticSummary)
+                ? hexSummary
+                : $"{semanticSummary} | {hexSummary}";
+        }
+
+        private static string BuildResidualTradePacketSemanticSummary(ReadOnlySpan<byte> leftover, string label)
+        {
+            if (leftover.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> fields = new List<string>();
+            int offset = 0;
+            if (TryReadResidualTradePacketMapleString(leftover, ref offset, out string tailString))
+            {
+                fields.Add($"sTailName {tailString}");
+            }
+
+            if (leftover.Length - offset >= sizeof(long))
+            {
+                long serialCandidate = BinaryPrimitives.ReadInt64LittleEndian(leftover.Slice(offset, sizeof(long)));
+                if (serialCandidate > 0)
+                {
+                    fields.Add($"liTailSN {serialCandidate}");
+                    offset += sizeof(long);
+                }
+            }
+
+            int intFieldCount = 0;
+            while (leftover.Length - offset >= sizeof(int) && intFieldCount < 3)
+            {
+                int intValue = BinaryPrimitives.ReadInt32LittleEndian(leftover.Slice(offset, sizeof(int)));
+                if (intValue != 0)
+                {
+                    fields.Add($"nTail{intFieldCount + 1} {intValue}");
+                }
+
+                offset += sizeof(int);
+                intFieldCount++;
+            }
+
+            int shortFieldCount = 0;
+            while (leftover.Length - offset >= sizeof(short) && shortFieldCount < 2)
+            {
+                short shortValue = BinaryPrimitives.ReadInt16LittleEndian(leftover.Slice(offset, sizeof(short)));
+                if (shortValue != 0)
+                {
+                    fields.Add($"nTailS{shortFieldCount + 1} {shortValue}");
+                }
+
+                offset += sizeof(short);
+                shortFieldCount++;
+            }
+
+            if (leftover.Length - offset == 1 && leftover[offset] != 0)
+            {
+                fields.Add($"nTailB {leftover[offset]}");
+            }
+
+            return fields.Count == 0 ? string.Empty : $"{label} fields {string.Join(", ", fields)}";
+        }
+
+        private static bool TryReadResidualTradePacketMapleString(ReadOnlySpan<byte> payload, ref int offset, out string value)
+        {
+            value = string.Empty;
+            if (payload.Length - offset < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(offset, sizeof(short)));
+            if (length <= 0 || length > 32 || payload.Length - offset - sizeof(short) < length)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> textBytes = payload.Slice(offset + sizeof(short), length);
+            if (!IsResidualTradePacketAscii(textBytes))
+            {
+                return false;
+            }
+
+            value = Encoding.ASCII.GetString(textBytes).TrimEnd('\0', ' ');
+            if (value.Length == 0)
+            {
+                return false;
+            }
+
+            offset += sizeof(short) + length;
+            return true;
+        }
+
+        private static bool IsResidualTradePacketAscii(ReadOnlySpan<byte> bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                byte value = bytes[i];
+                if (value == 0)
+                {
+                    continue;
+                }
+
+                if (value < 0x20 || value > 0x7E)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static string NormalizeTradePacketFixedString(string value, int maxClientBytesIncludingTerminator)
@@ -3797,10 +3916,171 @@ namespace HaCreator.MapSimulator.Interaction
             string detail = handled
                 ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message} | payload={payloadPreview} | bytes={nestedPayload.Length} | remaining={nestedReader.Remaining}"
                 : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message} | payload={payloadPreview} | bytes={nestedPayload.Length} | remaining={nestedReader.Remaining}";
+            if (!handled && TryDispatchMiniRoomBaseEnvelopePayload(
+                nestedPayload,
+                tickCount,
+                out MiniRoomNestedEnvelopeDispatchResult envelopeDispatch))
+            {
+                string envelopePayloadPreview = BuildPacketHexPreview(envelopeDispatch.ForwardedPayload);
+                detail = envelopeDispatch.Handled
+                    ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 unwrapped {envelopeDispatch.EnvelopeSummary} and forwarded nested packet {envelopeDispatch.PacketType} into {envelopeDispatch.OwnerName}. {envelopeDispatch.Message} | payload={envelopePayloadPreview} | bytes={envelopeDispatch.ForwardedPayload.Length} | remaining={envelopeDispatch.RemainingBytes}"
+                    : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 unwrapped {envelopeDispatch.EnvelopeSummary} and forwarded nested packet {envelopeDispatch.PacketType} into {envelopeDispatch.OwnerName}, but it was not modeled. {envelopeDispatch.Message} | payload={envelopePayloadPreview} | bytes={envelopeDispatch.ForwardedPayload.Length} | remaining={envelopeDispatch.RemainingBytes}";
+                handled = envelopeDispatch.Handled;
+            }
+
             _lastPacketOwnerSummary = detail;
             message = detail;
             PersistState();
             return handled;
+        }
+
+        private bool TryDispatchMiniRoomBaseEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 2)
+            {
+                return false;
+            }
+
+            byte oneByteRoomType = nestedPayload[0];
+            if (nestedPayload.Length >= 2 && IsMiniRoomSubtype6ForwardablePacket(nestedPayload[1]))
+            {
+                byte[] forwardedPayload = nestedPayload.Skip(1).ToArray();
+                if (TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+                {
+                    result = result with
+                    {
+                        EnvelopeSummary = $"1-byte room-type envelope {oneByteRoomType}",
+                        ForwardedPayload = forwardedPayload
+                    };
+                    return true;
+                }
+            }
+
+            if (nestedPayload.Length >= 5)
+            {
+                int fourByteRoomType = BinaryPrimitives.ReadInt32LittleEndian(nestedPayload.AsSpan(0, sizeof(int)));
+                byte envelopePacketType = nestedPayload[4];
+                if (IsMiniRoomSubtype6ForwardablePacket(envelopePacketType))
+                {
+                    byte[] forwardedPayload = nestedPayload.Skip(4).ToArray();
+                    if (TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+                    {
+                        result = result with
+                        {
+                            EnvelopeSummary = $"4-byte room-type envelope {fourByteRoomType}",
+                            ForwardedPayload = forwardedPayload
+                        };
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6ForwardedPayload(
+            byte[] payload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            PacketReader nestedReader = new(payload);
+            byte nestedPacketType;
+            try
+            {
+                nestedPacketType = nestedReader.ReadByte();
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
+
+            bool handled;
+            string ownerName;
+            string dispatchMessage = string.Empty;
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom)
+            {
+                ownerName = _shopDialogPacketOwner?.OwnerName ?? "room-specific owner";
+                handled = _shopDialogPacketOwner?.TryDispatch(payload, nestedReader, nestedPacketType, tickCount, out dispatchMessage) == true;
+                if (!handled && IsMiniRoomBasePacketSubType(nestedPacketType))
+                {
+                    PacketReader baseReader = new(payload);
+                    ownerName = $"{ownerName} -> CMiniRoomBaseDlg::OnPacketBase";
+                    handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out dispatchMessage);
+                    nestedReader = baseReader;
+                }
+            }
+            else if (Kind == SocialRoomKind.MiniRoom)
+            {
+                ownerName = "CMiniRoomBaseDlg-derived OnPacket";
+                handled = TryDispatchMiniRoomPacket(nestedReader, nestedPacketType, tickCount, out dispatchMessage);
+                if (!handled && IsMiniRoomBasePacketSubType(nestedPacketType))
+                {
+                    PacketReader baseReader = new(payload);
+                    ownerName = "CMiniRoomBaseDlg::OnPacketBase";
+                    handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out dispatchMessage);
+                    nestedReader = baseReader;
+                }
+            }
+            else
+            {
+                ownerName = "room-specific owner";
+                handled = false;
+                dispatchMessage = $"Nested packet {nestedPacketType} has no room-specific owner for {Kind}.";
+            }
+
+            result = new MiniRoomNestedEnvelopeDispatchResult(
+                handled,
+                ownerName,
+                dispatchMessage,
+                nestedPacketType,
+                nestedReader.Remaining,
+                string.Empty,
+                payload);
+            return true;
+        }
+
+        private bool IsMiniRoomSubtype6ForwardablePacket(byte packetType)
+        {
+            if (IsMiniRoomBasePacketSubType(packetType))
+            {
+                return true;
+            }
+
+            return packetType == TradingRoomPutItemPacketType
+                || packetType == TradingRoomPutMoneyPacketType
+                || packetType == TradingRoomTradePacketType
+                || packetType == TradingRoomItemCrcPacketType
+                || packetType == TradingRoomExceedLimitPacketType
+                || packetType == PersonalShopBuyResultPacketType
+                || packetType == PersonalShopBasePacketType
+                || packetType == PersonalShopSoldItemResultPacketType
+                || packetType == PersonalShopMoveItemToInventoryPacketType
+                || packetType == EntrustedShopArrangeItemResultPacketType
+                || packetType == EntrustedShopWithdrawAllResultPacketType
+                || packetType == EntrustedShopWithdrawMoneyResultPacketType
+                || packetType == EntrustedShopVisitListResultPacketType
+                || packetType == EntrustedShopBlackListResultPacketType
+                || packetType == OmokTieRequestPacketType
+                || packetType == OmokTieResultPacketType
+                || packetType == OmokRetreatRequestPacketType
+                || packetType == OmokRetreatResultPacketType
+                || packetType == OmokReadyPacketType
+                || packetType == OmokCancelReadyPacketType
+                || packetType == OmokStartPacketType
+                || packetType == OmokGameResultPacketType
+                || packetType == OmokTimeOverPacketType
+                || packetType == OmokPutStonePacketType
+                || packetType == OmokPutStoneErrorPacketType;
         }
 
         private static string ResolveTradePacketItemLabel(PacketOwnedTradeItem item)

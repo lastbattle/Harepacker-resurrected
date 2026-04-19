@@ -36,6 +36,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftCommodityContextDwordIndex = 4138;
         private const int PacketOwnedLogoutGiftPrecursorContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - 1;
         private const int PacketOwnedLogoutGiftPrecursorContextSlotCount = 3;
+        private const int PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - PacketOwnedLogoutGiftPrecursorContextSlotCount;
+        private const int PacketOwnedLogoutGiftPrecursorLastContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - 1;
         private const int PacketOwnedLogoutGiftPredictQuitContextByteOffset = 0x40A4;
         private const int PacketOwnedLogoutGiftCommodityContextByteOffset = 0x40A8;
 
@@ -1207,9 +1209,9 @@ namespace HaCreator.MapSimulator
 
         private static string ResolvePacketOwnedLogoutGiftLeadingContextSemanticName(int dwordIndex)
         {
-            int relativeIndex = dwordIndex - (PacketOwnedLogoutGiftPredictQuitContextDwordIndex - PacketOwnedLogoutGiftPrecursorContextSlotCount);
-            return relativeIndex >= 0 && relativeIndex < PacketOwnedLogoutGiftPrecursorContextSlotCount
-                ? $"CWvsContext::PrePredictQuitDword[{relativeIndex.ToString(CultureInfo.InvariantCulture)}]"
+            return dwordIndex >= PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex
+                   && dwordIndex <= PacketOwnedLogoutGiftPrecursorLastContextDwordIndex
+                ? $"CWvsContext::dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}] (pre-`m_bPredictQuit`)"
                 : null;
         }
 

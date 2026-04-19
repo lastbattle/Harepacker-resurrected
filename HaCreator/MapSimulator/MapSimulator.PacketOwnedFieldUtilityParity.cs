@@ -1374,12 +1374,9 @@ namespace HaCreator.MapSimulator
 
         private static string ResolvePacketOwnedQuizAnswerMarker(int answerValue)
         {
-            string answerBody = answerValue switch
-            {
-                0 => MapleStoryStringPool.GetOrFallback(QuizAnswerFalseMarkerStringPoolId, "X"),
-                1 => MapleStoryStringPool.GetOrFallback(QuizAnswerTrueMarkerStringPoolId, "O"),
-                _ => "?"
-            };
+            string answerBody = answerValue != 0
+                ? MapleStoryStringPool.GetOrFallback(QuizAnswerTrueMarkerStringPoolId, "O")
+                : MapleStoryStringPool.GetOrFallback(QuizAnswerFalseMarkerStringPoolId, "X");
             string bracketPrefix = MapleStoryStringPool.GetOrFallback(QuizAnswerBracketPrefixStringPoolId, "[");
             if (string.IsNullOrWhiteSpace(bracketPrefix))
             {
