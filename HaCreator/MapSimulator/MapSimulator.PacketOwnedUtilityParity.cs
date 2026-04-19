@@ -12990,8 +12990,20 @@ namespace HaCreator.MapSimulator
 
             resetMarker = rawResetMarker == 1;
             operationCount = payload[1];
-            if (payload.Length < 2 + operationCount)
+            const int operationHeaderSize = sizeof(byte) + sizeof(byte) + sizeof(short);
+            int bodyLength = payload.Length - 2;
+            if (bodyLength < 0)
             {
+                resetMarker = false;
+                operationCount = 0;
+                return false;
+            }
+
+            int minimumRequiredBodyLength = operationCount * operationHeaderSize;
+            if (bodyLength < minimumRequiredBodyLength)
+            {
+                resetMarker = false;
+                operationCount = 0;
                 return false;
             }
 

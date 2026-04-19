@@ -638,9 +638,10 @@ namespace HaCreator.MapSimulator.Character
                 // publishes no verbatim `fastest` branch.
                 ["fastest"] = new[] { "rope", "swingPF", "swingOF", "fly", "jump", "stand" },
                 // Skill/2100.img/skill/21001001 still publishes `combatStep`, and
-                // Character/00002000.img keeps that row on `walk2` body redirects.
-                // Morph/*.img still publishes only generic locomotion roots.
-                ["combatStep"] = new[] { "walk", "move", "stand" },
+                // Character/00002000.img keeps that row on `walk2` body redirects
+                // before generic locomotion fallback. Morph/*.img still publishes no
+                // dedicated `walk2` branch in the checked templates.
+                ["combatStep"] = new[] { "walk2", "walk", "move", "stand" },
                 // Client raw action code 87 remains `dash` and Character/00002000.img
                 // still redirects that branch through `walk1`, while checked Morph/*.img
                 // keeps no verbatim `dash` root.
@@ -1904,6 +1905,11 @@ namespace HaCreator.MapSimulator.Character
 
         private static int GetClientMorphActionCodeOrDefault(string actionName)
         {
+            if (!IsClientConfirmedMorphActionName(actionName))
+            {
+                return int.MaxValue;
+            }
+
             return CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
                 ? rawActionCode
                 : int.MaxValue;

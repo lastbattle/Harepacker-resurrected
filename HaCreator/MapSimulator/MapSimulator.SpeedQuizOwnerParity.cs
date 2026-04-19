@@ -509,7 +509,11 @@ namespace HaCreator.MapSimulator
             int height = _packetScriptSpeedQuizGiveUpButtonVisuals?.Normal?.Height
                 ?? _packetScriptSpeedQuizGiveUpButtonVisuals?.Hover?.Height
                 ?? 16;
-            return new Rectangle(ownerBounds.X + 126, ownerBounds.Y + 380, width, height);
+            Rectangle fallbackBounds = new(ownerBounds.X + 126, ownerBounds.Y + 380, width, height);
+            Point origin = Point.Zero;
+            Point size = Point.Zero;
+            bool hasAnchor = _packetScriptSpeedQuizGiveUpButtonVisuals?.TryGetAnchorMetrics(out origin, out size) == true;
+            return ResolveSpeedQuizOwnerButtonBounds(ownerBounds, hasAnchor, origin, size, fallbackBounds);
         }
 
         private Rectangle ResolveSpeedQuizOwnerNextButtonBounds(Rectangle ownerBounds)
@@ -520,7 +524,11 @@ namespace HaCreator.MapSimulator
             int height = _packetScriptSpeedQuizNextButtonVisuals?.Normal?.Height
                 ?? _packetScriptSpeedQuizNextButtonVisuals?.Hover?.Height
                 ?? 16;
-            return new Rectangle(ownerBounds.X + 190, ownerBounds.Y + 380, width, height);
+            Rectangle fallbackBounds = new(ownerBounds.X + 190, ownerBounds.Y + 380, width, height);
+            Point origin = Point.Zero;
+            Point size = Point.Zero;
+            bool hasAnchor = _packetScriptSpeedQuizNextButtonVisuals?.TryGetAnchorMetrics(out origin, out size) == true;
+            return ResolveSpeedQuizOwnerButtonBounds(ownerBounds, hasAnchor, origin, size, fallbackBounds);
         }
 
         private Rectangle ResolveSpeedQuizOwnerOkButtonBounds(Rectangle ownerBounds)
@@ -531,7 +539,26 @@ namespace HaCreator.MapSimulator
             int height = _packetScriptSpeedQuizOkButtonVisuals?.Normal?.Height
                 ?? _packetScriptSpeedQuizOkButtonVisuals?.Hover?.Height
                 ?? 16;
-            return new Rectangle(ownerBounds.X + 233, ownerBounds.Y + 380, width, height);
+            Rectangle fallbackBounds = new(ownerBounds.X + 233, ownerBounds.Y + 380, width, height);
+            Point origin = Point.Zero;
+            Point size = Point.Zero;
+            bool hasAnchor = _packetScriptSpeedQuizOkButtonVisuals?.TryGetAnchorMetrics(out origin, out size) == true;
+            return ResolveSpeedQuizOwnerButtonBounds(ownerBounds, hasAnchor, origin, size, fallbackBounds);
+        }
+
+        internal static Rectangle ResolveSpeedQuizOwnerButtonBounds(
+            Rectangle ownerBounds,
+            bool hasAnchorMetrics,
+            Point anchorOrigin,
+            Point anchorSize,
+            Rectangle fallbackBounds)
+        {
+            if (!hasAnchorMetrics || anchorSize.X <= 0 || anchorSize.Y <= 0)
+            {
+                return fallbackBounds;
+            }
+
+            return ResolvePacketScriptOwnerAnchoredBounds(ownerBounds, anchorOrigin, anchorSize);
         }
     }
 }

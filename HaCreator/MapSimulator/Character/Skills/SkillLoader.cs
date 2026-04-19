@@ -628,7 +628,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.AffectedSkillId = skill.AffectedSkillIds.FirstOrDefault();
                 skill.PassiveLinkedSkillIds = ParseLinkedSkillIds(skillNode["psdSkill"]);
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
-                skill.ClientSummonedUolPath = ResolveClientSummonedUolPath(skillNode, infoNode);
                 skill.ClientTileUolPath = ResolveClientTileUolPath(skillNode, infoNode);
                 skill.ClientBallUolPath = ResolveClientBallUolPath(skillNode, infoNode, flip: false);
                 skill.ClientFlipBallUolPath = ResolveClientBallUolPath(skillNode, infoNode, flip: true);
@@ -651,12 +650,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ReflectsIncomingDamage = GetInt(infoNode, "PADReflect") == 1
                                                || GetInt(infoNode, "MADReflect") == 1;
             }
+
+            IReadOnlyList<string> clientSummonedUolPaths = ResolveClientSummonedUolPaths(skillNode, infoNode);
+            skill.ClientSummonedUolCandidatePaths = clientSummonedUolPaths.ToList();
+            skill.ClientSummonedUolPath = clientSummonedUolPaths.FirstOrDefault();
+
             if (string.IsNullOrWhiteSpace(skill.ElementAttributeToken))
             {
                 skill.ElementAttributeToken = ResolveSkillElementAttributeToken(infoNode);
                 skill.Element = ResolvePrimarySkillElement(skill.ElementAttributeToken);
             }
-            skill.ClientSummonedUolPath ??= ResolveClientSummonedUolPath(skillNode, infoNode);
             skill.ClientTileUolPath ??= ResolveClientTileUolPath(skillNode, infoNode);
             skill.ClientBallUolPath ??= ResolveClientBallUolPath(skillNode, infoNode, flip: false);
             skill.ClientFlipBallUolPath ??= ResolveClientBallUolPath(skillNode, infoNode, flip: true);
@@ -3811,9 +3814,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             summonNode = null;
             foreach (SummonSourceCandidate candidate in EnumerateSummonSourceCandidates(skill, skillNode))
             {
-                if (TryResolveClientSummonedUolProperty(candidate.Skill?.ClientSummonedUolPath, out summonNode))
+                foreach (string summonedUolPath in EnumerateClientSummonedUolSourcePaths(candidate.Skill))
                 {
-                    return true;
+                    if (TryResolveClientSummonedUolProperty(summonedUolPath, out summonNode))
+                    {
+                        return true;
+                    }
                 }
 
                 if (TryResolveSummonSourcePropertyFromSkillNode(candidate.SkillNode, out summonNode))
@@ -3823,6 +3829,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolSourcePaths(SkillData skill)
+        {
+            if (skill == null)
+            {
+                yield break;
+            }
+
+            var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (skill.ClientSummonedUolCandidatePaths != null)
+            {
+                foreach (string candidatePath in skill.ClientSummonedUolCandidatePaths)
+                {
+                    if (!string.IsNullOrWhiteSpace(candidatePath) && yieldedPaths.Add(candidatePath))
+                    {
+                        yield return candidatePath;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill.ClientSummonedUolPath)
+                && yieldedPaths.Add(skill.ClientSummonedUolPath))
+            {
+                yield return skill.ClientSummonedUolPath;
+            }
         }
 
         private IEnumerable<SummonSourceCandidate> EnumerateSummonSourceCandidates(SkillData skill, WzImageProperty skillNode)
@@ -5517,19 +5549,36 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static string ResolveClientSummonedUolPath(WzImageProperty skillNode, WzImageProperty infoNode)
         {
+            return ResolveClientSummonedUolPaths(skillNode, infoNode).FirstOrDefault();
+        }
+
+        private static IReadOnlyList<string> ResolveClientSummonedUolPaths(WzImageProperty skillNode, WzImageProperty infoNode)
+        {
+            var normalizedPaths = new List<string>();
+            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (ClientSummonedUolCandidateValue candidate in EnumerateClientSummonedUolCandidateValues(
                          skillNode,
                          infoNode,
                          ClientSummonedUolPropertyNames))
             {
-                string normalizedPath = NormalizeClientSummonedUolCandidatePath(candidate.Value, candidate.ContextPathParts);
-                if (!string.IsNullOrWhiteSpace(normalizedPath))
+                foreach (string normalizedPath in EnumerateNormalizedClientSummonedUolCandidatePaths(
+                             candidate.Value,
+                             candidate.ContextPathParts))
                 {
-                    return normalizedPath;
+                    if (!string.IsNullOrWhiteSpace(normalizedPath) && seenPaths.Add(normalizedPath))
+                    {
+                        normalizedPaths.Add(normalizedPath);
+                    }
                 }
             }
 
-            return BuildClientSummonedUolPathFromSkillNode(skillNode);
+            string fallbackPath = BuildClientSummonedUolPathFromSkillNode(skillNode);
+            if (!string.IsNullOrWhiteSpace(fallbackPath) && seenPaths.Add(fallbackPath))
+            {
+                normalizedPaths.Add(fallbackPath);
+            }
+
+            return normalizedPaths;
         }
 
         private static string ResolveClientTileUolPath(WzImageProperty skillNode, WzImageProperty infoNode)
@@ -5584,7 +5633,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 foreach (string propertyName in propertyNames)
                 {
-                    string value = GetString(node, propertyName);
+                    string value = GetClientSummonedUolCandidateValue(node, propertyName);
                     if (!string.IsNullOrWhiteSpace(value))
                     {
                         yield return new ClientSummonedUolCandidateValue(
@@ -5592,6 +5641,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                             BuildClientSummonedUolCandidateContextPathParts(node, propertyName, skillNode));
                     }
                 }
+            }
+        }
+
+        private static string GetClientSummonedUolCandidateValue(WzImageProperty node, string propertyName)
+        {
+            WzImageProperty child = node?[propertyName];
+            switch (child)
+            {
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    return stringProperty.Value;
+                case WzUOLProperty uolProperty when !string.IsNullOrWhiteSpace(uolProperty.Value):
+                    return uolProperty.Value;
+                case WzUOLProperty uolProperty:
+                    string linkedValue = uolProperty.GetString();
+                    return string.IsNullOrWhiteSpace(linkedValue) ? null : linkedValue;
+                default:
+                    return null;
             }
         }
 
@@ -5629,27 +5695,33 @@ namespace HaCreator.MapSimulator.Character.Skills
             string value,
             string[] contextPathParts)
         {
+            return EnumerateNormalizedClientSummonedUolCandidatePaths(value, contextPathParts).FirstOrDefault();
+        }
+
+        private static IEnumerable<string> EnumerateNormalizedClientSummonedUolCandidatePaths(
+            string value,
+            string[] contextPathParts)
+        {
+            var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string normalizedPath = NormalizeClientSummonedUolPath(value);
-            if (!string.IsNullOrWhiteSpace(normalizedPath))
+            if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
             {
-                return normalizedPath;
+                yield return normalizedPath;
             }
 
             if (contextPathParts == null || contextPathParts.Length == 0)
             {
-                return null;
+                yield break;
             }
 
             foreach (string token in EnumerateClientSummonedUolPathTokensFromValue(value))
             {
                 normalizedPath = NormalizeClientSummonedUolPathToken(token, contextPathParts);
-                if (!string.IsNullOrWhiteSpace(normalizedPath))
+                if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
                 {
-                    return normalizedPath;
+                    yield return normalizedPath;
                 }
             }
-
-            return null;
         }
 
         private static string BuildClientSummonedUolPathFromSkillNode(WzImageProperty skillNode)
@@ -5697,6 +5769,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Concat(new[] { "sSummonedUOL" })
                 .ToArray();
             return NormalizeClientSummonedUolCandidatePath(candidateValue, contextPathParts);
+        }
+
+        internal static IReadOnlyList<string> ResolveClientSummonedUolCandidatePathsForTest(
+            string candidateValue,
+            int contextSkillId,
+            bool infoNodeContext = true)
+        {
+            if (!TryParseRequiredSkillId(contextSkillId.ToString(CultureInfo.InvariantCulture), out int skillId))
+            {
+                string normalizedPath = NormalizeClientSummonedUolPath(candidateValue);
+                return string.IsNullOrWhiteSpace(normalizedPath)
+                    ? Array.Empty<string>()
+                    : new[] { normalizedPath };
+            }
+
+            string contextPath = $"Skill/{skillId / 10000}.img/skill/{skillId}";
+            if (infoNodeContext)
+            {
+                contextPath += "/info";
+            }
+
+            string[] contextPathParts = contextPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .Concat(new[] { "sSummonedUOL" })
+                .ToArray();
+            return EnumerateNormalizedClientSummonedUolCandidatePaths(candidateValue, contextPathParts).ToArray();
         }
 
         internal static string NormalizeClientSkillAssetUolCandidatePathForTest(
@@ -6845,13 +6943,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static IEnumerable<string> EnumerateItemBulletAnimationBranchKeys(int weaponItemId, int weaponCode = 0)
         {
+            int derivedWeaponCode = ResolveItemBulletAnimationWeaponCodeFromWeaponItemId(weaponItemId);
             HashSet<string> emitted = new(StringComparer.OrdinalIgnoreCase);
             foreach (int candidate in new[]
                      {
                          weaponItemId,
                          weaponItemId / 10000,
                          weaponItemId / 1000000,
-                         weaponCode
+                         weaponCode,
+                         derivedWeaponCode
                      })
             {
                 if (candidate <= 0)
@@ -6867,6 +6967,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
                 }
             }
+        }
+
+        internal static int ResolveItemBulletAnimationWeaponCodeFromWeaponItemId(int weaponItemId)
+        {
+            if (weaponItemId <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Abs(weaponItemId / 10000) % 100;
         }
 
         private static IEnumerable<string> EnumerateItemBulletAnimationBranchKeyTextVariants(int value)

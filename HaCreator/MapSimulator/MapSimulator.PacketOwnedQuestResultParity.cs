@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator
         private int _pendingQuestDeliveryResultRequestedAtTick = int.MinValue;
         private string _pendingQuestDeliveryResultSourceContext = string.Empty;
         private readonly PacketQuestResultFadeWindowRuntime _packetQuestResultFadeWindowRuntime = new();
+        private const int PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs = 500;
 
         private bool TryApplyPacketOwnedQuestResultPayload(byte[] payload, out string message)
         {
@@ -704,6 +705,14 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
+            string resolvedQuestName = string.IsNullOrWhiteSpace(followUpQuestName)
+                ? (_questRuntime.TryGetQuestName(followUpQuestId, out string runtimeQuestName) ? runtimeQuestName : $"Quest #{followUpQuestId}")
+                : followUpQuestName;
+            string requestDispatchStatus = DispatchPacketOwnedQuestResultFollowUpStartQuestRequest(
+                followUpQuestId,
+                speakerNpcId,
+                resolvedQuestName);
+
             IReadOnlyList<int> availableQuestIdsBeforeFollowUp =
                 ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot();
             QuestWindowActionResult result = _questRuntime.TryStartFromPacketOwnedQuestResult(
@@ -711,17 +720,97 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.Build);
             ApplyPacketOwnedQuestResultFollowUpStateChanges(result, followUpQuestId);
 
-            string resolvedQuestName = string.IsNullOrWhiteSpace(followUpQuestName)
-                ? (_questRuntime.TryGetQuestName(followUpQuestId, out string runtimeQuestName) ? runtimeQuestName : $"Quest #{followUpQuestId}")
-                : followUpQuestName;
             bool started = result?.StateChanged == true;
             string speakerLabel = ResolvePacketOwnedQuestResultSpeakerName(speakerNpcId, resolvedQuestName);
             string status = started
                 ? $"Packet-owned StartQuest accepted {resolvedQuestName} from {speakerLabel}."
                 : $"Packet-owned StartQuest for {resolvedQuestName} did not change quest state.";
+            if (!string.IsNullOrWhiteSpace(requestDispatchStatus))
+            {
+                status = $"{status} {requestDispatchStatus}";
+            }
 
             AppendPacketOwnedQuestAvailabilityRefreshSummary(ref status, availableQuestIdsBeforeFollowUp);
             return status;
+        }
+
+        private string DispatchPacketOwnedQuestResultFollowUpStartQuestRequest(
+            int followUpQuestId,
+            int speakerNpcId,
+            string followUpQuestName)
+        {
+            int currentTick = currTickCount;
+            if (_packetOwnedUtilityRequestTick != int.MinValue &&
+                unchecked(currentTick - _packetOwnedUtilityRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs)
+            {
+                return $"Mirrored CWvsContext::StartQuest request remained blocked by the client 500 ms exclusive-request cooldown for {followUpQuestName}.";
+            }
+
+            var player = _playerManager?.Player;
+            short userX = (short)Math.Clamp(
+                (int)Math.Round(player?.X ?? 0f),
+                short.MinValue,
+                short.MaxValue);
+            short userY = (short)Math.Clamp(
+                (int)Math.Round(player?.Y ?? 0f),
+                short.MinValue,
+                short.MaxValue);
+            HaCreator.MapSimulator.Interaction.PacketOwnedQuestStartRequest request =
+                HaCreator.MapSimulator.Interaction.PacketOwnedQuestStartRequest.Create(
+                followUpQuestId,
+                speakerNpcId,
+                deliveryItemPosition: 0,
+                userX,
+                userY,
+                includeUserPosition: true);
+            byte[] payload = new byte[request.Payload.Count];
+            for (int i = 0; i < payload.Length; i++)
+            {
+                payload[i] = request.Payload[i];
+            }
+
+            StampPacketOwnedUtilityRequestState();
+
+            string payloadHex = payload.Length > 0
+                ? Convert.ToHexString(payload)
+                : "<empty>";
+            string summary =
+                $"Mirrored CWvsContext::StartQuest(..., bAutoStart = 0) follow-up request as opcode {request.Opcode} [{payloadHex}] for {followUpQuestName}.";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                    request.Opcode,
+                    payload,
+                    out string dispatchStatus))
+            {
+                return $"{summary} Dispatched it through the live local-utility bridge. {dispatchStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                    request.Opcode,
+                    payload,
+                    out string outboxStatus))
+            {
+                return $"{summary} Dispatched it through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            }
+
+            string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    request.Opcode,
+                    payload,
+                    out deferredBridgeStatus))
+            {
+                return $"{summary} Queued it for deferred official-session injection after the immediate bridge and outbox paths were unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                    request.Opcode,
+                    payload,
+                    out string queuedStatus))
+            {
+                return $"{summary} Queued it for deferred generic local-utility outbox delivery after the immediate bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedStatus}";
+            }
+
+            return $"{summary} It remained simulator-owned because neither the live bridge nor the generic outbox nor either deferred queue accepted the request. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
         }
 
         private void ApplyPacketOwnedQuestResultFollowUpStateChanges(QuestWindowActionResult result, int followUpQuestId)

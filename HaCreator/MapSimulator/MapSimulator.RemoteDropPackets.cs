@@ -444,12 +444,14 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.Build?.Id ?? 0,
                 _socialListRuntime.IsTrackedPartyActor,
                 IsTrackedDropPartyActor,
-                actorId => _observedDropPartyAnchorActorIds.Contains(actorId));
+                actorId => _observedDropPartyAnchorActorIds.Contains(actorId),
+                ResolveDropPartyActorOwnerId);
         }
 
         private void RememberObservedDropPartyAnchor(int actorId)
         {
-            if (actorId <= 0)
+            int normalizedActorId = NormalizeDropPartyActorId(actorId, ResolveDropPartyActorOwnerId);
+            if (!HasUsableDropPartyActorId(actorId, normalizedActorId))
             {
                 return;
             }
@@ -462,6 +464,18 @@ namespace HaCreator.MapSimulator
                     IsTrackedDropPartyActor))
             {
                 _observedDropPartyAnchorActorIds.Add(actorId);
+            }
+
+            if (normalizedActorId > 0
+                && normalizedActorId != actorId
+                && IsKnownDropPartyActor(
+                    normalizedActorId,
+                    _socialListRuntime.ClientPartyId,
+                    _playerManager?.Player?.Build?.Id ?? 0,
+                    _socialListRuntime.IsTrackedPartyActor,
+                    IsTrackedDropPartyActor))
+            {
+                _observedDropPartyAnchorActorIds.Add(normalizedActorId);
             }
         }
 
@@ -506,13 +520,15 @@ namespace HaCreator.MapSimulator
             int localCharacterId,
             Func<int, bool> trackedPartyActorEvaluator,
             Func<int, bool> legacyTrackedActorEvaluator,
-            Func<int, bool> persistedPartyAnchorEvaluator = null)
+            Func<int, bool> persistedPartyAnchorEvaluator = null,
+            Func<int, int> partyActorOwnerResolver = null)
         {
             if (actorParents == null || actorId == 0)
             {
                 return false;
             }
 
+            int normalizedActorId = NormalizeDropPartyActorId(actorId, partyActorOwnerResolver);
             if (IsKnownDropPartyActor(
                 actorId,
                 localPartyId,
@@ -520,6 +536,18 @@ namespace HaCreator.MapSimulator
                 trackedPartyActorEvaluator,
                 legacyTrackedActorEvaluator,
                 persistedPartyAnchorEvaluator))
+            {
+                return true;
+            }
+
+            if (normalizedActorId != actorId
+                && IsKnownDropPartyActor(
+                    normalizedActorId,
+                    localPartyId,
+                    localCharacterId,
+                    trackedPartyActorEvaluator,
+                    legacyTrackedActorEvaluator,
+                    persistedPartyAnchorEvaluator))
             {
                 return true;
             }
@@ -533,6 +561,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                int normalizedLinkedActorId = NormalizeDropPartyActorId(linkedActorId, partyActorOwnerResolver);
                 if (IsKnownDropPartyActor(
                     linkedActorId,
                     localPartyId,
@@ -540,6 +569,18 @@ namespace HaCreator.MapSimulator
                     trackedPartyActorEvaluator,
                     legacyTrackedActorEvaluator,
                     persistedPartyAnchorEvaluator))
+                {
+                    return true;
+                }
+
+                if (normalizedLinkedActorId != linkedActorId
+                    && IsKnownDropPartyActor(
+                        normalizedLinkedActorId,
+                        localPartyId,
+                        localCharacterId,
+                        trackedPartyActorEvaluator,
+                        legacyTrackedActorEvaluator,
+                        persistedPartyAnchorEvaluator))
                 {
                     return true;
                 }

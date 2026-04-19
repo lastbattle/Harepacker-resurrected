@@ -281,6 +281,11 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (isAliasContainer && ChildrenContainOnlyAliasMetadata(children))
+            {
+                return true;
+            }
+
             bool sawNestedAlias = false;
             for (int i = 0; i < children.Count; i++)
             {

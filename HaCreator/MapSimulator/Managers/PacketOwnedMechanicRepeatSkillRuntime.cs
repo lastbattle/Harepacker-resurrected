@@ -1,6 +1,8 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Managers
@@ -366,6 +368,9 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int comparedLength = Math.Min(observedRawPacket.Length, rebuiltRawPacket.Length);
+            int firstMismatchByteIndex = -1;
+            List<string> mismatchPairs = new();
+            List<int> mismatchByteIndices = new();
             for (int i = 0; i < comparedLength; i++)
             {
                 if (observedRawPacket[i] == rebuiltRawPacket[i])
@@ -373,7 +378,18 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                return $"SG-88 first-use replay parity mismatch at byteIndex={i} observed=0x{observedRawPacket[i]:X2} rebuilt=0x{rebuiltRawPacket[i]:X2}.";
+                if (firstMismatchByteIndex < 0)
+                {
+                    firstMismatchByteIndex = i;
+                }
+
+                mismatchByteIndices.Add(i);
+                mismatchPairs.Add($"byte{i}:0x{observedRawPacket[i]:X2}->0x{rebuiltRawPacket[i]:X2}");
+            }
+
+            if (mismatchPairs.Count > 0)
+            {
+                return $"SG-88 first-use replay parity mismatch at byteIndex={firstMismatchByteIndex} observed=0x{observedRawPacket[firstMismatchByteIndex]:X2} rebuilt=0x{rebuiltRawPacket[firstMismatchByteIndex]:X2}; mismatchBytes=[{string.Join(",", mismatchByteIndices)}]; mismatchPairs=[{string.Join(",", mismatchPairs)}].";
             }
 
             return $"SG-88 first-use replay parity length mismatch observedLen={observedRawPacket.Length} rebuiltLen={rebuiltRawPacket.Length}.";
@@ -382,33 +398,70 @@ namespace HaCreator.MapSimulator.Managers
         public static bool TryExtractSg88ReplayParityMismatchByteIndex(string decodeDetail, out int byteIndex)
         {
             byteIndex = -1;
-            const string marker = "byteIndex=";
+            if (!TryExtractSg88ReplayParityMismatchByteIndices(decodeDetail, out int[] byteIndices)
+                || byteIndices.Length == 0)
+            {
+                return false;
+            }
+
+            byteIndex = byteIndices[0];
+            return true;
+        }
+
+        public static bool TryExtractSg88ReplayParityMismatchByteIndices(string decodeDetail, out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
             if (string.IsNullOrWhiteSpace(decodeDetail))
             {
                 return false;
             }
 
+            const string marker = "mismatchBytes=[";
             int markerIndex = decodeDetail.IndexOf(marker, StringComparison.Ordinal);
-            if (markerIndex < 0)
+            if (markerIndex >= 0)
+            {
+                int valueStart = markerIndex + marker.Length;
+                int valueEnd = decodeDetail.IndexOf(']', valueStart);
+                if (valueEnd > valueStart)
+                {
+                    int[] parsed = decodeDetail
+                        .Substring(valueStart, valueEnd - valueStart)
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(token => int.TryParse(token, out int value) ? value : -1)
+                        .Where(value => value >= 0)
+                        .Distinct()
+                        .OrderBy(value => value)
+                        .ToArray();
+                    if (parsed.Length > 0)
+                    {
+                        byteIndices = parsed;
+                        return true;
+                    }
+                }
+            }
+
+            const string legacyMarker = "byteIndex=";
+            int legacyMarkerIndex = decodeDetail.IndexOf(legacyMarker, StringComparison.Ordinal);
+            if (legacyMarkerIndex < 0)
             {
                 return false;
             }
 
-            int valueStart = markerIndex + marker.Length;
-            int valueEnd = valueStart;
-            while (valueEnd < decodeDetail.Length && char.IsDigit(decodeDetail[valueEnd]))
+            int legacyValueStart = legacyMarkerIndex + legacyMarker.Length;
+            int legacyValueEnd = legacyValueStart;
+            while (legacyValueEnd < decodeDetail.Length && char.IsDigit(decodeDetail[legacyValueEnd]))
             {
-                valueEnd++;
+                legacyValueEnd++;
             }
 
-            if (valueEnd <= valueStart)
+            if (legacyValueEnd <= legacyValueStart
+                || !int.TryParse(decodeDetail.Substring(legacyValueStart, legacyValueEnd - legacyValueStart), out int legacyByteIndex))
             {
                 return false;
             }
 
-            return int.TryParse(
-                decodeDetail.Substring(valueStart, valueEnd - valueStart),
-                out byteIndex);
+            byteIndices = new[] { legacyByteIndex };
+            return true;
         }
 
         public static bool TryDecodeRepeatSkillModeEndAck(

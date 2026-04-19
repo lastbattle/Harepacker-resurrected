@@ -301,9 +301,11 @@ namespace HaCreator.MapSimulator
                     {
                         if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
                             && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.ComboBox
-                            && _isWhisperTargetPickerComboDropdownOpen
-                            && AcceptWhisperTargetPickerModalComboSelection())
+                            && _isWhisperTargetPickerComboDropdownOpen)
                         {
+                            // Client CCtrlComboBoxSelect::OnKey owns VK_RETURN while the select window
+                            // is open. Do not fall through into modal owner confirm handling.
+                            AcceptWhisperTargetPickerModalComboSelection();
                             return true;
                         }
 

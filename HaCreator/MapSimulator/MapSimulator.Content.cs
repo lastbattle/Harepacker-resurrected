@@ -1003,7 +1003,17 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetPreparedSkillOverlayProvider(currentTime => GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.World));
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
-                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
+                statusBarUi.BuffCancelRequested = skillId =>
+                {
+                    var skills = _playerManager?.Skills;
+                    if (skills == null)
+                    {
+                        return;
+                    }
+
+                    using var _ = skills.BeginClientCancelBatchScope();
+                    skills.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
+                };
             }
             ConfigureStatusBarChatUi();
 
@@ -1846,7 +1856,17 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetPreparedSkillOverlayProvider(currentTime => GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.World));
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
-                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
+                statusBarUi.BuffCancelRequested = skillId =>
+                {
+                    var skills = _playerManager?.Skills;
+                    if (skills == null)
+                    {
+                        return;
+                    }
+
+                    using var _ = skills.BeginClientCancelBatchScope();
+                    skills.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
+                };
             }
             ConfigureStatusBarChatUi();
             LogStartupCheckpoint("LoadContent finished status/UI provider hookup");

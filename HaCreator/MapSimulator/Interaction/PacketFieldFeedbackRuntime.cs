@@ -197,7 +197,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const string SummonItemUnavailableNoticeFallback = "The summon item cannot be used in this field.";
         private const int HorntailBossHpFirstBodyMobId = 8810118;
         private const int HorntailBossHpLastBodyMobId = 8810122;
-        private static readonly Encoding SwindleEncoding = Encoding.Default;
+        private static readonly uint SwindleCodePage = ResolveSwindleCodePage();
+        private static readonly Encoding SwindleEncoding = ResolveSwindleEncoding();
         // Recovered from CCurseProcess::s_FilterChars in the v95 client.
         private static readonly byte[] SwindleFilteredCharacters =
         {
@@ -2339,7 +2340,7 @@ namespace HaCreator.MapSimulator.Interaction
             return FormatFieldFeedbackStringPoolText(stringPoolId, fallbackFormat, args);
         }
 
-        [DllImport("kernel32.dll")]
+        [DllImport("kernel32.dll", SetLastError = false)]
         private static extern uint GetACP();
 
         [DllImport("kernel32.dll", SetLastError = false)]
@@ -2349,9 +2350,55 @@ namespace HaCreator.MapSimulator.Interaction
         [DllImport("msvcrt.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "_mbctolower")]
         private static extern uint MbcsToLower(uint value);
 
+        private static uint ResolveSwindleCodePage()
+        {
+            try
+            {
+                return GetACP();
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static Encoding ResolveSwindleEncoding()
+        {
+            if (SwindleCodePage > 0)
+            {
+                try
+                {
+                    return Encoding.GetEncoding((int)SwindleCodePage);
+                }
+                catch (ArgumentException)
+                {
+                }
+                catch (NotSupportedException)
+                {
+                }
+            }
+
+            return Encoding.Default;
+        }
+
         private static bool IsDbcsLeadByte(byte value)
         {
-            return IsDBCSLeadByteEx(GetACP(), value);
+            if (SwindleCodePage == 0)
+            {
+                return false;
+            }
+
+            return IsDBCSLeadByteEx(SwindleCodePage, value);
+        }
+
+        internal static int GetSwindleEncodingCodePageForTest()
+        {
+            return SwindleEncoding.CodePage;
+        }
+
+        internal static int GetSwindleAnsiCodePageForTest()
+        {
+            return unchecked((int)SwindleCodePage);
         }
 
         internal static IReadOnlyList<PacketFieldSwindleWarningEntry> CreateSwindleWarningEntriesForTest(

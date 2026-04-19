@@ -231,6 +231,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!ShouldAcceptIncomingNoticeForClientParity(_notices, skillId))
+            {
+                return;
+            }
+
             NoticeEntry existingEntry = null;
             for (int i = 0; i < _notices.Count; i++)
             {
@@ -502,6 +507,68 @@ namespace HaCreator.MapSimulator.UI
         internal static int ResolveMaxConcurrentNoticesForClientParity()
         {
             return MaxNotices;
+        }
+
+        internal static bool ShouldAcceptIncomingNoticeForClientParity(
+            IReadOnlyList<(int SkillId, bool IsExpired)> activeNotices,
+            int incomingSkillId)
+        {
+            if (activeNotices == null || activeNotices.Count == 0)
+            {
+                return true;
+            }
+
+            int activeOwnerSkillId = 0;
+            bool hasActiveOwner = false;
+            for (int i = 0; i < activeNotices.Count; i++)
+            {
+                (int skillId, bool isExpired) = activeNotices[i];
+                if (isExpired)
+                {
+                    continue;
+                }
+
+                activeOwnerSkillId = skillId;
+                hasActiveOwner = true;
+                break;
+            }
+
+            if (!hasActiveOwner)
+            {
+                return true;
+            }
+
+            return activeOwnerSkillId == incomingSkillId;
+        }
+
+        private static bool ShouldAcceptIncomingNoticeForClientParity(IReadOnlyList<NoticeEntry> activeNotices, int incomingSkillId)
+        {
+            if (activeNotices == null || activeNotices.Count == 0)
+            {
+                return true;
+            }
+
+            int activeOwnerSkillId = 0;
+            bool hasActiveOwner = false;
+            for (int i = 0; i < activeNotices.Count; i++)
+            {
+                NoticeEntry entry = activeNotices[i];
+                if (entry == null || entry.IsExpired)
+                {
+                    continue;
+                }
+
+                activeOwnerSkillId = entry.SkillId;
+                hasActiveOwner = true;
+                break;
+            }
+
+            if (!hasActiveOwner)
+            {
+                return true;
+            }
+
+            return activeOwnerSkillId == incomingSkillId;
         }
 
         private void DrawTiledNoticeCenter(SpriteBatch spriteBatch, int x, int startY, int centerHeight, Color color)

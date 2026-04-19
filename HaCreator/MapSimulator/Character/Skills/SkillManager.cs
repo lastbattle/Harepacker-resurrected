@@ -134,6 +134,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             None,
             GenericCast,
+            Prepare,
+            Movement,
+            Summon,
+            Heal,
+            TownPortal,
             InvincibleZone,
             Swallow,
             Cyclone
@@ -2204,6 +2209,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int MINE_DEPLOY_INTERVAL_MS = 1500;
         private const int MineInitialDeployLeadMs = 1000;
         private const int CYCLONE_ATTACK_INTERVAL_MS = 1000;
+        private const int TOWN_PORTAL_SKILL_ID = 2311002;
+        private const int BEGINNER_TOWN_PORTAL_SKILL_ID = 8001;
         private const int SMOKE_BOMB_SKILL_ID = 4221006;
         private const int PARTY_SHIELD_SKILL_ID = 32121006;
         private const int SG88_KEYDOWN_BAR_START_DELAY_MS = 810;
@@ -2258,8 +2265,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly HashSet<int> _activeRepeatSustainTimerCancelFamilyKeys = new();
         private readonly HashSet<int> _activeClientTimerBatchCancelFamilyKeys = new();
         private readonly HashSet<int> _activeClientUpdateBatchCancelFamilyKeys = new();
+        private readonly HashSet<int> _activeClientScopedBatchCancelFamilyKeys = new();
         private bool _isDispatchingClientTimerExpirationBatch;
         private bool _isDispatchingClientUpdateCancelBatch;
+        private int _activeClientScopedCancelBatchDepth;
 
         /// <summary>
         /// Queue a skill for execution (used by skill macros)
@@ -2682,6 +2691,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        public IDisposable BeginClientCancelBatchScope()
+        {
+            return new ClientCancelBatchScope(this);
+        }
+
         public bool RequestClientSkillCancel(int skillId, int currentTime, bool enforceFieldCancelRestrictions = false)
         {
             if (skillId <= 0)
@@ -2695,6 +2709,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (ShouldSuppressClientUpdateBatchCancelRequest(skillId))
+            {
+                return false;
+            }
+
+            if (ShouldSuppressClientScopedBatchCancelRequest(skillId))
             {
                 return false;
             }
@@ -2749,6 +2768,44 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _activeClientUpdateBatchCancelFamilyKeys,
                 skillId,
                 ResolveClientCancelRequestSkillIds);
+        }
+
+        private bool ShouldSuppressClientScopedBatchCancelRequest(int skillId)
+        {
+            return ShouldSuppressClientCancelBatchRequest(
+                _activeClientScopedCancelBatchDepth > 0,
+                _activeClientScopedBatchCancelFamilyKeys,
+                skillId,
+                ResolveClientCancelRequestSkillIds);
+        }
+
+        internal static void BeginClientCancelBatchScope(ref int activeBatchDepth, ISet<int> activeCancelFamilyKeys)
+        {
+            if (activeBatchDepth < 0)
+            {
+                activeBatchDepth = 0;
+            }
+
+            activeBatchDepth++;
+            if (activeBatchDepth == 1)
+            {
+                activeCancelFamilyKeys?.Clear();
+            }
+        }
+
+        internal static void EndClientCancelBatchScope(ref int activeBatchDepth, ISet<int> activeCancelFamilyKeys)
+        {
+            if (activeBatchDepth <= 0)
+            {
+                activeBatchDepth = 0;
+                return;
+            }
+
+            activeBatchDepth--;
+            if (activeBatchDepth == 0)
+            {
+                activeCancelFamilyKeys?.Clear();
+            }
         }
 
         internal static bool ShouldSuppressClientCancelBatchRequest(
@@ -3593,6 +3650,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 CasterY = _player.Y,
                 FacingRight = _player.FacingRight,
                 EffectBranchLastIndex = ResolveClientLocalShowSkillEffectEffectBranchLastIndexOverride(skill),
+                FacingRightOverride = ResolveClientLocalShowSkillEffectFacingRightOverride(skill),
                 DelayRateOverride = ResolveClientLocalShowSkillEffectDelayRateOverride(skill)
             };
 
@@ -6610,7 +6668,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2? worldOrigin = null,
             Point originOffset = default,
             bool followOwnerPosition = true,
-            bool followOwnerFacing = true)
+            bool followOwnerFacing = true,
+            int? showSkillEffectBLeft = 0)
         {
             return new SkillUseEffectRequest
             {
@@ -6623,11 +6682,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                 OriginOffset = originOffset,
                 FollowOwnerPosition = followOwnerPosition,
                 FollowOwnerFacing = followOwnerFacing,
+                FacingRightOverride = showSkillEffectBLeft.HasValue
+                    ? ResolveClientShowSkillEffectFacingRightOverrideFromBLeft(showSkillEffectBLeft.Value)
+                    : null,
                 // Client `CUser::ShowSkillEffect` callers such as `OnKeyDownSkillEnd`,
                 // `HandleCtrlKeyDown`, and the wider non-melee `DoActiveSkill_*` family
                 // pass `nActionSpeed = 0` before `CAnimationDisplayer::Effect_SkillUse`.
                 DelayRateOverride = ResolveClientShowSkillEffectDelayRateFromActionSpeed(0)
             };
+        }
+
+        internal static bool ResolveClientShowSkillEffectFacingRightOverrideFromBLeft(int bLeft)
+        {
+            // `CUser::ShowSkillEffect` forwards caller-owned `bLeft` into `Effect_SkillUse`.
+            // `bLeft = 0` means the branch is right-facing and `bLeft != 0` means left-facing.
+            return bLeft == 0;
         }
 
         internal static IReadOnlyList<string> ResolveClientLocalShowSkillEffectRequestedBranchNames(
@@ -6686,8 +6755,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             switch (ResolveDoActiveSkillExecutionLane(skill))
             {
                 case ClientDoActiveSkillExecutionLane.GenericCast:
-                    // The generic lane is explicit for parity classification, but it still
-                    // falls through to the shared buff / attack / movement seams below.
+                case ClientDoActiveSkillExecutionLane.Prepare:
+                case ClientDoActiveSkillExecutionLane.Movement:
+                case ClientDoActiveSkillExecutionLane.Summon:
+                case ClientDoActiveSkillExecutionLane.Heal:
+                case ClientDoActiveSkillExecutionLane.TownPortal:
+                    // These non-melee family owners stay explicit for parity classification,
+                    // but they still fall through to the shared buff / attack / movement seams.
                     return false;
 
                 case ClientDoActiveSkillExecutionLane.InvincibleZone:
@@ -7791,6 +7865,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             // `CUser::ShowSkillEffect`; the shared owner then applies the same
             // `1000 * (speed + 10) / 16` rate used by melee/shoot/magic callers.
             return ResolveClientShowSkillEffectDelayRateFromActionSpeed(0);
+        }
+
+        internal static bool? ResolveClientLocalShowSkillEffectFacingRightOverride(SkillData skill)
+        {
+            if (skill == null
+                || skill.IsAttack
+                || skill.IsKeydownSkill
+                || skill.IsPrepareSkill)
+            {
+                return null;
+            }
+
+            // Local non-melee `DoActiveSkill_*` callers (`Heal`, `OpenGate`, `TownPortal`,
+            // `Summon`, `SmokeShell`, `Flying`, `RecoveryAura`, `Aura`, etc.) pass `bLeft = 0`
+            // into `CUser::ShowSkillEffect`.
+            return ResolveClientShowSkillEffectFacingRightOverrideFromBLeft(0);
         }
 
         internal static int? ResolveClientLocalShowSkillEffectEffectBranchLastIndexOverride(SkillData skill)
@@ -9986,6 +10076,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ActionTextContains(actionName, "icedoublejump");
         }
 
+        private static bool IsConstrainedType40IceDoubleJumpSkillId(int skillId)
+        {
+            // WZ-authoring keeps this family on type-40 `iceDoubleJump` rows across
+            // beginner/cygnus/aran/resistance starter variants.
+            return skillId is 1098
+                or 11098
+                or 10001098
+                or 20001098
+                or 20011098
+                or 20021098
+                or 30001098
+                or 30011098
+                or 50001098;
+        }
+
         private static bool HasBoundJumpMovementProfile(
             SkillData skill,
             IEnumerable<string> candidateActions = null,
@@ -10008,6 +10113,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             candidateActions ??= EnumerateMovementActionCandidates(skill);
             return candidateActions.Any(IsConstrainedType40BoundJumpActionName)
                    || IsConstrainedType40BoundJumpActionName(movementActionName)
+                   || IsConstrainedType40IceDoubleJumpSkillId(skill.SkillId)
                    || SkillTextContains(skill, "flash jump");
         }
 
@@ -10135,7 +10241,86 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return ClientDoActiveSkillExecutionLane.Cyclone;
             }
 
+            if (IsPrepareDoActiveSkillFamily(skill))
+            {
+                return ClientDoActiveSkillExecutionLane.Prepare;
+            }
+
+            if (IsMovementDoActiveSkillFamily(skill))
+            {
+                return ClientDoActiveSkillExecutionLane.Movement;
+            }
+
+            if (IsSummonDoActiveSkillFamily(skill))
+            {
+                return ClientDoActiveSkillExecutionLane.Summon;
+            }
+
+            if (IsHealDoActiveSkillFamily(skill))
+            {
+                return ClientDoActiveSkillExecutionLane.Heal;
+            }
+
+            if (IsTownPortalDoActiveSkillFamily(skill))
+            {
+                return ClientDoActiveSkillExecutionLane.TownPortal;
+            }
+
             return ClientDoActiveSkillExecutionLane.GenericCast;
+        }
+
+        private static bool IsPrepareDoActiveSkillFamily(SkillData skill)
+        {
+            return skill?.IsPrepareSkill == true
+                   || skill?.IsKeydownSkill == true;
+        }
+
+        private static bool IsMovementDoActiveSkillFamily(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (skill.IsAttack && !skill.IsMovement)
+            {
+                return false;
+            }
+
+            if (skill.IsMovement)
+            {
+                return true;
+            }
+
+            if (!skill.CasterMove)
+            {
+                return false;
+            }
+
+            if (HasBoundJumpMovementProfile(skill) || skill.ClientDelayMs > 0)
+            {
+                return true;
+            }
+
+            string movementActionName = ResolveMovementActionName(skill);
+            return ResolveMovementFamily(skill, movementActionName) != SkillMovementFamily.None;
+        }
+
+        private static bool IsSummonDoActiveSkillFamily(SkillData skill)
+        {
+            return skill?.IsSummon == true;
+        }
+
+        private static bool IsHealDoActiveSkillFamily(SkillData skill)
+        {
+            return skill?.IsHeal == true;
+        }
+
+        private static bool IsTownPortalDoActiveSkillFamily(SkillData skill)
+        {
+            return skill != null
+                   && (skill.SkillId == TOWN_PORTAL_SKILL_ID
+                       || skill.SkillId == BEGINNER_TOWN_PORTAL_SKILL_ID);
         }
 
         internal static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
@@ -10455,7 +10640,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             // profiles on that recovered shared impact seam instead of a simulator-only arc.
             IEnumerable<string> candidateActions = EnumerateMovementActionCandidates(skill);
             return candidateActions.Any(IsSharedFlashJumpBoundJumpActionName)
-                   || IsSharedFlashJumpBoundJumpActionName(movementActionName);
+                   || IsSharedFlashJumpBoundJumpActionName(movementActionName)
+                   || IsConstrainedType40IceDoubleJumpSkillId(skill.SkillId);
         }
 
         private static bool IsSharedFlashJumpBoundJumpActionName(string actionName)
@@ -14361,9 +14547,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
+            int fireTimeUseSlotPosition = ClientShootAmmoResolver.ToClientSlotPosition(selection.UseSlotIndex);
+            if (fireTimeUseSlotPosition > 0)
+            {
+                return fireTimeUseSlotPosition;
+            }
+
             return selection.QueuedUseSlotIndex > 0
                 ? selection.QueuedUseSlotIndex
-                : ClientShootAmmoResolver.ToClientSlotPosition(selection.UseSlotIndex);
+                : 0;
         }
 
         internal static int ResolveBulletAnimationQueuedCashSlotPosition(ShootAmmoSelection selection)
@@ -14373,9 +14565,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
+            int fireTimeCashSlotPosition = ClientShootAmmoResolver.ToClientSlotPosition(selection.CashSlotIndex);
+            if (fireTimeCashSlotPosition > 0)
+            {
+                return fireTimeCashSlotPosition;
+            }
+
             return selection.QueuedCashSlotIndex > 0
                 ? selection.QueuedCashSlotIndex
-                : ClientShootAmmoResolver.ToClientSlotPosition(selection.CashSlotIndex);
+                : 0;
         }
 
         internal static int ResolveRegisteredBulletPresentationVisualItemId(BulletAnimationPresentation presentation)
@@ -17029,13 +17227,23 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (UsesClientMultipleLayerHitAnimation(skill.SkillId))
             {
-                SkillAnimation multipleLayerAnimation = ResolveIndexedTargetHitAnimation(
-                    skill.MultipleLayerTargetHitEffects,
-                    requestedIndex: 0);
-                if (multipleLayerAnimation != null)
+                // `CSkill_HitAni::CreateMultipleLayer(..., 1)` only fills
+                // `m_absHitAni[0]` (formatted from `sHitRootUOL + "hit0"`), and
+                // `operator()(nOrder)` reads the live target order with no clamp.
+                // Keep the recovered lane explicit: only the first target may consume
+                // the authored multiple-layer hit root in this seam.
+                if (Math.Max(0, targetOrder) == 0)
                 {
-                    return multipleLayerAnimation;
+                    SkillAnimation multipleLayerAnimation = ResolveIndexedTargetHitAnimation(
+                        skill.MultipleLayerTargetHitEffects,
+                        requestedIndex: 0);
+                    if (multipleLayerAnimation != null)
+                    {
+                        return multipleLayerAnimation;
+                    }
                 }
+
+                return null;
             }
 
             if (UsesClientShuffledTargetHitAnimation(skill.SkillId))
@@ -20980,9 +21188,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return activeSkillMountItemId;
             }
 
-            return IsWildHunterJaguarTamingMobItemId(equippedMountItemId)
-                ? equippedMountItemId
-                : 0;
+            // Client `TryDoingMine` reads the live riding-vehicle id, not just equipped mount state.
+            // Keep hidden fallback bound to active mounted jaguar ownership windows only.
+            return 0;
         }
 
         internal static bool IsActiveWildHunterJaguarRiderMount(int activeSkillMountSkillId, int activeSkillMountItemId)
@@ -21738,6 +21946,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool CancelActiveBuff(int skillId)
         {
+            using var _ = BeginClientCancelBatchScope();
             return RequestClientSkillCancel(skillId, Environment.TickCount, enforceFieldCancelRestrictions: true);
         }
 
@@ -24361,12 +24570,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(activeLabel)
                     || string.Equals(activeLabel, TransformBuffLabel, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(activeLabel, "PAD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(activeLabel, "PDD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(activeLabel, "MAD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(activeLabel, "MDD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(activeLabel, MaxHpBuffLabel, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(activeLabel, MaxMpBuffLabel, StringComparison.OrdinalIgnoreCase))
+                    || IsVehicleTransformSupportedTemporaryStatLabel(activeLabel))
                 {
                     continue;
                 }
@@ -24375,6 +24579,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return true;
+        }
+
+        private static bool IsVehicleTransformSupportedTemporaryStatLabel(string label)
+        {
+            return string.Equals(label, "PAD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "PDD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "MAD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "MDD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "ACC", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "EVA", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "Speed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, "Jump", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, MaxHpBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, MaxMpBuffLabel, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryResolveRollOfTheDicePlaceholderTemporaryStatLabel(
@@ -25023,12 +25241,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                if (string.Equals(label, "PAD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(label, "PDD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(label, "MAD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(label, "MDD", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(label, MaxHpBuffLabel, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(label, MaxMpBuffLabel, StringComparison.OrdinalIgnoreCase))
+                if (IsVehicleTransformSupportedTemporaryStatLabel(label))
                 {
                     hasVehicleStatFamily = true;
                     continue;
@@ -26418,6 +26631,16 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         #region Update
 
+        private void EnterClientCancelBatchScope()
+        {
+            BeginClientCancelBatchScope(ref _activeClientScopedCancelBatchDepth, _activeClientScopedBatchCancelFamilyKeys);
+        }
+
+        private void ExitClientCancelBatchScope()
+        {
+            EndClientCancelBatchScope(ref _activeClientScopedCancelBatchDepth, _activeClientScopedBatchCancelFamilyKeys);
+        }
+
         public void Update(int currentTime, float deltaTime)
         {
             _isDispatchingClientUpdateCancelBatch = true;
@@ -26494,6 +26717,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 _activeClientUpdateBatchCancelFamilyKeys.Clear();
                 _isDispatchingClientUpdateCancelBatch = false;
+            }
+        }
+
+        private sealed class ClientCancelBatchScope : IDisposable
+        {
+            private SkillManager _owner;
+
+            public ClientCancelBatchScope(SkillManager owner)
+            {
+                _owner = owner;
+                _owner?.EnterClientCancelBatchScope();
+            }
+
+            public void Dispose()
+            {
+                _owner?.ExitClientCancelBatchScope();
+                _owner = null;
             }
         }
 

@@ -26954,7 +26954,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (ResolveLocalOwnedAffectedAreaDurationSeconds(skill, levelData, skillLevel) <= 0)
+            if (ResolveLocalOwnedAffectedAreaDurationSeconds(skill, levelData, skillLevel, ownerLane) <= 0)
             {
                 _affectedAreaPool.Remove(objectId, currentTime);
             }
@@ -27007,7 +27007,8 @@ namespace HaCreator.MapSimulator
 
             if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion)
             {
-                return skill.IsMesoExplosion;
+                return skill.IsMesoExplosion
+                       || IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skill.SkillId);
             }
 
             if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack)
@@ -27313,6 +27314,8 @@ namespace HaCreator.MapSimulator
                     IsClientMagicLaneExplicitAreaSkillId(skillId),
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack =>
                     IsClientBodyLaneExplicitAreaSkillId(skillId),
+                SkillManager.LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion =>
+                    IsClientMesoExplosionLaneExplicitAreaSkillId(skillId),
                 _ => false
             };
         }
@@ -27344,6 +27347,12 @@ namespace HaCreator.MapSimulator
             // `is_teleport_mastery_skill` ownership in the same lane.
             return skillId == 32121003
                    || IsClientTeleportMasterySkillId(skillId);
+        }
+
+        private static bool IsClientMesoExplosionLaneExplicitAreaSkillId(int skillId)
+        {
+            // IDA: DoActiveSkill_MesoExplosion is still the local owner for meso area lifecycle.
+            return skillId == 4211006;
         }
 
         private static bool IsClientTeleportMasterySkillId(int skillId)
@@ -27446,7 +27455,11 @@ namespace HaCreator.MapSimulator
             return mask != 0;
         }
 
-        private int ResolveLocalOwnedAffectedAreaDurationSeconds(SkillData skill, SkillLevelData levelData, int skillLevel)
+        private int ResolveLocalOwnedAffectedAreaDurationSeconds(
+            SkillData skill,
+            SkillLevelData levelData,
+            int skillLevel,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
             if (skill == null || levelData == null)
             {
@@ -27470,7 +27483,24 @@ namespace HaCreator.MapSimulator
                 dummySkillId => skillLoader?.FindDummySkillParentIds(dummySkillId) ?? Array.Empty<int>(),
                 resolveLevelData,
                 skillLevel);
-            return metadata.DurationSeconds;
+            if (metadata.DurationSeconds > 0)
+            {
+                return metadata.DurationSeconds;
+            }
+
+            return ResolveClientExplicitLocalOwnedAffectedAreaDurationSeconds(skill.SkillId, ownerLane);
+        }
+
+        internal static int ResolveClientExplicitLocalOwnedAffectedAreaDurationSeconds(
+            int skillId,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
+        {
+            return ownerLane switch
+            {
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack when skillId == 3111003 => 1,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when IsClientMagicLaneExplicitAreaSkillId(skillId) => 3,
+                _ => 0
+            };
         }
 
         private int ResolveLocalOwnedAffectedAreaObjectId(int skillId)
@@ -28270,8 +28300,13 @@ namespace HaCreator.MapSimulator
 
             if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
             {
-                bool canReplayHandleUpKeyDown = CanReplayPassiveTransferFieldUpKeyPath(currentTime);
-                if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForQueuedReplay(canReplayHandleUpKeyDown))
+                PassiveTransferFieldReplayState replayState = ResolvePassiveTransferFieldReplayState(currentTime);
+                bool canAttemptHandleUpKeyDownReplay =
+                    PassiveTransferFieldReadinessEvaluator.CanAttemptHandleUpKeyDownReplay(replayState);
+                bool canReplayHandleUpKeyDown =
+                    PassiveTransferFieldReadinessEvaluator.CanReplayHandleUpKeyDown(replayState);
+
+                if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForQueuedReplay(canAttemptHandleUpKeyDownReplay))
                 {
                     StopSkillMacroForHandleUpKeyDown();
                 }
@@ -28476,18 +28511,27 @@ namespace HaCreator.MapSimulator
 
         private bool CanReplayPassiveTransferFieldUpKeyPath(int currentTime)
         {
+            return PassiveTransferFieldReadinessEvaluator.CanReplayHandleUpKeyDown(
+                ResolvePassiveTransferFieldReplayState(currentTime));
+        }
+
+        private PassiveTransferFieldReplayState ResolvePassiveTransferFieldReplayState(int currentTime)
+        {
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Physics == null)
             {
-                return false;
+                return new PassiveTransferFieldReplayState(
+                    HasOneTimeActionCompleted: false,
+                    IsImmovable: true,
+                    IsAttractLocked: false,
+                    IsOnFoothold: false);
             }
 
-            return PassiveTransferFieldReadinessEvaluator.CanReplayHandleUpKeyDown(
-                new PassiveTransferFieldReplayState(
-                    HasOneTimeActionCompleted: !HasActivePassiveTransferFieldOneTimeAction(player),
-                    IsImmovable: player.IsImmovableForPassiveTransferField(currentTime),
-                    IsAttractLocked: player.IsAttractLockedForPassiveTransferField(currentTime),
-                    IsOnFoothold: player.Physics.IsOnFoothold()));
+            return new PassiveTransferFieldReplayState(
+                HasOneTimeActionCompleted: !HasActivePassiveTransferFieldOneTimeAction(player),
+                IsImmovable: player.IsImmovableForPassiveTransferField(currentTime),
+                IsAttractLocked: player.IsAttractLockedForPassiveTransferField(currentTime),
+                IsOnFoothold: player.Physics.IsOnFoothold());
         }
 
         private bool ShouldQueuePassiveTransferFieldRequest()
@@ -31054,11 +31098,20 @@ namespace HaCreator.MapSimulator
                     }
                 };
                 _summonedPool.OnSummonExpiryTimersExpiredBatch = expirations =>
+                {
+                    SkillManager skills = _playerManager?.Skills;
+                    if (skills == null)
+                    {
+                        return;
+                    }
+
+                    using var _ = skills.BeginClientCancelBatchScope();
                     RouteLocalPacketOwnedSummonExpiryBatchToClientCancel(
                         expirations,
                         (summonedObjectId, currentTime) => _summonedPool.TryPrimeLocalOwnerSummonNaturalExpiry(summonedObjectId, currentTime),
-                        skillId => _playerManager?.Skills?.ResolveClientCancelRequestSkillIdsForParity(skillId),
-                        (skillId, currentTime) => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currentTime) == true);
+                        skillId => skills.ResolveClientCancelRequestSkillIdsForParity(skillId),
+                        (skillId, currentTime) => skills.RequestClientSkillCancel(skillId, currentTime));
+                };
                 _summonedPool.OnSummonExpiryTimerExpired = null;
             }
             _summonedPool.OnLocalOwnerAttackPacketApplied = (packet, currentTime) =>
@@ -33235,6 +33288,7 @@ namespace HaCreator.MapSimulator
                 OriginOffset = castInfo.OriginOffset,
                 FollowOwnerPosition = castInfo.FollowOwnerPosition,
                 FollowOwnerFacing = castInfo.FollowOwnerFacing,
+                FacingRightOverride = castInfo.FacingRightOverride,
                 DelayRateOverride = castInfo.DelayRateOverride
             };
 

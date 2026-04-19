@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.Pools
     internal static class PacketOwnedSummonUpdateRules
     {
         private const byte ClientTeslaForcedMoveAction = 0x2A;
+        private const int TeslaCoilSkillId = 35111002;
 
         public static SummonMovementStyle ResolveEffectiveMovementStyle(ActiveSummon summon)
         {
@@ -537,7 +538,14 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool ShouldUseMoveActionFacingForAttack(ActiveSummon summon)
         {
-            return SummonRuntimeRules.UsesReactiveDamageTriggerSummon(summon?.SkillData);
+            if (SummonRuntimeRules.UsesReactiveDamageTriggerSummon(summon?.SkillData))
+            {
+                return true;
+            }
+
+            // Client `CSummoned::Update` keeps Tesla-facing ownership on move action while armed.
+            return summon?.SkillId == TeslaCoilSkillId
+                   && (summon.TeslaCoilState == 1 || summon.TeslaCoilState == 2);
         }
 
         private static bool IsSpawnAnimationActive(ActiveSummon summon, int currentTime)

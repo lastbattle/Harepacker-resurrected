@@ -6124,26 +6124,33 @@ namespace HaCreator.MapSimulator.Pools
                     }
 
                     string relativeToken = NormalizePacketMobAttackGeneralEffectColonPathSeparators(token) ?? token;
-                    string frameRelativeBasePath = ResolvePacketMobAttackGeneralEffectSequenceRelativeSourceBasePath(
-                        previousNormalizedSourcePath);
-                    string combinedSourcePath = null;
-                    bool combinedAgainstFrameBase = !string.IsNullOrWhiteSpace(frameRelativeBasePath)
-                        && TryCombinePacketMobAttackGeneralEffectPath(
-                            frameRelativeBasePath,
-                            relativeToken,
-                            out combinedSourcePath);
-                    bool combinedAgainstAnyBase = combinedAgainstFrameBase
-                        || TryCombinePacketMobAttackGeneralEffectPath(
+                    if (!TryResolvePacketMobAttackGeneralEffectSiblingFrameSourcePath(
                             previousNormalizedSourcePath,
                             relativeToken,
-                            out combinedSourcePath);
-                    if (!combinedAgainstAnyBase
-                        || !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
-                            combinedSourcePath,
                             defaultCategory,
                             out normalizedSourcePath))
                     {
-                        return null;
+                        string frameRelativeBasePath = ResolvePacketMobAttackGeneralEffectSequenceRelativeSourceBasePath(
+                            previousNormalizedSourcePath);
+                        string combinedSourcePath = null;
+                        bool combinedAgainstFrameBase = !string.IsNullOrWhiteSpace(frameRelativeBasePath)
+                            && TryCombinePacketMobAttackGeneralEffectPath(
+                                frameRelativeBasePath,
+                                relativeToken,
+                                out combinedSourcePath);
+                        bool combinedAgainstAnyBase = combinedAgainstFrameBase
+                            || TryCombinePacketMobAttackGeneralEffectPath(
+                                previousNormalizedSourcePath,
+                                relativeToken,
+                                out combinedSourcePath);
+                        if (!combinedAgainstAnyBase
+                            || !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+                                combinedSourcePath,
+                                defaultCategory,
+                                out normalizedSourcePath))
+                        {
+                            return null;
+                        }
                     }
                 }
 
@@ -6188,6 +6195,56 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalizedSequenceRootPath;
+        }
+
+        private static bool TryResolvePacketMobAttackGeneralEffectSiblingFrameSourcePath(
+            string previousNormalizedSourcePath,
+            string relativeToken,
+            string defaultCategory,
+            out string normalizedSourcePath)
+        {
+            normalizedSourcePath = null;
+            if (string.IsNullOrWhiteSpace(previousNormalizedSourcePath)
+                || string.IsNullOrWhiteSpace(relativeToken))
+            {
+                return false;
+            }
+
+            string[] relativeSegments = relativeToken
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (relativeSegments.Length == 0
+                || string.Equals(relativeSegments[0], ".", StringComparison.Ordinal)
+                || string.Equals(relativeSegments[0], "..", StringComparison.Ordinal)
+                || !int.TryParse(relativeSegments[0], out _))
+            {
+                return false;
+            }
+
+            string[] previousSegments = previousNormalizedSourcePath
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            previousSegments = TrimPacketMobAttackGeneralEffectSourceLeafSuffixSegments(previousSegments);
+            if (previousSegments.Length < 4 || !int.TryParse(previousSegments[^1], out _))
+            {
+                return false;
+            }
+
+            var candidateSegments = new List<string>(previousSegments.Take(previousSegments.Length - 1))
+            {
+                relativeSegments[0]
+            };
+            if (!TryNormalizePacketMobAttackPropertySegments(
+                    relativeSegments.Skip(1),
+                    candidateSegments))
+            {
+                return false;
+            }
+
+            return TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+                string.Join("/", candidateSegments),
+                defaultCategory,
+                out normalizedSourcePath);
         }
 
         private static string ResolvePacketMobAttackGeneralEffectSequenceRelativeSourceBasePath(
@@ -6417,7 +6474,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string[] rawTokens = effectPath
-                .Split(new[] { '|', ';', ',', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                .Split(new[] { '|', ';', ',', '&', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (rawTokens.Length == 0)
             {
                 return Array.Empty<string>();
@@ -6666,7 +6723,13 @@ namespace HaCreator.MapSimulator.Pools
 
             for (int i = 0; i < aliasSegments.Length; i++)
             {
-                if (!IsPacketMobAttackSourcePropertySegment(aliasSegments[i]))
+                string segment = aliasSegments[i];
+                if (int.TryParse(segment, out _))
+                {
+                    continue;
+                }
+
+                if (!IsPacketMobAttackSourcePropertySegment(segment))
                 {
                     return false;
                 }

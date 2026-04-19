@@ -1516,19 +1516,18 @@ namespace HaCreator.MapSimulator.Fields
             out RemoteTownPortalOwnerFieldObservation? ownerObservation)
         {
             ownerObservation = null;
-            if (!_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>> observationsBySourceMap)
-                || observationsBySourceMap.Count == 0)
+            List<RemoteTownPortalOwnerFieldObservation[]> candidatesBySourceMap;
+            if (_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>> observationsBySourceMap)
+                && observationsBySourceMap.Count > 0)
             {
-                return false;
+                candidatesBySourceMap = observationsBySourceMap.Values
+                    .Select(observationsBySource => observationsBySource.Values.ToArray())
+                    .Where(observations => observations.Length > 0)
+                    .ToList();
             }
-
-            List<RemoteTownPortalOwnerFieldObservation[]> candidatesBySourceMap = observationsBySourceMap.Values
-                .Select(observationsBySource => observationsBySource.Values.ToArray())
-                .Where(observations => observations.Length > 0)
-                .ToList();
-            if (candidatesBySourceMap.Count == 0)
+            else
             {
-                return false;
+                candidatesBySourceMap = new List<RemoteTownPortalOwnerFieldObservation[]>();
             }
 
             int? preferredSourceMapId = SelectPreferredRemoteTownPortalSourceMapId(
@@ -1540,8 +1539,14 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            ownerObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(candidatesBySourceMap, preferredSourceMapId.Value);
-            return ownerObservation.HasValue || (metadata.HasValue && metadata.Value.SourceMapId == preferredSourceMapId.Value);
+            ownerObservation = candidatesBySourceMap.Count > 0
+                ? SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(candidatesBySourceMap, preferredSourceMapId.Value)
+                : null;
+            return ownerObservation.HasValue
+                || (metadata.HasValue && metadata.Value.SourceMapId == preferredSourceMapId.Value)
+                || (existingState.HasValue
+                    && existingState.Value.Destination.HasValue
+                    && existingState.Value.Destination.Value.MapId == preferredSourceMapId.Value);
         }
 
         private static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestination(
@@ -1945,12 +1950,9 @@ namespace HaCreator.MapSimulator.Fields
             List<RemoteTownPortalOwnerFieldObservation[]> candidatesBySourceMap = ownerObservationsBySourceMap
                 .Where(group => group != null && group.Length > 0)
                 .ToList();
-            if (candidatesBySourceMap.Count == 0)
-            {
-                return null;
-            }
-
-            RemoteTownPortalOwnerFieldObservation? selectedSourceObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceSelection(candidatesBySourceMap);
+            RemoteTownPortalOwnerFieldObservation? selectedSourceObservation = candidatesBySourceMap.Count > 0
+                ? SelectPreferredRemoteTownPortalOwnerObservationForSourceSelection(candidatesBySourceMap)
+                : null;
             RemoteTownPortalOwnerFieldObservation? existingSourceObservation = CreateRemoteTownPortalExistingSourceObservation(existingState);
             if (existingSourceObservation.HasValue
                 && (!selectedSourceObservation.HasValue
@@ -3374,6 +3376,60 @@ namespace HaCreator.MapSimulator.Fields
                 metadata,
                 ownerObservation,
                 preferredSourceMapId);
+        }
+
+        internal static int? ResolvePreferredRemoteTownPortalSourceMapIdForTesting(
+            int currentMapId,
+            bool hasExistingDestination,
+            int existingDestinationMapId,
+            float existingDestinationX,
+            float existingDestinationY,
+            bool hasMetadata,
+            int metadataSourceMapId,
+            float metadataSourceX,
+            float metadataSourceY,
+            int metadataTownMapId,
+            RemoteTownPortalObservationSource metadataObservationSource,
+            int metadataRecordedAt,
+            params (int SourceMapId, float SourceX, float SourceY, int TownMapId, RemoteTownPortalObservationSource ObservationSource, int RecordedAt)[] observations)
+        {
+            RemoteTownPortalState? existingState = hasExistingDestination
+                ? new RemoteTownPortalState(
+                    OwnerCharacterId: 1,
+                    State: 1,
+                    MapId: currentMapId,
+                    X: 0,
+                    Y: 0,
+                    Destination: new RemoteTownPortalResolvedDestination(existingDestinationMapId, existingDestinationX, existingDestinationY),
+                    Phase: RemoteTownPortalVisualPhase.Stable,
+                    PhaseStartedAt: 0,
+                    RemovalState: null,
+                    RemovalSnapshot: null)
+                : null;
+            RemoteTownPortalFieldMetadata? metadata = hasMetadata
+                ? new RemoteTownPortalFieldMetadata(
+                    metadataSourceMapId,
+                    metadataSourceX,
+                    metadataSourceY,
+                    metadataTownMapId,
+                    metadataObservationSource,
+                    metadataRecordedAt)
+                : null;
+            List<RemoteTownPortalOwnerFieldObservation[]> observationGroups = observations
+                .Select(observation => new RemoteTownPortalOwnerFieldObservation(
+                    observation.SourceMapId,
+                    observation.SourceX,
+                    observation.SourceY,
+                    observation.TownMapId,
+                    observation.ObservationSource,
+                    observation.RecordedAt))
+                .GroupBy(observation => observation.SourceMapId)
+                .Select(group => group.ToArray())
+                .ToList();
+            return SelectPreferredRemoteTownPortalSourceMapId(
+                existingState,
+                metadata,
+                observationGroups);
         }
 
         internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestinationFromPendingObservedCandidatesForTesting(

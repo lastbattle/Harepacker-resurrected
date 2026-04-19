@@ -8725,7 +8725,7 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < stopProperty.WzProperties.Count; i++)
             {
                 WzImageProperty branchProperty = stopProperty.WzProperties[i];
-                if (branchProperty == null || int.TryParse(branchProperty.Name, out _))
+                if (branchProperty == null || string.IsNullOrWhiteSpace(branchProperty.Name))
                 {
                     continue;
                 }
@@ -9154,7 +9154,7 @@ namespace HaCreator.MapSimulator.Interaction
                 for (int i = 0; i < stopProperty.WzProperties.Count; i++)
                 {
                     WzImageProperty branchProperty = stopProperty.WzProperties[i];
-                    if (branchProperty == null || int.TryParse(branchProperty.Name, out _))
+                    if (branchProperty == null || string.IsNullOrWhiteSpace(branchProperty.Name))
                     {
                         continue;
                     }
@@ -10070,19 +10070,36 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
             out IReadOnlyList<NpcInteractionPage> pages)
         {
-            for (int branchIndex = 0; branchIndex <= 3; branchIndex++)
+            pages = Array.Empty<NpcInteractionPage>();
+            if (stopPages == null || stopPages.Count == 0)
             {
-                if (TryGetStopPages(
-                        stopPages,
-                        branchIndex.ToString(CultureInfo.InvariantCulture),
-                        out pages))
-                {
-                    return true;
-                }
+                return false;
             }
 
-            pages = Array.Empty<NpcInteractionPage>();
-            return false;
+            int selectedBranchIndex = int.MaxValue;
+            IReadOnlyList<NpcInteractionPage> selectedPages = null;
+            foreach ((string branchName, IReadOnlyList<NpcInteractionPage> branchPages) in stopPages)
+            {
+                if (branchPages == null ||
+                    branchPages.Count == 0 ||
+                    !int.TryParse(branchName, NumberStyles.Integer, CultureInfo.InvariantCulture, out int branchIndex) ||
+                    branchIndex < 0 ||
+                    branchIndex >= selectedBranchIndex)
+                {
+                    continue;
+                }
+
+                selectedBranchIndex = branchIndex;
+                selectedPages = branchPages;
+            }
+
+            if (selectedPages == null)
+            {
+                return false;
+            }
+
+            pages = selectedPages;
+            return true;
         }
 
         private bool HasMissingItems(IReadOnlyList<QuestItemRequirement> requirements)

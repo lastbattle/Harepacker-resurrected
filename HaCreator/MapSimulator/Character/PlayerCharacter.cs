@@ -6464,6 +6464,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.RenderLayer,
                 ResolveMirrorImageSourcePartsObjectId(liveSourceParts),
                 preparedLayer.LastInsertCanvasSourcePartsObjectId,
+                preparedLayer.SourceSignature,
+                preparedLayer.LastInsertedSourceSignature,
                 preparedLayer.LastInsertCanvasSourceLayer,
                 preparedLayer.OverlayTargetLayer,
                 preparedLayer.LastInsertCanvasOverlayTargetLayer,
@@ -7223,25 +7225,15 @@ namespace HaCreator.MapSimulator.Character
             int preparedSourceSignature,
             IReadOnlyList<AssembledPart> liveSourceParts)
         {
+            _ = preparedActionName;
+            _ = currentActionName;
+            _ = preparedFrameIndex;
+            _ = currentFrameIndex;
+            _ = preparedFacingRight;
+            _ = currentFacingRight;
             _ = preparedSourceSignature;
-            if (string.IsNullOrWhiteSpace(currentActionName)
-                || currentFrameIndex < 0
-                || liveSourceParts == null
+            if (liveSourceParts == null
                 || liveSourceParts.Count == 0)
-            {
-                return false;
-            }
-
-            if (!string.Equals(
-                    preparedActionName ?? string.Empty,
-                    currentActionName ?? string.Empty,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            if (preparedFrameIndex != currentFrameIndex
-                || preparedFacingRight != currentFacingRight)
             {
                 return false;
             }
@@ -7255,6 +7247,8 @@ namespace HaCreator.MapSimulator.Character
             AvatarRenderLayer sourceLayer,
             int sourcePartsObjectId,
             int lastInsertCanvasSourcePartsObjectId,
+            int sourceSignature,
+            int lastInsertedSourceSignature,
             AvatarRenderLayer? lastInsertCanvasSourceLayer,
             AvatarRenderLayer overlayTargetLayer,
             AvatarRenderLayer? lastInsertCanvasOverlayTargetLayer,
@@ -7280,7 +7274,12 @@ namespace HaCreator.MapSimulator.Character
             if (lastInsertCanvasSourcePartsObjectId > 0
                 && sourcePartsObjectId != lastInsertCanvasSourcePartsObjectId)
             {
-                return false;
+                if (sourceSignature <= 0
+                    || lastInsertedSourceSignature <= 0
+                    || sourceSignature != lastInsertedSourceSignature)
+                {
+                    return false;
+                }
             }
 
             if (lastInsertCanvasOverlayTargetLayer.HasValue
@@ -7955,6 +7954,15 @@ namespace HaCreator.MapSimulator.Character
                             _activeShadowPartner.PendingPlaybackAnimation);
                         _activeShadowPartner.PendingFacingRight = FacingRight;
                         _activeShadowPartner.PendingForceReplay = true;
+                    }
+                    else
+                    {
+                        _activeShadowPartner.PendingActionName = null;
+                        _activeShadowPartner.PendingPlaybackAnimation = null;
+                        _activeShadowPartner.PendingForceReplay = false;
+                        _activeShadowPartner.QueuedActionName = null;
+                        _activeShadowPartner.QueuedPlaybackAnimation = null;
+                        _activeShadowPartner.QueuedForceReplay = false;
                     }
                 }
                 else

@@ -154,15 +154,20 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)
         {
-            return state.HasOneTimeActionCompleted
-                   && !state.IsImmovable
-                   && !state.IsAttractLocked
+            return CanAttemptHandleUpKeyDownReplay(state)
                    && state.IsOnFoothold;
         }
 
-        public static bool ShouldStopSkillMacroForQueuedReplay(bool canReplayHandleUpKeyDown)
+        public static bool CanAttemptHandleUpKeyDownReplay(PassiveTransferFieldReplayState state)
         {
-            return canReplayHandleUpKeyDown;
+            return state.HasOneTimeActionCompleted
+                   && !state.IsImmovable
+                   && !state.IsAttractLocked;
+        }
+
+        public static bool ShouldStopSkillMacroForQueuedReplay(bool canAttemptHandleUpKeyDownReplay)
+        {
+            return canAttemptHandleUpKeyDownReplay;
         }
     }
 }

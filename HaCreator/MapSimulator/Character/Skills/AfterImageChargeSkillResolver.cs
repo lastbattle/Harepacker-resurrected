@@ -298,6 +298,91 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
+        internal static bool TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int metadataOffset,
+            int preferredSkillId,
+            out int chargeSkillId)
+        {
+            chargeSkillId = 0;
+            if (payload.Length < sizeof(int)
+                || metadataOffset < 0
+                || metadataOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int alignedStartOffset = metadataOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            if (alignedStartOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int nearestSkillId = 0;
+            int nearestOffset = int.MaxValue;
+            long nearestDistance = long.MaxValue;
+            int preferredElement = 0;
+            if (preferredSkillId > 0)
+            {
+                TryGetChargeElement(preferredSkillId, out preferredElement);
+            }
+
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            {
+                int candidateSkillId = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                if (!IsKnownChargeSkillId(candidateSkillId))
+                {
+                    continue;
+                }
+
+                if (preferredSkillId > 0 && candidateSkillId == preferredSkillId)
+                {
+                    chargeSkillId = candidateSkillId;
+                    return true;
+                }
+
+                long distance = Math.Abs((long)offset - metadataOffset);
+                if (distance > nearestDistance)
+                {
+                    continue;
+                }
+
+                if (distance == nearestDistance)
+                {
+                    if (preferredElement > 0
+                        && TryGetChargeElement(candidateSkillId, out int candidateElement)
+                        && TryGetChargeElement(nearestSkillId, out int nearestElement)
+                        && candidateElement == preferredElement
+                        && nearestElement != preferredElement)
+                    {
+                        nearestSkillId = candidateSkillId;
+                        nearestOffset = offset;
+                        continue;
+                    }
+
+                    if (offset >= nearestOffset)
+                    {
+                        continue;
+                    }
+                }
+
+                nearestDistance = distance;
+                nearestOffset = offset;
+                nearestSkillId = candidateSkillId;
+            }
+
+            chargeSkillId = nearestSkillId;
+            return chargeSkillId > 0;
+        }
+
         private static bool TryResolveChargeElementByKnownPayloadCandidates(
             ReadOnlySpan<byte> payload,
             int startOffset,

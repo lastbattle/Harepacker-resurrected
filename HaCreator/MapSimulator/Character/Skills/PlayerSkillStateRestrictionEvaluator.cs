@@ -257,9 +257,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static string GetClientMeleeAirborneNoFootholdRestrictionMessage(PlayerCharacter player, SkillData skill)
         {
-            return ShouldBlockClientMeleeAirborneNoFoothold(skill?.SkillId ?? 0, player?.Physics?.IsOnFoothold() == true, player?.Physics?.IsUserFlying() == true)
+            return ShouldBlockClientMeleeAirborneNoFoothold(skill, player?.Physics?.IsOnFoothold() == true, player?.Physics?.IsUserFlying() == true)
                 ? "This skill cannot be used while airborne without foothold support."
                 : null;
+        }
+
+        internal static bool ShouldBlockClientMeleeAirborneNoFoothold(SkillData skill, bool isOnFoothold, bool isUserFlying)
+        {
+            return UsesClientMeleeAirborneNoFootholdGate(skill)
+                   && ShouldBlockClientMeleeAirborneNoFoothold(skill?.SkillId ?? 0, isOnFoothold, isUserFlying);
         }
 
         internal static bool ShouldBlockClientMeleeAirborneNoFoothold(int skillId, bool isOnFoothold, bool isUserFlying)
@@ -267,6 +273,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             return !isOnFoothold
                    && !isUserFlying
                    && ClientMeleeAirborneNoFootholdForbiddenSkillIds.Contains(skillId);
+        }
+
+        private static bool UsesClientMeleeAirborneNoFootholdGate(SkillData skill)
+        {
+            if (skill == null || !skill.IsAttack)
+            {
+                return false;
+            }
+
+            return skill.AttackType != SkillAttackType.Magic
+                   && skill.AttackType != SkillAttackType.Ranged;
         }
 
         private static string GetMagicAttackAirborneRestrictionMessage(PlayerCharacter player, SkillData skill)
@@ -518,7 +535,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (skill.ClientInfoType == 40
                 && skill.CasterMove
                 && skill.AvailableInJumpingState
-                && UsesBoundJumpActionProfile(skill))
+                && (UsesBoundJumpActionProfile(skill)
+                    || IsConstrainedType40IceDoubleJumpSkillId(skill.SkillId)))
             {
                 return true;
             }
@@ -627,6 +645,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == DualBladeFlashJumpSkillId
                    || skillId == NightWalkerFlashJumpSkillId
                    || skillId == RocketBoosterSkillId;
+        }
+
+        private static bool IsConstrainedType40IceDoubleJumpSkillId(int skillId)
+        {
+            return skillId is 1098
+                or 11098
+                or 10001098
+                or 20001098
+                or 20011098
+                or 20021098
+                or 30001098
+                or 30011098
+                or 50001098;
         }
     }
 }

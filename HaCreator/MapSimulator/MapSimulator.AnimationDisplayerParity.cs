@@ -194,7 +194,8 @@ namespace HaCreator.MapSimulator
             string BranchName,
             Point OriginOffset,
             bool FollowOwnerFacing = true,
-            bool FollowOwnerPosition = true);
+            bool FollowOwnerPosition = true,
+            bool? FacingRightOverride = null);
 
         internal readonly record struct AnimationDisplayerFallingRegistrationProfile(
             Rectangle StartArea,
@@ -1920,14 +1921,14 @@ namespace HaCreator.MapSimulator
                 ?? state?.OverlaySecondaryAnimation
                 ?? state?.UnderFaceAnimation
                 ?? state?.UnderFaceSecondaryAnimation);
-            endFrames = BuildAnimationDisplayerFramesFromSkillAnimation(
-                state?.Skill?.AvatarOverlayFinishEffect
-                ?? state?.Skill?.AvatarUnderFaceFinishEffect
-                ?? state?.Skill?.AvatarLadderFinishEffect
-                ?? state?.Skill?.KeydownEndEffect
-                ?? state?.Skill?.KeydownEndSecondaryEffect
-                ?? state?.Skill?.StopEffect
-                ?? state?.Skill?.StopSecondaryEffect);
+            endFrames = BuildAnimationDisplayerFramesFromSkillAnimations(
+                state?.Skill?.AvatarOverlayFinishEffect,
+                state?.Skill?.AvatarUnderFaceFinishEffect,
+                state?.Skill?.AvatarLadderFinishEffect,
+                state?.Skill?.KeydownEndEffect,
+                state?.Skill?.KeydownEndSecondaryEffect,
+                state?.Skill?.StopEffect,
+                state?.Skill?.StopSecondaryEffect);
 
             if (!Animation.AnimationEffects.HasFrames(repeatFrames)
                 && Animation.AnimationEffects.HasFrames(startFrames))
@@ -1974,6 +1975,32 @@ namespace HaCreator.MapSimulator
             }
 
             return frames.Count > 0 ? frames : null;
+        }
+
+        internal static List<IDXObject> BuildAnimationDisplayerFramesFromSkillAnimations(
+            params SkillAnimation[] animations)
+        {
+            if (animations == null || animations.Length == 0)
+            {
+                return null;
+            }
+
+            List<IDXObject> mergedFrames = null;
+            for (int i = 0; i < animations.Length; i++)
+            {
+                List<IDXObject> branchFrames = BuildAnimationDisplayerFramesFromSkillAnimation(animations[i]);
+                if (!Animation.AnimationEffects.HasFrames(branchFrames))
+                {
+                    continue;
+                }
+
+                mergedFrames ??= new List<IDXObject>(branchFrames.Count);
+                mergedFrames.AddRange(branchFrames);
+            }
+
+            return Animation.AnimationEffects.HasFrames(mergedFrames)
+                ? mergedFrames
+                : null;
         }
 
         private bool TryRegisterAnimationDisplayerFollow(int ownerCharacterId, Func<Vector2> getPosition, bool relativeEmission = true)
@@ -2630,6 +2657,12 @@ namespace HaCreator.MapSimulator
             {
                 Vector2 fallbackPosition = presentation.Position;
                 bool fallbackFacingRight = presentation.FacingRight;
+                Vector2 attachedOffset = Vector2.Zero;
+                if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor initialActor) == true
+                    && initialActor != null)
+                {
+                    attachedOffset = fallbackPosition - initialActor.Position;
+                }
                 _animationEffects.AddOneTimeAttached(
                     frames,
                     () =>
@@ -2637,7 +2670,7 @@ namespace HaCreator.MapSimulator
                         if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
                             && liveActor != null)
                         {
-                            return liveActor.Position;
+                            return liveActor.Position + attachedOffset;
                         }
 
                         return fallbackPosition;
@@ -3137,14 +3170,16 @@ namespace HaCreator.MapSimulator
                 castInfo.RequestedBranchNames,
                 castInfo.OriginOffset,
                 castInfo.FollowOwnerFacing,
-                castInfo.FollowOwnerPosition);
+                castInfo.FollowOwnerPosition,
+                castInfo.FacingRightOverride);
         }
 
         internal static bool HasClientSkillEffectRequestShapingForTesting(
             IReadOnlyList<string> requestedBranchNames,
             Point originOffset,
             bool followOwnerFacing,
-            bool followOwnerPosition)
+            bool followOwnerPosition,
+            bool? facingRightOverride = null)
         {
             if (requestedBranchNames != null && requestedBranchNames.Count > 0)
             {
@@ -3156,7 +3191,12 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            return !followOwnerFacing || !followOwnerPosition;
+            if (!followOwnerFacing || !followOwnerPosition)
+            {
+                return true;
+            }
+
+            return facingRightOverride.HasValue;
         }
 
         private bool TryRegisterAnimationDisplayerLocalSkillUseRequest(SkillUseEffectRequest request)
@@ -3192,9 +3232,10 @@ namespace HaCreator.MapSimulator
                 request.EffectBranchLastIndex,
                 request.OriginOffset,
                 request.FollowOwnerPosition,
-                request.FollowOwnerFacing);
+                request.FollowOwnerFacing,
+                request.FacingRightOverride);
             castInfo.CasterId = localCharacterId;
-            castInfo.FacingRight = facingRight;
+            castInfo.FacingRight = request.FacingRightOverride ?? facingRight;
             castInfo.DelayRateOverride = request.DelayRateOverride;
             return TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
@@ -3257,7 +3298,8 @@ namespace HaCreator.MapSimulator
             int? effectBranchLastIndex = null,
             Point originOffset = default,
             bool followOwnerPosition = true,
-            bool followOwnerFacing = true)
+            bool followOwnerFacing = true,
+            bool? facingRightOverride = null)
         {
             PlayerCharacter localPlayer = _playerManager?.Player;
             int localCharacterId = localPlayer?.Build?.Id ?? 0;
@@ -3282,7 +3324,8 @@ namespace HaCreator.MapSimulator
                 EffectBranchLastIndex = effectBranchLastIndex,
                 OriginOffset = originOffset,
                 FollowOwnerPosition = followOwnerPosition,
-                FollowOwnerFacing = followOwnerFacing
+                FollowOwnerFacing = followOwnerFacing,
+                FacingRightOverride = facingRightOverride
             };
         }
 
@@ -3406,6 +3449,7 @@ namespace HaCreator.MapSimulator
             bool hasOriginOffset = branchRequest.OriginOffset != Point.Zero;
             float branchX = casterX + branchRequest.OriginOffset.X;
             float branchY = casterY + branchRequest.OriginOffset.Y;
+            bool branchFacingRight = branchRequest.FacingRightOverride ?? facingRight;
             Func<Vector2> branchOwnerPosition = branchRequest.FollowOwnerPosition
                 ? getOwnerPosition
                 : null;
@@ -3424,6 +3468,12 @@ namespace HaCreator.MapSimulator
             Func<bool> branchOwnerFacingRight = branchRequest.FollowOwnerFacing
                 ? getOwnerFacingRight
                 : null;
+            if (branchRequest.FacingRightOverride.HasValue)
+            {
+                bool facingRightOverride = branchRequest.FacingRightOverride.Value;
+                branchOwnerFacingRight = () => facingRightOverride;
+            }
+
             string effectUol = BuildAnimationDisplayerSkillUseBranchUol(skillId, branchName);
             if (TryGetAnimationDisplayerSkillUseAvatarEffectVariants(effectUol, out List<AnimationDisplayerSkillUseAvatarEffectVariant> avatarVariants))
             {
@@ -3472,12 +3522,12 @@ namespace HaCreator.MapSimulator
                         branchOwnerFacingRight,
                         branchX,
                         branchY,
-                        facingRight,
+                        branchFacingRight,
                         currentTime);
                 }
                 else
                 {
-                    _animationEffects.AddOneTime(adjustedFrames, branchX, branchY, facingRight, currentTime);
+                    _animationEffects.AddOneTime(adjustedFrames, branchX, branchY, branchFacingRight, currentTime);
                 }
 
                 registered = true;
@@ -4048,7 +4098,8 @@ namespace HaCreator.MapSimulator
                         branchName,
                         castInfo.OriginOffset,
                         castInfo.FollowOwnerFacing,
-                        castInfo.FollowOwnerPosition);
+                        castInfo.FollowOwnerPosition,
+                        castInfo.FacingRightOverride);
                 }
 
                 if (seen.Count > 0)
@@ -4068,7 +4119,8 @@ namespace HaCreator.MapSimulator
                     branchName,
                     castInfo?.OriginOffset ?? Point.Zero,
                     castInfo?.FollowOwnerFacing ?? true,
-                    castInfo?.FollowOwnerPosition ?? true);
+                    castInfo?.FollowOwnerPosition ?? true,
+                    castInfo?.FacingRightOverride);
             }
         }
 

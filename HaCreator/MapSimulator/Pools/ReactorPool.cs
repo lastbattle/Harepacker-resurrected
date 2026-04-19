@@ -2787,6 +2787,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            bool packetNamePresent = candidates.Any(static candidate => candidate.IsPacketNamePresent);
+            if (packetNamePresent && !candidates.Any(static candidate => candidate.MatchesPacketName))
+            {
+                // Keep packet-enter ownership conservative when the packet carries a
+                // name but none of the authored candidates can satisfy it.
+                return false;
+            }
+
             if (candidates.Count == 1)
             {
                 index = candidates[0].Index;
@@ -2933,14 +2941,6 @@ namespace HaCreator.MapSimulator.Pools
             index = -1;
             if (candidates == null || candidates.Count <= 1)
             {
-                return false;
-            }
-
-            bool packetNameWasPresent = candidates[0].IsPacketNamePresent;
-            if (packetNameWasPresent && !candidates.Any(static candidate => candidate.MatchesPacketName))
-            {
-                // Keep packet-enter ownership conservative when the packet carries a
-                // name but none of the authored candidates can satisfy it.
                 return false;
             }
 
@@ -3660,9 +3660,9 @@ namespace HaCreator.MapSimulator.Pools
             int activeAnimationState,
             int transientHitSourceState)
         {
-            return transientHitSourceState >= 0
-                ? transientHitSourceState
-                : activeAnimationState;
+            return activeAnimationState >= 0
+                ? activeAnimationState
+                : transientHitSourceState;
         }
 
         internal static void CommitPacketLayerSourceOwnership(ReactorRuntimeData data, int visualState)

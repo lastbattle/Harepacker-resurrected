@@ -179,6 +179,17 @@ namespace HaCreator.MapSimulator.Character
                 ["dead"] = new[] { "sit", "stand1" },
                 ["ghost"] = new[] { "sit", "stand1" }
             };
+        private static readonly IReadOnlyDictionary<string, string[]> ClientActionRemapCandidates =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                // IDA `CActionMan::LoadTamingMobAction` remaps these raw actions before
+                // vehicle-family checks and frame loading:
+                // 4 -> 2 (stand1), 270 -> 43 (ladder2), 271 -> 2 (stand1), 272 -> 2 (stand1).
+                ["alert"] = new[] { "stand1", "stand2", "sit" },
+                ["braveslash3"] = new[] { "ladder2", "stand1", "stand2", "sit" },
+                ["braveslash4"] = new[] { "stand1", "stand2", "sit" },
+                ["chargeBlow"] = new[] { "stand1", "stand2", "sit" }
+            };
 
         private readonly Dictionary<string, string> _resolvedActionCache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -237,6 +248,19 @@ namespace HaCreator.MapSimulator.Character
                 foreach (string candidate in EnumeratePortableChairRideCandidates())
                 {
                     if (seen.Add(candidate) && IsActionAllowedForVehicle(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
+
+            if (ClientActionRemapCandidates.TryGetValue(actionName, out string[] remapCandidates))
+            {
+                foreach (string candidate in remapCandidates)
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate)
+                        && seen.Add(candidate)
+                        && IsActionAllowedForVehicle(candidate))
                     {
                         yield return candidate;
                     }

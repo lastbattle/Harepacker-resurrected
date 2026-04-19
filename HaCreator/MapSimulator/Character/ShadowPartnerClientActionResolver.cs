@@ -24,6 +24,8 @@ namespace HaCreator.MapSimulator.Character
         private static readonly string[] SwingHeuristicFragments =
         {
             "swing",
+            "slash",
+            "blow",
             "doubleswing",
             "tripleswing",
             "smash",
@@ -49,6 +51,8 @@ namespace HaCreator.MapSimulator.Character
         private static readonly string[] StabHeuristicFragments =
         {
             "stab",
+            "cut",
+            "impale",
             "pierce",
             "thrust",
             "assaulter",
@@ -2323,7 +2327,8 @@ namespace HaCreator.MapSimulator.Character
                 pieces[i] = new ShadowPartnerActionPiece(
                     i,
                     pieceFrames[i].PieceActionName,
-                    pieceFrames[i].SourceFrameIndex);
+                    pieceFrames[i].SourceFrameIndex,
+                    IsClientActionManInitPiece: true);
             }
 
             return pieces;
@@ -2344,7 +2349,8 @@ namespace HaCreator.MapSimulator.Character
                     i,
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex,
-                    pieceFrames[i].DelayOverrideMs);
+                    pieceFrames[i].DelayOverrideMs,
+                    IsClientActionManInitPiece: true);
             }
 
             return pieces;
@@ -2366,7 +2372,8 @@ namespace HaCreator.MapSimulator.Character
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex,
                     pieceFrames[i].DelayOverrideMs,
-                    pieceFrames[i].Flip);
+                    pieceFrames[i].Flip,
+                    IsClientActionManInitPiece: true);
             }
 
             return pieces;
@@ -2388,7 +2395,8 @@ namespace HaCreator.MapSimulator.Character
                 delayOverrideMs,
                 flip,
                 move,
-                rotationDegrees);
+                rotationDegrees,
+                IsClientActionManInitPiece: true);
         }
 
         private static IEnumerable<string> EnumerateRangedAttackCandidates(string playerActionName, bool floating)

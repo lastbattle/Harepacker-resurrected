@@ -2315,7 +2315,8 @@ namespace HaCreator.MapSimulator.Animation
         RetainLoadedLayerForRegistration = 5,
         ReleaseLoadedLayer = 6,
         ReleaseOriginVector = 7,
-        ReleaseOverlayParent = 8
+        ReleaseOverlayParent = 8,
+        ReleaseSourceUol = 9
     }
 
     internal readonly record struct OneTimeAnimationRecoveredNativeOperation(
@@ -2444,7 +2445,9 @@ namespace HaCreator.MapSimulator.Animation
         SetLayerPriority,
         InsertCanvas,
         SetLayerPosition,
-        RegisterOneTimeAnimation
+        RetainLayerForOneTimeRegistration,
+        RegisterOneTimeAnimation,
+        ReleaseLayerAfterOneTimeRegistration
     }
 
     /// <summary>
@@ -2761,7 +2764,7 @@ namespace HaCreator.MapSimulator.Animation
                 registrationTrace.InsertCommands ?? Array.Empty<CanvasLayerRecoveredInsertCommand>();
             bool hasOverlayPositionWrite = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
             int capacity = ownerTemporaryCanvasOperations.Length + 3 + insertCommands.Length + 1 + (hasOverlayPositionWrite ? 1 : 0)
-                + (registrationTrace.RegistersOneTimeAnimation ? 1 : 0);
+                + (registrationTrace.RegistersOneTimeAnimation ? 3 : 0);
             var operations = new List<CanvasLayerRecoveredNativeOperation>(capacity);
 
             for (int i = 0; i < ownerTemporaryCanvasOperations.Length; i++)
@@ -2877,6 +2880,15 @@ namespace HaCreator.MapSimulator.Animation
             if (registrationTrace.RegistersOneTimeAnimation)
             {
                 operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.RetainLayerForOneTimeRegistration,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    1));
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
                     CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation,
                     null,
                     Point.Zero,
@@ -2885,6 +2897,15 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     0));
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    -1));
             }
 
             return operations.ToArray();
@@ -3336,6 +3357,16 @@ namespace HaCreator.MapSimulator.Animation
 
             operations.Add(new OneTimeAnimationRecoveredNativeOperation(
                 OneTimeAnimationRecoveredNativeOperationKind.ReleaseLoadedLayer,
+                trace.SourceUol,
+                AnimationOneTimePlaybackMode.Default,
+                false,
+                0,
+                0,
+                false,
+                AnimationOneTimeOverlayParentKind.None,
+                Value: 1));
+            operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                OneTimeAnimationRecoveredNativeOperationKind.ReleaseSourceUol,
                 trace.SourceUol,
                 AnimationOneTimePlaybackMode.Default,
                 false,
