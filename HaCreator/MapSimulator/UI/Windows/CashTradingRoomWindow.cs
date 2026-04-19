@@ -12,6 +12,17 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class CashTradingRoomWindow : UIWindowBase, ISoftKeyboardHost
     {
+        public sealed class PacketTradeSessionSnapshot
+        {
+            public string Signature { get; init; } = string.Empty;
+            public int CommoditySerialNumber { get; init; }
+            public int ItemId { get; init; }
+            public int Price { get; init; }
+            public string ListingTitle { get; init; } = string.Empty;
+            public string Seller { get; init; } = string.Empty;
+            public string PacketSummary { get; init; } = string.Empty;
+        }
+
         private enum TradeSessionStage
         {
             Draft,
@@ -52,6 +63,57 @@ namespace HaCreator.MapSimulator.UI
             public Point Offset { get; }
         }
 
+        private sealed class ChatEditRuntimeState
+        {
+            public int ControlId { get; init; } = 1006;
+            public int FontStringPoolId { get; init; } = 0x1A25;
+            public Point Position { get; init; } = new(ChatEditX, ChatEditY);
+            public Size Size { get; init; } = new(ChatEditWidth, ChatEditHeight);
+            public int MaxLength { get; init; } = ChatMaxLength;
+            public bool HasFocus { get; set; }
+            public bool SoftKeyboardActive { get; set; }
+            public int Revision { get; set; }
+        }
+
+        private sealed class ScrollBarRuntimeState
+        {
+            public int ControlId { get; init; } = 1000;
+            public int UpButtonId { get; init; } = 1;
+            public int DownButtonId { get; init; } = 8;
+            public Point Position { get; init; } = new(ChatScrollX, ChatScrollY);
+            public int Height { get; init; } = ChatScrollHeight;
+            public int WheelRange { get; init; } = ChatWheelRange;
+            public int Offset { get; set; }
+            public int MaxOffset { get; set; }
+            public bool IsDragging { get; set; }
+            public int Revision { get; set; }
+        }
+
+        private sealed class FontRuntimeState
+        {
+            public int NumberImageStringPoolId { get; init; } = 0x50E;
+            public bool HasSmallWhiteFont { get; set; } = true;
+            public bool HasNoBlackFont { get; set; } = true;
+            public bool HasNoBlueFont { get; set; } = true;
+            public bool HasSmallGrayFont { get; set; } = true;
+            public bool HasSmallRedFont { get; set; } = true;
+            public bool HasRemainGrayFont { get; set; } = true;
+            public bool HasNumberImage { get; set; } = true;
+            public int Revision { get; set; }
+        }
+
+        private sealed class TradeSessionRuntimeState
+        {
+            public int InitMoney { get; set; }
+            public int LocalWallet { get; set; }
+            public int RemoteWallet { get; set; }
+            public int LocalOffer { get; set; }
+            public int RemoteOffer { get; set; }
+            public TradeSessionStage Stage { get; set; } = TradeSessionStage.Draft;
+            public int Revision { get; set; }
+            public string PacketSignature { get; set; } = string.Empty;
+        }
+
         private const int ChatEditX = 410;
         private const int ChatEditY = 158;
         private const int ChatEditWidth = 165;
@@ -83,6 +145,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<LayerInfo> _layers = new();
         private readonly Texture2D _solidPixel;
         private readonly AntiMacroEditControl _chatEditControl;
+        private readonly ChatEditRuntimeState _editRuntime = new();
+        private readonly ScrollBarRuntimeState _scrollBarRuntime = new();
+        private readonly FontRuntimeState _fontRuntime = new();
+        private readonly TradeSessionRuntimeState _sessionRuntime = new();
         private readonly List<string> _chatEntries = new()
         {
             "Rondo: Added ore stack to the trade window.",
@@ -123,6 +189,8 @@ namespace HaCreator.MapSimulator.UI
         private RemoteTradeProgressState _remoteProgressState = RemoteTradeProgressState.Reviewing;
         private TradeOwnerFocusTarget _focusedControl = TradeOwnerFocusTarget.ChatEdit;
         private bool _softKeyboardActive;
+        private Func<PacketTradeSessionSnapshot> _packetSessionProvider;
+        private string _packetSessionSignature = string.Empty;
         private string _statusMessage = "CCashTradingRoomDlg ready: chat entry, scrollbar, and money fonts are staged.";
 
         public CashTradingRoomWindow(IDXObject frame, GraphicsDevice graphicsDevice)
@@ -204,6 +272,12 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void SetPacketSessionProvider(Func<PacketTradeSessionSnapshot> packetSessionProvider)
+        {
+            _packetSessionProvider = packetSessionProvider;
+            _packetSessionSignature = string.Empty;
+        }
+
         public void ResetOwnerSession()
         {
             _initialMoney = Math.Max(0, _localWalletProvider?.Invoke() ?? 0);
@@ -229,6 +303,7 @@ namespace HaCreator.MapSimulator.UI
             _chatEntries.Add("System: CCashTradingRoomDlg initialized its dedicated chat entry and scrollbar.");
             _chatEditControl.Reset();
             _statusMessage = $"CCashTradingRoomDlg ready with init money {_initialMoney.ToString("N0", CultureInfo.InvariantCulture)}.";
+            RefreshOwnerRuntimeState();
         }
 
         public void BindButton(UIObject button, Action action)
@@ -266,6 +341,7 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = _localLocked
                 ? "CCashTradingRoomDlg::OnTrade locked the local offer and is waiting for the remote owner to mirror the lock."
                 : "CCashTradingRoomDlg::OnTrade reopened the trade after clearing the lock.";
+            RefreshOwnerRuntimeState();
         }
 
         public void ResetTrade()
@@ -286,6 +362,7 @@ namespace HaCreator.MapSimulator.UI
             _remoteProgressState = RemoteTradeProgressState.Reviewing;
             AppendChatLine("System", "Trade draft reset and both escrow panes cleared back to the init-money snapshot.");
             _statusMessage = $"CCashTradingRoomDlg::OnTradeReset restored the session wallets to init money {_initialMoney.ToString("N0", CultureInfo.InvariantCulture)}.";
+            RefreshOwnerRuntimeState();
         }
 
         public void IncreaseTradeOffer()
@@ -308,6 +385,7 @@ namespace HaCreator.MapSimulator.UI
             _tradeRevision++;
             AppendChatLine(_remoteTraderName, _tradeRevision % 2 == 0 ? "Raised my side a bit to match." : "Offer updated on my side too.");
             _statusMessage = $"CCashTradingRoomDlg::OnMoney raised the local offer to {_localOffer.ToString("N0", CultureInfo.InvariantCulture)} meso.";
+            RefreshOwnerRuntimeState();
         }
 
         public void ToggleTradeAcceptance()
@@ -344,6 +422,7 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = _localAccepted
                 ? "CCashTradingRoomDlg::OnClaim accepted the locked trade for the local preview trader and is waiting for the remote owner."
                 : "CCashTradingRoomDlg::OnClaim canceled the final trade acceptance.";
+            RefreshOwnerRuntimeState();
         }
 
         public void SubmitChatEntry()
@@ -362,6 +441,7 @@ namespace HaCreator.MapSimulator.UI
             _chatScrollOffset = 0;
             _remoteProgressTick = Environment.TickCount + 2200;
             _statusMessage = "CCashTradingRoomDlg::OnEnter committed the current chat line through the dedicated edit-control seam.";
+            RefreshOwnerRuntimeState();
         }
 
         public override void Update(GameTime gameTime)
@@ -376,6 +456,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _chatEditControl.HandleKeyboardInput(keyboardState, _previousKeyboardState);
+            SyncPacketOwnedTradeSession();
             HandleOwnerKeyboard(keyboardState);
             if (Pressed(keyboardState, _previousKeyboardState, Keys.Enter) && _chatEditControl.HasFocus)
             {
@@ -383,6 +464,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AdvanceRemoteOwnerRuntime();
+            RefreshOwnerRuntimeState();
             _previousKeyboardState = keyboardState;
             _previousMouseState = Mouse.GetState();
         }
@@ -549,6 +631,8 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, $"Edit [{ChatEditX},{ChatEditY} {ChatEditWidth}x{ChatEditHeight} max {ChatMaxLength}]  Focus {(_chatEditControl.HasFocus ? "on" : "off")}  Owner focus {DescribeFocusedControl()}  Scroll [{ChatScrollX},{ChatScrollY} h{ChatScrollHeight} wheel {ChatWheelRange}]  Offset {_chatScrollOffset}", new Vector2(Position.X + 22, stateY + 18), mutedColor);
             sprite.DrawString(_font, $"Draft fallback: {_chatDrafts[_chatDraftIndex]}", new Vector2(Position.X + 22, stateY + 36), accentColor);
             sprite.DrawString(_font, $"Remote: {_remoteProgressState}  Buttons: Trade / Reset / Coin / Clame / Enter  Tab cycles owner focus; Space activates.", new Vector2(Position.X + 22, stateY + 54), mutedColor);
+            sprite.DrawString(_font, $"Runtime CCtrlEdit#{_editRuntime.ControlId} rev {_editRuntime.Revision}  CCtrlScrollBar#{_scrollBarRuntime.ControlId} rev {_scrollBarRuntime.Revision}  Font owner rev {_fontRuntime.Revision} (num-img 0x{_fontRuntime.NumberImageStringPoolId:X})", new Vector2(Position.X + 22, stateY + 72), mutedColor);
+            sprite.DrawString(_font, $"Session rev {_sessionRuntime.Revision}  Packet signature {TrimToLength(_sessionRuntime.PacketSignature, 28)}", new Vector2(Position.X + 22, stateY + 90), mutedColor);
 
             Rectangle chatBox = GetChatLogBounds(GetWindowBounds());
             sprite.DrawString(_font, "Chat log", new Vector2(chatBox.X, chatBox.Y - 18), labelColor);
@@ -609,6 +693,7 @@ namespace HaCreator.MapSimulator.UI
                     ? "Still comparing the price against the cash balance."
                     : "The chat owner is still active on my side.");
                 _remoteProgressTick = now + 2800;
+                RefreshOwnerRuntimeState();
                 return;
             }
 
@@ -619,6 +704,7 @@ namespace HaCreator.MapSimulator.UI
                 _statusMessage = "CCashTradingRoomDlg remote owner finished locking the trade.";
                 _remoteProgressState = _localAccepted ? RemoteTradeProgressState.WaitingForAcceptance : RemoteTradeProgressState.Idle;
                 _remoteProgressTick = now + 2400;
+                RefreshOwnerRuntimeState();
                 return;
             }
 
@@ -632,6 +718,7 @@ namespace HaCreator.MapSimulator.UI
                 _statusMessage = "CCashTradingRoomDlg remote owner accepted the locked trade and closed the preview session.";
                 _remoteProgressState = RemoteTradeProgressState.Closing;
                 _remoteProgressTick = now + 1800;
+                RefreshOwnerRuntimeState();
                 return;
             }
 
@@ -640,12 +727,14 @@ namespace HaCreator.MapSimulator.UI
                 AppendChatLine(_remoteTraderName, "Trade complete. Closing the room after the last review.");
                 _remoteProgressState = RemoteTradeProgressState.Idle;
                 _remoteProgressTick = int.MaxValue;
+                RefreshOwnerRuntimeState();
             }
         }
 
         private void ScrollChat(int delta)
         {
             _chatScrollOffset = Math.Clamp(_chatScrollOffset + delta, 0, GetMaxChatScrollOffset());
+            _scrollBarRuntime.Offset = _chatScrollOffset;
         }
 
         private int GetLocalRemainingMoney()
@@ -699,6 +788,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _statusMessage = "CCashTradingRoomDlg::OnScroll moved the dedicated chat scrollbar.";
+            RefreshOwnerRuntimeState();
         }
 
         private void ApplyScrollThumbDrag(int mouseY, Rectangle ownerBounds)
@@ -716,6 +806,65 @@ namespace HaCreator.MapSimulator.UI
             int relativeY = Math.Clamp(mouseY - scrollBounds.Y - _chatScrollThumbGrabOffset, 0, trackHeight);
             _chatScrollOffset = (int)Math.Round(relativeY / (double)trackHeight * maxOffset, MidpointRounding.AwayFromZero);
             _statusMessage = "CCashTradingRoomDlg::OnScroll dragged the dedicated chat scrollbar thumb.";
+            RefreshOwnerRuntimeState();
+        }
+
+        private void SyncPacketOwnedTradeSession()
+        {
+            PacketTradeSessionSnapshot snapshot = _packetSessionProvider?.Invoke();
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            string signature = snapshot.Signature ?? string.Empty;
+            if (string.IsNullOrEmpty(signature) || string.Equals(_packetSessionSignature, signature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _packetSessionSignature = signature;
+            _sessionRuntime.PacketSignature = signature;
+            if (!string.IsNullOrWhiteSpace(snapshot.Seller))
+            {
+                _remoteTraderName = snapshot.Seller.Trim();
+            }
+
+            if (snapshot.Price > 0 && !_localLocked)
+            {
+                _remoteOffer = Math.Clamp(snapshot.Price, 0, Math.Max(0, _remoteWallet));
+                _remoteProgressState = RemoteTradeProgressState.Reviewing;
+            }
+
+            string listing = string.IsNullOrWhiteSpace(snapshot.ListingTitle)
+                ? $"SN {snapshot.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                : snapshot.ListingTitle.Trim();
+            AppendChatLine("System", $"CCashTradingRoomDlg staged packet-owned listing {listing} (item {snapshot.ItemId.ToString(CultureInfo.InvariantCulture)}).");
+            if (!string.IsNullOrWhiteSpace(snapshot.PacketSummary))
+            {
+                _statusMessage = snapshot.PacketSummary.Trim();
+            }
+
+            RefreshOwnerRuntimeState();
+        }
+
+        private void RefreshOwnerRuntimeState()
+        {
+            _editRuntime.HasFocus = _chatEditControl.HasFocus;
+            _editRuntime.SoftKeyboardActive = _softKeyboardActive;
+            _editRuntime.Revision = _tradeRevision + (_chatEditControl.HasFocus ? 1 : 0);
+            _scrollBarRuntime.Offset = _chatScrollOffset;
+            _scrollBarRuntime.MaxOffset = GetMaxChatScrollOffset();
+            _scrollBarRuntime.IsDragging = _draggingChatScrollThumb;
+            _scrollBarRuntime.Revision = _tradeRevision + _chatScrollOffset;
+            _fontRuntime.Revision = _font != null ? 1 : 0;
+            _sessionRuntime.InitMoney = _initialMoney;
+            _sessionRuntime.LocalWallet = _localWalletSnapshot;
+            _sessionRuntime.RemoteWallet = _remoteWallet;
+            _sessionRuntime.LocalOffer = _localOffer;
+            _sessionRuntime.RemoteOffer = _remoteOffer;
+            _sessionRuntime.Stage = _sessionStage;
+            _sessionRuntime.Revision = _tradeRevision;
         }
 
         private void HandleOwnerKeyboard(KeyboardState keyboardState)

@@ -1,8 +1,11 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.UI;
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 
@@ -12,6 +15,7 @@ namespace HaCreator.MapSimulator
     {
         private const int MonsterBookRegistrationResponseDelayMs = 120;
         private const int MonsterBookRegistrationSyntheticResultTimeoutMs = 2000;
+        private const int MonsterBookRegistrationOfficialSessionTimeoutMs = 5000;
         private PendingMonsterBookRegistrationRequest _pendingMonsterBookRegistrationRequest;
         private int _nextMonsterBookRegistrationRequestId = 1;
 
@@ -38,6 +42,35 @@ namespace HaCreator.MapSimulator
             public int? MobId { get; }
             public bool? Registered { get; }
             public int? ReasonCode { get; }
+            public string StatusText { get; }
+        }
+
+        internal readonly struct MonsterBookOwnershipSyncPayload
+        {
+            public MonsterBookOwnershipSyncPayload(
+                bool clearRequested,
+                bool replaceExisting,
+                int? characterId,
+                string characterName,
+                int? registeredMobId,
+                IReadOnlyDictionary<int, int> cardCountsByMob,
+                string statusText)
+            {
+                ClearRequested = clearRequested;
+                ReplaceExisting = replaceExisting;
+                CharacterId = characterId;
+                CharacterName = characterName ?? string.Empty;
+                RegisteredMobId = registeredMobId;
+                CardCountsByMob = cardCountsByMob ?? new Dictionary<int, int>();
+                StatusText = statusText ?? string.Empty;
+            }
+
+            public bool ClearRequested { get; }
+            public bool ReplaceExisting { get; }
+            public int? CharacterId { get; }
+            public string CharacterName { get; }
+            public int? RegisteredMobId { get; }
+            public IReadOnlyDictionary<int, int> CardCountsByMob { get; }
             public string StatusText { get; }
         }
 
@@ -86,17 +119,24 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            bool hasLiveOfficialSession = _localUtilityOfficialSessionBridge?.HasConnectedSession == true;
             if (!request.SyntheticResultQueued)
             {
-                request.SyntheticResultQueued = true;
-                _localUtilityPacketInbox.EnqueueLocal(
-                    LocalUtilityPacketInboxManager.MonsterBookRegistrationResultPacketType,
-                    BuildMonsterBookRegistrationSyntheticResultPayload(request),
-                    "monster-book-registration");
-                return;
+                if (!hasLiveOfficialSession)
+                {
+                    request.SyntheticResultQueued = true;
+                    _localUtilityPacketInbox.EnqueueLocal(
+                        LocalUtilityPacketInboxManager.MonsterBookRegistrationResultPacketType,
+                        BuildMonsterBookRegistrationSyntheticResultPayload(request),
+                        "monster-book-registration");
+                    return;
+                }
             }
 
-            if (elapsedMs >= request.ResponseDelayMs + MonsterBookRegistrationSyntheticResultTimeoutMs)
+            int timeoutMs = hasLiveOfficialSession
+                ? MonsterBookRegistrationOfficialSessionTimeoutMs
+                : MonsterBookRegistrationSyntheticResultTimeoutMs;
+            if (elapsedMs >= request.ResponseDelayMs + timeoutMs)
             {
                 _pendingMonsterBookRegistrationRequest = null;
                 ShowUtilityFeedbackMessage(
@@ -168,12 +208,79 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedMonsterBookOwnershipSyncPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryDecodeMonsterBookOwnershipSyncPayload(payload, out MonsterBookOwnershipSyncPayload sync, out string detail))
+            {
+                message = detail ?? "Monster Book ownership sync payload could not be decoded.";
+                return false;
+            }
+
+            UserInfoUI.UserInfoActionContext context = ResolveBookCollectionActionContext();
+            var ownerIdentity = ResolveMonsterBookOwnerIdentity(
+                context,
+                _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build);
+
+            int resolvedCharacterId = sync.CharacterId.HasValue && sync.CharacterId.Value > 0
+                ? sync.CharacterId.Value
+                : ownerIdentity.CharacterId;
+            string resolvedCharacterName = !string.IsNullOrWhiteSpace(sync.CharacterName)
+                ? sync.CharacterName.Trim()
+                : ownerIdentity.CharacterName;
+
+            MonsterBookSnapshot snapshot = _monsterBookManager.ApplyOwnershipSync(
+                ownerIdentity.Build,
+                resolvedCharacterId,
+                resolvedCharacterName,
+                sync.CardCountsByMob,
+                registeredMobId: sync.RegisteredMobId ?? 0,
+                replaceExisting: sync.ClearRequested || sync.ReplaceExisting);
+
+            if (_pendingMonsterBookRegistrationRequest != null
+                && IsMonsterBookOwnershipSyncForPendingRequest(
+                    _pendingMonsterBookRegistrationRequest,
+                    resolvedCharacterId,
+                    resolvedCharacterName,
+                    snapshot?.RegisteredCardMobId ?? 0))
+            {
+                _pendingMonsterBookRegistrationRequest = null;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+
+            string ownerLabel = string.IsNullOrWhiteSpace(resolvedCharacterName)
+                ? (resolvedCharacterId > 0
+                    ? $"id:{resolvedCharacterId.ToString(CultureInfo.InvariantCulture)}"
+                    : "the active character")
+                : resolvedCharacterName;
+            int appliedCount = snapshot?.OwnedCardTypes ?? 0;
+            int totalCount = snapshot?.TotalCardTypes ?? 0;
+            int registeredMobId = snapshot?.RegisteredCardMobId ?? 0;
+
+            string summary = sync.ClearRequested
+                ? $"Monster Book ownership was cleared and refreshed for {ownerLabel} via packet-owned sync."
+                : $"Monster Book ownership synced for {ownerLabel} via packet-owned sync.";
+            message = AppendMonsterBookRegistrationStatusText(
+                sync.StatusText,
+                $"{summary} Owned card types now {appliedCount.ToString(CultureInfo.InvariantCulture)}/{totalCount.ToString(CultureInfo.InvariantCulture)}; registered mob {registeredMobId.ToString(CultureInfo.InvariantCulture)}.");
+            return true;
+        }
+
         internal static bool TryDecodeMonsterBookRegistrationResultPayloadForTests(
             byte[] payload,
             out MonsterBookRegistrationResultPayload result,
             out string detail)
         {
             return TryDecodeMonsterBookRegistrationResultPayload(payload, out result, out detail);
+        }
+
+        internal static bool TryDecodeMonsterBookOwnershipSyncPayloadForTests(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            return TryDecodeMonsterBookOwnershipSyncPayload(payload, out result, out detail);
         }
 
         private int ReserveMonsterBookRegistrationRequestId()
@@ -263,6 +370,424 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool TryDecodeMonsterBookOwnershipSyncPayload(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = new MonsterBookOwnershipSyncPayload(
+                clearRequested: false,
+                replaceExisting: true,
+                characterId: null,
+                characterName: string.Empty,
+                registeredMobId: null,
+                cardCountsByMob: new Dictionary<int, int>(),
+                statusText: string.Empty);
+            detail = null;
+
+            if (payload == null || payload.Length == 0)
+            {
+                detail = "Monster Book ownership sync payload is missing.";
+                return false;
+            }
+
+            if (TryDecodeMonsterBookOwnershipSyncJsonPayload(payload, out result, out detail))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(detail))
+            {
+                return false;
+            }
+
+            if (TryDecodeMonsterBookOwnershipSyncBinaryPayload(payload, out result, out detail))
+            {
+                return true;
+            }
+
+            if (TryDecodeMonsterBookOwnershipSyncCompactBinaryPayload(payload, out result, out detail))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(detail))
+            {
+                detail = "Monster Book ownership sync payload could not be decoded from JSON or binary shape.";
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeMonsterBookOwnershipSyncJsonPayload(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = default;
+            detail = null;
+            ReadOnlySpan<byte> trimmed = TrimJsonPayload(payload);
+            if (trimmed.Length <= 0 || trimmed[0] != (byte)'{')
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(trimmed.ToArray());
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    detail = "Monster Book ownership sync JSON payload must be an object.";
+                    return false;
+                }
+
+                bool clearRequested = ReadBoolean(root, false, "clear", "reset", "clearRequested");
+                bool replaceExisting = ReadBoolean(root, true, "replaceExisting", "replace", "overwrite");
+                int? characterId = NormalizePositiveInt(ReadInt(root, "characterId", "charId", "id"));
+                string characterName = ReadString(root, "characterName", "charName", "name", "ownerName");
+                int? registeredMobId = NormalizePositiveInt(ReadInt(root, "registeredMobId", "registeredMob", "selectedMobId"));
+                string statusText = ReadString(root, "statusText", "message", "text", "notice");
+
+                if (root.TryGetProperty("owner", out JsonElement ownerElement)
+                    && ownerElement.ValueKind == JsonValueKind.Object)
+                {
+                    characterId ??= NormalizePositiveInt(ReadInt(ownerElement, "characterId", "charId", "id"));
+                    if (string.IsNullOrWhiteSpace(characterName))
+                    {
+                        characterName = ReadString(ownerElement, "characterName", "charName", "name");
+                    }
+                }
+
+                Dictionary<int, int> counts = new();
+                if (TryReadMonsterBookCardCounts(root, out Dictionary<int, int> parsedCounts))
+                {
+                    counts = parsedCounts;
+                }
+
+                if (clearRequested)
+                {
+                    counts.Clear();
+                    replaceExisting = true;
+                }
+
+                result = new MonsterBookOwnershipSyncPayload(
+                    clearRequested,
+                    replaceExisting,
+                    characterId,
+                    characterName,
+                    registeredMobId,
+                    counts,
+                    statusText);
+                detail = "Decoded Monster Book ownership sync JSON payload.";
+                return true;
+            }
+            catch (JsonException ex)
+            {
+                detail = $"Monster Book ownership sync JSON payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeMonsterBookOwnershipSyncBinaryPayload(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = default;
+            detail = null;
+            if (payload == null || payload.Length < 8)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.UTF8, leaveOpen: true);
+                if (reader.ReadByte() != (byte)'M'
+                    || reader.ReadByte() != (byte)'B'
+                    || reader.ReadByte() != (byte)'O'
+                    || reader.ReadByte() != (byte)'S')
+                {
+                    return false;
+                }
+
+                byte flags = reader.ReadByte();
+                bool clearRequested = (flags & 0x01) != 0;
+                bool replaceExisting = (flags & 0x02) != 0 || clearRequested;
+                bool hasCharacterId = (flags & 0x04) != 0;
+                bool hasRegisteredMob = (flags & 0x08) != 0;
+                bool hasCharacterName = (flags & 0x10) != 0;
+                bool hasStatusText = (flags & 0x20) != 0;
+
+                int? characterId = hasCharacterId
+                    ? NormalizePositiveInt(reader.ReadInt32())
+                    : null;
+                int? registeredMobId = hasRegisteredMob
+                    ? NormalizePositiveInt(reader.ReadInt32())
+                    : null;
+                ushort entryCount = reader.ReadUInt16();
+                Dictionary<int, int> counts = new();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    int mobId = reader.ReadInt32();
+                    int count = reader.ReadByte();
+                    if (mobId > 0 && count > 0)
+                    {
+                        counts[mobId] = Math.Clamp(count, 0, 5);
+                    }
+                }
+
+                string characterName = hasCharacterName
+                    ? ReadLengthPrefixedUtf8(reader)
+                    : string.Empty;
+                string statusText = hasStatusText
+                    ? ReadLengthPrefixedUtf8(reader)
+                    : string.Empty;
+
+                if (clearRequested)
+                {
+                    counts.Clear();
+                }
+
+                result = new MonsterBookOwnershipSyncPayload(
+                    clearRequested,
+                    replaceExisting,
+                    characterId,
+                    characterName,
+                    registeredMobId,
+                    counts,
+                    statusText);
+                detail = "Decoded Monster Book ownership sync binary payload.";
+                return true;
+            }
+            catch (Exception ex)
+            {
+                detail = $"Monster Book ownership sync binary payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeMonsterBookOwnershipSyncCompactBinaryPayload(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = default;
+            detail = null;
+            if (payload == null || payload.Length < 3)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.UTF8, leaveOpen: true);
+
+                byte flags = reader.ReadByte();
+                bool clearRequested = (flags & 0x01) != 0;
+                bool replaceExisting = (flags & 0x02) != 0 || clearRequested;
+                bool hasCharacterId = (flags & 0x04) != 0;
+                bool hasCharacterName = (flags & 0x08) != 0;
+                bool hasRegisteredMobId = (flags & 0x10) != 0;
+                bool hasStatusText = (flags & 0x20) != 0;
+
+                int? characterId = hasCharacterId
+                    ? NormalizePositiveInt(reader.ReadInt32())
+                    : null;
+
+                string characterName = hasCharacterName
+                    ? ReadLengthPrefixedUtf8(reader)
+                    : string.Empty;
+
+                int? registeredMobId = hasRegisteredMobId
+                    ? NormalizePositiveInt(reader.ReadInt32())
+                    : null;
+
+                ushort entryCount = reader.ReadUInt16();
+                if (entryCount > 1024)
+                {
+                    detail = $"Monster Book ownership sync compact payload entry count {entryCount.ToString(CultureInfo.InvariantCulture)} is outside expected range.";
+                    return false;
+                }
+
+                Dictionary<int, int> counts = new();
+                for (int i = 0; i < entryCount; i++)
+                {
+                    int mobId = reader.ReadInt32();
+                    int count = reader.ReadByte();
+                    if (mobId > 0 && count > 0)
+                    {
+                        counts[mobId] = Math.Clamp(count, 0, 5);
+                    }
+                }
+
+                string statusText = hasStatusText
+                    ? ReadLengthPrefixedUtf8(reader)
+                    : string.Empty;
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                if (clearRequested)
+                {
+                    counts.Clear();
+                }
+
+                result = new MonsterBookOwnershipSyncPayload(
+                    clearRequested,
+                    replaceExisting,
+                    characterId,
+                    characterName,
+                    registeredMobId,
+                    counts,
+                    statusText);
+                detail = "Decoded Monster Book ownership sync compact binary payload.";
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsMonsterBookOwnershipSyncForPendingRequest(
+            PendingMonsterBookRegistrationRequest pendingRequest,
+            int syncedCharacterId,
+            string syncedCharacterName,
+            int syncedRegisteredMobId)
+        {
+            if (pendingRequest == null)
+            {
+                return false;
+            }
+
+            bool sameCharacter = false;
+            if (syncedCharacterId > 0 && pendingRequest.CharacterId > 0)
+            {
+                sameCharacter = syncedCharacterId == pendingRequest.CharacterId;
+            }
+            else if (!string.IsNullOrWhiteSpace(syncedCharacterName)
+                && !string.IsNullOrWhiteSpace(pendingRequest.CharacterName))
+            {
+                sameCharacter = string.Equals(
+                    syncedCharacterName.Trim(),
+                    pendingRequest.CharacterName.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (!sameCharacter)
+            {
+                return false;
+            }
+
+            return pendingRequest.Registered
+                ? syncedRegisteredMobId == pendingRequest.MobId
+                : syncedRegisteredMobId <= 0 || syncedRegisteredMobId != pendingRequest.MobId;
+        }
+
+        private static string ReadLengthPrefixedUtf8(BinaryReader reader)
+        {
+            if (reader == null || reader.BaseStream == null || !reader.BaseStream.CanRead)
+            {
+                return string.Empty;
+            }
+
+            if (reader.BaseStream.Position + sizeof(ushort) > reader.BaseStream.Length)
+            {
+                return string.Empty;
+            }
+
+            ushort byteCount = reader.ReadUInt16();
+            if (byteCount <= 0 || reader.BaseStream.Position + byteCount > reader.BaseStream.Length)
+            {
+                return string.Empty;
+            }
+
+            byte[] bytes = reader.ReadBytes(byteCount);
+            return bytes?.Length > 0
+                ? Encoding.UTF8.GetString(bytes).Trim()
+                : string.Empty;
+        }
+
+        private static bool TryReadMonsterBookCardCounts(JsonElement root, out Dictionary<int, int> counts)
+        {
+            counts = new Dictionary<int, int>();
+            foreach (string propertyName in new[] { "cardCountsByMob", "cards", "counts", "ownership", "bookByMob" })
+            {
+                if (!root.TryGetProperty(propertyName, out JsonElement element))
+                {
+                    continue;
+                }
+
+                if (element.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (JsonProperty property in element.EnumerateObject())
+                    {
+                        if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int mobId)
+                            || mobId <= 0)
+                        {
+                            continue;
+                        }
+
+                        int? count = TryReadJsonInt(property.Value);
+                        if (count.GetValueOrDefault() <= 0)
+                        {
+                            continue;
+                        }
+
+                        counts[mobId] = Math.Clamp(count.Value, 0, 5);
+                    }
+
+                    return true;
+                }
+
+                if (element.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement entry in element.EnumerateArray())
+                    {
+                        if (entry.ValueKind != JsonValueKind.Object)
+                        {
+                            continue;
+                        }
+
+                        int? mobId = ReadInt(entry, "mobId", "mob", "id");
+                        int? count = ReadInt(entry, "count", "copies", "ownedCopies", "value");
+                        if (mobId.GetValueOrDefault() <= 0 || count.GetValueOrDefault() <= 0)
+                        {
+                            continue;
+                        }
+
+                        counts[mobId.Value] = Math.Clamp(count.Value, 0, 5);
+                    }
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int? TryReadJsonInt(JsonElement value)
+        {
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number))
+            {
+                return number;
+            }
+
+            if (value.ValueKind == JsonValueKind.String
+                && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
+            {
+                return number;
+            }
+
+            return null;
         }
 
         private static bool TryDecodeMonsterBookRegistrationJsonPayload(

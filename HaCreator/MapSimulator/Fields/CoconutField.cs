@@ -995,7 +995,13 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            _localBasicActionOwnerUntilTick = ownerUntil;
+            // Keep the local normal-attack owner window monotonic for already-started
+            // local actions. A later ack should not shorten the current ownership span
+            // just because older pending requests still remain.
+            if (unchecked(ownerUntil - _localBasicActionOwnerUntilTick) > 0)
+            {
+                _localBasicActionOwnerUntilTick = ownerUntil;
+            }
         }
         private void ApplyPacketState(Coconut coconut, CoconutState newState)
         {

@@ -68,8 +68,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex StandaloneColorBlockRegex = new(@"#c(?!\d)(?<text>[^#]*)#", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex RewardCategoryRegex = new(@"#W(?<category>[^#\s]*)#", RegexOptions.Compiled);
         private static readonly Regex FontNameRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex FontSizeRegex = new(@"#fs-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex FontTableRegex = new(@"#w(?:(?<value>basic|summary|select|reward|prob|default|black|red|green|blue|purple|magenta|-?\d+)#|#|(?=$|\s))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontSizeRegex = new(@"#fs[+-]?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontTableRegex = new(@"#w(?:(?<value>basic|summary|select|reward|prob|default|black|red|green|blue|purple|violet|magenta|0x[0-9a-fA-F]+|-?\d+)#|#|(?=$|\s))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
         private static readonly Regex NumericPrefixedStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex TerminatedInlineStyleRegex = new(@"#(?<tag>[bkrgdenmc])#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -191,6 +191,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(normalized[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out tableId))
+            {
+                return tableId >= 0 && tableId <= 11;
+            }
+
             if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out tableId))
             {
                 return tableId >= 0 && tableId <= 11;
@@ -207,6 +213,7 @@ namespace HaCreator.MapSimulator.Interaction
                 "blue" => 6,
                 "prob" => 6,
                 "purple" => 8,
+                "violet" => 8,
                 "magenta" => 8,
                 "reward" => 8,
                 "select" => 3,

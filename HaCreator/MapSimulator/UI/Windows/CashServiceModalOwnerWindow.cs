@@ -287,44 +287,99 @@ namespace HaCreator.MapSimulator.UI
 
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
+            bool altDown = keyboardState.IsKeyDown(Keys.LeftAlt) || keyboardState.IsKeyDown(Keys.RightAlt);
+            bool handled = false;
 
             if (Pressed(keyboardState, Keys.Escape))
             {
-                TriggerLastButton();
+                if (_comboExpanded)
+                {
+                    _comboExpanded = false;
+                }
+                else
+                {
+                    TriggerLastButton();
+                }
+
+                handled = true;
             }
-            else if (_showGiftRows && _giftRowsSelectable && Pressed(keyboardState, Keys.Up))
+
+            if (!handled && _showGiftRows && _giftRowsSelectable && Pressed(keyboardState, Keys.Up))
             {
                 _selectedGiftIndex = Math.Max(0, _selectedGiftIndex - 1);
+                handled = true;
             }
-            else if (_showGiftRows && _giftRowsSelectable && Pressed(keyboardState, Keys.Down))
+
+            if (!handled && _showGiftRows && _giftRowsSelectable && Pressed(keyboardState, Keys.Down))
             {
                 _selectedGiftIndex = Math.Min(Math.Max(0, _giftRows.Count - 1), _selectedGiftIndex + 1);
+                handled = true;
             }
-            else if (_showCheckBoxes && Pressed(keyboardState, Keys.Left))
-            {
-                MoveSelectedCheckBox(-1);
-            }
-            else if (_showCheckBoxes && Pressed(keyboardState, Keys.Up))
-            {
-                MoveSelectedCheckBox(-1);
-            }
-            else if (_showCheckBoxes && Pressed(keyboardState, Keys.Right))
-            {
-                MoveSelectedCheckBox(1);
-            }
-            else if (_showCheckBoxes && Pressed(keyboardState, Keys.Down))
-            {
-                MoveSelectedCheckBox(1);
-            }
-            else if (_showComboBox && Pressed(keyboardState, Keys.PageUp))
+
+            if (!handled && _showComboBox && _comboExpanded && Pressed(keyboardState, Keys.Up))
             {
                 MoveSelectedComboItem(-1);
+                handled = true;
             }
-            else if (_showComboBox && Pressed(keyboardState, Keys.PageDown))
+
+            if (!handled && _showComboBox && _comboExpanded && Pressed(keyboardState, Keys.Down))
             {
                 MoveSelectedComboItem(1);
+                handled = true;
             }
-            else if (Pressed(keyboardState, Keys.Enter))
+
+            if (!handled && _showComboBox && Pressed(keyboardState, Keys.Enter))
+            {
+                if (_comboExpanded)
+                {
+                    _comboExpanded = false;
+                    handled = true;
+                }
+            }
+
+            if (!handled && _showComboBox && ! _comboExpanded && altDown && Pressed(keyboardState, Keys.Down))
+            {
+                _comboExpanded = true;
+                handled = true;
+            }
+
+            if (!handled && _showCheckBoxes && !_comboExpanded && Pressed(keyboardState, Keys.Left))
+            {
+                MoveSelectedCheckBox(-1);
+                handled = true;
+            }
+
+            if (!handled && _showCheckBoxes && !_comboExpanded && Pressed(keyboardState, Keys.Up))
+            {
+                MoveSelectedCheckBox(-1);
+                handled = true;
+            }
+
+            if (!handled && _showCheckBoxes && !_comboExpanded && Pressed(keyboardState, Keys.Right))
+            {
+                MoveSelectedCheckBox(1);
+                handled = true;
+            }
+
+            if (!handled && _showCheckBoxes && !_comboExpanded && Pressed(keyboardState, Keys.Down))
+            {
+                MoveSelectedCheckBox(1);
+                handled = true;
+            }
+
+            if (!handled && _showComboBox && Pressed(keyboardState, Keys.PageUp))
+            {
+                MoveSelectedComboItem(-1);
+                handled = true;
+            }
+
+            if (!handled && _showComboBox && Pressed(keyboardState, Keys.PageDown))
+            {
+                MoveSelectedComboItem(1);
+                handled = true;
+            }
+
+            if (!handled && Pressed(keyboardState, Keys.Enter))
             {
                 TriggerPrimaryButton();
             }
@@ -445,6 +500,13 @@ namespace HaCreator.MapSimulator.UI
                             _comboExpanded = false;
                         }
 
+                        _previousMouseState = mouseState;
+                        return true;
+                    }
+
+                    if (Released(mouseState))
+                    {
+                        _comboExpanded = false;
                         _previousMouseState = mouseState;
                         return true;
                     }
@@ -964,25 +1026,75 @@ namespace HaCreator.MapSimulator.UI
             return count <= 0 ? 0 : Math.Clamp(selectedIndex, 0, count - 1);
         }
 
-        private static char? TranslateKey(Keys key, bool shift)
+        internal static bool TryTranslateEditableKey(Keys key, bool shift, out char value)
         {
             if (key >= Keys.A && key <= Keys.Z)
             {
-                char value = (char)('a' + (key - Keys.A));
-                return shift ? char.ToUpperInvariant(value) : value;
+                char letter = (char)('a' + (key - Keys.A));
+                value = shift ? char.ToUpperInvariant(letter) : letter;
+                return true;
             }
 
             if (key >= Keys.D0 && key <= Keys.D9)
             {
-                return (char)('0' + (key - Keys.D0));
+                int digitIndex = key - Keys.D0;
+                value = shift
+                    ? digitIndex switch
+                    {
+                        0 => ')',
+                        1 => '!',
+                        2 => '@',
+                        3 => '#',
+                        4 => '$',
+                        5 => '%',
+                        6 => '^',
+                        7 => '&',
+                        8 => '*',
+                        9 => '(',
+                        _ => '\0'
+                    }
+                    : (char)('0' + digitIndex);
+                return value != '\0';
+            }
+
+            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            {
+                value = (char)('0' + (key - Keys.NumPad0));
+                return true;
             }
 
             if (key == Keys.Space)
             {
-                return ' ';
+                value = ' ';
+                return true;
             }
 
-            return null;
+            value = key switch
+            {
+                Keys.OemMinus => shift ? '_' : '-',
+                Keys.OemPlus => shift ? '+' : '=',
+                Keys.OemOpenBrackets => shift ? '{' : '[',
+                Keys.OemCloseBrackets => shift ? '}' : ']',
+                Keys.OemPipe => shift ? '|' : '\\',
+                Keys.OemSemicolon => shift ? ':' : ';',
+                Keys.OemQuotes => shift ? '"' : '\'',
+                Keys.OemComma => shift ? '<' : ',',
+                Keys.OemPeriod => shift ? '>' : '.',
+                Keys.OemQuestion => shift ? '?' : '/',
+                Keys.OemTilde => shift ? '~' : '`',
+                Keys.Decimal => '.',
+                Keys.Divide => '/',
+                Keys.Multiply => '*',
+                Keys.Subtract => '-',
+                Keys.Add => '+',
+                _ => '\0'
+            };
+            return value != '\0';
+        }
+
+        private static char? TranslateKey(Keys key, bool shift)
+        {
+            return TryTranslateEditableKey(key, shift, out char value) ? value : null;
         }
 
         private bool Pressed(KeyboardState keyboardState, Keys key)

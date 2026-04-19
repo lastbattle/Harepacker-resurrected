@@ -613,13 +613,6 @@ namespace HaCreator.MapSimulator
         private void DrawInitialQuizOwnerInputField(Rectangle ownerBounds, Rectangle inputBounds, int currentTickCount)
         {
             bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
-            Color fillColor = inputFocused
-                ? new Color(255, 255, 255, 212)
-                : new Color(232, 228, 221, 212);
-            Color borderColor = inputFocused
-                ? new Color(113, 78, 48)
-                : new Color(93, 80, 60);
-            DrawPacketScriptOwnerFrame(inputBounds, fillColor, borderColor);
 
             AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
             if (editControl != null && ownerBounds != Rectangle.Empty)

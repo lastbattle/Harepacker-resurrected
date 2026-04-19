@@ -185,6 +185,11 @@ namespace HaCreator.MapSimulator.Companions
         private const int DragonBlinkEffectStringPoolId = 0x0B6B;
         private const int DragonFuryEffectStringPoolId = 0x15DA;
         private const int DragonQuestInfoEffectStringPoolId = 0x19BC;
+        private const int ClientVecCtrlLayerZBaseOffset = unchecked((int)0xC0007526);
+        private const int ClientVecCtrlLayerZPageScale = 3000;
+        private const int ClientVecCtrlLayerZStride = 10;
+        private const int ClientVecCtrlLayerZOffsetGround = 2;
+        private const int ClientVecCtrlLayerZOffsetLadder = 7;
         private static readonly string[] ExactClientQuestInfoFormatTokens =
         {
             "%d",
@@ -1319,6 +1324,19 @@ namespace HaCreator.MapSimulator.Companions
         internal static int ResolveClientDragonActionLayerOwnerZ(int fallbackOwnerLayerZ, int? vecCtrlOwnerLayerZ)
         {
             return vecCtrlOwnerLayerZ ?? fallbackOwnerLayerZ;
+        }
+
+        internal static int? ResolveClientOwnerLayerZFromVecCtrlContext(int? layerPage, int? layerZMass, bool onLadderOrRope)
+        {
+            if (!layerPage.HasValue || !layerZMass.HasValue)
+            {
+                return null;
+            }
+
+            long pageTerm = (long)ClientVecCtrlLayerZPageScale * layerPage.Value - layerZMass.Value;
+            long ladderTerm = onLadderOrRope ? ClientVecCtrlLayerZOffsetLadder : ClientVecCtrlLayerZOffsetGround;
+            long layerZ = ClientVecCtrlLayerZStride * pageTerm + ladderTerm + ClientVecCtrlLayerZBaseOffset;
+            return (int)Math.Clamp(layerZ, int.MinValue, int.MaxValue);
         }
 
         internal static float ResolveOwnerPhaseClampedActionLayerAlpha(float actionLayerAlpha, int? ownerPhaseAlpha)

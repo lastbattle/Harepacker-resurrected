@@ -660,6 +660,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (previousHiddenAutoQuestIds != null)
             {
+                NotifyQuestRecentUpdateAcknowledged(previousHiddenAutoQuestIds);
                 foreach (int removedQuestId in previousHiddenAutoQuestIds)
                 {
                     QuestTitleTooltipCleared?.Invoke(removedQuestId);
@@ -733,6 +734,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_trackedQuestIds.Count > 0 || _hiddenAutoQuestIds.Count > 0)
                 {
+                    NotifyQuestRecentUpdateAcknowledged(_trackedQuestIds);
+                    NotifyQuestRecentUpdateAcknowledged(_hiddenAutoQuestIds);
                     NotifyQuestTooltipCleared(_trackedQuestIds);
                     NotifyQuestTooltipCleared(_hiddenAutoQuestIds);
                     _trackedQuestIds.Clear();
@@ -764,6 +767,7 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
+                QuestRecentUpdateAcknowledged?.Invoke(questId);
                 QuestTitleTooltipCleared?.Invoke(questId);
                 return true;
             });
@@ -782,6 +786,7 @@ namespace HaCreator.MapSimulator.UI
             });
             if (removedHiddenAutoQuestIds != null)
             {
+                NotifyQuestRecentUpdateAcknowledged(removedHiddenAutoQuestIds);
                 NotifyQuestTooltipCleared(removedHiddenAutoQuestIds);
                 stateChanged = true;
             }
@@ -1530,6 +1535,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            NotifyQuestRecentUpdateAcknowledged(_trackedQuestIds);
+            NotifyQuestRecentUpdateAcknowledged(_hiddenAutoQuestIds);
             NotifyQuestTooltipCleared(_trackedQuestIds);
             NotifyQuestTooltipCleared(_hiddenAutoQuestIds);
 
@@ -1925,6 +1932,23 @@ namespace HaCreator.MapSimulator.UI
                 if (questId > 0 && notifiedQuestIds.Add(questId))
                 {
                     QuestTitleTooltipCleared?.Invoke(questId);
+                }
+            }
+        }
+
+        private void NotifyQuestRecentUpdateAcknowledged(IEnumerable<int> questIds)
+        {
+            if (questIds == null)
+            {
+                return;
+            }
+
+            HashSet<int> acknowledgedQuestIds = new();
+            foreach (int questId in questIds)
+            {
+                if (questId > 0 && acknowledgedQuestIds.Add(questId))
+                {
+                    QuestRecentUpdateAcknowledged?.Invoke(questId);
                 }
             }
         }

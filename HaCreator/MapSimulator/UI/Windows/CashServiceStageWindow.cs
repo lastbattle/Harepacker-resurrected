@@ -67,6 +67,8 @@ namespace HaCreator.MapSimulator.UI
             public int RequestOpcode { get; set; }
             public string PacketSource { get; set; } = string.Empty;
             public string PacketFieldSummary { get; set; } = string.Empty;
+            public string PacketSenderRaw { get; set; } = string.Empty;
+            public string PacketMessageRaw { get; set; } = string.Empty;
         }
 
         private sealed class CashItemInfoPacketSnapshot
@@ -269,6 +271,7 @@ namespace HaCreator.MapSimulator.UI
         private string _cashItemLastSummary = "No cash-item result routed yet.";
         private string _cashGiftLastSummary = "No packet-authored gift result routed yet.";
         private string _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
+        private bool _cashPurchaseRecordGlobalState;
         private string _cashPurchaseDialogSelectionSummary = "CConfirmPurchaseDlg has not staged a selector snapshot yet.";
         private string _cashCouponLastSummary = "No packet-authored coupon result routed yet.";
         private string _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
@@ -474,6 +477,7 @@ namespace HaCreator.MapSimulator.UI
             _cashLockerPacketEntries.Clear();
             _cashGiftPacketEntries.Clear();
             _cashPurchaseRecordStates.Clear();
+            _cashPurchaseRecordGlobalState = false;
             _cashPacketPaneLabel = "Packet wishlist";
             _cashPacketBrowseModeLabel = "Wish";
             _cashGiftLastSummary = "No packet-authored gift result routed yet.";
@@ -1805,19 +1809,40 @@ namespace HaCreator.MapSimulator.UI
             _ = reader.ReadByte();
             int commoditySerialNumber = Math.Max(0, reader.ReadInt32());
             bool purchaseRecorded = reader.ReadByte() != 0;
-            _cashPurchaseRecordSummary = commoditySerialNumber > 0
-                ? $"Purchase record SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} is {(purchaseRecorded ? "marked purchased" : "present but not purchased")}."
-                : $"Global purchase record state is {(purchaseRecorded ? "enabled" : "cleared")}.";
+            CashItemInfoPacketSnapshot embeddedSnapshot = null;
+            if (stream.Length - stream.Position >= CashItemInfoPacketByteLength)
+            {
+                _ = TryReadOptionalCashItemInfoPacketSnapshot(reader, out embeddedSnapshot);
+            }
+
             if (commoditySerialNumber > 0)
             {
                 _cashPurchaseRecordStates[commoditySerialNumber] = purchaseRecorded;
+                if (purchaseRecorded)
+                {
+                    // Client evidence (CCashShop::OnCashItemResPurchaseRecord @ 0x495b50):
+                    // nCommoditySN != 0 with bPurchase=true sets m_nPurchaseRecord to 1.
+                    _cashPurchaseRecordGlobalState = true;
+                }
+
                 ApplyCashPurchaseRecordStateToCatalogEntries(commoditySerialNumber, purchaseRecorded);
             }
             else
             {
-                ApplyCashPurchaseRecordStateToCatalogEntries(0, purchaseRecorded);
+                // Client evidence (CCashShop::OnCashItemResPurchaseRecord @ 0x495b50):
+                // nCommoditySN == 0 writes only m_nPurchaseRecord.
+                _cashPurchaseRecordGlobalState = purchaseRecorded;
             }
 
+            string globalSummary = _cashPurchaseRecordGlobalState
+                ? " Global purchase-record state is enabled."
+                : " Global purchase-record state is cleared.";
+            string embeddedSummary = embeddedSnapshot != null
+                ? $" Embedded {BuildCashItemInfoFieldSummary(embeddedSnapshot)}."
+                : string.Empty;
+            _cashPurchaseRecordSummary = commoditySerialNumber > 0
+                ? $"Purchase record SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} is {(purchaseRecorded ? "marked purchased" : "present but not purchased")}.{globalSummary}{embeddedSummary}"
+                : $"Global purchase record state is {(purchaseRecorded ? "enabled" : "cleared")}.{embeddedSummary}";
             AppendCashPacketCatalogEntry("Packet purchase", "Buy", new PacketCatalogEntry
             {
                 Title = commoditySerialNumber > 0
@@ -1827,7 +1852,9 @@ namespace HaCreator.MapSimulator.UI
                 Seller = "CCashShop",
                 PriceLabel = commoditySerialNumber > 0 ? $"SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
                 StateLabel = purchaseRecorded ? "Purchased" : "Wish",
-                ListingId = commoditySerialNumber
+                ListingId = commoditySerialNumber,
+                PacketSource = embeddedSnapshot != null ? "GW_CashItemInfo" : string.Empty,
+                PacketFieldSummary = embeddedSnapshot != null ? BuildCashItemInfoFieldSummary(embeddedSnapshot) : string.Empty
             });
             _noticeState = _cashPurchaseRecordSummary;
             message = $"CCashShop::OnCashItemResPurchaseRecord updated {_cashPurchaseRecordSummary}";
@@ -1992,11 +2019,73 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            int inventorySlot = Math.Max(0, (int)BitConverter.ToInt16(payload, 1));
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            _ = reader.ReadByte();
+            int inventorySlot = Math.Max(0, (int)reader.ReadUInt16());
+            bool hasDecodedItemBody = TryReadItemAttachment(
+                reader,
+                out int itemId,
+                out int quantity,
+                out long cashItemSerialNumber,
+                out string decodeError);
+
+            if (hasDecodedItemBody)
+            {
+                PacketCatalogEntry removedLockerEntry = null;
+                if (cashItemSerialNumber > 0)
+                {
+                    removedLockerEntry = FindCashLockerPacketEntryBySerialNumber(cashItemSerialNumber);
+                    RemoveCashLockerPacketEntryBySerialNumber(cashItemSerialNumber);
+                }
+                else
+                {
+                    removedLockerEntry = RemoveFirstCashLockerPacketEntryByItemId(itemId);
+                }
+
+                if (removedLockerEntry != null)
+                {
+                    _cashLockerItemCount = Math.Max(0, Math.Min(_cashLockerItemCount - 1, _cashLockerPacketEntries.Count));
+                }
+
+                PacketCatalogEntry inventoryEntry = new()
+                {
+                    Title = ResolveCashStageItemTitle(itemId, removedLockerEntry?.CommodityId ?? 0, "Moved item"),
+                    Detail = $"CCSWnd_Inventory moved slot {inventorySlot.ToString(CultureInfo.InvariantCulture)} from locker ownership using GW_ItemSlotBase::Decode (item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} x{Math.Max(1, quantity).ToString(CultureInfo.InvariantCulture)}).",
+                    Seller = "CCSWnd_Inventory",
+                    PriceLabel = inventorySlot > 0
+                        ? $"Slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}"
+                        : "Slot unavailable",
+                    StateLabel = "Moved",
+                    SerialNumber = cashItemSerialNumber > 0 ? cashItemSerialNumber : removedLockerEntry?.SerialNumber ?? 0,
+                    ListingId = Math.Max(0, inventorySlot),
+                    ItemId = Math.Max(0, itemId),
+                    CommodityId = Math.Max(0, removedLockerEntry?.CommodityId ?? 0),
+                    Quantity = Math.Max(1, quantity),
+                    AccountId = removedLockerEntry?.AccountId ?? 0,
+                    CharacterId = removedLockerEntry?.CharacterId ?? 0,
+                    BuyerCharacterId = removedLockerEntry?.BuyerCharacterId ?? string.Empty,
+                    RawExpireFileTime = removedLockerEntry?.RawExpireFileTime ?? 0,
+                    PaybackRate = removedLockerEntry?.PaybackRate ?? 0,
+                    DiscountRate = removedLockerEntry?.DiscountRate ?? 0,
+                    PacketSource = "GW_ItemSlotBase"
+                };
+                UpsertCashInventoryPacketEntry(inventoryEntry);
+                AppendCashPacketCatalogEntry("Packet inventory", "Inventory", ClonePacketCatalogEntry(inventoryEntry, "Inventory"));
+                _noticeState = inventorySlot > 0
+                    ? $"CCSWnd_Inventory moved the selected locker cash item into inventory slot {inventorySlot.ToString(CultureInfo.InvariantCulture)} ({inventoryEntry.Title} x{inventoryEntry.Quantity.ToString(CultureInfo.InvariantCulture)})."
+                    : $"CCSWnd_Inventory moved the selected locker cash item out of the locker ({inventoryEntry.Title} x{inventoryEntry.Quantity.ToString(CultureInfo.InvariantCulture)}).";
+                message =
+                    $"CCashShop::OnCashItemResMoveLtoSDone decoded slot {inventorySlot.ToString(CultureInfo.InvariantCulture)} plus GW_ItemSlotBase ownership and refreshed locker/inventory packet rows.";
+                return true;
+            }
+
             _noticeState = inventorySlot > 0
                 ? $"CCSWnd_Inventory moved the selected locker cash item into inventory slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}."
                 : "CCSWnd_Inventory moved the selected locker cash item out of the locker.";
-            message = $"CCashShop::OnCashItemResMoveLtoSDone applied the locker-to-inventory mutation for {(inventorySlot > 0 ? $"slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}" : "the selected cash item")}.";
+            message = string.IsNullOrWhiteSpace(decodeError)
+                ? $"CCashShop::OnCashItemResMoveLtoSDone applied the locker-to-inventory mutation for {(inventorySlot > 0 ? $"slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}" : "the selected cash item")}."
+                : $"CCashShop::OnCashItemResMoveLtoSDone applied the locker-to-inventory mutation for {(inventorySlot > 0 ? $"slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}" : "the selected cash item")} (GW_ItemSlotBase decode fallback: {decodeError}).";
             return true;
         }
 
@@ -2977,12 +3066,18 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryApplyItcCancelSaleDone(byte[] payload, out string message)
         {
-            RemovePrimaryEntry(_itcSalePacketEntries, out PacketCatalogEntry removedEntry);
+            bool removedByListingId = TryRemoveFocusedItcEntryByListingId(_itcSalePacketEntries, out PacketCatalogEntry removedEntry);
+            if (!removedByListingId)
+            {
+                RemovePrimaryEntry(_itcSalePacketEntries, out removedEntry);
+            }
+
             _itcSaleItemCount = Math.Max(0, _itcSalePacketEntries.Count);
             _noticeState = removedEntry != null
                 ? $"Cancelled sale listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)} from the packet-owned sale owner."
                 : "Cancelled the focused packet-owned sale listing.";
             message = $"CITC::OnCancelSaleItemDone removed {(removedEntry != null ? $"listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)}" : "the focused sale row")} from the sale owner.";
+            UpdateItcSelectionFromPrimaryList(_itcSalePacketEntries);
             return true;
         }
 
@@ -2999,7 +3094,12 @@ namespace HaCreator.MapSimulator.UI
             _ = reader.ReadByte();
             int inventoryTab = Math.Max(0, reader.ReadInt32());
             int slotIndex = Math.Max(0, reader.ReadInt32());
-            RemovePrimaryEntry(_itcPurchasePacketEntries, out PacketCatalogEntry movedEntry);
+            bool removedByListingId = TryRemoveFocusedItcEntryByListingId(_itcPurchasePacketEntries, out PacketCatalogEntry movedEntry);
+            if (!removedByListingId)
+            {
+                RemovePrimaryEntry(_itcPurchasePacketEntries, out movedEntry);
+            }
+
             _itcPurchaseItemCount = Math.Max(0, _itcPurchasePacketEntries.Count);
             _noticeState =
                 $"Purchase listing {(movedEntry?.ListingId ?? _itcNormalItemSelectedListingId).ToString(CultureInfo.InvariantCulture)} moved into inventory tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)}.";
@@ -3015,7 +3115,7 @@ namespace HaCreator.MapSimulator.UI
             bool removeCurrentWishEntry,
             out string message)
         {
-            PacketCatalogEntry focusedCatalogEntry = _itcPacketCatalogEntries.FirstOrDefault();
+            PacketCatalogEntry focusedCatalogEntry = ResolveFocusedItcEntry(_itcPacketCatalogEntries);
             if (addSelectedCatalogEntry && focusedCatalogEntry != null)
             {
                 UpsertWishEntry(_itcWishPacketEntries, ClonePacketCatalogEntry(focusedCatalogEntry, "Wish"));
@@ -3024,7 +3124,10 @@ namespace HaCreator.MapSimulator.UI
             PacketCatalogEntry removedWishEntry = null;
             if (removeCurrentWishEntry)
             {
-                RemovePrimaryEntry(_itcWishPacketEntries, out removedWishEntry);
+                if (!TryRemoveFocusedItcEntryByListingId(_itcWishPacketEntries, out removedWishEntry))
+                {
+                    RemovePrimaryEntry(_itcWishPacketEntries, out removedWishEntry);
+                }
             }
 
             _noticeState = ownerName switch
@@ -3038,13 +3141,19 @@ namespace HaCreator.MapSimulator.UI
             };
 
             message = $"{ownerName} left {_itcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} packet-authored wish row(s) active.";
+            UpdateItcSelectionFromPrimaryList(_itcWishPacketEntries);
             return true;
         }
 
         private bool TryApplyItcBuyCatalogItemDone(string ownerName, bool fromWishList, out string message)
         {
             List<PacketCatalogEntry> source = fromWishList ? _itcWishPacketEntries : _itcPacketCatalogEntries;
-            RemovePrimaryEntry(source, out PacketCatalogEntry removedEntry);
+            bool removedByListingId = TryRemoveFocusedItcEntryByListingId(source, out PacketCatalogEntry removedEntry);
+            if (!removedByListingId)
+            {
+                RemovePrimaryEntry(source, out removedEntry);
+            }
+
             if (!fromWishList && removedEntry != null)
             {
                 _itcCurrentCategoryItemCount = Math.Max(0, _itcCurrentCategoryItemCount - 1);
@@ -3085,7 +3194,7 @@ namespace HaCreator.MapSimulator.UI
         private bool TryReadItcItemEntry(BinaryReader reader, out PacketCatalogEntry entry)
         {
             entry = null;
-            if (!TryReadItemAttachment(reader, out int itemId, out int quantity, out _))
+            if (!TryReadItemAttachment(reader, out int itemId, out int quantity, out _, out _))
             {
                 return false;
             }
@@ -3165,10 +3274,16 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private static bool TryReadItemAttachment(BinaryReader reader, out int itemId, out int quantity, out string error)
+        private static bool TryReadItemAttachment(
+            BinaryReader reader,
+            out int itemId,
+            out int quantity,
+            out long cashItemSerialNumber,
+            out string error)
         {
             itemId = 0;
             quantity = 0;
+            cashItemSerialNumber = 0;
             error = null;
 
             Stream stream = reader.BaseStream;
@@ -3195,7 +3310,7 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                _ = reader.ReadInt64();
+                cashItemSerialNumber = reader.ReadInt64();
             }
 
             if (stream.Length - stream.Position < sizeof(long))
@@ -3720,7 +3835,9 @@ namespace HaCreator.MapSimulator.UI
                 PacketMessage = message,
                 RequestOpcode = snapshot?.AcceptRequestOpcode ?? 154,
                 PacketSource = "GW_GiftList",
-                PacketFieldSummary = fieldSummary
+                PacketFieldSummary = fieldSummary,
+                PacketSenderRaw = snapshot?.SenderRaw ?? string.Empty,
+                PacketMessageRaw = snapshot?.MessageRaw ?? string.Empty
             };
         }
 
@@ -3986,6 +4103,27 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void UpsertCashInventoryPacketEntry(PacketCatalogEntry entry)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            int existingIndex = _cashInventoryPacketEntries.FindIndex(candidate =>
+                (entry.ListingId > 0 && candidate.ListingId == entry.ListingId)
+                || (entry.SerialNumber > 0 && candidate.SerialNumber == entry.SerialNumber)
+                || (entry.ItemId > 0 && candidate.ItemId == entry.ItemId && candidate.ListingId <= 0));
+            if (existingIndex >= 0)
+            {
+                _cashInventoryPacketEntries[existingIndex] = entry;
+            }
+            else
+            {
+                _cashInventoryPacketEntries.Insert(0, entry);
+            }
+        }
+
         private static bool TryReadCashItemInfoPacketSnapshotFromPayload(byte[] payload, out CashItemInfoPacketSnapshot snapshot)
         {
             snapshot = null;
@@ -4058,6 +4196,29 @@ namespace HaCreator.MapSimulator.UI
                 ?? _cashPacketCatalogEntries.FirstOrDefault(entry => entry.SerialNumber == serialNumber);
         }
 
+        private PacketCatalogEntry RemoveFirstCashLockerPacketEntryByItemId(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            int index = _cashLockerPacketEntries.FindIndex(entry => entry.ItemId == itemId);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            PacketCatalogEntry removedEntry = _cashLockerPacketEntries[index];
+            _cashLockerPacketEntries.RemoveAt(index);
+            if (removedEntry?.SerialNumber > 0)
+            {
+                _cashPacketCatalogEntries.RemoveAll(entry => entry.SerialNumber == removedEntry.SerialNumber);
+            }
+
+            return removedEntry;
+        }
+
         private void RemoveCashLockerPacketEntryBySerialNumber(long serialNumber)
         {
             if (serialNumber <= 0)
@@ -4092,14 +4253,14 @@ namespace HaCreator.MapSimulator.UI
 
         private void ApplyCashPurchaseRecordStateToCatalogEntries(int commoditySerialNumber, bool purchased)
         {
+            if (commoditySerialNumber <= 0)
+            {
+                return;
+            }
+
             foreach (PacketCatalogEntry entry in _cashPacketCatalogEntries)
             {
-                if (commoditySerialNumber <= 0 && entry.ListingId <= 0)
-                {
-                    continue;
-                }
-
-                if (commoditySerialNumber > 0 && entry.ListingId != commoditySerialNumber)
+                if (entry.ListingId != commoditySerialNumber)
                 {
                     continue;
                 }
@@ -4173,7 +4334,9 @@ namespace HaCreator.MapSimulator.UI
                 PacketMessage = source.PacketMessage,
                 RequestOpcode = source.RequestOpcode,
                 PacketSource = source.PacketSource,
-                PacketFieldSummary = source.PacketFieldSummary
+                PacketFieldSummary = source.PacketFieldSummary,
+                PacketSenderRaw = source.PacketSenderRaw,
+                PacketMessageRaw = source.PacketMessageRaw
             };
         }
 
@@ -4363,6 +4526,44 @@ namespace HaCreator.MapSimulator.UI
             {
                 target.RemoveAt(index);
             }
+        }
+
+        private PacketCatalogEntry ResolveFocusedItcEntry(IReadOnlyList<PacketCatalogEntry> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return null;
+            }
+
+            if (_itcNormalItemSelectedListingId > 0)
+            {
+                PacketCatalogEntry matchedEntry = entries.FirstOrDefault(candidate => candidate.ListingId == _itcNormalItemSelectedListingId);
+                if (matchedEntry != null)
+                {
+                    return matchedEntry;
+                }
+            }
+
+            return entries[0];
+        }
+
+        private bool TryRemoveFocusedItcEntryByListingId(List<PacketCatalogEntry> target, out PacketCatalogEntry removedEntry)
+        {
+            removedEntry = null;
+            if (target == null || target.Count == 0 || _itcNormalItemSelectedListingId <= 0)
+            {
+                return false;
+            }
+
+            int index = target.FindIndex(candidate => candidate.ListingId == _itcNormalItemSelectedListingId);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            removedEntry = target[index];
+            target.RemoveAt(index);
+            return true;
         }
 
         private void UpdateItcSelectionFromPrimaryList(IReadOnlyList<PacketCatalogEntry> entries)

@@ -2,6 +2,7 @@ using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using HaCreator.MapSimulator.Interaction;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -94,6 +95,29 @@ namespace HaCreator.MapSimulator.Managers
         public int SentCount { get; private set; }
         public int LastSentOpcode { get; private set; } = -1;
         public string LastStatus { get; private set; } = "Merchant-room official-session bridge inactive.";
+
+        public static byte[] BuildMerchantOutboundPacket(byte requestSubtype, ReadOnlySpan<byte> requestBody = default)
+        {
+            byte[] packet = new byte[sizeof(ushort) + 1 + requestBody.Length];
+            BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(0, sizeof(ushort)), OutboundMiniRoomOpcode);
+            packet[sizeof(ushort)] = requestSubtype;
+            if (!requestBody.IsEmpty)
+            {
+                requestBody.CopyTo(packet.AsSpan(sizeof(ushort) + 1));
+            }
+
+            return packet;
+        }
+
+        public static byte[] BuildPersonalShopBuyOutboundPacket(bool buyFromEntrustedShop, byte itemIndex, short bundleCount, uint itemCrc)
+        {
+            byte requestSubtype = buyFromEntrustedShop ? (byte)34 : (byte)23;
+            byte[] requestBody = new byte[1 + sizeof(short) + sizeof(uint)];
+            requestBody[0] = itemIndex;
+            BinaryPrimitives.WriteInt16LittleEndian(requestBody.AsSpan(1, sizeof(short)), Math.Max((short)1, bundleCount));
+            BinaryPrimitives.WriteUInt32LittleEndian(requestBody.AsSpan(3, sizeof(uint)), itemCrc);
+            return BuildMerchantOutboundPacket(requestSubtype, requestBody);
+        }
 
         public string DescribeStatus()
         {

@@ -149,6 +149,27 @@ namespace HaCreator.MapSimulator.UI
             return new Point(Math.Max(8, normalizedWidth - 22), 10);
         }
 
+        internal static (Point AnchorOffset, int LaneWidth) ResolveEventStatusLaneLayout(
+            Point authoredAnchorOffset,
+            int authoredLaneWidth,
+            Point fallbackAnchorOffset,
+            int fallbackLaneWidth)
+        {
+            Point resolvedAnchor = authoredAnchorOffset != Point.Zero
+                ? authoredAnchorOffset
+                : fallbackAnchorOffset;
+            resolvedAnchor = new Point(
+                Math.Max(0, resolvedAnchor.X),
+                Math.Max(0, resolvedAnchor.Y));
+
+            int resolvedLaneWidth = authoredLaneWidth > 0
+                ? authoredLaneWidth
+                : fallbackLaneWidth;
+            resolvedLaneWidth = Math.Max(40, resolvedLaneWidth);
+
+            return (resolvedAnchor, resolvedLaneWidth);
+        }
+
         internal static RankingWindowSnapshot ApplyPacketOwnedRankingOwnerState(
             RankingWindowSnapshot fallback,
             PacketOwnedRankingOwnerStateSnapshot ownerState)

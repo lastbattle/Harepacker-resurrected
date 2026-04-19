@@ -546,7 +546,13 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                pair.ServerSession.SendPacket(RockPaperScissorsClientPacketTransportManager.BuildRawPacket(packet));
+                byte[] rawPacket = RockPaperScissorsClientPacketTransportManager.BuildRawPacket(packet);
+                pair.ServerSession.SendPacket(rawPacket);
+                if (TryBuildOutboundTrace(rawPacket, "simulator-inject", out OutboundPacketTrace trace))
+                {
+                    RecordOutboundTrace(trace);
+                }
+
                 SentCount++;
                 status = $"Injected Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)packet.RequestType} into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
@@ -713,7 +719,13 @@ namespace HaCreator.MapSimulator.Managers
             int flushed = 0;
             while (_pendingClientPackets.TryDequeue(out RockPaperScissorsClientPacket packet))
             {
-                pair.ServerSession.SendPacket(RockPaperScissorsClientPacketTransportManager.BuildRawPacket(packet));
+                byte[] rawPacket = RockPaperScissorsClientPacketTransportManager.BuildRawPacket(packet);
+                pair.ServerSession.SendPacket(rawPacket);
+                if (TryBuildOutboundTrace(rawPacket, "simulator-queued", out OutboundPacketTrace trace))
+                {
+                    RecordOutboundTrace(trace);
+                }
+
                 SentCount++;
                 flushed++;
             }

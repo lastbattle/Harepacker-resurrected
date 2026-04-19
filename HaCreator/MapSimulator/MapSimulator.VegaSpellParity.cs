@@ -1252,6 +1252,13 @@ namespace HaCreator.MapSimulator
                 return observedClientItemToken.Value;
             }
 
+            if (observedClientItemToken.GetValueOrDefault() != 0
+                && observedItemId == itemId
+                && !TryResolveClientAuthoredVegaInventoryItemToken(slot, out _))
+            {
+                return observedClientItemToken.Value;
+            }
+
             return BuildVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
         }
 

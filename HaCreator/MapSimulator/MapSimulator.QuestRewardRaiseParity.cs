@@ -763,7 +763,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, payload);
+            if (EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, payload, out int previousRequestId))
+            {
+                TryRebindQuestRewardRaisePieceReservation(placedPiece, previousRequestId);
+            }
             ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
             if (placedPiece.LifecycleState == QuestRewardRaisePieceLifecycleState.PendingReleaseAck
                 || placedPiece.LifecycleState == QuestRewardRaisePieceLifecycleState.PendingConfirmAck)
@@ -782,7 +785,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, packet.Payload);
+            if (EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, packet.Payload, out int previousRequestId))
+            {
+                TryRebindQuestRewardRaisePieceReservation(placedPiece, previousRequestId);
+            }
             ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
             if (packet.Success)
             {
@@ -806,7 +812,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, packet.Payload);
+            if (EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, packet.Payload, out int previousRequestId))
+            {
+                TryRebindQuestRewardRaisePieceReservation(placedPiece, previousRequestId);
+            }
             ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
             if (packet.Success)
             {
@@ -878,27 +887,29 @@ namespace HaCreator.MapSimulator
             return placedPiece;
         }
 
-        private void EnsureQuestRewardRaisePieceRequestId(
+        private bool EnsureQuestRewardRaisePieceRequestId(
             QuestRewardRaiseState activeRaise,
             QuestRewardRaisePlacedPiece placedPiece,
-            QuestRewardRaisePacketPayload payload)
+            QuestRewardRaisePacketPayload payload,
+            out int previousRequestId)
         {
+            previousRequestId = Math.Max(0, placedPiece?.RequestId ?? 0);
             if (activeRaise?.PlacedPieces == null || placedPiece == null)
             {
-                return;
+                return false;
             }
 
             int currentRequestId = Math.Max(0, placedPiece.RequestId);
             if (currentRequestId > 0 && IsQuestRewardRaisePieceRequestIdUnique(activeRaise, placedPiece, currentRequestId))
             {
-                return;
+                return false;
             }
 
             int inboundRequestId = Math.Max(0, payload?.PieceRequestId ?? 0);
             if (inboundRequestId > 0 && IsQuestRewardRaisePieceRequestIdUnique(activeRaise, placedPiece, inboundRequestId))
             {
                 placedPiece.RequestId = inboundRequestId;
-                return;
+                return previousRequestId != placedPiece.RequestId;
             }
 
             int syntheticRequestId;
@@ -909,6 +920,36 @@ namespace HaCreator.MapSimulator
             while (!IsQuestRewardRaisePieceRequestIdUnique(activeRaise, placedPiece, syntheticRequestId));
 
             placedPiece.RequestId = syntheticRequestId;
+            return previousRequestId != placedPiece.RequestId;
+        }
+
+        private void TryRebindQuestRewardRaisePieceReservation(QuestRewardRaisePlacedPiece placedPiece, int previousRequestId)
+        {
+            if (placedPiece == null
+                || previousRequestId <= 0
+                || previousRequestId == placedPiece.RequestId
+                || uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                return;
+            }
+
+            if (!inventoryWindow.TryClearPendingRequestState(previousRequestId))
+            {
+                return;
+            }
+
+            if (placedPiece.RequestId <= 0
+                || placedPiece.InventoryType == InventoryType.NONE
+                || placedPiece.SlotIndex < 0)
+            {
+                return;
+            }
+
+            inventoryWindow.TrySetPendingRequestState(
+                placedPiece.InventoryType,
+                placedPiece.SlotIndex,
+                placedPiece.RequestId,
+                isPending: true);
         }
 
         private static bool IsQuestRewardRaisePieceRequestIdUnique(

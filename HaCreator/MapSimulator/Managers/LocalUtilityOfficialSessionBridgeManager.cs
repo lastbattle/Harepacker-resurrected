@@ -669,6 +669,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.PetConsumeResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.MonsterBookRegistrationResultPacketType
+                || packetType == LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType
                 || packetType == LocalUtilityPacketInboxManager.MechanicEquipStatePacketType
                 || packetType == LocalUtilityPacketInboxManager.CharacterEquipStatePacketType;
         }
@@ -706,6 +707,7 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.PetConsumeResultPacketType => "PetConsumeResult(1026) / RaiseOwnerSync(1026)",
                 LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType => "RepairDurabilityResult(1025)",
                 LocalUtilityPacketInboxManager.MonsterBookRegistrationResultPacketType => "MonsterBookRegistrationResult(1047)",
+                LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType => "MonsterBookOwnershipSync(1048)",
                 LocalUtilityPacketInboxManager.MechanicEquipStatePacketType => "MechanicEquipState(1023)",
                 LocalUtilityPacketInboxManager.CharacterEquipStatePacketType => "CharacterEquipState(1034)",
                 _ => $"packet {packetType}"

@@ -57,6 +57,13 @@ namespace HaCreator.MapSimulator.Interaction
                 summary);
         }
 
+        internal static bool ResolveIncludeUserPosition(bool isAutoAlertQuest)
+        {
+            // CQuest::StartQuest only encodes ptUserPos for subtype 1/2 when
+            // CQuestMan::IsAutoAlertQuest returns false.
+            return !isAutoAlertQuest;
+        }
+
         internal static bool TryDecodePayload(
             IReadOnlyList<byte> payload,
             out int requestKind,

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -37,6 +38,10 @@ namespace HaCreator.MapSimulator.Managers
 
     internal static class PacketOwnedMechanicRepeatSkillRuntime
     {
+        private static readonly Regex Sg88MismatchPairRegex = new(
+            @"byte\s*(?<index>\d+)\s*:\s*0x(?<observed>[0-9A-Fa-f]{1,2})\s*->\s*0x(?<rebuilt>[0-9A-Fa-f]{1,2})",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         public const int RepeatSkillModeEndAckPacketType = 1020;
         public const int Sg88ManualAttackConfirmPacketType = 1021;
         public const int SkillEffectRequestOpcode = 71;
@@ -440,6 +445,22 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            if (TryExtractSg88ReplayParityMismatchPairs(decodeDetail, out string[] mismatchPairs)
+                && mismatchPairs.Length > 0)
+            {
+                int[] parsed = mismatchPairs
+                    .Select(pair => TryParseSg88ReplayParityMismatchPair(pair, out int index, out _) ? index : -1)
+                    .Where(index => index >= 0)
+                    .Distinct()
+                    .OrderBy(index => index)
+                    .ToArray();
+                if (parsed.Length > 0)
+                {
+                    byteIndices = parsed;
+                    return true;
+                }
+            }
+
             const string legacyMarker = "byteIndex=";
             int legacyMarkerIndex = decodeDetail.IndexOf(legacyMarker, StringComparison.Ordinal);
             if (legacyMarkerIndex < 0)
@@ -461,6 +482,85 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byteIndices = new[] { legacyByteIndex };
+            return true;
+        }
+
+        public static bool TryExtractSg88ReplayParityMismatchPairs(string decodeDetail, out string[] mismatchPairs)
+        {
+            mismatchPairs = Array.Empty<string>();
+            if (string.IsNullOrWhiteSpace(decodeDetail))
+            {
+                return false;
+            }
+
+            string rawPairSegment = null;
+            const string marker = "mismatchPairs=[";
+            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.Ordinal);
+            if (markerIndex >= 0)
+            {
+                int valueStart = markerIndex + marker.Length;
+                int valueEnd = decodeDetail.IndexOf(']', valueStart);
+                if (valueEnd > valueStart)
+                {
+                    rawPairSegment = decodeDetail.Substring(valueStart, valueEnd - valueStart);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(rawPairSegment))
+            {
+                rawPairSegment = decodeDetail;
+            }
+
+            MatchCollection matches = Sg88MismatchPairRegex.Matches(rawPairSegment);
+            if (matches.Count == 0)
+            {
+                return false;
+            }
+
+            Dictionary<int, string> normalizedByByte = new();
+            foreach (Match match in matches.Cast<Match>())
+            {
+                if (!TryParseSg88ReplayParityMismatchPair(match.Value, out int byteIndex, out string normalizedPair))
+                {
+                    continue;
+                }
+
+                normalizedByByte[byteIndex] = normalizedPair;
+            }
+
+            if (normalizedByByte.Count == 0)
+            {
+                return false;
+            }
+
+            mismatchPairs = normalizedByByte
+                .OrderBy(entry => entry.Key)
+                .Select(entry => entry.Value)
+                .ToArray();
+            return true;
+        }
+
+        internal static bool TryParseSg88ReplayParityMismatchPair(string token, out int byteIndex, out string normalizedPair)
+        {
+            byteIndex = -1;
+            normalizedPair = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            Match match = Sg88MismatchPairRegex.Match(token);
+            if (!match.Success
+                || !int.TryParse(match.Groups["index"].Value, out int parsedByteIndex)
+                || parsedByteIndex < 0
+                || !byte.TryParse(match.Groups["observed"].Value, System.Globalization.NumberStyles.HexNumber, null, out byte observedByte)
+                || !byte.TryParse(match.Groups["rebuilt"].Value, System.Globalization.NumberStyles.HexNumber, null, out byte rebuiltByte))
+            {
+                return false;
+            }
+
+            byteIndex = parsedByteIndex;
+            normalizedPair = $"byte{parsedByteIndex}:0x{observedByte:X2}->0x{rebuiltByte:X2}";
             return true;
         }
 

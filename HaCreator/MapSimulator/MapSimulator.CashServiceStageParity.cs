@@ -1865,6 +1865,14 @@ namespace HaCreator.MapSimulator
             CashServiceStageWindow.PacketCatalogEntry entry = stageWindow.CashGiftPacketEntries[giftIndex];
             int totalGiftCount = stageWindow.CashGiftPacketEntries.Count;
             string sender = string.IsNullOrWhiteSpace(entry.Seller) ? "Unknown sender" : entry.Seller;
+            string rawSenderLine = !string.IsNullOrWhiteSpace(entry.PacketSenderRaw)
+                && !string.Equals(entry.PacketSenderRaw.Trim(), sender, StringComparison.Ordinal)
+                ? $"GW_GiftList sFrom raw: {entry.PacketSenderRaw}"
+                : string.Empty;
+            string rawMessageLine = !string.IsNullOrWhiteSpace(entry.PacketMessageRaw)
+                && !string.Equals(entry.PacketMessageRaw.Trim(), entry.PacketMessage, StringComparison.Ordinal)
+                ? $"GW_GiftList sText raw: {entry.PacketMessageRaw}"
+                : string.Empty;
             modalWindow.Configure(
                 "CUIReceiveGift",
                 $"Review gift row {(giftIndex + 1).ToString(CultureInfo.InvariantCulture)} of {totalGiftCount.ToString(CultureInfo.InvariantCulture)} before the next CDialog::DoModal pass.",
@@ -1873,6 +1881,8 @@ namespace HaCreator.MapSimulator
                     $"{entry.Title} | {sender}",
                     entry.Detail,
                     entry.PacketFieldSummary,
+                    rawSenderLine,
+                    rawMessageLine,
                     string.IsNullOrWhiteSpace(entry.PriceLabel) ? string.Empty : entry.PriceLabel,
                     string.IsNullOrWhiteSpace(entry.StateLabel) ? string.Empty : entry.StateLabel,
                     "Client evidence: OnCashItemResLoadGiftDone allocates one CUIReceiveGift per decoded GW_GiftList row and advances after each modal closes."
@@ -2138,7 +2148,18 @@ namespace HaCreator.MapSimulator
                 string serialLabel = entry?.SerialNumber > 0
                     ? $" / SN {entry.SerialNumber.ToString(CultureInfo.InvariantCulture)}"
                     : string.Empty;
-                queueLabels.Add($"{(i + 1).ToString(CultureInfo.InvariantCulture)}. {rowLabel} / {title} / {sender}{serialLabel}");
+                string messagePreview = !string.IsNullOrWhiteSpace(entry?.PacketMessageRaw)
+                    ? entry.PacketMessageRaw.Trim()
+                    : entry?.PacketMessage ?? string.Empty;
+                if (messagePreview.Length > 32)
+                {
+                    messagePreview = $"{messagePreview.Substring(0, 32)}...";
+                }
+
+                string messageLabel = string.IsNullOrWhiteSpace(messagePreview)
+                    ? string.Empty
+                    : $" / msg \"{messagePreview}\"";
+                queueLabels.Add($"{(i + 1).ToString(CultureInfo.InvariantCulture)}. {rowLabel} / {title} / {sender}{serialLabel}{messageLabel}");
             }
 
             return queueLabels;
@@ -2403,7 +2424,10 @@ namespace HaCreator.MapSimulator
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
             writer.Write((byte)0);
-            WriteCashReceiveGiftMapleString(writer, selectedGift?.Seller ?? string.Empty);
+            string giftSender = !string.IsNullOrWhiteSpace(selectedGift?.PacketSenderRaw)
+                ? selectedGift.PacketSenderRaw
+                : selectedGift?.Seller ?? string.Empty;
+            WriteCashReceiveGiftMapleString(writer, giftSender);
             WriteCashReceiveGiftMapleString(writer, replyText ?? string.Empty);
             writer.Write((byte)1);
             int zeroBasedGiftIndex = selectedGift?.PacketRowIndex > 0

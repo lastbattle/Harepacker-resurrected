@@ -27,6 +27,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientNoticeOkButtonX = 197;
         private const int ButtonBottomMargin = 15;
         private const int SeparatorTopFromBottom = 64;
+        private const int ClientNoticeActionCloseRightMargin = 16;
+        private const int DialogCloseButtonMinimumWidth = 32;
         private const int CloseButtonRightMargin = 8;
         private const int CloseButtonTopMargin = 8;
 
@@ -88,6 +90,29 @@ namespace HaCreator.MapSimulator.UI
         internal static int ResolveOkButtonY(int frameHeight, int buttonHeight)
         {
             return Math.Max(0, Math.Max(0, frameHeight) - Math.Max(0, buttonHeight) - ButtonBottomMargin);
+        }
+
+        internal static Point ResolveCloseButtonPosition(
+            int frameWidth,
+            int frameHeight,
+            int closeButtonWidth,
+            int closeButtonHeight)
+        {
+            int normalizedFrameWidth = Math.Max(0, frameWidth);
+            int normalizedFrameHeight = Math.Max(0, frameHeight);
+            int normalizedCloseButtonWidth = Math.Max(0, closeButtonWidth);
+            int normalizedCloseButtonHeight = Math.Max(0, closeButtonHeight);
+
+            // CUtilDlg::OnCreate places dialog-sized BtClose controls on the same bottom row as BtOK.
+            if (normalizedCloseButtonWidth >= DialogCloseButtonMinimumWidth)
+            {
+                int x = Math.Max(0, normalizedFrameWidth - normalizedCloseButtonWidth - ClientNoticeActionCloseRightMargin);
+                int y = ResolveOkButtonY(normalizedFrameHeight, normalizedCloseButtonHeight);
+                return new Point(x, y);
+            }
+
+            int topRightX = Math.Max(CloseButtonTopMargin, normalizedFrameWidth - normalizedCloseButtonWidth - CloseButtonRightMargin);
+            return new Point(topRightX, CloseButtonTopMargin);
         }
 
         internal static bool ShouldDismissForKeyboard(Keys key)
@@ -412,10 +437,17 @@ namespace HaCreator.MapSimulator.UI
         {
             BaseDXDrawableItem closeButtonDrawable = closeButton.GetBaseDXDrawableItemByState();
             int frameWidth = CurrentFrame?.Width ?? DefaultFrameWidth;
+            int frameHeight = CurrentFrame?.Height ?? DefaultFrameHeight;
             int closeButtonWidth = closeButtonDrawable?.Frame0?.Width ?? 16;
+            int closeButtonHeight = closeButtonDrawable?.Frame0?.Height ?? 16;
+            Point closeButtonPosition = ResolveCloseButtonPosition(
+                frameWidth,
+                frameHeight,
+                closeButtonWidth,
+                closeButtonHeight);
 
-            closeButton.X = Math.Max(CloseButtonTopMargin, frameWidth - closeButtonWidth - CloseButtonRightMargin);
-            closeButton.Y = CloseButtonTopMargin;
+            closeButton.X = closeButtonPosition.X;
+            closeButton.Y = closeButtonPosition.Y;
         }
     }
 }

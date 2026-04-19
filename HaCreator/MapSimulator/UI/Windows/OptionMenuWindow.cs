@@ -419,6 +419,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateJoypadCaptureState(session);
+            if (NormalizeClientComboBindingsToDetectedButtons(session, out int clearedCount)
+                && clearedCount > 0
+                && _armedJoypadBindingAction == null
+                && _pendingJoypadConfirmAction == JoypadPendingConfirmAction.None)
+            {
+                _statusMessage = $"Detected joypad button count changed; {clearedCount} staged CUIJoyPad combo binding(s) outside Button 1..N were cleared.";
+            }
+
             HandleJoypadNavigationInput(session);
             if (!IsVisible || _mode != OptionMenuMode.Joypad)
             {
@@ -2044,6 +2052,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             row.AdjustValue?.Invoke(session, direction);
+            NormalizeClientComboBindingsToDetectedButtons(session, out _);
             string value = row.GetValue?.Invoke(session) ?? "Unavailable";
             _statusMessage = BuildJoypadRowStatus(row, value, direction >= 0);
         }
@@ -2162,6 +2171,44 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return subset;
+        }
+
+        private static bool NormalizeClientComboBindingsToDetectedButtons(JoypadSessionSnapshot session, out int clearedCount)
+        {
+            clearedCount = 0;
+            if (session == null || session.Bindings == null)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            foreach (InputAction action in JoypadClientCoreBindingActions)
+            {
+                if (!session.Bindings.TryGetValue(action, out Buttons configuredButton) || configuredButton == 0)
+                {
+                    continue;
+                }
+
+                IReadOnlyList<Buttons> allowedButtons = GetClientComboAllowedButtons(session, action);
+                bool isAllowed = false;
+                for (int i = 0; i < allowedButtons.Count; i++)
+                {
+                    if (allowedButtons[i] == configuredButton)
+                    {
+                        isAllowed = true;
+                        break;
+                    }
+                }
+
+                if (!isAllowed)
+                {
+                    session.Bindings[action] = 0;
+                    clearedCount++;
+                    changed = true;
+                }
+            }
+
+            return changed;
         }
 
         private static bool IsConfiguredButtonDown(GamePadState state, Buttons button, JoypadSessionSnapshot session)

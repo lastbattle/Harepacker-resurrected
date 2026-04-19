@@ -71,7 +71,7 @@ namespace HaCreator.MapSimulator
 
         private string GetSocialRoomRestrictionMessage(SocialRoomKind kind)
         {
-            if (kind is not (SocialRoomKind.MiniRoom or SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop))
+            if (!FieldInteractionRestrictionEvaluator.IsFieldRestrictedSocialRoomKind(kind))
             {
                 return null;
             }

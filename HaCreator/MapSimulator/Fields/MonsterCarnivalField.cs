@@ -70,6 +70,17 @@ namespace HaCreator.MapSimulator.Fields
         UiWindow = 8
     }
 
+    public enum MonsterCarnivalSeason2SubDialogPhase
+    {
+        None = 0,
+        IdleHidden = 1,
+        RequestAcceptedPending = 2,
+        RequestRejected = 3,
+        RequestRejectedLocked = 4,
+        DeathLocked = 5,
+        ResultClosed = 6
+    }
+
     internal readonly record struct MonsterCarnivalStringPoolMessage(int StringPoolId, string FallbackFormat);
 
     public sealed class MonsterCarnivalEntry
@@ -1178,6 +1189,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool _season2SubDialogOkEnabled;
         private bool _season2SubDialogSelectionLocked;
         private string _season2SubDialogSummary;
+        private MonsterCarnivalSeason2SubDialogPhase _season2SubDialogPhase;
         private GraphicsDevice _graphicsDevice;
         private MonsterCarnivalHudAssets _hudAssets = new();
 
@@ -1203,6 +1215,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool Season2SubDialogOkEnabled => _season2SubDialogOkEnabled;
         public bool Season2SubDialogSelectionLocked => _season2SubDialogSelectionLocked;
         public string Season2SubDialogSummary => _season2SubDialogSummary;
+        public MonsterCarnivalSeason2SubDialogPhase Season2SubDialogPhase => _season2SubDialogPhase;
         public string LastRequestFailureChatRoute => _lastRequestFailureChatRoute;
 
         public void Configure(MapInfo mapInfo)

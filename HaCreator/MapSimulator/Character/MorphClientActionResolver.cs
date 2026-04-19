@@ -545,6 +545,12 @@ namespace HaCreator.MapSimulator.Character
                 // checked body row keeps it on `swingT1` before `swingTF`.
                 ["windEffect"] = new[] { "swingT1", "swingTF" },
                 ["jShot"] = new[] { "swingT2", "swingPF", "swingOF" },
+                // Skill/2312.img/skill/23121003/action/0 still publishes
+                // `edgeSpiral`, while Character/00002000.img keeps no verbatim
+                // `edgeSpiral` body branch and the client raw morph surface still
+                // omits that name. Keep it on the checked dual-shot surface:
+                // `jShot` redirects plus the nearby `shoot1` backstop.
+                ["edgeSpiral"] = new[] { "swingT2", "swingPF", "swingOF", "shoot1" },
                 ["multiSniping"] = new[] { "swingT1", "swingTF", "shoot1", "swingT2", "shoot2" },
                 // Character/00002000.img keeps the three pole-arm raw roots as body
                 // redirects (`swingT2PoleArm -> swingT2`, `swingP1PoleArm -> swingP1`,
@@ -754,6 +760,12 @@ namespace HaCreator.MapSimulator.Character
                 // branches for either name.
                 ["alert8"] = new[] { "jump", "alert" },
                 ["giant"] = new[] { "sit" },
+                // Post-s_sMorphAction client raw action code 302 remains `pvpko`.
+                // Character/00002000.img keeps `pvpko/0/action = alert`, and current
+                // Morph coverage only publishes a verbatim `pvpko` branch on 2002.img.
+                // Keep exact `pvpko` first when authored, then fall back through the
+                // checked body-redirect surface for other morph templates.
+                ["pvpko"] = new[] { "alert", "dead" },
                 // Character/00002000.img also keeps `heal`, `ghoststand`, `ghostsit`,
                 // and `ghostproneStab` as client raw roots while checked Morph/*.img
                 // publishes no verbatim branches for those names.
@@ -863,9 +875,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in aliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                 {
-                    yield return alias;
+                    yield return resolvedAlias;
                 }
             }
         }
@@ -885,9 +897,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in aliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                 {
-                    yield return alias;
+                    yield return resolvedAlias;
                 }
             }
         }
@@ -933,9 +945,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in aliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                 {
-                    yield return alias;
+                    yield return resolvedAlias;
                 }
             }
         }
@@ -1157,9 +1169,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in aliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                 {
-                    yield return alias;
+                    yield return resolvedAlias;
                 }
             }
         }
@@ -1304,18 +1316,18 @@ namespace HaCreator.MapSimulator.Character
             {
                 foreach (string alias in ClientPublishedRangedMorphFallbackAliases)
                 {
-                    if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                    foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                     {
-                        yield return alias;
+                        yield return resolvedAlias;
                     }
                 }
             }
 
             foreach (string alias in GenericMorphRangedAttackAliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                 {
-                    yield return alias;
+                    yield return resolvedAlias;
                 }
             }
 
@@ -1323,9 +1335,9 @@ namespace HaCreator.MapSimulator.Character
             {
                 foreach (string alias in ClientPublishedRangedMorphFallbackAliases)
                 {
-                    if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                    foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                     {
-                        yield return alias;
+                        yield return resolvedAlias;
                     }
                 }
             }
@@ -1340,9 +1352,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in aliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                 {
-                    yield return alias;
+                    yield return resolvedAlias;
                 }
             }
         }
@@ -1468,9 +1480,9 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in aliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                 {
-                    yield return alias;
+                    yield return resolvedAlias;
                 }
             }
         }
@@ -1508,9 +1520,28 @@ namespace HaCreator.MapSimulator.Character
                          .ThenByDescending(alias =>
                              TryParseAlertActionIndex(alias, out int aliasIndex) ? aliasIndex : int.MinValue))
             {
-                if (HasPublishedAction(morphPart, alias))
+                foreach (string resolvedAlias in EnumeratePublishedAliasLookupMatches(morphPart, alias))
                 {
-                    yield return alias;
+                    yield return resolvedAlias;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumeratePublishedAliasLookupMatches(CharacterPart morphPart, string alias)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(alias))
+            {
+                yield break;
+            }
+
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string lookupAlias in CharacterPart.GetActionLookupStrings(alias))
+            {
+                if (!string.IsNullOrWhiteSpace(lookupAlias)
+                    && HasPublishedAction(morphPart, lookupAlias)
+                    && yielded.Add(lookupAlias))
+                {
+                    yield return lookupAlias;
                 }
             }
         }

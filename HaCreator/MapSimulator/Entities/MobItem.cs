@@ -1860,7 +1860,7 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             string effectPath = _animationSet.GetAngerGaugeEffectPath()
-                ?? MobAngerGaugeBurstStringPoolText.ResolvePath(_mobInstance?.MobInfo?.ID);
+                ?? MapleStoryStringPool.ResolveMobAngerGaugeBurstPath(_mobInstance?.MobInfo?.ID);
             if (string.IsNullOrWhiteSpace(effectPath))
             {
                 return;

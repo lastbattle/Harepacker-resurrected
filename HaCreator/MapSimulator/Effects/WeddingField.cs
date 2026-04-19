@@ -654,6 +654,7 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.TemporaryStatRevision,
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
@@ -687,6 +688,7 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.TemporaryStatRevision,
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
@@ -721,6 +723,7 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.TemporaryStatRevision,
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
@@ -1237,6 +1240,7 @@ namespace HaCreator.MapSimulator.Effects
             destination.PortableChairItemId = source.PortableChairItemId;
             destination.PortableChairPairCharacterId = source.PortableChairPairCharacterId;
             destination.TemporaryStats = source.TemporaryStats;
+            destination.TemporaryStatRevision = Math.Max(destination.TemporaryStatRevision, source.TemporaryStatRevision);
             destination.MovementSnapshot = source.MovementSnapshot;
             destination.MovementDrivenActionSelection = source.MovementDrivenActionSelection;
             destination.PacketOwnedItemEffect = source.PacketOwnedItemEffect;
@@ -1248,6 +1252,9 @@ namespace HaCreator.MapSimulator.Effects
             destination.HasExplicitAction = source.HasExplicitAction;
             destination.HasExplicitBuild = source.HasExplicitBuild;
             destination.NameTagRevision = Math.Max(destination.NameTagRevision, source.NameTagRevision);
+            destination.ProfileMetadataRevision = Math.Max(destination.ProfileMetadataRevision, source.ProfileMetadataRevision);
+            destination.GuildMarkRevision = Math.Max(destination.GuildMarkRevision, source.GuildMarkRevision);
+            ApplyParticipantTemporaryStatPresentation(destination);
             if (!string.IsNullOrWhiteSpace(source.BaseActionName))
             {
                 destination.BaseActionName = source.BaseActionName;
@@ -1285,7 +1292,7 @@ namespace HaCreator.MapSimulator.Effects
                 {
                     if (_participantActors.TryGetValue(spawn.CharacterId, out WeddingRemoteParticipant participant))
                     {
-                        participant.TemporaryStats = spawn.TemporaryStats;
+                        SetParticipantTemporaryStats(participant, spawn.TemporaryStats);
                     }
 
                     ApplyParticipantPortableChairState(spawn.CharacterId, spawn.PortableChairItemId, pairCharacterId: null);
@@ -1298,7 +1305,7 @@ namespace HaCreator.MapSimulator.Effects
             UpsertAudienceParticipant(build, spawn.Position, facingRight, actionName, spawn.CharacterId);
             if (TryGetAudienceActorById(spawn.CharacterId, out WeddingRemoteParticipant audienceParticipant))
             {
-                audienceParticipant.TemporaryStats = spawn.TemporaryStats;
+                SetParticipantTemporaryStats(audienceParticipant, spawn.TemporaryStats);
             }
 
             ApplyParticipantPortableChairState(spawn.CharacterId, spawn.PortableChairItemId, pairCharacterId: null);
@@ -1519,8 +1526,7 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            participant.TemporaryStats = packet.TemporaryStats;
-            ApplyParticipantTemporaryStatPresentation(participant);
+            SetParticipantTemporaryStats(participant, packet.TemporaryStats);
             return true;
         }
 
@@ -1556,8 +1562,9 @@ namespace HaCreator.MapSimulator.Effects
                 remainingMaskWords[i] = remainingWord;
             }
 
-            participant.TemporaryStats = RemoteUserPacketCodec.ApplyResetMask(participant.TemporaryStats, remainingMaskWords);
-            ApplyParticipantTemporaryStatPresentation(participant);
+            SetParticipantTemporaryStats(
+                participant,
+                RemoteUserPacketCodec.ApplyResetMask(participant.TemporaryStats, remainingMaskWords));
             return true;
         }
 
@@ -1811,6 +1818,20 @@ namespace HaCreator.MapSimulator.Effects
 
             participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
             RefreshParticipantNameTag(participant);
+        }
+
+        private static void SetParticipantTemporaryStats(
+            WeddingRemoteParticipant participant,
+            RemoteUserTemporaryStatSnapshot temporaryStats)
+        {
+            if (participant == null)
+            {
+                return;
+            }
+
+            participant.TemporaryStats = temporaryStats;
+            participant.TemporaryStatRevision++;
+            ApplyParticipantTemporaryStatPresentation(participant);
         }
 
         private static void ApplyParticipantGuildNameChanged(WeddingRemoteParticipant participant, string guildName)
@@ -4435,6 +4456,7 @@ namespace HaCreator.MapSimulator.Effects
         int? PortableChairItemId,
         int? PortableChairPairCharacterId,
         RemoteUserTemporaryStatSnapshot TemporaryStats,
+        int TemporaryStatRevision,
         int? PacketOwnedItemEffectItemId,
         int PacketOwnedItemEffectRevision,
         RemoteUserAvatarModifiedPacket? AvatarModifiedState,
@@ -4498,6 +4520,7 @@ namespace HaCreator.MapSimulator.Effects
         public int? PortableChairItemId { get; set; }
         public int? PortableChairPairCharacterId { get; set; }
         public RemoteUserTemporaryStatSnapshot TemporaryStats { get; set; }
+        public int TemporaryStatRevision { get; set; }
         public WeddingPacketOwnedItemEffectState PacketOwnedItemEffect { get; set; }
         public int? PacketOwnedItemEffectItemId { get; set; }
         public int PacketOwnedItemEffectRevision { get; set; }

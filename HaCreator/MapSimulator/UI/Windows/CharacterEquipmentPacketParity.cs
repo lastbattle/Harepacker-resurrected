@@ -52,6 +52,14 @@ namespace HaCreator.MapSimulator.UI
                 byte[] buffer = payload as byte[] ?? new List<byte>(payload).ToArray();
                 using MemoryStream stream = new(buffer, writable: false);
                 using BinaryReader reader = new(stream);
+                bool sawMatchingAddEntry = false;
+                bool sawMatchingSwap = false;
+                bool sawPositiveEquipRemove = false;
+                bool sawExpectedPositiveEquipRemove = false;
+                bool sawNegativeEquipRemove = false;
+                bool sawExpectedNegativeEquipRemove = false;
+                bool sawConflictingCharacterMutation = false;
+                string conflictingCharacterMutationRejectReason = null;
                 _ = reader.ReadByte(); // bExclRequestSent reset marker
                 int operationCount = reader.ReadByte();
                 if (operationCount <= 0)
@@ -82,6 +90,14 @@ namespace HaCreator.MapSimulator.UI
                             }
 
                             short toPosition = reader.ReadInt16();
+                            ObserveCharacterInventoryOperationRemove(
+                                request,
+                                inventoryType,
+                                fromPosition,
+                                ref sawPositiveEquipRemove,
+                                ref sawExpectedPositiveEquipRemove,
+                                ref sawNegativeEquipRemove,
+                                ref sawExpectedNegativeEquipRemove);
                             if (TryMatchesCharacterInventoryOperationSwap(
                                     request,
                                     inventoryType,
@@ -89,7 +105,17 @@ namespace HaCreator.MapSimulator.UI
                                     toPosition,
                                     out rejectReason))
                             {
-                                return true;
+                                sawMatchingSwap = true;
+                                break;
+                            }
+
+                            if (IsSupportedClientCharacterInventoryType(inventoryType))
+                            {
+                                sawConflictingCharacterMutation = true;
+                                conflictingCharacterMutationRejectReason ??=
+                                    string.IsNullOrWhiteSpace(rejectReason)
+                                        ? "Inventory-operation payload mutated an unexpected character inventory swap while resolving the active request."
+                                        : rejectReason;
                             }
 
                             break;
@@ -104,6 +130,14 @@ namespace HaCreator.MapSimulator.UI
                             _ = reader.ReadInt16();
                             break;
                         case 3:
+                            ObserveCharacterInventoryOperationRemove(
+                                request,
+                                inventoryType,
+                                fromPosition,
+                                ref sawPositiveEquipRemove,
+                                ref sawExpectedPositiveEquipRemove,
+                                ref sawNegativeEquipRemove,
+                                ref sawExpectedNegativeEquipRemove);
                             break;
                         case 4:
                             if (stream.Length - stream.Position < sizeof(int))
@@ -128,19 +162,24 @@ namespace HaCreator.MapSimulator.UI
                                 return false;
                             }
 
-                            if (matchedByHeader)
-                            {
-                                return true;
-                            }
-
-                            if (TryMatchesCharacterInventoryOperationAdd(
+                            bool isMatchingAddEntry = matchedByHeader
+                                || TryMatchesCharacterInventoryOperationAdd(
                                     request,
                                     inventoryType,
                                     fromPosition,
                                     addedItemId,
-                                    out rejectReason))
+                                    out string addMismatchRejectReason);
+                            if (isMatchingAddEntry)
                             {
-                                return true;
+                                sawMatchingAddEntry = true;
+                            }
+                            else if (IsSupportedClientCharacterInventoryType(inventoryType))
+                            {
+                                sawConflictingCharacterMutation = true;
+                                conflictingCharacterMutationRejectReason ??=
+                                    string.IsNullOrWhiteSpace(addMismatchRejectReason)
+                                        ? "Inventory-operation payload mutated an unexpected character inventory add entry while resolving the active request."
+                                        : addMismatchRejectReason;
                             }
 
                             break;
@@ -151,6 +190,28 @@ namespace HaCreator.MapSimulator.UI
                             break;
                     }
                 }
+
+                if (sawConflictingCharacterMutation)
+                {
+                    rejectReason = $"Inventory-operation payload mutated character inventory slots outside the active request: {conflictingCharacterMutationRejectReason}";
+                    return false;
+                }
+
+                if (sawMatchingSwap)
+                {
+                    return true;
+                }
+
+                if (sawMatchingAddEntry)
+                {
+                    return TryValidateCharacterAddEntrySourceEvidence(
+                        request,
+                        sawPositiveEquipRemove,
+                        sawExpectedPositiveEquipRemove,
+                        sawNegativeEquipRemove,
+                        sawExpectedNegativeEquipRemove,
+                        out rejectReason);
+                }
             }
             catch (Exception ex)
             {
@@ -160,6 +221,126 @@ namespace HaCreator.MapSimulator.UI
 
             rejectReason = "Inventory-operation payload did not include a character-equipment add-or-swap entry matching the active request.";
             return false;
+        }
+
+        private static void ObserveCharacterInventoryOperationRemove(
+            EquipmentChangeRequest request,
+            byte inventoryType,
+            short sourcePosition,
+            ref bool sawPositiveEquipRemove,
+            ref bool sawExpectedPositiveEquipRemove,
+            ref bool sawNegativeEquipRemove,
+            ref bool sawExpectedNegativeEquipRemove)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            if (sourcePosition > 0)
+            {
+                sawPositiveEquipRemove = sawPositiveEquipRemove || IsSupportedClientCharacterInventoryType(inventoryType);
+                if (request.Kind == EquipmentChangeRequestKind.InventoryToCharacter
+                    && request.SourceInventoryIndex >= 0
+                    && inventoryType == (byte)request.SourceInventoryType)
+                {
+                    short expectedSourcePosition = (short)(request.SourceInventoryIndex + 1);
+                    sawExpectedPositiveEquipRemove = sawExpectedPositiveEquipRemove || sourcePosition == expectedSourcePosition;
+                }
+
+                return;
+            }
+
+            if (sourcePosition < 0)
+            {
+                sawNegativeEquipRemove = sawNegativeEquipRemove || IsSupportedClientCharacterInventoryType(inventoryType);
+                if ((request.Kind == EquipmentChangeRequestKind.CharacterToCharacter
+                     || request.Kind == EquipmentChangeRequestKind.CharacterToInventory)
+                    && request.SourceEquipSlot.HasValue
+                    && IsExpectedCharacterSourceInventory(request, inventoryType))
+                {
+                    short expectedSourcePosition = ToClientEquipPosition(request.SourceEquipSlot.Value);
+                    sawExpectedNegativeEquipRemove = sawExpectedNegativeEquipRemove || sourcePosition == expectedSourcePosition;
+                }
+            }
+        }
+
+        private static bool TryValidateCharacterAddEntrySourceEvidence(
+            EquipmentChangeRequest request,
+            bool sawPositiveEquipRemove,
+            bool sawExpectedPositiveEquipRemove,
+            bool sawNegativeEquipRemove,
+            bool sawExpectedNegativeEquipRemove,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                rejectReason = "Character request metadata is unavailable for add-entry source validation.";
+                return false;
+            }
+
+            switch (request.Kind)
+            {
+                case EquipmentChangeRequestKind.InventoryToCharacter:
+                    if (sawPositiveEquipRemove && !sawExpectedPositiveEquipRemove)
+                    {
+                        rejectReason = "Inventory-operation add entry did not include removal from the requested source inventory slot.";
+                        return false;
+                    }
+
+                    if (!sawExpectedPositiveEquipRemove)
+                    {
+                        rejectReason = "Inventory-operation add entry is missing source-slot removal for the requested equip-in operation.";
+                        return false;
+                    }
+
+                    return true;
+                case EquipmentChangeRequestKind.CharacterToCharacter:
+                case EquipmentChangeRequestKind.CharacterToInventory:
+                    if (sawNegativeEquipRemove && !sawExpectedNegativeEquipRemove)
+                    {
+                        rejectReason = "Inventory-operation add entry did not include removal from the requested character source slot.";
+                        return false;
+                    }
+
+                    if (!sawExpectedNegativeEquipRemove)
+                    {
+                        rejectReason = "Inventory-operation add entry is missing source-slot removal for the requested character equipment operation.";
+                        return false;
+                    }
+
+                    return true;
+                default:
+                    rejectReason = "Unsupported character equipment request kind for add-entry source validation.";
+                    return false;
+            }
+        }
+
+        private static bool IsExpectedCharacterSourceInventory(EquipmentChangeRequest request, byte inventoryType)
+        {
+            if (request?.Kind is not EquipmentChangeRequestKind.CharacterToCharacter
+                and not EquipmentChangeRequestKind.CharacterToInventory)
+            {
+                return false;
+            }
+
+            if (request.Kind == EquipmentChangeRequestKind.CharacterToCharacter)
+            {
+                return inventoryType == ClientEquipInventoryType;
+            }
+
+            if (request.RequestedPart?.IsCash == true)
+            {
+                return inventoryType == ClientCashInventoryType;
+            }
+
+            if (request.RequestedPart?.IsCash == false)
+            {
+                return inventoryType == ClientEquipInventoryType;
+            }
+
+            return IsSupportedClientCharacterInventoryType(inventoryType);
         }
 
         public static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)

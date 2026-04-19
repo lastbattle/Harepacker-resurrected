@@ -180,6 +180,28 @@ namespace HaCreator.MapSimulator.Managers
             lock (_queueLock)
             {
                 FlushQueuedOutboundPacketsUnsafe(clients, currentTick);
+                if (_pendingOutboundPackets.Count > 0)
+                {
+                    byte[] deferredPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
+                    int resolvedTick = ResolveCurrentTick(currentTick);
+                    bool queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(
+                        new PendingTouchRequest(objectId, isTouching, deferredPacket, resolvedTick));
+                    if (queued)
+                    {
+                        QueuedCount++;
+                        LastQueuedObjectId = objectId;
+                        LastQueuedTouchFlag = isTouching;
+                        LastQueuedRawPacket = deferredPacket;
+                        status = $"Queued packetoutraw {Convert.ToHexString(deferredPacket)} behind deferred reactor touch replay cadence.";
+                    }
+                    else
+                    {
+                        status = $"packetoutraw {Convert.ToHexString(deferredPacket)} is already the latest deferred reactor touch ownership state.";
+                    }
+
+                    LastStatus = status;
+                    return true;
+                }
             }
 
             byte[] rawPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);

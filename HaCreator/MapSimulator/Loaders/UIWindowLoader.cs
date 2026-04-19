@@ -5532,7 +5532,8 @@ namespace HaCreator.MapSimulator.Loaders
             try
             {
                 WzImage tooltipHelpImage = global::HaCreator.Program.FindImage("String", "ToolTipHelp.img");
-                return tooltipHelpImage?["Game"]?["Button"]?["QuestAlarm"]?["Desc"]?.GetString();
+                string tooltipText = tooltipHelpImage?["Game"]?["Button"]?["QuestAlarm"]?["Desc"]?.GetString();
+                return QuestAlarmOwnerStringPoolText.NormalizePacketEscapedText(tooltipText);
             }
             catch
             {
@@ -8817,6 +8818,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty calendarBackgroundRoot = calendarProperty?["bg"] as WzSubProperty;
             WzSubProperty calendarBackgroundProperty0 = calendarBackgroundRoot?["0"] as WzSubProperty;
             WzSubProperty calendarBackgroundProperty1 = calendarBackgroundRoot?["1"] as WzSubProperty;
+            (Point statusLaneAnchorOffset, int statusLaneWidth) = ResolveEventStatusLaneLayout(eventListProperty);
             EventWindow window = new EventWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.Event,
@@ -8843,8 +8845,8 @@ namespace HaCreator.MapSimulator.Loaders
                 },
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "normal", device).ToArray(),
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "select", device).ToArray(),
-                new Point(226, 5),
-                57)
+                statusLaneAnchorOffset,
+                statusLaneWidth)
             {
                 Position = position
             };
@@ -8890,6 +8892,76 @@ namespace HaCreator.MapSimulator.Loaders
                 closeButton);
             return window;
         }
+
+        private static (Point AnchorOffset, int LaneWidth) ResolveEventStatusLaneLayout(WzSubProperty eventListProperty)
+        {
+            // WZ evidence: EventList/main/event/Bt{None,Start,Ing,Clear,Will}/normal/0
+            // share origin (-226, -5) and width 57 in v95. The loader keeps that authored
+            // seam instead of hardcoding these values in the owner constructor.
+            Point fallbackAnchor = new(226, 5);
+            int fallbackWidth = 57;
+            WzCanvasProperty buttonCanvas = ResolveEventStatusButtonCanvas(eventListProperty);
+            if (buttonCanvas == null)
+            {
+                return ProgressionUtilityParityRules.ResolveEventStatusLaneLayout(
+                    Point.Zero,
+                    0,
+                    fallbackAnchor,
+                    fallbackWidth);
+            }
+
+            Point authoredAnchor = ResolveCanvasOffset(buttonCanvas, Point.Zero);
+            int authoredWidth = buttonCanvas.GetLinkedWzCanvasBitmap()?.Width ?? 0;
+            return ProgressionUtilityParityRules.ResolveEventStatusLaneLayout(
+                authoredAnchor,
+                authoredWidth,
+                fallbackAnchor,
+                fallbackWidth);
+        }
+
+        private static WzCanvasProperty ResolveEventStatusButtonCanvas(WzSubProperty eventListProperty)
+        {
+            if (eventListProperty == null)
+            {
+                return null;
+            }
+
+            string[] buttonNames = { "BtStart", "BtIng", "BtClear", "BtNone", "BtWill" };
+            string[] states = { "normal", "mouseOver", "pressed", "disabled" };
+            for (int buttonIndex = 0; buttonIndex < buttonNames.Length; buttonIndex++)
+            {
+                WzSubProperty buttonProperty = eventListProperty[buttonNames[buttonIndex]] as WzSubProperty;
+                if (buttonProperty == null)
+                {
+                    continue;
+                }
+
+                for (int stateIndex = 0; stateIndex < states.Length; stateIndex++)
+                {
+                    WzSubProperty stateProperty = buttonProperty[states[stateIndex]] as WzSubProperty;
+                    if (stateProperty?["0"] is WzCanvasProperty canvas)
+                    {
+                        return canvas;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        internal static (Point AnchorOffset, int LaneWidth) ResolveEventStatusLaneLayoutForTesting(
+            Point authoredAnchorOffset,
+            int authoredLaneWidth,
+            Point fallbackAnchorOffset,
+            int fallbackLaneWidth)
+        {
+            return ProgressionUtilityParityRules.ResolveEventStatusLaneLayout(
+                authoredAnchorOffset,
+                authoredLaneWidth,
+                fallbackAnchorOffset,
+                fallbackLaneWidth);
+        }
+
         private static UIWindowBase CreateRadioWindow(
             WzImage uiWindow2Image,
             WzImage basicImage,
@@ -9141,7 +9213,6 @@ namespace HaCreator.MapSimulator.Loaders
                 Texture2D clientSizedTexture = CreateAccountMoreInfoClientSizedBackgroundTexture(
                     device,
                     candidateTexture,
-                    candidateOffset,
                     clientOwnerWidth,
                     clientOwnerHeight);
                 if (clientSizedTexture != null)
@@ -9201,7 +9272,6 @@ namespace HaCreator.MapSimulator.Loaders
         private static Texture2D CreateAccountMoreInfoClientSizedBackgroundTexture(
             GraphicsDevice device,
             Texture2D sourceTexture,
-            Point sourceOffset,
             int clientOwnerWidth,
             int clientOwnerHeight)
         {
@@ -9211,45 +9281,61 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             if (sourceTexture.Width == clientOwnerWidth
-                && sourceTexture.Height == clientOwnerHeight
-                && sourceOffset == Point.Zero)
+                && sourceTexture.Height == clientOwnerHeight)
             {
                 return sourceTexture;
             }
 
             // CWnd::SetBackgrnd creates a destination canvas and copies the source
-            // canvas into it; it does not seed a synthetic frame color first.
-            Color[] clientFrameData = new Color[clientOwnerWidth * clientOwnerHeight];
+            // canvas into it at (0,0); OnCreate for account-more-info passes a zero
+            // draw offset, so we intentionally do not translate by source origin.
             Color[] sourceData = new Color[sourceTexture.Width * sourceTexture.Height];
             sourceTexture.GetData(sourceData);
-
-            int destinationStartX = Math.Max(0, sourceOffset.X);
-            int destinationStartY = Math.Max(0, sourceOffset.Y);
-            int sourceStartX = Math.Max(0, -sourceOffset.X);
-            int sourceStartY = Math.Max(0, -sourceOffset.Y);
-            int copyWidth = Math.Min(clientOwnerWidth - destinationStartX, sourceTexture.Width - sourceStartX);
-            int copyHeight = Math.Min(clientOwnerHeight - destinationStartY, sourceTexture.Height - sourceStartY);
+            Color[] clientFrameData = ComposeAccountMoreInfoBackgroundPixelsForTesting(
+                sourceData,
+                sourceTexture.Width,
+                sourceTexture.Height,
+                clientOwnerWidth,
+                clientOwnerHeight);
             Texture2D clientSizedTexture = new Texture2D(device, clientOwnerWidth, clientOwnerHeight);
-            if (copyWidth <= 0 || copyHeight <= 0)
-            {
-                clientSizedTexture.SetData(clientFrameData);
-                return clientSizedTexture;
-            }
-
-            for (int y = 0; y < copyHeight; y++)
-            {
-                for (int x = 0; x < copyWidth; x++)
-                {
-                    Color sourceColor = sourceData[((sourceStartY + y) * sourceTexture.Width) + (sourceStartX + x)];
-                    if (sourceColor.A != 0)
-                    {
-                        clientFrameData[((destinationStartY + y) * clientOwnerWidth) + (destinationStartX + x)] = sourceColor;
-                    }
-                }
-            }
-
             clientSizedTexture.SetData(clientFrameData);
             return clientSizedTexture;
+        }
+
+        internal static Color[] ComposeAccountMoreInfoBackgroundPixelsForTesting(
+            Color[] sourceData,
+            int sourceWidth,
+            int sourceHeight,
+            int destinationWidth,
+            int destinationHeight)
+        {
+            if (destinationWidth <= 0 || destinationHeight <= 0)
+            {
+                return Array.Empty<Color>();
+            }
+
+            Color[] destinationData = new Color[destinationWidth * destinationHeight];
+            if (sourceData == null
+                || sourceWidth <= 0
+                || sourceHeight <= 0
+                || sourceData.Length < sourceWidth * sourceHeight)
+            {
+                return destinationData;
+            }
+
+            int copyWidth = Math.Min(sourceWidth, destinationWidth);
+            int copyHeight = Math.Min(sourceHeight, destinationHeight);
+            for (int y = 0; y < copyHeight; y++)
+            {
+                Array.Copy(
+                    sourceData,
+                    y * sourceWidth,
+                    destinationData,
+                    y * destinationWidth,
+                    copyWidth);
+            }
+
+            return destinationData;
         }
 
         private static Texture2D LoadTextureFromClientUiPath(

@@ -829,9 +829,12 @@ namespace HaCreator.MapSimulator.Interaction
                 byte resultCode = reader.ReadByte();
                 if (!TryTryResolveSendResultDefinition(resultCode, out MapleTvSendResultDefinition definition))
                 {
-                    _statusMessage = $"MapleTV send-result packet used unsupported code {resultCode}.";
+                    // CMapleTVMan::OnSendMessageResult silently ignores unknown result codes:
+                    // only 1/2/3 map to StringPool chat notices.
+                    RecordOfficialPacket(PacketTypeSendMessageResult, currentTick, resultCode, -1, source);
+                    _statusMessage = $"MapleTV send-result packet used unsupported code {resultCode}; client chat feedback was skipped.";
                     message = _statusMessage;
-                    return false;
+                    return true;
                 }
 
                 QueueSendResultFeedback(definition);

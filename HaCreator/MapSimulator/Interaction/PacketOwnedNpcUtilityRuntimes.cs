@@ -34,6 +34,10 @@ namespace HaCreator.MapSimulator.Interaction
         string DetailSummary,
         string RawEncodedHex,
         string BodyEncodedHex,
+        string BaseTailEncodedHex,
+        string EquipTailEncodedHex,
+        string BundleTailEncodedHex,
+        string PetTailEncodedHex,
         int EncodedByteLength);
 
     internal readonly record struct StoreBankOwnerRowSnapshot(
@@ -1022,6 +1026,10 @@ namespace HaCreator.MapSimulator.Interaction
             internal string MetadataSummary { get; init; } = string.Empty;
             internal byte[] RawEncodedBytes { get; init; } = Array.Empty<byte>();
             internal byte[] BodyEncodedBytes { get; init; } = Array.Empty<byte>();
+            internal byte[] BaseTailBytes { get; init; } = Array.Empty<byte>();
+            internal byte[] EquipTailBytes { get; init; } = Array.Empty<byte>();
+            internal byte[] BundleTailBytes { get; init; } = Array.Empty<byte>();
+            internal byte[] PetTailBytes { get; init; } = Array.Empty<byte>();
             internal StoreBankEquipData EquipData { get; init; }
             internal StoreBankBundleData BundleData { get; init; }
             internal StoreBankPetData PetData { get; init; }

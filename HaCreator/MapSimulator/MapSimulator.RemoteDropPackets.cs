@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace HaCreator.MapSimulator
@@ -16,6 +17,7 @@ namespace HaCreator.MapSimulator
         private int _remoteDropPacketServerClockFieldId;
         private readonly System.Collections.Generic.Dictionary<int, int> _observedDropPartyActorParents = new();
         private readonly System.Collections.Generic.HashSet<int> _observedDropPartyAnchorActorIds = new();
+        private readonly Dictionary<int, Vector2> _observedRemotePetPickupActorPositions = new();
 
         private ChatCommandHandler.CommandResult ApplyRemoteDropPacketCommand(int packetType, byte[] payload)
         {
@@ -149,6 +151,7 @@ namespace HaCreator.MapSimulator
             {
                 _dropPool?.ClearPacketDrops();
                 ClearObservedDropPartyActorLinks();
+                ClearObservedRemotePetPickupActorPositions();
                 if (ShouldClearRemoteDropPacketServerClockOnFieldBind(
                     mapId,
                     _remoteDropPacketServerClockSource,
@@ -192,7 +195,16 @@ namespace HaCreator.MapSimulator
                 return resolvedSourcePosition;
             }
 
-            return TryResolveRemotePetPickupPosition(sourceId, _remoteUserPool, out Vector2 remotePetPosition)
+            if (ResolveObservedRemotePetPickupActorPosition(sourceId) is Vector2 observedRemotePetPosition)
+            {
+                return observedRemotePetPosition;
+            }
+
+            return TryResolveRemotePetPickupPosition(
+                sourceId,
+                _remoteUserPool,
+                out Vector2 remotePetPosition,
+                ResolveObservedRemotePetPickupPosition)
                 ? remotePetPosition
                 : null;
         }
@@ -367,7 +379,12 @@ namespace HaCreator.MapSimulator
                 || observedPartyLinkEvaluator?.Invoke(ownerId, normalizedActorId) == true
                 || observedPartyLinkEvaluator?.Invoke(normalizedOwnerId, normalizedActorId) == true)
             {
-                return true;
+                return packetTrackedOwner
+                    || legacyTrackedOwner
+                    || observedTrackedOwner
+                    || packetTrackedActor
+                    || legacyTrackedActor
+                    || observedTrackedActor;
             }
 
             return false;
@@ -428,6 +445,75 @@ namespace HaCreator.MapSimulator
         {
             _observedDropPartyActorParents.Clear();
             _observedDropPartyAnchorActorIds.Clear();
+        }
+
+        private void RememberObservedRemotePetPickupActorPosition(int petActorId, Vector2 position)
+        {
+            if (petActorId == 0)
+            {
+                return;
+            }
+
+            _observedRemotePetPickupActorPositions[petActorId] = position;
+        }
+
+        private Vector2? ResolveObservedRemotePetPickupActorPosition(int petActorId)
+        {
+            return petActorId != 0 && _observedRemotePetPickupActorPositions.TryGetValue(petActorId, out Vector2 position)
+                ? position
+                : null;
+        }
+
+        private Vector2? ResolveObservedRemotePetPickupPosition(int ownerCharacterId, int slotIndex)
+        {
+            return ResolveObservedRemotePetPickupPosition(
+                _observedRemotePetPickupActorPositions,
+                ownerCharacterId,
+                slotIndex);
+        }
+
+        internal static Vector2? ResolveObservedRemotePetPickupPosition(
+            IReadOnlyDictionary<int, Vector2> observedPetActorPositions,
+            int ownerCharacterId,
+            int slotIndex)
+        {
+            if (observedPetActorPositions == null || ownerCharacterId <= 0 || slotIndex < 0)
+            {
+                return null;
+            }
+
+            int exactPetActorId = BuildRemotePetPickupActorId(ownerCharacterId, slotIndex);
+            if (observedPetActorPositions.TryGetValue(exactPetActorId, out Vector2 exactPosition))
+            {
+                return exactPosition;
+            }
+
+            int closestSlotDelta = int.MaxValue;
+            Vector2? closestPosition = null;
+            foreach (KeyValuePair<int, Vector2> observedEntry in observedPetActorPositions)
+            {
+                if (!TryDecodeRemotePetPickupActorId(observedEntry.Key, out int observedOwnerId, out int observedSlotIndex)
+                    || observedOwnerId != ownerCharacterId)
+                {
+                    continue;
+                }
+
+                int slotDelta = Math.Abs(observedSlotIndex - slotIndex);
+                if (slotDelta >= closestSlotDelta)
+                {
+                    continue;
+                }
+
+                closestSlotDelta = slotDelta;
+                closestPosition = observedEntry.Value;
+            }
+
+            return closestPosition;
+        }
+
+        private void ClearObservedRemotePetPickupActorPositions()
+        {
+            _observedRemotePetPickupActorPositions.Clear();
         }
 
         private bool AreObservedDropPartyActorsLinked(int firstActorId, int secondActorId)
@@ -831,6 +917,11 @@ namespace HaCreator.MapSimulator
                     break;
 
                 case DropPickupActorKind.Pet:
+                    if (ResolveObservedRemotePetPickupActorPosition(actorId) is Vector2 observedPetPosition)
+                    {
+                        return observedPetPosition;
+                    }
+
                     if (_playerManager?.Pets?.ActivePets != null)
                     {
                         foreach (var pet in _playerManager.Pets.ActivePets)
@@ -842,7 +933,11 @@ namespace HaCreator.MapSimulator
                         }
                     }
 
-                    if (TryResolveRemotePetPickupPosition(actorId, _remoteUserPool, out Vector2 remotePetPosition))
+                    if (TryResolveRemotePetPickupPosition(
+                        actorId,
+                        _remoteUserPool,
+                        out Vector2 remotePetPosition,
+                        ResolveObservedRemotePetPickupPosition))
                     {
                         return remotePetPosition;
                     }

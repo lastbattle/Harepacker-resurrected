@@ -1232,7 +1232,7 @@ namespace HaCreator.MapSimulator.UI
                     .ToArray();
                 for (int i = 0; i < orderedOverlays.Length; i++)
                 {
-                    DrawSurfaceMarker(sprite, markerFrame.Value, spotAnchor, i);
+                    DrawSurfaceMarker(sprite, markerFrame.Value, spotAnchor, orderedOverlays[i], i);
                 }
             }
         }
@@ -1287,7 +1287,12 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        private static void DrawSurfaceMarker(SpriteBatch sprite, OverlayMarkerFrame frame, Point anchor, int overlayIndex)
+        private void DrawSurfaceMarker(
+            SpriteBatch sprite,
+            OverlayMarkerFrame frame,
+            Point anchor,
+            QuestOverlayEntry overlay,
+            int overlayIndex)
         {
             if (frame.Texture == null)
             {
@@ -1299,6 +1304,22 @@ namespace HaCreator.MapSimulator.UI
                 anchor.X + overlayOffset.X - frame.Origin.X,
                 anchor.Y + overlayOffset.Y - frame.Origin.Y);
             sprite.Draw(frame.Texture, drawPosition, Color.White);
+
+            if (!TryResolveSurfaceOverlayIconStyle(overlay?.Kind ?? SearchResultKind.Field, out SearchResultVisualStyle iconStyle))
+            {
+                return;
+            }
+
+            int markerCenterX = anchor.X + overlayOffset.X;
+            int markerCenterY = anchor.Y + overlayOffset.Y;
+            float iconX = markerCenterX + iconStyle.IconOffset.X - (iconStyle.IconTexture.Width / 2f);
+            float iconY = markerCenterY + iconStyle.IconOffset.Y - (iconStyle.IconTexture.Height / 2f);
+            if (overlay?.IsPriorityTarget == true)
+            {
+                iconY -= 2f;
+            }
+
+            sprite.Draw(iconStyle.IconTexture, new Vector2(iconX, iconY), Color.White);
         }
 
         private static Point ResolveOverlaySurfaceOffset(int overlayIndex)
@@ -1324,6 +1345,19 @@ namespace HaCreator.MapSimulator.UI
             return new Point(
                 (int)Math.Round(Math.Cos(angle) * radius),
                 (int)Math.Round(Math.Sin(angle) * radius * 0.6d) - 8);
+        }
+
+        private bool TryResolveSurfaceOverlayIconStyle(SearchResultKind kind, out SearchResultVisualStyle style)
+        {
+            SearchResultVisualStyle? resolvedStyle = GetResultStyle(kind);
+            if (!resolvedStyle.HasValue || resolvedStyle.Value.IconTexture == null)
+            {
+                style = default;
+                return false;
+            }
+
+            style = resolvedStyle.Value;
+            return true;
         }
 
         private static int GetMaxPageIndex(int count)

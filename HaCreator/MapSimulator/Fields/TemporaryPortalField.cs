@@ -1423,8 +1423,16 @@ namespace HaCreator.MapSimulator.Fields
             List<int> adoptedSourceMaps = null;
             foreach ((int sourceMapId, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation> observationsBySource) in observationsBySourceMap)
             {
-                if (!TryResolveRemoteTownPortalTownMapForSourceMap(sourceMapId, out int resolvedTownMapId)
-                    || resolvedTownMapId != townMapId)
+                int? resolvedTownMapId = TryResolveRemoteTownPortalTownMapForSourceMap(sourceMapId, out int resolvedTownMap)
+                    ? resolvedTownMap
+                    : null;
+                bool canAdoptFromResolvedTownMap = resolvedTownMapId.HasValue && resolvedTownMapId.Value == townMapId;
+                bool canAdoptFromOwnerTownIdentity = !canAdoptFromResolvedTownMap
+                    && CanAdoptPendingRemoteTownPortalObservationFromOwnerTownIdentity(
+                        ownerCharacterId,
+                        townMapId,
+                        sourceMapId);
+                if (!canAdoptFromResolvedTownMap && !canAdoptFromOwnerTownIdentity)
                 {
                     continue;
                 }
@@ -1460,6 +1468,50 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _remoteTownPortalPendingOwnerFieldObservations.Remove(ownerCharacterId);
             }
+        }
+
+        private bool CanAdoptPendingRemoteTownPortalObservationFromOwnerTownIdentity(
+            uint ownerCharacterId,
+            int townMapId,
+            int sourceMapId)
+        {
+            RemoteTownPortalOwnerTownKey key = new(ownerCharacterId, townMapId);
+            RemoteTownPortalFieldMetadata? metadata = _remoteTownPortalFieldMetadata.TryGetValue(key, out RemoteTownPortalFieldMetadata metadataValue)
+                ? metadataValue
+                : null;
+            RemoteTownPortalState? existingState = _remoteTownPortals.TryGetValue(ownerCharacterId, out RemoteTownPortalState existingStateValue)
+                && existingStateValue.MapId == townMapId
+                ? existingStateValue
+                : null;
+            return CanAdoptPendingRemoteTownPortalObservationFromOwnerTownIdentity(
+                townMapId,
+                sourceMapId,
+                metadata,
+                existingState);
+        }
+
+        private static bool CanAdoptPendingRemoteTownPortalObservationFromOwnerTownIdentity(
+            int townMapId,
+            int sourceMapId,
+            RemoteTownPortalFieldMetadata? metadata,
+            RemoteTownPortalState? existingState)
+        {
+            if (townMapId <= 0 || sourceMapId <= 0 || townMapId == sourceMapId)
+            {
+                return false;
+            }
+
+            if (metadata.HasValue
+                && metadata.Value.TownMapId == townMapId
+                && metadata.Value.SourceMapId == sourceMapId)
+            {
+                return true;
+            }
+
+            return existingState.HasValue
+                   && existingState.Value.MapId == townMapId
+                   && existingState.Value.Destination.HasValue
+                   && existingState.Value.Destination.Value.MapId == sourceMapId;
         }
 
         private RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestination(
@@ -3647,6 +3699,48 @@ namespace HaCreator.MapSimulator.Fields
                     refreshedDestinationMapId,
                     refreshedDestinationX,
                     refreshedDestinationY));
+        }
+
+        internal static bool CanAdoptPendingRemoteTownPortalObservationFromOwnerTownIdentityForTesting(
+            int townMapId,
+            int sourceMapId,
+            bool hasMetadata,
+            int metadataSourceMapId,
+            int metadataTownMapId,
+            bool hasExistingState,
+            int existingStateMapId,
+            bool hasExistingDestination,
+            int existingDestinationMapId)
+        {
+            RemoteTownPortalFieldMetadata? metadata = hasMetadata
+                ? new RemoteTownPortalFieldMetadata(
+                    metadataSourceMapId,
+                    SourceX: 0,
+                    SourceY: 0,
+                    metadataTownMapId,
+                    RemoteTownPortalObservationSource.InferredSourceField,
+                    RecordedAt: 0)
+                : null;
+            RemoteTownPortalState? existingState = hasExistingState
+                ? new RemoteTownPortalState(
+                    OwnerCharacterId: 1,
+                    State: 1,
+                    MapId: existingStateMapId,
+                    X: 0,
+                    Y: 0,
+                    Destination: hasExistingDestination
+                        ? new RemoteTownPortalResolvedDestination(existingDestinationMapId, 0, 0)
+                        : null,
+                    Phase: RemoteTownPortalVisualPhase.Stable,
+                    PhaseStartedAt: 0,
+                    RemovalState: null,
+                    RemovalSnapshot: null)
+                : null;
+            return CanAdoptPendingRemoteTownPortalObservationFromOwnerTownIdentity(
+                townMapId,
+                sourceMapId,
+                metadata,
+                existingState);
         }
 
         internal static bool ShouldLinkRemoteTownPortalForTesting(

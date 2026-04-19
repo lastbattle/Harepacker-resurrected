@@ -269,6 +269,8 @@ namespace HaCreator.MapSimulator
         private CharacterBuild _tutorialAppearanceOverrideBuild;
         private Dictionary<EquipSlot, CharacterPart> _tutorialEquipmentSnapshot;
         private Dictionary<EquipSlot, CharacterPart> _tutorialHiddenEquipmentSnapshot;
+        private bool _tutorialFieldSpecificAppearanceArmed;
+        private int _tutorialFieldSpecificAppearanceMapId = int.MinValue;
         private bool _showaBathAppearanceOverrideApplied;
         private CharacterBuild _showaBathAppearanceOverrideBuild;
         private Dictionary<EquipSlot, CharacterPart> _showaBathEquipmentSnapshot;
@@ -764,7 +766,7 @@ namespace HaCreator.MapSimulator
             _limitedViewField.SetFollowPlayer(true);
             _limitedViewField.SetPulse(false);
             _limitedViewField.SetEdgeSoftness(0f);
-            _limitedViewField.SetFogColor(Color.Black);
+            _limitedViewField.SetFogColor(LimitedViewField.ResolveClientOwnedDarkLayerColor());
             _limitedViewField.EnableClientOwnedCircleMask(
                 _clientOwnedLimitedViewRadius,
                 _clientOwnedLimitedViewMaskWidth,
@@ -821,6 +823,13 @@ namespace HaCreator.MapSimulator
 
         private void ApplyTutorialFieldAppearance(MapInfo mapInfo)
         {
+            int mapId = mapInfo?.id ?? int.MinValue;
+            if (_tutorialFieldSpecificAppearanceMapId != mapId)
+            {
+                _tutorialFieldSpecificAppearanceMapId = mapId;
+                _tutorialFieldSpecificAppearanceArmed = false;
+            }
+
             TutorialWrapperContract contract = TryBuildTutorialWrapperContract(mapInfo, out TutorialWrapperContract activeContract)
                 ? activeContract
                 : default;
@@ -835,6 +844,13 @@ namespace HaCreator.MapSimulator
             CharacterLoader loader = _playerManager?.Loader;
             if (loader == null || build == null)
             {
+                return;
+            }
+
+            bool requiresFieldSpecificPacketArm = contract.Kind == TutorialWrapperKind.Tutorial;
+            if (requiresFieldSpecificPacketArm && !_tutorialFieldSpecificAppearanceArmed)
+            {
+                RestoreTutorialFieldAppearance(build);
                 return;
             }
 
@@ -919,7 +935,36 @@ namespace HaCreator.MapSimulator
             _tutorialAppearanceOverrideBuild = null;
             _tutorialEquipmentSnapshot = null;
             _tutorialHiddenEquipmentSnapshot = null;
+            _tutorialFieldSpecificAppearanceArmed = false;
+            _tutorialFieldSpecificAppearanceMapId = int.MinValue;
             _activeTutorialWrapperKind = TutorialWrapperKind.None;
+        }
+
+        private bool TryApplyTutorialFieldSpecificAppearanceOwner(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryBuildTutorialWrapperContract(_mapBoard?.MapInfo, out TutorialWrapperContract contract)
+                || contract.Kind != TutorialWrapperKind.Tutorial)
+            {
+                return false;
+            }
+
+            _tutorialFieldSpecificAppearanceArmed = true;
+            _tutorialFieldSpecificAppearanceMapId = _mapBoard?.MapInfo?.id ?? _tutorialFieldSpecificAppearanceMapId;
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+            CharacterLoader loader = _playerManager?.Loader;
+            if (build == null || loader == null)
+            {
+                message =
+                    $"CField_Tutorial::DecodeFieldSpecificData accepted packet-owned appearance trigger and armed forcing appearance (cap {TutorialForcedCapItemId}, longcoat {TutorialForcedLongcoatItemId}), but character runtime is not ready yet.";
+                return true;
+            }
+
+            ApplyTutorialFieldAppearance(_mapBoard?.MapInfo);
+            message =
+                $"CField_Tutorial::DecodeFieldSpecificData accepted packet-owned appearance trigger and applied forcing appearance (cap {TutorialForcedCapItemId}, longcoat {TutorialForcedLongcoatItemId}); payload bytes ignored by the client-owner seam (length={payload?.Length ?? 0}).";
+            return true;
         }
 
         private void SyncWeddingPhotoFieldWrapper(MapInfo mapInfo)

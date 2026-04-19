@@ -54,6 +54,26 @@ namespace HaCreator.MapSimulator.Interaction
                 [6] = "CUIMessenger::ProcessChat"
             };
 
+        internal static IReadOnlyDictionary<byte, string> GetRecoveredMessengerInboundSubtypeHandlers()
+        {
+            return MessengerInboundSubtypeHandlers;
+        }
+
+        internal static IReadOnlyDictionary<byte, string> GetRecoveredMessengerOutboundSubtypeHandlers()
+        {
+            return MessengerOutboundSubtypeHandlers;
+        }
+
+        internal static IReadOnlyList<byte> GetRecoveredMessengerInboundSubtypes()
+        {
+            return MessengerInboundSubtypeHandlers.Keys.OrderBy(key => key).ToArray();
+        }
+
+        internal static IReadOnlyList<byte> GetRecoveredMessengerOutboundSubtypes()
+        {
+            return MessengerOutboundSubtypeHandlers.Keys.OrderBy(key => key).ToArray();
+        }
+
         internal static IReadOnlyList<ushort> GetRecoveredInboundOpcodes(string ownerName)
         {
             if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))

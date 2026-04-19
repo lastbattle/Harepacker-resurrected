@@ -3048,7 +3048,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 pieces.Add(new ShadowPartnerClientActionResolver.ShadowPartnerActionPiece(
                     nextSlotIndex++,
                     sourcePiece.PieceActionName,
-                    sourcePiece.SourceFrameIndex,
+                    // CActionMan::Init zeroes mirrored zigzag tail frame indices after copying.
+                    0,
                     sourcePiece.DelayOverrideMs,
                     sourcePiece.Flip,
                     sourcePiece.Move,
@@ -5703,9 +5704,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             string[] contextPathParts)
         {
             var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool yieldedNormalizedPath = false;
             string normalizedPath = NormalizeClientSummonedUolPath(value);
             if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
             {
+                yieldedNormalizedPath = true;
                 yield return normalizedPath;
             }
 
@@ -5719,9 +5722,171 @@ namespace HaCreator.MapSimulator.Character.Skills
                 normalizedPath = NormalizeClientSummonedUolPathToken(token, contextPathParts);
                 if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
                 {
+                    yieldedNormalizedPath = true;
                     yield return normalizedPath;
                 }
             }
+
+            if (yieldedNormalizedPath)
+            {
+                yield break;
+            }
+
+            foreach (string fallbackRootPath in EnumerateClientSummonedUolFallbackRootPathsFromValue(value, contextPathParts))
+            {
+                if (yieldedPaths.Add(fallbackRootPath))
+                {
+                    yield return fallbackRootPath;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolFallbackRootPathsFromValue(
+            string value,
+            string[] contextPathParts)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            int contextSkillId = ResolveClientSummonedUolFallbackContextSkillId(contextPathParts);
+            var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (int linkedSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(value, contextSkillId))
+            {
+                if (!LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                {
+                    continue;
+                }
+
+                string rootPath = $"Skill/{linkedSkillId / 10000}.img/skill/{linkedSkillId}";
+                if (yieldedPaths.Add(rootPath))
+                {
+                    yield return rootPath;
+                }
+            }
+        }
+
+        private static int ResolveClientSummonedUolFallbackContextSkillId(string[] contextPathParts)
+        {
+            if (contextPathParts == null || contextPathParts.Length == 0)
+            {
+                return 0;
+            }
+
+            string normalizedContextPath = NormalizeClientSummonedUolPathSegments(
+                contextPathParts.Take(Math.Max(contextPathParts.Length - 1, 0)));
+            if (string.IsNullOrWhiteSpace(normalizedContextPath))
+            {
+                normalizedContextPath = NormalizeClientSummonedUolPathSegments(contextPathParts);
+            }
+
+            return TryParseClientSummonedUolRootSkillId(normalizedContextPath, out int contextSkillId)
+                ? contextSkillId
+                : 0;
+        }
+
+        private static IEnumerable<int> EnumerateClientSummonedUolFallbackSkillIdsFromValue(
+            string value,
+            int contextSkillId)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            var yieldedSkillIds = new HashSet<int>();
+            int tokenStart = -1;
+            for (int i = 0; i < value.Length; i++)
+            {
+                if (char.IsDigit(value[i]))
+                {
+                    tokenStart = tokenStart < 0 ? i : tokenStart;
+                    continue;
+                }
+
+                foreach (int skillId in EnumerateClientSummonedUolFallbackSkillIdsFromToken(
+                             value,
+                             tokenStart,
+                             i - tokenStart,
+                             yieldedSkillIds,
+                             contextSkillId))
+                {
+                    yield return skillId;
+                }
+
+                tokenStart = -1;
+            }
+
+            foreach (int skillId in EnumerateClientSummonedUolFallbackSkillIdsFromToken(
+                         value,
+                         tokenStart,
+                         value.Length - tokenStart,
+                         yieldedSkillIds,
+                         contextSkillId))
+            {
+                yield return skillId;
+            }
+        }
+
+        private static IEnumerable<int> EnumerateClientSummonedUolFallbackSkillIdsFromToken(
+            string value,
+            int tokenStart,
+            int tokenLength,
+            HashSet<int> yieldedSkillIds,
+            int contextSkillId)
+        {
+            if (tokenStart < 0
+                || tokenLength <= 0
+                || yieldedSkillIds == null
+                || tokenLength > 10)
+            {
+                yield break;
+            }
+
+            if (!int.TryParse(
+                    value.Substring(tokenStart, tokenLength),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int skillId)
+                || skillId <= 0
+                || !yieldedSkillIds.Add(skillId))
+            {
+                yield break;
+            }
+
+            yield return skillId;
+
+            if (TryBuildClientSummonedUolContextualSkillId(contextSkillId, skillId, out int contextualSkillId)
+                && yieldedSkillIds.Add(contextualSkillId))
+            {
+                yield return contextualSkillId;
+            }
+        }
+
+        private static bool TryBuildClientSummonedUolContextualSkillId(
+            int contextSkillId,
+            int tokenSkillId,
+            out int contextualSkillId)
+        {
+            contextualSkillId = 0;
+            if (contextSkillId <= 0
+                || !LooksLikeClientSummonedUolInferredSkillId(tokenSkillId)
+                || tokenSkillId >= 1_000_000
+                || tokenSkillId >= 100_000)
+            {
+                return false;
+            }
+
+            int contextJobId = contextSkillId / 10_000;
+            if (contextJobId <= 0)
+            {
+                return false;
+            }
+
+            contextualSkillId = contextJobId * 10_000 + tokenSkillId;
+            return contextualSkillId != tokenSkillId
+                   && LooksLikeClientSummonedUolInferredSkillId(contextualSkillId);
         }
 
         private static string BuildClientSummonedUolPathFromSkillNode(WzImageProperty skillNode)
@@ -5878,6 +6043,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Trim()
                 .TrimStart('/');
 
+            if (IsPlainNumericClientSummonedUolToken(normalizedPath))
+            {
+                return null;
+            }
+
             const string wzRootPrefix = "wz/";
             if (normalizedPath.StartsWith(wzRootPrefix, StringComparison.OrdinalIgnoreCase))
             {
@@ -5927,6 +6097,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return NormalizeClientSummonedUolPath(embeddedPathToken);
+        }
+
+        private static bool IsPlainNumericClientSummonedUolToken(string value)
+        {
+            return !string.IsNullOrWhiteSpace(value)
+                   && value.IndexOf('/') < 0
+                   && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
         }
 
         private static string NormalizeClientSummonedUolFullPath(string summonedUolFullPath)

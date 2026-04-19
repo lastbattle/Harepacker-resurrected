@@ -46,7 +46,8 @@ namespace HaCreator.MapSimulator.Interaction
             string locationSummary,
             int channel,
             bool isRemoteTarget,
-            string handoffStatusText = null)
+            string handoffStatusText = null,
+            int? launchOption = null)
         {
             EnsureSearchSeedData();
             ClearCharacterInfoSearchLaunch();
@@ -61,14 +62,10 @@ namespace HaCreator.MapSimulator.Interaction
                     Math.Max(1, channel),
                     ResolveCharacterInfoSearchStatusText(handoffStatusText));
                 ApplyCharacterInfoSearchLaunch();
-                _searchCurrentTab = SocialSearchTab.PartyMember;
                 _searchSelectedIndexByTab[SocialSearchTab.PartyMember] = 0;
             }
-            else
-            {
-                _searchCurrentTab = SocialSearchTab.Party;
-            }
 
+            _searchCurrentTab = ResolveCharacterInfoSearchLaunchTab(isRemoteTarget, launchOption);
             ClampSearchSelection(_searchCurrentTab);
         }
 
@@ -516,6 +513,24 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(handoffStatusText)
                 ? "Character-info target handoff."
                 : handoffStatusText.Trim();
+        }
+
+        private SocialSearchTab ResolveCharacterInfoSearchLaunchTab(bool isRemoteTarget, int? launchOption)
+        {
+            // CUIUserList::OnCreate seeds m_nCurTab from m_nOption when the owner is created.
+            if (launchOption.HasValue && Enum.IsDefined(typeof(SocialSearchTab), launchOption.Value))
+            {
+                return (SocialSearchTab)launchOption.Value;
+            }
+
+            if (isRemoteTarget)
+            {
+                return SocialSearchTab.PartyMember;
+            }
+
+            return Enum.IsDefined(typeof(SocialSearchTab), _searchCurrentTab)
+                ? _searchCurrentTab
+                : SocialSearchTab.Party;
         }
 
         private bool IsEntryNearLocalLevel(string levelText)

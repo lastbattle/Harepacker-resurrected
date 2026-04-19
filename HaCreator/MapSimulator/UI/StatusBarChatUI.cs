@@ -346,6 +346,7 @@ namespace HaCreator.MapSimulator.UI
         public Action WhisperTargetPickerModalComboDropdownCloseRequested { get; set; }
         public Action WhisperTargetPickerModalComboDropdownToggleRequested { get; set; }
         public Action<string> WhisperTargetPickerModalComboDropdownHoverRequested { get; set; }
+        public Action<int> WhisperTargetPickerModalComboDropdownHoverIndexRequested { get; set; }
         public Action<string> WhisperTargetPickerModalComboDropdownDeleteRequested { get; set; }
         public Action<int> WhisperTargetPickerModalComboDropdownDeleteIndexRequested { get; set; }
         public Action<int> WhisperTargetPickerModalComboDropdownScrollRequested { get; set; }
@@ -2406,7 +2407,14 @@ namespace HaCreator.MapSimulator.UI
 
             if (dropdownHovered && hoveredPickerRegion != null)
             {
-                WhisperTargetPickerModalComboDropdownHoverRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
+                if (hoveredPickerRegion.ClientComboDeleteIndex >= 0)
+                {
+                    WhisperTargetPickerModalComboDropdownHoverIndexRequested?.Invoke(hoveredPickerRegion.ClientComboDeleteIndex);
+                }
+                else
+                {
+                    WhisperTargetPickerModalComboDropdownHoverRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
+                }
             }
 
             if (isRightPressStarted)

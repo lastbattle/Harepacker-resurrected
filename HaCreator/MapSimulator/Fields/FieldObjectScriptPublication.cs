@@ -81,6 +81,11 @@ namespace HaCreator.MapSimulator.Fields
                 WzImageProperty child = children[i];
                 if (IsAliasMetadataPropertyName(child?.Name))
                 {
+                    if (IsNestedAliasContainer(child, allowWrapperContainerNames: true))
+                    {
+                        Collect(child, effectiveDelayMs, publications, seenPublications);
+                    }
+
                     continue;
                 }
 
@@ -237,6 +242,11 @@ namespace HaCreator.MapSimulator.Fields
                 WzImageProperty child = children[i];
                 if (IsAliasMetadataPropertyName(child?.Name))
                 {
+                    if (IsNestedAliasContainer(child, allowWrapperContainerNames: true))
+                    {
+                        sawRecoverableAliasChild = true;
+                    }
+
                     continue;
                 }
 
@@ -270,7 +280,8 @@ namespace HaCreator.MapSimulator.Fields
 
             bool isAliasContainer = ShouldTreatPropertyNameAsScriptAlias(property.Name);
             bool isWrapperContainer = allowWrapperContainerNames && IsAliasWrapperContainerName(property.Name);
-            if (!isAliasContainer && !isWrapperContainer)
+            bool isMetadataWrapperContainer = allowWrapperContainerNames && IsAliasMetadataPropertyName(property.Name);
+            if (!isAliasContainer && !isWrapperContainer && !isMetadataWrapperContainer)
             {
                 return false;
             }
@@ -292,6 +303,11 @@ namespace HaCreator.MapSimulator.Fields
                 WzImageProperty child = children[i];
                 if (IsAliasMetadataPropertyName(child?.Name))
                 {
+                    if (IsNestedAliasContainer(child, allowWrapperContainerNames: true))
+                    {
+                        sawNestedAlias = true;
+                    }
+
                     continue;
                 }
 

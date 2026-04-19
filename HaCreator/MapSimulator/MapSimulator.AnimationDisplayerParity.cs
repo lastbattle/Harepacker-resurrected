@@ -235,7 +235,19 @@ namespace HaCreator.MapSimulator
             string SoundEffectDescriptor,
             int FieldId,
             string ActionName,
-            int EmotionId);
+            int EmotionId,
+            int? PositionX,
+            int? PositionY,
+            int OffsetX,
+            int OffsetY,
+            int RelativeOffsetX,
+            int RelativeOffsetY,
+            int Width,
+            int Height,
+            int DurationMs,
+            float Probability,
+            int LayerZ,
+            IReadOnlyList<int> EquippedItemIds);
 
         private void RegisterAnimationDisplayerChatCommand()
         {
@@ -1335,6 +1347,22 @@ namespace HaCreator.MapSimulator
             int fieldId = Math.Max(0, property["field"]?.GetInt() ?? 0);
             int emotionId = property["x"]?.GetInt() ?? -1;
             string actionName = property["action"]?.GetString()?.Trim();
+            int? positionX = property["x"] != null
+                ? property["x"]?.GetInt() ?? 0
+                : null;
+            int? positionY = property["y"] != null
+                ? property["y"]?.GetInt() ?? 0
+                : null;
+            int offsetX = property["dx"]?.GetInt() ?? 0;
+            int offsetY = property["dy"]?.GetInt() ?? 0;
+            int relativeOffsetX = property["x1"]?.GetInt() ?? 0;
+            int relativeOffsetY = property["y1"]?.GetInt() ?? 0;
+            int width = Math.Max(0, property["width"]?.GetInt() ?? 0);
+            int height = Math.Max(0, property["height"]?.GetInt() ?? 0);
+            int durationMs = Math.Max(0, property["duration"]?.GetInt() ?? 0);
+            float probability = Math.Max(0f, property["probability"]?.GetFloat() ?? 0f);
+            int layerZ = property["z"]?.GetInt() ?? 0;
+            IReadOnlyList<int> equippedItemIds = ResolveAnimationDisplayerReservedEquippedItemIds(property);
 
             bool hasEntryData = !string.IsNullOrWhiteSpace(visualPath)
                 || !string.IsNullOrWhiteSpace(soundDescriptor)
@@ -1342,7 +1370,19 @@ namespace HaCreator.MapSimulator
                 || !string.IsNullOrWhiteSpace(actionName)
                 || emotionId >= 0
                 || startDelayMs > 0
-                || type != 0;
+                || type != 0
+                || positionX.HasValue
+                || positionY.HasValue
+                || offsetX != 0
+                || offsetY != 0
+                || relativeOffsetX != 0
+                || relativeOffsetY != 0
+                || width > 0
+                || height > 0
+                || durationMs > 0
+                || probability > 0f
+                || layerZ != 0
+                || equippedItemIds.Count > 0;
             if (!hasEntryData)
             {
                 return false;
@@ -1355,8 +1395,77 @@ namespace HaCreator.MapSimulator
                 SoundEffectDescriptor: soundDescriptor,
                 FieldId: fieldId,
                 ActionName: actionName,
-                EmotionId: emotionId);
+                EmotionId: emotionId,
+                PositionX: positionX,
+                PositionY: positionY,
+                OffsetX: offsetX,
+                OffsetY: offsetY,
+                RelativeOffsetX: relativeOffsetX,
+                RelativeOffsetY: relativeOffsetY,
+                Width: width,
+                Height: height,
+                DurationMs: durationMs,
+                Probability: probability,
+                LayerZ: layerZ,
+                EquippedItemIds: equippedItemIds);
             return true;
+        }
+
+        private static IReadOnlyList<int> ResolveAnimationDisplayerReservedEquippedItemIds(WzImageProperty property)
+        {
+            if (property is not WzSubProperty metadataProperty || metadataProperty.WzProperties == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            var equippedItemIdsByIndex = new SortedDictionary<int, int>();
+            foreach (WzImageProperty child in metadataProperty.WzProperties)
+            {
+                if (child == null
+                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int equipIndex)
+                    || equipIndex <= 0)
+                {
+                    continue;
+                }
+
+                WzImageProperty resolvedChild = WzInfoTools.GetRealProperty(child);
+                if (resolvedChild?.GetInt() is not int itemId || itemId <= 0)
+                {
+                    continue;
+                }
+
+                equippedItemIdsByIndex[equipIndex] = itemId;
+            }
+
+            if (equippedItemIdsByIndex.Count <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var equippedItemIds = new List<int>(equippedItemIdsByIndex.Count);
+            foreach (KeyValuePair<int, int> entry in equippedItemIdsByIndex)
+            {
+                equippedItemIds.Add(entry.Value);
+            }
+
+            return equippedItemIds;
+        }
+
+        internal static bool ShouldApplyAnimationDisplayerReservedFieldScopedVisual(int reservedFieldId, int currentMapId)
+        {
+            return reservedFieldId <= 0
+                || currentMapId <= 0
+                || reservedFieldId == currentMapId;
+        }
+
+        internal static int ResolveAnimationDisplayerReservedAreaBurstCount(int durationMs, float probability)
+        {
+            int clampedDurationMs = Math.Max(1, durationMs);
+            float clampedProbability = Math.Max(0f, probability);
+            int bursts = (int)Math.Round(
+                (clampedDurationMs / 100f) * clampedProbability,
+                MidpointRounding.AwayFromZero);
+            return Math.Max(1, bursts);
         }
 
         internal static int ResolveAnimationDisplayerReservedStartRegistrationTime(int currentTime, int startDelayMs)
@@ -1667,8 +1776,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (string.Equals(normalized, "violet", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "purple", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalized, "violet", StringComparison.OrdinalIgnoreCase))
             {
                 colorType = DamageColorType.Violet;
                 return true;
@@ -1841,15 +1949,24 @@ namespace HaCreator.MapSimulator
         internal static IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> BuildAnimationDisplayerSpecificUserStateCandidates(
             RemoteUserActor actor)
         {
-            var candidates = new List<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState>(8);
+            var candidates = new List<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState>(10);
+            // Client owner-family chain from `CUser::Update` / `CUser::UpdateMoreWildEffect`:
+            // SoulArrow -> WeaponCharge -> Aura -> MoreWild -> Barrier -> BlessingArmor -> Repeat -> MagicShield -> FinalCut.
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatSoulArrowEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatWeaponChargeEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatAuraEffect);
+            if (actor?.TemporaryStatAuraEffectTails != null)
+            {
+                for (int i = 0; i < actor.TemporaryStatAuraEffectTails.Count; i++)
+                {
+                    AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor.TemporaryStatAuraEffectTails[i]);
+                }
+            }
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatMoreWildEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatBarrierEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatBlessingArmorEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatRepeatEffect);
-            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatAuraEffect);
-            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatMoreWildEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatMagicShieldEffect);
-            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatSoulArrowEffect);
-            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatWeaponChargeEffect);
             AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatFinalCutEffect);
             return candidates;
         }
@@ -2553,9 +2670,20 @@ namespace HaCreator.MapSimulator
             AnimationDisplayerReservedEffectMetadata metadata,
             int registerTime)
         {
+            bool consumed = false;
+            if (metadata.Type == 2 && metadata.FieldId > 0)
+            {
+                consumed = true;
+                int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
+                if (!ShouldApplyAnimationDisplayerReservedFieldScopedVisual(metadata.FieldId, currentMapId))
+                {
+                    return true;
+                }
+            }
+
             if (metadata.Type == 6 && metadata.EmotionId >= 0)
             {
-                return _remoteUserPool?.TryApplyEmotion(
+                bool emotionApplied = _remoteUserPool?.TryApplyEmotion(
                            new RemoteUserEmotionPacket(
                                presentation.CharacterId,
                                metadata.EmotionId,
@@ -2564,24 +2692,42 @@ namespace HaCreator.MapSimulator
                            registerTime,
                            out _)
                        == true;
+                return consumed || emotionApplied;
+            }
+
+            if (metadata.Type == 4
+                && TryApplyAnimationDisplayerReservedRemoteUtilityActionOwnerEffect(
+                    presentation.CharacterId,
+                    metadata.ActionName,
+                    registerTime))
+            {
+                consumed = true;
+            }
+
+            if (metadata.Type == 3
+                && TryApplyAnimationDisplayerReservedRemoteUtilityEquipOwnerEffect(
+                    presentation.CharacterId,
+                    metadata.EquippedItemIds))
+            {
+                consumed = true;
             }
 
             if (metadata.Type == 5
                 && TryPlayAnimationDisplayerReservedSoundEffect(metadata.SoundEffectDescriptor))
             {
-                return true;
+                consumed = true;
             }
 
             if (string.IsNullOrWhiteSpace(metadata.VisualEffectUol))
             {
-                return false;
+                return consumed;
             }
 
             if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(
                     metadata.VisualEffectUol,
                     out int reservedSquibVariant))
             {
-                return TryRegisterAnimationDisplayerSquib(
+                return consumed || TryRegisterAnimationDisplayerSquib(
                     presentation.CharacterId,
                     getPosition,
                     reservedSquibVariant,
@@ -2593,7 +2739,7 @@ namespace HaCreator.MapSimulator
                     metadata.VisualEffectUol,
                     out bool reservedTransformedOnLadder))
             {
-                return TryRegisterAnimationDisplayerTransformed(
+                return consumed || TryRegisterAnimationDisplayerTransformed(
                     presentation.CharacterId,
                     getPosition,
                     reservedTransformedOnLadder,
@@ -2606,19 +2752,143 @@ namespace HaCreator.MapSimulator
                     metadata.VisualEffectUol,
                     out List<IDXObject> reservedFrames))
             {
-                Vector2 reservedFallbackPosition = getPosition();
+                Vector2 anchor = ResolveAnimationDisplayerReservedVisualAnchor(getPosition, metadata);
+                if (metadata.Type == 1 && metadata.Width > 0 && metadata.Height > 0)
+                {
+                    Rectangle area = new(
+                        (int)MathF.Round(anchor.X - (metadata.Width / 2f)),
+                        (int)MathF.Round(anchor.Y - (metadata.Height / 2f)),
+                        Math.Max(1, metadata.Width),
+                        Math.Max(1, metadata.Height));
+                    int updateCount = ResolveAnimationDisplayerReservedAreaBurstCount(
+                        metadata.DurationMs,
+                        metadata.Probability);
+                    int durationMs = Math.Max(1, metadata.DurationMs > 0 ? metadata.DurationMs : 1000);
+                    int registrationId = _animationEffects.RegisterAreaAnimation(
+                        reservedFrames,
+                        area,
+                        updateIntervalMs: 100,
+                        updateCount,
+                        updateNextMs: 0,
+                        durationMs,
+                        registerTime);
+                    if (registrationId >= 0)
+                    {
+                        _packetOwnedAnimationDisplayerAreaAnimationIds.Add(registrationId);
+                        return true;
+                    }
+                }
+
+                if (metadata.PositionX.HasValue && metadata.PositionY.HasValue)
+                {
+                    _animationEffects.AddOneTime(
+                        reservedFrames,
+                        anchor.X,
+                        anchor.Y,
+                        flip: false,
+                        registerTime,
+                        metadata.LayerZ);
+                    return true;
+                }
+
+                Func<Vector2> getAttachedPosition = () =>
+                {
+                    Vector2 ownerPosition = getPosition();
+                    return new Vector2(
+                        ownerPosition.X + metadata.OffsetX + metadata.RelativeOffsetX,
+                        ownerPosition.Y + metadata.OffsetY + metadata.RelativeOffsetY);
+                };
+                Vector2 fallbackPosition = getAttachedPosition();
                 _animationEffects.AddOneTimeAttached(
                     reservedFrames,
-                    getPosition,
+                    getAttachedPosition,
                     getFlip: null,
-                    reservedFallbackPosition.X,
-                    reservedFallbackPosition.Y,
+                    fallbackPosition.X,
+                    fallbackPosition.Y,
                     fallbackFlip: false,
-                    registerTime);
+                    registerTime,
+                    metadata.LayerZ);
                 return true;
             }
 
-            return false;
+            return consumed;
+        }
+
+        private bool TryApplyAnimationDisplayerReservedRemoteUtilityActionOwnerEffect(
+            int characterId,
+            string actionName,
+            int currentTime)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return _remoteUserPool?.TryApplyOneTimeAction(characterId, actionName, currentTime, out _) == true;
+        }
+
+        private bool TryApplyAnimationDisplayerReservedRemoteUtilityEquipOwnerEffect(
+            int characterId,
+            IReadOnlyList<int> equippedItemIds)
+        {
+            if (characterId <= 0
+                || equippedItemIds == null
+                || equippedItemIds.Count <= 0
+                || _remoteUserPool?.TryGetActor(characterId, out RemoteUserActor actor) != true
+                || actor?.Build == null)
+            {
+                return false;
+            }
+
+            CharacterLoader loader = _playerManager?.Loader;
+            if (loader == null)
+            {
+                return false;
+            }
+
+            bool appliedAnyEquipment = false;
+            for (int index = 0; index < equippedItemIds.Count; index++)
+            {
+                int itemId = equippedItemIds[index];
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+
+                CharacterPart part = loader.LoadEquipment(itemId);
+                if (part?.ItemId <= 0)
+                {
+                    continue;
+                }
+
+                actor.Build.Equip(part);
+                appliedAnyEquipment = true;
+            }
+
+            if (!appliedAnyEquipment)
+            {
+                return false;
+            }
+
+            actor.RefreshAssembler();
+            return true;
+        }
+
+        private static Vector2 ResolveAnimationDisplayerReservedVisualAnchor(
+            Func<Vector2> getPosition,
+            AnimationDisplayerReservedEffectMetadata metadata)
+        {
+            if (metadata.PositionX.HasValue && metadata.PositionY.HasValue)
+            {
+                return new Vector2(
+                    metadata.PositionX.Value + metadata.OffsetX + metadata.RelativeOffsetX,
+                    metadata.PositionY.Value + metadata.OffsetY + metadata.RelativeOffsetY);
+            }
+
+            Vector2 ownerPosition = getPosition();
+            return new Vector2(
+                ownerPosition.X + metadata.OffsetX + metadata.RelativeOffsetX,
+                ownerPosition.Y + metadata.OffsetY + metadata.RelativeOffsetY);
         }
 
         private bool TryPlayAnimationDisplayerReservedSoundEffect(string descriptor)
@@ -2743,7 +3013,7 @@ namespace HaCreator.MapSimulator
                 Impact = presentation.Impact,
                 DragX = presentation.DragX,
                 DragY = presentation.DragY,
-                FacingRight = presentation.Impact.X >= 0,
+                FacingRight = RemoteUserActorPool.ResolveRemoteGrenadeFacingForParity(presentation),
                 BallAnimation = ballAnimation,
                 ExplosionAnimation = explosionAnimation,
                 ExpireTime = expireTime
@@ -2773,7 +3043,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _animationDisplayerRemoteGrenadeActors.RemoveAll(actor => actor == null || actor.IsExpired(currentTime));
+            _animationDisplayerRemoteGrenadeActors.RemoveAll(actor =>
+                actor == null
+                || actor.IsExpired(currentTime)
+                || _remoteUserPool?.TryGetActor(actor.CharacterId, out RemoteUserActor ownerActor) != true
+                || ownerActor == null
+                || !ownerActor.IsVisibleInWorld);
         }
 
         private void DrawAnimationDisplayerRemoteGrenades(
@@ -4262,6 +4537,12 @@ namespace HaCreator.MapSimulator
             string branchName,
             int? effectBranchLastIndex)
         {
+            int? effectBranchIndex = TryResolveAnimationDisplayerEffectBranchIndex(branchName);
+            if (!effectBranchIndex.HasValue)
+            {
+                return true;
+            }
+
             if (!effectBranchLastIndex.HasValue)
             {
                 return true;
@@ -4270,12 +4551,6 @@ namespace HaCreator.MapSimulator
             if (effectBranchLastIndex.Value < 0)
             {
                 return false;
-            }
-
-            int? effectBranchIndex = TryResolveAnimationDisplayerEffectBranchIndex(branchName);
-            if (!effectBranchIndex.HasValue)
-            {
-                return true;
             }
 
             return effectBranchIndex.Value <= effectBranchLastIndex.Value;
@@ -4699,6 +4974,14 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            if (!ShouldUseAnimationDisplayerFollowParticleOwner(
+                    GetAnimationDisplayerNumericValue(effectProperty, "animate"),
+                    GetAnimationDisplayerNumericValue(effectProperty, "fixed"),
+                    GetAnimationDisplayerNumericValue(effectProperty, "pos")))
+            {
+                return null;
+            }
+
             string effectPath = NormalizeAnimationDisplayerPath(effectProperty["path"]?.GetString());
             string effectUol = BuildAnimationDisplayerFollowEquipmentEffectUol(effectPath);
             IReadOnlyList<List<IDXObject>> effectFrameVariants = LoadAnimationDisplayerFollowEquipmentFrameVariants(effectPath);
@@ -4922,6 +5205,16 @@ namespace HaCreator.MapSimulator
         internal static bool ResolveAnimationDisplayerFollowEquipmentEmission(int? authoredEmission)
         {
             return authoredEmission.GetValueOrDefault() != 0;
+        }
+
+        internal static bool ShouldUseAnimationDisplayerFollowParticleOwner(
+            int? authoredAnimate,
+            int? authoredFixed,
+            int? authoredPos)
+        {
+            return authoredAnimate.GetValueOrDefault() == 0
+                && authoredFixed.GetValueOrDefault() == 0
+                && !authoredPos.HasValue;
         }
 
         internal static bool ResolveAnimationDisplayerFollowEquipmentNoFlip(int? authoredBNoFlip, int? authoredNoFlip)

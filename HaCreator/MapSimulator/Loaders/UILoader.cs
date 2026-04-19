@@ -2228,6 +2228,65 @@ namespace HaCreator.MapSimulator.Loaders
                 textHeight);
         }
 
+        internal static SD.Rectangle ResolveCollapsedMinimapIconOpaqueBoundsForTesting(SD.Bitmap icon)
+        {
+            if (!TryGetBitmapDimensions(icon, out int width, out int height) ||
+                width <= 0 ||
+                height <= 0)
+            {
+                return SD.Rectangle.Empty;
+            }
+
+            int minX = width;
+            int minY = height;
+            int maxX = -1;
+            int maxY = -1;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (icon.GetPixel(x, y).A <= 0)
+                    {
+                        continue;
+                    }
+
+                    minX = Math.Min(minX, x);
+                    minY = Math.Min(minY, y);
+                    maxX = Math.Max(maxX, x);
+                    maxY = Math.Max(maxY, y);
+                }
+            }
+
+            if (maxX < minX || maxY < minY)
+            {
+                return SD.Rectangle.Empty;
+            }
+
+            return SD.Rectangle.FromLTRB(minX, minY, maxX + 1, maxY + 1);
+        }
+
+        internal static int ResolveCollapsedMinimapIconRenderedWidthForTesting(SD.Bitmap icon)
+        {
+            SD.Rectangle opaqueBounds = ResolveCollapsedMinimapIconOpaqueBoundsForTesting(icon);
+            if (!opaqueBounds.IsEmpty)
+            {
+                return opaqueBounds.Width;
+            }
+
+            return Math.Max(0, icon?.Width ?? 0);
+        }
+
+        internal static int ResolveCollapsedMinimapIconRenderedHeightForTesting(SD.Bitmap icon)
+        {
+            SD.Rectangle opaqueBounds = ResolveCollapsedMinimapIconOpaqueBoundsForTesting(icon);
+            if (!opaqueBounds.IsEmpty)
+            {
+                return opaqueBounds.Height;
+            }
+
+            return Math.Max(0, icon?.Height ?? 0);
+        }
+
         internal static int ResolveCollapsedMinimapTitleLeftInsetForTesting(
             SD.Bitmap leftCap,
             int laneTop,
@@ -2324,8 +2383,9 @@ namespace HaCreator.MapSimulator.Loaders
             int textRightPadding)
         {
             string renderTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title;
-            int iconWidth = mapMark?.Width ?? 0;
-            int iconHeight = mapMark?.Height ?? 0;
+            SD.Rectangle iconOpaqueBounds = ResolveCollapsedMinimapIconOpaqueBoundsForTesting(mapMark);
+            int iconWidth = ResolveCollapsedMinimapIconRenderedWidthForTesting(mapMark);
+            int iconHeight = ResolveCollapsedMinimapIconRenderedHeightForTesting(mapMark);
             int maxTextHeight = Math.Max(1, titleLaneHeight);
             int maxTextWidth = ResolveCollapsedMinimapTitleMaxTextWidthForTesting(
                 maxBarWidth,
@@ -2368,7 +2428,16 @@ namespace HaCreator.MapSimulator.Loaders
                     titleLaneTop,
                     titleLaneHeight,
                     iconHeight);
-                graphics.DrawImageUnscaled(mapMark, currentX, iconY);
+                if (!iconOpaqueBounds.IsEmpty)
+                {
+                    SD.Rectangle destinationRect = new SD.Rectangle(currentX, iconY, iconWidth, iconHeight);
+                    graphics.DrawImage(mapMark, destinationRect, iconOpaqueBounds, SD.GraphicsUnit.Pixel);
+                }
+                else
+                {
+                    graphics.DrawImageUnscaled(mapMark, currentX, iconY);
+                }
+
                 currentX += iconWidth + iconGap;
             }
 

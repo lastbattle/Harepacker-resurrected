@@ -31,9 +31,7 @@ namespace HaCreator.MapSimulator.Interaction
                 .Select(DescribeTabStatusLine)
                 .ToArray();
 
-            string guildAuthority = _packetGuildAuthority.HasValue
-                ? $"Guild authority packet-owned ({_packetGuildAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetGuildAuthority.Value.CanManageRanks)}, admit={FormatOnOff(_packetGuildAuthority.Value.CanToggleAdmission)}, notice={FormatOnOff(_packetGuildAuthority.Value.CanEditNotice)})"
-                : $"Guild authority local-role ({GetLocalGuildRoleLabel()})";
+            string guildAuthority = ResolveGuildAuthorityStatusLine();
             string guildUiContext = _packetGuildUiState.HasValue
                 ? $"Guild UI packet-owned (member={FormatOnOff(_packetGuildUiState.Value.HasGuildMembership)}, name={_packetGuildUiState.Value.GuildName}, level={_packetGuildUiState.Value.GuildLevel})"
                 : "Guild UI local-build";
@@ -47,9 +45,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "Guild board auth key awaiting OnGuildResult(80)"
                 : "Guild board auth key packet-owned from OnGuildResult(80)";
             string guildDialogRequestContext = DescribeGuildDialogRequestStatus();
-            string allianceAuthority = _packetAllianceAuthority.HasValue
-                ? $"Alliance authority packet-owned ({_packetAllianceAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetAllianceAuthority.Value.CanEditRanks)}, notice={FormatOnOff(_packetAllianceAuthority.Value.CanEditNotice)})"
-                : $"Alliance authority local-role ({GetLocalAllianceRoleLabel()})";
+            string allianceAuthority = ResolveAllianceAuthorityStatusLine();
             string whisperLocationInfo = string.IsNullOrWhiteSpace(_packetWhisperLocationInfo)
                 ? "Whisper user-list location idle"
                 : $"Whisper user-list location: {_packetWhisperLocationInfo}";
@@ -803,22 +799,50 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string GetEffectiveGuildRoleLabel()
         {
-            return _packetGuildAuthority?.RoleLabel ?? GetLocalGuildRoleLabel();
+            if (_packetGuildAuthority.HasValue)
+            {
+                return _packetGuildAuthority.Value.RoleLabel;
+            }
+
+            return TryGetDerivedPacketGuildAuthority(out PacketGuildAuthorityState derivedAuthority)
+                ? derivedAuthority.RoleLabel
+                : GetLocalGuildRoleLabel();
         }
 
         private bool CanManageGuildRanks()
         {
-            return _packetGuildAuthority?.CanManageRanks ?? CanManageGuildByRole(GetLocalGuildRoleLabel());
+            if (_packetGuildAuthority.HasValue)
+            {
+                return _packetGuildAuthority.Value.CanManageRanks;
+            }
+
+            return TryGetDerivedPacketGuildAuthority(out PacketGuildAuthorityState derivedAuthority)
+                ? derivedAuthority.CanManageRanks
+                : CanManageGuildByRole(GetLocalGuildRoleLabel());
         }
 
         private bool CanToggleGuildAdmission()
         {
-            return _packetGuildAuthority?.CanToggleAdmission ?? CanManageGuildByRole(GetLocalGuildRoleLabel());
+            if (_packetGuildAuthority.HasValue)
+            {
+                return _packetGuildAuthority.Value.CanToggleAdmission;
+            }
+
+            return TryGetDerivedPacketGuildAuthority(out PacketGuildAuthorityState derivedAuthority)
+                ? derivedAuthority.CanToggleAdmission
+                : CanManageGuildByRole(GetLocalGuildRoleLabel());
         }
 
         private bool CanEditGuildNotice()
         {
-            return _packetGuildAuthority?.CanEditNotice ?? CanManageGuildByRole(GetLocalGuildRoleLabel());
+            if (_packetGuildAuthority.HasValue)
+            {
+                return _packetGuildAuthority.Value.CanEditNotice;
+            }
+
+            return TryGetDerivedPacketGuildAuthority(out PacketGuildAuthorityState derivedAuthority)
+                ? derivedAuthority.CanEditNotice
+                : CanManageGuildByRole(GetLocalGuildRoleLabel());
         }
 
         private bool CanOpenGuildManageWindow()
@@ -830,29 +854,134 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return _packetGuildAuthority.HasValue
                 ? $"Packet authority: role {GetEffectiveGuildRoleLabel()}, rank {FormatOnOff(CanManageGuildRanks())}, admission {FormatOnOff(CanToggleGuildAdmission())}, notice {FormatOnOff(CanEditGuildNotice())}"
+                : TryGetDerivedPacketGuildAuthority(out PacketGuildAuthorityState derivedAuthority)
+                    ? $"Packet authority (derived from packet-owned local roster): role {derivedAuthority.RoleLabel}, rank {FormatOnOff(derivedAuthority.CanManageRanks)}, admission {FormatOnOff(derivedAuthority.CanToggleAdmission)}, notice {FormatOnOff(derivedAuthority.CanEditNotice)}"
                 : $"Local authority: role {GetLocalGuildRoleLabel()}";
         }
 
         private bool CanEditAllianceRanks()
         {
-            return _packetAllianceAuthority?.CanEditRanks ?? CanManageAllianceByRole(GetLocalAllianceRoleLabel());
+            if (_packetAllianceAuthority.HasValue)
+            {
+                return _packetAllianceAuthority.Value.CanEditRanks;
+            }
+
+            return TryGetDerivedPacketAllianceAuthority(out PacketAllianceAuthorityState derivedAuthority)
+                ? derivedAuthority.CanEditRanks
+                : CanManageAllianceByRole(GetLocalAllianceRoleLabel());
         }
 
         private bool CanEditAllianceNotice()
         {
-            return _packetAllianceAuthority?.CanEditNotice ?? CanManageAllianceByRole(GetLocalAllianceRoleLabel());
+            if (_packetAllianceAuthority.HasValue)
+            {
+                return _packetAllianceAuthority.Value.CanEditNotice;
+            }
+
+            return TryGetDerivedPacketAllianceAuthority(out PacketAllianceAuthorityState derivedAuthority)
+                ? derivedAuthority.CanEditNotice
+                : CanManageAllianceByRole(GetLocalAllianceRoleLabel());
         }
 
         private string GetEffectiveAllianceRoleLabel()
         {
-            return _packetAllianceAuthority?.RoleLabel ?? GetLocalAllianceRoleLabel();
+            if (_packetAllianceAuthority.HasValue)
+            {
+                return _packetAllianceAuthority.Value.RoleLabel;
+            }
+
+            return TryGetDerivedPacketAllianceAuthority(out PacketAllianceAuthorityState derivedAuthority)
+                ? derivedAuthority.RoleLabel
+                : GetLocalAllianceRoleLabel();
         }
 
         private string GetAllianceAuthoritySummary()
         {
             return _packetAllianceAuthority.HasValue
                 ? $"Packet authority: role {GetEffectiveAllianceRoleLabel()}, rank {FormatOnOff(CanEditAllianceRanks())}, notice {FormatOnOff(CanEditAllianceNotice())}"
+                : TryGetDerivedPacketAllianceAuthority(out PacketAllianceAuthorityState derivedAuthority)
+                    ? $"Packet authority (derived from packet-owned local roster): role {derivedAuthority.RoleLabel}, rank {FormatOnOff(derivedAuthority.CanEditRanks)}, notice {FormatOnOff(derivedAuthority.CanEditNotice)}"
                 : $"Local authority: role {GetLocalAllianceRoleLabel()}";
+        }
+
+        private string ResolveGuildAuthorityStatusLine()
+        {
+            if (_packetGuildAuthority.HasValue)
+            {
+                PacketGuildAuthorityState authority = _packetGuildAuthority.Value;
+                return $"Guild authority packet-owned ({authority.RoleLabel}: rank={FormatOnOff(authority.CanManageRanks)}, admit={FormatOnOff(authority.CanToggleAdmission)}, notice={FormatOnOff(authority.CanEditNotice)})";
+            }
+
+            if (TryGetDerivedPacketGuildAuthority(out PacketGuildAuthorityState derivedAuthority))
+            {
+                return $"Guild authority packet-owned (derived local roster role {derivedAuthority.RoleLabel}: rank={FormatOnOff(derivedAuthority.CanManageRanks)}, admit={FormatOnOff(derivedAuthority.CanToggleAdmission)}, notice={FormatOnOff(derivedAuthority.CanEditNotice)})";
+            }
+
+            return $"Guild authority local-role ({GetLocalGuildRoleLabel()})";
+        }
+
+        private string ResolveAllianceAuthorityStatusLine()
+        {
+            if (_packetAllianceAuthority.HasValue)
+            {
+                PacketAllianceAuthorityState authority = _packetAllianceAuthority.Value;
+                return $"Alliance authority packet-owned ({authority.RoleLabel}: rank={FormatOnOff(authority.CanEditRanks)}, notice={FormatOnOff(authority.CanEditNotice)})";
+            }
+
+            if (TryGetDerivedPacketAllianceAuthority(out PacketAllianceAuthorityState derivedAuthority))
+            {
+                return $"Alliance authority packet-owned (derived local roster role {derivedAuthority.RoleLabel}: rank={FormatOnOff(derivedAuthority.CanEditRanks)}, notice={FormatOnOff(derivedAuthority.CanEditNotice)})";
+            }
+
+            return $"Alliance authority local-role ({GetLocalAllianceRoleLabel()})";
+        }
+
+        private bool TryGetDerivedPacketGuildAuthority(out PacketGuildAuthorityState authority)
+        {
+            authority = default;
+            if (!IsPacketOwned(SocialListTab.Guild))
+            {
+                return false;
+            }
+
+            SocialEntryState localGuildEntry = _entriesByTab.TryGetValue(SocialListTab.Guild, out List<SocialEntryState> guildEntries)
+                ? guildEntries?.FirstOrDefault(entry => entry != null && entry.IsLocalPlayer)
+                : null;
+            if (localGuildEntry == null)
+            {
+                return false;
+            }
+
+            string roleLabel = string.IsNullOrWhiteSpace(localGuildEntry.PrimaryText)
+                ? GetLocalGuildRoleLabel()
+                : localGuildEntry.PrimaryText.Trim();
+            bool canManage = localGuildEntry.IsLeader || CanManageGuildByRole(roleLabel);
+            authority = new PacketGuildAuthorityState(roleLabel, canManage, canManage, canManage);
+            return true;
+        }
+
+        private bool TryGetDerivedPacketAllianceAuthority(out PacketAllianceAuthorityState authority)
+        {
+            authority = default;
+            if (!IsPacketOwned(SocialListTab.Alliance))
+            {
+                return false;
+            }
+
+            SocialEntryState localAllianceEntry = _entriesByTab.TryGetValue(SocialListTab.Alliance, out List<SocialEntryState> allianceEntries)
+                ? allianceEntries?.FirstOrDefault(entry => entry != null && entry.IsLocalPlayer)
+                : null;
+            if (localAllianceEntry == null)
+            {
+                return false;
+            }
+
+            string roleLabel = string.IsNullOrWhiteSpace(localAllianceEntry.PrimaryText)
+                ? GetLocalAllianceRoleLabel()
+                : localAllianceEntry.PrimaryText.Trim();
+            bool canManage = localAllianceEntry.IsLeader || CanManageAllianceByRole(roleLabel);
+            authority = new PacketAllianceAuthorityState(roleLabel, canManage, canManage);
+            return true;
         }
 
         private static bool CanManageGuildByRole(string role)

@@ -1388,6 +1388,22 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal void HighlightWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(int clientRowIndex)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || clientRowIndex < 0
+                || clientRowIndex >= _whisperCandidates.Count)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _whisperTargetPickerSelectionIndex = clientRowIndex;
+            EnsureWhisperTargetPickerSelectionVisible();
+        }
+
         internal bool DeleteWhisperTargetPickerModalComboDropdownCandidate(string whisperTarget)
         {
             if (!_isWhisperTargetPickerActive
@@ -2560,15 +2576,15 @@ namespace HaCreator.MapSimulator
             bool isDropdownOpen,
             Keys key)
         {
-            // Client CCtrlComboBox::OnKey routes VK_LEFT/VK_RIGHT/VK_DOWN through BtClicked
-            // only on the combo owner path. When the select window is already open,
-            // CCtrlComboBoxSelect::OnKey owns VK_UP/VK_DOWN/VK_RETURN and forwards others.
-            if (isDropdownOpen)
+            // Client CCtrlComboBox::OnKey routes VK_LEFT/VK_RIGHT through BtClicked on key-down,
+            // including when the combo list is already open so those keys collapse the list.
+            if (key == Keys.Left || key == Keys.Right)
             {
-                return false;
+                return true;
             }
 
-            return key == Keys.Left || key == Keys.Right || key == Keys.Down;
+            // VK_DOWN still belongs to the combo owner only while the list is closed.
+            return !isDropdownOpen && key == Keys.Down;
         }
 
         internal static int ResolveWhisperTargetPickerFirstVisibleIndex(

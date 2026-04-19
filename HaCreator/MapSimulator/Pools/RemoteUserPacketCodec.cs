@@ -3518,6 +3518,7 @@ namespace HaCreator.MapSimulator.Pools
                 && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
                     rawPayload,
+                    sizeof(int) * 4,
                     weaponChargeMetadataOffset,
                     preferredSkillId: 0,
                     out chargeSkillId))
@@ -3528,6 +3529,17 @@ namespace HaCreator.MapSimulator.Pools
             return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                 rawPayload,
                 sizeof(int) * 4,
+                out chargeSkillId);
+        }
+
+        internal static bool TryResolveChargeSkillIdFromKnownTemporaryStatPayloadForTesting(
+            ReadOnlySpan<byte> rawPayload,
+            int weaponChargeMetadataOffset,
+            out int chargeSkillId)
+        {
+            return TryResolveChargeSkillIdFromKnownTemporaryStatPayload(
+                rawPayload,
+                weaponChargeMetadataOffset,
                 out chargeSkillId);
         }
 

@@ -253,6 +253,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => _windowName;
         public override bool CapturesKeyboardInput => IsVisible && IsKeyboardOwnerWindow();
+
+        public int GetOneADaySelectorIndex()
+        {
+            return _oneADaySelectorIndex;
+        }
         public string CurrentOwnerStatusMessage => _statusMessage;
 
         public override void SetFont(SpriteFont font)
@@ -1301,11 +1306,20 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 case "BtItemBox":
                     _oneADayShortcutHelpActive = false;
-                    _oneADaySelectorIndex = Math.Min(1, Math.Max(0, Math.Max(1, state?.SelectorCount ?? 2) - 1));
-                    _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, Math.Max(1, state?.PreviousOfferCount ?? 12) - 1));
-                    _oneADaySessionState = state?.HistoryEntries?.Count > 0
-                        ? $"CCSWnd_OneADay routed the dedicated item-box button into previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}."
-                        : "CCSWnd_OneADay switched into the dedicated previous-item lane, but no packet-authored history rows are loaded.";
+                    if (_oneADaySelectorIndex == 0)
+                    {
+                        _oneADaySessionState = !_oneADayPending
+                            ? $"CCSWnd_OneADay kept the dedicated gift button armed, but no packet-authored today reward is pending for {ResolveOneADayCurrentSelectionSummary(state)}."
+                            : $"CCSWnd_OneADay routed the dedicated gift button through the Today reward lane for {ResolveOneADayCurrentSelectionSummary(state)}.";
+                    }
+                    else
+                    {
+                        _oneADaySelectorIndex = Math.Min(1, Math.Max(0, Math.Max(1, state?.SelectorCount ?? 2) - 1));
+                        _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, Math.Max(1, state?.PreviousOfferCount ?? 12) - 1));
+                        _oneADaySessionState = state?.HistoryEntries?.Count > 0
+                            ? $"CCSWnd_OneADay routed previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} through the recovered item-box lane."
+                            : "CCSWnd_OneADay kept the dedicated previous-item lane active, but no packet-authored history rows are loaded.";
+                    }
                     RefreshOneADayInteractiveRuntime(state);
                     break;
                 case "BtJoin":
@@ -2184,27 +2198,36 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int buttonCount = Math.Max(1, state.PlateButtonCount);
-            int loadedCount = _oneADaySelectorIndex == 1
-                ? Math.Min(buttonCount, Math.Max(0, state.HistoryEntries?.Count ?? 0))
-                : (state.IsPending ? 1 : 0);
-            int authoredCanvasCount = _oneADaySelectorIndex == 1
-                ? (state.HasPlateBigCanvas ? buttonCount : Math.Min(buttonCount, Math.Max(1, state.PlateCount)))
-                : (state.HasPlateCanvas ? Math.Max(1, state.PlateCount) : 0);
+            int historyCount = Math.Max(0, state.HistoryEntries?.Count ?? 0);
+            bool isTodayLane = _oneADaySelectorIndex == 0;
+            int buttonCount = isTodayLane
+                ? 2
+                : Math.Min(Math.Max(0, state.PlateButtonCount), Math.Max(0, historyCount));
+            int loadedCount = isTodayLane
+                ? (state.CurrentCommoditySerialNumber > 0 ? 2 : 0)
+                : Math.Min(buttonCount, historyCount);
+            int authoredCanvasCount = isTodayLane
+                ? (state.HasPlateCanvas ? 2 : 0)
+                : (state.HasPlateBigCanvas ? buttonCount : Math.Min(buttonCount, Math.Max(0, state.PlateCount)));
             List<OneADayOwnerState.PlateButtonState> buttons = new(buttonCount);
             for (int i = 0; i < buttonCount; i++)
             {
+                bool isTodayBuyButton = isTodayLane && i == 0;
                 buttons.Add(new OneADayOwnerState.PlateButtonState
                 {
                     ButtonId = 2100 + i,
                     SlotIndex = i,
-                    CommandKey = _oneADaySelectorIndex == 1 ? "BtItemBox" : "BtBuy",
-                    Position = ResolveOneADayPlateButtonPosition(i, _oneADaySelectorIndex == 1),
+                    CommandKey = isTodayLane
+                        ? (isTodayBuyButton ? "BtBuy" : "BtItemBox")
+                        : "BtJoin",
+                    Position = ResolveOneADayPlateButtonPosition(i, !isTodayLane),
                     HasCanvas = i < authoredCanvasCount,
                     IsLoaded = i < loadedCount,
-                    IsEnabled = i < loadedCount || _oneADaySelectorIndex == 0,
+                    IsEnabled = i < loadedCount,
                     IsFocused = i == _oneADayPlateFocusIndex,
-                    Label = _oneADaySelectorIndex == 1 ? $"History {i + 1}" : $"Today {i + 1}"
+                    Label = isTodayLane
+                        ? (isTodayBuyButton ? "Buy" : "Gift")
+                        : $"History {i + 1}"
                 });
             }
 
@@ -2216,7 +2239,9 @@ namespace HaCreator.MapSimulator.UI
             int clampedSlot = Math.Max(0, slotIndex);
             if (!isHistoryLane)
             {
-                return new Point(316 + ((clampedSlot % 3) * 30), 260 + ((clampedSlot / 3) * 28));
+                return clampedSlot == 0
+                    ? new Point(165, 202)
+                    : new Point(246, 202);
             }
 
             return new Point(16 + ((clampedSlot % 4) * 92), 252 + ((clampedSlot / 4) * 44));

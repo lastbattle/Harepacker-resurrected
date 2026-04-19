@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCategoryCountRight = 188;
         private const int ClientCategoryCountInnerGap = 3;
         private const int ClientCategoryTrailingTextGap = 3;
+        private const int ClientFormatStringTruncationSuffixStringPoolId = 0x08B8;
         private const int TAB_AVAILABLE = 0;
         private const int TAB_IN_PROGRESS = 1;
         private const int TAB_COMPLETED = 2;
@@ -1740,39 +1741,70 @@ namespace HaCreator.MapSimulator.UI
 
         private string FitSingleLineCategoryText(string text, float maxWidth, float scale, bool emphasized)
         {
-            if (string.IsNullOrWhiteSpace(text) || maxWidth <= 0f)
+            string suffix = MapleStoryStringPool.GetOrFallback(
+                ClientFormatStringTruncationSuffixStringPoolId,
+                "..");
+            return FormatClientCategoryLabelTextForWidth(
+                text,
+                maxWidth,
+                candidate => MeasureCategoryText(candidate, scale, emphasized).X,
+                suffix);
+        }
+
+        internal static string FormatClientCategoryLabelTextForWidth(
+            string text,
+            float maxWidth,
+            Func<string, float> measureText,
+            string overflowSuffix)
+        {
+            if (string.IsNullOrWhiteSpace(text) || maxWidth <= 0f || measureText == null)
             {
                 return string.Empty;
             }
 
-            string trimmed = text.Trim();
-            if (MeasureCategoryText(trimmed, scale, emphasized).X <= maxWidth)
-            {
-                return trimmed;
-            }
-
-            const string ellipsis = "...";
-            float ellipsisWidth = MeasureCategoryText(ellipsis, scale, emphasized).X;
-            if (ellipsisWidth >= maxWidth)
+            string source = text.Trim();
+            if (source.Length == 0)
             {
                 return string.Empty;
             }
 
-            for (int length = trimmed.Length - 1; length > 0; length--)
+            if (measureText(source) <= maxWidth)
             {
-                string candidate = trimmed.Substring(0, length).TrimEnd();
+                return source;
+            }
+
+            string suffix = string.IsNullOrEmpty(overflowSuffix) ? ".." : overflowSuffix;
+            float suffixWidth = measureText(suffix);
+            if (suffixWidth <= 0f || suffixWidth > maxWidth)
+            {
+                return string.Empty;
+            }
+
+            float availableWidth = Math.Max(0f, maxWidth - suffixWidth);
+            string bestPrefix = string.Empty;
+            for (int length = source.Length; length > 0; length--)
+            {
+                string candidate = source.Substring(0, length).TrimEnd();
                 if (candidate.Length == 0)
                 {
                     continue;
                 }
 
-                if (MeasureCategoryText(candidate, scale, emphasized).X + ellipsisWidth <= maxWidth)
+                if (measureText(candidate) <= availableWidth)
                 {
-                    return candidate + ellipsis;
+                    bestPrefix = candidate;
+                    break;
                 }
             }
 
-            return string.Empty;
+            string formatted = string.Concat(bestPrefix, suffix);
+            while (formatted.Length > suffix.Length && measureText(formatted) > maxWidth)
+            {
+                bestPrefix = bestPrefix.Substring(0, bestPrefix.Length - 1).TrimEnd();
+                formatted = string.Concat(bestPrefix, suffix);
+            }
+
+            return measureText(formatted) <= maxWidth ? formatted : string.Empty;
         }
 
         private static int FindCategorySlotIndex(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)

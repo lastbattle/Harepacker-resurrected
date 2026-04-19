@@ -96,7 +96,8 @@ namespace HaCreator.MapSimulator.Managers
             string DecodedSg88FirstUseDecodeDetail,
             string DecodedSg88FirstUseReplayTemplateHex,
             int? DecodedSg88FirstUseReplayMismatchByteIndex,
-            int[] DecodedSg88FirstUseReplayMismatchByteIndices);
+            int[] DecodedSg88FirstUseReplayMismatchByteIndices,
+            string[] DecodedSg88FirstUseReplayMismatchPairs);
         internal readonly record struct Sg88ManualAttackRequestPacketTemplate(
             int Opcode,
             byte[] RawPacket,
@@ -1148,6 +1149,7 @@ namespace HaCreator.MapSimulator.Managers
             string decodedSg88FirstUseReplayTemplateHex;
             int? decodedSg88FirstUseReplayMismatchByteIndex;
             int[] decodedSg88FirstUseReplayMismatchByteIndices;
+            string[] decodedSg88FirstUseReplayMismatchPairs;
             TryDecodeObservedSg88FirstUse(
                 opcode,
                 rawPacket,
@@ -1156,7 +1158,8 @@ namespace HaCreator.MapSimulator.Managers
                 out decodedSg88FirstUseDecodeDetail,
                 out decodedSg88FirstUseReplayTemplateHex,
                 out decodedSg88FirstUseReplayMismatchByteIndex,
-                out decodedSg88FirstUseReplayMismatchByteIndices);
+                out decodedSg88FirstUseReplayMismatchByteIndices,
+                out decodedSg88FirstUseReplayMismatchPairs);
             trace = new OutboundPacketTrace(
                 opcode,
                 payload.Length,
@@ -1171,7 +1174,8 @@ namespace HaCreator.MapSimulator.Managers
                 decodedSg88FirstUseDecodeDetail,
                 decodedSg88FirstUseReplayTemplateHex,
                 decodedSg88FirstUseReplayMismatchByteIndex,
-                decodedSg88FirstUseReplayMismatchByteIndices);
+                decodedSg88FirstUseReplayMismatchByteIndices,
+                decodedSg88FirstUseReplayMismatchPairs);
             return true;
         }
 
@@ -1183,7 +1187,8 @@ namespace HaCreator.MapSimulator.Managers
             out string decodeDetail,
             out string replayTemplateHex,
             out int? replayMismatchByteIndex,
-            out int[] replayMismatchByteIndices)
+            out int[] replayMismatchByteIndices,
+            out string[] replayMismatchPairs)
         {
             request = null;
             replayParityMatched = null;
@@ -1191,6 +1196,7 @@ namespace HaCreator.MapSimulator.Managers
             replayTemplateHex = null;
             replayMismatchByteIndex = null;
             replayMismatchByteIndices = Array.Empty<int>();
+            replayMismatchPairs = Array.Empty<string>();
             if (opcode != PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseSummonOpcode)
             {
                 return;
@@ -1222,6 +1228,13 @@ namespace HaCreator.MapSimulator.Managers
                             out int[] mismatchByteIndices))
                     {
                         replayMismatchByteIndices = mismatchByteIndices;
+                    }
+
+                    if (PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityMismatchPairs(
+                            decodeDetail,
+                            out string[] mismatchPairs))
+                    {
+                        replayMismatchPairs = mismatchPairs;
                     }
 
                     if (replayMismatchByteIndices.Length > 0)
@@ -1577,8 +1590,11 @@ namespace HaCreator.MapSimulator.Managers
             string mismatchBytesSuffix = trace.DecodedSg88FirstUseReplayMismatchByteIndices is { Length: > 0 }
                 ? $",mismatchBytes={string.Join(",", trace.DecodedSg88FirstUseReplayMismatchByteIndices.OrderBy(index => index))}"
                 : string.Empty;
+            string mismatchPairsSuffix = trace.DecodedSg88FirstUseReplayMismatchPairs is { Length: > 0 }
+                ? $",mismatchPairs={string.Join(",", trace.DecodedSg88FirstUseReplayMismatchPairs)}"
+                : string.Empty;
             return
-                $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},vecCtrl={decoded.VecCtrlState}({FormatByteHex(decoded.VecCtrlState)}),replayParity={replayParity}{detailSuffix}{templateSuffix}{mismatchSuffix}{mismatchBytesSuffix})";
+                $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},vecCtrl={decoded.VecCtrlState}({FormatByteHex(decoded.VecCtrlState)}),replayParity={replayParity}{detailSuffix}{templateSuffix}{mismatchSuffix}{mismatchBytesSuffix}{mismatchPairsSuffix})";
         }
 
         public string DescribeRecentSg88FirstUsePackets(int maxCount = 10)
@@ -1722,8 +1738,9 @@ namespace HaCreator.MapSimulator.Managers
                             int matched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == true);
                             int mismatched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
                             string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group);
+                            string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group);
                             return
-                                $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}) template={group.Key.TemplateHex} mismatchBytes={mismatchByteHistogram}";
+                                $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}) template={group.Key.TemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram}";
                         }));
                 var equivalenceGroups = entries
                     .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
@@ -1763,7 +1780,8 @@ namespace HaCreator.MapSimulator.Managers
                             int mismatched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == false);
                             string vecCtrlHistogram = BuildSg88VecCtrlHistogram(group.Select(entry => entry.VecCtrlState));
                             string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group.Select(entry => entry.Entry));
-                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} stateTemplate={group.Key.StateTemplateHex} vecCtrls={vecCtrlHistogram} mismatchBytes={mismatchByteHistogram}";
+                            string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group.Select(entry => entry.Entry));
+                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} stateTemplate={group.Key.StateTemplateHex} vecCtrls={vecCtrlHistogram} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram}";
                         }));
 
                 return "Summoned official-session bridge SG-88 first-use replay matrix:"
@@ -1858,6 +1876,16 @@ namespace HaCreator.MapSimulator.Managers
                         return entry.DecodedSg88FirstUseReplayMismatchByteIndices;
                     }
 
+                    if (entry.DecodedSg88FirstUseReplayMismatchPairs is { Length: > 0 })
+                    {
+                        return entry.DecodedSg88FirstUseReplayMismatchPairs
+                            .Select(pair => PacketOwnedMechanicRepeatSkillRuntime.TryParseSg88ReplayParityMismatchPair(pair, out int index, out _)
+                                ? index
+                                : -1)
+                            .Where(index => index >= 0)
+                            .ToArray();
+                    }
+
                     return entry.DecodedSg88FirstUseReplayMismatchByteIndex.HasValue
                         ? new[] { entry.DecodedSg88FirstUseReplayMismatchByteIndex.Value }
                         : Array.Empty<int>();
@@ -1872,6 +1900,25 @@ namespace HaCreator.MapSimulator.Managers
                         || entry.DecodedSg88FirstUseReplayMismatchByteIndex == index);
                     return count > 0 ? new[] { $"byte{index}x{count}" } : Array.Empty<string>();
                 })
+                .ToArray();
+            return histogram.Length == 0
+                ? "none"
+                : string.Join(",", histogram);
+        }
+
+        private static string BuildSg88MismatchPairHistogram(IEnumerable<OutboundPacketTrace> group)
+        {
+            if (group == null)
+            {
+                return "none";
+            }
+
+            string[] histogram = group
+                .SelectMany(entry => entry.DecodedSg88FirstUseReplayMismatchPairs ?? Array.Empty<string>())
+                .Where(pair => !string.IsNullOrWhiteSpace(pair))
+                .GroupBy(pair => pair, StringComparer.Ordinal)
+                .OrderBy(grouping => grouping.Key, StringComparer.Ordinal)
+                .Select(grouping => $"{grouping.Key}x{grouping.Count()}")
                 .ToArray();
             return histogram.Length == 0
                 ? "none"

@@ -1862,6 +1862,12 @@ namespace HaCreator.MapSimulator
                         ResolveMobPickupSourceName,
                         ResolvePickupItemName);
                     Vector2? pickupTargetPosition = ResolveRemoteUserDropPickupTargetPosition(dropPickupPacket);
+                    if (dropPickupPacket.ActorKind == DropPickupActorKind.Pet
+                        && pickupTargetPosition.HasValue)
+                    {
+                        RememberObservedRemotePetPickupActorPosition(dropPickupPacket.ActorId, pickupTargetPosition.Value);
+                    }
+
                     bool pickupApplied = _dropPool.ResolveRemotePickup(
                         drop,
                         dropPickupPacket.ActorId,

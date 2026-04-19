@@ -493,7 +493,7 @@ namespace HaCreator.MapSimulator.Loaders
                     if (effectFrames.Count > 0)
                     {
                         cached.AngerGaugeEffect = effectFrames;
-                        cached.AngerGaugeEffectPath = MobAngerGaugeBurstStringPoolText.ResolvePath(mobInfo.ID);
+                        cached.AngerGaugeEffectPath = MapleStoryStringPool.ResolveMobAngerGaugeBurstPath(mobInfo.ID);
                     }
 
                     continue;

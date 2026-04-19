@@ -683,34 +683,48 @@ namespace HaCreator.MapSimulator.UI
             if ((msg == WmKeyDown || msg == WmKeyUp) && IsStagePassthroughVirtualKey(virtualKey))
             {
                 ForwardKeyToParent(msg, wParam, lParam);
+                UpdateImePlacement();
                 return IntPtr.Zero;
             }
 
-            IntPtr result = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
-            if (msg == WmKeyDown && allowImeOwnedDownHandling)
-            {
-                // Let IME consume the Down key first; only fall through to the parent
-                // path when IME is no longer holding an active composition/candidate state.
-                bool imeStillOwnsInputAfterKeyDown = HasImeOwnedInputState();
-                if (ShouldForwardDeferredDownKeyToParentAfterIme(imeStillOwnsInputAfterKeyDown))
-                {
-                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
-                }
-            }
-            else if (msg == WmKeyDown)
-            {
-                // `CCtrlEdit::OnKey` falls through to the parent owner for every
-                // unhandled key-down after the edit consumes its own branch.
-                ForwardKeyToParent(WmKeyDown, wParam, lParam);
-            }
-            else if (msg == WmKeyUp)
+            if (msg == WmKeyUp)
             {
                 bool wasClientOwnedKeyDown = _clientOwnedKeyDowns.Remove(virtualKey);
                 if (ShouldForwardClientOwnedKeyUpToParent(virtualKey, wasClientOwnedKeyDown))
                 {
                     ForwardKeyToParent(WmKeyUp, wParam, lParam);
                 }
+
+                UpdateImePlacement();
+                return IntPtr.Zero;
             }
+
+            if (msg == WmKeyDown)
+            {
+                if (allowImeOwnedDownHandling)
+                {
+                    _ = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+
+                    // Let IME consume the Down key first; only fall through to the parent
+                    // path when IME is no longer holding an active composition/candidate state.
+                    bool imeStillOwnsInputAfterKeyDown = HasImeOwnedInputState();
+                    if (ShouldForwardDeferredDownKeyToParentAfterIme(imeStillOwnsInputAfterKeyDown))
+                    {
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    }
+                }
+                else
+                {
+                    // `CCtrlEdit::OnKey` falls through to the parent owner for every
+                    // unhandled key-down after the edit consumes its own branch.
+                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                }
+
+                UpdateImePlacement();
+                return IntPtr.Zero;
+            }
+
+            IntPtr result = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
 
             if (msg == WmSetFocus)
             {

@@ -2195,6 +2195,7 @@ namespace HaCreator.MapSimulator
             statusBarChatUI.WhisperTargetPickerModalComboDropdownCloseRequested = () => _chat.CloseWhisperTargetPickerModalComboDropdown();
             statusBarChatUI.WhisperTargetPickerModalComboDropdownToggleRequested = () => _chat.ToggleWhisperTargetPickerModalComboDropdown();
             statusBarChatUI.WhisperTargetPickerModalComboDropdownHoverRequested = target => _chat.HighlightWhisperTargetPickerModalComboDropdownCandidate(target);
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownHoverIndexRequested = rowIndex => _chat.HighlightWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(rowIndex);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteRequested = target => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidate(target);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteIndexRequested = rowIndex => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(rowIndex);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownScrollRequested = delta => _chat.ScrollWhisperTargetPickerModalComboDropdown(delta);

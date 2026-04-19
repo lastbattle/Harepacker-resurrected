@@ -1769,11 +1769,16 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ResolvePacketMutationFallbackVisualOwnershipSourceStates(
+                reactor.GetActiveAnimationState(),
+                reactor.TransientHitLayerSourceState,
+                data.VisualState,
+                out int fallbackAnimationOwnerState,
+                out int fallbackHitOwnerState);
             ResolvePacketVisualOwnershipSourceStatesForMutation(
                 data,
-                ResolvePacketMutationFallbackAnimationOwnerState(
-                    reactor.GetActiveAnimationState(),
-                    reactor.TransientHitLayerSourceState),
+                fallbackAnimationOwnerState,
+                fallbackHitOwnerState,
                 out int packetAnimationSourceState,
                 out int packetHitAnimationState);
             bool wasAnimationClockRunning = IsPacketAnimationClockRunning(data);
@@ -1914,11 +1919,16 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ResolvePacketMutationFallbackVisualOwnershipSourceStates(
+                reactor.GetActiveAnimationState(),
+                reactor.TransientHitLayerSourceState,
+                data.VisualState,
+                out int fallbackAnimationOwnerState,
+                out int fallbackHitOwnerState);
             ResolvePacketVisualOwnershipSourceStatesForMutation(
                 data,
-                ResolvePacketMutationFallbackAnimationOwnerState(
-                    reactor.GetActiveAnimationState(),
-                    reactor.TransientHitLayerSourceState),
+                fallbackAnimationOwnerState,
+                fallbackHitOwnerState,
                 out int packetAnimationSourceState,
                 out int packetHitAnimationState);
             int remainingCurrentAnimationDuration = reactor.GetRemainingStoppedAnimationDuration(currentTick);
@@ -2788,18 +2798,28 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool packetNamePresent = candidates.Any(static candidate => candidate.IsPacketNamePresent);
-            if (packetNamePresent && !candidates.Any(static candidate => candidate.MatchesPacketName))
-            {
-                // Keep packet-enter ownership conservative when the packet carries a
-                // name but none of the authored candidates can satisfy it.
-                return false;
-            }
-
+            bool hasPacketNameMatch = candidates.Any(static candidate => candidate.MatchesPacketName);
             if (candidates.Count == 1)
             {
+                if (packetNamePresent && !hasPacketNameMatch)
+                {
+                    // Narrow unresolved packet-name adoption only when template/position/flip
+                    // resolution leaves exactly one authored candidate with no conflicting name.
+                    index = candidates[0].Index;
+                    selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
+                    return true;
+                }
+
                 index = candidates[0].Index;
                 selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
                 return true;
+            }
+
+            if (packetNamePresent && !hasPacketNameMatch)
+            {
+                // Keep packet-enter ownership conservative when the packet carries a
+                // name but multiple authored candidates remain unresolved.
+                return false;
             }
 
             static bool TrySelectUniqueCandidate(
@@ -3548,11 +3568,15 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
+            ResolvePacketMutationFallbackVisualOwnershipSourceStates(
+                reactor.GetActiveAnimationState(),
+                reactor.TransientHitLayerSourceState,
+                data.VisualState,
+                out int fallbackAnimationOwnerState,
+                out _);
             int sourceState = ResolvePacketHitAnimationState(
                 data,
-                ResolvePacketMutationFallbackAnimationOwnerState(
-                    reactor.GetActiveAnimationState(),
-                    reactor.TransientHitLayerSourceState));
+                fallbackAnimationOwnerState);
             int packetProperEventIndex = data.PacketProperEventIndex;
             if (!TryResolvePacketLoadLayerProperEventIndex(
                     packetProperEventIndex,
@@ -3665,6 +3689,28 @@ namespace HaCreator.MapSimulator.Pools
                 : transientHitSourceState;
         }
 
+        internal static void ResolvePacketMutationFallbackVisualOwnershipSourceStates(
+            int activeAnimationState,
+            int transientHitSourceState,
+            int visualState,
+            out int fallbackAnimationOwnerState,
+            out int fallbackHitOwnerState)
+        {
+            fallbackAnimationOwnerState = activeAnimationState >= 0
+                ? activeAnimationState
+                : visualState;
+            fallbackHitOwnerState = transientHitSourceState >= 0
+                && transientHitSourceState != fallbackAnimationOwnerState
+                    ? transientHitSourceState
+                    : -1;
+
+            if (fallbackAnimationOwnerState < 0 && transientHitSourceState >= 0)
+            {
+                fallbackAnimationOwnerState = transientHitSourceState;
+                fallbackHitOwnerState = -1;
+            }
+        }
+
         internal static void CommitPacketLayerSourceOwnership(ReactorRuntimeData data, int visualState)
         {
             if (data == null)
@@ -3766,6 +3812,21 @@ namespace HaCreator.MapSimulator.Pools
             out int packetAnimationSourceState,
             out int packetHitAnimationState)
         {
+            ResolvePacketVisualOwnershipSourceStatesForMutation(
+                data,
+                fallbackAnimationOwnerState,
+                fallbackHitOwnerState: -1,
+                out packetAnimationSourceState,
+                out packetHitAnimationState);
+        }
+
+        internal static void ResolvePacketVisualOwnershipSourceStatesForMutation(
+            ReactorRuntimeData data,
+            int fallbackAnimationOwnerState,
+            int fallbackHitOwnerState,
+            out int packetAnimationSourceState,
+            out int packetHitAnimationState)
+        {
             packetAnimationSourceState = 0;
             packetHitAnimationState = -1;
             if (data == null)
@@ -3787,10 +3848,20 @@ namespace HaCreator.MapSimulator.Pools
             if (data.PacketAnimationSourceState >= 0)
             {
                 packetAnimationSourceState = data.PacketAnimationSourceState;
+                if (fallbackHitOwnerState >= 0
+                    && fallbackHitOwnerState != packetAnimationSourceState)
+                {
+                    packetHitAnimationState = fallbackHitOwnerState;
+                }
                 return;
             }
 
             packetAnimationSourceState = fallbackAnimationOwnerState;
+            if (fallbackHitOwnerState >= 0
+                && fallbackHitOwnerState != packetAnimationSourceState)
+            {
+                packetHitAnimationState = fallbackHitOwnerState;
+            }
         }
 
         internal static bool ShouldPreservePacketAnimationSourceState(ReactorRuntimeData data)

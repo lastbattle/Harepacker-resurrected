@@ -272,6 +272,7 @@ namespace HaCreator.MapSimulator.UI
         internal Func<int, int, bool> OnImeCandidateSelected;
         internal Action<int, bool> OnClientForwardedFunctionKeyStateChanged;
         internal Action<int, bool> OnClientForwardedNonFunctionHotkeyStateChanged;
+        internal Action<Keys, bool, bool, bool> OnClientForwardedNonFunctionPhysicalKeyStateChanged;
         internal Func<IntPtr> ResolveImeWindowHandle;
         #endregion
 
@@ -2541,7 +2542,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void ForwardClientOwnedNonFunctionKeyTransitions(KeyboardState keyboardState, bool controlHeld, bool shiftHeld)
         {
-            if (OnClientForwardedNonFunctionHotkeyStateChanged == null)
+            bool hasPhysicalKeyCallback = OnClientForwardedNonFunctionPhysicalKeyStateChanged != null;
+            bool hasHotkeySlotCallback = OnClientForwardedNonFunctionHotkeyStateChanged != null;
+            if (!hasPhysicalKeyCallback && !hasHotkeySlotCallback)
             {
                 _forwardedNonFunctionHotkeySlotsByPhysicalKey.Clear();
                 return;
@@ -2569,7 +2572,10 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (!SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out int hotkeySlot))
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(key, true, controlHeld, shiftHeld);
+
+                if (!hasHotkeySlotCallback
+                    || !SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out int hotkeySlot))
                 {
                     continue;
                 }
@@ -2584,6 +2590,13 @@ namespace HaCreator.MapSimulator.UI
                 Keys key = releasedKeys[i];
                 if (!keyboardState.IsKeyUp(key)
                     || !SkillMacroOwnerKeyHandler.ShouldForwardClientOwnedNonFunctionKeyUpToParent(key))
+                {
+                    continue;
+                }
+
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(key, false, controlHeld, shiftHeld);
+
+                if (!hasHotkeySlotCallback)
                 {
                     continue;
                 }

@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class LocalUtilityPacketTransportManager : IDisposable
     {
         public const int DefaultPort = 18487;
+        private const int SentOutboundHistoryCapacity = 64;
 
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
 
@@ -58,6 +59,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly ConcurrentDictionary<int, ConnectedClient> _clients = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
+        private readonly ConcurrentQueue<PendingOutboundPacket> _sentOutboundHistory = new();
         private readonly object _listenerLock = new();
         private int _nextClientId;
 
@@ -183,6 +185,11 @@ namespace HaCreator.MapSimulator.Managers
             SentCount++;
             LastSentOpcode = opcode;
             LastSentRawPacket = rawPacket;
+            _sentOutboundHistory.Enqueue(new PendingOutboundPacket(opcode, LastSentRawPacket));
+            while (_sentOutboundHistory.Count > SentOutboundHistoryCapacity
+                && _sentOutboundHistory.TryDequeue(out _))
+            {
+            }
             status = $"Sent packetoutraw {rawPacketHex} to {sent} local utility packet outbox client(s).";
             LastStatus = status;
             return true;
@@ -236,6 +243,32 @@ namespace HaCreator.MapSimulator.Managers
 
             byte[] target = rawPacket as byte[] ?? rawPacket.ToArray();
             return LastSentRawPacket.AsSpan().SequenceEqual(target);
+        }
+
+        public bool HasSentOutboundPacket(int opcode, IReadOnlyList<byte> rawPacket)
+        {
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue || rawPacket == null)
+            {
+                return false;
+            }
+
+            byte[] target = rawPacket as byte[] ?? rawPacket.ToArray();
+            if (LastSentOpcode == opcode && LastSentRawPacket.AsSpan().SequenceEqual(target))
+            {
+                return true;
+            }
+
+            PendingOutboundPacket[] history = _sentOutboundHistory.ToArray();
+            for (int i = history.Length - 1; i >= 0; i--)
+            {
+                PendingOutboundPacket sent = history[i];
+                if (sent.Opcode == opcode && sent.RawPacket.AsSpan().SequenceEqual(target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public void Dispose()
@@ -365,6 +398,9 @@ namespace HaCreator.MapSimulator.Managers
                 SentCount = 0;
                 LastSentOpcode = -1;
                 LastSentRawPacket = Array.Empty<byte>();
+                while (_sentOutboundHistory.TryDequeue(out _))
+                {
+                }
             }
         }
 
@@ -411,6 +447,11 @@ namespace HaCreator.MapSimulator.Managers
                 SentCount++;
                 LastSentOpcode = dequeuedPacket.Opcode;
                 LastSentRawPacket = dequeuedPacket.RawPacket;
+                _sentOutboundHistory.Enqueue(new PendingOutboundPacket(dequeuedPacket.Opcode, LastSentRawPacket));
+                while (_sentOutboundHistory.Count > SentOutboundHistoryCapacity
+                    && _sentOutboundHistory.TryDequeue(out _))
+                {
+                }
                 flushed++;
             }
 

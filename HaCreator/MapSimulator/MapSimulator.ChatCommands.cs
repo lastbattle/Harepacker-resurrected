@@ -553,7 +553,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTradingRoomSessionCommand(string[] args, int actionIndex)
         {
-            const string sessionUsage = "Usage: /socialroom tradingroom [packet] session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
+            const string sessionUsage = "Usage: /socialroom tradingroom [packet] session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]";
             string sessionAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
             switch (sessionAction.ToLowerInvariant())
             {
@@ -625,14 +625,20 @@ namespace HaCreator.MapSimulator
                         : ChatCommandHandler.CommandResult.Error(sendStatus);
 
                 case "start":
-                    if (args.Length <= actionIndex + 5
+                    if (args.Length <= actionIndex + 4
                         || !int.TryParse(args[actionIndex + 2], out int listenPort)
                         || listenPort <= 0
                         || !int.TryParse(args[actionIndex + 4], out int remotePort)
-                        || remotePort <= 0
-                        || !int.TryParse(args[actionIndex + 5], out int inboundOpcodeValue)
-                        || inboundOpcodeValue < 0
-                        || inboundOpcodeValue > ushort.MaxValue)
+                        || remotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    int inboundOpcodeValue = 0;
+                    if (args.Length > actionIndex + 5
+                        && (!int.TryParse(args[actionIndex + 5], out inboundOpcodeValue)
+                            || inboundOpcodeValue < 0
+                            || inboundOpcodeValue > ushort.MaxValue))
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
@@ -649,23 +655,31 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Ok(DescribeTradingRoomOfficialSessionBridgeStatus());
 
                 case "startauto":
-                    if (args.Length <= actionIndex + 4
+                    if (args.Length <= actionIndex + 3
                         || !int.TryParse(args[actionIndex + 2], out int autoListenPort)
                         || autoListenPort <= 0
                         || !int.TryParse(args[actionIndex + 3], out int autoRemotePort)
-                        || autoRemotePort <= 0
-                        || !int.TryParse(args[actionIndex + 4], out int autoInboundOpcodeValue)
-                        || autoInboundOpcodeValue < 0
-                        || autoInboundOpcodeValue > ushort.MaxValue)
+                        || autoRemotePort <= 0)
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
 
-                    string autoProcessSelector = args.Length > actionIndex + 5 ? args[actionIndex + 5] : null;
-                    int? autoLocalPortFilter = null;
-                    if (args.Length > actionIndex + 6)
+                    int autoInboundOpcodeValue = 0;
+                    int trailingIndex = actionIndex + 4;
+                    if (args.Length > trailingIndex
+                        && int.TryParse(args[trailingIndex], out int parsedInboundOpcode)
+                        && parsedInboundOpcode >= 0
+                        && parsedInboundOpcode <= ushort.MaxValue)
                     {
-                        if (!int.TryParse(args[actionIndex + 6], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
+                        autoInboundOpcodeValue = parsedInboundOpcode;
+                        trailingIndex++;
+                    }
+
+                    string autoProcessSelector = args.Length > trailingIndex ? args[trailingIndex] : null;
+                    int? autoLocalPortFilter = null;
+                    if (args.Length > trailingIndex + 1)
+                    {
+                        if (!int.TryParse(args[trailingIndex + 1], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -6996,6 +7010,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 3
+                                || args.Length > 5
                                 || !MassacreSessionCommandParsing.TryParseRemotePort(args[2], out int discoverRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.DiscoverUsage);
@@ -7019,7 +7034,7 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                         {
-                            if (args.Length < 5
+                            if (args.Length != 5
                                 || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int listenPort)
                                 || !MassacreSessionCommandParsing.TryParseRemotePort(args[4], out int remotePort))
                             {
@@ -7034,6 +7049,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "attach", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 3
+                                || args.Length > 5
                                 || !MassacreSessionCommandParsing.TryParseRemotePort(args[2], out int attachRemotePort))
                             {
                                 return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachUsage);
@@ -7059,6 +7075,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "attachproxy", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 4
+                                || args.Length > 6
                                 || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
                                 || !MassacreSessionCommandParsing.TryParseRemotePort(args[3], out int attachProxyRemotePort))
                             {
@@ -7090,6 +7107,7 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 4
+                                || args.Length > 6
                                 || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int autoListenPort)
                                 || !MassacreSessionCommandParsing.TryParseRemotePort(args[3], out int autoRemotePort))
                             {
@@ -7115,7 +7133,7 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "map", StringComparison.OrdinalIgnoreCase))
                         {
-                            if (args.Length < 4
+                            if (args.Length != 4
                                 || !MassacreSessionCommandParsing.TryParseOpcode(args[2], out int opcode)
                                 || opcode <= 0
                                 || !MassacreSessionCommandParsing.TryParseMappedPacketKind(args[3], out MassacrePacketInboxMessageKind mappedKind))
@@ -7130,7 +7148,7 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "unmap", StringComparison.OrdinalIgnoreCase))
                         {
-                            if (args.Length < 3)
+                            if (args.Length != 3)
                             {
                                 return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.UnmapUsage);
                             }
@@ -9022,7 +9040,7 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(resetMessage)
                                         : ChatCommandHandler.CommandResult.Error(resetMessage);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|exceedlimit|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|exceedlimit|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
                     }

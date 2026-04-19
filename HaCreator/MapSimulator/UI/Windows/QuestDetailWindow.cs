@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<string, TimeLimitIndicatorStyle> _timeLimitIndicatorStyles = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Texture2D> _questSurfaceTextures = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Texture2D> _inlineUiCanvasTextures = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Point> _inlineUiCanvasOrigins = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, ClientTextRasterizer> _customDetailTextRasterizers = new(StringComparer.Ordinal);
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
@@ -486,14 +487,33 @@ namespace HaCreator.MapSimulator.UI
 
             _hoveredQuestItem = ResolveHoveredQuestItem(mouseState.X, mouseState.Y);
             _hoveredInlineReference = ResolveHoveredInlineReference(mouseState.X, mouseState.Y);
-            if (_hoveredInlineReference.HasValue &&
+            QuestDetailInlineReference? clickedReference = ResolveClickedQuestDetailReference();
+            if (clickedReference.HasValue &&
                 _previousInlineReferenceMouseState.LeftButton == ButtonState.Pressed &&
                 mouseState.LeftButton == ButtonState.Released)
             {
-                InlineReferenceRequested?.Invoke(_hoveredInlineReference.Value);
+                InlineReferenceRequested?.Invoke(clickedReference.Value);
             }
 
             _previousInlineReferenceMouseState = mouseState;
+        }
+
+        private QuestDetailInlineReference? ResolveClickedQuestDetailReference()
+        {
+            if (_hoveredInlineReference.HasValue)
+            {
+                return _hoveredInlineReference.Value;
+            }
+
+            if (_hoveredQuestItem != null && _hoveredQuestItem.ItemId > 0)
+            {
+                return new QuestDetailInlineReference(
+                    QuestDetailInlineReferenceKind.Item,
+                    _hoveredQuestItem.ItemId,
+                    _hoveredQuestItem.Title);
+            }
+
+            return null;
         }
 
         protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -994,8 +1014,8 @@ namespace HaCreator.MapSimulator.UI
                             sprite,
                             token.Texture,
                             new Rectangle(
-                                (int)Math.Round(drawPosition.X),
-                                (int)Math.Round(drawPosition.Y),
+                                (int)Math.Round(drawPosition.X + token.DrawOffsetX),
+                                (int)Math.Round(drawPosition.Y + token.DrawOffsetY),
                                 token.Width,
                                 token.Height),
                             clipRect,
@@ -1160,6 +1180,13 @@ namespace HaCreator.MapSimulator.UI
                 return MeasureText(token.Text, scale, style.Emphasized, lane, style.FontFamily, style.FontPixelSize);
             }
 
+            if (token.Kind == RichTextTokenKind.Icon ||
+                token.Kind == RichTextTokenKind.Surface ||
+                token.Kind == RichTextTokenKind.Reference)
+            {
+                return new Vector2(token.Width, token.AdvanceHeight);
+            }
+
             return new Vector2(token.Width, token.Height);
         }
 
@@ -1270,10 +1297,18 @@ namespace HaCreator.MapSimulator.UI
                 value.EndsWith("}}", StringComparison.Ordinal))
             {
                 string uiCanvasPath = value.Substring(uiCanvasPrefix.Length, value.Length - uiCanvasPrefix.Length - 2).Trim();
-                Texture2D uiCanvasTexture = ResolveInlineUiCanvasTexture(uiCanvasPath);
+                Texture2D uiCanvasTexture = ResolveInlineUiCanvasTexture(uiCanvasPath, out Point uiCanvasOrigin);
                 if (uiCanvasTexture != null)
                 {
-                    token = new RichTextToken(RichTextTokenKind.Surface, null, uiCanvasTexture, null, uiCanvasTexture.Width, uiCanvasTexture.Height);
+                    token = new RichTextToken(
+                        RichTextTokenKind.Surface,
+                        null,
+                        uiCanvasTexture,
+                        null,
+                        uiCanvasTexture.Width,
+                        uiCanvasTexture.Height,
+                        drawOffsetX: -uiCanvasOrigin.X,
+                        drawOffsetY: -uiCanvasOrigin.Y);
                 }
 
                 return true;
@@ -2213,7 +2248,11 @@ namespace HaCreator.MapSimulator.UI
                 (int)position.X,
                 (int)position.Y,
                 Math.Max(1, (int)Math.Ceiling(textSize.X)),
-                Math.Max(1, (int)Math.Ceiling(GetLineHeight(scale))));
+                Math.Max(
+                    1,
+                    (int)Math.Ceiling(Math.Max(
+                        textSize.Y,
+                        GetLineHeight(scale, lane, emphasized, fontFamilyOverride, fontPixelSizeOverride)))));
             if (!lineRect.Intersects(clipRect))
             {
                 return;
@@ -2283,9 +2322,18 @@ namespace HaCreator.MapSimulator.UI
             return ClientTextDrawing.Measure(GetTextGraphicsDevice(), text, scale, _font);
         }
 
-        private float GetLineHeight(float scale, QuestDetailTextLane lane = QuestDetailTextLane.Detail)
+        private float GetLineHeight(
+            float scale,
+            QuestDetailTextLane lane = QuestDetailTextLane.Detail,
+            bool emphasized = false,
+            string fontFamilyOverride = null,
+            float? fontPixelSizeOverride = null)
         {
-            ClientTextRasterizer rasterizer = ResolveQuestDetailTextRasterizer(lane, emphasized: false);
+            ClientTextRasterizer rasterizer = ResolveQuestDetailTextRasterizer(
+                lane,
+                emphasized,
+                fontFamilyOverride,
+                fontPixelSizeOverride);
             Vector2 measured = rasterizer?.MeasureString("Ag", scale)
                 ?? ClientTextDrawing.Measure(GetTextGraphicsDevice(), "Ag", scale, _font);
             if (measured.Y > 0f)
@@ -2401,8 +2449,9 @@ namespace HaCreator.MapSimulator.UI
             return texture;
         }
 
-        private Texture2D ResolveInlineUiCanvasTexture(string uiCanvasPath)
+        private Texture2D ResolveInlineUiCanvasTexture(string uiCanvasPath, out Point canvasOrigin)
         {
+            canvasOrigin = Point.Zero;
             if (string.IsNullOrWhiteSpace(uiCanvasPath))
             {
                 return null;
@@ -2413,6 +2462,11 @@ namespace HaCreator.MapSimulator.UI
                 cachedTexture != null &&
                 !cachedTexture.IsDisposed)
             {
+                if (!_inlineUiCanvasOrigins.TryGetValue(normalizedPath, out canvasOrigin))
+                {
+                    canvasOrigin = Point.Zero;
+                }
+
                 return cachedTexture;
             }
 
@@ -2427,8 +2481,20 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
+            canvasOrigin = ResolveCanvasOrigin(canvasProperty);
             _inlineUiCanvasTextures[normalizedPath] = texture;
+            _inlineUiCanvasOrigins[normalizedPath] = canvasOrigin;
             return texture;
+        }
+
+        private static Point ResolveCanvasOrigin(WzCanvasProperty canvasProperty)
+        {
+            if (canvasProperty?["origin"] is WzVectorProperty originProperty)
+            {
+                return new Point(originProperty.X, originProperty.Y);
+            }
+
+            return Point.Zero;
         }
 
         private static bool TryResolveInlineUiCanvasProperty(string uiCanvasPath, out WzCanvasProperty canvasProperty)
@@ -3179,7 +3245,9 @@ namespace HaCreator.MapSimulator.UI
                 int? itemId = null,
                 QuestDetailInlineReference? inlineReference = null,
                 string fontName = null,
-                float fontSize = 0f)
+                float fontSize = 0f,
+                int drawOffsetX = 0,
+                int drawOffsetY = 0)
             {
                 Kind = kind;
                 Text = text;
@@ -3191,6 +3259,8 @@ namespace HaCreator.MapSimulator.UI
                 InlineReference = inlineReference;
                 FontName = fontName;
                 FontSize = fontSize;
+                DrawOffsetX = drawOffsetX;
+                DrawOffsetY = drawOffsetY;
             }
 
             public RichTextTokenKind Kind { get; }
@@ -3203,6 +3273,9 @@ namespace HaCreator.MapSimulator.UI
             public QuestDetailInlineReference? InlineReference { get; }
             public string FontName { get; }
             public float FontSize { get; }
+            public int DrawOffsetX { get; }
+            public int DrawOffsetY { get; }
+            public int AdvanceHeight => Math.Max(0, Height + Math.Max(0, DrawOffsetY));
 
             public static RichTextToken StyleToken(string styleTag)
             {

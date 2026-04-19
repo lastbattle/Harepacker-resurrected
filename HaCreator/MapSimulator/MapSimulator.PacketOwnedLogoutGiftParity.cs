@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftDialogFrameStringPoolId = 0x16AA;
         private const string PacketOwnedLogoutGiftDialogFrameFallbackPath = "UI/UIWindow.img/LogoutGift/backgrnd";
         private const string PacketOwnedLogoutGiftUiPath = "LogoutGift/backgrnd";
+        private const int PacketOwnedLogoutGiftButtonPathStringPoolId = 0x146;
         private const string PacketOwnedLogoutGiftButtonFallbackPath = "UI/UIWindow.img/LogoutGift/BtSelect";
         private const string PacketOwnedLogoutGiftButtonClientUolFallbackPath = "UI/Login.img/CharSelect/BtSelect";
         private const string PacketOwnedLogoutGiftButtonUiPath = "LogoutGift/BtSelect";
@@ -844,6 +845,13 @@ namespace HaCreator.MapSimulator
                 PacketOwnedLogoutGiftDialogFrameFallbackPath);
         }
 
+        internal static string ResolvePacketOwnedLogoutGiftButtonResourcePath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                PacketOwnedLogoutGiftButtonPathStringPoolId,
+                PacketOwnedLogoutGiftButtonFallbackPath);
+        }
+
         internal static bool TryDecodePacketOwnedLogoutGiftDialogFrameResourcePath(
             string resourcePath,
             out string imageName,
@@ -1231,8 +1239,23 @@ namespace HaCreator.MapSimulator
 
         private static IEnumerable<string> EnumeratePacketOwnedLogoutGiftButtonResourcePathCandidates()
         {
-            yield return PacketOwnedLogoutGiftButtonFallbackPath;
-            yield return PacketOwnedLogoutGiftButtonClientUolFallbackPath;
+            HashSet<string> emitted = new(StringComparer.OrdinalIgnoreCase);
+
+            string stringPoolPath = ResolvePacketOwnedLogoutGiftButtonResourcePath();
+            if (!string.IsNullOrWhiteSpace(stringPoolPath) && emitted.Add(stringPoolPath))
+            {
+                yield return stringPoolPath;
+            }
+
+            if (emitted.Add(PacketOwnedLogoutGiftButtonFallbackPath))
+            {
+                yield return PacketOwnedLogoutGiftButtonFallbackPath;
+            }
+
+            if (emitted.Add(PacketOwnedLogoutGiftButtonClientUolFallbackPath))
+            {
+                yield return PacketOwnedLogoutGiftButtonClientUolFallbackPath;
+            }
         }
 
         private static string DescribePacketOwnedLogoutGiftCommodityContextFields(IReadOnlyList<PacketOwnedLogoutGiftContextField> fields)

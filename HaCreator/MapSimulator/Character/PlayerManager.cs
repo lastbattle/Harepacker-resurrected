@@ -915,7 +915,7 @@ namespace HaCreator.MapSimulator.Character
             // If player is dead, skip all input processing and combat
             if (!Player.IsAlive)
             {
-                Skills?.ReleaseActiveKeydownSkill(currentTime);
+                ReleaseActiveKeydownSkillWithinClientCancelBatchScope(Skills, currentTime);
                 Player.ClearInput();
                 return;
             }
@@ -959,66 +959,15 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 // Handle skill hotkeys
-                if (Skills != null && !_currentMobStatusState.SkillCastBlocked)
+                SkillManager skills = Skills;
+                if (skills != null && !_currentMobStatusState.SkillCastBlocked)
                 {
-                    // Primary skill hotkeys (Skill1-8, slots 0-7)
-                    for (int i = 0; i < 8; i++)
-                    {
-                        if (inputState.Skills[i])
-                        {
-                            Skills.TryCastHotkey(i, currentTime, inputState.SkillInputTokens[i]);
-                        }
-
-                        if (inputState.SkillsReleased[i])
-                        {
-                            Skills.ReleaseHotkeyIfActive(i, currentTime, inputState.SkillReleaseInputTokens[i]);
-                        }
-                    }
-
-                    // Function key hotkeys (F1-F12, slots 8-19)
-                    for (int i = 0; i < 12; i++)
-                    {
-                        if (inputState.FunctionSlots[i])
-                        {
-                            Skills.TryCastHotkey(
-                                SkillManager.FUNCTION_SLOT_OFFSET + i,
-                                currentTime,
-                                inputState.FunctionSlotInputTokens[i]);
-                        }
-
-                        if (inputState.FunctionSlotsReleased[i])
-                        {
-                            Skills.ReleaseHotkeyIfActive(
-                                SkillManager.FUNCTION_SLOT_OFFSET + i,
-                                currentTime,
-                                inputState.FunctionSlotReleaseInputTokens[i]);
-                        }
-                    }
-
-                    // Ctrl+Number hotkeys (Ctrl+1-8, slots 20-27)
-                    for (int i = 0; i < 8; i++)
-                    {
-                        if (inputState.CtrlSlots[i])
-                        {
-                            Skills.TryCastHotkey(
-                                SkillManager.CTRL_SLOT_OFFSET + i,
-                                currentTime,
-                                inputState.CtrlSlotInputTokens[i]);
-                        }
-
-                        if (inputState.CtrlSlotsReleased[i])
-                        {
-                            Skills.ReleaseHotkeyIfActive(
-                                SkillManager.CTRL_SLOT_OFFSET + i,
-                                currentTime,
-                                inputState.CtrlSlotReleaseInputTokens[i]);
-                        }
-                    }
+                    ProcessHotkeyInputWithinClientCancelBatchScope(skills, inputState, currentTime);
                 }
             }
             else
             {
-                Skills?.ReleaseActiveKeydownSkill(currentTime);
+                ReleaseActiveKeydownSkillWithinClientCancelBatchScope(Skills, currentTime);
                 Player.ClearInput();
             }
 
@@ -1582,6 +1531,93 @@ namespace HaCreator.MapSimulator.Character
                 _pendingRepeatSkillModeEndSkillId = 0;
                 _pendingRepeatSkillModeEndReturnSkillId = 0;
                 _pendingRepeatSkillModeEndRequestTime = int.MinValue;
+            }
+        }
+
+        private static void ReleaseActiveKeydownSkillWithinClientCancelBatchScope(SkillManager skills, int currentTime)
+        {
+            if (skills == null)
+            {
+                return;
+            }
+
+            using var _ = skills.BeginClientCancelBatchScope();
+            skills.ReleaseActiveKeydownSkill(currentTime);
+        }
+
+        private static void ProcessHotkeyInputWithinClientCancelBatchScope(
+            SkillManager skills,
+            InputState inputState,
+            int currentTime)
+        {
+            if (skills == null)
+            {
+                return;
+            }
+
+            using var _ = skills.BeginClientCancelBatchScope();
+
+            // Primary skill hotkeys (Skill1-8, slots 0-7)
+            for (int i = 0; i < 8; i++)
+            {
+                if (inputState.Skills[i])
+                {
+                    skills.TryCastHotkey(i, currentTime, inputState.SkillInputTokens[i]);
+                }
+            }
+
+            // Function key hotkeys (F1-F12, slots 8-19)
+            for (int i = 0; i < 12; i++)
+            {
+                if (inputState.FunctionSlots[i])
+                {
+                    skills.TryCastHotkey(
+                        SkillManager.FUNCTION_SLOT_OFFSET + i,
+                        currentTime,
+                        inputState.FunctionSlotInputTokens[i]);
+                }
+            }
+
+            // Ctrl+Number hotkeys (Ctrl+1-8, slots 20-27)
+            for (int i = 0; i < 8; i++)
+            {
+                if (inputState.CtrlSlots[i])
+                {
+                    skills.TryCastHotkey(
+                        SkillManager.CTRL_SLOT_OFFSET + i,
+                        currentTime,
+                        inputState.CtrlSlotInputTokens[i]);
+                }
+            }
+
+            for (int i = 0; i < 8; i++)
+            {
+                if (inputState.SkillsReleased[i])
+                {
+                    skills.ReleaseHotkeyIfActive(i, currentTime, inputState.SkillReleaseInputTokens[i]);
+                }
+            }
+
+            for (int i = 0; i < 12; i++)
+            {
+                if (inputState.FunctionSlotsReleased[i])
+                {
+                    skills.ReleaseHotkeyIfActive(
+                        SkillManager.FUNCTION_SLOT_OFFSET + i,
+                        currentTime,
+                        inputState.FunctionSlotReleaseInputTokens[i]);
+                }
+            }
+
+            for (int i = 0; i < 8; i++)
+            {
+                if (inputState.CtrlSlotsReleased[i])
+                {
+                    skills.ReleaseHotkeyIfActive(
+                        SkillManager.CTRL_SLOT_OFFSET + i,
+                        currentTime,
+                        inputState.CtrlSlotReleaseInputTokens[i]);
+                }
             }
         }
 

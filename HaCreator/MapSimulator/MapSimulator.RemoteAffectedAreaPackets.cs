@@ -16,6 +16,9 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _remoteAffectedAreaBattlefieldOwnerTeams = new();
         private readonly Dictionary<int, Fields.MonsterCarnivalTeam> _remoteAffectedAreaMonsterCarnivalOwnerTeams = new();
         private readonly Dictionary<int, string> _remoteAffectedAreaOwnerNames = new();
+        private readonly Dictionary<int, string> _remoteAffectedAreaOwnerNamesByAreaObjectId = new();
+        private readonly Dictionary<int, int> _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId = new();
+        private readonly Dictionary<int, Fields.MonsterCarnivalTeam> _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId = new();
         private readonly Dictionary<int, int> _remoteAffectedAreaLocalPlayerTickTimes = new();
 
         private readonly record struct RemoteAffectedAreaSkillRuntime(
@@ -94,6 +97,7 @@ namespace HaCreator.MapSimulator
             if (appliedPlayerOrMob)
             {
                 CacheRemoteAffectedAreaOwnerRuntimeState(ownerId);
+                CacheRemoteAffectedAreaOwnerRuntimeState(packet.ObjectId, ownerId);
             }
 
             return appliedPlayerOrMob;
@@ -184,6 +188,90 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        internal static bool TryResolveBattlefieldAffectedAreaOwnerTeamWithAreaSnapshot(
+            int ownerId,
+            int areaObjectId,
+            int? localTeamId,
+            IReadOnlyDictionary<int, int> cachedOwnerTeams,
+            IReadOnlyDictionary<int, int> cachedAreaOwnerTeams,
+            Func<int, int?> resolveRuntimeOwnerTeamId,
+            out int ownerTeamId)
+        {
+            ownerTeamId = default;
+            if (ownerId <= 0 || !localTeamId.HasValue)
+            {
+                return false;
+            }
+
+            int? runtimeOwnerTeamId = resolveRuntimeOwnerTeamId?.Invoke(ownerId);
+            if (runtimeOwnerTeamId.HasValue && runtimeOwnerTeamId.Value >= 0)
+            {
+                ownerTeamId = runtimeOwnerTeamId.Value;
+                return true;
+            }
+
+            if (areaObjectId > 0
+                && cachedAreaOwnerTeams != null
+                && cachedAreaOwnerTeams.TryGetValue(areaObjectId, out int cachedAreaOwnerTeamId))
+            {
+                ownerTeamId = cachedAreaOwnerTeamId;
+                return true;
+            }
+
+            if (cachedOwnerTeams != null
+                && cachedOwnerTeams.TryGetValue(ownerId, out int cachedOwnerTeamId))
+            {
+                ownerTeamId = cachedOwnerTeamId;
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryResolveMonsterCarnivalAffectedAreaOwnerTeamWithAreaSnapshot(
+            int ownerId,
+            int areaObjectId,
+            IReadOnlyDictionary<int, Fields.MonsterCarnivalTeam> cachedOwnerTeams,
+            IReadOnlyDictionary<int, Fields.MonsterCarnivalTeam> cachedAreaOwnerTeams,
+            Func<int, string> resolveOwnerName,
+            Func<string, Fields.MonsterCarnivalTeam?> resolveCharacterTeam,
+            out Fields.MonsterCarnivalTeam team)
+        {
+            team = default;
+            if (ownerId <= 0)
+            {
+                return false;
+            }
+
+            string ownerName = resolveOwnerName?.Invoke(ownerId);
+            if (!string.IsNullOrWhiteSpace(ownerName))
+            {
+                Fields.MonsterCarnivalTeam? liveResolvedTeam = resolveCharacterTeam?.Invoke(ownerName.Trim());
+                if (liveResolvedTeam.HasValue)
+                {
+                    team = liveResolvedTeam.Value;
+                    return true;
+                }
+            }
+
+            if (areaObjectId > 0
+                && cachedAreaOwnerTeams != null
+                && cachedAreaOwnerTeams.TryGetValue(areaObjectId, out Fields.MonsterCarnivalTeam cachedAreaTeam))
+            {
+                team = cachedAreaTeam;
+                return true;
+            }
+
+            if (cachedOwnerTeams != null
+                && cachedOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedOwnerTeam))
+            {
+                team = cachedOwnerTeam;
+                return true;
+            }
+
+            return false;
+        }
+
         internal static void CacheRemoteAffectedAreaOwnerRuntimeState(
             int ownerId,
             IDictionary<int, string> cachedOwnerNames,
@@ -249,6 +337,63 @@ namespace HaCreator.MapSimulator
                 ResolveMonsterCarnivalAffectedAreaOwnerTeamByName);
         }
 
+        private void CacheRemoteAffectedAreaOwnerRuntimeState(int areaObjectId, int ownerId)
+        {
+            if (areaObjectId <= 0 || ownerId <= 0)
+            {
+                return;
+            }
+
+            CacheRemoteAffectedAreaOwnerRuntimeState(ownerId);
+
+            string ownerName = ResolveRemoteAffectedAreaOwnerName(ownerId);
+            if (!string.IsNullOrWhiteSpace(ownerName))
+            {
+                _remoteAffectedAreaOwnerNamesByAreaObjectId[areaObjectId] = ownerName;
+            }
+            else
+            {
+                _remoteAffectedAreaOwnerNamesByAreaObjectId.Remove(areaObjectId);
+            }
+
+            int? ownerBattlefieldTeamId = ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId(ownerId);
+            if (!ownerBattlefieldTeamId.HasValue
+                && _remoteAffectedAreaBattlefieldOwnerTeams.TryGetValue(ownerId, out int cachedBattlefieldOwnerTeamId))
+            {
+                ownerBattlefieldTeamId = cachedBattlefieldOwnerTeamId;
+            }
+
+            if (ownerBattlefieldTeamId.HasValue && ownerBattlefieldTeamId.Value >= 0)
+            {
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId[areaObjectId] = ownerBattlefieldTeamId.Value;
+            }
+            else
+            {
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Remove(areaObjectId);
+            }
+
+            Fields.MonsterCarnivalTeam? ownerCarnivalTeam = null;
+            if (!string.IsNullOrWhiteSpace(ownerName))
+            {
+                ownerCarnivalTeam = ResolveMonsterCarnivalAffectedAreaOwnerTeamByName(ownerName);
+            }
+
+            if (!ownerCarnivalTeam.HasValue
+                && _remoteAffectedAreaMonsterCarnivalOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedCarnivalOwnerTeam))
+            {
+                ownerCarnivalTeam = cachedCarnivalOwnerTeam;
+            }
+
+            if (ownerCarnivalTeam.HasValue)
+            {
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId[areaObjectId] = ownerCarnivalTeam.Value;
+            }
+            else
+            {
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Remove(areaObjectId);
+            }
+        }
+
         private void UpdateRemoteAffectedAreaGameplay(int currentTime)
         {
             if (_affectedAreaPool == null)
@@ -271,6 +416,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 activeAreaIdsForLocalPlayerTicks?.Add(area.ObjectId);
+                CacheRemoteAffectedAreaOwnerRuntimeState(area.ObjectId, area.OwnerId);
 
                 switch (area.SourceKind)
                 {
@@ -288,6 +434,7 @@ namespace HaCreator.MapSimulator
             }
 
             PruneRemoteAffectedAreaLocalPlayerTickTimes(activeAreaIdsForLocalPlayerTicks);
+            PruneRemoteAffectedAreaOwnerRuntimeState(activeAreaIdsForLocalPlayerTicks);
             _playerManager?.Skills?.SyncExternalAreaSupportBuffs(activeProjectedSupportAreaIds, currentTime);
         }
 
@@ -363,7 +510,7 @@ namespace HaCreator.MapSimulator
                 && player != null
                 && player.IsAlive
                 && area.Contains(player.X, player.Y)
-                && IsAffectedAreaOwnerEnemyInPvpContext(area.OwnerId);
+                && IsAffectedAreaOwnerEnemyInPvpContext(area.ObjectId, area.OwnerId);
             bool canAffectMobs = _mobPool?.ActiveMobs != null && _mobPool.ActiveMobs.Count > 0;
             if (!canAffectLocalPlayer && !canAffectMobs)
             {
@@ -475,6 +622,41 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void PruneRemoteAffectedAreaOwnerRuntimeState(System.Collections.Generic.ISet<int> activeAreaIds)
+        {
+            if (activeAreaIds == null || activeAreaIds.Count == 0)
+            {
+                _remoteAffectedAreaOwnerNamesByAreaObjectId.Clear();
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Clear();
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Clear();
+                return;
+            }
+
+            foreach (int areaObjectId in _remoteAffectedAreaOwnerNamesByAreaObjectId.Keys.ToArray())
+            {
+                if (!activeAreaIds.Contains(areaObjectId))
+                {
+                    _remoteAffectedAreaOwnerNamesByAreaObjectId.Remove(areaObjectId);
+                }
+            }
+
+            foreach (int areaObjectId in _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Keys.ToArray())
+            {
+                if (!activeAreaIds.Contains(areaObjectId))
+                {
+                    _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Remove(areaObjectId);
+                }
+            }
+
+            foreach (int areaObjectId in _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Keys.ToArray())
+            {
+                if (!activeAreaIds.Contains(areaObjectId))
+                {
+                    _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Remove(areaObjectId);
+                }
+            }
+        }
+
         private static RemoteAffectedAreaSkillRuntime[] FilterRemoteAffectedAreaLocalPlayerHostileSkillRuntimes(
             RemoteAffectedAreaSkillRuntime[] hostileSkillRuntimes)
         {
@@ -560,8 +742,8 @@ namespace HaCreator.MapSimulator
                     supportSkills,
                     localPlayerId,
                     area.OwnerId,
-                    IsAffectedAreaOwnerPartyMember(area.OwnerId),
-                    IsAffectedAreaOwnerSameTeamMember(area.OwnerId),
+                    IsAffectedAreaOwnerPartyMember(area.ObjectId, area.OwnerId),
+                    IsAffectedAreaOwnerSameTeamMember(area.ObjectId, area.OwnerId),
                     levelData))
             {
                 return true;
@@ -907,8 +1089,8 @@ namespace HaCreator.MapSimulator
                         supportSkills,
                         localPlayerId,
                         area.OwnerId,
-                        IsAffectedAreaOwnerPartyMember(area.OwnerId),
-                        IsAffectedAreaOwnerSameTeamMember(area.OwnerId),
+                        IsAffectedAreaOwnerPartyMember(area.ObjectId, area.OwnerId),
+                        IsAffectedAreaOwnerSameTeamMember(area.ObjectId, area.OwnerId),
                         effectiveLevelData))
                 {
                     continue;
@@ -983,32 +1165,32 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private bool IsAffectedAreaOwnerPartyMember(int ownerId)
+        private bool IsAffectedAreaOwnerPartyMember(int areaObjectId, int ownerId)
         {
             if (ownerId <= 0)
             {
                 return false;
             }
 
-            string ownerName = ResolveRemoteAffectedAreaOwnerName(ownerId);
+            string ownerName = ResolveRemoteAffectedAreaOwnerName(areaObjectId, ownerId);
             return !string.IsNullOrWhiteSpace(ownerName)
                    && _socialListRuntime.IsTrackedPartyMember(ownerName);
         }
 
-        private bool IsAffectedAreaOwnerSameTeamMember(int ownerId)
+        private bool IsAffectedAreaOwnerSameTeamMember(int areaObjectId, int ownerId)
         {
             if (ownerId <= 0)
             {
                 return false;
             }
 
-            if (TryResolveBattlefieldAffectedAreaOwnerTeam(ownerId, out int ownerBattlefieldTeamId, out int localBattlefieldTeamId))
+            if (TryResolveBattlefieldAffectedAreaOwnerTeam(areaObjectId, ownerId, out int ownerBattlefieldTeamId, out int localBattlefieldTeamId))
             {
                 return ownerBattlefieldTeamId == localBattlefieldTeamId;
             }
 
             Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
-            if (TryResolveMonsterCarnivalAffectedAreaOwnerTeam(ownerId, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
+            if (TryResolveMonsterCarnivalAffectedAreaOwnerTeam(areaObjectId, ownerId, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
             {
                 return ownerCarnivalTeam == carnival.LocalTeam;
             }
@@ -1022,7 +1204,7 @@ namespace HaCreator.MapSimulator
                    || _specialFieldRuntime?.Minigames?.MonsterCarnival?.IsVisible == true;
         }
 
-        private bool IsAffectedAreaOwnerEnemyInPvpContext(int ownerId)
+        private bool IsAffectedAreaOwnerEnemyInPvpContext(int areaObjectId, int ownerId)
         {
             PlayerCharacter player = _playerManager?.Player;
             int localPlayerId = player?.Build?.Id ?? 0;
@@ -1031,13 +1213,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryResolveBattlefieldAffectedAreaOwnerTeam(ownerId, out int ownerBattlefieldTeamId, out int localBattlefieldTeamId))
+            if (TryResolveBattlefieldAffectedAreaOwnerTeam(areaObjectId, ownerId, out int ownerBattlefieldTeamId, out int localBattlefieldTeamId))
             {
                 return ownerBattlefieldTeamId != localBattlefieldTeamId;
             }
 
             Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
-            if (TryResolveMonsterCarnivalAffectedAreaOwnerTeam(ownerId, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
+            if (TryResolveMonsterCarnivalAffectedAreaOwnerTeam(areaObjectId, ownerId, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
             {
                 return ownerCarnivalTeam != carnival.LocalTeam;
             }
@@ -1046,6 +1228,7 @@ namespace HaCreator.MapSimulator
         }
 
         private bool TryResolveBattlefieldAffectedAreaOwnerTeam(
+            int areaObjectId,
             int ownerId,
             out int ownerTeamId,
             out int localTeamId)
@@ -1060,15 +1243,21 @@ namespace HaCreator.MapSimulator
             }
 
             localTeamId = battlefield.LocalTeamId.Value;
-            bool resolved = TryResolveBattlefieldAffectedAreaOwnerTeam(
+            bool resolved = TryResolveBattlefieldAffectedAreaOwnerTeamWithAreaSnapshot(
                 ownerId,
+                areaObjectId,
                 battlefield.LocalTeamId,
                 _remoteAffectedAreaBattlefieldOwnerTeams,
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId,
                 ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId,
                 out ownerTeamId);
             if (resolved)
             {
                 _remoteAffectedAreaBattlefieldOwnerTeams[ownerId] = ownerTeamId;
+                if (areaObjectId > 0)
+                {
+                    _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId[areaObjectId] = ownerTeamId;
+                }
             }
 
             return resolved;
@@ -1088,7 +1277,7 @@ namespace HaCreator.MapSimulator
                 : null;
         }
 
-        private bool TryResolveMonsterCarnivalAffectedAreaOwnerTeam(int ownerId, out Fields.MonsterCarnivalTeam team)
+        private bool TryResolveMonsterCarnivalAffectedAreaOwnerTeam(int areaObjectId, int ownerId, out Fields.MonsterCarnivalTeam team)
         {
             team = default;
             Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
@@ -1097,15 +1286,21 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            bool resolved = TryResolveMonsterCarnivalAffectedAreaOwnerTeam(
+            bool resolved = TryResolveMonsterCarnivalAffectedAreaOwnerTeamWithAreaSnapshot(
                 ownerId,
+                areaObjectId,
                 _remoteAffectedAreaMonsterCarnivalOwnerTeams,
-                ResolveRemoteAffectedAreaOwnerName,
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId,
+                candidateOwnerId => ResolveRemoteAffectedAreaOwnerName(areaObjectId, candidateOwnerId),
                 ResolveMonsterCarnivalAffectedAreaOwnerTeamByName,
                 out team);
             if (resolved)
             {
                 _remoteAffectedAreaMonsterCarnivalOwnerTeams[ownerId] = team;
+                if (areaObjectId > 0)
+                {
+                    _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId[areaObjectId] = team;
+                }
             }
 
             return resolved;
@@ -1134,6 +1329,39 @@ namespace HaCreator.MapSimulator
                 : null;
         }
 
+        internal static string ResolveRemoteAffectedAreaOwnerName(
+            int areaObjectId,
+            int ownerId,
+            IReadOnlyDictionary<int, string> cachedOwnerNamesByAreaObjectId,
+            IReadOnlyDictionary<int, string> cachedOwnerNames,
+            Func<int, string> resolveLiveOwnerName)
+        {
+            if (ownerId <= 0)
+            {
+                return null;
+            }
+
+            string liveOwnerName = resolveLiveOwnerName?.Invoke(ownerId);
+            if (!string.IsNullOrWhiteSpace(liveOwnerName))
+            {
+                return liveOwnerName.Trim();
+            }
+
+            if (areaObjectId > 0
+                && cachedOwnerNamesByAreaObjectId != null
+                && cachedOwnerNamesByAreaObjectId.TryGetValue(areaObjectId, out string cachedAreaOwnerName)
+                && !string.IsNullOrWhiteSpace(cachedAreaOwnerName))
+            {
+                return cachedAreaOwnerName.Trim();
+            }
+
+            return cachedOwnerNames != null
+                   && cachedOwnerNames.TryGetValue(ownerId, out string cachedOwnerName)
+                   && !string.IsNullOrWhiteSpace(cachedOwnerName)
+                ? cachedOwnerName.Trim()
+                : null;
+        }
+
         private string ResolveRemoteAffectedAreaOwnerName(int ownerId)
         {
             string ownerName = ResolveRemoteAffectedAreaOwnerName(
@@ -1146,6 +1374,28 @@ namespace HaCreator.MapSimulator
             }
 
             return ownerName;
+        }
+
+        private string ResolveRemoteAffectedAreaOwnerName(int areaObjectId, int ownerId)
+        {
+            string ownerName = ResolveRemoteAffectedAreaOwnerName(
+                areaObjectId,
+                ownerId,
+                _remoteAffectedAreaOwnerNamesByAreaObjectId,
+                _remoteAffectedAreaOwnerNames,
+                ResolveLiveRemoteAffectedAreaOwnerName);
+            if (!string.IsNullOrWhiteSpace(ownerName))
+            {
+                _remoteAffectedAreaOwnerNames[ownerId] = ownerName;
+                if (areaObjectId > 0)
+                {
+                    _remoteAffectedAreaOwnerNamesByAreaObjectId[areaObjectId] = ownerName;
+                }
+
+                return ownerName;
+            }
+
+            return null;
         }
 
         private string ResolveLiveRemoteAffectedAreaOwnerName(int ownerId)

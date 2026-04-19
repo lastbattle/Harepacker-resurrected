@@ -84,7 +84,7 @@ namespace HaCreator.MapSimulator.Fields
             MapInfo mapInfo,
             SocialRoomKind kind)
         {
-            if (kind is not (SocialRoomKind.MiniRoom or SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop))
+            if (!IsFieldRestrictedSocialRoomKind(kind))
             {
                 return null;
             }
@@ -103,6 +103,14 @@ namespace HaCreator.MapSimulator.Fields
                     "Entrusted shops cannot be opened in this map.",
                 _ => null
             };
+        }
+
+        public static bool IsFieldRestrictedSocialRoomKind(SocialRoomKind kind)
+        {
+            return kind is SocialRoomKind.MiniRoom
+                or SocialRoomKind.PersonalShop
+                or SocialRoomKind.EntrustedShop
+                or SocialRoomKind.TradingRoom;
         }
 
         public static string GetParcelOpenRestrictionMessage(long fieldLimit)

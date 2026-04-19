@@ -696,17 +696,19 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (hasValue)
             {
+                // Keep value-only headline rows in the dedicated right ledger lane so the
+                // synthesized split stays aligned with the existing client-facing seam.
                 AddWrappedTextRecords(
                     records,
                     value,
-                    ClientCollectionTextLaneLeft,
+                    ClientCollectionValueLaneLeft,
                     top,
-                    ClientCollectionTextLaneWidthInt,
+                    ClientCollectionValueLaneWidth,
                     valueStyleIndex,
                     CollectionBookTextAlignment.Right,
                     CollectionBookRecordRole.Value,
                     measureTextWidth);
-                bottom = GetWrappedRecordBottom(value, top, ClientCollectionTextLaneWidthInt, valueStyleIndex, measureTextWidth);
+                bottom = GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, valueStyleIndex, measureTextWidth);
             }
 
             return bottom;
@@ -792,7 +794,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (hasValue)
             {
-                return GetWrappedRecordBottom(value, top, ClientCollectionTextLaneWidthInt, valueStyleIndex, measureTextWidth);
+                return GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, valueStyleIndex, measureTextWidth);
             }
 
             return top;
@@ -957,7 +959,7 @@ namespace HaCreator.MapSimulator.UI
             int wrapWidth = Math.Min(
                 Math.Max(1, width - (ClientCollectionTextAnalyzerMargin * 2)),
                 ClientCollectionTextAnalyzerWrapWidth);
-            Func<string, float> measureWidth = segment => measureTextWidth?.Invoke(segment, styleIndex) ?? MeasureApproximateCollectionTextWidth(segment);
+            Func<string, float> measureWidth = segment => GetClientQuantizedCollectionTextWidth(segment, styleIndex, measureTextWidth);
             return WrapCollectionTextWithClientAnalyzerSpacing(text, wrapWidth, measureWidth);
         }
 
@@ -1113,13 +1115,30 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
+            float width = GetClientQuantizedCollectionTextWidth(text, styleIndex, measureTextWidth);
+            if (float.IsNaN(width) || float.IsInfinity(width) || width <= 0f)
+            {
+                return 0;
+            }
+
+            return (int)width;
+        }
+
+        private static int GetClientQuantizedCollectionTextWidth(string text, int styleIndex, Func<string, int, float> measureTextWidth = null)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
             float width = measureTextWidth?.Invoke(text, styleIndex) ?? MeasureApproximateCollectionTextWidth(text);
             if (float.IsNaN(width) || float.IsInfinity(width) || width <= 0f)
             {
                 return 0;
             }
 
-            return (int)Math.Ceiling(width);
+            // CBookDlg::SetPage depends on analyzer and IWzFont integer widths for CT_INFO placement.
+            return Math.Max(0, (int)Math.Round(width, MidpointRounding.AwayFromZero));
         }
 
         private static float MeasureApproximateCollectionTextWidth(string text)

@@ -1,7 +1,9 @@
 using HaCreator.MapSimulator.Managers;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Text;
 
 namespace HaCreator.MapSimulator
 {
@@ -172,7 +174,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleGuildBbsSessionCommand(string[] args)
         {
-            const string usage = "Usage: /guildbbs packet session [status|discover <remotePort> [inboundOpcode] [processName|pid] [localPort]|historyin [count]|clearhistoryin|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /guildbbs packet session [status|discover <remotePort> [inboundOpcode] [processName|pid] [localPort]|historyin [count]|clearhistoryin|historyout [count]|clearhistoryout|replay <historyIndex>|sendraw <hex>|send <register|comment|list|view|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|queue <register|comment|list|view|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeGuildBbsOfficialSessionBridgeStatus());
@@ -225,6 +227,95 @@ namespace HaCreator.MapSimulator
             if (string.Equals(args[0], "clearhistoryin", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Ok(_guildBbsOfficialSessionBridge.ClearRecentInboundPackets());
+            }
+
+            if (string.Equals(args[0], "historyout", StringComparison.OrdinalIgnoreCase))
+            {
+                int count = 10;
+                if (args.Length >= 2 && (!int.TryParse(args[1], out count) || count <= 0))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet session historyout [count]");
+                }
+
+                return ChatCommandHandler.CommandResult.Info(_guildBbsOfficialSessionBridge.DescribeRecentOutboundPackets(count));
+            }
+
+            if (string.Equals(args[0], "clearhistoryout", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_guildBbsOfficialSessionBridge.ClearRecentOutboundPackets());
+            }
+
+            if (string.Equals(args[0], "replay", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2
+                    || !int.TryParse(args[1], out int replayIndex)
+                    || replayIndex <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet session replay <historyIndex>");
+                }
+
+                return _guildBbsOfficialSessionBridge.TryReplayRecentOutboundPacket(replayIndex, out string replayStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(replayStatus)
+                    : ChatCommandHandler.CommandResult.Error(replayStatus);
+            }
+
+            if (string.Equals(args[0], "sendraw", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawPacket))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet session sendraw <hex>");
+                }
+
+                return _guildBbsOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string sendRawStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(sendRawStatus)
+                    : ChatCommandHandler.CommandResult.Error(sendRawStatus);
+            }
+
+            if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "queue", StringComparison.OrdinalIgnoreCase))
+            {
+                bool queueOnly = string.Equals(args[0], "queue", StringComparison.OrdinalIgnoreCase);
+                if (args.Length < 2)
+                {
+                    return ChatCommandHandler.CommandResult.Error(
+                        $"Usage: /guildbbs packet session {args[0]} <register|comment|list|view|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>");
+                }
+
+                if (!TryResolveGuildBbsOutboundRequestPayloads(args, 1, out IReadOnlyList<byte[]> payloads, out string resolveStatus))
+                {
+                    return ChatCommandHandler.CommandResult.Error(resolveStatus);
+                }
+
+                if (payloads.Count == 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Guild BBS request preview did not produce any payloadhex fields.");
+                }
+
+                var statusBuilder = new StringBuilder();
+                bool allSucceeded = true;
+                for (int i = 0; i < payloads.Count; i++)
+                {
+                    byte[] payload = payloads[i] ?? Array.Empty<byte>();
+                    bool dispatched = queueOnly
+                        ? _guildBbsOfficialSessionBridge.TryQueueOutboundPacket(GuildBbsOutboundRequestOpcode, payload, out string dispatchStatus)
+                        : _guildBbsOfficialSessionBridge.TrySendOutboundPacket(GuildBbsOutboundRequestOpcode, payload, out string dispatchStatus);
+                    if (!dispatched)
+                    {
+                        allSucceeded = false;
+                    }
+
+                    if (statusBuilder.Length > 0)
+                    {
+                        statusBuilder.Append(' ');
+                    }
+
+                    string modeLabel = queueOnly ? "queue" : "send";
+                    statusBuilder.Append($"[{modeLabel} {i + 1}/{payloads.Count}] {dispatchStatus}");
+                }
+
+                return allSucceeded
+                    ? ChatCommandHandler.CommandResult.Ok(statusBuilder.ToString())
+                    : ChatCommandHandler.CommandResult.Error(statusBuilder.ToString());
             }
 
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
@@ -321,6 +412,136 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(usage);
+        }
+
+        private bool TryResolveGuildBbsOutboundRequestPayloads(
+            string[] args,
+            int commandStartIndex,
+            out IReadOnlyList<byte[]> payloads,
+            out string status)
+        {
+            payloads = Array.Empty<byte[]>();
+            status = null;
+            if (args == null || args.Length <= commandStartIndex)
+            {
+                status = "Guild BBS outbound request kind is required.";
+                return false;
+            }
+
+            string requestKind = args[commandStartIndex]?.Trim() ?? string.Empty;
+            string preview = requestKind.ToLowerInvariant() switch
+            {
+                "register" => _guildBbsRuntime.BuildClientRegisterRequestPreview(),
+                "comment" => _guildBbsRuntime.BuildClientCommentRequestPreview(),
+                "list" => _guildBbsRuntime.BuildClientLoadListRequestPreview(),
+                "view" => _guildBbsRuntime.BuildClientViewEntryRequestPreview(),
+                "delete" => _guildBbsRuntime.BuildClientDeleteRequestPreview(),
+                "deleteseq" => _guildBbsRuntime.BuildClientDeleteSequencePreview(),
+                "replydelete" => TryBuildGuildBbsReplyDeletePreview(args, commandStartIndex + 1, sequence: false, out string replyDeletePreview)
+                    ? replyDeletePreview
+                    : null,
+                "replydeleteseq" => TryBuildGuildBbsReplyDeletePreview(args, commandStartIndex + 1, sequence: true, out string replyDeleteSequencePreview)
+                    ? replyDeleteSequencePreview
+                    : null,
+                "submit" => _guildBbsRuntime.BuildClientSubmitSequencePreview(),
+                "reply" => _guildBbsRuntime.BuildClientReplySequencePreview(),
+                _ => null
+            };
+
+            if (preview == null)
+            {
+                status = "Usage: /guildbbs packet session send|queue <register|comment|list|view|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>";
+                return false;
+            }
+
+            if (!preview.StartsWith("CUIGuildBBS ", StringComparison.Ordinal))
+            {
+                status = preview;
+                return false;
+            }
+
+            if (!TryExtractGuildBbsPayloadHexSegments(preview, out List<byte[]> parsedPayloads))
+            {
+                status = $"Guild BBS preview did not expose decodable payloadhex data: {preview}";
+                return false;
+            }
+
+            payloads = parsedPayloads;
+            return true;
+        }
+
+        private bool TryBuildGuildBbsReplyDeletePreview(
+            string[] args,
+            int visibleIndexArgIndex,
+            bool sequence,
+            out string preview)
+        {
+            preview = null;
+            if (args != null
+                && args.Length > visibleIndexArgIndex
+                && int.TryParse(args[visibleIndexArgIndex], out int visibleIndex))
+            {
+                preview = sequence
+                    ? _guildBbsRuntime.BuildClientCommentDeleteSequencePreview(visibleIndex)
+                    : _guildBbsRuntime.BuildClientCommentDeleteRequestPreview(visibleIndex);
+                return true;
+            }
+
+            preview = sequence
+                ? _guildBbsRuntime.BuildClientCommentDeleteSequencePreview()
+                : _guildBbsRuntime.BuildClientCommentDeleteRequestPreview();
+            return true;
+        }
+
+        private static bool TryExtractGuildBbsPayloadHexSegments(string preview, out List<byte[]> payloads)
+        {
+            payloads = new List<byte[]>();
+            if (string.IsNullOrWhiteSpace(preview))
+            {
+                return false;
+            }
+
+            const string token = "payloadhex=";
+            int searchIndex = 0;
+            while (searchIndex < preview.Length)
+            {
+                int tokenIndex = preview.IndexOf(token, searchIndex, StringComparison.OrdinalIgnoreCase);
+                if (tokenIndex < 0)
+                {
+                    break;
+                }
+
+                int hexStart = tokenIndex + token.Length;
+                int hexEnd = hexStart;
+                while (hexEnd < preview.Length && IsHexCharacter(preview[hexEnd]))
+                {
+                    hexEnd++;
+                }
+
+                if (hexEnd > hexStart)
+                {
+                    string hex = preview.Substring(hexStart, hexEnd - hexStart);
+                    try
+                    {
+                        payloads.Add(Convert.FromHexString(hex));
+                    }
+                    catch (FormatException)
+                    {
+                        // Keep scanning; malformed segments are ignored.
+                    }
+                }
+
+                searchIndex = hexEnd;
+            }
+
+            return payloads.Count > 0;
+        }
+
+        private static bool IsHexCharacter(char value)
+        {
+            return (value >= '0' && value <= '9')
+                || (value >= 'a' && value <= 'f')
+                || (value >= 'A' && value <= 'F');
         }
 
         private ChatCommandHandler.CommandResult HandleGuildBbsClientRawPacketCommand(string[] args)

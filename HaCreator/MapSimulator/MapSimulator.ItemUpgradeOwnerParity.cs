@@ -30,6 +30,11 @@ namespace HaCreator.MapSimulator
         private bool _itemUpgradeOwnerRequestSent;
         private int _itemUpgradeOwnerRequestSentTick = int.MinValue;
         private int _itemUpgradeOwnerLastResultValue = ItemUpgradeClientBusyResultFallbackValue;
+        private int _itemUpgradeOwnerLastUpgradeStateValue = int.MinValue;
+        private int _itemUpgradeOwnerConsumeCashUseRequestTick = int.MinValue;
+        private InventoryType _itemUpgradeOwnerConsumeCashUseInventoryType = InventoryType.USE;
+        private int _itemUpgradeOwnerConsumeCashUseSlotIndex = -1;
+        private int _itemUpgradeOwnerConsumeCashUseItemId;
         private PendingItemUpgradeOwnerRequestState _pendingItemUpgradeOwnerRequest;
 
         private sealed class PendingItemUpgradeOwnerRequestState
@@ -94,11 +99,13 @@ namespace HaCreator.MapSimulator
 
             int requestItemToken = ResolveItemUpgradeRequestItemToken(request);
             int requestSlotPosition = Math.Max(0, request.ConsumableSlotIndex + 1);
+            int consumeCashUseRequestTick = ConsumeItemUpgradeConsumeCashUseRequestTick(request, currTickCount);
             byte[] encodedRequestPayload = BuildItemUpgradeRequestPayload(
                 requestItemToken,
                 requestSlotPosition,
                 currTickCount);
             byte[] encodedConsumeCashRequestPayload = BuildItemUpgradeConsumeCashRequestPayload(
+                consumeCashUseRequestTick,
                 requestSlotPosition,
                 request.ConsumableItemId,
                 requestItemToken,
@@ -199,6 +206,7 @@ namespace HaCreator.MapSimulator
             if (decodeState.HasOutcomeState)
             {
                 _itemUpgradeOwnerLastResultValue = decodeState.OutcomeResultValue;
+                _itemUpgradeOwnerLastUpgradeStateValue = decodeState.OutcomeUpgradeState;
             }
 
             // CUIItemUpgrade::OnItemUpgradeResult clears request-sent and stamps the
@@ -279,10 +287,26 @@ namespace HaCreator.MapSimulator
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
             {
+                if (_itemUpgradeOwnerLastUpgradeStateValue != int.MinValue &&
+                    itemUpgradeWindow.TryResolveUpgradeSlotState(slot, out int totalSlots, out _))
+                {
+                    return ResolveItemUpgradeRecoveredSlotCountArgumentFromPacketState(
+                        totalSlots,
+                        _itemUpgradeOwnerLastUpgradeStateValue);
+                }
+
                 return itemUpgradeWindow.ResolveProjectedRemainingUpgradeSlotCountAfterRecovery(slot);
             }
 
             return 1;
+        }
+
+        private static int ResolveItemUpgradeRecoveredSlotCountArgumentFromPacketState(int totalSlotCount, int packetUpgradeState)
+        {
+            int totalSlots = Math.Max(0, totalSlotCount);
+            int consumedSlotCount = packetUpgradeState & 0xFF;
+            int recoveredSlotCount = (packetUpgradeState >> 8) & 0xFF;
+            return Math.Max(0, totalSlots + recoveredSlotCount - consumedSlotCount);
         }
 
         private void MarkItemUpgradeOwnerRequestSent()
@@ -447,13 +471,14 @@ namespace HaCreator.MapSimulator
         }
 
         private static byte[] BuildItemUpgradeConsumeCashRequestPayload(
+            int useRequestTick,
             int consumableSlotPosition,
             int consumableItemId,
             int itemToken,
             int updateTick)
         {
             byte[] payload = new byte[ItemUpgradeOwnerConsumeCashRequestPayloadLength];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), useRequestTick);
             BinaryPrimitives.WriteInt16LittleEndian(
                 payload.AsSpan(sizeof(int), sizeof(short)),
                 (short)Math.Clamp(consumableSlotPosition, short.MinValue, short.MaxValue));
@@ -595,7 +620,17 @@ namespace HaCreator.MapSimulator
             int itemToken,
             int updateTick)
         {
-            return BuildItemUpgradeConsumeCashRequestPayload(consumableSlotPosition, consumableItemId, itemToken, updateTick);
+            return BuildItemUpgradeConsumeCashRequestPayload(updateTick, consumableSlotPosition, consumableItemId, itemToken, updateTick);
+        }
+
+        internal static byte[] BuildItemUpgradeConsumeCashRequestPayloadForTests(
+            int useRequestTick,
+            int consumableSlotPosition,
+            int consumableItemId,
+            int itemToken,
+            int updateTick)
+        {
+            return BuildItemUpgradeConsumeCashRequestPayload(useRequestTick, consumableSlotPosition, consumableItemId, itemToken, updateTick);
         }
 
         internal static bool TryDecodeItemUpgradeConsumeCashRequestPayloadForTests(
@@ -732,6 +767,11 @@ namespace HaCreator.MapSimulator
             return ResolveItemUpgradeRecoveredSlotNotice(remainingUpgradeCount);
         }
 
+        internal static int ResolveItemUpgradeRecoveredSlotCountArgumentFromPacketStateForTests(int totalSlotCount, int packetUpgradeState)
+        {
+            return ResolveItemUpgradeRecoveredSlotCountArgumentFromPacketState(totalSlotCount, packetUpgradeState);
+        }
+
         private static string ResolveItemUpgradeBusyNotice(int resultValue)
         {
             return ResolveItemUpgradeFormattedStringPoolNotice(
@@ -803,6 +843,33 @@ namespace HaCreator.MapSimulator
             {
                 return fallback;
             }
+        }
+
+        private void StageItemUpgradeConsumeCashUseRequestSeed(int itemId, InventoryType inventoryType, int slotIndex, int updateTick)
+        {
+            _itemUpgradeOwnerConsumeCashUseRequestTick = updateTick;
+            _itemUpgradeOwnerConsumeCashUseInventoryType = inventoryType;
+            _itemUpgradeOwnerConsumeCashUseSlotIndex = slotIndex;
+            _itemUpgradeOwnerConsumeCashUseItemId = itemId;
+        }
+
+        private int ConsumeItemUpgradeConsumeCashUseRequestTick(ItemUpgradeUI.ItemUpgradeOwnerRequest request, int fallbackTick)
+        {
+            bool isMatchingConsumableSeed =
+                _itemUpgradeOwnerConsumeCashUseRequestTick != int.MinValue &&
+                request.ConsumableInventoryType == _itemUpgradeOwnerConsumeCashUseInventoryType &&
+                request.ConsumableSlotIndex == _itemUpgradeOwnerConsumeCashUseSlotIndex &&
+                request.ConsumableItemId == _itemUpgradeOwnerConsumeCashUseItemId;
+            if (!isMatchingConsumableSeed)
+            {
+                return fallbackTick;
+            }
+
+            int consumeCashUseRequestTick = _itemUpgradeOwnerConsumeCashUseRequestTick;
+            _itemUpgradeOwnerConsumeCashUseRequestTick = int.MinValue;
+            _itemUpgradeOwnerConsumeCashUseSlotIndex = -1;
+            _itemUpgradeOwnerConsumeCashUseItemId = 0;
+            return consumeCashUseRequestTick;
         }
     }
 }

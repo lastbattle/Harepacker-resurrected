@@ -152,6 +152,28 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 FlushQueuedTouchRequestsUnsafe(pair, currentTick);
+                if (_pendingTouchRequests.Count > 0)
+                {
+                    byte[] deferredPacket = BuildTouchRequestPacket(objectId, isTouching);
+                    int resolvedTick = ResolveCurrentTick(currentTick);
+                    bool queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(
+                        new PendingTouchRequest(objectId, isTouching, deferredPacket, resolvedTick));
+                    if (queued)
+                    {
+                        LastQueuedTouchObjectId = objectId;
+                        LastQueuedTouchFlag = isTouching;
+                        LastQueuedTouchPacket = deferredPacket;
+                        status = $"Queued reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) behind deferred replay cadence.";
+                    }
+                    else
+                    {
+                        status = $"Reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) is already the latest deferred ownership state.";
+                    }
+
+                    LastStatus = status;
+                    return true;
+                }
+
                 byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
                 pair.ServerSession.SendPacket(packet);
                 InjectedTouchRequestCount++;

@@ -1,4 +1,5 @@
 using HaSharedLibrary.Render.DX;
+using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -22,12 +23,22 @@ namespace HaCreator.MapSimulator.Animation
     {
         internal sealed class SecondaryMotionBlurLayerStackEntryTag
         {
-            public SecondaryMotionBlurLayerStackEntryTag(int drawOrder)
+            public SecondaryMotionBlurLayerStackEntryTag(
+                int drawOrder,
+                int sourceLayerCode = -1,
+                int sourceLayerCaptureOrder = -1,
+                int simulatedLayerHandleId = 0)
             {
                 DrawOrder = Math.Max(0, drawOrder);
+                SourceLayerCode = sourceLayerCode;
+                SourceLayerCaptureOrder = sourceLayerCaptureOrder;
+                SimulatedLayerHandleId = Math.Max(0, simulatedLayerHandleId);
             }
 
             public int DrawOrder { get; }
+            public int SourceLayerCode { get; }
+            public int SourceLayerCaptureOrder { get; }
+            public int SimulatedLayerHandleId { get; }
         }
 
         internal static bool IsSecondaryMotionBlurLayerStack(IReadOnlyList<IDXObject> frames)
@@ -73,6 +84,9 @@ namespace HaCreator.MapSimulator.Animation
         {
             public bool TerminateRequested { get; set; }
             public bool IsTerminated { get; internal set; }
+            public int SimulatedAnimationStateId { get; internal set; }
+            public IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode { get; internal set; }
+                = new Dictionary<int, int>();
         }
 
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
@@ -2283,8 +2297,8 @@ namespace HaCreator.MapSimulator.Animation
         {
             return new OneTimeAnimationRecoveredRegistrationTrace(
                 sourceUol,
-                0x03CE,
-                0x0C2F,
+                MapleStoryStringPool.MobAngerGaugeBurstTemplatePathStringPoolId,
+                MapleStoryStringPool.MobAngerGaugeBurstEffectNameStringPoolId,
                 LoadLayerCanvasValue: 0,
                 UsesOriginVector: true,
                 LoadLayerOriginOffsetX: 0,
@@ -2789,8 +2803,13 @@ namespace HaCreator.MapSimulator.Animation
                     null,
                     operation.Source.CanvasOffset,
                     0,
-                    default,
-                    default,
+                    new CanvasLayerRecoveredInsertCanvasSettings(
+                        DurationMs: 0,
+                        StartAlphaValue: 255,
+                        EndAlphaValue: 255),
+                    new CanvasLayerRecoveredMoveSettings(
+                        operation.Source.CanvasOffset,
+                        operation.Source.CanvasOffset),
                     default,
                     0));
             }

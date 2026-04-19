@@ -745,27 +745,21 @@ namespace HaCreator.MapSimulator.Managers
             out DojoPacketInboxMessage message)
         {
             message = null;
-            if (!Fields.SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+            if (!TryDecodeNestedFieldSpecificRelayPayload(
                     payload,
-                    out int relayedPacketType,
-                    out byte[] relayedPayload,
-                    out _)
-                || relayedPacketType != FieldSpecificDataOpcode
-                || !DojoField.TryDecodeFieldSpecificPacketPayload(
-                    relayedPayload,
                     out int packetType,
                     out byte[] packetPayload,
-                    out _))
+                    out string nestedDecodeEvidence))
             {
                 return false;
             }
 
-            if (ShouldPersistInferredOpcodeMapping(opcode))
+            bool shouldPersistMapping = ShouldPersistInferredOpcodeMapping(opcode);
+            if (shouldPersistMapping)
             {
                 _opcodeMappings[opcode] = packetType;
             }
 
-            const string nestedDecodeEvidence = "nested-relay:field-specific-prefix";
             RememberLearnedOpcode(opcode, packetType, nestedDecodeEvidence);
             message = new DojoPacketInboxMessage(
                 DojoPacketMessageKind.RawPacket,
@@ -776,9 +770,60 @@ namespace HaCreator.MapSimulator.Managers
                 packetType: packetType,
                 payload: packetPayload);
             RecordRecentPacket(opcode, rawPacket, packetType, nestedDecodeEvidence);
-            LastStatus = ShouldPersistInferredOpcodeMapping(opcode)
-                ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from nested relay packet-id prefixes."
-                : $"Decoded Dojo shared dispatch opcode {opcode} to {DescribePacketType(packetType)} from nested relay packet-id prefixes; keeping inference payload-scoped because {DescribeSharedDispatchOpcode(opcode)} is not a Dojo-only packet table entry.";
+            LastStatus = shouldPersistMapping
+                ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from nested relay packet-id prefixes ({nestedDecodeEvidence})."
+                : $"Decoded Dojo shared dispatch opcode {opcode} to {DescribePacketType(packetType)} from nested relay packet-id prefixes ({nestedDecodeEvidence}); keeping inference payload-scoped because {DescribeSharedDispatchOpcode(opcode)} is not a Dojo-only packet table entry.";
+            return true;
+        }
+
+        private static bool TryDecodeNestedFieldSpecificRelayPayload(
+            byte[] payload,
+            out int packetType,
+            out byte[] packetPayload,
+            out string evidence)
+        {
+            packetType = -1;
+            packetPayload = Array.Empty<byte>();
+            evidence = string.Empty;
+            payload ??= Array.Empty<byte>();
+
+            if (!Fields.SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int firstRelayPacketType,
+                    out byte[] firstRelayPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            if (firstRelayPacketType == FieldSpecificDataOpcode
+                && DojoField.TryDecodeFieldSpecificPacketPayload(
+                    firstRelayPayload,
+                    out packetType,
+                    out packetPayload,
+                    out _))
+            {
+                evidence = "nested-relay:field-specific-prefix";
+                return true;
+            }
+
+            if (firstRelayPacketType != CurrentWrapperRelayOpcode
+                || !Fields.SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    firstRelayPayload,
+                    out int secondRelayPacketType,
+                    out byte[] secondRelayPayload,
+                    out _)
+                || secondRelayPacketType != FieldSpecificDataOpcode
+                || !DojoField.TryDecodeFieldSpecificPacketPayload(
+                    secondRelayPayload,
+                    out packetType,
+                    out packetPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            evidence = "nested-relay:wrapper+field-specific-prefix";
             return true;
         }
 

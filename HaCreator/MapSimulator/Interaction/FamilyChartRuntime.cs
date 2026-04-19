@@ -58,6 +58,10 @@ namespace HaCreator.MapSimulator.Interaction
         private FamilyPrivilegeState _activePrivilege;
         private FamilyAuthorityState _authorityState = FamilyAuthorityState.CreateSimulatorLocal();
         private FamilyInfoPacketSnapshot _lastInfoPacketSnapshot;
+        private PendingFamilyPrivilegeRequest _pendingPrivilegeRequest;
+        private bool _queuedPrivilegeTeleport;
+        private Vector2 _queuedPrivilegeTeleportPosition;
+        private string _queuedPrivilegeTeleportMessage = string.Empty;
         private int? _packetChartJuniorLimit;
         private int? _packetChartLocalMemberId;
         private int? _packetChartHeaderMemberId;
@@ -709,6 +713,23 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryConsumeQueuedPrivilegeTeleport(out Vector2 teleportPosition, out string message)
+        {
+            if (!_queuedPrivilegeTeleport)
+            {
+                teleportPosition = Vector2.Zero;
+                message = string.Empty;
+                return false;
+            }
+
+            teleportPosition = _queuedPrivilegeTeleportPosition;
+            message = _queuedPrivilegeTeleportMessage ?? string.Empty;
+            _queuedPrivilegeTeleport = false;
+            _queuedPrivilegeTeleportPosition = Vector2.Zero;
+            _queuedPrivilegeTeleportMessage = string.Empty;
+            return true;
+        }
+
         internal string GetSelectedEntitlementTargetName()
         {
             if (!SelectedEntitlementRequiresTargetInput())
@@ -787,18 +808,17 @@ namespace HaCreator.MapSimulator.Interaction
                         return new FamilyEntitlementUseResult($"Prepared a move request to {selectedMember.Name}, but cross-map transfer still remains outside the simulator field seam.");
                     }
 
-                    if (!sameField && localPlayer != null)
-                    {
-                        localPlayer.LocationSummary = selectedLocation;
-                    }
-
-                    ConsumeEntitlementUse(localPlayer, specialCost);
-                    NotifySocialChatObserved(selectedMember.Name);
+                    _pendingPrivilegeRequest = new PendingFamilyPrivilegeRequest(
+                        FamilyEntitlementType.MoveToMember,
+                        selectedMember.Id,
+                        selectedMember.Name,
+                        selectedLocation,
+                        selectedMember.SimulatedPosition,
+                        localLocation,
+                        localPlayerPosition,
+                        !sameField);
                     return new FamilyEntitlementUseResult(
-                        $"Moved to {selectedMember.Name}'s family-chart branch in {selectedLocation}.",
-                        WasApplied: true,
-                        RequestTeleport: true,
-                        TeleportPosition: selectedMember.SimulatedPosition);
+                        $"Sent a packet-shaped family move request for {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` and server-owned transfer completion before moving.");
                 }
                 case FamilyEntitlementType.SummonMember:
                 {
@@ -807,13 +827,17 @@ namespace HaCreator.MapSimulator.Interaction
                         return new FamilyEntitlementUseResult("Select another family member before using the summon entitlement.");
                     }
 
-                    selectedMember.LocationSummary = localLocation;
-                    selectedMember.IsOnline = true;
-                    selectedMember.SimulatedPosition = new Vector2(localPlayerPosition.X + 64f, localPlayerPosition.Y);
-                    ConsumeEntitlementUse(localPlayer, specialCost);
-                    string message = $"Summoned {selectedMember.Name} to {localLocation}.";
-                    NotifySocialChatObserved(message);
-                    return new FamilyEntitlementUseResult(message, WasApplied: true);
+                    _pendingPrivilegeRequest = new PendingFamilyPrivilegeRequest(
+                        FamilyEntitlementType.SummonMember,
+                        selectedMember.Id,
+                        selectedMember.Name,
+                        selectedLocation,
+                        selectedMember.SimulatedPosition,
+                        localLocation,
+                        localPlayerPosition,
+                        !IsSameField(localLocation, selectedLocation));
+                    return new FamilyEntitlementUseResult(
+                        $"Sent a packet-shaped family summon request for {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` before updating the roster.");
                 }
                 case FamilyEntitlementType.DropBuff:
                 case FamilyEntitlementType.ExpBuff:
@@ -869,7 +893,10 @@ namespace HaCreator.MapSimulator.Interaction
             string activePrivilege = _activePrivilege == null
                 ? "inactive"
                 : $"{GetEntitlementLabel(_activePrivilege.Type)} ({_activePrivilege.SourceLabel})";
-            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, packet privilege entries {_packetPrivilegeMetadata.Count}, active privilege {activePrivilege}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
+            string pendingPrivilege = _pendingPrivilegeRequest == null
+                ? "none"
+                : $"{GetEntitlementLabel(_pendingPrivilegeRequest.Type)} -> {_pendingPrivilegeRequest.TargetName} (#{_pendingPrivilegeRequest.TargetMemberId})";
+            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, packet privilege entries {_packetPrivilegeMetadata.Count}, active privilege {activePrivilege}, pending request {pendingPrivilege}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
         }
 
         internal string ResetToSeedFamily()
@@ -1055,6 +1082,10 @@ namespace HaCreator.MapSimulator.Interaction
             _packetChartHeaderMemberId = null;
             _packetChartIsMine = null;
             _packetChartSuppressRootSlot = false;
+            _pendingPrivilegeRequest = null;
+            _queuedPrivilegeTeleport = false;
+            _queuedPrivilegeTeleportPosition = Vector2.Zero;
+            _queuedPrivilegeTeleportMessage = string.Empty;
         }
 
         private void SeedDefaultFamily()
@@ -1488,6 +1519,15 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => null
             };
 
+            if (_pendingPrivilegeRequest != null
+                && TryResolvePendingPrivilegeRequest(packet, out string completionMessage))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? completionMessage
+                    : $"{message} {completionMessage}";
+                return true;
+            }
+
             if (string.IsNullOrWhiteSpace(message))
             {
                 message = $"Family result packet type {packet.Type} is not modeled yet.";
@@ -1495,6 +1535,73 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private bool TryResolvePendingPrivilegeRequest(FamilyResultPacket packet, out string message)
+        {
+            message = string.Empty;
+            PendingFamilyPrivilegeRequest pendingRequest = _pendingPrivilegeRequest;
+            if (pendingRequest == null)
+            {
+                return false;
+            }
+
+            if (packet.Type == 1)
+            {
+                FamilyMemberState localPlayer = GetMember(LocalPlayerId);
+                int specialCost = GetSpecialReputationCost(localPlayer);
+
+                switch (pendingRequest.Type)
+                {
+                    case FamilyEntitlementType.MoveToMember:
+                        if (localPlayer != null)
+                        {
+                            localPlayer.LocationSummary = pendingRequest.TargetLocation;
+                        }
+
+                        QueuePrivilegeTeleport(
+                            pendingRequest.TargetPosition,
+                            $"Completed packet-owned family move transfer to {pendingRequest.TargetName} ({pendingRequest.TargetLocation}).");
+                        ConsumeEntitlementUse(localPlayer, specialCost);
+                        NotifySocialChatObserved($"{pendingRequest.TargetName} move request completed.");
+                        message = $"Applied packet-owned move completion for {pendingRequest.TargetName}.";
+                        _pendingPrivilegeRequest = null;
+                        return true;
+
+                    case FamilyEntitlementType.SummonMember:
+                        FamilyMemberState targetMember = GetMember(pendingRequest.TargetMemberId);
+                        if (targetMember != null)
+                        {
+                            targetMember.LocationSummary = pendingRequest.RequesterLocation;
+                            targetMember.IsOnline = true;
+                            targetMember.SimulatedPosition = new Vector2(
+                                pendingRequest.RequesterPosition.X + 64f,
+                                pendingRequest.RequesterPosition.Y);
+                        }
+
+                        ConsumeEntitlementUse(localPlayer, specialCost);
+                        NotifySocialChatObserved($"Summoned {pendingRequest.TargetName}.");
+                        message = $"Applied packet-owned summon completion for {pendingRequest.TargetName}.";
+                        _pendingPrivilegeRequest = null;
+                        return true;
+                }
+            }
+
+            if (packet.Type is >= 64 and <= 82)
+            {
+                _pendingPrivilegeRequest = null;
+                message = $"Cleared pending family request to {pendingRequest.TargetName} after result type {packet.Type}.";
+                return true;
+            }
+
+            return false;
+        }
+
+        private void QueuePrivilegeTeleport(Vector2 position, string message)
+        {
+            _queuedPrivilegeTeleport = true;
+            _queuedPrivilegeTeleportPosition = position;
+            _queuedPrivilegeTeleportMessage = message ?? string.Empty;
         }
 
         private static string ResolveFamilyResultNotice(int stringPoolId, int resultType)
@@ -1866,6 +1973,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _packetChartLocalMemberId = null;
                 _packetChartHeaderMemberId = null;
                 _packetChartIsMine = null;
+                _pendingPrivilegeRequest = null;
                 return;
             }
 

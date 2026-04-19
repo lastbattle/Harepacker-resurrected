@@ -367,7 +367,8 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            return OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible;
+            return OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible
+                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily;
         }
 
         public void SetLastOwnerState(string ownerState)

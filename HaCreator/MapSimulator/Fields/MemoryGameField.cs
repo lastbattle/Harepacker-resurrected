@@ -105,6 +105,7 @@ namespace HaCreator.MapSimulator.Fields
         private const byte MiniRoomBaseChatRepeatPacketType = 8;
         private const byte MiniRoomBaseAvatarPacketType = 9;
         private const byte MiniRoomBaseLeavePacketType = 10;
+        private const byte MemoryGameClientEnterResultAckPacketType = 11;
         private const byte MiniRoomChatGameMessageType = 7;
         private const byte MemoryGameTieRequestPacketType = 50;
         private const byte MemoryGameTieResultPacketType = 51;
@@ -1029,6 +1030,7 @@ namespace HaCreator.MapSimulator.Fields
             bool handled = packetType switch
             {
                 MiniRoomBaseLeavePacketType => TryApplyOutgoingLobbyLeavePacket(out message),
+                MemoryGameClientEnterResultAckPacketType => TryApplyOutgoingEnterResultAckPacket(packetBytes, out message),
                 MemoryGameTieRequestPacketType => TryApplyOutgoingTieRequest(out message),
                 MemoryGameTieResultPacketType => TryApplyOutgoingTieResponse(packetBytes, tickCount, out message),
                 MemoryGameClientGiveUpPacketType => TryApplyOutgoingGiveUpRequest(out message),
@@ -1784,6 +1786,21 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return TryResolveLobbyExit(_localPlayerIndex, out message);
+        }
+
+        private bool TryApplyOutgoingEnterResultAckPacket(byte[] packetBytes, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            byte ackState = packetBytes != null && packetBytes.Length > 1
+                ? packetBytes[1]
+                : (byte)0;
+            message = $"Enter-result ack packet (11) sent with state {ackState}.";
+            return true;
         }
 
         private bool TryApplyOutgoingGiveUpRequest(out string message)

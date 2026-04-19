@@ -746,15 +746,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return values;
             }
 
-            if (themeProperty["stageKeyword"] is WzImageProperty stageKeywordProperty)
-            {
-                AppendStringValues(stageKeywordProperty, values);
-                return values;
-            }
+            AppendStringValues(themeProperty["stageKeyword"], values);
+            AppendStringValues(themeProperty["keyword"], values);
+            AppendStringValues(themeProperty["aKeyword"], values);
 
             foreach (WzImageProperty child in themeProperty.WzProperties.OfType<WzImageProperty>())
             {
                 if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                {
+                    continue;
+                }
+
+                if (string.Equals(child.Name, "stageKeyword", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "keyword", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "aKeyword", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -770,7 +775,10 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<byte, HashSet<string>> periodKeywords = new();
             foreach ((byte mode, WzImageProperty periodProperty) in EnumeratePeriodNodes(themeProperty))
             {
-                HashSet<string> extraKeywords = ParseStringSet(periodProperty["stageKeyword"] ?? periodProperty);
+                HashSet<string> extraKeywords = ParseStringSet(
+                    periodProperty["stageKeyword"],
+                    periodProperty["keyword"],
+                    periodProperty["aKeyword"]);
                 if (extraKeywords.Count > 0)
                 {
                     periodKeywords[mode] = extraKeywords;
@@ -1077,47 +1085,55 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal ContextOwnedStageAffectedMapRow Merge(WzImageProperty property)
         {
-            WzImageProperty stageKeywordProperty = ResolveClientProperty(
-                property,
-                StageAffectedMapStageKeywordStringPoolId,
-                "stageKeyword");
-            WzImageProperty priorityProperty = ResolveFirstClientProperty(
-                property,
-                (StageAffectedMapPriorityStringPoolId, "priority"),
-                (StageAffectedMapPriorityAliasStringPoolId, "Priority"));
-            WzImageProperty questIdProperty = ResolveFirstClientProperty(
-                property,
-                (StageAffectedMapQuestIdStringPoolId, "questID"),
-                (StageAffectedMapQuestIdAliasStringPoolId, "questId"));
-            WzImageProperty questStateProperty = ResolveClientProperty(
-                property,
-                StageAffectedMapQuestStateStringPoolId,
-                "questState");
-            WzImageProperty randomTimeProperty = ResolveClientProperty(
-                property,
-                StageAffectedMapRandomTimeStringPoolId,
-                "randTime");
+            WzImageProperty[] stageKeywordProperties =
+            {
+                ResolveClientProperty(property, StageAffectedMapStageKeywordStringPoolId, "stageKeyword"),
+                ResolveClientProperty(property, StageAffectedMapStageKeywordStringPoolId, "keyword"),
+                ResolveClientProperty(property, StageAffectedMapStageKeywordStringPoolId, "aKeyword")
+            };
+            WzImageProperty[] priorityProperties =
+            {
+                ResolveClientProperty(property, StageAffectedMapPriorityStringPoolId, "priority"),
+                ResolveClientProperty(property, StageAffectedMapPriorityAliasStringPoolId, "Priority")
+            };
+            WzImageProperty[] questIdProperties =
+            {
+                ResolveClientProperty(property, StageAffectedMapQuestIdStringPoolId, "questID"),
+                ResolveClientProperty(property, StageAffectedMapQuestIdAliasStringPoolId, "questId"),
+                ResolveClientProperty(property, StageAffectedMapQuestIdStringPoolId, "enabledQuest"),
+                ResolveClientProperty(property, StageAffectedMapQuestIdStringPoolId, "aEnabledQuest"),
+                ResolveClientProperty(property, StageAffectedMapQuestIdStringPoolId, "quest")
+            };
+            WzImageProperty[] questStateProperties =
+            {
+                ResolveClientProperty(property, StageAffectedMapQuestStateStringPoolId, "questState")
+            };
+            WzImageProperty[] randomTimeProperties =
+            {
+                ResolveClientProperty(property, StageAffectedMapRandomTimeStringPoolId, "randTime")
+            };
 
-            string stageKeyword = ReadString(stageKeywordProperty) ?? StageKeyword;
-            int? priority = ReadInt(priorityProperty) ?? Priority;
-            int? questId = ReadInt(questIdProperty) ?? QuestId;
-            int? questState = ReadInt(questStateProperty) ?? QuestState;
-            int? randomTimeSeconds = ReadInt(randomTimeProperty) ?? RandomTimeSeconds;
+            string stageKeyword = ReadFirstString(stageKeywordProperties) ?? StageKeyword;
+            int? priority = ReadFirstInt(priorityProperties) ?? Priority;
+            int? questId = ReadFirstInt(questIdProperties) ?? QuestId;
+            int? questState = ReadFirstInt(questStateProperties) ?? QuestState;
+            int? randomTimeSeconds = ReadFirstInt(randomTimeProperties) ?? RandomTimeSeconds;
             return new ContextOwnedStageAffectedMapRow(
                 stageKeyword,
                 priority,
                 questId,
                 questState,
-                HasQuestStateGate || questStateProperty != null,
+                HasQuestStateGate || questStateProperties.Any(static item => item != null),
                 randomTimeSeconds);
         }
 
         internal int ResolveFieldId(WzImageProperty property)
         {
-            int? currentFieldId = ReadInt(ResolveClientProperty(
-                property,
-                StageAffectedMapFieldIdStringPoolId,
-                "fieldID"));
+            int? currentFieldId = ReadFirstInt(
+                ResolveClientProperty(property, StageAffectedMapFieldIdStringPoolId, "fieldID"),
+                ResolveClientProperty(property, StageAffectedMapFieldIdStringPoolId, "fieldId"),
+                ResolveClientProperty(property, StageAffectedMapFieldIdStringPoolId, "affectedMap"),
+                ResolveClientProperty(property, StageAffectedMapFieldIdStringPoolId, "aAffectedMap"));
             if (currentFieldId.HasValue)
             {
                 return currentFieldId.Value;
@@ -1156,8 +1172,46 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string ReadString(WzImageProperty property)
         {
+            if (property == null)
+            {
+                return null;
+            }
+
             string text = InfoTool.GetString(property);
-            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                return text.Trim();
+            }
+
+            foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
+            {
+                string childValue = ReadString(child);
+                if (!string.IsNullOrWhiteSpace(childValue))
+                {
+                    return childValue;
+                }
+            }
+
+            return null;
+        }
+
+        private static string ReadFirstString(params WzImageProperty[] properties)
+        {
+            if (properties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                string value = ReadString(property);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
 
         private static int? ReadInt(WzImageProperty property)
@@ -1173,9 +1227,40 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string text = InfoTool.GetString(property);
-            return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
-                ? parsed
-                : null;
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            {
+                return parsed;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
+            {
+                int? childValue = ReadInt(child);
+                if (childValue.HasValue)
+                {
+                    return childValue;
+                }
+            }
+
+            return null;
+        }
+
+        private static int? ReadFirstInt(params WzImageProperty[] properties)
+        {
+            if (properties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                int? value = ReadInt(property);
+                if (value.HasValue)
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
 
         private static WzImageProperty ResolveClientProperty(

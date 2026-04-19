@@ -138,12 +138,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             byte[] parcelBytes = reader.ReadBytes(ParcelFixedBodyLength);
             byte postBodyByte = reader.ReadByte();
+            long attachmentStartPosition = stream.Position;
             ParcelPostBodyState postBodyState = ResolvePostBodyState(postBodyByte);
+            bool ambiguousReadFlag = postBodyByte == ParcelStateReadFlag;
 
             int itemId = 0;
             int quantity = 0;
             bool hasUndecodedItemAttachment = false;
-            if (postBodyState.HasItemAttachment)
+            if (postBodyState.HasItemAttachment && !ambiguousReadFlag)
             {
                 if (!TryReadItemAttachment(reader, out itemId, out quantity, out error))
                 {
@@ -151,6 +153,31 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 hasUndecodedItemAttachment = itemId <= 0;
+            }
+            else if (ambiguousReadFlag)
+            {
+                stream.Position = attachmentStartPosition;
+                if (ShouldTreatAmbiguousPostBodyByteAsLegacyItemPresence(postBodyByte, stream, attachmentStartPosition)
+                    && TryReadItemAttachment(reader, out itemId, out quantity, out _))
+                {
+                    postBodyState = new ParcelPostBodyState(
+                        IsRead: false,
+                        IsKept: false,
+                        IsAttachmentClaimed: false,
+                        HasItemAttachment: true,
+                        HasMesoAttachment: false);
+                    hasUndecodedItemAttachment = itemId <= 0;
+                }
+                else
+                {
+                    stream.Position = attachmentStartPosition;
+                    postBodyState = new ParcelPostBodyState(
+                        IsRead: true,
+                        IsKept: false,
+                        IsAttachmentClaimed: false,
+                        HasItemAttachment: false,
+                        HasMesoAttachment: false);
+                }
             }
 
             string sender = ReadFixedAscii(parcelBytes, ParcelSenderOffset, ParcelSenderLength);
@@ -216,6 +243,46 @@ namespace HaCreator.MapSimulator.Interaction
                 IsAttachmentClaimed: false,
                 HasItemAttachment: postBodyByte != 0,
                 HasMesoAttachment: false);
+        }
+
+        private static bool ShouldTreatAmbiguousPostBodyByteAsLegacyItemPresence(byte postBodyByte, Stream stream, long attachmentStartPosition)
+        {
+            if (postBodyByte != ParcelStateReadFlag
+                || stream == null
+                || !stream.CanSeek)
+            {
+                return false;
+            }
+
+            long remaining = stream.Length - attachmentStartPosition;
+            if (remaining < MinimumAttachmentHeaderLength)
+            {
+                return false;
+            }
+
+            long cursor = stream.Position;
+            try
+            {
+                stream.Position = attachmentStartPosition;
+                int slotType = stream.ReadByte();
+                if (slotType is not 1 and not 2 and not 3)
+                {
+                    return false;
+                }
+
+                Span<byte> itemIdBytes = stackalloc byte[sizeof(int)];
+                if (stream.Read(itemIdBytes) != sizeof(int))
+                {
+                    return false;
+                }
+
+                int candidateItemId = BinaryPrimitives.ReadInt32LittleEndian(itemIdBytes);
+                return candidateItemId > 0;
+            }
+            finally
+            {
+                stream.Position = cursor;
+            }
         }
 
         private static bool HasStateFlag(byte stateFlags, byte flag)

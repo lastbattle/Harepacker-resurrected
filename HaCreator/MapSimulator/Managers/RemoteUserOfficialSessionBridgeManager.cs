@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class RemoteUserOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18492;
+        private const string OfficialSessionSourcePrefix = "official-session:";
         private const string DefaultProcessName = "MapleStory";
         private const ushort V95HireTutorLocalOpcode = LocalUtilityPacketInboxManager.HireTutorClientPacketType;
         private const ushort V95TutorMsgLocalOpcode = LocalUtilityPacketInboxManager.TutorMsgClientPacketType;
@@ -71,6 +72,48 @@ namespace HaCreator.MapSimulator.Managers
             [230] = (int)Pools.RemoteUserPacketType.UserThrowGrenadeOfficial
         };
 
+        private static readonly IReadOnlyDictionary<ushort, string> KnownNonTutorLocalOwnerMapV95 = new Dictionary<ushort, string>
+        {
+            [231] = "CUserLocal::OnSitResult",
+            [232] = "CUserLocal::OnEmotion",
+            [234] = "CUserLocal::OnPassiveMove",
+            [236] = "CUserLocal::OnMesoGive_Succeeded",
+            [237] = "CUserLocal::OnMesoGive_Failed",
+            [238] = "CUserLocal::OnRandomMesobag_Succeeded",
+            [239] = "CUserLocal::OnRandomMesobag_Failed",
+            [240] = "CUserLocal::OnFieldFadeInOut",
+            [241] = "CUserLocal::OnFieldFadeOutForce",
+            [242] = "CUserLocal::OnQuestResult",
+            [243] = "CUserLocal::OnNotifyHPDecByField",
+            [245] = "CUserLocal::OnBalloonMsg",
+            [246] = "CUserLocal::OnPlayEventSound",
+            [247] = "CUserLocal::OnPlayMinigameSound",
+            [250] = "CUserLocal::OnOpenClassCompetitionPage",
+            [251] = "CUserLocal::OnOpenUI",
+            [252] = "CUserLocal::OnOpenUIWithOption",
+            [253] = "CUserLocal::OnSetDirectionMode",
+            [254] = "CUserLocal::OnSetStandAloneMode",
+            [258] = "CUserLocal::OnRandomEmotion",
+            [259] = "CUserLocal::OnResignQuestReturn",
+            [260] = "CUserLocal::OnPassMateName",
+            [261] = "CUserLocal::OnRadioSchedule",
+            [262] = "CUserLocal::OnOpenSkillGuide",
+            [263] = "CUserLocal::OnNoticeMsg",
+            [264] = "CUserLocal::OnChatMsg",
+            [265] = "CUserLocal::OnBuffzoneEffect",
+            [266] = "CUserLocal::OnGoToCommoditySN",
+            [267] = "CUserLocal::OnDamageMeter",
+            [268] = "CUserLocal::OnTimeBombAttack",
+            [269] = "CUserLocal::OnPassiveMove",
+            [270] = "CUserLocal::OnFollowCharacterFailed",
+            [271] = "CUserLocal::OnVengeanceSkillApply",
+            [272] = "CUserLocal::OnExJablinApply",
+            [273] = "CUserLocal::OnAskAPSPEvent",
+            [274] = "CUserLocal::OnQuestGuideResult",
+            [275] = "CUserLocal::OnDeliveryQuest",
+            [276] = "CUserLocal::OnSkillCooltimeSet"
+        };
+
         private readonly ConcurrentQueue<RemoteUserOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly Dictionary<ushort, int> _packetMap = new(DefaultPacketMap);
         private readonly Dictionary<ushort, LearnedOpcodeEntry> _learnedPacketMap = new();
@@ -89,6 +132,7 @@ namespace HaCreator.MapSimulator.Managers
                 LastPayloadPreviewHex = FormatPayloadPreviewHex(payload);
                 Count = 1;
                 OfficialSessionProofCount = IsOfficialSessionSource(source) ? 1 : 0;
+                RememberOfficialSessionBuildProof(source);
             }
 
             public int PacketType { get; private set; }
@@ -99,6 +143,8 @@ namespace HaCreator.MapSimulator.Managers
             public string LastPayloadPreviewHex { get; private set; }
             public int Count { get; private set; }
             public int OfficialSessionProofCount { get; private set; }
+            public string OfficialSessionBuildProofSummary => DescribeOfficialSessionBuildProofs();
+            private readonly Dictionary<string, int> _officialSessionProofCountByBuild = new(StringComparer.OrdinalIgnoreCase);
 
             public void Update(int packetType, string evidence, string source, byte[] payload)
             {
@@ -111,7 +157,50 @@ namespace HaCreator.MapSimulator.Managers
                 if (IsOfficialSessionSource(source))
                 {
                     OfficialSessionProofCount++;
+                    RememberOfficialSessionBuildProof(source);
                 }
+            }
+
+            public int ResolveOfficialSessionBuildProofCount(string buildTag)
+            {
+                string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+                if (_officialSessionProofCountByBuild.TryGetValue(normalizedBuildTag, out int proofCount))
+                {
+                    return proofCount;
+                }
+
+                return 0;
+            }
+
+            private void RememberOfficialSessionBuildProof(string source)
+            {
+                if (!TryResolveOfficialSessionBuildTag(source, out string buildTag))
+                {
+                    return;
+                }
+
+                if (_officialSessionProofCountByBuild.TryGetValue(buildTag, out int existingCount))
+                {
+                    _officialSessionProofCountByBuild[buildTag] = existingCount + 1;
+                }
+                else
+                {
+                    _officialSessionProofCountByBuild[buildTag] = 1;
+                }
+            }
+
+            private string DescribeOfficialSessionBuildProofs()
+            {
+                if (_officialSessionProofCountByBuild.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    "|",
+                    _officialSessionProofCountByBuild
+                        .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(entry => $"{entry.Key}:{entry.Value}"));
             }
 
             private static string FormatPayloadPreviewHex(byte[] payload)
@@ -138,6 +227,7 @@ namespace HaCreator.MapSimulator.Managers
                 LastSource = string.IsNullOrWhiteSpace(source) ? "unknown-source" : source;
                 ObservationCount = 1;
                 OfficialSessionObservationCount = IsOfficialSessionSource(source) ? 1 : 0;
+                RememberOfficialSessionBuildObservation(source);
             }
 
             public int PacketType { get; private set; }
@@ -145,6 +235,8 @@ namespace HaCreator.MapSimulator.Managers
             public string LastSource { get; private set; }
             public int ObservationCount { get; private set; }
             public int OfficialSessionObservationCount { get; private set; }
+            public string OfficialSessionBuildObservationSummary => DescribeOfficialSessionBuildObservations();
+            private readonly Dictionary<string, int> _officialSessionObservationCountByBuild = new(StringComparer.OrdinalIgnoreCase);
 
             public void Update(int packetType, string reason, string source)
             {
@@ -155,7 +247,50 @@ namespace HaCreator.MapSimulator.Managers
                 if (IsOfficialSessionSource(source))
                 {
                     OfficialSessionObservationCount++;
+                    RememberOfficialSessionBuildObservation(source);
                 }
+            }
+
+            public int ResolveOfficialSessionBuildObservationCount(string buildTag)
+            {
+                string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+                if (_officialSessionObservationCountByBuild.TryGetValue(normalizedBuildTag, out int proofCount))
+                {
+                    return proofCount;
+                }
+
+                return 0;
+            }
+
+            private void RememberOfficialSessionBuildObservation(string source)
+            {
+                if (!TryResolveOfficialSessionBuildTag(source, out string buildTag))
+                {
+                    return;
+                }
+
+                if (_officialSessionObservationCountByBuild.TryGetValue(buildTag, out int existingCount))
+                {
+                    _officialSessionObservationCountByBuild[buildTag] = existingCount + 1;
+                }
+                else
+                {
+                    _officialSessionObservationCountByBuild[buildTag] = 1;
+                }
+            }
+
+            private string DescribeOfficialSessionBuildObservations()
+            {
+                if (_officialSessionObservationCountByBuild.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    "|",
+                    _officialSessionObservationCountByBuild
+                        .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(entry => $"{entry.Key}:{entry.Value}"));
             }
         }
 
@@ -253,7 +388,7 @@ namespace HaCreator.MapSimulator.Managers
                     _learnedPacketMap
                         .OrderBy(entry => entry.Key)
                         .Select(entry =>
-                            $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count}; officialSessionProof={entry.Value.OfficialSessionProofCount}; source={entry.Value.LastSource}; payloadBytes={entry.Value.LastPayloadLength}; sample={entry.Value.LastPayloadPreviewHex})"));
+                            $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count}; officialSessionProof={entry.Value.OfficialSessionProofCount}; officialSessionBuildProof={entry.Value.OfficialSessionBuildProofSummary}; source={entry.Value.LastSource}; payloadBytes={entry.Value.LastPayloadLength}; sample={entry.Value.LastPayloadPreviewHex})"));
             }
         }
 
@@ -484,6 +619,11 @@ namespace HaCreator.MapSimulator.Managers
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
                         LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from recovered CUserLocal owner table ({knownOwnerReason}); {OfficialRemoteOwnerEvidence}";
                     }
+                    else if (TryResolveKnownNonTutorLocalOwnerFromV95LocalOwnerTable(opcode, out string knownNonTutorReason))
+                    {
+                        LastStatus = $"Ignored CUserPool local-user opcode {opcode}: known recovered CUserLocal::OnPacket owner ({knownNonTutorReason}) is non-tutor. {OfficialRemoteOwnerEvidence}";
+                        return false;
+                    }
                     else if (!TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(opcode, inferencePayload, out packetType, out string inferenceReason))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: payload did not match an exact remote tutor-owner wrapper. {OfficialRemoteOwnerEvidence}";
@@ -499,15 +639,19 @@ namespace HaCreator.MapSimulator.Managers
 
                         if (!inferenceConfirmed)
                         {
-                            LastStatus = $"Observed potential tutor-owner mapping for opcode {opcode} -> {RemoteUserPacketInboxManager.DescribePacketType(packetType)} ({pendingEvidence.Reason}); awaiting official-session proof {pendingEvidence.OfficialSessionObservationCount}/{MinOfficialSessionTutorInferenceProofCount}. {OfficialRemoteOwnerEvidence}";
+                            string buildTag = ResolveOfficialSessionBuildTag(source);
+                            int buildProof = pendingEvidence.ResolveOfficialSessionBuildObservationCount(buildTag);
+                            LastStatus = $"Observed potential tutor-owner mapping for opcode {opcode} -> {RemoteUserPacketInboxManager.DescribePacketType(packetType)} ({pendingEvidence.Reason}); awaiting official-session proof {buildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {buildTag} ({pendingEvidence.OfficialSessionBuildObservationSummary}). {OfficialRemoteOwnerEvidence}";
                             return false;
                         }
 
                         _pendingTutorInferenceMap.Remove(opcode);
                         _packetMap[opcode] = packetType;
-                        string learnedEvidence = $"auto:{inferenceReason}; inferenceProof={pendingEvidence.OfficialSessionObservationCount}/{MinOfficialSessionTutorInferenceProofCount}; {OfficialRemoteOwnerEvidence}";
+                        string inferenceBuildTag = ResolveOfficialSessionBuildTag(source);
+                        int inferenceBuildProof = pendingEvidence.ResolveOfficialSessionBuildObservationCount(inferenceBuildTag);
+                        string learnedEvidence = $"auto:{inferenceReason}; inferenceProof={inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount}@{inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
-                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session proof {pendingEvidence.OfficialSessionObservationCount}/{MinOfficialSessionTutorInferenceProofCount}; {OfficialRemoteOwnerEvidence}";
+                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
                     }
                 }
             }
@@ -562,6 +706,18 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            return false;
+        }
+
+        private static bool TryResolveKnownNonTutorLocalOwnerFromV95LocalOwnerTable(ushort opcode, out string reason)
+        {
+            if (KnownNonTutorLocalOwnerMapV95.TryGetValue(opcode, out string owner))
+            {
+                reason = $"v95 CUserLocal::OnPacket case {opcode} -> {owner}";
+                return true;
+            }
+
+            reason = string.Empty;
             return false;
         }
 
@@ -670,7 +826,8 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            inferenceConfirmed = evidence.OfficialSessionObservationCount >= MinOfficialSessionTutorInferenceProofCount;
+            string buildTag = ResolveOfficialSessionBuildTag(source);
+            inferenceConfirmed = evidence.ResolveOfficialSessionBuildObservationCount(buildTag) >= MinOfficialSessionTutorInferenceProofCount;
             return true;
         }
 
@@ -688,7 +845,47 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsOfficialSessionSource(string source)
         {
             return !string.IsNullOrWhiteSpace(source)
-                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
+                && source.StartsWith(OfficialSessionSourcePrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ResolveOfficialSessionBuildTag(string source)
+        {
+            return TryResolveOfficialSessionBuildTag(source, out string buildTag)
+                ? buildTag
+                : NormalizeOfficialSessionBuildTag(null);
+        }
+
+        private static bool TryResolveOfficialSessionBuildTag(string source, out string buildTag)
+        {
+            buildTag = NormalizeOfficialSessionBuildTag(null);
+            if (!IsOfficialSessionSource(source))
+            {
+                return false;
+            }
+
+            string suffix = source.Substring(OfficialSessionSourcePrefix.Length);
+            int delimiterIndex = suffix.IndexOf(':');
+            if (delimiterIndex > 0)
+            {
+                string segment = suffix.Substring(0, delimiterIndex);
+                buildTag = NormalizeOfficialSessionBuildTag(segment);
+                return true;
+            }
+
+            buildTag = NormalizeOfficialSessionBuildTag(suffix);
+            return true;
+        }
+
+        private static string NormalizeOfficialSessionBuildTag(string buildTag)
+        {
+            string trimmed = string.IsNullOrWhiteSpace(buildTag) ? string.Empty : buildTag.Trim();
+            if (trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("build", StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed.ToLowerInvariant();
+            }
+
+            return "unknown";
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
@@ -782,7 +979,8 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryDecodeInboundRemoteUserPacket(raw, $"official-session:{pair.RemoteEndpoint}", out RemoteUserOfficialSessionBridgeMessage message))
+                string buildTag = pair.Version > 0 ? $"v{pair.Version}" : "unknown";
+                if (!TryDecodeInboundRemoteUserPacket(raw, $"{OfficialSessionSourcePrefix}{buildTag}:{pair.RemoteEndpoint}", out RemoteUserOfficialSessionBridgeMessage message))
                 {
                     return;
                 }
@@ -928,7 +1126,7 @@ namespace HaCreator.MapSimulator.Managers
                 _pendingTutorInferenceMap
                     .OrderBy(entry => entry.Key)
                     .Select(entry =>
-                        $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} (observed={entry.Value.ObservationCount}; officialSessionObserved={entry.Value.OfficialSessionObservationCount}; reason={entry.Value.Reason}; source={entry.Value.LastSource})"));
+                        $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} (observed={entry.Value.ObservationCount}; officialSessionObserved={entry.Value.OfficialSessionObservationCount}; officialSessionBuildObserved={entry.Value.OfficialSessionBuildObservationSummary}; reason={entry.Value.Reason}; source={entry.Value.LastSource})"));
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

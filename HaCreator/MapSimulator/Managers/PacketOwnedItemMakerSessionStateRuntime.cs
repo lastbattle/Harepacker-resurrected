@@ -237,7 +237,7 @@ namespace HaCreator.MapSimulator.Managers
                 for (int i = 0; i < removals.Count; i++)
                 {
                     PacketOwnedItemMakerDisassemblyTargetEntry removal = removals[i];
-                    currentEntries.RemoveAll(entry => entry.SlotIndex == removal.SlotIndex && entry.ItemId == removal.ItemId);
+                    currentEntries.RemoveAll(entry => MatchesDisassemblyTargetRemoval(entry, removal));
                 }
             }
 
@@ -305,6 +305,20 @@ namespace HaCreator.MapSimulator.Managers
                     currentEntries.Add(addition);
                 }
             }
+        }
+
+        private static bool MatchesDisassemblyTargetRemoval(
+            PacketOwnedItemMakerDisassemblyTargetEntry entry,
+            PacketOwnedItemMakerDisassemblyTargetEntry removal)
+        {
+            if (entry.SlotIndex != removal.SlotIndex)
+            {
+                return false;
+            }
+
+            return removal.ItemId > 0
+                ? entry.ItemId == removal.ItemId
+                : true;
         }
 
         private static bool MatchesHiddenRecipeRemoval(

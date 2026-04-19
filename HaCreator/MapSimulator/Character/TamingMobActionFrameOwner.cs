@@ -185,10 +185,10 @@ namespace HaCreator.MapSimulator.Character
                 // IDA `CActionMan::LoadTamingMobAction` remaps these raw actions before
                 // vehicle-family checks and frame loading:
                 // 4 -> 2 (stand1), 270 -> 43 (ladder2), 271 -> 2 (stand1), 272 -> 2 (stand1).
-                ["alert"] = new[] { "stand1", "stand2", "sit" },
-                ["braveslash3"] = new[] { "ladder2", "stand1", "stand2", "sit" },
-                ["braveslash4"] = new[] { "stand1", "stand2", "sit" },
-                ["chargeBlow"] = new[] { "stand1", "stand2", "sit" }
+                ["alert"] = new[] { "stand1" },
+                ["braveslash3"] = new[] { "ladder2" },
+                ["braveslash4"] = new[] { "stand1" },
+                ["chargeBlow"] = new[] { "stand1" }
             };
 
         private readonly Dictionary<string, string> _resolvedActionCache = new(StringComparer.OrdinalIgnoreCase);
@@ -207,8 +207,8 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            bool preferTiredAction = ShouldPreferTiredAction(part, actionName);
-            string cacheKey = BuildCacheKey(actionName, preferTiredAction);
+            bool forceTiredAction = ShouldForceTiredAction(part, actionName);
+            string cacheKey = BuildCacheKey(actionName, forceTiredAction);
             if (_resolvedActionCache.TryGetValue(cacheKey, out string resolvedActionName))
             {
                 return TryLoadNamedAnimation(part, resolvedActionName, out CharacterAnimation cachedAnimation)
@@ -216,7 +216,7 @@ namespace HaCreator.MapSimulator.Character
                     : null;
             }
 
-            foreach (string candidate in EnumerateActionCandidates(part, actionName, preferTiredAction))
+            foreach (string candidate in EnumerateActionCandidates(part, actionName, forceTiredAction))
             {
                 if (TryLoadNamedAnimation(part, candidate, out CharacterAnimation animation))
                 {
@@ -234,13 +234,21 @@ namespace HaCreator.MapSimulator.Character
             return GetAnimation(part, actionName) != null;
         }
 
-        private IEnumerable<string> EnumerateActionCandidates(CharacterPart part, string actionName, bool preferTiredAction)
+        private IEnumerable<string> EnumerateActionCandidates(CharacterPart part, string actionName, bool forceTiredAction)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            if (preferTiredAction && seen.Add("tired"))
+            if (forceTiredAction && seen.Add("tired"))
             {
                 yield return "tired";
+            }
+
+            // Client `CActionMan::LoadTamingMobAction` rewrites to action 55 (`iceStrike`)
+            // when taming-mob durability is depleted and effective action is stand1/stand2.
+            // This runs after raw remap and before any load call, so no stand fallback occurs.
+            if (forceTiredAction)
+            {
+                yield break;
             }
 
             if (VehicleItemId / 1000 == PortableChairRideFamily)
@@ -254,7 +262,8 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            if (ClientActionRemapCandidates.TryGetValue(actionName, out string[] remapCandidates))
+            bool isClientRemappedAction = ClientActionRemapCandidates.TryGetValue(actionName, out string[] remapCandidates);
+            if (isClientRemappedAction)
             {
                 foreach (string candidate in remapCandidates)
                 {
@@ -265,6 +274,13 @@ namespace HaCreator.MapSimulator.Character
                         yield return candidate;
                     }
                 }
+            }
+
+            // IDA `CActionMan::LoadTamingMobAction` remaps these raw actions before vehicle
+            // gating and load, so do not continue into original-name alias families here.
+            if (isClientRemappedAction)
+            {
+                yield break;
             }
 
             foreach (string candidate in EnumerateExactAndVehicleCandidates(actionName))
@@ -506,18 +522,42 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
-        private static bool ShouldPreferTiredAction(CharacterPart part, string actionName)
+        private static bool ShouldForceTiredAction(CharacterPart part, string actionName)
         {
-            return part?.Type == CharacterPartType.TamingMob
-                   && part.MaxDurability.GetValueOrDefault() > 0
-                   && part.Durability.GetValueOrDefault() <= 0
-                   && (string.Equals(actionName, "stand1", StringComparison.OrdinalIgnoreCase)
-                       || string.Equals(actionName, "stand2", StringComparison.OrdinalIgnoreCase));
+            if (part?.Type != CharacterPartType.TamingMob
+                || part.MaxDurability.GetValueOrDefault() <= 0
+                || part.Durability.GetValueOrDefault() > 0
+                || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (string.Equals(actionName, "stand1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "stand2", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (!ClientActionRemapCandidates.TryGetValue(actionName, out string[] remapCandidates))
+            {
+                return false;
+            }
+
+            foreach (string remapCandidate in remapCandidates)
+            {
+                if (string.Equals(remapCandidate, "stand1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(remapCandidate, "stand2", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        private static string BuildCacheKey(string actionName, bool preferTiredAction)
+        private static string BuildCacheKey(string actionName, bool forceTiredAction)
         {
-            return string.Concat(preferTiredAction ? "tired:" : "base:", actionName ?? string.Empty);
+            return string.Concat(forceTiredAction ? "tired:" : "base:", actionName ?? string.Empty);
         }
     }
 }

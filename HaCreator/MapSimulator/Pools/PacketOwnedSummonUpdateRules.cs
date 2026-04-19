@@ -181,10 +181,30 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (ShouldUseMoveActionFacingForAttack(summon))
             {
-                return (moveActionRaw & 1) == 0;
+                if (moveActionRaw != 0)
+                {
+                    return (moveActionRaw & 1) == 0;
+                }
+
+                return fallbackFacingRight;
             }
 
             return !packetFacingLeft;
+        }
+
+        internal static bool ResolvePacketOwnedRuntimeFacingRight(
+            ActiveSummon summon,
+            byte moveActionRaw,
+            bool fallbackFacingRight)
+        {
+            if (!ShouldUseMoveActionFacingForAttack(summon))
+            {
+                return fallbackFacingRight;
+            }
+
+            return moveActionRaw != 0
+                ? (moveActionRaw & 1) == 0
+                : fallbackFacingRight;
         }
 
         internal static byte ResolvePacketOwnedRuntimeMoveActionRaw(

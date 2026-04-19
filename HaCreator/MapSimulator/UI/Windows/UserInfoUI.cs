@@ -308,6 +308,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<UserInfoActionContext, string> TradingRoomRequested { get; set; }
         public Func<UserInfoActionContext, string> FamilyRequested { get; set; }
         public Func<UserInfoActionContext, PopularityChangeDirection, string> PopularityRequested { get; set; }
+        public Func<UserInfoActionContext, PopularityChangeDirection, bool> PopularityActionAvailable { get; set; }
         public Action PersonalShopRequested { get; set; }
         public Action EntrustedShopRequested { get; set; }
         public Func<UserInfoActionContext, string> BookCollectionRequested { get; set; }
@@ -3093,7 +3094,13 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanRequestPopularity(PopularityChangeDirection direction)
         {
-            return ShouldEnablePopularityRequest(IsRemoteInspectionActive(), direction, GetDisplayedBuild()?.Fame ?? 0);
+            UserInfoActionContext context = BuildCurrentActionContext();
+            if (PopularityActionAvailable != null)
+            {
+                return PopularityActionAvailable.Invoke(context, direction);
+            }
+
+            return ShouldEnablePopularityRequest(context.IsRemoteTarget, direction, context.Build?.Fame ?? 0);
         }
 
         internal static bool ShouldEnablePopularityRequest(bool isRemoteInspection, PopularityChangeDirection direction, int targetFame)

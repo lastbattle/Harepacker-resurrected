@@ -137,6 +137,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int ItemUpgradeResultClientPacketType = 425;
         public const int ItemUpgradeResultPacketType = 1046;
         public const int MonsterBookRegistrationResultPacketType = 1047;
+        public const int MonsterBookOwnershipSyncPacketType = 1048;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -1132,6 +1133,16 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("monsterbooksync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookownershipsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("monsterbookownersync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("bookcollectionsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("bookownershipsync", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MonsterBookOwnershipSyncPacketType;
+                return true;
+            }
+
             if (token.Equals("petconsumehp", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petconsumeitem", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petautohp", StringComparison.OrdinalIgnoreCase)
@@ -1264,6 +1275,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == ItemUpgradeResultClientPacketType
                 || packetType == ItemUpgradeResultPacketType
                 || packetType == MonsterBookRegistrationResultPacketType
+                || packetType == MonsterBookOwnershipSyncPacketType
                 || packetType == ClassCompetitionRemotePagePacketType;
         }
 
@@ -1477,6 +1489,7 @@ namespace HaCreator.MapSimulator.Managers
                 ItemUpgradeResultClientPacketType => "OnItemUpgradeResult(425)",
                 ItemUpgradeResultPacketType => "ItemUpgradeResult(1046)",
                 MonsterBookRegistrationResultPacketType => "MonsterBookRegistrationResult(1047)",
+                MonsterBookOwnershipSyncPacketType => "MonsterBookOwnershipSync(1048)",
                 ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
                 _ => $"packet {packetType}"
             };

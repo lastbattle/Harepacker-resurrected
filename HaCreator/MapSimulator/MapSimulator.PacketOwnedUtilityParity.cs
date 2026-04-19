@@ -337,6 +337,8 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedRadioStartOffsetMs;
         private int _lastPacketOwnedRadioTrackDurationMs;
         private int _lastPacketOwnedRadioAvailableDurationMs;
+        private int _lastPacketOwnedRadioClientTrackDurationMs;
+        private int _lastPacketOwnedRadioClientPlaybackPositionMs;
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
         private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
@@ -1202,6 +1204,48 @@ namespace HaCreator.MapSimulator
             }
 
             return null;
+        }
+
+        private static bool IsUniqueModelessUtilityWindowName(string windowName)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < UniqueModelessUtilityWindowNames.Length; i++)
+            {
+                if (string.Equals(UniqueModelessUtilityWindowNames[i], windowName, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void PreparePacketOwnedAdminShopForUniqueModelessOwnerShow(string ownerWindowName)
+        {
+            if (uiWindowManager == null
+                || string.IsNullOrWhiteSpace(ownerWindowName)
+                || string.Equals(ownerWindowName, MapSimulatorWindowNames.CashShop, StringComparison.Ordinal)
+                || !IsUniqueModelessUtilityWindowName(ownerWindowName))
+            {
+                return;
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.CashShop) is not AdminShopDialogUI cashShopWindow
+                || !cashShopWindow.IsVisible
+                || !cashShopWindow.HasPacketOwnedAdminShopSession)
+            {
+                return;
+            }
+
+            string replacingOwner = ResolveWindowDisplayName(ownerWindowName);
+            cashShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
+                $"CAdminShopDlg owner surface was hidden because {replacingOwner} took the unique-modeless slot.",
+                AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden);
+            uiWindowManager.HideWindow(MapSimulatorWindowNames.CashShop);
         }
 
         private static string ResolveWindowDisplayName(string windowName)
@@ -3340,6 +3384,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.MonsterBookRegistrationResultPacketType:
                     return TryApplyPacketOwnedMonsterBookRegistrationResultPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType:
+                    return TryApplyPacketOwnedMonsterBookOwnershipSyncPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.PetConsumeResultPacketType:
                     if (ShouldHandlePacketOwned1026AsPetConsumeResult(payload))
                     {
@@ -3895,10 +3942,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            IReadOnlyDictionary<AvatarRenderLayer, int> simulatedLayerHandleIds =
+                CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds();
             if (!TryCreatePacketOwnedActiveEffectMotionBlurFrame(
                     player,
                     currentTime,
                     definition.DelayMs,
+                    simulatedLayerHandleIds,
                     out List<IDXObject> frames,
                     out Rectangle snapshotBounds,
                     out int feetOffset,
@@ -3914,13 +3964,19 @@ namespace HaCreator.MapSimulator
                 player.Position.Y - feetOffset + snapshotBounds.Top);
             Func<bool> getFlip = () => player.FacingRight;
             Vector2 fallbackPosition = getPosition();
-            var state = new Animation.AnimationEffects.SecondaryMotionBlurAnimationState();
+            var state = new Animation.AnimationEffects.SecondaryMotionBlurAnimationState
+            {
+                SimulatedAnimationStateId = NextPacketOwnedActiveEffectMotionBlurStateId(),
+                SimulatedLayerHandleIdsByLayerCode = simulatedLayerHandleIds
+                    .ToDictionary(static entry => (int)entry.Key, static entry => entry.Value)
+            };
             Func<int, List<IDXObject>> snapshotFrameFactory = sampleTime =>
             {
                 return TryCreatePacketOwnedActiveEffectMotionBlurFramesAtSampleTime(
                     player,
                     sampleTime,
                     definition.DelayMs,
+                    simulatedLayerHandleIds,
                     out List<IDXObject> sampledFrames)
                     ? sampledFrames
                     : null;
@@ -3955,6 +4011,7 @@ namespace HaCreator.MapSimulator
             PlayerCharacter player,
             int currentTime,
             int frameDelayMs,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds,
             out List<IDXObject> frames,
             out Rectangle frameBounds,
             out int feetOffset,
@@ -3992,7 +4049,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryCreatePacketOwnedActiveEffectMotionBlurLayerStack(frame, frameDelayMs, out frames, out message))
+            if (!TryCreatePacketOwnedActiveEffectMotionBlurLayerStack(
+                    frame,
+                    frameDelayMs,
+                    layerHandleIds,
+                    out frames,
+                    out message))
             {
                 return false;
             }
@@ -4007,6 +4069,7 @@ namespace HaCreator.MapSimulator
             PlayerCharacter player,
             int sampleTime,
             int frameDelayMs,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds,
             out List<IDXObject> frames)
         {
             frames = null;
@@ -4014,6 +4077,7 @@ namespace HaCreator.MapSimulator
                 player,
                 sampleTime,
                 frameDelayMs,
+                layerHandleIds,
                 out frames,
                 out _,
                 out _,
@@ -4024,6 +4088,7 @@ namespace HaCreator.MapSimulator
         private bool TryCreatePacketOwnedActiveEffectMotionBlurLayerStack(
             AssembledFrame frame,
             int frameDelayMs,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds,
             out List<IDXObject> frames,
             out string message)
         {
@@ -4051,7 +4116,10 @@ namespace HaCreator.MapSimulator
                     }
 
                     layerFrame.Tag = new HaCreator.MapSimulator.Animation.AnimationEffects.SecondaryMotionBlurLayerStackEntryTag(
-                        drawOrder: ResolvePacketOwnedActiveEffectMotionBlurLayerDrawOrder(layer));
+                        drawOrder: ResolvePacketOwnedActiveEffectMotionBlurLayerDrawOrder(layer),
+                        sourceLayerCode: (int)layer,
+                        sourceLayerCaptureOrder: i,
+                        simulatedLayerHandleId: ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds));
                     frames.Add(layerFrame);
                 }
             }
@@ -4170,6 +4238,55 @@ namespace HaCreator.MapSimulator
                 AvatarRenderLayer.OverFace => 4,
                 _ => 2
             };
+        }
+
+        private static int ResolvePacketOwnedActiveEffectMotionBlurLayerHandleId(
+            AvatarRenderLayer layer,
+            IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds)
+        {
+            if (layerHandleIds != null
+                && layerHandleIds.TryGetValue(layer, out int handleId)
+                && handleId > 0)
+            {
+                return handleId;
+            }
+
+            return 0;
+        }
+
+        private static IReadOnlyDictionary<AvatarRenderLayer, int> CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds()
+        {
+            var handleIds = new Dictionary<AvatarRenderLayer, int>(PacketOwnedActiveEffectMotionBlurLayerCaptureOrder.Length);
+            for (int i = 0; i < PacketOwnedActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+            {
+                AvatarRenderLayer layer = PacketOwnedActiveEffectMotionBlurLayerCaptureOrder[i];
+                if (!handleIds.ContainsKey(layer))
+                {
+                    handleIds[layer] = NextPacketOwnedActiveEffectMotionBlurLayerHandleId();
+                }
+            }
+
+            return handleIds;
+        }
+
+        private static int NextPacketOwnedActiveEffectMotionBlurStateId()
+        {
+            return HaCreator.MapSimulator.Animation.SimulatedMotionBlurIdentitySource.NextAnimationStateId();
+        }
+
+        private static int NextPacketOwnedActiveEffectMotionBlurLayerHandleId()
+        {
+            return HaCreator.MapSimulator.Animation.SimulatedMotionBlurIdentitySource.NextLayerHandleId();
+        }
+
+        internal static IReadOnlyDictionary<AvatarRenderLayer, int> CreatePacketOwnedActiveEffectMotionBlurLayerHandleIdsForTesting()
+        {
+            return CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds();
+        }
+
+        internal static int NextPacketOwnedActiveEffectMotionBlurStateIdForTesting()
+        {
+            return NextPacketOwnedActiveEffectMotionBlurStateId();
         }
 
         private static void DisposePacketOwnedActiveEffectMotionBlurFrames(IEnumerable<IDXObject> frames)
@@ -5293,6 +5410,7 @@ namespace HaCreator.MapSimulator
             }
 
             long listStart = reader.BaseStream.Position;
+            bool decoded = false;
             try
             {
                 int remaining = (int)(reader.BaseStream.Length - listStart);
@@ -5339,12 +5457,17 @@ namespace HaCreator.MapSimulator
                     }
                 }
 
+                decoded = true;
                 return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException)
+            {
+                questIds = new List<int>();
+                return false;
             }
             finally
             {
-                int bytesRemaining = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
-                if (bytesRemaining < 0)
+                if (!decoded)
                 {
                     reader.BaseStream.Position = listStart;
                 }
@@ -6531,19 +6654,42 @@ namespace HaCreator.MapSimulator
                     return invalidOffsetMessage;
                 }
 
+                int clientTrackDurationMs = ResolvePacketOwnedRadioClientTrackDurationMs(trackResolution.AudioProperty);
+                if (ShouldRejectPacketOwnedRadioOffsetFromClientLength(startOffsetMs, clientTrackDurationMs))
+                {
+                    string rejectedByClientLengthMessage =
+                        $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because authored timeValue {normalizedTimeValue}s resolves to {startOffsetMs} ms, past the client-recovered {clientTrackDurationMs} ms track length.";
+                    _lastPacketOwnedRadioStatusMessage = rejectedByClientLengthMessage;
+                    NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
+                    ShowUtilityFeedbackMessage(rejectedByClientLengthMessage);
+                    return rejectedByClientLengthMessage;
+                }
+
                 _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false, startOffsetMs);
                 ResolvePacketOwnedRadioRealizedPlaybackWindow(
                     _packetOwnedRadioAudio,
                     out int trackDurationMs,
                     out int realizedStartOffsetMs,
                     out int realizedRemainingDurationMs);
-                if (!IsPacketOwnedRadioPlaybackOffsetUsable(realizedStartOffsetMs, trackDurationMs))
+                bool hasClientTrackDuration = HasPacketOwnedRadioClientTrackDuration(clientTrackDurationMs);
+                int authoritativeTrackDurationMs = ResolvePacketOwnedRadioAuthoritativeTrackDurationMs(
+                    clientTrackDurationMs,
+                    trackDurationMs);
+                int authoritativeStartOffsetMs = ResolvePacketOwnedRadioAuthoritativeStartOffsetMs(
+                    startOffsetMs,
+                    realizedStartOffsetMs,
+                    authoritativeTrackDurationMs,
+                    hasClientTrackDuration);
+                int authoritativeRemainingDurationMs = ResolvePacketOwnedRadioAuthoritativeRemainingDurationMs(
+                    authoritativeTrackDurationMs,
+                    authoritativeStartOffsetMs);
+                if (!IsPacketOwnedRadioPlaybackOffsetUsable(authoritativeStartOffsetMs, authoritativeTrackDurationMs))
                 {
                     _packetOwnedRadioAudio.Dispose();
                     _packetOwnedRadioAudio = null;
                     ResetPacketOwnedRadioCreateLayerSessionState();
-                    string rejectedMessage = trackDurationMs > 0
-                        ? $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because authored timeValue {normalizedTimeValue}s resolves to {realizedStartOffsetMs} ms, past the {trackDurationMs} ms track length."
+                    string rejectedMessage = authoritativeTrackDurationMs > 0
+                        ? $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because authored timeValue {normalizedTimeValue}s resolves to {authoritativeStartOffsetMs} ms, past the {authoritativeTrackDurationMs} ms track length."
                         : $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because the resolved track length is unavailable.";
                     _lastPacketOwnedRadioStatusMessage = rejectedMessage;
                     NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
@@ -6558,9 +6704,13 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioDisplayName = trackResolution.DisplayName;
                 _lastPacketOwnedRadioTimeValue = normalizedTimeValue;
                 _lastPacketOwnedRadioRequestedStartOffsetMs = startOffsetMs;
-                _lastPacketOwnedRadioStartOffsetMs = realizedStartOffsetMs;
-                _lastPacketOwnedRadioTrackDurationMs = trackDurationMs;
-                _lastPacketOwnedRadioAvailableDurationMs = realizedRemainingDurationMs;
+                _lastPacketOwnedRadioStartOffsetMs = authoritativeStartOffsetMs;
+                _lastPacketOwnedRadioTrackDurationMs = authoritativeTrackDurationMs;
+                _lastPacketOwnedRadioAvailableDurationMs = authoritativeRemainingDurationMs;
+                _lastPacketOwnedRadioClientTrackDurationMs = clientTrackDurationMs;
+                _lastPacketOwnedRadioClientPlaybackPositionMs = hasClientTrackDuration
+                    ? authoritativeStartOffsetMs
+                    : 0;
                 _lastPacketOwnedRadioStartTick = startTick;
                 CapturePacketOwnedRadioCreateLayerSessionState();
                 _lastPacketOwnedRadioExpectedStopTick = ResolvePacketOwnedRadioMmsLastUpdateTick(
@@ -6588,7 +6738,8 @@ namespace HaCreator.MapSimulator
 
                 string message =
                     $"Started packet-owned radio playback from {scheduleSource} for {trackResolution.DisplayName} " +
-                    $"via {FormatPacketOwnedRadioTemplateResolution(PacketOwnedRadioAudioTemplateStringPoolId, normalizedTrackDescriptor, trackResolution.ResolvedAudioDescriptor)}.";
+                    $"via {FormatPacketOwnedRadioTemplateResolution(PacketOwnedRadioAudioTemplateStringPoolId, normalizedTrackDescriptor, trackResolution.ResolvedAudioDescriptor)} " +
+                    $"(client ms_length={Math.Max(0, _lastPacketOwnedRadioClientTrackDurationMs)} ms, ms_position={Math.Max(0, _lastPacketOwnedRadioClientPlaybackPositionMs)} ms).";
                 ShowUtilityFeedbackMessage(message);
                 return message;
             }
@@ -6776,6 +6927,8 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioStartOffsetMs = 0;
             _lastPacketOwnedRadioTrackDurationMs = 0;
             _lastPacketOwnedRadioAvailableDurationMs = 0;
+            _lastPacketOwnedRadioClientTrackDurationMs = 0;
+            _lastPacketOwnedRadioClientPlaybackPositionMs = 0;
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
@@ -6902,6 +7055,12 @@ namespace HaCreator.MapSimulator
             if (_lastPacketOwnedRadioTrackDurationMs > 0)
             {
                 lines.Add($"Track length: {_lastPacketOwnedRadioTrackDurationMs / 1000f:0.0}s");
+            }
+
+            if (_lastPacketOwnedRadioClientTrackDurationMs > 0)
+            {
+                lines.Add($"Client ms_length: {_lastPacketOwnedRadioClientTrackDurationMs / 1000f:0.0}s");
+                lines.Add($"Client ms_position seed: {_lastPacketOwnedRadioClientPlaybackPositionMs / 1000f:0.0}s");
             }
 
             lines.Add(FormatPacketOwnedRadioTemplateResolution(
@@ -7059,7 +7218,7 @@ namespace HaCreator.MapSimulator
 
         private string DescribePacketOwnedRadioAudioPipeline()
         {
-            return $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => buffer => AIL_quick_load_mem / ms_length / set_ms_position / play (simulator backend still uses MonoGameBgmPlayer).";
+            return $"MMS_Play: {FormatStringPoolId(PacketOwnedRadioAudioTemplateStringPoolId)} => IWzSound => buffer => AIL_quick_load_mem / ms_length / set_ms_position / play; simulator now reuses WZ sound Length for ms_length and ms_position authority while actual playback still routes through MonoGameBgmPlayer.";
         }
 
         private string DescribePacketOwnedRadioUpdateScheduleState()
@@ -7594,6 +7753,49 @@ namespace HaCreator.MapSimulator
             return normalizedFallback;
         }
 
+        internal static bool HasPacketOwnedRadioClientTrackDuration(int clientTrackDurationMs)
+        {
+            return clientTrackDurationMs > 0;
+        }
+
+        internal static bool ShouldRejectPacketOwnedRadioOffsetFromClientLength(int requestedStartOffsetMs, int clientTrackDurationMs)
+        {
+            return HasPacketOwnedRadioClientTrackDuration(clientTrackDurationMs)
+                && requestedStartOffsetMs > Math.Max(0, clientTrackDurationMs);
+        }
+
+        internal static int ResolvePacketOwnedRadioClientTrackDurationMs(WzBinaryProperty audioProperty)
+        {
+            return Math.Max(0, audioProperty?.Length ?? 0);
+        }
+
+        internal static int ResolvePacketOwnedRadioAuthoritativeTrackDurationMs(int clientTrackDurationMs, int backendTrackDurationMs)
+        {
+            return HasPacketOwnedRadioClientTrackDuration(clientTrackDurationMs)
+                ? Math.Max(0, clientTrackDurationMs)
+                : Math.Max(0, backendTrackDurationMs);
+        }
+
+        internal static int ResolvePacketOwnedRadioAuthoritativeStartOffsetMs(
+            int requestedStartOffsetMs,
+            int backendStartOffsetMs,
+            int authoritativeTrackDurationMs,
+            bool hasClientTrackDuration)
+        {
+            int requestedOffset = Math.Max(0, requestedStartOffsetMs);
+            int backendOffset = Math.Max(0, backendStartOffsetMs);
+            int maxOffset = Math.Max(0, authoritativeTrackDurationMs);
+            int selectedOffset = hasClientTrackDuration ? requestedOffset : backendOffset;
+            return Math.Clamp(selectedOffset, 0, maxOffset);
+        }
+
+        internal static int ResolvePacketOwnedRadioAuthoritativeRemainingDurationMs(
+            int authoritativeTrackDurationMs,
+            int authoritativeStartOffsetMs)
+        {
+            return Math.Max(0, Math.Max(0, authoritativeTrackDurationMs) - Math.Max(0, authoritativeStartOffsetMs));
+        }
+
         private static string ResolvePacketOwnedDescriptor(WzImageProperty property)
         {
             if (property == null)
@@ -7950,16 +8152,12 @@ namespace HaCreator.MapSimulator
             bool hasPassiveTemporaryStatTrackingOwner =
                 _playerManager.Skills.HasActiveClientOwnedVehicleTemporaryStatOwnerForParity(PacketOwnedBattleshipSkillId);
             bool isVehiclePresentationActive = IsPacketOwnedBattleshipVehiclePresentationActive();
-            bool allowPassiveTemporaryStatBootstrap = hasPassiveTemporaryStatTrackingOwner
-                && isVehiclePresentationActive;
             bool hasPassiveTemporaryStatObject =
-                ResolvePacketOwnedBattleshipPassiveTemporaryStatObjectState(
-                    hasPassiveTemporaryStatTrackingOwner,
-                    isVehiclePresentationActive,
-                    allowBootstrap: allowPassiveTemporaryStatBootstrap,
-                    out bool bootstrappedPassiveTemporaryStatObject);
+                TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool resolvedPassiveTemporaryStatObject)
+                && resolvedPassiveTemporaryStatObject;
             if (!TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
                 || !ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
+                    hasPassiveTemporaryStatTrackingOwner,
                     hasPassiveTemporaryStatObject,
                     isVehiclePresentationActive))
             {
@@ -7978,15 +8176,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            bool shouldRecordPassiveTemporaryStatUpdate = recordPassiveTemporaryStatUpdate
-                || bootstrappedPassiveTemporaryStatObject;
             _playerManager.Skills.SetAuthoritativeVehicleDurabilityPresentation(
                 PacketOwnedBattleshipSkillId,
                 currentValue,
                 maxValue,
                 currTickCount,
                 hasTemporaryObject: true,
-                recordPassiveTemporaryStatUpdate: shouldRecordPassiveTemporaryStatUpdate);
+                recordPassiveTemporaryStatUpdate: recordPassiveTemporaryStatUpdate);
 
             CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
             if (mountPart == null)
@@ -8024,34 +8220,6 @@ namespace HaCreator.MapSimulator
             {
                 RefreshPacketOwnedBattleshipRepairWindow();
             }
-        }
-
-        private bool ResolvePacketOwnedBattleshipPassiveTemporaryStatObjectState(
-            bool hasPassiveTemporaryStatTrackingOwner,
-            bool isVehiclePresentationActive,
-            bool allowBootstrap,
-            out bool bootstrappedPassiveTemporaryStatObject)
-        {
-            bootstrappedPassiveTemporaryStatObject = false;
-            if (!TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool hasPassiveTemporaryStatObject))
-            {
-                return false;
-            }
-
-            if (hasPassiveTemporaryStatObject
-                || !ShouldBootstrapPacketOwnedBattleshipPassiveTemporaryStatObjectForParity(
-                    hasPassiveTemporaryStatTrackingOwner,
-                    isVehiclePresentationActive,
-                    hasPassiveTemporaryStatObject,
-                    allowBootstrap))
-            {
-                return hasPassiveTemporaryStatObject;
-            }
-
-            _playerManager.Skills.EnsurePassiveVehicleTemporaryStatOwnerForParity(PacketOwnedBattleshipSkillId, currTickCount);
-            bootstrappedPassiveTemporaryStatObject = TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out hasPassiveTemporaryStatObject)
-                && hasPassiveTemporaryStatObject;
-            return hasPassiveTemporaryStatObject;
         }
 
         private bool TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool hasPassiveTemporaryStatObject)
@@ -8119,6 +8287,7 @@ namespace HaCreator.MapSimulator
         }
 
         internal static bool ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
+            bool hasPassiveTemporaryStatTrackingOwner,
             bool hasPassiveTemporaryStatObject,
             bool isVehiclePresentationActive)
         {
@@ -8126,19 +8295,9 @@ namespace HaCreator.MapSimulator
             // CTemporaryStatView::UpdatePassively for the Battleship sentinel
             // when SecondaryStat::IsRidingSkillVehicle is true, and that
             // routine only mutates an existing TEMPORARY_STAT node.
-            return hasPassiveTemporaryStatObject && isVehiclePresentationActive;
-        }
-
-        internal static bool ShouldBootstrapPacketOwnedBattleshipPassiveTemporaryStatObjectForParity(
-            bool hasPassiveTemporaryStatTrackingOwner,
-            bool isVehiclePresentationActive,
-            bool hasPassiveTemporaryStatObject,
-            bool allowBootstrap)
-        {
             return hasPassiveTemporaryStatTrackingOwner
                 && isVehiclePresentationActive
-                && !hasPassiveTemporaryStatObject
-                && allowBootstrap;
+                && hasPassiveTemporaryStatObject;
         }
 
         internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(
@@ -14089,8 +14248,17 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryDecodePacketOwnedEventCalendarBinaryPayload(
+            byte[] normalizedPayload = payload;
+            if (TryUnwrapPacketOwnedPayloadForType(
                     payload,
+                    LocalUtilityPacketInboxManager.EventCalendarEntriesPacketType,
+                    out byte[] unwrappedPayload))
+            {
+                normalizedPayload = unwrappedPayload;
+            }
+
+            if (TryDecodePacketOwnedEventCalendarBinaryPayload(
+                    normalizedPayload,
                     out clearRequested,
                     out replaceExistingEntries,
                     out entries,
@@ -14103,7 +14271,7 @@ namespace HaCreator.MapSimulator
                 return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
             }
 
-            if (!TryDecodePacketOwnedStringPayload(payload, out string decodedText))
+            if (!TryDecodePacketOwnedStringPayload(normalizedPayload, out string decodedText))
             {
                 message = "Event-calendar payload must decode to a binary owner-row envelope, MapleString, UTF-8 text, or a JSON text body.";
                 return false;
@@ -14202,8 +14370,17 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryDecodePacketOwnedRankingPageBinaryPayload(
+            byte[] normalizedPayload = payload;
+            if (TryUnwrapPacketOwnedPayloadForType(
                     payload,
+                    LocalUtilityPacketInboxManager.RankingPagePacketType,
+                    out byte[] unwrappedPayload))
+            {
+                normalizedPayload = unwrappedPayload;
+            }
+
+            if (TryDecodePacketOwnedRankingPageBinaryPayload(
+                    normalizedPayload,
                     out clearRequested,
                     out entries,
                     out hasOwnerState,
@@ -14214,7 +14391,7 @@ namespace HaCreator.MapSimulator
                 return clearRequested || entries.Length > 0 || hasOwnerState;
             }
 
-            if (!TryDecodePacketOwnedStringPayload(payload, out string decodedText))
+            if (!TryDecodePacketOwnedStringPayload(normalizedPayload, out string decodedText))
             {
                 message = "Ranking-page payload must decode to a binary owner-row envelope, MapleString, UTF-8 text, or a JSON text body.";
                 return false;
@@ -14527,6 +14704,37 @@ namespace HaCreator.MapSimulator
                 message = "Ranking-page binary payload did not match the compact row payload.";
                 return false;
             }
+        }
+
+        private static bool TryUnwrapPacketOwnedPayloadForType(byte[] payload, int packetType, out byte[] unwrappedPayload)
+        {
+            unwrappedPayload = payload ?? Array.Empty<byte>();
+            if (payload == null || payload.Length <= 0)
+            {
+                return false;
+            }
+
+            if (LocalUtilityPacketInboxManager.TryDecodeOpcodeFramedPacket(
+                    payload,
+                    out int decodedPacketType,
+                    out byte[] decodedPayload,
+                    out _)
+                && decodedPacketType == packetType)
+            {
+                unwrappedPayload = decodedPayload ?? Array.Empty<byte>();
+                return true;
+            }
+
+            if (payload.Length >= sizeof(int)
+                && BitConverter.ToInt32(payload, 0) == packetType)
+            {
+                unwrappedPayload = payload.Length == sizeof(int)
+                    ? Array.Empty<byte>()
+                    : payload[sizeof(int)..];
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryDecodePacketOwnedRankingPageJsonPayload(

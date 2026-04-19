@@ -28,6 +28,10 @@ namespace HaCreator.MapSimulator
         private int _pendingQuestDeliveryResultCommoditySn;
         private int _pendingQuestDeliveryResultRequestedAtTick = int.MinValue;
         private string _pendingQuestDeliveryResultSourceContext = string.Empty;
+        private int _pendingPacketOwnedStartQuestResponseQuestId;
+        private int _pendingPacketOwnedStartQuestResponseSpeakerNpcId;
+        private string _pendingPacketOwnedStartQuestResponseQuestName = string.Empty;
+        private int _pendingPacketOwnedStartQuestResponseRequestedAtTick = int.MinValue;
         private readonly PacketQuestResultFadeWindowRuntime _packetQuestResultFadeWindowRuntime = new();
         private const int PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs = 500;
 
@@ -291,6 +295,11 @@ namespace HaCreator.MapSimulator
                 resultSummary = $"{resultSummary} {followUpStatus}";
             }
 
+            if (TryResolvePendingPacketOwnedStartQuestResponse(questId, presentation.QuestName, out string startQuestResponseOutcome))
+            {
+                resultSummary = $"{resultSummary} {startQuestResponseOutcome}";
+            }
+
             if (TryResolvePendingQuestDeliveryQuestResult(questId, out string deliveryOutcome))
             {
                 resultSummary = $"{resultSummary} {deliveryOutcome}";
@@ -330,6 +339,11 @@ namespace HaCreator.MapSimulator
             message = string.IsNullOrWhiteSpace(noticeText)
                 ? $"Quest-result action summary for {questName} did not resolve any visible notice text."
                 : $"Displayed the packet-owned quest action summary for {questName} through the client-shaped UtilDlgEx notice surface (bAutoSeparated = {(noticeRouting.AutoSeparated ? 1 : 0)}).";
+            if (TryResolvePendingPacketOwnedStartQuestResponse(questId, questName, out string startQuestResponseOutcome))
+            {
+                message = $"{message} {startQuestResponseOutcome}";
+            }
+
             if (TryResolvePendingQuestDeliveryQuestResult(questId, out string deliveryOutcome))
             {
                 message = $"{message} {deliveryOutcome}";
@@ -543,7 +557,6 @@ namespace HaCreator.MapSimulator
             {
                 _pendingPacketOwnedQuestResultContinuationQuestId = 0;
                 TryApplyPendingPacketOwnedQuestResultFollowUpImmediate();
-                return;
             }
 
             if (availabilityRefreshDisposition == PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation)
@@ -711,34 +724,27 @@ namespace HaCreator.MapSimulator
             string requestDispatchStatus = DispatchPacketOwnedQuestResultFollowUpStartQuestRequest(
                 followUpQuestId,
                 speakerNpcId,
-                resolvedQuestName);
-
-            IReadOnlyList<int> availableQuestIdsBeforeFollowUp =
-                ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot();
-            QuestWindowActionResult result = _questRuntime.TryStartFromPacketOwnedQuestResult(
-                followUpQuestId,
-                _playerManager?.Player?.Build);
-            ApplyPacketOwnedQuestResultFollowUpStateChanges(result, followUpQuestId);
-
-            bool started = result?.StateChanged == true;
+                resolvedQuestName,
+                out bool requestAccepted);
             string speakerLabel = ResolvePacketOwnedQuestResultSpeakerName(speakerNpcId, resolvedQuestName);
-            string status = started
-                ? $"Packet-owned StartQuest accepted {resolvedQuestName} from {speakerLabel}."
-                : $"Packet-owned StartQuest for {resolvedQuestName} did not change quest state.";
-            if (!string.IsNullOrWhiteSpace(requestDispatchStatus))
+            if (requestAccepted)
             {
-                status = $"{status} {requestDispatchStatus}";
+                RegisterPendingPacketOwnedStartQuestResponse(followUpQuestId, speakerNpcId, resolvedQuestName);
+                return
+                    $"Queued packet-owned StartQuest continuation for {resolvedQuestName} from {speakerLabel} and deferred local quest-state mutation until a matching quest-result response arrives. {requestDispatchStatus}";
             }
 
-            AppendPacketOwnedQuestAvailabilityRefreshSummary(ref status, availableQuestIdsBeforeFollowUp);
-            return status;
+            return
+                $"Packet-owned StartQuest continuation for {resolvedQuestName} from {speakerLabel} stayed request-owned and did not mutate local quest state because no outbound request path was accepted. {requestDispatchStatus}";
         }
 
         private string DispatchPacketOwnedQuestResultFollowUpStartQuestRequest(
             int followUpQuestId,
             int speakerNpcId,
-            string followUpQuestName)
+            string followUpQuestName,
+            out bool requestAccepted)
         {
+            requestAccepted = false;
             int currentTick = currTickCount;
             if (_packetOwnedUtilityRequestTick != int.MinValue &&
                 unchecked(currentTick - _packetOwnedUtilityRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs)
@@ -755,32 +761,38 @@ namespace HaCreator.MapSimulator
                 (int)Math.Round(player?.Y ?? 0f),
                 short.MinValue,
                 short.MaxValue);
+            int deliveryItemPosition = ResolvePacketOwnedQuestStartDeliveryItemPosition();
+            bool includeUserPosition = PacketOwnedQuestStartRequest.ResolveIncludeUserPosition(
+                _questRuntime.IsPacketOwnedAutoAlertQuest(followUpQuestId));
             HaCreator.MapSimulator.Interaction.PacketOwnedQuestStartRequest request =
                 HaCreator.MapSimulator.Interaction.PacketOwnedQuestStartRequest.Create(
                 followUpQuestId,
                 speakerNpcId,
-                deliveryItemPosition: 0,
+                deliveryItemPosition,
                 userX,
                 userY,
-                includeUserPosition: true);
+                includeUserPosition);
             byte[] payload = new byte[request.Payload.Count];
             for (int i = 0; i < payload.Length; i++)
             {
                 payload[i] = request.Payload[i];
             }
 
-            StampPacketOwnedUtilityRequestState();
-
             string payloadHex = payload.Length > 0
                 ? Convert.ToHexString(payload)
                 : "<empty>";
+            string userPositionEncodingText = request.IncludesUserPosition
+                ? "Included live user position coordinates because the follow-up quest is not auto-alert-owned."
+                : "Omitted live user position coordinates because the follow-up quest is auto-alert-owned.";
             string summary =
-                $"Mirrored CWvsContext::StartQuest(..., bAutoStart = 0) follow-up request as opcode {request.Opcode} [{payloadHex}] for {followUpQuestName}.";
+                $"Mirrored CWvsContext::StartQuest(..., bAutoStart = 0) follow-up request as opcode {request.Opcode} [{payloadHex}] for {followUpQuestName}. {userPositionEncodingText}";
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                     request.Opcode,
                     payload,
                     out string dispatchStatus))
             {
+                requestAccepted = true;
+                StampPacketOwnedUtilityRequestState();
                 return $"{summary} Dispatched it through the live local-utility bridge. {dispatchStatus}";
             }
 
@@ -789,6 +801,8 @@ namespace HaCreator.MapSimulator
                     payload,
                     out string outboxStatus))
             {
+                requestAccepted = true;
+                StampPacketOwnedUtilityRequestState();
                 return $"{summary} Dispatched it through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
             }
 
@@ -799,6 +813,8 @@ namespace HaCreator.MapSimulator
                     payload,
                     out deferredBridgeStatus))
             {
+                requestAccepted = true;
+                StampPacketOwnedUtilityRequestState();
                 return $"{summary} Queued it for deferred official-session injection after the immediate bridge and outbox paths were unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
             }
 
@@ -807,10 +823,79 @@ namespace HaCreator.MapSimulator
                     payload,
                     out string queuedStatus))
             {
+                requestAccepted = true;
+                StampPacketOwnedUtilityRequestState();
                 return $"{summary} Queued it for deferred generic local-utility outbox delivery after the immediate bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedStatus}";
             }
 
             return $"{summary} It remained simulator-owned because neither the live bridge nor the generic outbox nor either deferred queue accepted the request. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
+        }
+
+        private int ResolvePacketOwnedQuestStartDeliveryItemPosition()
+        {
+            if (_lastDeliveryItemId <= 0 ||
+                !TryResolveQuestDeliveryCashItemSlot(
+                    _lastDeliveryItemId,
+                    out _,
+                    out _,
+                    out int deliveryClientSlotIndex))
+            {
+                return 0;
+            }
+
+            return Math.Max(0, deliveryClientSlotIndex);
+        }
+
+        private void RegisterPendingPacketOwnedStartQuestResponse(int questId, int speakerNpcId, string questName)
+        {
+            _pendingPacketOwnedStartQuestResponseQuestId = Math.Max(0, questId);
+            _pendingPacketOwnedStartQuestResponseSpeakerNpcId = Math.Max(0, speakerNpcId);
+            _pendingPacketOwnedStartQuestResponseQuestName = questName ?? string.Empty;
+            _pendingPacketOwnedStartQuestResponseRequestedAtTick = currTickCount;
+        }
+
+        private bool TryResolvePendingPacketOwnedStartQuestResponse(
+            int questId,
+            string fallbackQuestName,
+            out string outcome)
+        {
+            outcome = string.Empty;
+            if (_pendingPacketOwnedStartQuestResponseQuestId <= 0 ||
+                _pendingPacketOwnedStartQuestResponseQuestId != questId)
+            {
+                return false;
+            }
+
+            QuestWindowActionResult result = _questRuntime.TryStartFromPacketOwnedQuestResult(
+                questId,
+                _playerManager?.Player?.Build);
+            ApplyPacketOwnedQuestResultFollowUpStateChanges(result, questId);
+
+            int ageMs = _pendingPacketOwnedStartQuestResponseRequestedAtTick == int.MinValue
+                ? 0
+                : Math.Max(0, unchecked(currTickCount - _pendingPacketOwnedStartQuestResponseRequestedAtTick));
+            string resolvedQuestName = !string.IsNullOrWhiteSpace(_pendingPacketOwnedStartQuestResponseQuestName)
+                ? _pendingPacketOwnedStartQuestResponseQuestName
+                : (!string.IsNullOrWhiteSpace(fallbackQuestName)
+                    ? fallbackQuestName
+                    : $"Quest #{questId}");
+            string speakerName = ResolvePacketOwnedQuestResultSpeakerName(
+                _pendingPacketOwnedStartQuestResponseSpeakerNpcId,
+                resolvedQuestName);
+            outcome = result?.StateChanged == true
+                ? $"Resolved pending packet-owned StartQuest response for {resolvedQuestName} from {speakerName} via quest-result ownership (age {ageMs}ms)."
+                : $"Consumed pending packet-owned StartQuest response for {resolvedQuestName} from {speakerName} via quest-result ownership without local quest-state change (age {ageMs}ms).";
+
+            ClearPendingPacketOwnedStartQuestResponse();
+            return true;
+        }
+
+        private void ClearPendingPacketOwnedStartQuestResponse()
+        {
+            _pendingPacketOwnedStartQuestResponseQuestId = 0;
+            _pendingPacketOwnedStartQuestResponseSpeakerNpcId = 0;
+            _pendingPacketOwnedStartQuestResponseQuestName = string.Empty;
+            _pendingPacketOwnedStartQuestResponseRequestedAtTick = int.MinValue;
         }
 
         private void ApplyPacketOwnedQuestResultFollowUpStateChanges(QuestWindowActionResult result, int followUpQuestId)

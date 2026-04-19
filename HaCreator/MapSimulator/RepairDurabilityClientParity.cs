@@ -191,6 +191,62 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        internal static bool TryResolveEncodedPositionFromAvatarLook(
+            int itemId,
+            bool preferHiddenLayer,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
+            out int encodedPosition)
+        {
+            if (itemId <= 0)
+            {
+                encodedPosition = int.MinValue;
+                return false;
+            }
+
+            if (preferHiddenLayer)
+            {
+                if (TryResolveEncodedPositionFromBodyPartMap(itemId, hiddenEquipmentByBodyPart, out encodedPosition))
+                {
+                    return true;
+                }
+
+                return TryResolveEncodedPositionFromBodyPartMap(itemId, visibleEquipmentByBodyPart, out encodedPosition);
+            }
+
+            if (TryResolveEncodedPositionFromBodyPartMap(itemId, visibleEquipmentByBodyPart, out encodedPosition))
+            {
+                return true;
+            }
+
+            return TryResolveEncodedPositionFromBodyPartMap(itemId, hiddenEquipmentByBodyPart, out encodedPosition);
+        }
+
+        private static bool TryResolveEncodedPositionFromBodyPartMap(
+            int itemId,
+            IReadOnlyDictionary<byte, int> equipmentByBodyPart,
+            out int encodedPosition)
+        {
+            encodedPosition = int.MinValue;
+            if (equipmentByBodyPart == null || equipmentByBodyPart.Count <= 0)
+            {
+                return false;
+            }
+
+            foreach ((byte bodyPart, int equippedItemId) in equipmentByBodyPart)
+            {
+                if (equippedItemId == itemId
+                    && bodyPart > 0
+                    && bodyPart <= 59)
+                {
+                    encodedPosition = -bodyPart;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static bool TryResolveLegacyBodyPart(EquipSlot slot, out int bodyPart)
         {
             bodyPart = slot switch

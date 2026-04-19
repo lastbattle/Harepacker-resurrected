@@ -1,10 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator.Interaction
 {
     internal static partial class MapleStoryStringPool
     {
+        internal const int MobAngerGaugeBurstTemplatePathStringPoolId = 0x03CE;
+        internal const int MobAngerGaugeBurstEffectNameStringPoolId = 0x0C2F;
+        private const string MobAngerGaugeBurstTemplatePathFallback = "Mob/%07d.img";
+        private const string MobAngerGaugeBurstEffectNameFallback = "AngerGaugeEffect";
+
         private static readonly IReadOnlyDictionary<int, string> OverrideEntries = new Dictionary<int, string>
         {
             // Recovered from MapleStory.exe v95 `CField_Coconut::DrawBoard`.
@@ -145,6 +151,26 @@ namespace HaCreator.MapSimulator.Interaction
             [0x155B] = "The current field rules block map transfer right now.",
             [0x168B] = "The transfer portal is not ready yet.",
             [0x1A83] = "The requested field transfer is unavailable.",
+            // Recovered from MapleStory.exe v95 `CField::OnWhisper` (`0x5448A0`),
+            // `CField::OnGroupMessage` (`0x535490`), `CField::OnCoupleMessage`
+            // (`0x5357F0`), and `CField::OnPlayJukeBox` (`0x537940`). The generated
+            // table can drift in this region, so keep these packet-owned field chat
+            // and notice families pinned to client-owned ids.
+            [0x009A] = "%s have currently disabled whispers.",
+            [0x009B] = "%s is on %s.",
+            [0x009C] = "%s could not be found.",
+            [0x009D] = "%s is in %s.",
+            [0x009E] = "%s is in a hidden field.",
+            [0x009F] = "You have whispered to '%s'",
+            [0x00A1] = "Couple notice is unavailable.",
+            [0x02D7] = "%s: %s",
+            [0x072D] = "%s: %s",
+            [0x072E] = "%s: %s",
+            [0x072F] = "%s (%s): %s",
+            [0x0730] = "> %s: %s",
+            [0x18E0] = "Hidden field.",
+            [0x1A2D] = "Not found.",
+            [0x1AC3] = "%s played %s through the field jukebox.",
             // Recovered from MapleStory.exe v95 StringPool::ms_aString via StringPool::GetString
             // using ms_aKey (0xB98830). These ids are radio-owner literals that were still null
             // in the generated table for this workspace, but the simulator now needs the exact
@@ -466,6 +492,38 @@ namespace HaCreator.MapSimulator.Interaction
         };
 
         public static int Count => Entries.Length;
+
+        public static string ResolveMobAngerGaugeBurstPath(string mobTemplateId)
+        {
+            if (!int.TryParse(mobTemplateId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedTemplateId))
+            {
+                return null;
+            }
+
+            return ResolveMobAngerGaugeBurstPath(parsedTemplateId);
+        }
+
+        public static string ResolveMobAngerGaugeBurstPath(int mobTemplateId)
+        {
+            string templatePath = GetCompositeFormatOrFallback(
+                MobAngerGaugeBurstTemplatePathStringPoolId,
+                MobAngerGaugeBurstTemplatePathFallback,
+                maxPlaceholderCount: 1,
+                out _);
+            string effectName = GetOrFallback(
+                MobAngerGaugeBurstEffectNameStringPoolId,
+                MobAngerGaugeBurstEffectNameFallback,
+                appendFallbackSuffix: false);
+
+            if (string.IsNullOrWhiteSpace(templatePath) || string.IsNullOrWhiteSpace(effectName))
+            {
+                return null;
+            }
+
+            return string.Format(CultureInfo.InvariantCulture, templatePath, mobTemplateId)
+                + "/"
+                + effectName.Trim().Trim('/');
+        }
 
         public static bool Contains(int stringPoolId)
         {

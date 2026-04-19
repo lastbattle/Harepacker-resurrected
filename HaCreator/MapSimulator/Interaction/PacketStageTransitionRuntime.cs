@@ -1292,6 +1292,9 @@ namespace HaCreator.MapSimulator.Interaction
                 Dictionary<ulong, int> decodedSectionByteCounts = CloneDecodedSectionByteCounts(snapshot);
                 Dictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> inventoryItemsByType = new();
                 Dictionary<InventoryType, int> inventorySectionByteCounts = new();
+                Dictionary<InventoryType, int> inventoryItemRecordCounts = new();
+                Dictionary<InventoryType, int> inventoryItemRecordByteCounts = new();
+                Dictionary<InventoryType, int> inventoryTerminatorByteCounts = new();
                 Dictionary<InventoryType, int> cashItemSerialNumberCountsByType = new();
                 int inventorySectionTotalByteCount = 0;
                 int cashInventorySerialNumberCount = 0;
@@ -1312,7 +1315,10 @@ namespace HaCreator.MapSimulator.Interaction
                             reader,
                             decoratedSnapshot,
                             out PacketCharacterDataSnapshot equipDecoratedSnapshot,
-                            out IReadOnlyList<PacketCharacterDataItemSlot> equipItems))
+                            out IReadOnlyList<PacketCharacterDataItemSlot> equipItems,
+                            out int equipItemRecordCount,
+                            out int equipItemRecordByteCount,
+                            out int equipTerminatorByteCount))
                         {
                             return false;
                         }
@@ -1322,6 +1328,9 @@ namespace HaCreator.MapSimulator.Interaction
                         decodedSectionFlags |= inventoryFlag;
                         int sectionByteCount = checked((int)(reader.BaseStream.Position - sectionStart));
                         inventorySectionByteCounts[inventoryType] = sectionByteCount;
+                        inventoryItemRecordCounts[inventoryType] = equipItemRecordCount;
+                        inventoryItemRecordByteCounts[inventoryType] = equipItemRecordByteCount;
+                        inventoryTerminatorByteCounts[inventoryType] = equipTerminatorByteCount;
                         decodedSectionByteCounts[inventoryFlag] = sectionByteCount;
                         inventorySectionTotalByteCount += sectionByteCount;
                         int equipCashSerialCount = CountItemSlotsWithCashSerialNumber(equipItems);
@@ -1335,7 +1344,13 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    if (!TryDecodeCharacterDataInventoryEntries(reader, inventoryType, out IReadOnlyList<PacketCharacterDataItemSlot> inventoryItems))
+                    if (!TryDecodeCharacterDataInventoryEntries(
+                        reader,
+                        inventoryType,
+                        out IReadOnlyList<PacketCharacterDataItemSlot> inventoryItems,
+                        out int inventoryItemRecordCount,
+                        out int inventoryItemRecordByteCount,
+                        out int inventoryTerminatorByteCount))
                     {
                         return false;
                     }
@@ -1344,6 +1359,9 @@ namespace HaCreator.MapSimulator.Interaction
                     decodedSectionFlags |= inventoryFlag;
                     int sectionBytes = checked((int)(reader.BaseStream.Position - sectionStart));
                     inventorySectionByteCounts[inventoryType] = sectionBytes;
+                    inventoryItemRecordCounts[inventoryType] = inventoryItemRecordCount;
+                    inventoryItemRecordByteCounts[inventoryType] = inventoryItemRecordByteCount;
+                    inventoryTerminatorByteCounts[inventoryType] = inventoryTerminatorByteCount;
                     decodedSectionByteCounts[inventoryFlag] = sectionBytes;
                     inventorySectionTotalByteCount += sectionBytes;
                     int sectionCashSerialCount = CountItemSlotsWithCashSerialNumber(inventoryItems);
@@ -1359,6 +1377,9 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     InventoryItemsByType = inventoryItemsByType,
                     InventorySectionByteCounts = inventorySectionByteCounts,
+                    InventoryItemRecordCounts = inventoryItemRecordCounts,
+                    InventoryItemRecordByteCounts = inventoryItemRecordByteCounts,
+                    InventoryTerminatorByteCounts = inventoryTerminatorByteCounts,
                     CashItemSerialNumberCountsByType = cashItemSerialNumberCountsByType,
                     InventorySectionTotalByteCount = inventorySectionTotalByteCount,
                     CashInventorySerialNumberCount = cashInventorySerialNumberCount,
@@ -1381,10 +1402,16 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             PacketCharacterDataSnapshot snapshot,
             out PacketCharacterDataSnapshot decoratedSnapshot,
-            out IReadOnlyList<PacketCharacterDataItemSlot> decodedItems)
+            out IReadOnlyList<PacketCharacterDataItemSlot> decodedItems,
+            out int itemRecordCount,
+            out int itemRecordByteCount,
+            out int terminatorByteCount)
         {
             decoratedSnapshot = snapshot;
             decodedItems = Array.Empty<PacketCharacterDataItemSlot>();
+            itemRecordCount = 0;
+            itemRecordByteCount = 0;
+            terminatorByteCount = 0;
             long startPosition = reader.BaseStream.Position;
             try
             {
@@ -1396,6 +1423,7 @@ namespace HaCreator.MapSimulator.Interaction
                     short position = reader.ReadInt16();
                     if (position == 0)
                     {
+                        terminatorByteCount = sizeof(short);
                         break;
                     }
 
@@ -1405,6 +1433,8 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     items.Add(itemSlot);
+                    itemRecordCount++;
+                    itemRecordByteCount = checked(itemRecordByteCount + sizeof(short) + itemSlot.DecodedByteCount);
                     if (itemSlot.ItemId <= 0)
                     {
                         continue;
@@ -1482,6 +1512,9 @@ namespace HaCreator.MapSimulator.Interaction
                 reader.BaseStream.Position = startPosition;
                 decoratedSnapshot = snapshot;
                 decodedItems = Array.Empty<PacketCharacterDataItemSlot>();
+                itemRecordCount = 0;
+                itemRecordByteCount = 0;
+                terminatorByteCount = 0;
                 return false;
             }
         }
@@ -1489,9 +1522,15 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryDecodeCharacterDataInventoryEntries(
             BinaryReader reader,
             InventoryType inventoryType,
-            out IReadOnlyList<PacketCharacterDataItemSlot> decodedItems)
+            out IReadOnlyList<PacketCharacterDataItemSlot> decodedItems,
+            out int itemRecordCount,
+            out int itemRecordByteCount,
+            out int terminatorByteCount)
         {
             decodedItems = Array.Empty<PacketCharacterDataItemSlot>();
+            itemRecordCount = 0;
+            itemRecordByteCount = 0;
+            terminatorByteCount = 0;
             long startPosition = reader.BaseStream.Position;
             try
             {
@@ -1501,6 +1540,7 @@ namespace HaCreator.MapSimulator.Interaction
                     short position = reader.ReadInt16();
                     if (position == 0)
                     {
+                        terminatorByteCount = sizeof(short);
                         decodedItems = items;
                         return true;
                     }
@@ -1511,12 +1551,17 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     items.Add(itemSlot);
+                    itemRecordCount++;
+                    itemRecordByteCount = checked(itemRecordByteCount + sizeof(short) + itemSlot.DecodedByteCount);
                 }
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
             {
                 reader.BaseStream.Position = startPosition;
                 decodedItems = Array.Empty<PacketCharacterDataItemSlot>();
+                itemRecordCount = 0;
+                itemRecordByteCount = 0;
+                terminatorByteCount = 0;
                 return false;
             }
         }
@@ -1600,7 +1645,8 @@ namespace HaCreator.MapSimulator.Interaction
                     itemType,
                     itemId,
                     hasCashItemSerialNumber,
-                    cashItemSerialNumber);
+                    cashItemSerialNumber,
+                    checked((int)(reader.BaseStream.Position - startPosition)));
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -1657,6 +1703,13 @@ namespace HaCreator.MapSimulator.Interaction
                 secondaryMatchedCountsByType,
                 out int secondaryMatchedCount,
                 out int secondaryUnmatchedCount);
+            BuildBackwardUpdateCashPositionAssignmentSummary(
+                inventoryItemsByType,
+                snapshot.InventorySlotLimits,
+                out Dictionary<InventoryType, int> positionValidatedCountsByType,
+                out Dictionary<InventoryType, int> positionFallbackCountsByType,
+                out int positionValidatedCount,
+                out int positionFallbackCount);
 
             return snapshot with
             {
@@ -1666,8 +1719,111 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePrimaryUnmatchedSerialNumberCount = primaryUnmatchedCount,
                 BackwardUpdateSecondaryMatchedSerialNumberCount = secondaryMatchedCount,
                 BackwardUpdateSecondaryUnmatchedSerialNumberCount = secondaryUnmatchedCount,
-                BackwardUpdateTotalMatchedSerialNumberCount = primaryMatchedCount + secondaryMatchedCount
+                BackwardUpdateTotalMatchedSerialNumberCount = primaryMatchedCount + secondaryMatchedCount,
+                BackwardUpdatePositionValidatedCashItemCountsByType = positionValidatedCountsByType,
+                BackwardUpdatePositionFallbackCashItemCountsByType = positionFallbackCountsByType,
+                BackwardUpdatePositionValidatedCashItemCount = positionValidatedCount,
+                BackwardUpdatePositionFallbackCashItemCount = positionFallbackCount
             };
+        }
+
+        private static void BuildBackwardUpdateCashPositionAssignmentSummary(
+            IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> inventoryItemsByType,
+            IReadOnlyDictionary<InventoryType, int> inventorySlotLimits,
+            out Dictionary<InventoryType, int> positionValidatedCountsByType,
+            out Dictionary<InventoryType, int> positionFallbackCountsByType,
+            out int positionValidatedCount,
+            out int positionFallbackCount)
+        {
+            positionValidatedCountsByType = new Dictionary<InventoryType, int>();
+            positionFallbackCountsByType = new Dictionary<InventoryType, int>();
+            positionValidatedCount = 0;
+            positionFallbackCount = 0;
+
+            if (inventoryItemsByType == null)
+            {
+                return;
+            }
+
+            foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+            {
+                if (!inventoryItemsByType.TryGetValue(inventoryType, out IReadOnlyList<PacketCharacterDataItemSlot> slots)
+                    || slots == null
+                    || slots.Count == 0)
+                {
+                    continue;
+                }
+
+                int validatedForType = 0;
+                int fallbackForType = 0;
+                int slotCapacity = ResolveBackwardUpdateSlotCapacity(inventoryType, slots, inventorySlotLimits);
+                for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
+                {
+                    PacketCharacterDataItemSlot slot = slots[slotIndex];
+                    if (!slot.HasCashItemSerialNumber || slot.CashItemSerialNumber <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (IsBackwardUpdateCashItemPositionDirectlyApplicable(inventoryType, slot.InventoryPosition, slotCapacity))
+                    {
+                        validatedForType++;
+                    }
+                    else
+                    {
+                        fallbackForType++;
+                    }
+                }
+
+                if (validatedForType > 0)
+                {
+                    positionValidatedCountsByType[inventoryType] = validatedForType;
+                    positionValidatedCount += validatedForType;
+                }
+
+                if (fallbackForType > 0)
+                {
+                    positionFallbackCountsByType[inventoryType] = fallbackForType;
+                    positionFallbackCount += fallbackForType;
+                }
+            }
+        }
+
+        private static bool IsBackwardUpdateCashItemPositionDirectlyApplicable(InventoryType inventoryType, short position, int slotCapacity)
+        {
+            if (inventoryType == InventoryType.EQUIP &&
+                position <= -101 &&
+                position >= -159)
+            {
+                return true;
+            }
+
+            return position >= 1 &&
+                   (slotCapacity <= 0 || position <= slotCapacity);
+        }
+
+        private static int ResolveBackwardUpdateSlotCapacity(
+            InventoryType inventoryType,
+            IReadOnlyList<PacketCharacterDataItemSlot> slots,
+            IReadOnlyDictionary<InventoryType, int> inventorySlotLimits)
+        {
+            if (inventorySlotLimits != null &&
+                inventorySlotLimits.TryGetValue(inventoryType, out int slotLimit) &&
+                slotLimit > 0)
+            {
+                return slotLimit;
+            }
+
+            int maxPositivePosition = 0;
+            if (slots != null)
+            {
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    maxPositivePosition = Math.Max(maxPositivePosition, slots[i].InventoryPosition);
+                }
+            }
+
+            return maxPositivePosition;
         }
 
         private static void BuildBackwardUpdateRemovedSerialNumberMatchSummary(
@@ -3064,10 +3220,17 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
         IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> InventoryItemsByType = null,
         IReadOnlyDictionary<InventoryType, int> InventorySectionByteCounts = null,
+        IReadOnlyDictionary<InventoryType, int> InventoryItemRecordCounts = null,
+        IReadOnlyDictionary<InventoryType, int> InventoryItemRecordByteCounts = null,
+        IReadOnlyDictionary<InventoryType, int> InventoryTerminatorByteCounts = null,
         IReadOnlyDictionary<InventoryType, int> CashItemSerialNumberCountsByType = null,
         int InventorySectionTotalByteCount = 0,
         int CashInventorySerialNumberCount = 0,
         int TotalCashItemSerialNumberCount = 0,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionValidatedCashItemCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionFallbackCashItemCountsByType = null,
+        int BackwardUpdatePositionValidatedCashItemCount = 0,
+        int BackwardUpdatePositionFallbackCashItemCount = 0,
         LoginAvatarLook AvatarLook = null,
         int? PreInventoryHeaderValue1 = null,
         int? PreInventoryHeaderValue2 = null,
@@ -3135,7 +3298,8 @@ namespace HaCreator.MapSimulator.Interaction
         byte ItemType,
         int ItemId,
         bool HasCashItemSerialNumber,
-        long CashItemSerialNumber);
+        long CashItemSerialNumber,
+        int DecodedByteCount = 0);
 
     internal readonly record struct PacketSetFieldPacket(
         IReadOnlyDictionary<uint, int> ClientOptions,

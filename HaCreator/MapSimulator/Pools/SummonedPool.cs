@@ -858,6 +858,10 @@ namespace HaCreator.MapSimulator.Pools
                 state.Summon,
                 state.LastMoveActionRaw,
                 TeslaCoilSkillId);
+            state.Summon.FacingRight = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeFacingRight(
+                state.Summon,
+                state.LastMoveActionRaw,
+                state.Summon.FacingRight);
             if (ShouldApplyHealingRobotSkillPacketFacing(state.Summon, state.LastSkillAction))
             {
                 state.Summon.FacingRight = ResolveHealingRobotSkillPacketFacingRight(attackAction);
@@ -910,7 +914,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 ArmPacketOwnedSupportSuspend(state, currentTime);
             }
-            else
+            else if (ShouldResetPacketOwnedSupportSuspendForSkillAction(state.Summon, state.LastSkillAction))
             {
                 state.Summon.SupportSuspendUntilTime = int.MinValue;
             }
@@ -6429,6 +6433,41 @@ namespace HaCreator.MapSimulator.Pools
             {
                 normalizedTemplateId = normalizedTemplateId.PadLeft(7, '0');
             }
+
+            string sequenceSourceRootPath = TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(
+                effectPathTokens,
+                "Mob");
+            if (!string.IsNullOrWhiteSpace(sequenceSourceRootPath))
+            {
+                candidates.Add(sequenceSourceRootPath);
+            }
+            else if (!string.IsNullOrWhiteSpace(normalizedTemplateId)
+                     && effectPathTokens.Length > 1
+                     && !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(effectPathTokens[0], "Mob", out _))
+            {
+                string[] seededSourcePathTokens = new string[effectPathTokens.Length];
+                Array.Copy(effectPathTokens, 1, seededSourcePathTokens, 1, effectPathTokens.Length - 1);
+                foreach (string basePath in EnumeratePacketMobAttackGeneralEffectBasePaths(normalizedTemplateId, attackAction))
+                {
+                    if (!TryCombinePacketMobAttackGeneralEffectPath(
+                            basePath,
+                            effectPathTokens[0],
+                            out string seededFirstSourcePathToken))
+                    {
+                        continue;
+                    }
+
+                    seededSourcePathTokens[0] = seededFirstSourcePathToken;
+                    string seededSequenceSourceRootPath = TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(
+                        seededSourcePathTokens,
+                        "Mob");
+                    if (!string.IsNullOrWhiteSpace(seededSequenceSourceRootPath))
+                    {
+                        candidates.Add(seededSequenceSourceRootPath);
+                    }
+                }
+            }
+
             for (int tokenIndex = 0; tokenIndex < effectPathTokens.Length; tokenIndex++)
             {
                 string effectPathToken = effectPathTokens[tokenIndex];
@@ -6473,7 +6512,8 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<string>();
             }
 
-            string[] rawTokens = effectPath
+            string normalizedEffectPath = NormalizePacketMobAttackGeneralEffectArrowDelimiterSpacing(effectPath);
+            string[] rawTokens = normalizedEffectPath
                 .Split(new[] { '|', ';', ',', '&', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (rawTokens.Length == 0)
             {
@@ -6483,16 +6523,142 @@ namespace HaCreator.MapSimulator.Pools
             var normalizedTokens = new List<string>(rawTokens.Length);
             for (int i = 0; i < rawTokens.Length; i++)
             {
-                string token = NormalizePacketMobAttackGeneralEffectPathToken(rawTokens[i]);
-                if (!string.IsNullOrWhiteSpace(token))
+                foreach (string expandedToken in ExpandPacketMobAttackGeneralEffectArrowChainTokens(rawTokens[i]))
                 {
-                    normalizedTokens.Add(token);
+                    string token = NormalizePacketMobAttackGeneralEffectPathToken(expandedToken);
+                    if (!string.IsNullOrWhiteSpace(token))
+                    {
+                        normalizedTokens.Add(token);
+                    }
                 }
             }
 
             return normalizedTokens
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        private static IEnumerable<string> ExpandPacketMobAttackGeneralEffectArrowChainTokens(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                yield break;
+            }
+
+            string normalized = token.Trim();
+            var chainSegments = new List<string>();
+            int cursor = 0;
+            while (cursor < normalized.Length)
+            {
+                int arrowDashIndex = normalized.IndexOf("->", cursor, StringComparison.Ordinal);
+                int arrowEqualsIndex = normalized.IndexOf("=>", cursor, StringComparison.Ordinal);
+                int nextDelimiterIndex;
+                if (arrowDashIndex < 0)
+                {
+                    nextDelimiterIndex = arrowEqualsIndex;
+                }
+                else if (arrowEqualsIndex < 0)
+                {
+                    nextDelimiterIndex = arrowDashIndex;
+                }
+                else
+                {
+                    nextDelimiterIndex = Math.Min(arrowDashIndex, arrowEqualsIndex);
+                }
+
+                if (nextDelimiterIndex < 0)
+                {
+                    chainSegments.Add(normalized.Substring(cursor));
+                    break;
+                }
+
+                chainSegments.Add(normalized.Substring(cursor, nextDelimiterIndex - cursor));
+                cursor = nextDelimiterIndex + 2;
+            }
+
+            if (chainSegments.Count <= 1)
+            {
+                yield return normalized;
+                yield break;
+            }
+
+            int chainSegmentStartIndex = 0;
+            string firstChainSegment = NormalizePacketMobAttackGeneralEffectPathTokenShell(chainSegments[0]);
+            if (chainSegments.Count > 1
+                && IsPacketMobAttackGeneralEffectAliasPrefixToken(firstChainSegment))
+            {
+                string secondChainSegment = NormalizePacketMobAttackGeneralEffectPathTokenShell(chainSegments[1]);
+                if (!string.IsNullOrWhiteSpace(secondChainSegment))
+                {
+                    yield return $"{firstChainSegment}={secondChainSegment}";
+                    chainSegmentStartIndex = 2;
+                }
+            }
+
+            for (int i = chainSegmentStartIndex; i < chainSegments.Count; i++)
+            {
+                string chainSegment = NormalizePacketMobAttackGeneralEffectPathTokenShell(chainSegments[i]);
+                if (!string.IsNullOrWhiteSpace(chainSegment))
+                {
+                    yield return chainSegment;
+                }
+            }
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectAliasPrefixToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalizedToken = NormalizePacketMobAttackGeneralEffectPathTokenShell(token);
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return false;
+            }
+
+            string wrappedAssignmentToken = $"{normalizedToken}=x";
+            return IsPacketMobAttackGeneralEffectPathPrefixToken(
+                wrappedAssignmentToken,
+                normalizedToken.Length);
+        }
+
+        private static string NormalizePacketMobAttackGeneralEffectArrowDelimiterSpacing(string effectPath)
+        {
+            if (string.IsNullOrWhiteSpace(effectPath))
+            {
+                return effectPath;
+            }
+
+            var builder = new System.Text.StringBuilder(effectPath.Length);
+            for (int i = 0; i < effectPath.Length; i++)
+            {
+                char current = effectPath[i];
+                bool isArrowDelimiterStart = (current == '-' || current == '=')
+                                             && i < effectPath.Length - 1
+                                             && effectPath[i + 1] == '>';
+                if (!isArrowDelimiterStart)
+                {
+                    builder.Append(current);
+                    continue;
+                }
+
+                while (builder.Length > 0 && char.IsWhiteSpace(builder[builder.Length - 1]))
+                {
+                    builder.Length--;
+                }
+
+                builder.Append(current);
+                builder.Append('>');
+                i++;
+                while (i < effectPath.Length - 1 && char.IsWhiteSpace(effectPath[i + 1]))
+                {
+                    i++;
+                }
+            }
+
+            return builder.ToString();
         }
 
         private static string NormalizePacketMobAttackGeneralEffectPathToken(string token)
@@ -6729,13 +6895,60 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (!IsPacketMobAttackSourcePropertySegment(segment))
+                if (!IsPacketMobAttackSourceAliasSegment(segment))
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        internal static bool ShouldResetPacketOwnedSupportSuspendForSkillAction(ActiveSummon summon, byte normalizedSkillAction)
+        {
+            if (summon?.SkillData == null)
+            {
+                return true;
+            }
+
+            // Keep packet-owned Healing Robot suspend windows alive across non-heal skill actions;
+            // clear only through the existing timed idle/suspend-clear seam.
+            return summon.SkillId != HealingRobotSkillId
+                   || !SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData)
+                   || normalizedSkillAction == HealingRobotHealSkillAction;
+        }
+
+        private static bool IsPacketMobAttackSourceAliasSegment(string segment)
+        {
+            if (IsPacketMobAttackSourcePropertySegment(segment))
+            {
+                return true;
+            }
+
+            string normalized = segment?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            int delimiterIndex = normalized.IndexOfAny(new[] { '_', '-' });
+            if (delimiterIndex > 0
+                && delimiterIndex < normalized.Length - 1
+                && IsPacketMobAttackSourcePropertySegment(normalized.Substring(0, delimiterIndex))
+                && int.TryParse(normalized.Substring(delimiterIndex + 1), out _))
+            {
+                return true;
+            }
+
+            int suffixStart = normalized.Length;
+            while (suffixStart > 0 && char.IsDigit(normalized[suffixStart - 1]))
+            {
+                suffixStart--;
+            }
+
+            return suffixStart > 0
+                   && suffixStart < normalized.Length
+                   && IsPacketMobAttackSourcePropertySegment(normalized.Substring(0, suffixStart));
         }
 
         private static bool IsPacketMobAttackSourcePropertySegment(string segment)

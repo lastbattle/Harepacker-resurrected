@@ -304,15 +304,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             int preferredSkillId,
             out int chargeSkillId)
         {
+            return TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
+                payload,
+                startOffset: 0,
+                metadataOffset,
+                preferredSkillId,
+                out chargeSkillId);
+        }
+
+        internal static bool TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int metadataOffset,
+            int preferredSkillId,
+            out int chargeSkillId)
+        {
             chargeSkillId = 0;
             if (payload.Length < sizeof(int)
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int)
                 || metadataOffset < 0
                 || metadataOffset > payload.Length - sizeof(int))
             {
                 return false;
             }
 
-            int alignedStartOffset = metadataOffset;
+            int alignedStartOffset = startOffset;
             if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
             {
                 alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));

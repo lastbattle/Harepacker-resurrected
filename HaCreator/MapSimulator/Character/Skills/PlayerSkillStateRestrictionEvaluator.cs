@@ -536,7 +536,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && skill.CasterMove
                 && skill.AvailableInJumpingState
                 && (UsesBoundJumpActionProfile(skill)
-                    || IsConstrainedType40IceDoubleJumpSkillId(skill.SkillId)))
+                    || IsConstrainedType40BoundJumpSkillId(skill.SkillId)))
             {
                 return true;
             }
@@ -604,11 +604,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsBoundJumpActionName(string actionName)
         {
-            // Keep non-explicit bound-jump gating on the constrained type-40 profile.
+            // Keep non-explicit bound-jump gating on the rechecked WZ-authored type-40
+            // movement profile set.
             return ActionTextContains(actionName, "doublejump")
                    || ActionTextContains(actionName, "flash jump")
                    || ActionTextContains(actionName, "archerdoublejump")
-                   || ActionTextContains(actionName, "icedoublejump");
+                   || ActionTextContains(actionName, "icedoublejump")
+                   || ActionTextContains(actionName, "spiritjump")
+                   || ActionTextContains(actionName, "swiftphantom")
+                   || ActionTextContains(actionName, "demonjump");
         }
 
         private static bool ActionTextContains(string actionName, string value)
@@ -645,6 +649,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == DualBladeFlashJumpSkillId
                    || skillId == NightWalkerFlashJumpSkillId
                    || skillId == RocketBoosterSkillId;
+        }
+
+        private static bool IsConstrainedType40BoundJumpSkillId(int skillId)
+        {
+            // Keep constrained type-40 ownership on the rechecked non-direct
+            // bound-jump profiles even when action rows are missing at runtime.
+            return IsConstrainedType40IceDoubleJumpSkillId(skillId)
+                   || skillId is 23001002
+                       or 24001002
+                       or 30010183
+                       or 30010184
+                       or 5081003;
         }
 
         private static bool IsConstrainedType40IceDoubleJumpSkillId(int skillId)

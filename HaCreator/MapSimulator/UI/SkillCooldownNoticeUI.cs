@@ -224,16 +224,23 @@ namespace HaCreator.MapSimulator.UI
             RecalculateNoticeLayouts();
         }
 
-        public void AddNotice(int skillId, string title, string message, Texture2D iconTexture, SkillCooldownNoticeType type, int currentTime)
+        public bool AddNotice(
+            int skillId,
+            string title,
+            string message,
+            Texture2D iconTexture,
+            SkillCooldownNoticeType type,
+            int currentTime,
+            bool hasBlockingStatusNoticeOwner = false)
         {
             if (!_initialized || string.IsNullOrWhiteSpace(message))
             {
-                return;
+                return false;
             }
 
-            if (!ShouldAcceptIncomingNoticeForClientParity(_notices, skillId))
+            if (!ShouldAcceptIncomingNoticeForClientParity(_notices, skillId, hasBlockingStatusNoticeOwner))
             {
-                return;
+                return false;
             }
 
             NoticeEntry existingEntry = null;
@@ -282,6 +289,7 @@ namespace HaCreator.MapSimulator.UI
             ApplyLayout(existingEntry);
 
             ReflowTargets();
+            return true;
         }
 
         public void Update(int currentTime, float deltaSeconds)
@@ -511,8 +519,14 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldAcceptIncomingNoticeForClientParity(
             IReadOnlyList<(int SkillId, bool IsExpired)> activeNotices,
-            int incomingSkillId)
+            int incomingSkillId,
+            bool hasBlockingStatusNoticeOwner = false)
         {
+            if (hasBlockingStatusNoticeOwner)
+            {
+                return false;
+            }
+
             if (activeNotices == null || activeNotices.Count == 0)
             {
                 return true;
@@ -541,8 +555,16 @@ namespace HaCreator.MapSimulator.UI
             return activeOwnerSkillId == incomingSkillId;
         }
 
-        private static bool ShouldAcceptIncomingNoticeForClientParity(IReadOnlyList<NoticeEntry> activeNotices, int incomingSkillId)
+        private static bool ShouldAcceptIncomingNoticeForClientParity(
+            IReadOnlyList<NoticeEntry> activeNotices,
+            int incomingSkillId,
+            bool hasBlockingStatusNoticeOwner)
         {
+            if (hasBlockingStatusNoticeOwner)
+            {
+                return false;
+            }
+
             if (activeNotices == null || activeNotices.Count == 0)
             {
                 return true;

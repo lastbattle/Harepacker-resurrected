@@ -765,6 +765,32 @@ namespace HaCreator.MapSimulator.Interaction
             return questId > 0 && _packetOwnedAutoStartQuestRegistrations.Contains(questId);
         }
 
+        public bool IsPacketOwnedAutoAlertQuest(int questId)
+        {
+            if (questId <= 0)
+            {
+                return false;
+            }
+
+            // Client owner:
+            // CQuestMan::IsAutoAlertQuest = IsAutoStartQuest || IsAutoCompletionAlertQuest.
+            // WZ-backed quest definitions expose auto-start families directly in Check.img.
+            if (IsPacketOwnedAutoStartQuestRegistered(questId))
+            {
+                return true;
+            }
+
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition) || definition == null)
+            {
+                return false;
+            }
+
+            return definition.HasNormalAutoStart
+                   || definition.HasFieldEnterAutoStart
+                   || definition.HasEquipOnAutoStart;
+        }
+
         public void PrimeQuestAlarmAutoRegisterActivity(IEnumerable<int> questIds)
         {
             if (questIds == null)
@@ -3689,17 +3715,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool HasConversationVariantMetadata(WzImageProperty property)
         {
-            return property?["npc"] != null ||
-                   property?["job"] != null ||
-                   property?["quest"] != null ||
-                   property?["subJob"] != null ||
-                   property?["subJobFlags"] != null ||
-                   property?["pop"] != null ||
-                   property?["fame"] != null ||
-                   property?["lvmin"] != null ||
-                   property?["lvmax"] != null ||
-                   property?["gender"] != null ||
-                   property?["sex"] != null;
+            return GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID") != null ||
+                   GetConversationVariantMetadataProperty(property, "job", "jobId", "jobID") != null ||
+                   GetConversationVariantMetadataProperty(property, "quest") != null ||
+                   GetConversationVariantMetadataProperty(property, "subJob", "subjob") != null ||
+                   GetConversationVariantMetadataProperty(property, "subJobFlags", "subJobFlag", "subjobflags", "subjobflag") != null ||
+                   GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin") != null ||
+                   GetConversationVariantMetadataProperty(property, "fameMax", "maxFame", "popMax") != null ||
+                   GetConversationVariantMetadataProperty(property, "lvmin", "minLevel", "levelMin") != null ||
+                   GetConversationVariantMetadataProperty(property, "lvmax", "maxLevel", "levelMax") != null ||
+                   GetConversationVariantMetadataProperty(property, "gender", "sex", "genderType") != null;
         }
 
         private static bool MatchesConversationVariantMetadata(
@@ -3717,49 +3742,69 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int? requiredNpcId = ParseNpcId(property["npc"]);
+            int? requiredNpcId = ParseNpcId(
+                GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID"));
             if (requiredNpcId.HasValue && requiredNpcId.Value != npcId)
             {
                 return false;
             }
 
-            IReadOnlyList<int> allowedJobs = ParseJobIds(property["job"]);
+            IReadOnlyList<int> allowedJobs = ParseJobIds(
+                GetConversationVariantMetadataProperty(property, "job", "jobId", "jobID"));
             if (allowedJobs.Count > 0 && !MatchesAllowedJobs(currentJob, allowedJobs))
             {
                 return false;
             }
 
-            int? requiredSubJob = ParseInt(property["subJob"]);
+            int? requiredSubJob = ParseInt(
+                GetConversationVariantMetadataProperty(property, "subJob", "subjob"));
             if (requiredSubJob.HasValue && requiredSubJob.Value >= 0 && currentSubJob != requiredSubJob.Value)
             {
                 return false;
             }
 
-            int requiredSubJobFlags = ParsePositiveInt(property["subJobFlags"]).GetValueOrDefault();
+            int requiredSubJobFlags = ParsePositiveInt(
+                GetConversationVariantMetadataProperty(property, "subJobFlags", "subJobFlag", "subjobflags", "subjobflag"))
+                .GetValueOrDefault();
             if (requiredSubJobFlags > 0 && !MatchesQuestSubJobFlags(currentJob, currentSubJob, requiredSubJobFlags))
             {
                 return false;
             }
 
-            int minimumFame = ParsePositiveInt(property["pop"] ?? property["fame"]).GetValueOrDefault();
+            int minimumFame = ParsePositiveInt(
+                GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin"))
+                .GetValueOrDefault();
             if (minimumFame > 0 && currentFame < minimumFame)
             {
                 return false;
             }
 
-            int minimumLevel = ParsePositiveInt(property["lvmin"]).GetValueOrDefault();
+            int maximumFame = ParsePositiveInt(
+                GetConversationVariantMetadataProperty(property, "fameMax", "maxFame", "popMax"))
+                .GetValueOrDefault();
+            if (maximumFame > 0 && currentFame > maximumFame)
+            {
+                return false;
+            }
+
+            int minimumLevel = ParsePositiveInt(
+                GetConversationVariantMetadataProperty(property, "lvmin", "minLevel", "levelMin"))
+                .GetValueOrDefault();
             if (minimumLevel > 0 && currentLevel < minimumLevel)
             {
                 return false;
             }
 
-            int maximumLevel = ParsePositiveInt(property["lvmax"]).GetValueOrDefault();
+            int maximumLevel = ParsePositiveInt(
+                GetConversationVariantMetadataProperty(property, "lvmax", "maxLevel", "levelMax"))
+                .GetValueOrDefault();
             if (maximumLevel > 0 && currentLevel > maximumLevel)
             {
                 return false;
             }
 
-            CharacterGenderType? requiredGender = ParseConversationVariantGender(property["gender"] ?? property["sex"]);
+            CharacterGenderType? requiredGender = ParseConversationVariantGender(
+                GetConversationVariantMetadataProperty(property, "gender", "sex", "genderType"));
             if (requiredGender.HasValue)
             {
                 if (!currentGender.HasValue)
@@ -3778,7 +3823,8 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            IReadOnlyList<QuestStateRequirement> questRequirements = ParseQuestRequirements(property["quest"]);
+            IReadOnlyList<QuestStateRequirement> questRequirements = ParseQuestRequirements(
+                GetConversationVariantMetadataProperty(property, "quest"));
             if (questRequirements.Count > 0)
             {
                 if (questStateResolver == null)
@@ -3797,6 +3843,33 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return HasConversationVariantMetadata(property);
+        }
+
+        private static WzImageProperty GetConversationVariantMetadataProperty(
+            WzImageProperty property,
+            params string[] propertyNames)
+        {
+            if (property == null || propertyNames == null || propertyNames.Length == 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < propertyNames.Length; i++)
+            {
+                string propertyName = propertyNames[i];
+                if (string.IsNullOrWhiteSpace(propertyName))
+                {
+                    continue;
+                }
+
+                WzImageProperty matchedProperty = property[propertyName];
+                if (matchedProperty != null)
+                {
+                    return matchedProperty;
+                }
+            }
+
+            return null;
         }
 
         private static CharacterGenderType? ParseConversationVariantGender(WzImageProperty property)
@@ -3897,6 +3970,9 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetQuestRequirements(questRequirements),
                 hasUnmetJobRequirement,
                 hasUnmetQuestRecordRequirements,
+                GetMissingItemRequirementIds(itemRequirements),
+                GetMissingMobRequirementIds(definition),
+                GetUnmetQuestRequirementIds(questRequirements),
                 stopPages,
                 lostPages);
         }
@@ -3910,6 +3986,9 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetQuestRequirements,
             bool hasUnmetJobRequirement,
             bool hasUnmetQuestRecordRequirements,
+            IReadOnlyList<int> missingItemStopBranchIds,
+            IReadOnlyList<int> missingMobStopBranchIds,
+            IReadOnlyList<int> unmetQuestStopBranchIds,
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
             IReadOnlyList<NpcInteractionPage> lostPages)
         {
@@ -3929,6 +4008,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (hasMissingItems &&
+                TryGetTargetedNumericStopPages(stopPages, missingItemStopBranchIds, out IReadOnlyList<NpcInteractionPage> itemSpecificPages))
+            {
+                return itemSpecificPages;
+            }
+
+            if (hasMissingItems &&
                 TryGetStopPages(stopPages, "item", out IReadOnlyList<NpcInteractionPage> itemPages))
             {
                 return itemPages;
@@ -3941,6 +4026,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (state == QuestStateType.Started && hasMissingMobs)
             {
+                if (TryGetTargetedNumericStopPages(stopPages, missingMobStopBranchIds, out IReadOnlyList<NpcInteractionPage> mobSpecificPages))
+                {
+                    return mobSpecificPages;
+                }
+
                 if (TryGetStopPages(stopPages, "mob", out IReadOnlyList<NpcInteractionPage> mobPages))
                 {
                     return mobPages;
@@ -3950,6 +4040,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     return monsterPages;
                 }
+            }
+
+            if (hasUnmetQuestRequirements &&
+                TryGetTargetedNumericStopPages(stopPages, unmetQuestStopBranchIds, out IReadOnlyList<NpcInteractionPage> questSpecificPages))
+            {
+                return questSpecificPages;
             }
 
             if (hasUnmetQuestRequirements &&
@@ -10102,6 +10198,36 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        private static bool TryGetTargetedNumericStopPages(
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
+            IReadOnlyList<int> branchIds,
+            out IReadOnlyList<NpcInteractionPage> pages)
+        {
+            pages = Array.Empty<NpcInteractionPage>();
+            if (stopPages == null || stopPages.Count == 0 || branchIds == null || branchIds.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < branchIds.Count; i++)
+            {
+                int branchId = branchIds[i];
+                if (branchId <= 0)
+                {
+                    continue;
+                }
+
+                string branchKey = branchId.ToString(CultureInfo.InvariantCulture);
+                if (TryGetStopPages(stopPages, branchKey, out IReadOnlyList<NpcInteractionPage> branchPages))
+                {
+                    pages = branchPages;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private bool HasMissingItems(IReadOnlyList<QuestItemRequirement> requirements)
         {
             if (requirements == null)
@@ -10141,42 +10267,97 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool HasMissingMobs(QuestDefinition definition)
         {
-            if (definition?.EndMobRequirements == null || definition.EndMobRequirements.Count == 0)
-            {
-                return false;
-            }
-
-            QuestProgress progress = GetOrCreateProgress(definition.QuestId);
-            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
-            {
-                QuestMobRequirement requirement = definition.EndMobRequirements[i];
-                progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
-                if (currentCount < requirement.RequiredCount)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return GetMissingMobRequirementIds(definition).Count > 0;
         }
 
         private bool HasUnmetQuestRequirements(IReadOnlyList<QuestStateRequirement> requirements)
         {
+            return GetUnmetQuestRequirementIds(requirements).Count > 0;
+        }
+
+        private IReadOnlyList<int> GetMissingItemRequirementIds(IReadOnlyList<QuestItemRequirement> requirements)
+        {
             if (requirements == null)
             {
-                return false;
+                return Array.Empty<int>();
             }
 
+            var itemIds = new List<int>();
             for (int i = 0; i < requirements.Count; i++)
             {
-                QuestStateRequirement requirement = requirements[i];
-                if (GetQuestState(requirement.QuestId) != requirement.State)
+                QuestItemRequirement requirement = requirements[i];
+                if (requirement == null ||
+                    requirement.ItemId <= 0 ||
+                    GetResolvedItemCount(requirement.ItemId) >= requirement.RequiredCount ||
+                    itemIds.Contains(requirement.ItemId))
                 {
-                    return true;
+                    continue;
+                }
+
+                itemIds.Add(requirement.ItemId);
+            }
+
+            return itemIds.Count > 0
+                ? itemIds
+                : Array.Empty<int>();
+        }
+
+        private IReadOnlyList<int> GetMissingMobRequirementIds(QuestDefinition definition)
+        {
+            if (definition?.EndMobRequirements == null || definition.EndMobRequirements.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            QuestProgress progress = GetOrCreateProgress(definition.QuestId);
+            var mobIds = new List<int>();
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                if (requirement == null ||
+                    requirement.MobId <= 0 ||
+                    mobIds.Contains(requirement.MobId))
+                {
+                    continue;
+                }
+
+                progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
+                if (currentCount < requirement.RequiredCount)
+                {
+                    mobIds.Add(requirement.MobId);
                 }
             }
 
-            return false;
+            return mobIds.Count > 0
+                ? mobIds
+                : Array.Empty<int>();
+        }
+
+        private IReadOnlyList<int> GetUnmetQuestRequirementIds(IReadOnlyList<QuestStateRequirement> requirements)
+        {
+            if (requirements == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            var questIds = new List<int>();
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestStateRequirement requirement = requirements[i];
+                if (requirement == null ||
+                    requirement.QuestId <= 0 ||
+                    GetQuestState(requirement.QuestId) == requirement.State ||
+                    questIds.Contains(requirement.QuestId))
+                {
+                    continue;
+                }
+
+                questIds.Add(requirement.QuestId);
+            }
+
+            return questIds.Count > 0
+                ? questIds
+                : Array.Empty<int>();
         }
 
         private static string FirstNonEmpty(params string[] values)

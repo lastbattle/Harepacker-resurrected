@@ -169,6 +169,76 @@ namespace HaCreator.MapSimulator
             FieldHazardPetAutoConsumeDeferredDispatchRemoteObservationWindowMs;
         private const int FieldHazardPetAutoConsumeDefaultRequestIndex = 0;
 
+        private void ClearRecentlyClosedFieldHazardPetAutoConsumeRequest()
+        {
+            _recentClosedFieldHazardPetAutoConsumeRequest = null;
+            _recentClosedFieldHazardPetAutoConsumeRequestExpiresAt = int.MinValue;
+        }
+
+        private void CaptureClosedFieldHazardPetAutoConsumeRequest(
+            FieldHazardPetAutoConsumeRequest request,
+            int currentTickCount)
+        {
+            _recentClosedFieldHazardPetAutoConsumeRequest = request;
+            _recentClosedFieldHazardPetAutoConsumeRequestExpiresAt =
+                currentTickCount + FieldHazardPetAutoConsumeClosedOwnershipRetentionMs;
+        }
+
+        private bool TryGetRecentClosedFieldHazardPetAutoConsumeRequest(
+            int currentTickCount,
+            out FieldHazardPetAutoConsumeRequest request)
+        {
+            request = default;
+            if (!_recentClosedFieldHazardPetAutoConsumeRequest.HasValue)
+            {
+                return false;
+            }
+
+            if (unchecked(currentTickCount - _recentClosedFieldHazardPetAutoConsumeRequestExpiresAt) >= 0)
+            {
+                ClearRecentlyClosedFieldHazardPetAutoConsumeRequest();
+                return false;
+            }
+
+            request = _recentClosedFieldHazardPetAutoConsumeRequest.Value;
+            return true;
+        }
+
+        private void CloseFieldHazardPendingPetAutoConsumeRequest(
+            int currentTickCount,
+            bool retainRecentOwnership)
+        {
+            if (retainRecentOwnership && _pendingFieldHazardPetAutoConsumeRequest.HasValue)
+            {
+                CaptureClosedFieldHazardPetAutoConsumeRequest(
+                    _pendingFieldHazardPetAutoConsumeRequest.Value,
+                    currentTickCount);
+            }
+            else if (!retainRecentOwnership)
+            {
+                ClearRecentlyClosedFieldHazardPetAutoConsumeRequest();
+            }
+
+            _pendingFieldHazardPetAutoConsumeRequest = null;
+        }
+
+        private void CloseFieldHazardPendingPetAutoConsumeRequest(
+            FieldHazardPetAutoConsumeRequest request,
+            int currentTickCount,
+            bool retainRecentOwnership)
+        {
+            if (retainRecentOwnership)
+            {
+                CaptureClosedFieldHazardPetAutoConsumeRequest(request, currentTickCount);
+            }
+            else
+            {
+                ClearRecentlyClosedFieldHazardPetAutoConsumeRequest();
+            }
+
+            _pendingFieldHazardPetAutoConsumeRequest = null;
+        }
+
         private void LoadPacketOwnedLocalOverlayAssets()
         {
             WzImage loginImage = Program.FindImage("UI", "Login.img");

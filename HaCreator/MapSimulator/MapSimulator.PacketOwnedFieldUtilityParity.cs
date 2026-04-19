@@ -1318,7 +1318,7 @@ namespace HaCreator.MapSimulator
 
         private sealed record PacketOwnedQuizPresentation(string Summary, string DisplayText, bool StartEventTimer);
 
-        private const int QuizAnswerBracketPrefixStringPoolId = 930;
+        private const int QuizAnswerPrefixStringPoolId = 930;
         private const int QuizAnswerTrueMarkerStringPoolId = 2260;
         private const int QuizAnswerFalseMarkerStringPoolId = 2261;
 
@@ -1375,28 +1375,29 @@ namespace HaCreator.MapSimulator
 
             int normalizedAnswerValue = answerValue ?? 0;
             string normalizedDetailText = NormalizePacketOwnedQuizText(detailText);
-            string answerPrefix = ResolvePacketOwnedQuizAnswerMarker(normalizedAnswerValue);
-            string answerDisplayText = string.IsNullOrWhiteSpace(normalizedDetailText)
-                ? answerPrefix
-                : $"{normalizedDetailText} {answerPrefix}";
+            string answerDisplayText = BuildPacketOwnedQuizAnswerDisplayText(normalizedDetailText, normalizedAnswerValue);
             return (
                 $"Packet-authored quiz answer {category}-{problemId}: {answerDisplayText}",
                 answerDisplayText,
                 false);
         }
 
-        private static string ResolvePacketOwnedQuizAnswerMarker(int answerValue)
+        private static string BuildPacketOwnedQuizAnswerDisplayText(string detailText, int answerValue)
         {
+            string normalizedDetailText = NormalizePacketOwnedQuizText(detailText);
             string answerBody = answerValue != 0
                 ? MapleStoryStringPool.GetOrFallback(QuizAnswerTrueMarkerStringPoolId, "O")
                 : MapleStoryStringPool.GetOrFallback(QuizAnswerFalseMarkerStringPoolId, "X");
-            string bracketPrefix = MapleStoryStringPool.GetOrFallback(QuizAnswerBracketPrefixStringPoolId, "[");
-            if (string.IsNullOrWhiteSpace(bracketPrefix))
+            string answerPrefix = MapleStoryStringPool.GetOrFallback(QuizAnswerPrefixStringPoolId, "[Answer:");
+            if (string.IsNullOrWhiteSpace(answerPrefix))
             {
-                bracketPrefix = "[";
+                answerPrefix = "[Answer:";
             }
 
-            return $"{bracketPrefix}{answerBody}]";
+            string answerMarker = $"{answerPrefix}{answerBody}]";
+            return string.IsNullOrWhiteSpace(normalizedDetailText)
+                ? answerMarker
+                : $"{normalizedDetailText} {answerMarker}";
         }
 
         private static bool TryResolvePacketOwnedQuizProblem(byte category, ushort problemId, out WzSubProperty problemProperty)

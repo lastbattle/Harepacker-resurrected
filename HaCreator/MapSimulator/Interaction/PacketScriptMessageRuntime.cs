@@ -1077,6 +1077,7 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<NpcInteractionChoice> choices,
             NpcInteractionInputRequest inputRequest = null)
         {
+            bool flipSpeaker = ResolveFlipSpeakerFromSubtitle(subtitle);
             return new NpcInteractionEntry
             {
                 EntryId = 1,
@@ -1090,12 +1091,63 @@ namespace HaCreator.MapSimulator.Interaction
                         RawText = rawText ?? string.Empty,
                         Text = text ?? string.Empty,
                         Choices = choices ?? Array.Empty<NpcInteractionChoice>(),
-                        InputRequest = inputRequest
+                        InputRequest = inputRequest,
+                        FlipSpeaker = flipSpeaker
                     }
                 },
                 PrimaryActionLabel = inputRequest == null ? string.Empty : "Send",
                 PrimaryActionEnabled = inputRequest != null
             };
+        }
+
+        private static bool ResolveFlipSpeakerFromSubtitle(string subtitle)
+        {
+            // Client CUtilDlgEx ownership uses `m_bSpeakerOnRight = (bParam & 6) != 0`.
+            if (string.IsNullOrWhiteSpace(subtitle))
+            {
+                return false;
+            }
+
+            const string token = "param=0x";
+            int tokenIndex = subtitle.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+            if (tokenIndex < 0)
+            {
+                return false;
+            }
+
+            int valueStart = tokenIndex + token.Length;
+            if (valueStart >= subtitle.Length)
+            {
+                return false;
+            }
+
+            int valueLength = 0;
+            while (valueStart + valueLength < subtitle.Length)
+            {
+                char current = subtitle[valueStart + valueLength];
+                if (!Uri.IsHexDigit(current))
+                {
+                    break;
+                }
+
+                valueLength++;
+            }
+
+            if (valueLength <= 0)
+            {
+                return false;
+            }
+
+            if (!byte.TryParse(
+                    subtitle.Substring(valueStart, valueLength),
+                    System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out byte paramValue))
+            {
+                return false;
+            }
+
+            return (paramValue & 0x06) != 0;
         }
 
         internal bool TryBuildResponsePacket(

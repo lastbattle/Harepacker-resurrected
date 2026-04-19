@@ -1760,32 +1760,55 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            PendingEquipmentChangeEnvelope pendingEnvelope = null;
+            List<PendingEquipmentChangeEnvelope> mechanicCandidates = new();
             foreach (PendingEquipmentChangeEnvelope envelope in _pendingEquipmentChangeRequests.Values)
             {
-                if (envelope?.Request == null
-                    || !envelope.AwaitingMechanicPacketAuthority
-                    || !IsMechanicEquipmentRequest(envelope.Request))
+                if (envelope?.Request != null
+                    && envelope.AwaitingMechanicPacketAuthority
+                    && IsMechanicEquipmentRequest(envelope.Request))
                 {
-                    continue;
+                    mechanicCandidates.Add(envelope);
                 }
-
-                pendingEnvelope = envelope;
-                break;
             }
 
-            if (pendingEnvelope?.Request == null)
+            if (mechanicCandidates.Count == 0)
             {
                 message = "Inventory-operation payload did not match an active mechanic packet-owned request.";
                 return false;
             }
 
-            if (!MechanicEquipmentPacketParity.TryRecognizeClientInventoryOperationCompletion(
-                    pendingEnvelope.Request,
-                    payload,
-                    out string rejectReason))
+            PendingEquipmentChangeEnvelope matchedEnvelope = null;
+            string lastMismatchReason = null;
+            string structuralRejectReason = null;
+            for (int i = 0; i < mechanicCandidates.Count; i++)
             {
-                message = rejectReason;
+                PendingEquipmentChangeEnvelope candidate = mechanicCandidates[i];
+                if (MechanicEquipmentPacketParity.TryRecognizeClientInventoryOperationCompletion(
+                        candidate.Request,
+                        payload,
+                        out string rejectReason))
+                {
+                    matchedEnvelope = candidate;
+                    break;
+                }
+
+                if (IsMechanicInventoryOperationRequestMismatch(rejectReason))
+                {
+                    lastMismatchReason = rejectReason;
+                    continue;
+                }
+
+                structuralRejectReason = rejectReason;
+                break;
+            }
+
+            if (matchedEnvelope?.Request == null)
+            {
+                message = !string.IsNullOrWhiteSpace(structuralRejectReason)
+                    ? structuralRejectReason
+                    : !string.IsNullOrWhiteSpace(lastMismatchReason)
+                        ? lastMismatchReason
+                        : "Inventory-operation payload did not match an active mechanic packet-owned request.";
                 return false;
             }
 
@@ -1795,10 +1818,26 @@ namespace HaCreator.MapSimulator
                     null,
                     0,
                     null,
-                    pendingEnvelope.Request.RequestId,
-                    pendingEnvelope.Request.RequestedAtTick,
+                    matchedEnvelope.Request.RequestId,
+                    matchedEnvelope.Request.RequestedAtTick,
                     AuthorityResultKind: MechanicEquipAuthorityResultKind.LocalRequestAccept),
                 out message);
+        }
+
+        private static bool IsMechanicInventoryOperationRequestMismatch(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                return false;
+            }
+
+            return reason.StartsWith("Inventory-operation swap did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Inventory-operation add entry did not ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Mechanic equip-in inventory-operation ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Mechanic drag-back-out inventory-operation ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Only mechanic equip-in or drag-back-out requests ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Mechanic equip-in request is missing ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Mechanic drag-back-out request is missing ", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool TryQueueCharacterAuthorityResultFromInventoryOperationPayload(

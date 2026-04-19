@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.Managers
         private const ulong CharacterDataTwoIntValueRecordFlag = 0x100000UL;
         private const int LogoutGiftConfigByteLength =
             sizeof(int) + (PacketStageTransitionRuntime.LogoutGiftEntryCount * sizeof(int));
+        private const int SetFieldServerFileTimeByteLength = sizeof(long);
         private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int);
         private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);
         private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
@@ -1112,8 +1113,22 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
 
-                matchedKnownTail = stream.Position == stream.Length;
-                return matchedKnownTail;
+                long trailingByteCount = stream.Length - stream.Position;
+                if (trailingByteCount == 0)
+                {
+                    matchedKnownTail = true;
+                    return true;
+                }
+
+                if (trailingByteCount == SetFieldServerFileTimeByteLength ||
+                    trailingByteCount == LogoutGiftConfigByteLength ||
+                    trailingByteCount == LogoutGiftConfigByteLength + SetFieldServerFileTimeByteLength)
+                {
+                    matchedKnownTail = true;
+                    return true;
+                }
+
+                return false;
             }
             catch (Exception) when (payload.Length > 0)
             {

@@ -138,6 +138,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int WhisperUserListFormatStringPoolId = 0x2D7;
         private const int WhisperUserListNotFoundStringPoolId = 0x1A2D;
         private const int WhisperUserListHiddenFieldStringPoolId = 0x18E0;
+        private const int WhisperUnderCoverMapIdSuffixStringPoolId = 0x731;
         private const int IncomingWhisperSameChannelStringPoolId = 0x72E;
         private const int IncomingWhisperOtherChannelStringPoolId = 0x72F;
         private const int OutgoingWhisperLogStringPoolId = 0x730;
@@ -176,6 +177,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const string WhisperUserListEntryFallback = "{0}: {1}";
         private const string WhisperUserListNotFoundFallback = "Not found.";
         private const string WhisperUserListHiddenFieldFallback = "Hidden field.";
+        private const string WhisperUnderCoverMapIdSuffixFallback = " ({0:000000000})";
         private const string IncomingWhisperSameChannelFallback = "{0}: {1}";
         private const string IncomingWhisperOtherChannelFallback = "{0} ({1}): {2}";
         private const string OutgoingWhisperLogFallback = "> {0}: {1}";
@@ -1578,9 +1580,14 @@ namespace HaCreator.MapSimulator.Interaction
         private static string BuildWhisperLocationMessage(string target, int value, PacketFieldFeedbackCallbacks callbacks)
         {
             string mapName = callbacks?.ResolveMapName?.Invoke(value);
-            return string.IsNullOrWhiteSpace(mapName)
-                ? $"{target} is in map {value}."
-                : $"{target} is in {mapName}.";
+            string resolvedLocation = string.IsNullOrWhiteSpace(mapName)
+                ? value.ToString(CultureInfo.InvariantCulture)
+                : mapName.Trim();
+            return FormatWhisperStringPoolText(
+                WhisperLocationStringPoolId,
+                WhisperLocationFallback,
+                target,
+                resolvedLocation);
         }
 
         private static string ResolveIncomingWhisperLogText(string sender, byte channelId, string body, PacketFieldFeedbackCallbacks callbacks)
@@ -1763,6 +1770,11 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     string location = BuildWhisperLocationMessage(normalizedTarget, value, callbacks);
+                    if (subtype == 9 && callbacks?.IsUnderCover?.Invoke() == true)
+                    {
+                        location += FormatWhisperUnderCoverMapIdSuffix(value);
+                    }
+
                     text = subtype == 72
                         ? FormatWhisperStringPoolText(
                             WhisperUserListFormatStringPoolId,
@@ -1803,6 +1815,55 @@ namespace HaCreator.MapSimulator.Interaction
                 WhisperUserListEntryFallback,
                 target,
                 detailText ?? string.Empty);
+        }
+
+        private static string FormatWhisperUnderCoverMapIdSuffix(int mapId)
+        {
+            string format = MapleStoryStringPool.GetOrFallback(
+                WhisperUnderCoverMapIdSuffixStringPoolId,
+                WhisperUnderCoverMapIdSuffixFallback);
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                return string.Format(CultureInfo.InvariantCulture, WhisperUnderCoverMapIdSuffixFallback, mapId);
+            }
+
+            return FormatWhisperIntegerPrintfSegment(
+                format,
+                mapId,
+                WhisperUnderCoverMapIdSuffixFallback);
+        }
+
+        private static string FormatWhisperIntegerPrintfSegment(string format, int value, string fallbackFormat)
+        {
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                return string.Format(CultureInfo.InvariantCulture, fallbackFormat, value);
+            }
+
+            if (format.Contains("%09d", StringComparison.Ordinal))
+            {
+                return format.Replace(
+                    "%09d",
+                    value.ToString("D9", CultureInfo.InvariantCulture),
+                    StringComparison.Ordinal);
+            }
+
+            if (format.Contains("%d", StringComparison.Ordinal))
+            {
+                return format.Replace(
+                    "%d",
+                    value.ToString(CultureInfo.InvariantCulture),
+                    StringComparison.Ordinal);
+            }
+
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, format, value);
+            }
+            catch (FormatException)
+            {
+                return string.Format(CultureInfo.InvariantCulture, fallbackFormat, value);
+            }
         }
 
         private static bool IsWhisperHiddenField(int mapId, PacketFieldFeedbackCallbacks callbacks)

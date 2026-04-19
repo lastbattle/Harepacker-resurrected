@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal readonly record struct RoutingHint(
             int EmployerId,
+            int TemplateId,
             byte MiniRoomType,
             int MiniRoomSerial,
             string OwnerName,
@@ -248,6 +249,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                     hint = new RoutingHint(
                         enterPacket.EmployerId,
+                        enterPacket.TemplateId,
                         enterPacket.MiniRoomType,
                         enterPacket.MiniRoomSerial,
                         enterPacket.NameTag,
@@ -260,7 +262,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    hint = new RoutingHint(leavePacket.EmployerId, 0, 0, string.Empty, string.Empty);
+                    hint = new RoutingHint(leavePacket.EmployerId, 0, 0, 0, string.Empty, string.Empty);
                     return true;
 
                 case HaCreator.MapSimulator.Managers.SocialRoomEmployeeOfficialSessionBridgeManager.EmployeeMiniRoomBalloonOpcode:
@@ -271,6 +273,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                     hint = new RoutingHint(
                         balloonPacket.EmployerId,
+                        0,
                         balloonPacket.MiniRoomType,
                         balloonPacket.MiniRoomSerial,
                         string.Empty,

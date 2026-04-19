@@ -94,6 +94,36 @@ namespace HaCreator.MapSimulator.UI
             return hasBest ? best.SerialNumber : 0;
         }
 
+        internal static bool CanHydratePacketOwnedCommodityFromMetadata(int packetItemId, int metadataItemId)
+        {
+            if (metadataItemId <= 0)
+            {
+                return false;
+            }
+
+            return packetItemId <= 0 || packetItemId == metadataItemId;
+        }
+
+        internal static int ResolvePacketOwnedCommodityItemId(int packetItemId, int metadataItemId)
+        {
+            if (packetItemId > 0)
+            {
+                return packetItemId;
+            }
+
+            return Math.Max(0, metadataItemId);
+        }
+
+        internal static bool CanCreateFallbackPacketOwnedCommodityRow(
+            int packetSerialNumber,
+            int packetItemId,
+            long packetPrice)
+        {
+            return packetPrice > 0
+                && packetSerialNumber > 0
+                && packetItemId <= 0;
+        }
+
         private static bool IsPreferredCandidate(
             PacketOwnedCommodityMetadataCandidate candidate,
             PacketOwnedCommodityMetadataCandidate existing,

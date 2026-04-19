@@ -4303,8 +4303,42 @@ namespace HaCreator.MapSimulator.Character
             }
 
             string resolvedActionName = ResolveShadowPartnerActionName(skill.ShadowPartnerActionAnimations, CurrentActionName, null);
+            SkillAnimation resolvedPlaybackAnimation = ResolveShadowPartnerPlaybackAnimation(
+                skill.ShadowPartnerActionAnimations,
+                resolvedActionName,
+                CurrentActionName);
             string spawnActionName = ResolveShadowPartnerCreateActionName(skill.ShadowPartnerActionAnimations);
             bool useSpawnAction = !string.IsNullOrWhiteSpace(spawnActionName);
+            int observedAttackTriggerTime = GetShadowPartnerObservedActionTriggerTime();
+            bool observedAttackActionResolved = State != PlayerState.Attacking;
+            string resolvedAttackActionName = null;
+            SkillAnimation resolvedAttackPlaybackAnimation = null;
+            if (State == PlayerState.Attacking
+                && TryResolveShadowPartnerAttackAction(
+                    CurrentActionName,
+                    out resolvedAttackActionName,
+                    out resolvedAttackPlaybackAnimation))
+            {
+                observedAttackActionResolved = true;
+            }
+
+            string queuedActionName = resolvedActionName;
+            SkillAnimation queuedPlaybackAnimation = resolvedPlaybackAnimation;
+            bool queuedForceReplay = false;
+            if (useSpawnAction && State == PlayerState.Attacking)
+            {
+                if (observedAttackActionResolved)
+                {
+                    queuedActionName = resolvedAttackActionName;
+                    queuedPlaybackAnimation = resolvedAttackPlaybackAnimation;
+                    queuedForceReplay = observedAttackTriggerTime != int.MinValue;
+                }
+                else
+                {
+                    queuedActionName = null;
+                    queuedPlaybackAnimation = null;
+                }
+            }
 
             _activeShadowPartner = new ShadowPartnerState
             {
@@ -4319,19 +4353,17 @@ namespace HaCreator.MapSimulator.Character
                 CurrentActionName = useSpawnAction ? spawnActionName : resolvedActionName,
                 CurrentPlaybackAnimation = useSpawnAction
                     ? ResolveShadowPartnerPlaybackAnimation(skill.ShadowPartnerActionAnimations, spawnActionName, null)
-                    : ResolveShadowPartnerPlaybackAnimation(skill.ShadowPartnerActionAnimations, resolvedActionName, CurrentActionName),
+                    : resolvedPlaybackAnimation,
                 CurrentActionStartTime = currentTime,
                 CurrentFacingRight = FacingRight,
                 ObservedPlayerActionName = CurrentActionName,
-                QueuedActionName = useSpawnAction ? resolvedActionName : null,
-                QueuedPlaybackAnimation = useSpawnAction
-                    ? ResolveShadowPartnerPlaybackAnimation(skill.ShadowPartnerActionAnimations, resolvedActionName, CurrentActionName)
-                    : null,
+                QueuedActionName = useSpawnAction ? queuedActionName : null,
+                QueuedPlaybackAnimation = useSpawnAction ? queuedPlaybackAnimation : null,
                 QueuedFacingRight = FacingRight,
-                QueuedForceReplay = useSpawnAction && State == PlayerState.Attacking && GetShadowPartnerObservedActionTriggerTime() != int.MinValue,
+                QueuedForceReplay = useSpawnAction && queuedForceReplay,
                 ObservedPlayerFacingRight = FacingRight,
                 ObservedPlayerFloatingState = State is PlayerState.Swimming or PlayerState.Flying,
-                ObservedPlayerActionTriggerTime = GetShadowPartnerObservedActionTriggerTime()
+                ObservedPlayerActionTriggerTime = observedAttackTriggerTime
             };
 
             if (TryRestoreShadowPartnerActionOwnerCounter(
@@ -6100,6 +6132,7 @@ namespace HaCreator.MapSimulator.Character
                 MirrorImageRenderableSourceLayer? renderableLayer = TryResolveMirrorImageRenderableSourceLayer(
                     frame,
                     currentFrameIndex,
+                    currentTime,
                     layer);
                 if (!renderableLayer.HasValue)
                 {
@@ -6371,6 +6404,7 @@ namespace HaCreator.MapSimulator.Character
         private MirrorImageRenderableSourceLayer? TryResolveMirrorImageRenderableSourceLayer(
             AssembledFrame frame,
             int currentFrameIndex,
+            int currentTime,
             MirrorImagePreparedSourceLayer preparedLayer)
         {
             if (_activeMirrorImage == null || preparedLayer == null)
@@ -6381,6 +6415,7 @@ namespace HaCreator.MapSimulator.Character
             if (TryResolveLiveMirrorImageSourceLayer(
                     frame,
                     currentFrameIndex,
+                    currentTime,
                     preparedLayer,
                     out IReadOnlyList<AssembledPart> liveSourceParts))
             {
@@ -6427,6 +6462,7 @@ namespace HaCreator.MapSimulator.Character
         private bool TryResolveLiveMirrorImageSourceLayer(
             AssembledFrame frame,
             int currentFrameIndex,
+            int currentTime,
             MirrorImagePreparedSourceLayer preparedLayer,
             out IReadOnlyList<AssembledPart> liveSourceParts)
         {
@@ -6458,18 +6494,31 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            return ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
+            int liveSourceSignature = ComputeMirrorImageSourceLayerSignature(liveSourceParts);
+            bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
                 preparedLayer.RenderLayer,
                 ResolveMirrorImageSourcePartsObjectId(liveSourceParts),
                 preparedLayer.LastInsertCanvasSourcePartsObjectId,
-                preparedLayer.SourceSignature,
+                liveSourceSignature,
                 preparedLayer.LastInsertedSourceSignature,
                 preparedLayer.LastInsertCanvasSourceLayer,
                 preparedLayer.OverlayTargetLayer,
                 preparedLayer.LastInsertCanvasOverlayTargetLayer,
                 preparedLayer.LastInsertCanvasTime);
+            if (shouldUseLiveSourceLayer)
+            {
+                ApplyMirrorImageInsertCanvasMetadata(
+                    preparedLayer,
+                    liveSourceSignature,
+                    currentTime,
+                    hasSourceCanvas: true,
+                    sourceParts: liveSourceParts,
+                    insertsLiveSourceCanvas: true);
+            }
+
+            return shouldUseLiveSourceLayer;
         }
 
         private MirrorImagePreparedSourceLayer CreatePreparedMirrorImageSourceLayer(
@@ -6548,7 +6597,8 @@ namespace HaCreator.MapSimulator.Character
                     sourceSignature,
                     currentTime,
                     hasSourceCanvas,
-                    sourceParts);
+                    sourceParts,
+                    insertsLiveSourceCanvas: false);
                 preparedLayer.PreparedFacingRight = facingRight;
                 ApplyMirrorImagePreparedLayerClientProperties(
                     preparedLayer,
@@ -6594,7 +6644,8 @@ namespace HaCreator.MapSimulator.Character
                     sourceSignature,
                     currentTime,
                     hasLiveInsertCanvasSource,
-                    sourceParts);
+                    sourceParts,
+                    insertsLiveSourceCanvas: false);
                 preparedLayer.PreparedFacingRight = facingRight;
                 ApplyMirrorImagePreparedLayerClientProperties(
                     preparedLayer,
@@ -6660,7 +6711,8 @@ namespace HaCreator.MapSimulator.Character
                 currentTime,
                 HasMirrorImageInsertCanvasSource(
                     HasMirrorImageLiveSourceCanvas(sourceParts)),
-                sourceParts);
+                sourceParts,
+                insertsLiveSourceCanvas: false);
             preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
@@ -6704,37 +6756,39 @@ namespace HaCreator.MapSimulator.Character
             int sourceSignature,
             int currentTime,
             bool hasSourceCanvas,
-            IReadOnlyList<AssembledPart> sourceParts)
+            IReadOnlyList<AssembledPart> sourceParts,
+            bool insertsLiveSourceCanvas)
         {
             if (preparedLayer == null)
             {
                 return;
             }
 
+            bool updatesFromLiveInsertCanvas = insertsLiveSourceCanvas && hasSourceCanvas;
             preparedLayer.LastInsertedSourceSignature = ResolveMirrorImageLastInsertedSourceSignature(
                 preparedLayer.LastInsertedSourceSignature,
                 sourceSignature,
-                hasSourceCanvas);
+                updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasTime = ResolveMirrorImageLastInsertCanvasTime(
                 preparedLayer.LastInsertCanvasTime,
                 currentTime,
-                hasSourceCanvas);
+                updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasLayerObjectId = ResolveMirrorImageLastInsertCanvasLayerObjectId(
                 preparedLayer.LastInsertCanvasLayerObjectId,
                 preparedLayer.PreparedLayerObjectId,
-                hasSourceCanvas);
+                updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasSourceLayer = ResolveMirrorImageLastInsertCanvasSourceLayer(
                 preparedLayer.LastInsertCanvasSourceLayer,
                 preparedLayer.RenderLayer,
-                hasSourceCanvas);
+                updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasOverlayTargetLayer = ResolveMirrorImageLastInsertCanvasOverlayTargetLayer(
                 preparedLayer.LastInsertCanvasOverlayTargetLayer,
                 preparedLayer.OverlayTargetLayer,
-                hasSourceCanvas);
+                updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasSourcePartsObjectId = ResolveMirrorImageLastInsertCanvasSourcePartsObjectId(
                 preparedLayer.LastInsertCanvasSourcePartsObjectId,
                 ResolveMirrorImageSourcePartsObjectId(sourceParts),
-                hasSourceCanvas);
+                updatesFromLiveInsertCanvas);
         }
 
         internal static AvatarRenderLayer ResolveMirrorImageOverlayTargetLayer(AvatarRenderLayer renderLayer)
@@ -7766,24 +7820,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static float ResolveShadowPartnerFrameAlpha(SkillFrame frame, int frameElapsedMs)
         {
-            if (frame == null)
-            {
-                return 1f;
-            }
-
-            int startAlpha = Math.Clamp(frame.AlphaStart, 0, 255);
-            int endAlpha = Math.Clamp(frame.AlphaEnd, 0, 255);
-            if (startAlpha == endAlpha)
-            {
-                return startAlpha / 255f;
-            }
-
-            float progress = MathHelper.Clamp(
-                frameElapsedMs / (float)ShadowPartnerClientActionResolver.ResolvePlaybackFrameDurationMs(frame.Delay),
-                0f,
-                1f);
-
-            return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
+            return ShadowPartnerClientActionResolver.ResolveFrameAlpha(frame, frameElapsedMs);
         }
 
         private int ResolveShadowPartnerHorizontalOffsetPx(SkillAnimation currentAnimation)
@@ -7941,14 +7978,13 @@ namespace HaCreator.MapSimulator.Character
                 RefreshShadowPartnerClientOffsetTarget(currentTime, FacingRight);
                 if (IsShadowPartnerAttackAction(playerActionName))
                 {
-                    string delayedAttackAction = ResolveShadowPartnerActionName(playerActionName, _activeShadowPartner.CurrentActionName);
-                    if (!string.IsNullOrWhiteSpace(delayedAttackAction))
+                    if (TryResolveShadowPartnerAttackAction(
+                            playerActionName,
+                            out string delayedAttackAction,
+                            out SkillAnimation delayedAttackPlayback))
                     {
                         _activeShadowPartner.PendingActionName = delayedAttackAction;
-                        _activeShadowPartner.PendingPlaybackAnimation = ResolveShadowPartnerPlaybackAnimation(
-                            _activeShadowPartner.ActionAnimations,
-                            delayedAttackAction,
-                            playerActionName);
+                        _activeShadowPartner.PendingPlaybackAnimation = delayedAttackPlayback;
                         _activeShadowPartner.PendingActionReadyTime = currentTime + ResolveShadowPartnerAttackDelayMs(
                             delayedAttackAction,
                             _activeShadowPartner.PendingPlaybackAnimation);
@@ -8206,6 +8242,40 @@ namespace HaCreator.MapSimulator.Character
         private string ResolveShadowPartnerActionName(string playerActionName, string fallbackActionName)
         {
             return ResolveShadowPartnerActionName(_activeShadowPartner?.ActionAnimations, playerActionName, fallbackActionName);
+        }
+
+        private bool TryResolveShadowPartnerAttackAction(
+            string playerActionName,
+            out string resolvedActionName,
+            out SkillAnimation resolvedPlaybackAnimation)
+        {
+            resolvedActionName = null;
+            resolvedPlaybackAnimation = null;
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations = _activeShadowPartner?.ActionAnimations;
+            if (!ShadowPartnerClientActionResolver.TryResolveAttackIdentityActionName(
+                    actionAnimations,
+                    playerActionName,
+                    State,
+                    out string resolvedAttackActionName,
+                    Build?.GetWeapon()?.WeaponType,
+                    TryGetCurrentClientRawActionCode(out int currentRawActionCode) ? currentRawActionCode : null,
+                    _activeShadowPartner?.SupportedRawActionNames))
+            {
+                return false;
+            }
+
+            SkillAnimation attackPlaybackAnimation = ResolveShadowPartnerPlaybackAnimation(
+                actionAnimations,
+                resolvedAttackActionName,
+                playerActionName);
+            if (attackPlaybackAnimation?.Frames == null || attackPlaybackAnimation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            resolvedActionName = resolvedAttackActionName;
+            resolvedPlaybackAnimation = attackPlaybackAnimation;
+            return true;
         }
 
         private string ResolveShadowPartnerActionName(
@@ -9217,30 +9287,31 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            // CUserPool::Update compares couple-chair facing using move-action facing bits
-            // after ordering users by Y (upper first), not by X.
-            bool upperFacingRight;
-            bool lowerFacingRight;
-            if (ownerY < partnerY)
+            // CUserPool::Update chooses direction-check ordering by horizontal placement
+            // (left actor first; ties choose the second participant first), then compares
+            // move-action facing parity bits against info/direction.
+            bool leftFacingRight;
+            bool rightFacingRight;
+            if (ownerX >= partnerX)
             {
-                upperFacingRight = ownerFacingRight;
-                lowerFacingRight = partnerFacingRight;
+                leftFacingRight = partnerFacingRight;
+                rightFacingRight = ownerFacingRight;
             }
             else
             {
-                upperFacingRight = partnerFacingRight;
-                lowerFacingRight = ownerFacingRight;
+                leftFacingRight = ownerFacingRight;
+                rightFacingRight = partnerFacingRight;
             }
 
-            bool upperFacesLeft = !upperFacingRight;
-            bool lowerFacesLeft = !lowerFacingRight;
+            bool leftFacesLeft = !leftFacingRight;
+            bool rightFacesLeft = !rightFacingRight;
             return direction switch
             {
-                3 => upperFacesLeft == lowerFacesLeft,
-                11 => upperFacesLeft && lowerFacesLeft,
-                12 => upperFacesLeft && !lowerFacesLeft,
-                21 => !upperFacesLeft && lowerFacesLeft,
-                22 => !upperFacesLeft && !lowerFacesLeft,
+                3 => leftFacesLeft == rightFacesLeft,
+                11 => leftFacesLeft && rightFacesLeft,
+                12 => leftFacesLeft && !rightFacesLeft,
+                21 => !leftFacesLeft && rightFacesLeft,
+                22 => !leftFacesLeft && !rightFacesLeft,
                 _ => false
             };
         }

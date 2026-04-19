@@ -72,8 +72,9 @@ namespace HaCreator.MapSimulator.Fields
             string shipPath = InfoTool.GetString(shipPathProperty);
             int shipKind = GetInt(shipObject["shipKind"], 0);
             int flip = GetInt(shipObject["f"], 0);
-            int moveDurationSeconds = GetInt(shipObject["tMove"], shipKind == 1 ? 2 : 10);
-            int awayX = GetInt(shipObject["x0"], dockX - 800);
+            // CShip::Init uses default 0 for missing shipObj numeric members.
+            int moveDurationSeconds = GetInt(shipObject["tMove"], 0);
+            int awayX = GetInt(shipObject["x0"], 0);
             int routeLayerZ = shipKind == 0 ? GetInt(shipObject["z"], 0) : 0;
 
             definition = new TransportationFieldDefinition(

@@ -46,7 +46,14 @@ namespace HaCreator.MapSimulator.Entities
                 return currentAttack.AttackAfter;
             }
 
-            return ResolveRepeatIntervalMs(frames, configuredSpecialAttackAfterMs);
+            if (currentAttack?.IsSpecialAttack == true)
+            {
+                return ResolveRepeatIntervalMs(frames, configuredSpecialAttackAfterMs);
+            }
+
+            // Outside the active owner lane, cadence falls back to authored burst-frame timing.
+            // This avoids carrying stale special-attack owner timing across state transitions.
+            return ResolveRepeatIntervalMs(frames, specialAttackAfterMs: 0);
         }
 
         public static bool ShouldRegisterBurst(

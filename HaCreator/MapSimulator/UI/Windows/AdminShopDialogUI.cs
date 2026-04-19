@@ -7496,7 +7496,7 @@ namespace HaCreator.MapSimulator.UI
             out AdminShopCommodityData resolvedCommodity)
         {
             resolvedCommodity = null;
-            if (commodity == null || commodity.ItemId <= 0)
+            if (commodity == null)
             {
                 return false;
             }
@@ -7504,9 +7504,16 @@ namespace HaCreator.MapSimulator.UI
             if (commodity.SerialNumber > 0
                 && TryGetCommodityBySerialNumber(commodity.SerialNumber, out resolvedCommodity)
                 && resolvedCommodity != null
-                && resolvedCommodity.ItemId == commodity.ItemId)
+                && AdminShopPacketOwnedSellTemplateParity.CanHydratePacketOwnedCommodityFromMetadata(
+                    commodity.ItemId,
+                    resolvedCommodity.ItemId))
             {
                 return true;
+            }
+
+            if (commodity.ItemId <= 0)
+            {
+                return false;
             }
 
             EnsureCommodityCache();
@@ -7995,17 +8002,65 @@ namespace HaCreator.MapSimulator.UI
 
         private AdminShopEntry CreatePacketOwnedCommodityEntry(PacketOwnedAdminShopCommoditySnapshot commodity)
         {
-            if (commodity == null || commodity.ItemId <= 0)
+            if (commodity == null)
             {
                 return null;
             }
 
-            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(commodity.ItemId);
+            bool isBuyRow = commodity.Price > 0;
+            bool isAvailable = isBuyRow && commodity.SaleState == 0;
+            int maxPerSlot = Math.Max(1, commodity.MaxPerSlot);
+            bool hasMetadata = TryResolvePacketOwnedCommodityMetadata(commodity, out AdminShopCommodityData resolvedCommodity);
+            int resolvedItemId = AdminShopPacketOwnedSellTemplateParity.ResolvePacketOwnedCommodityItemId(
+                commodity.ItemId,
+                hasMetadata ? resolvedCommodity.ItemId : 0);
+            if (resolvedItemId <= 0)
+            {
+                if (!AdminShopPacketOwnedSellTemplateParity.CanCreateFallbackPacketOwnedCommodityRow(
+                        commodity.SerialNumber,
+                        commodity.ItemId,
+                        commodity.Price))
+                {
+                    return null;
+                }
+
+                string fallbackTitle = $"Commodity SN {commodity.SerialNumber.ToString(CultureInfo.InvariantCulture)}";
+                string fallbackDetail = $"Packet-authored row kept as an authoritative serial-only commodity (saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {maxPerSlot.ToString(CultureInfo.InvariantCulture)}). Item metadata is unresolved in Etc/Commodity.img.";
+                return new AdminShopEntry
+                {
+                    Title = fallbackTitle,
+                    Detail = fallbackDetail,
+                    Seller = _packetOwnedAdminShopSession.NpcTemplateId > 0
+                        ? $"NPC {_packetOwnedAdminShopSession.NpcTemplateId.ToString(CultureInfo.InvariantCulture)}"
+                        : "Packet-owned shop",
+                    Price = Math.Abs(commodity.Price),
+                    PriceLabel = FormatPriceLabel(Math.Abs(commodity.Price)),
+                    Category = AdminShopCategory.All,
+                    SupportsWishlist = false,
+                    State = isAvailable ? AdminShopEntryState.Available : AdminShopEntryState.PreviewOnly,
+                    StateLabel = isAvailable
+                        ? "Serial-only row"
+                        : $"SaleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}",
+                    RewardInventoryType = InventoryType.NONE,
+                    RewardItemId = 0,
+                    RewardQuantity = 1,
+                    RewardMaxStackSize = 1,
+                    Response = isAvailable ? AdminShopResponse.GrantItem : AdminShopResponse.None,
+                    MaxRequestCount = maxPerSlot,
+                    CommoditySerialNumber = commodity.SerialNumber,
+                    CommodityOnSale = commodity.SaleState == 0,
+                    PacketSerialNumber = commodity.SerialNumber,
+                    PacketSaleState = commodity.SaleState,
+                    IsPacketOwnedSnapshotRow = true
+                };
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(resolvedItemId);
             AdminShopCategory category = ResolveCommodityCategory(inventoryType);
-            string title = InventoryItemMetadataResolver.TryResolveItemName(commodity.ItemId, out string itemName)
+            string title = InventoryItemMetadataResolver.TryResolveItemName(resolvedItemId, out string itemName)
                 ? itemName
-                : $"Item {commodity.ItemId.ToString(CultureInfo.InvariantCulture)}";
-            string detail = InventoryItemMetadataResolver.TryResolveItemDescription(commodity.ItemId, out string description)
+                : $"Item {resolvedItemId.ToString(CultureInfo.InvariantCulture)}";
+            string detail = InventoryItemMetadataResolver.TryResolveItemDescription(resolvedItemId, out string description)
                 ? description
                 : "Packet-authored admin-shop row staged directly from CAdminShopDlg::SetAdminShopDlg.";
             string packetSummary = $"SN {commodity.SerialNumber.ToString(CultureInfo.InvariantCulture)}, saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {Math.Max(1, commodity.MaxPerSlot).ToString(CultureInfo.InvariantCulture)}.";
@@ -8014,7 +8069,7 @@ namespace HaCreator.MapSimulator.UI
                 : $"{detail} {packetSummary}";
             int rewardQuantity = 1;
             bool commodityOnSale = commodity.SaleState == 0;
-            if (TryResolvePacketOwnedCommodityMetadata(commodity, out AdminShopCommodityData resolvedCommodity))
+            if (hasMetadata)
             {
                 rewardQuantity = Math.Max(1, resolvedCommodity.Count);
                 commodityOnSale = resolvedCommodity.OnSale;
@@ -8024,8 +8079,6 @@ namespace HaCreator.MapSimulator.UI
                     resolvedCommodity.PeriodDays);
             }
 
-            bool isBuyRow = commodity.Price > 0;
-            bool isAvailable = isBuyRow && commodity.SaleState == 0;
             string stateLabel = isBuyRow
                 ? commodity.SaleState == 0
                     ? string.Empty
@@ -8034,8 +8087,7 @@ namespace HaCreator.MapSimulator.UI
             AdminShopEntryState state = isBuyRow
                 ? commodity.SaleState == 0 ? AdminShopEntryState.Available : AdminShopEntryState.PreviewOnly
                 : AdminShopEntryState.PreviewOnly;
-            int maxPerSlot = Math.Max(1, commodity.MaxPerSlot);
-            int rewardMaxStackSize = InventoryItemMetadataResolver.TryResolveMaxStackForItem(commodity.ItemId, out int resolvedMaxStack)
+            int rewardMaxStackSize = InventoryItemMetadataResolver.TryResolveMaxStackForItem(resolvedItemId, out int resolvedMaxStack)
                 ? resolvedMaxStack
                 : InventoryItemMetadataResolver.ResolveMaxStack(inventoryType);
 
@@ -8055,7 +8107,7 @@ namespace HaCreator.MapSimulator.UI
                 State = state,
                 StateLabel = stateLabel,
                 RewardInventoryType = inventoryType,
-                RewardItemId = commodity.ItemId,
+                RewardItemId = resolvedItemId,
                 RewardQuantity = rewardQuantity,
                 RewardMaxStackSize = Math.Max(1, rewardMaxStackSize),
                 Response = isAvailable ? AdminShopResponse.GrantItem : AdminShopResponse.None,
@@ -8070,17 +8122,26 @@ namespace HaCreator.MapSimulator.UI
 
         private AdminShopEntry CreatePacketOwnedSellTemplateEntry(PacketOwnedAdminShopCommoditySnapshot commodity)
         {
-            if (commodity == null || commodity.ItemId <= 0)
+            if (commodity == null)
             {
                 return null;
             }
 
-            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(commodity.ItemId);
+            bool hasMetadata = TryResolvePacketOwnedCommodityMetadata(commodity, out AdminShopCommodityData resolvedCommodity);
+            int resolvedItemId = AdminShopPacketOwnedSellTemplateParity.ResolvePacketOwnedCommodityItemId(
+                commodity.ItemId,
+                hasMetadata ? resolvedCommodity.ItemId : 0);
+            if (resolvedItemId <= 0)
+            {
+                return null;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(resolvedItemId);
             AdminShopCategory category = ResolveCommodityCategory(inventoryType);
-            string title = InventoryItemMetadataResolver.TryResolveItemName(commodity.ItemId, out string itemName)
+            string title = InventoryItemMetadataResolver.TryResolveItemName(resolvedItemId, out string itemName)
                 ? itemName
-                : $"Item {commodity.ItemId.ToString(CultureInfo.InvariantCulture)}";
-            string detail = InventoryItemMetadataResolver.TryResolveItemDescription(commodity.ItemId, out string description)
+                : $"Item {resolvedItemId.ToString(CultureInfo.InvariantCulture)}";
+            string detail = InventoryItemMetadataResolver.TryResolveItemDescription(resolvedItemId, out string description)
                 ? description
                 : "Packet-authored admin-shop sell template staged directly from CAdminShopDlg::SetAdminShopDlg.";
             long mesoReward = Math.Abs((long)commodity.Price);
@@ -8110,7 +8171,7 @@ namespace HaCreator.MapSimulator.UI
                 MaxRequestCount = Math.Max(1, commodity.MaxPerSlot),
                 SuccessMesoReward = mesoReward,
                 SourceInventoryType = inventoryType,
-                SourceItemId = commodity.ItemId,
+                SourceItemId = resolvedItemId,
                 SourceItemQuantity = 1,
                 PacketSerialNumber = commodity.SerialNumber,
                 PacketSaleState = commodity.SaleState,

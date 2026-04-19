@@ -1386,6 +1386,11 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
+            if (hasSyntheticMirroredTail)
+            {
+                return 0;
+            }
+
             if (eventDelayMs > 0)
             {
                 return eventDelayMs;
@@ -1793,6 +1798,25 @@ namespace HaCreator.MapSimulator.Character
             return Math.Max(1, Math.Abs(frameDelayMs));
         }
 
+        public static float ResolveFrameAlpha(SkillFrame frame, int frameElapsedMs)
+        {
+            if (frame == null)
+            {
+                return 1f;
+            }
+
+            int startAlpha = Math.Clamp(frame.AlphaStart, 0, 255);
+            int endAlpha = Math.Clamp(frame.AlphaEnd, 0, 255);
+            int delay = ResolvePlaybackFrameDurationMs(frame.Delay);
+            if (startAlpha == endAlpha || delay <= 1)
+            {
+                return startAlpha / 255f;
+            }
+
+            float progress = MathHelper.Clamp(frameElapsedMs / (float)delay, 0f, 1f);
+            return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
+        }
+
         private static int ResolvePlaybackTotalDurationMs(SkillAnimation animation)
         {
             if (animation?.Frames == null || animation.Frames.Count == 0)
@@ -2132,6 +2156,44 @@ namespace HaCreator.MapSimulator.Character
                     yield return candidate;
                 }
             }
+        }
+
+        public static bool TryResolveAttackIdentityActionName(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string playerActionName,
+            PlayerState state,
+            out string resolvedActionName,
+            string weaponType = null,
+            int? rawActionCode = null,
+            IReadOnlySet<string> supportedRawActionNames = null)
+        {
+            resolvedActionName = null;
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (string candidate in EnumerateHelperIdentityCandidates(
+                         playerActionName,
+                         state,
+                         weaponType,
+                         rawActionCode,
+                         supportedRawActionNames))
+            {
+                if (string.IsNullOrWhiteSpace(candidate)
+                    || !IsAttackAction(candidate, rawActionCode)
+                    || !actionAnimations.TryGetValue(candidate, out SkillAnimation animation)
+                    || animation?.Frames == null
+                    || animation.Frames.Count == 0)
+                {
+                    continue;
+                }
+
+                resolvedActionName = candidate;
+                return true;
+            }
+
+            return false;
         }
 
         internal static bool ShouldSuppressRawBackedGenericAttackIdentityCandidate(
