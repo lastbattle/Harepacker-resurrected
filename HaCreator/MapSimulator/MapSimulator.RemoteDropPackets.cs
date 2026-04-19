@@ -325,7 +325,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (localPartyId > 0 && ownerId == localPartyId)
+            bool ownerMatchesLocalPartyId = localPartyId > 0
+                && (ownerId == localPartyId || normalizedOwnerId == localPartyId);
+            if (ownerMatchesLocalPartyId)
             {
                 return IsKnownDropPartyActor(
                     actorId,
@@ -562,6 +564,10 @@ namespace HaCreator.MapSimulator
                     IsTrackedDropPartyActor))
             {
                 _observedDropPartyAnchorActorIds.Add(normalizedActorId);
+                if (actorId != 0)
+                {
+                    _observedDropPartyAnchorActorIds.Add(actorId);
+                }
             }
         }
 
@@ -762,12 +768,14 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (!_remoteUserPool.TryGetActor(actorId, out RemoteUserActor actor) || string.IsNullOrWhiteSpace(actor?.Name))
+            if (!_remoteUserPool.TryGetActor(actorId, out RemoteUserActor actor) || actor == null)
             {
                 return false;
             }
 
-            return _socialListRuntime.IsTrackedPartyMember(actor.Name)
+            bool isTrackedRosterMember = !string.IsNullOrWhiteSpace(actor.Name)
+                && _socialListRuntime.IsTrackedPartyMember(actor.Name);
+            return isTrackedRosterMember
                 || IsClientPartyHelperMarker(actor.HelperMarkerType)
                 || HasClientPartyHpGauge(actor);
         }

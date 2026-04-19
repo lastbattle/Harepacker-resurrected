@@ -425,6 +425,13 @@ namespace HaCreator.MapSimulator.Fields
             AddPieceAndCoordinateAliases(aliases, objectKeyName, piece, x, y);
             AddPieceAndCoordinateAliases(aliases, authoredObjName, piece, x, y);
             AddPieceAndCoordinateAliases(aliases, authoredTag, piece, x, y);
+            if (!string.IsNullOrWhiteSpace(authoredTag))
+            {
+                foreach (string tagAlias in BuildDynamicObjectTagAliasCandidates(authoredTag, piece, x, y))
+                {
+                    aliases.Add(tagAlias);
+                }
+            }
 
             string layerObjectAlias = BuildLayerObjectAlias(layerName, objectName);
             AddPieceAndCoordinateAliases(aliases, layerObjectAlias, piece, x, y);

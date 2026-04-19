@@ -669,6 +669,8 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendAffectedMapEntries(
                     root,
                     inherited: ContextOwnedStageAffectedMapRow.Empty,
+                    inheritedFieldId: int.MinValue,
+                    allowNumericFieldIdFallback: true,
                     byFieldId);
             }
 
@@ -682,6 +684,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static void AppendAffectedMapEntries(
             WzImageProperty property,
             ContextOwnedStageAffectedMapRow inherited,
+            int inheritedFieldId,
+            bool allowNumericFieldIdFallback,
             Dictionary<int, List<ContextOwnedStageAffectedMapEntry>> byFieldId)
         {
             if (property == null)
@@ -690,7 +694,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ContextOwnedStageAffectedMapRow row = inherited.Merge(property);
-            int fieldId = row.ResolveFieldId(property);
+            bool isFieldIdAliasBranch = allowNumericFieldIdFallback
+                || ContextOwnedStageAffectedMapRow.IsFieldIdAliasName(property.Name);
+            int fieldId = row.ResolveFieldId(property, allowNumericFallback: isFieldIdAliasBranch);
+            if (fieldId <= 0)
+            {
+                fieldId = inheritedFieldId;
+            }
+
             if (fieldId > 0
                 && !string.IsNullOrWhiteSpace(row.StageKeyword)
                 && row.IsStructurallyValidForRuntimeMatch())
@@ -706,7 +717,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
             {
-                AppendAffectedMapEntries(child, row, byFieldId);
+                AppendAffectedMapEntries(
+                    child,
+                    row,
+                    fieldId,
+                    isFieldIdAliasBranch || fieldId <= 0,
+                    byFieldId);
             }
         }
 
@@ -1127,7 +1143,7 @@ namespace HaCreator.MapSimulator.Interaction
                 randomTimeSeconds);
         }
 
-        internal int ResolveFieldId(WzImageProperty property)
+        internal int ResolveFieldId(WzImageProperty property, bool allowNumericFallback = true)
         {
             int? currentFieldId = ReadFirstInt(
                 ResolveClientProperty(property, StageAffectedMapFieldIdStringPoolId, "fieldID"),
@@ -1139,16 +1155,26 @@ namespace HaCreator.MapSimulator.Interaction
                 return currentFieldId.Value;
             }
 
-            if (property is WzIntProperty intProperty
+            if (allowNumericFallback
+                && property is WzIntProperty intProperty
                 && int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
             {
                 return intProperty.Value;
             }
 
-            return property != null
+            return allowNumericFallback
+                && property != null
                 && int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
                 ? parsed
                 : int.MinValue;
+        }
+
+        internal static bool IsFieldIdAliasName(string propertyName)
+        {
+            return IsAliasNameMatch(propertyName, StageAffectedMapFieldIdStringPoolId, "fieldID")
+                || IsAliasNameMatch(propertyName, StageAffectedMapFieldIdStringPoolId, "fieldId")
+                || IsAliasNameMatch(propertyName, StageAffectedMapFieldIdStringPoolId, "affectedMap")
+                || IsAliasNameMatch(propertyName, StageAffectedMapFieldIdStringPoolId, "aAffectedMap");
         }
 
         internal ContextOwnedStageAffectedMapEntry CreateEntry(int fieldId)
@@ -1301,6 +1327,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private static bool IsAliasNameMatch(string propertyName, int stringPoolId, string fallbackName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string resolvedName = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackName);
+            return string.Equals(propertyName, fallbackName, StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrWhiteSpace(resolvedName)
+                && string.Equals(propertyName, resolvedName, StringComparison.OrdinalIgnoreCase);
         }
     }
 

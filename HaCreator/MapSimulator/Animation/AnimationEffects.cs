@@ -737,7 +737,8 @@ namespace HaCreator.MapSimulator.Animation
             Func<Vector2> getTargetPosition,
             float offsetX,
             float offsetY,
-            int currentTimeMs)
+            int currentTimeMs,
+            int initialElapsedMs = 0)
         {
             return RegisterUserState(
                 registrationKey: ownerId,
@@ -748,7 +749,8 @@ namespace HaCreator.MapSimulator.Animation
                 getTargetPosition,
                 offsetX,
                 offsetY,
-                currentTimeMs);
+                currentTimeMs,
+                initialElapsedMs);
         }
 
         public int RegisterUserState(
@@ -760,7 +762,8 @@ namespace HaCreator.MapSimulator.Animation
             Func<Vector2> getTargetPosition,
             float offsetX,
             float offsetY,
-            int currentTimeMs)
+            int currentTimeMs,
+            int initialElapsedMs = 0)
         {
             if (ownerId <= 0 || getTargetPosition == null)
             {
@@ -781,7 +784,17 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             var animation = new UserStateAnimation();
-            animation.Initialize(registrationKey, ownerId, startFrames, repeatFrames, endFrames, getTargetPosition, offsetX, offsetY, currentTimeMs);
+            animation.Initialize(
+                registrationKey,
+                ownerId,
+                startFrames,
+                repeatFrames,
+                endFrames,
+                getTargetPosition,
+                offsetX,
+                offsetY,
+                currentTimeMs,
+                initialElapsedMs);
             _userStateAnimations.Add(animation);
             return registrationKey;
         }
@@ -2477,7 +2490,8 @@ namespace HaCreator.MapSimulator.Animation
         CanvasLayerRecoveredInsertCanvasSettings InsertCanvasSettings,
         CanvasLayerRecoveredMoveSettings MoveSettings,
         CanvasLayerRecoveredPositionSettings Position,
-        int Value);
+        int Value,
+        CanvasLayerRecoveredCanvasSettings CanvasSettings);
 
     /// <summary>
     /// Snapshot of the recovered layer state after the native Effect_HP call sequence has run.
@@ -2794,7 +2808,8 @@ namespace HaCreator.MapSimulator.Animation
                         default,
                         default,
                         default,
-                        0));
+                        0,
+                        operation.CanvasSettings));
                     continue;
                 }
 
@@ -2811,7 +2826,8 @@ namespace HaCreator.MapSimulator.Animation
                         operation.Source.CanvasOffset,
                         operation.Source.CanvasOffset),
                     default,
-                    0));
+                    0,
+                    operation.CanvasSettings));
             }
 
             operations.AddRange(new CanvasLayerRecoveredNativeOperation[]
@@ -2824,7 +2840,8 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     default,
-                    registrationTrace.LayerSettings.CreateLayerCanvasValue),
+                    registrationTrace.LayerSettings.CreateLayerCanvasValue,
+                    registrationTrace.CanvasSettings),
                 new(
                     CanvasLayerRecoveredNativeOperationKind.SetLayerOption,
                     null,
@@ -2833,7 +2850,8 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     default,
-                    registrationTrace.LayerSettings.InitialLayerOptionValue),
+                    registrationTrace.LayerSettings.InitialLayerOptionValue,
+                    registrationTrace.CanvasSettings),
                 new(
                     CanvasLayerRecoveredNativeOperationKind.SetLayerPriority,
                     null,
@@ -2842,7 +2860,8 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     default,
-                    registrationTrace.LayerSettings.LayerPriorityValue)
+                    registrationTrace.LayerSettings.LayerPriorityValue,
+                    registrationTrace.CanvasSettings)
             });
 
             for (int i = 0; i < insertCommands.Length; i++)
@@ -2856,7 +2875,8 @@ namespace HaCreator.MapSimulator.Animation
                     command.InsertCanvasSettings,
                     command.MoveSettings,
                     default,
-                    0));
+                    0,
+                    registrationTrace.CanvasSettings));
             }
 
             operations.Add(new CanvasLayerRecoveredNativeOperation(
@@ -2867,7 +2887,8 @@ namespace HaCreator.MapSimulator.Animation
                 default,
                 default,
                 registrationTrace.Position,
-                0));
+                0,
+                registrationTrace.CanvasSettings));
 
             if (hasOverlayPositionWrite)
             {
@@ -2883,7 +2904,8 @@ namespace HaCreator.MapSimulator.Animation
                     new CanvasLayerRecoveredPositionSettings(
                         registrationTrace.Position.Left,
                         registrationTrace.Position.Top + overlayLayerPositionOffsetY),
-                    0));
+                    0,
+                    registrationTrace.CanvasSettings));
             }
 
             operations.Add(new CanvasLayerRecoveredNativeOperation(
@@ -2894,7 +2916,8 @@ namespace HaCreator.MapSimulator.Animation
                 default,
                 default,
                 default,
-                registrationTrace.LayerSettings.FinalizeLayerOptionValue));
+                registrationTrace.LayerSettings.FinalizeLayerOptionValue,
+                registrationTrace.CanvasSettings));
 
             if (registrationTrace.RegistersOneTimeAnimation)
             {
@@ -2906,7 +2929,8 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     default,
-                    1));
+                    1,
+                    registrationTrace.CanvasSettings));
                 operations.Add(new CanvasLayerRecoveredNativeOperation(
                     CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation,
                     null,
@@ -2915,7 +2939,8 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     default,
-                    0));
+                    0,
+                    registrationTrace.CanvasSettings));
                 operations.Add(new CanvasLayerRecoveredNativeOperation(
                     CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration,
                     null,
@@ -2924,7 +2949,8 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     default,
-                    -1));
+                    -1,
+                    registrationTrace.CanvasSettings));
             }
 
             return operations.ToArray();
@@ -4174,7 +4200,8 @@ namespace HaCreator.MapSimulator.Animation
             Func<Vector2> getTargetPosition,
             float offsetX,
             float offsetY,
-            int currentTimeMs)
+            int currentTimeMs,
+            int initialElapsedMs = 0)
         {
             RegistrationKey = registrationKey;
             OwnerId = ownerId;
@@ -4192,6 +4219,11 @@ namespace HaCreator.MapSimulator.Animation
                 : AnimationEffects.HasFrames(repeatFrames)
                     ? UserStatePhase.Repeat
                     : UserStatePhase.End;
+
+            if (initialElapsedMs > 0)
+            {
+                SeekElapsed(initialElapsedMs, currentTimeMs);
+            }
         }
 
         public bool BeginEndPhase(int currentTimeMs)
@@ -4324,6 +4356,51 @@ namespace HaCreator.MapSimulator.Animation
                 UserStatePhase.End => _endFrames,
                 _ => null
             };
+        }
+
+        private void SeekElapsed(int elapsedMs, int currentTimeMs)
+        {
+            int remainingMs = Math.Max(0, elapsedMs);
+            int guard = 0;
+            while (remainingMs > 0 && !_finished && guard++ < 4096)
+            {
+                List<IDXObject> frames = GetCurrentFrames();
+                if (!AnimationEffects.HasFrames(frames))
+                {
+                    if (!AdvancePhase(currentTimeMs))
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (_currentFrame < 0 || _currentFrame >= frames.Count)
+                {
+                    _currentFrame = 0;
+                }
+
+                int frameDelay = Math.Max(1, frames[_currentFrame]?.Delay ?? 1);
+                if (remainingMs < frameDelay)
+                {
+                    _lastFrameTime = currentTimeMs - remainingMs;
+                    return;
+                }
+
+                remainingMs -= frameDelay;
+                _currentFrame++;
+                if (_currentFrame < frames.Count)
+                {
+                    continue;
+                }
+
+                if (!AdvancePhase(currentTimeMs))
+                {
+                    break;
+                }
+            }
+
+            _lastFrameTime = currentTimeMs;
         }
     }
 

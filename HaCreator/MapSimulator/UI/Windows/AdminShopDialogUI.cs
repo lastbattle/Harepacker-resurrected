@@ -45,6 +45,11 @@ namespace HaCreator.MapSimulator.UI
             public bool AlreadyWishlisted { get; init; }
             public int Score { get; init; }
             public bool IsClientItemNameResult { get; init; }
+            public bool CanRegister { get; init; } = true;
+            public bool IsPacketAuthored { get; init; }
+            public bool HasLiveCatalogBinding { get; init; } = true;
+            public int PacketServiceSessionId { get; init; } = -1;
+            public int PacketSearchSessionId { get; init; } = -1;
         }
 
         public sealed class WishlistCategoryNode
@@ -506,6 +511,7 @@ namespace HaCreator.MapSimulator.UI
         private AdminShopPacketOwnedWishlistSearchSnapshot _packetOwnedWishlistSearchSnapshot;
         private string _packetOwnedWishlistSearchSnapshotSignature = "none";
         private int _packetOwnedWishlistSearchStateToken;
+        private readonly Dictionary<string, WishlistSearchResult> _packetOwnedWishlistSearchResultsByEntryKey = new(StringComparer.Ordinal);
         public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
         public Action<AdminShopDialogUI> WindowHidden { get; set; }
         public Func<long, bool> TryConsumeCashBalance { get; set; }
@@ -786,12 +792,30 @@ namespace HaCreator.MapSimulator.UI
 
         internal string ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(string blockingOwner, AdminShopPacketOwnedOpenPayloadSnapshot snapshot)
         {
+            bool preservePacketOwnedUserSelection = TryCapturePacketOwnedSetUserItemsSelection(
+                out InventoryType preservedUserSelectionInventoryType,
+                out int preservedUserSelectionItemId,
+                out int preservedUserSelectionSlotPosition,
+                out int preservedUserSelectionPacketSerialNumber,
+                out int preservedUserSelectionScrollOffset);
             if (snapshot != null)
             {
                 _packetOwnedAdminShopRows.Clear();
                 _packetOwnedAdminShopRows.AddRange(snapshot.Rows);
             }
 
+            ClearPendingPacketOwnedUserSellSnapshot();
+            ClearPendingPacketOwnedWishlistRegister();
+            ClearPacketOwnedWishlistSearchSnapshot();
+            ResetPendingRequestState();
+            _pendingPacketOwnedAdminShopResult = false;
+            RefreshPacketOwnedSessionRowsAtOwner(
+                preservePacketOwnedUserSelection,
+                preservedUserSelectionInventoryType,
+                preservedUserSelectionItemId,
+                preservedUserSelectionSlotPosition,
+                preservedUserSelectionPacketSerialNumber,
+                preservedUserSelectionScrollOffset);
             _packetOwnedAdminShopSession.RecordBlockedByOwner(snapshot, blockingOwner);
             _footerMessage = string.IsNullOrWhiteSpace(blockingOwner)
                 ? "Packet 367 arrived while another unique-modeless owner was active, so the admin-shop owner stayed unchanged."
@@ -1467,6 +1491,7 @@ namespace HaCreator.MapSimulator.UI
                 || !string.Equals(_packetOwnedWishlistSearchSnapshotSignature, "none", StringComparison.Ordinal);
             _packetOwnedWishlistSearchSnapshot = null;
             _packetOwnedWishlistSearchSnapshotSignature = "none";
+            ClearPacketOwnedWishlistSearchResultCache();
             if (hadSnapshot)
             {
                 AdvancePacketOwnedWishlistSearchStateToken();
@@ -1487,6 +1512,7 @@ namespace HaCreator.MapSimulator.UI
 
         public IReadOnlyList<WishlistSearchResult> SearchWishlistEntries(string query, string categoryKey, int priceRangeIndex, out string message)
         {
+            ClearPacketOwnedWishlistSearchResultCache();
             message = "Enter an item name before searching the wish list.";
             string trimmedQuery = query?.Trim();
             if (string.IsNullOrWhiteSpace(trimmedQuery))
@@ -1605,6 +1631,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (_packetOwnedWishlistSearchResultsByEntryKey.TryGetValue(entryKey, out WishlistSearchResult packetResult))
+            {
+                result = packetResult;
+                return result != null;
+            }
+
             AdminShopEntry matchedEntry = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
                 .FirstOrDefault(entry => string.Equals(GetEntryKey(entry), entryKey, StringComparison.Ordinal));
@@ -1642,7 +1674,17 @@ namespace HaCreator.MapSimulator.UI
                 .FirstOrDefault(entry => string.Equals(GetEntryKey(entry), entryKey, StringComparison.Ordinal));
             if (matchedEntry == null)
             {
-                message = "The selected wish-list result no longer maps to an NPC catalog row.";
+                if (_packetOwnedWishlistSearchResultsByEntryKey.TryGetValue(entryKey, out WishlistSearchResult packetResult)
+                    && packetResult?.IsPacketAuthored == true
+                    && !packetResult.HasLiveCatalogBinding)
+                {
+                    message = "The selected packet-authored wish-list row has no live NPC catalog binding yet; BtRegist stays disabled until the next packet 367 catalog refresh resolves it.";
+                }
+                else
+                {
+                    message = "The selected wish-list result no longer maps to an NPC catalog row.";
+                }
+
                 _footerMessage = message;
                 UpdateActionButtonStates();
                 return false;
@@ -4211,13 +4253,36 @@ namespace HaCreator.MapSimulator.UI
             HashSet<string> seenEntryKeys = new(StringComparer.Ordinal);
             Dictionary<int, int> itemCursorByItemId = new();
             int unresolvedItemCount = 0;
-            foreach (int itemId in packetItemIds)
+            IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> packetRows = snapshot.ResultRows ?? Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
+            for (int rowIndex = 0; rowIndex < packetItemIds.Count; rowIndex++)
             {
+                int itemId = packetItemIds[rowIndex];
+                AdminShopPacketOwnedWishlistSearchResultRow packetRow = rowIndex < packetRows.Count
+                    ? packetRows[rowIndex]
+                    : null;
                 if (itemId <= 0
                     || !wishlistRowsByItemId.TryGetValue(itemId, out List<AdminShopEntry> candidates)
                     || candidates.Count == 0)
                 {
-                    unresolvedItemCount++;
+                    if (TryBuildPacketOwnedWishlistSyntheticResult(
+                            snapshot,
+                            packetRow,
+                            rowIndex,
+                            requestedCategoryLabel,
+                            out WishlistSearchResult syntheticResult))
+                    {
+                        string syntheticEntryKey = syntheticResult.EntryKey;
+                        if (!string.IsNullOrWhiteSpace(syntheticEntryKey) && seenEntryKeys.Add(syntheticEntryKey))
+                        {
+                            _packetOwnedWishlistSearchResultsByEntryKey[syntheticEntryKey] = syntheticResult;
+                            results.Add(syntheticResult);
+                        }
+                    }
+                    else
+                    {
+                        unresolvedItemCount++;
+                    }
+
                     continue;
                 }
 
@@ -4237,6 +4302,14 @@ namespace HaCreator.MapSimulator.UI
                     WishlistSearchResult result = BuildWishlistSearchResult(candidate, int.MaxValue - results.Count);
                     if (result != null)
                     {
+                        result = ApplyPacketOwnedWishlistRowMetadata(
+                            result,
+                            packetRow,
+                            requestedCategoryLabel,
+                            snapshot.ServiceSessionId,
+                            snapshot.SearchSessionId,
+                            hasLiveCatalogBinding: true);
+                        _packetOwnedWishlistSearchResultsByEntryKey[result.EntryKey] = result;
                         results.Add(result);
                     }
 
@@ -4259,6 +4332,179 @@ namespace HaCreator.MapSimulator.UI
                 ? $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog."
                 : $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}.";
             return true;
+        }
+
+        private static string BuildPacketOwnedWishlistSyntheticEntryKey(
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot,
+            AdminShopPacketOwnedWishlistSearchResultRow row,
+            int rowIndex)
+        {
+            int serviceSessionId = snapshot?.ServiceSessionId ?? -1;
+            int searchSessionId = snapshot?.SearchSessionId ?? -1;
+            int itemId = row?.ItemId ?? 0;
+            return string.Concat(
+                "wlsr:",
+                Math.Max(-1, serviceSessionId).ToString(CultureInfo.InvariantCulture),
+                ":",
+                Math.Max(-1, searchSessionId).ToString(CultureInfo.InvariantCulture),
+                ":",
+                rowIndex.ToString(CultureInfo.InvariantCulture),
+                ":",
+                Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture));
+        }
+
+        private bool TryBuildPacketOwnedWishlistSyntheticResult(
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot,
+            AdminShopPacketOwnedWishlistSearchResultRow row,
+            int rowIndex,
+            string requestedCategoryLabel,
+            out WishlistSearchResult result)
+        {
+            result = null;
+            if (row == null || (!row.HasMetadata && row.ItemId <= 0))
+            {
+                return false;
+            }
+
+            int resolvedItemId = row.ResultItemId > 0
+                ? row.ResultItemId
+                : row.ItemId;
+            string title = !string.IsNullOrWhiteSpace(row.Title)
+                ? row.Title
+                : row.ItemId > 0
+                    ? $"Packet row item {row.ItemId.ToString(CultureInfo.InvariantCulture)}"
+                    : "Packet-authored row";
+            string categoryLabel = !string.IsNullOrWhiteSpace(row.CategoryKey)
+                ? GetWishlistCategoryLabel(row.CategoryKey)
+                : requestedCategoryLabel;
+            string priceLabel = !string.IsNullOrWhiteSpace(row.PriceLabel)
+                ? row.PriceLabel
+                : row.Price != long.MinValue
+                    ? FormatCashPriceLabel(row.Price)
+                    : "Price unresolved";
+            Texture2D iconTexture = ResolveWishlistResultIcon(resolvedItemId);
+            string entryKey = BuildPacketOwnedWishlistSyntheticEntryKey(snapshot, row, rowIndex);
+
+            result = new WishlistSearchResult
+            {
+                EntryKey = entryKey,
+                Title = title,
+                Seller = row.Seller ?? string.Empty,
+                PriceLabel = priceLabel,
+                Detail = row.Detail ?? string.Empty,
+                CategoryLabel = categoryLabel ?? string.Empty,
+                RewardItemId = resolvedItemId,
+                IconTexture = iconTexture,
+                AlreadyWishlisted = row.AlreadyWishlisted.GetValueOrDefault(),
+                Score = int.MaxValue - rowIndex,
+                IsClientItemNameResult = false,
+                CanRegister = false,
+                IsPacketAuthored = true,
+                HasLiveCatalogBinding = false,
+                PacketServiceSessionId = snapshot?.ServiceSessionId ?? -1,
+                PacketSearchSessionId = snapshot?.SearchSessionId ?? -1
+            };
+            return true;
+        }
+
+        private WishlistSearchResult ApplyPacketOwnedWishlistRowMetadata(
+            WishlistSearchResult baseResult,
+            AdminShopPacketOwnedWishlistSearchResultRow row,
+            string fallbackCategoryLabel,
+            int serviceSessionId,
+            int searchSessionId,
+            bool hasLiveCatalogBinding)
+        {
+            if (baseResult == null)
+            {
+                return null;
+            }
+
+            if (row == null || !row.HasMetadata)
+            {
+                return new WishlistSearchResult
+                {
+                    EntryKey = baseResult.EntryKey,
+                    Title = baseResult.Title,
+                    Seller = baseResult.Seller,
+                    PriceLabel = baseResult.PriceLabel,
+                    Detail = baseResult.Detail,
+                    CategoryLabel = baseResult.CategoryLabel,
+                    RewardItemId = baseResult.RewardItemId,
+                    IconTexture = baseResult.IconTexture,
+                    AlreadyWishlisted = baseResult.AlreadyWishlisted,
+                    Score = baseResult.Score,
+                    IsClientItemNameResult = baseResult.IsClientItemNameResult,
+                    CanRegister = hasLiveCatalogBinding,
+                    IsPacketAuthored = true,
+                    HasLiveCatalogBinding = hasLiveCatalogBinding,
+                    PacketServiceSessionId = serviceSessionId,
+                    PacketSearchSessionId = searchSessionId
+                };
+            }
+
+            int resolvedItemId = row.ResultItemId > 0
+                ? row.ResultItemId
+                : baseResult.RewardItemId > 0
+                    ? baseResult.RewardItemId
+                    : row.ItemId;
+            Texture2D iconTexture = baseResult.IconTexture ?? ResolveWishlistResultIcon(resolvedItemId);
+            string categoryLabel = !string.IsNullOrWhiteSpace(row.CategoryKey)
+                ? GetWishlistCategoryLabel(row.CategoryKey)
+                : !string.IsNullOrWhiteSpace(baseResult.CategoryLabel)
+                    ? baseResult.CategoryLabel
+                    : fallbackCategoryLabel;
+            string priceLabel = !string.IsNullOrWhiteSpace(row.PriceLabel)
+                ? row.PriceLabel
+                : row.Price != long.MinValue
+                    ? FormatCashPriceLabel(row.Price)
+                    : baseResult.PriceLabel;
+
+            return new WishlistSearchResult
+            {
+                EntryKey = baseResult.EntryKey,
+                Title = !string.IsNullOrWhiteSpace(row.Title) ? row.Title : baseResult.Title,
+                Seller = !string.IsNullOrWhiteSpace(row.Seller) ? row.Seller : baseResult.Seller,
+                PriceLabel = priceLabel ?? string.Empty,
+                Detail = !string.IsNullOrWhiteSpace(row.Detail) ? row.Detail : baseResult.Detail,
+                CategoryLabel = categoryLabel ?? string.Empty,
+                RewardItemId = resolvedItemId,
+                IconTexture = iconTexture,
+                AlreadyWishlisted = row.AlreadyWishlisted ?? baseResult.AlreadyWishlisted,
+                Score = baseResult.Score,
+                IsClientItemNameResult = baseResult.IsClientItemNameResult,
+                CanRegister = hasLiveCatalogBinding,
+                IsPacketAuthored = true,
+                HasLiveCatalogBinding = hasLiveCatalogBinding,
+                PacketServiceSessionId = serviceSessionId,
+                PacketSearchSessionId = searchSessionId
+            };
+        }
+
+        private Texture2D ResolveWishlistResultIcon(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            if (_itemIconCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D loadedTexture = LoadItemIconTexture(itemId);
+            if (loadedTexture != null)
+            {
+                _itemIconCache[itemId] = loadedTexture;
+            }
+
+            return loadedTexture;
+        }
+
+        private void ClearPacketOwnedWishlistSearchResultCache()
+        {
+            _packetOwnedWishlistSearchResultsByEntryKey.Clear();
         }
 
         private static bool MatchesPacketOwnedWishlistSearchSnapshot(
@@ -8133,7 +8379,41 @@ namespace HaCreator.MapSimulator.UI
                 hasMetadata ? resolvedCommodity.ItemId : 0);
             if (resolvedItemId <= 0)
             {
-                return null;
+                if (!AdminShopPacketOwnedSellTemplateParity.CanCreateFallbackPacketOwnedSellTemplateRow(
+                        commodity.SerialNumber,
+                        commodity.ItemId,
+                        commodity.Price))
+                {
+                    return null;
+                }
+
+                long unresolvedSellPrice = Math.Abs((long)commodity.Price);
+                int maxPerSlot = Math.Max(1, commodity.MaxPerSlot);
+                string fallbackTitle = $"Commodity SN {commodity.SerialNumber.ToString(CultureInfo.InvariantCulture)}";
+                string fallbackDetail = $"Packet-authored sell-template row kept as an authoritative serial-only listing (saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {maxPerSlot.ToString(CultureInfo.InvariantCulture)}). Source-item metadata is unresolved in Etc/Commodity.img.";
+                return new AdminShopEntry
+                {
+                    Title = fallbackTitle,
+                    Detail = fallbackDetail,
+                    Seller = _packetOwnedAdminShopSession.NpcTemplateId > 0
+                        ? $"NPC {_packetOwnedAdminShopSession.NpcTemplateId.ToString(CultureInfo.InvariantCulture)}"
+                        : "Packet-owned shop",
+                    Price = -unresolvedSellPrice,
+                    PriceLabel = $"Sell {FormatPriceLabel(unresolvedSellPrice)}",
+                    Category = AdminShopCategory.All,
+                    SupportsWishlist = false,
+                    State = AdminShopEntryState.PreviewOnly,
+                    StateLabel = "Unresolved sell template",
+                    RewardInventoryType = InventoryType.NONE,
+                    RewardItemId = 0,
+                    RewardQuantity = 1,
+                    Response = AdminShopResponse.None,
+                    MaxRequestCount = maxPerSlot,
+                    SuccessMesoReward = unresolvedSellPrice,
+                    PacketSerialNumber = commodity.SerialNumber,
+                    PacketSaleState = commodity.SaleState,
+                    IsPacketOwnedSnapshotRow = true
+                };
             }
 
             InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(resolvedItemId);

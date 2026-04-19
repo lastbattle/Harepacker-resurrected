@@ -6765,6 +6765,20 @@ namespace HaCreator.MapSimulator.Character
             }
 
             bool updatesFromLiveInsertCanvas = insertsLiveSourceCanvas && hasSourceCanvas;
+            bool resetsStaleInsertCanvasMetadataForPreparedLayerRecreation = ShouldResetMirrorImageInsertCanvasMetadataForPreparedLayerRecreation(
+                updatesFromLiveInsertCanvas,
+                preparedLayer.PreparedLayerObjectId,
+                preparedLayer.LastInsertCanvasLayerObjectId);
+            if (resetsStaleInsertCanvasMetadataForPreparedLayerRecreation)
+            {
+                preparedLayer.LastInsertedSourceSignature = 0;
+                preparedLayer.LastInsertCanvasTime = int.MinValue;
+                preparedLayer.LastInsertCanvasLayerObjectId = 0;
+                preparedLayer.LastInsertCanvasSourceLayer = null;
+                preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
+                preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
+            }
+
             preparedLayer.LastInsertedSourceSignature = ResolveMirrorImageLastInsertedSourceSignature(
                 preparedLayer.LastInsertedSourceSignature,
                 sourceSignature,
@@ -7088,6 +7102,17 @@ namespace HaCreator.MapSimulator.Character
             return hasSourceCanvas && currentSourcePartsObjectId > 0
                 ? currentSourcePartsObjectId
                 : existingSourcePartsObjectId;
+        }
+
+        internal static bool ShouldResetMirrorImageInsertCanvasMetadataForPreparedLayerRecreation(
+            bool updatesFromLiveInsertCanvas,
+            int preparedLayerObjectId,
+            int lastInsertCanvasLayerObjectId)
+        {
+            return !updatesFromLiveInsertCanvas
+                   && preparedLayerObjectId > 0
+                   && lastInsertCanvasLayerObjectId > 0
+                   && preparedLayerObjectId != lastInsertCanvasLayerObjectId;
         }
 
         internal static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
@@ -7976,7 +8001,8 @@ namespace HaCreator.MapSimulator.Character
                 _activeShadowPartner.ObservedPlayerFacingRight = FacingRight;
                 _activeShadowPartner.ObservedPlayerActionTriggerTime = actionTriggerTime;
                 RefreshShadowPartnerClientOffsetTarget(currentTime, FacingRight);
-                if (IsShadowPartnerAttackAction(playerActionName))
+                bool observedAttackAction = ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(playerActionName, State);
+                if (observedAttackAction)
                 {
                     if (TryResolveShadowPartnerAttackAction(
                             playerActionName,

@@ -2902,6 +2902,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
+                    readOnlyActionAnimations,
+                    actionName,
+                    supportedRawActionNames,
+                    piecePlanOverride: null,
+                    requireSupportedRawActionName: false);
+                if (piecedAnimation?.Frames.Count > 0)
+                {
+                    actionAnimations[actionName] = piecedAnimation;
+                    readOnlyActionAnimations =
+                        actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                        ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+                    continue;
+                }
+
                 SkillAnimation remappedAnimation = ShadowPartnerClientActionResolver.TryBuildRemappedShadowPartnerActionAnimation(
                     readOnlyActionAnimations,
                     actionName,
@@ -5704,11 +5719,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             string[] contextPathParts)
         {
             var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            bool yieldedNormalizedPath = false;
             string normalizedPath = NormalizeClientSummonedUolPath(value);
             if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
             {
-                yieldedNormalizedPath = true;
                 yield return normalizedPath;
             }
 
@@ -5722,14 +5735,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 normalizedPath = NormalizeClientSummonedUolPathToken(token, contextPathParts);
                 if (!string.IsNullOrWhiteSpace(normalizedPath) && yieldedPaths.Add(normalizedPath))
                 {
-                    yieldedNormalizedPath = true;
                     yield return normalizedPath;
                 }
-            }
-
-            if (yieldedNormalizedPath)
-            {
-                yield break;
             }
 
             foreach (string fallbackRootPath in EnumerateClientSummonedUolFallbackRootPathsFromValue(value, contextPathParts))
@@ -5836,10 +5843,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             HashSet<int> yieldedSkillIds,
             int contextSkillId)
         {
+            int tokenEnd = tokenStart + tokenLength;
             if (tokenStart < 0
                 || tokenLength <= 0
                 || yieldedSkillIds == null
                 || tokenLength > 10)
+            {
+                yield break;
+            }
+
+            if (tokenEnd + 4 <= value.Length
+                && value.Substring(tokenEnd, 4).Equals(".img", StringComparison.OrdinalIgnoreCase))
             {
                 yield break;
             }
@@ -6418,6 +6432,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             var yieldedSkillIds = new HashSet<int>();
             var processedValueTexts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var processedPathTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int contextSkillId = ResolveClientSummonedUolFallbackContextSkillId(resolvedPathParts);
             foreach (string valueText in EnumerateClientSummonedUolValueTexts(resolvedProperty))
             {
                 if (string.IsNullOrWhiteSpace(valueText)
@@ -6431,6 +6446,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                     if (parsedLinkedSkillId > 0 && yieldedSkillIds.Add(parsedLinkedSkillId))
                     {
                         yield return parsedLinkedSkillId;
+                    }
+                }
+
+                foreach (int fallbackLinkedSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(valueText, contextSkillId))
+                {
+                    if (fallbackLinkedSkillId > 0
+                        && LooksLikeClientSummonedUolInferredSkillId(fallbackLinkedSkillId)
+                        && yieldedSkillIds.Add(fallbackLinkedSkillId))
+                    {
+                        yield return fallbackLinkedSkillId;
                     }
                 }
 

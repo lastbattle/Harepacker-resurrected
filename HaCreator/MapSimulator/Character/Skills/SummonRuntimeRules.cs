@@ -325,6 +325,49 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        internal static SummonAssistType ResolvePacketSkillAssistTypeForRuntimeOwnership(
+            SkillData skill,
+            byte packetAction,
+            SummonAssistType currentAssistType)
+        {
+            if (skill == null)
+            {
+                return currentAssistType;
+            }
+
+            byte normalizedAction = (byte)(packetAction & 0x7F);
+            if (normalizedAction == PacketSkillActionSubsummon)
+            {
+                return SummonAssistType.SummonAction;
+            }
+
+            if (normalizedAction == PacketSkillActionHealingRobotHeal
+                || normalizedAction == PacketSkillActionBeholderHeal
+                || (normalizedAction >= PacketSkillActionBeholderBuffBase
+                    && normalizedAction <= PacketSkillActionBeholderBuffMax))
+            {
+                return SummonAssistType.Support;
+            }
+
+            if (normalizedAction >= PacketSkillActionSkillBranchMin
+                && normalizedAction <= PacketSkillActionSkillBranchMax)
+            {
+                if (HasMinionAbilityToken(skill.MinionAbility, "summon"))
+                {
+                    return SummonAssistType.SummonAction;
+                }
+
+                if (HasMinionAbilityToken(skill.MinionAbility, "heal")
+                    || HasMinionAbilityToken(skill.MinionAbility, "mes")
+                    || HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage"))
+                {
+                    return SummonAssistType.Support;
+                }
+            }
+
+            return currentAssistType;
+        }
+
         public static string ResolvePacketAttackBranch(SkillData skill, byte packetAction)
         {
             if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)

@@ -3950,8 +3950,6 @@ namespace HaCreator.MapSimulator
                     definition.DelayMs,
                     simulatedLayerHandleIds,
                     out List<IDXObject> frames,
-                    out Rectangle snapshotBounds,
-                    out int feetOffset,
                     out bool snapshotFacingRight,
                     out string captureError))
             {
@@ -3959,9 +3957,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            Func<Vector2> getPosition = () => new Vector2(
-                player.Position.X + snapshotBounds.Left,
-                player.Position.Y - feetOffset + snapshotBounds.Top);
+            Func<Vector2> getPosition = () => player.Position;
             Func<bool> getFlip = () => player.FacingRight;
             Vector2 fallbackPosition = getPosition();
             var state = new Animation.AnimationEffects.SecondaryMotionBlurAnimationState
@@ -4013,14 +4009,10 @@ namespace HaCreator.MapSimulator
             int frameDelayMs,
             IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds,
             out List<IDXObject> frames,
-            out Rectangle frameBounds,
-            out int feetOffset,
             out bool facingRight,
             out string message)
         {
             frames = null;
-            frameBounds = Rectangle.Empty;
-            feetOffset = 0;
             facingRight = true;
             message = null;
 
@@ -4059,8 +4051,6 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            frameBounds = frame.Bounds;
-            feetOffset = frame.FeetOffset;
             facingRight = player.FacingRight;
             return true;
         }
@@ -4079,8 +4069,6 @@ namespace HaCreator.MapSimulator
                 frameDelayMs,
                 layerHandleIds,
                 out frames,
-                out _,
-                out _,
                 out _,
                 out _);
         }
@@ -4202,8 +4190,25 @@ namespace HaCreator.MapSimulator
                 GraphicsDevice.Viewport = previousViewport;
             }
 
-            frameObject = new DXObject(0, 0, renderTarget, frameDelayMs);
+            Point offset = ResolvePacketOwnedActiveEffectMotionBlurLayerFrameOffset(frame);
+            frameObject = new DXObject(offset.X, offset.Y, renderTarget, frameDelayMs);
             return true;
+        }
+
+        internal static Point ResolvePacketOwnedActiveEffectMotionBlurLayerFrameOffsetForTesting(
+            AssembledFrame frame)
+        {
+            return ResolvePacketOwnedActiveEffectMotionBlurLayerFrameOffset(frame);
+        }
+
+        private static Point ResolvePacketOwnedActiveEffectMotionBlurLayerFrameOffset(AssembledFrame frame)
+        {
+            if (frame == null)
+            {
+                return Point.Zero;
+            }
+
+            return new Point(frame.Bounds.Left, frame.Bounds.Top - frame.FeetOffset);
         }
 
         private static IReadOnlyList<AssembledPart> ResolvePacketOwnedActiveEffectMotionBlurLayerParts(
@@ -6198,9 +6203,12 @@ namespace HaCreator.MapSimulator
             string teleportEffectStatus = _lastPacketOwnedTeleportEffectTick == int.MinValue
                 ? "idle"
                 : $"{_lastPacketOwnedTeleportEffectPath ?? "unresolved"} age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedTeleportEffectTick))} ms";
+            string teleportMovePathPayloadStatus = (_lastPacketOwnedTeleportMovePathPayload?.Length ?? 0) == 0
+                ? "none"
+                : TruncatePacketOwnedUtilityText(Convert.ToHexString(_lastPacketOwnedTeleportMovePathPayload), 72);
             string teleportRegistrationStatus = _lastPacketOwnedTeleportRegistrationTick == int.MinValue
                 ? "forced registration=idle"
-                : $"forced registration age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedTeleportRegistrationTick))} ms, movePathAttr={_lastPacketOwnedTeleportMovePathAttribute}, setItemBackground={(_lastPacketOwnedTeleportSetItemBackgroundActive ? "1/1" : "0/0")}, effect={teleportEffectStatus}";
+                : $"forced registration age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedTeleportRegistrationTick))} ms, movePathAttr={_lastPacketOwnedTeleportMovePathAttribute}, movePathPayload={teleportMovePathPayloadStatus}, setItemBackground={(_lastPacketOwnedTeleportSetItemBackgroundActive ? "1/1" : "0/0")}, effect={teleportEffectStatus}";
             string teleportOutboundSummary = string.IsNullOrWhiteSpace(_lastPacketOwnedTeleportOutboundSummary)
                 ? string.Empty
                 : $" ({TruncatePacketOwnedUtilityText(_lastPacketOwnedTeleportOutboundSummary, 180)})";
@@ -8152,11 +8160,37 @@ namespace HaCreator.MapSimulator
             bool hasPassiveTemporaryStatTrackingOwner =
                 _playerManager.Skills.HasActiveClientOwnedVehicleTemporaryStatOwnerForParity(PacketOwnedBattleshipSkillId);
             bool isVehiclePresentationActive = IsPacketOwnedBattleshipVehiclePresentationActive();
+            if (!TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue))
+            {
+                _playerManager.Skills.ClearAuthoritativeCooldownPresentation(PacketOwnedBattleshipSkillId);
+                if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
+                {
+                    RestorePacketOwnedBattleshipCooldownOverride();
+                    refreshRepairWindow = true;
+                }
+
+                if (refreshRepairWindow)
+                {
+                    RefreshPacketOwnedBattleshipRepairWindow();
+                }
+
+                return;
+            }
+
             bool hasPassiveTemporaryStatObject =
                 TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool resolvedPassiveTemporaryStatObject)
                 && resolvedPassiveTemporaryStatObject;
-            if (!TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
-                || !ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
+            if (!hasPassiveTemporaryStatObject
+                && hasPassiveTemporaryStatTrackingOwner
+                && isVehiclePresentationActive)
+            {
+                EnsurePacketOwnedBattleshipPassiveTemporaryStatObject(currTickCount);
+                hasPassiveTemporaryStatObject =
+                    TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out resolvedPassiveTemporaryStatObject)
+                    && resolvedPassiveTemporaryStatObject;
+            }
+
+            if (!ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
                     hasPassiveTemporaryStatTrackingOwner,
                     hasPassiveTemporaryStatObject,
                     isVehiclePresentationActive))
@@ -8236,6 +8270,21 @@ namespace HaCreator.MapSimulator
                     out SkillManager.PassiveVehicleTemporaryStatState passiveState)
                 && passiveState?.HasTemporaryObject == true;
             return true;
+        }
+
+        private void EnsurePacketOwnedBattleshipPassiveTemporaryStatObject(int currentTick)
+        {
+            if (_playerManager?.Skills == null)
+            {
+                return;
+            }
+
+            // Client evidence: SetSkillCooltimeOver -> UpdatePassively mutates a TEMPORARY_STAT
+            // owner; the simulator mirrors that ownership gate by seeding a passive owner state
+            // on the first qualifying packet-owned Battleship update.
+            _playerManager.Skills.EnsurePassiveVehicleTemporaryStatOwnerForParity(
+                PacketOwnedBattleshipSkillId,
+                currentTick);
         }
 
         private bool TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
@@ -9893,7 +9942,15 @@ namespace HaCreator.MapSimulator
                     {
                         PacketOwnedBalloonTextRun run = line.Runs[runIndex];
                         DrawPacketOwnedBalloonRun(
-                            run with { Style = new PacketOwnedBalloonTextStyle(run.Style.Color, run.Style.Emphasis, run.Style.Scale) },
+                            run with
+                            {
+                                Style = new PacketOwnedBalloonTextStyle(
+                                    run.Style.Color,
+                                    run.Style.Emphasis,
+                                    run.Style.Scale,
+                                    run.Style.UseShadow,
+                                    run.Style.ShadowColor)
+                            },
                             new Vector2(drawX, drawY),
                             1f);
                         drawX += MeasurePacketOwnedBalloonRun(run);
@@ -12992,6 +13049,12 @@ namespace HaCreator.MapSimulator
                 return TryQueuePacketOwnedMechanicAuthorityResult(decodedPayload, out message);
             }
 
+            if (TryQueueMechanicAuthorityResultFromStatePayload(decodedPayload, out message))
+            {
+                StampPacketOwnedUtilityRequestState();
+                return true;
+            }
+
             string tamingMobRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTamingMobRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
             if (!string.IsNullOrWhiteSpace(tamingMobRestrictionMessage))
             {
@@ -15877,6 +15940,7 @@ namespace HaCreator.MapSimulator
                 "rankingHost",
                 "hostName",
                 "host");
+            serverHost = ResolvePacketOwnedRankingHostSeed(serverHost);
             int templateId = ResolvePacketOwnedRankingOwnerInt32(
                 defaultValue: 0xAA2,
                 element,
@@ -16027,6 +16091,15 @@ namespace HaCreator.MapSimulator
                     {
                         characterId = parsedCharacterId;
                     }
+                    else if (string.Equals(name, "url", StringComparison.OrdinalIgnoreCase)
+                             && TryResolvePacketOwnedRankingRequestPartsFromRelativeUrl(
+                                 value,
+                                 out int? embeddedWorldId,
+                                 out int? embeddedCharacterId))
+                    {
+                        worldId ??= embeddedWorldId;
+                        characterId ??= embeddedCharacterId;
+                    }
                 }
             }
 
@@ -16041,14 +16114,59 @@ namespace HaCreator.MapSimulator
             }
 
             string normalizedHost = host.Trim();
-            const string nexonSuffix = ".nexon.com";
-            if (normalizedHost.EndsWith(nexonSuffix, StringComparison.OrdinalIgnoreCase)
-                && normalizedHost.Length > nexonSuffix.Length)
+            int markerIndex = normalizedHost.IndexOf("=>", StringComparison.Ordinal);
+            if (markerIndex >= 0 && markerIndex + 2 < normalizedHost.Length)
             {
-                return normalizedHost[..^nexonSuffix.Length];
+                normalizedHost = normalizedHost[(markerIndex + 2)..].Trim();
             }
 
-            return normalizedHost;
+            normalizedHost = ProgressionUtilityParityRules.NormalizeRankingServerHostSeed(normalizedHost);
+            return normalizedHost.Trim();
+        }
+
+        private static bool TryResolvePacketOwnedRankingRequestPartsFromRelativeUrl(
+            string relativeUrl,
+            out int? worldId,
+            out int? characterId)
+        {
+            worldId = null;
+            characterId = null;
+            if (string.IsNullOrWhiteSpace(relativeUrl))
+            {
+                return false;
+            }
+
+            string query = relativeUrl.Trim();
+            int queryIndex = query.IndexOf('?', StringComparison.Ordinal);
+            if (queryIndex >= 0 && queryIndex + 1 < query.Length)
+            {
+                query = query[(queryIndex + 1)..];
+            }
+
+            string[] parameters = query.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                string[] pair = parameters[i].Split('=', 2);
+                if (pair.Length == 0)
+                {
+                    continue;
+                }
+
+                string name = WebUtility.UrlDecode(pair[0]) ?? string.Empty;
+                string value = pair.Length > 1 ? WebUtility.UrlDecode(pair[1]) ?? string.Empty : string.Empty;
+                if (string.Equals(name, "worldid", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedWorldId))
+                {
+                    worldId = parsedWorldId;
+                }
+                else if (string.Equals(name, "characterid", StringComparison.OrdinalIgnoreCase)
+                         && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedCharacterId))
+                {
+                    characterId = parsedCharacterId;
+                }
+            }
+
+            return worldId.HasValue || characterId.HasValue;
         }
 
         private static string ResolvePacketOwnedRankingOwnerString(

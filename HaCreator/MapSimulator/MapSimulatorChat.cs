@@ -381,6 +381,13 @@ namespace HaCreator.MapSimulator
                 {
                     if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal)
                     {
+                        if (IsWhisperTargetPickerModalDropdownNavigating())
+                        {
+                            // When the select window is open, CCtrlComboBoxSelect::OnKey handles
+                            // only VK_UP/VK_DOWN/VK_RETURN and forwards other keys.
+                            return true;
+                        }
+
                         ToggleWhisperTargetPickerModalFocusTarget();
                         return true;
                     }
@@ -1306,6 +1313,24 @@ namespace HaCreator.MapSimulator
 
             OpenWhisperTargetPicker(tickCount, whisperTarget, _whisperTargetPickerPresentation);
             ConfirmWhisperTargetPicker(tickCount);
+        }
+
+        internal bool SelectWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(int clientRowIndex)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || clientRowIndex < 0
+                || clientRowIndex >= _whisperCandidates.Count)
+            {
+                return false;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _whisperTargetPickerSelectionIndex = clientRowIndex;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+            SetInputText(_whisperCandidates[clientRowIndex]);
+            return true;
         }
 
         internal void OffsetWhisperTargetPickerSelection(int delta)
@@ -2576,9 +2601,10 @@ namespace HaCreator.MapSimulator
             bool isDropdownOpen,
             Keys key)
         {
-            // Client CCtrlComboBox::OnKey routes VK_LEFT/VK_RIGHT through BtClicked on key-down,
-            // including when the combo list is already open so those keys collapse the list.
-            if (key == Keys.Left || key == Keys.Right)
+            // Client CCtrlComboBox::OnKey routes VK_LEFT/VK_RIGHT through BtClicked only on the combo owner.
+            // Once the select window is open, CCtrlComboBoxSelect::OnKey owns VK_UP/VK_DOWN/VK_RETURN and
+            // forwards other keys to the edit child instead of collapsing the dropdown.
+            if (!isDropdownOpen && (key == Keys.Left || key == Keys.Right))
             {
                 return true;
             }

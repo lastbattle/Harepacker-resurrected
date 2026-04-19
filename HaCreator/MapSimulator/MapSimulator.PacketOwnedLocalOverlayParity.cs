@@ -836,7 +836,7 @@ namespace HaCreator.MapSimulator
             }
 
             Color baseColor = _packetOwnedBalloonSkin?.TextColor ?? Color.Black;
-            PacketOwnedBalloonTextStyle style = new(baseColor, false, 1f);
+            PacketOwnedBalloonTextStyle style = new(baseColor, false, 1f, false, Color.Transparent);
             var glyphs = new List<PacketOwnedBalloonGlyph>(text.Length);
             string sanitized = PacketOwnedBalloonTextFormatter.Format(
                 text,
@@ -955,7 +955,7 @@ namespace HaCreator.MapSimulator
             Color baseColor,
             out PacketOwnedBalloonTextStyle style)
         {
-            style = new PacketOwnedBalloonTextStyle(baseColor, false, 1f);
+            style = new PacketOwnedBalloonTextStyle(baseColor, false, 1f, false, Color.Transparent);
             string normalized = value?.Trim();
             if (string.IsNullOrWhiteSpace(normalized)
                 || normalized.Equals("0", StringComparison.OrdinalIgnoreCase)
@@ -1001,10 +1001,16 @@ namespace HaCreator.MapSimulator
                 _ => baseColor
             };
 
+            bool useShadow = tableId % 2 == 1;
+            Color shadowColor = resolvedColor == PacketOwnedBalloonMarkupBlack
+                ? Color.White
+                : PacketOwnedBalloonMarkupBlack;
             style = new PacketOwnedBalloonTextStyle(
                 resolvedColor,
-                tableId % 2 == 1,
-                1f);
+                false,
+                1f,
+                useShadow,
+                shadowColor);
             return true;
         }
 
@@ -1154,7 +1160,7 @@ namespace HaCreator.MapSimulator
                     return true;
 
                 case 'n':
-                    style = new PacketOwnedBalloonTextStyle(baseColor, false, 1f);
+                    style = new PacketOwnedBalloonTextStyle(baseColor, false, 1f, false, Color.Transparent);
                     consumedCharacters = 1;
                     return true;
 
@@ -1453,6 +1459,17 @@ namespace HaCreator.MapSimulator
             }
 
             Color drawColor = run.Style.Color * alpha;
+            if (run.Style.UseShadow)
+            {
+                Color shadowColor = run.Style.ShadowColor * alpha;
+                DrawPacketOwnedBalloonText(
+                    spriteBatch,
+                    run.Text,
+                    new Vector2(position.X + PacketOwnedBalloonEmphasisOffsetX, position.Y + PacketOwnedBalloonEmphasisOffsetX),
+                    shadowColor,
+                    run.Style.Scale);
+            }
+
             DrawPacketOwnedBalloonText(spriteBatch, run.Text, position, drawColor, run.Style.Scale);
             if (run.Style.Emphasis)
             {
@@ -4832,7 +4849,12 @@ namespace HaCreator.MapSimulator
             LocalOverlayBalloonArrowSprite ArrowSprite,
             Rectangle ArrowBounds,
             Texture2D VisualTexture);
-        private readonly record struct PacketOwnedBalloonTextStyle(Color Color, bool Emphasis, float Scale);
+        private readonly record struct PacketOwnedBalloonTextStyle(
+            Color Color,
+            bool Emphasis,
+            float Scale,
+            bool UseShadow,
+            Color ShadowColor);
         private readonly record struct PacketOwnedBalloonGlyph(char Character, PacketOwnedBalloonTextStyle Style, int? ItemIconId = null, string UiCanvasPath = null);
         private readonly record struct PacketOwnedBalloonTextRun(string Text, PacketOwnedBalloonTextStyle Style, int? ItemIconId = null, string UiCanvasPath = null);
         private readonly record struct PacketOwnedBalloonWrappedLine(PacketOwnedBalloonTextRun[] Runs, int Width, bool PreservesLineHeight)

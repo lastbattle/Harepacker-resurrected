@@ -1398,12 +1398,17 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedTeleportTargetPortalName = null;
                 _lastPacketOwnedTeleportRegistrationTick = int.MinValue;
                 _lastPacketOwnedTeleportMovePathAttribute = -1;
+                _lastPacketOwnedTeleportMovePathPayload = Array.Empty<byte>();
                 _lastPacketOwnedTeleportSetItemBackgroundActive = false;
                 _lastPacketOwnedTeleportEffectTick = int.MinValue;
                 _lastPacketOwnedTeleportEffectPath = null;
                 _lastPacketOwnedTeleportOutboundOpcode = -1;
                 _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
                 _lastPacketOwnedTeleportOutboundSummary = null;
+                _lastCollisionVerticalJumpMovePathAttribute = -1;
+                _lastCollisionVerticalJumpMovePathPayload = Array.Empty<byte>();
+                _lastCollisionCustomImpactMovePathAttribute = -1;
+                _lastCollisionCustomImpactMovePathPayload = Array.Empty<byte>();
                 _pendingMapSpawnTarget = null;
             }
             ClearPendingPortalSessionValueImpacts();
@@ -2196,6 +2201,7 @@ namespace HaCreator.MapSimulator
             statusBarChatUI.WhisperTargetPickerModalComboDropdownToggleRequested = () => _chat.ToggleWhisperTargetPickerModalComboDropdown();
             statusBarChatUI.WhisperTargetPickerModalComboDropdownHoverRequested = target => _chat.HighlightWhisperTargetPickerModalComboDropdownCandidate(target);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownHoverIndexRequested = rowIndex => _chat.HighlightWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(rowIndex);
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownSelectIndexRequested = rowIndex => _chat.SelectWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(rowIndex);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteRequested = target => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidate(target);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteIndexRequested = rowIndex => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(rowIndex);
             statusBarChatUI.WhisperTargetPickerModalComboDropdownScrollRequested = delta => _chat.ScrollWhisperTargetPickerModalComboDropdown(delta);

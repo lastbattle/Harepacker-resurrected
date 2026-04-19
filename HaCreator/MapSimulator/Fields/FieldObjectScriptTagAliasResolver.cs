@@ -399,14 +399,16 @@ namespace HaCreator.MapSimulator.Fields
             while (openIndex >= 0)
             {
                 int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
-                if (closeIndex <= openIndex + 1)
+                if (closeIndex < openIndex)
                 {
                     openIndex = value.IndexOf('(', openIndex + 1);
                     continue;
                 }
 
                 string functionName = ReadFunctionName(value, openIndex);
-                string argumentText = value[(openIndex + 1)..closeIndex];
+                string argumentText = closeIndex == openIndex + 1
+                    ? string.Empty
+                    : value[(openIndex + 1)..closeIndex];
                 var arguments = new List<string>(SplitFunctionArguments(argumentText));
                 if (!string.IsNullOrWhiteSpace(functionName))
                 {

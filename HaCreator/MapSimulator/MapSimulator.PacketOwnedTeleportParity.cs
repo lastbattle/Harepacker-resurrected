@@ -3,6 +3,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data;
@@ -446,7 +447,12 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedTeleportMovePathAttribute = PacketOwnedTeleportForcedMovePathAttribute;
             _lastPacketOwnedTeleportSetItemBackgroundActive = true;
             _playerManager?.ForceStand();
-            _playerManager?.Player?.Physics?.SetMovePathAttribute(PacketOwnedTeleportForcedMovePathAttribute);
+            CVecCtrl physics = _playerManager?.Player?.Physics;
+            physics?.SetMovePathAttribute(PacketOwnedTeleportForcedMovePathAttribute);
+            _lastPacketOwnedTeleportMovePathPayload = TryEncodePortalOwnedMovePathSnapshot(
+                physics,
+                currentTime,
+                out _);
 
             bool effectShown = TryShowPacketOwnedTeleportGeneralEffect(targetX, targetY, currentTime);
             string detachedPassengerMessage = ClearPacketOwnedTeleportPassengerLink();

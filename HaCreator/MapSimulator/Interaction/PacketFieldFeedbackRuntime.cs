@@ -1790,8 +1790,24 @@ namespace HaCreator.MapSimulator.Interaction
                         normalizedTarget);
                     return true;
                 case 3:
+                    if (subtype != 72)
+                    {
+                        string channelName = callbacks?.ResolveChannelName?.Invoke(value);
+                        text = string.IsNullOrWhiteSpace(channelName)
+                            ? FormatWhisperStringPoolText(
+                                WhisperLocationUnavailableStringPoolId,
+                                WhisperLocationUnavailableFallback,
+                                normalizedTarget)
+                            : FormatWhisperStringPoolText(
+                                WhisperChannelStringPoolId,
+                                WhisperChannelFallback,
+                                normalizedTarget,
+                                channelName.Trim());
+                        return true;
+                    }
+
                     text = FormatWhisperStringPoolText(
-                        subtype == 72 ? WhisperUserListFormatStringPoolId : WhisperChannelStringPoolId,
+                        WhisperUserListFormatStringPoolId,
                         WhisperChannelFallback,
                         normalizedTarget,
                         callbacks?.ResolveChannelName?.Invoke(value) ?? $"Ch. {value}");
@@ -1803,7 +1819,12 @@ namespace HaCreator.MapSimulator.Interaction
                         normalizedTarget);
                     return true;
                 default:
-                    text = $"{normalizedTarget} returned whisper result {result}.";
+                    text = subtype == 72
+                        ? string.Empty
+                        : FormatWhisperStringPoolText(
+                            WhisperLocationUnavailableStringPoolId,
+                            WhisperLocationUnavailableFallback,
+                            normalizedTarget);
                     return true;
             }
         }

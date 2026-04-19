@@ -41,7 +41,7 @@ namespace HaCreator.MapSimulator.Managers
         private const ushort V95TutorMsgLocalOpcode = LocalUtilityPacketInboxManager.TutorMsgClientPacketType;
         private const int MinOfficialSessionTutorInferenceProofCount = 2;
 
-        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; tutor remains local under CUserLocal::OnPacket 255/256.";
+        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserPool::OnUserRemotePacket (0x94b390) dispatches remote-user ownership on 210-230 with no tutor owner branch; CUserLocal::OnPacket (0x9340c0) resolves the full v95 local-user owner table in that 231-276 range with tutor on 255/256 only; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
@@ -75,8 +75,9 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly IReadOnlyDictionary<ushort, string> KnownNonTutorLocalOwnerMapV95 = new Dictionary<ushort, string>
         {
             [231] = "CUserLocal::OnSitResult",
-            [232] = "CUserLocal::OnEmotion",
-            [234] = "CUserLocal::OnPassiveMove",
+            [232] = "CUser::OnEmotion",
+            [233] = "CUser::OnEffect",
+            [234] = "CUserLocal::OnTeleport",
             [236] = "CUserLocal::OnMesoGive_Succeeded",
             [237] = "CUserLocal::OnMesoGive_Failed",
             [238] = "CUserLocal::OnRandomMesobag_Succeeded",
@@ -88,11 +89,13 @@ namespace HaCreator.MapSimulator.Managers
             [245] = "CUserLocal::OnBalloonMsg",
             [246] = "CUserLocal::OnPlayEventSound",
             [247] = "CUserLocal::OnPlayMinigameSound",
+            [248] = "CUserLocal::OnMakerResult",
             [250] = "CUserLocal::OnOpenClassCompetitionPage",
             [251] = "CUserLocal::OnOpenUI",
             [252] = "CUserLocal::OnOpenUIWithOption",
             [253] = "CUserLocal::OnSetDirectionMode",
             [254] = "CUserLocal::OnSetStandAloneMode",
+            [257] = "CUserLocal::OnIncComboResponse",
             [258] = "CUserLocal::OnRandomEmotion",
             [259] = "CUserLocal::OnResignQuestReturn",
             [260] = "CUserLocal::OnPassMateName",
@@ -112,6 +115,12 @@ namespace HaCreator.MapSimulator.Managers
             [274] = "CUserLocal::OnQuestGuideResult",
             [275] = "CUserLocal::OnDeliveryQuest",
             [276] = "CUserLocal::OnSkillCooltimeSet"
+        };
+        private static readonly IReadOnlySet<ushort> KnownNoHandlerLocalOwnerOpcodesV95 = new HashSet<ushort>
+        {
+            235,
+            244,
+            249
         };
 
         private readonly ConcurrentQueue<RemoteUserOfficialSessionBridgeMessage> _pendingMessages = new();

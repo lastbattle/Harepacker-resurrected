@@ -95,7 +95,7 @@ namespace HaCreator.MapSimulator.Character
                 // `crossPiercing`, while the published archer morph surface uses
                 // `windspear` rather than verbatim `*Piercing` nodes.
                 ["piercing"] = new[] { "windspear" },
-                ["crossPiercing"] = new[] { "windspear" },
+                ["crossPiercing"] = new[] { "windspear", "stabO1", "alert" },
                 // Thief-family ranged raw actions still surface through the client table
                 // and WZ skill rows like `Skill/411.img/skill/4111005/action/0 = avenger`,
                 // `Skill/412.img/skill/4121008/action/0 = ninjastorm`, and
@@ -314,12 +314,14 @@ namespace HaCreator.MapSimulator.Character
                 ["noiseWave"] = new[] { "doublefire" },
                 ["noiseWave_pre"] = new[] { "doublefire" },
                 ["noiseWave_ing"] = new[] { "doublefire" },
-                // Later Mercedes dual-vulcan body actions in Character/00002000.img still
-                // collapse onto generic `shoot1` / `shoot2` roots, while Morph/*.img
-                // continues to publish only generic `shoot*` plus authored `windshot`.
-                ["dualVulcanPrep"] = new[] { "shoot1", "shoot2" },
-                ["dualVulcanLoop"] = new[] { "shoot1", "shoot2" },
-                ["dualVulcanEnd"] = new[] { "shoot1", "shoot2" },
+                // Character/00002000.img keeps the post-table Mercedes dual-vulcan rows
+                // on explicit body redirects rather than only generic `shoot*`:
+                // `dualVulcanPrep -> swingT1, shoot1, alert, swingP2`,
+                // `dualVulcanLoop -> shoot1, shoot2, stabO1, alert, swingP2`,
+                // and `dualVulcanEnd -> shoot2, alert`.
+                ["dualVulcanPrep"] = new[] { "swingT1", "shoot1", "alert", "swingP2", "shoot2" },
+                ["dualVulcanLoop"] = new[] { "shoot1", "shoot2", "stabO1", "alert", "swingP2" },
+                ["dualVulcanEnd"] = new[] { "shoot2", "alert", "shoot1" },
                 // Client-table and skill-side dual-shot requests still reach the morph
                 // owner as raw names, while Character/00002000.img backs them with
                 // ordinary shoot frames plus late swing backstops and Morph/*.img only
@@ -351,7 +353,7 @@ namespace HaCreator.MapSimulator.Character
                 // while Character/00002000.img backs it with shoot-family frames before
                 // mixed swing/stab backstops and Morph/*.img publishes only generic
                 // `shoot*` plus authored archer roots for that surface.
-                ["strikeDual"] = new[] { "shoot2", "shoot1", "shootF", "windshot", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["strikeDual"] = new[] { "shoot2", "swingT2", "stabO1", "alert", "shoot1", "shootF", "windshot", "swingT1", "swingT3", "stabO2", "proneStab" },
                 // Support-family client raw actions like `smokeshell`, `holyshield`, and
                 // `resurrection` still come from WZ skill rows, but the checked morph
                 // templates only publish the alert-family surface rather than those verbatim
@@ -624,7 +626,17 @@ namespace HaCreator.MapSimulator.Character
                 ["spiritJump"] = new[] { "jump" },
                 // Character/00002000.img keeps `slayerDoubleJump` on `jump`, while
                 // Morph/*.img still has no verbatim slayer branch.
-                ["slayerDoubleJump"] = new[] { "jump" }
+                ["slayerDoubleJump"] = new[] { "jump" },
+                // Post-s_sMorphAction raw action codes still include these late
+                // double-jump names. Character/00002000.img keeps
+                // `archerDoubleJump/0/action = jump` and keeps all checked
+                // `iceDoubleJump/*/action = alert`, while Morph/*.img only
+                // publishes verbatim roots on template-specific branches.
+                // Keep exact authored morph roots first (handled by
+                // ShouldPreferExactPublishedAction), then apply these checked
+                // body redirects before broader double-jump family fallback.
+                ["archerDoubleJump"] = new[] { "jump" },
+                ["iceDoubleJump"] = new[] { "alert", "jump" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedMovementMorphFallbackAliases =

@@ -283,6 +283,8 @@ namespace HaCreator.MapSimulator.Interaction
             public bool HasNormalAutoStart { get; init; }
             public bool HasFieldEnterAutoStart { get; init; }
             public bool HasEquipOnAutoStart { get; init; }
+            public bool HasAutoCompleteAlert { get; init; }
+            public bool HasAutoPreCompleteAlert { get; init; }
             public bool StartDayByDayRepeat { get; init; }
             public bool StartWeeklyRepeat { get; init; }
             public int StartRepeatIntervalMinutes { get; init; }
@@ -786,9 +788,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return definition.HasNormalAutoStart
-                   || definition.HasFieldEnterAutoStart
-                   || definition.HasEquipOnAutoStart;
+            bool isAutoStartQuest = definition.HasNormalAutoStart
+                                    || definition.HasFieldEnterAutoStart
+                                    || definition.HasEquipOnAutoStart;
+            bool isAutoCompletionAlertQuest = PacketOwnedQuestStartRequest.ResolveIsAutoCompletionAlertQuest(
+                definition.HasAutoCompleteAlert,
+                definition.HasAutoPreCompleteAlert);
+            return PacketOwnedQuestStartRequest.ResolveIsAutoAlertQuest(
+                isAutoStartQuest,
+                isAutoCompletionAlertQuest);
         }
 
         public void PrimeQuestAlarmAutoRegisterActivity(IEnumerable<int> questIds)
@@ -922,6 +930,66 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _packetOwnedQuestAlarmTitleTooltips.Remove(questId);
             }
+        }
+
+        public int ApplyPacketOwnedQuestAlarmTitleTooltipSnapshot(
+            IReadOnlyDictionary<int, string> tooltipByQuestId,
+            bool clearUnspecifiedTooltips)
+        {
+            EnsureDefinitionsLoaded();
+
+            HashSet<int> retainedQuestIds = clearUnspecifiedTooltips
+                ? new HashSet<int>()
+                : null;
+            int appliedCount = 0;
+
+            if (tooltipByQuestId != null)
+            {
+                foreach ((int questId, string tooltipText) in tooltipByQuestId)
+                {
+                    if (questId <= 0 || !_definitions.ContainsKey(questId))
+                    {
+                        continue;
+                    }
+
+                    string normalizedText = NormalizePacketOwnedQuestAlarmTitleTooltip(tooltipText);
+                    if (string.IsNullOrWhiteSpace(normalizedText))
+                    {
+                        _packetOwnedQuestAlarmTitleTooltips.Remove(questId);
+                        retainedQuestIds?.Add(questId);
+                        continue;
+                    }
+
+                    _packetOwnedQuestAlarmTitleTooltips[questId] = normalizedText;
+                    retainedQuestIds?.Add(questId);
+                    appliedCount++;
+                }
+            }
+
+            if (clearUnspecifiedTooltips)
+            {
+                List<int> staleQuestIds = null;
+                foreach ((int questId, _) in _packetOwnedQuestAlarmTitleTooltips)
+                {
+                    if (retainedQuestIds.Contains(questId))
+                    {
+                        continue;
+                    }
+
+                    staleQuestIds ??= new List<int>();
+                    staleQuestIds.Add(questId);
+                }
+
+                if (staleQuestIds != null)
+                {
+                    for (int i = 0; i < staleQuestIds.Count; i++)
+                    {
+                        _packetOwnedQuestAlarmTitleTooltips.Remove(staleQuestIds[i]);
+                    }
+                }
+            }
+
+            return appliedCount;
         }
 
         public void RecordQuestDetailViewed(int questId)
@@ -3946,6 +4014,10 @@ namespace HaCreator.MapSimulator.Interaction
                 : definition.EndQuestRequirements;
             bool hasUnmetJobRequirement = state == QuestStateType.Not_Started &&
                 HasUnmetStartJobRequirement(definition, build);
+            bool hasUnmetLevelRequirement = state == QuestStateType.Not_Started &&
+                HasUnmetStartLevelRequirement(definition, build);
+            bool hasUnmetFameRequirement = state == QuestStateType.Not_Started &&
+                HasUnmetStartFameRequirement(definition, build);
             int? infoNumber = state == QuestStateType.Not_Started
                 ? definition.StartInfoNumber
                 : definition.EndInfoNumber;
@@ -3960,6 +4032,28 @@ namespace HaCreator.MapSimulator.Interaction
                 infoNumber,
                 infoRequirements,
                 infoExRequirements);
+            IReadOnlyList<QuestSkillRequirement> skillRequirements = state == QuestStateType.Not_Started
+                ? definition.StartSkillRequirements
+                : definition.EndSkillRequirements;
+            bool hasUnmetSkillRequirement = HasUnmetSkillRequirements(skillRequirements);
+            QuestPetRequirementContext petRequirementContext = state == QuestStateType.Not_Started
+                ? CreatePetRequirementContext(
+                    definition.StartPetRequirements,
+                    definition.StartPetRecallLimit,
+                    definition.StartPetTamenessMinimum,
+                    definition.StartPetTamenessMaximum)
+                : CreatePetRequirementContext(
+                    definition.EndPetRequirements,
+                    definition.EndPetRecallLimit,
+                    definition.EndPetTamenessMinimum,
+                    definition.EndPetTamenessMaximum);
+            bool hasUnmetPetRequirement = HasUnmetPetRequirement(petRequirementContext);
+            bool hasUnmetMesoRequirement = state == QuestStateType.Started &&
+                definition.EndMesoRequirement > 0 &&
+                GetCurrentMesoCount() < definition.EndMesoRequirement;
+            bool hasUnmetAvailabilityRequirement = HasUnmetAvailabilityRequirement(definition, state);
+            bool hasUnmetEquipRequirement = state == QuestStateType.Not_Started &&
+                HasUnmetEquipRequirement(definition, build);
 
             return SelectIssueConversationPagesCore(
                 state,
@@ -3970,6 +4064,13 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetQuestRequirements(questRequirements),
                 hasUnmetJobRequirement,
                 hasUnmetQuestRecordRequirements,
+                hasUnmetLevelRequirement,
+                hasUnmetFameRequirement,
+                hasUnmetSkillRequirement,
+                hasUnmetPetRequirement,
+                hasUnmetMesoRequirement,
+                hasUnmetAvailabilityRequirement,
+                hasUnmetEquipRequirement,
                 GetMissingItemRequirementIds(itemRequirements),
                 GetMissingMobRequirementIds(definition),
                 GetUnmetQuestRequirementIds(questRequirements),
@@ -3986,6 +4087,13 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetQuestRequirements,
             bool hasUnmetJobRequirement,
             bool hasUnmetQuestRecordRequirements,
+            bool hasUnmetLevelRequirement,
+            bool hasUnmetFameRequirement,
+            bool hasUnmetSkillRequirement,
+            bool hasUnmetPetRequirement,
+            bool hasUnmetMesoRequirement,
+            bool hasUnmetAvailabilityRequirement,
+            bool hasUnmetEquipRequirement,
             IReadOnlyList<int> missingItemStopBranchIds,
             IReadOnlyList<int> missingMobStopBranchIds,
             IReadOnlyList<int> unmetQuestStopBranchIds,
@@ -4067,6 +4175,78 @@ namespace HaCreator.MapSimulator.Interaction
                 return blockedInfoPages;
             }
 
+            if (hasUnmetLevelRequirement &&
+                TryGetStopPages(stopPages, "lv", out IReadOnlyList<NpcInteractionPage> levelPages))
+            {
+                return levelPages;
+            }
+
+            if (hasUnmetLevelRequirement &&
+                TryGetStopPages(stopPages, "level", out levelPages))
+            {
+                return levelPages;
+            }
+
+            if (hasUnmetFameRequirement &&
+                TryGetStopPages(stopPages, "pop", out IReadOnlyList<NpcInteractionPage> famePages))
+            {
+                return famePages;
+            }
+
+            if (hasUnmetFameRequirement &&
+                TryGetStopPages(stopPages, "fame", out famePages))
+            {
+                return famePages;
+            }
+
+            if (hasUnmetSkillRequirement &&
+                TryGetStopPages(stopPages, "skill", out IReadOnlyList<NpcInteractionPage> skillPages))
+            {
+                return skillPages;
+            }
+
+            if (hasUnmetPetRequirement &&
+                TryGetStopPages(stopPages, "pet", out IReadOnlyList<NpcInteractionPage> petPages))
+            {
+                return petPages;
+            }
+
+            if (hasUnmetMesoRequirement &&
+                TryGetStopPages(stopPages, "money", out IReadOnlyList<NpcInteractionPage> mesoPages))
+            {
+                return mesoPages;
+            }
+
+            if (hasUnmetMesoRequirement &&
+                TryGetStopPages(stopPages, "meso", out mesoPages))
+            {
+                return mesoPages;
+            }
+
+            if (hasUnmetAvailabilityRequirement &&
+                TryGetStopPages(stopPages, "day", out IReadOnlyList<NpcInteractionPage> dayPages))
+            {
+                return dayPages;
+            }
+
+            if (hasUnmetAvailabilityRequirement &&
+                TryGetStopPages(stopPages, "date", out IReadOnlyList<NpcInteractionPage> datePages))
+            {
+                return datePages;
+            }
+
+            if (hasUnmetAvailabilityRequirement &&
+                TryGetStopPages(stopPages, "time", out IReadOnlyList<NpcInteractionPage> timePages))
+            {
+                return timePages;
+            }
+
+            if (hasUnmetEquipRequirement &&
+                TryGetStopPages(stopPages, "equip", out IReadOnlyList<NpcInteractionPage> equipPages))
+            {
+                return equipPages;
+            }
+
             if (TryGetStopPages(stopPages, "default", out IReadOnlyList<NpcInteractionPage> defaultPages))
             {
                 return defaultPages;
@@ -4095,6 +4275,104 @@ namespace HaCreator.MapSimulator.Interaction
             return (definition.AllowedJobs.Count > 0 && !MatchesAllowedJobs(build.Job, definition.AllowedJobs))
                 || (definition.StartSubJobFlagsRequirement > 0 &&
                     !MatchesQuestSubJobFlags(build.Job, build.SubJob, definition.StartSubJobFlagsRequirement));
+        }
+
+        private static bool HasUnmetStartLevelRequirement(QuestDefinition definition, CharacterBuild build)
+        {
+            if (definition == null || build == null)
+            {
+                return false;
+            }
+
+            int currentLevel = build.Level;
+            if (definition.MinLevel.HasValue && currentLevel < definition.MinLevel.Value)
+            {
+                return true;
+            }
+
+            return definition.MaxLevel.HasValue && currentLevel > definition.MaxLevel.Value;
+        }
+
+        private static bool HasUnmetStartFameRequirement(QuestDefinition definition, CharacterBuild build)
+        {
+            return definition?.StartFameRequirement.HasValue == true &&
+                   GetCurrentFame(build) < definition.StartFameRequirement.Value;
+        }
+
+        private bool HasUnmetSkillRequirements(IReadOnlyList<QuestSkillRequirement> requirements)
+        {
+            if (requirements == null || requirements.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                if (!MeetsSkillRequirement(requirements[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool HasUnmetPetRequirement(QuestPetRequirementContext context)
+        {
+            if (!HasPetRequirementContext(context))
+            {
+                return false;
+            }
+
+            return _hasCompatibleActivePetProvider?.Invoke(
+                       context.Requirements.Select(static requirement => requirement.ItemId).ToArray(),
+                       context.RecallLimit,
+                       context.TamenessMinimum,
+                       context.TamenessMaximum) != true;
+        }
+
+        private static bool HasUnmetAvailabilityRequirement(QuestDefinition definition, QuestStateType state)
+        {
+            if (definition == null)
+            {
+                return false;
+            }
+
+            DateTime now = DateTime.Now;
+            DateTime? availableFrom = state == QuestStateType.Not_Started
+                ? definition.StartAvailableFrom
+                : definition.EndAvailableFrom;
+            DateTime? availableUntil = state == QuestStateType.Not_Started
+                ? definition.StartAvailableUntil
+                : definition.EndAvailableUntil;
+            IReadOnlyList<DayOfWeek> allowedDays = state == QuestStateType.Not_Started
+                ? definition.StartAllowedDays
+                : definition.EndAllowedDays;
+
+            if (availableFrom.HasValue && now < availableFrom.Value)
+            {
+                return true;
+            }
+
+            if (availableUntil.HasValue && now > availableUntil.Value)
+            {
+                return true;
+            }
+
+            return allowedDays != null &&
+                   allowedDays.Count > 0 &&
+                   !allowedDays.Contains(now.DayOfWeek);
+        }
+
+        private static bool HasUnmetEquipRequirement(QuestDefinition definition, CharacterBuild build)
+        {
+            if (definition == null)
+            {
+                return false;
+            }
+
+            return !MatchesEquipAllNeed(build, definition.StartEquipAllNeedItemIds) ||
+                   !MatchesEquipSelectNeed(build, definition.StartEquipSelectNeedItemIds);
         }
 
         private void AppendRequirementSummary(QuestDefinition definition, ICollection<string> details, CharacterBuild build)
@@ -7301,6 +7579,8 @@ namespace HaCreator.MapSimulator.Interaction
                 HasNormalAutoStart = ParseTruthyFlag(startCheck?["normalAutoStart"]),
                 HasFieldEnterAutoStart = startCheck?["fieldEnter"] != null,
                 HasEquipOnAutoStart = HasEquipOnAutoStart(startCheck),
+                HasAutoCompleteAlert = ParseTruthyFlag(questInfo["autoComplete"]),
+                HasAutoPreCompleteAlert = ParseTruthyFlag(questInfo["autoPreComplete"]),
                 StartDayByDayRepeat = ParseTruthyFlag(startCheck?["dayByDay"]),
                 StartWeeklyRepeat = ParseTruthyFlag(startCheck?["weeklyRepeat"]),
                 StartRepeatIntervalMinutes = ParsePositiveInt(startCheck?["interval"]).GetValueOrDefault(),

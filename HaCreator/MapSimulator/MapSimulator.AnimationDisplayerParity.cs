@@ -119,7 +119,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, List<List<IDXObject>>> _animationDisplayerSkillUseEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<AnimationDisplayerSkillUseAvatarEffectVariant>> _animationDisplayerSkillUseAvatarEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<(int ItemId, EquipSlot Slot), AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
-        private readonly Dictionary<int, List<int>> _animationDisplayerFollowAnimationIds = new();
+        private readonly Dictionary<int, List<AnimationDisplayerFollowRegistrationEntry>> _animationDisplayerFollowAnimationIds = new();
         private readonly Dictionary<int, int> _animationDisplayerFollowRegistrationSignatures = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
@@ -183,6 +183,12 @@ namespace HaCreator.MapSimulator
             public int ZOrder { get; init; }
             public EquipSlot SourceEquipSlot { get; init; }
             public int ClientEquipIndex { get; init; }
+        }
+
+        private sealed class AnimationDisplayerFollowRegistrationEntry
+        {
+            public int DefinitionKey { get; init; }
+            public int FollowId { get; init; }
         }
 
         internal readonly record struct AnimationDisplayerFollowEquipmentCandidate(
@@ -1489,6 +1495,11 @@ namespace HaCreator.MapSimulator
             return (int)delayed;
         }
 
+        internal static bool ShouldConsumeAnimationDisplayerReservedTypeWithoutVisualFallback(int type)
+        {
+            return type >= 2 && type <= 6;
+        }
+
         private bool TryRegisterAnimationDisplayerLocalCooldownReady(int currentTime)
         {
             if (!TryResolveAnimationDisplayerOwner(
@@ -2140,105 +2151,246 @@ namespace HaCreator.MapSimulator
             {
                 definitionsToRegister.Add(null);
             }
+            else if (definitionsToRegister.Count == 0)
+            {
+                ClearAnimationDisplayerFollowRegistration(registrationKey);
+                return false;
+            }
+
             Func<bool> getOwnerFlip = ResolveAnimationDisplayerFollowOwnerFlip(ownerCharacterId);
             Func<bool> getOwnerMoveAction = ResolveAnimationDisplayerFollowOwnerMoveAction(ownerCharacterId);
-
-            ClearAnimationDisplayerFollowRegistration(registrationKey);
-            var followIds = new List<int>(definitionsToRegister.Count);
+            Dictionary<int, Queue<AnimationDisplayerFollowRegistrationEntry>> existingEntriesByDefinitionKey =
+                BuildAnimationDisplayerFollowExistingEntriesByDefinitionKey(registrationKey);
+            var resolvedEntries = new List<AnimationDisplayerFollowRegistrationEntry>(definitionsToRegister.Count);
             for (int definitionIndex = 0; definitionIndex < definitionsToRegister.Count; definitionIndex++)
             {
                 AnimationDisplayerFollowEquipmentDefinition followDefinition = definitionsToRegister[definitionIndex];
-                List<IDXObject> frames = null;
-                IReadOnlyList<List<IDXObject>> followFrameVariants = followDefinition?.EffectFrameVariants;
-                if (!string.IsNullOrWhiteSpace(followDefinition?.EffectUol)
-                    && !Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
+                int definitionKey = BuildAnimationDisplayerFollowRegistrationDefinitionKey(
+                    followDefinition,
+                    relativeEmission,
+                    definitionIndex);
+
+                if (TryDequeueAnimationDisplayerFollowRegistrationEntry(
+                        existingEntriesByDefinitionKey,
+                        definitionKey,
+                        out AnimationDisplayerFollowRegistrationEntry existingEntry))
                 {
-                    TryGetAnimationDisplayerFrames(
-                        $"follow:equipment:{followDefinition.ItemId}",
-                        followDefinition.EffectUol,
-                        out frames);
+                    resolvedEntries.Add(existingEntry);
+                    continue;
                 }
 
-                if (followDefinition == null && !Animation.AnimationEffects.HasFrames(frames))
-                {
-                    TryGetAnimationDisplayerFrames("follow:generic", AnimationDisplayerGenericUserStateEffectUol, out frames);
-                }
-
-                if (!Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
-                {
-                    followFrameVariants = followDefinition == null
-                        ? LoadAnimationDisplayerFollowFrameVariants()
-                        : followDefinition?.EffectFrameVariants;
-                }
-
-                if (!Animation.AnimationEffects.HasFrames(frames)
-                    && !Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
+                if (!TryRegisterAnimationDisplayerFollowDefinition(
+                        ownerCharacterId,
+                        getPosition,
+                        relativeEmission,
+                        followDefinition,
+                        getOwnerFlip,
+                        getOwnerMoveAction,
+                        out int followId))
                 {
                     continue;
                 }
 
-                IReadOnlyList<Vector2> generationPoints = followDefinition?.GenerationPoints;
-                float resolvedRadius = followDefinition?.Radius > 0f
-                    ? followDefinition.Radius
-                    : AnimationDisplayerFollowRadius;
-                bool spawnOnlyOnOwnerMove = followDefinition?.SpawnOnlyOnOwnerMove ?? false;
-                Func<Vector2> getFollowTargetPosition = ResolveAnimationDisplayerFollowTargetPosition(
-                    ownerCharacterId,
-                    getPosition,
-                    followDefinition);
-                Point spawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission, followDefinition);
-                Point spawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission, followDefinition);
-                int followId = _animationEffects.AddFollow(
-                    frames,
-                    getFollowTargetPosition,
-                    offsetX: 0f,
-                    offsetY: followDefinition == null ? AnimationDisplayerUserStateOffsetY : 0f,
-                    durationMs: AnimationDisplayerFollowDurationMs,
-                    currentTimeMs: currTickCount,
-                    options: new Animation.AnimationEffects.FollowAnimationOptions
-                    {
-                        GenerationPoints = generationPoints ?? BuildAnimationDisplayerFollowGenerationPoints(
-                            AnimationDisplayerFollowRadius,
-                            AnimationDisplayerFollowPointCount),
-                        ThetaDegrees = followDefinition?.ThetaDegrees ?? AnimationDisplayerFollowThetaDegrees,
-                        Radius = resolvedRadius,
-                        RandomizeStartupAngle = true,
-                        GetTargetFlip = getOwnerFlip,
-                        UpdateIntervalMs = followDefinition?.UpdateIntervalMs > 0
-                            ? followDefinition.UpdateIntervalMs
-                            : AnimationDisplayerFollowUpdateIntervalMs,
-                        SpawnFrameVariants = followFrameVariants,
-                        SpawnRelativeToTarget = ResolveAnimationDisplayerFollowSpawnRelativeToTarget(
-                            relativeEmission,
-                            followDefinition?.SpawnRelativeToTarget),
-                        SuppressTargetFlip = followDefinition?.SuppressOwnerFlip ?? false,
-                        SpawnOnlyOnTargetMove = spawnOnlyOnOwnerMove,
-                        IsTargetMoveAction = spawnOnlyOnOwnerMove ? getOwnerMoveAction : null,
-                        SpawnArea = followDefinition?.EmissionArea ?? BuildAnimationDisplayerFollowEmissionArea(),
-                        SpawnUsesEmissionBox = !relativeEmission,
-                        SpawnAppliesEmissionBias = relativeEmission && (followDefinition?.UsesRelativeEmission ?? true),
-                        SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
-                        SpawnDurationMs = followDefinition?.SpawnDurationMs ?? 0,
-                        SpawnOffsetMin = spawnOffsetMin,
-                        SpawnOffsetMax = spawnOffsetMax,
-                        SpawnZOrder = followDefinition?.ZOrder ?? 0
-                    });
-                if (followId >= 0)
+                resolvedEntries.Add(new AnimationDisplayerFollowRegistrationEntry
                 {
-                    followIds.Add(followId);
-                }
+                    DefinitionKey = definitionKey,
+                    FollowId = followId
+                });
             }
 
-            if (followIds.Count == 0)
+            RemoveAnimationDisplayerFollowStaleEntries(existingEntriesByDefinitionKey);
+            if (resolvedEntries.Count == 0)
             {
+                _animationDisplayerFollowAnimationIds.Remove(registrationKey);
                 _animationDisplayerFollowRegistrationSignatures.Remove(registrationKey);
                 return false;
             }
 
-            _animationDisplayerFollowAnimationIds[registrationKey] = followIds;
+            _animationDisplayerFollowAnimationIds[registrationKey] = resolvedEntries;
             _animationDisplayerFollowRegistrationSignatures[registrationKey] =
                 ResolveAnimationDisplayerFollowCandidateSignature(ownerCharacterId);
             return true;
+        }
+
+        private bool TryRegisterAnimationDisplayerFollowDefinition(
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            bool relativeEmission,
+            AnimationDisplayerFollowEquipmentDefinition followDefinition,
+            Func<bool> getOwnerFlip,
+            Func<bool> getOwnerMoveAction,
+            out int followId)
+        {
+            followId = -1;
+            List<IDXObject> frames = null;
+            IReadOnlyList<List<IDXObject>> followFrameVariants = followDefinition?.EffectFrameVariants;
+            if (!string.IsNullOrWhiteSpace(followDefinition?.EffectUol)
+                && !Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
+            {
+                TryGetAnimationDisplayerFrames(
+                    $"follow:equipment:{followDefinition.ItemId}",
+                    followDefinition.EffectUol,
+                    out frames);
+            }
+
+            if (followDefinition == null && !Animation.AnimationEffects.HasFrames(frames))
+            {
+                TryGetAnimationDisplayerFrames("follow:generic", AnimationDisplayerGenericUserStateEffectUol, out frames);
+            }
+
+            if (!Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
+            {
+                followFrameVariants = followDefinition == null
+                    ? LoadAnimationDisplayerFollowFrameVariants()
+                    : followDefinition?.EffectFrameVariants;
+            }
+
+            if (!Animation.AnimationEffects.HasFrames(frames)
+                && !Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
+            {
+                return false;
+            }
+
+            IReadOnlyList<Vector2> generationPoints = followDefinition?.GenerationPoints;
+            float resolvedRadius = followDefinition?.Radius > 0f
+                ? followDefinition.Radius
+                : AnimationDisplayerFollowRadius;
+            bool spawnOnlyOnOwnerMove = followDefinition?.SpawnOnlyOnOwnerMove ?? false;
+            Func<Vector2> getFollowTargetPosition = ResolveAnimationDisplayerFollowTargetPosition(
+                ownerCharacterId,
+                getPosition,
+                followDefinition);
+            Point spawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission, followDefinition);
+            Point spawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission, followDefinition);
+            followId = _animationEffects.AddFollow(
+                frames,
+                getFollowTargetPosition,
+                offsetX: 0f,
+                offsetY: followDefinition == null ? AnimationDisplayerUserStateOffsetY : 0f,
+                durationMs: AnimationDisplayerFollowDurationMs,
+                currentTimeMs: currTickCount,
+                options: new Animation.AnimationEffects.FollowAnimationOptions
+                {
+                    GenerationPoints = generationPoints ?? BuildAnimationDisplayerFollowGenerationPoints(
+                        AnimationDisplayerFollowRadius,
+                        AnimationDisplayerFollowPointCount),
+                    ThetaDegrees = followDefinition?.ThetaDegrees ?? AnimationDisplayerFollowThetaDegrees,
+                    Radius = resolvedRadius,
+                    RandomizeStartupAngle = true,
+                    GetTargetFlip = getOwnerFlip,
+                    UpdateIntervalMs = followDefinition?.UpdateIntervalMs > 0
+                        ? followDefinition.UpdateIntervalMs
+                        : AnimationDisplayerFollowUpdateIntervalMs,
+                    SpawnFrameVariants = followFrameVariants,
+                    SpawnRelativeToTarget = ResolveAnimationDisplayerFollowSpawnRelativeToTarget(
+                        relativeEmission,
+                        followDefinition?.SpawnRelativeToTarget),
+                    SuppressTargetFlip = followDefinition?.SuppressOwnerFlip ?? false,
+                    SpawnOnlyOnTargetMove = spawnOnlyOnOwnerMove,
+                    IsTargetMoveAction = spawnOnlyOnOwnerMove ? getOwnerMoveAction : null,
+                    SpawnArea = followDefinition?.EmissionArea ?? BuildAnimationDisplayerFollowEmissionArea(),
+                    SpawnUsesEmissionBox = !relativeEmission,
+                    SpawnAppliesEmissionBias = relativeEmission && (followDefinition?.UsesRelativeEmission ?? true),
+                    SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
+                    SpawnDurationMs = followDefinition?.SpawnDurationMs ?? 0,
+                    SpawnOffsetMin = spawnOffsetMin,
+                    SpawnOffsetMax = spawnOffsetMax,
+                    SpawnZOrder = followDefinition?.ZOrder ?? 0
+                });
+
+            return followId >= 0;
+        }
+
+        private Dictionary<int, Queue<AnimationDisplayerFollowRegistrationEntry>> BuildAnimationDisplayerFollowExistingEntriesByDefinitionKey(
+            int registrationKey)
+        {
+            var existingEntriesByDefinitionKey = new Dictionary<int, Queue<AnimationDisplayerFollowRegistrationEntry>>();
+            if (registrationKey == 0
+                || !_animationDisplayerFollowAnimationIds.TryGetValue(registrationKey, out List<AnimationDisplayerFollowRegistrationEntry> existingEntries)
+                || existingEntries == null)
+            {
+                return existingEntriesByDefinitionKey;
+            }
+
+            for (int i = 0; i < existingEntries.Count; i++)
+            {
+                AnimationDisplayerFollowRegistrationEntry existingEntry = existingEntries[i];
+                if (existingEntry == null || existingEntry.FollowId < 0)
+                {
+                    continue;
+                }
+
+                if (!existingEntriesByDefinitionKey.TryGetValue(existingEntry.DefinitionKey, out Queue<AnimationDisplayerFollowRegistrationEntry> queue))
+                {
+                    queue = new Queue<AnimationDisplayerFollowRegistrationEntry>();
+                    existingEntriesByDefinitionKey[existingEntry.DefinitionKey] = queue;
+                }
+
+                queue.Enqueue(existingEntry);
+            }
+
+            return existingEntriesByDefinitionKey;
+        }
+
+        private static bool TryDequeueAnimationDisplayerFollowRegistrationEntry(
+            Dictionary<int, Queue<AnimationDisplayerFollowRegistrationEntry>> existingEntriesByDefinitionKey,
+            int definitionKey,
+            out AnimationDisplayerFollowRegistrationEntry entry)
+        {
+            entry = null;
+            if (existingEntriesByDefinitionKey != null
+                && existingEntriesByDefinitionKey.TryGetValue(definitionKey, out Queue<AnimationDisplayerFollowRegistrationEntry> queue)
+                && queue != null
+                && queue.Count > 0)
+            {
+                entry = queue.Dequeue();
+                return entry != null && entry.FollowId >= 0;
+            }
+
+            return false;
+        }
+
+        private void RemoveAnimationDisplayerFollowStaleEntries(
+            Dictionary<int, Queue<AnimationDisplayerFollowRegistrationEntry>> existingEntriesByDefinitionKey)
+        {
+            if (existingEntriesByDefinitionKey == null)
+            {
+                return;
+            }
+
+            foreach (Queue<AnimationDisplayerFollowRegistrationEntry> queue in existingEntriesByDefinitionKey.Values)
+            {
+                if (queue == null)
+                {
+                    continue;
+                }
+
+                while (queue.Count > 0)
+                {
+                    AnimationDisplayerFollowRegistrationEntry staleEntry = queue.Dequeue();
+                    if (staleEntry?.FollowId >= 0)
+                    {
+                        _animationEffects.RemoveFollow(staleEntry.FollowId);
+                    }
+                }
+            }
+        }
+
+        private static int BuildAnimationDisplayerFollowRegistrationDefinitionKey(
+            AnimationDisplayerFollowEquipmentDefinition followDefinition,
+            bool relativeEmission,
+            int registrationOrder)
+        {
+            unchecked
+            {
+                int key = 17;
+                key = (key * 31) + (followDefinition?.ItemId ?? 0);
+                key = (key * 31) + (int)(followDefinition?.SourceEquipSlot ?? 0);
+                key = (key * 31) + (followDefinition?.ClientEquipIndex ?? -1);
+                key = (key * 31) + (relativeEmission ? 1 : 0);
+                key = (key * 31) + registrationOrder;
+                return key;
+            }
         }
 
         private bool TryRegisterAnimationDisplayerQuestDeliveryLocalUserState(int itemId)
@@ -2259,6 +2411,7 @@ namespace HaCreator.MapSimulator
                 player.Build.Id,
                 itemId,
                 () => _playerManager?.Player?.Position ?? player.Position,
+                initialElapsedMs: 0,
                 out resolvedItemId);
             if (registered)
             {
@@ -2272,6 +2425,7 @@ namespace HaCreator.MapSimulator
             int ownerCharacterId,
             int itemId,
             Func<Vector2> getPosition,
+            int initialElapsedMs,
             out int resolvedItemId)
         {
             resolvedItemId = 0;
@@ -2300,7 +2454,8 @@ namespace HaCreator.MapSimulator
                        getPosition,
                        offsetX: 0f,
                        offsetY: AnimationDisplayerUserStateOffsetY,
-                       currTickCount) >= 0;
+                       currTickCount,
+                       initialElapsedMs) >= 0;
         }
 
         private bool TryLoadAnimationDisplayerQuestDeliveryFrames(
@@ -2671,51 +2826,54 @@ namespace HaCreator.MapSimulator
             int registerTime)
         {
             bool consumed = false;
-            if (metadata.Type == 2 && metadata.FieldId > 0)
+            bool consumeWithoutVisualFallback = ShouldConsumeAnimationDisplayerReservedTypeWithoutVisualFallback(metadata.Type);
+            if (metadata.Type == 2)
             {
                 consumed = true;
-                int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
-                if (!ShouldApplyAnimationDisplayerReservedFieldScopedVisual(metadata.FieldId, currentMapId))
+            }
+
+            if (metadata.Type == 6)
+            {
+                consumed = true;
+                if (metadata.EmotionId >= 0)
                 {
-                    return true;
+                    _ = _remoteUserPool?.TryApplyEmotion(
+                        new RemoteUserEmotionPacket(
+                            presentation.CharacterId,
+                            metadata.EmotionId,
+                            DurationMs: 0,
+                            ByItemOption: false),
+                        registerTime,
+                        out _);
                 }
             }
 
-            if (metadata.Type == 6 && metadata.EmotionId >= 0)
+            if (metadata.Type == 4)
             {
-                bool emotionApplied = _remoteUserPool?.TryApplyEmotion(
-                           new RemoteUserEmotionPacket(
-                               presentation.CharacterId,
-                               metadata.EmotionId,
-                               DurationMs: 0,
-                               ByItemOption: false),
-                           registerTime,
-                           out _)
-                       == true;
-                return consumed || emotionApplied;
-            }
-
-            if (metadata.Type == 4
-                && TryApplyAnimationDisplayerReservedRemoteUtilityActionOwnerEffect(
+                consumed = true;
+                _ = TryApplyAnimationDisplayerReservedRemoteUtilityActionOwnerEffect(
                     presentation.CharacterId,
                     metadata.ActionName,
-                    registerTime))
-            {
-                consumed = true;
+                    registerTime);
             }
 
-            if (metadata.Type == 3
-                && TryApplyAnimationDisplayerReservedRemoteUtilityEquipOwnerEffect(
+            if (metadata.Type == 3)
+            {
+                consumed = true;
+                _ = TryApplyAnimationDisplayerReservedRemoteUtilityEquipOwnerEffect(
                     presentation.CharacterId,
-                    metadata.EquippedItemIds))
-            {
-                consumed = true;
+                    metadata.EquippedItemIds);
             }
 
-            if (metadata.Type == 5
-                && TryPlayAnimationDisplayerReservedSoundEffect(metadata.SoundEffectDescriptor))
+            if (metadata.Type == 5)
             {
                 consumed = true;
+                _ = TryApplyAnimationDisplayerReservedBgmOwnerEffect(metadata.SoundEffectDescriptor);
+            }
+
+            if (consumeWithoutVisualFallback)
+            {
+                return consumed;
             }
 
             if (string.IsNullOrWhiteSpace(metadata.VisualEffectUol))
@@ -2825,6 +2983,39 @@ namespace HaCreator.MapSimulator
             }
 
             return _remoteUserPool?.TrySetAction(characterId, actionName, null, out _) == true;
+        }
+
+        private bool TryApplyAnimationDisplayerReservedBgmOwnerEffect(string descriptor)
+        {
+            string bgmOverrideName = ResolveAnimationDisplayerReservedBgmOverrideName(descriptor);
+            if (string.IsNullOrWhiteSpace(bgmOverrideName))
+            {
+                return false;
+            }
+
+            RequestSpecialFieldBgmOverride(bgmOverrideName);
+            return true;
+        }
+
+        internal static string ResolveAnimationDisplayerReservedBgmOverrideName(string descriptor)
+        {
+            string normalized = NormalizePacketOwnedClientSoundDescriptor(descriptor);
+            if (!TrySplitPacketOwnedClientSoundDescriptor(normalized, out string imageName, out string propertyPath))
+            {
+                return string.Empty;
+            }
+
+            string imageBaseName = imageName.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                ? imageName[..^4]
+                : imageName;
+            if (!imageBaseName.StartsWith("Bgm", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+
+            return string.IsNullOrWhiteSpace(propertyPath)
+                ? imageBaseName
+                : $"{imageBaseName}/{propertyPath}";
         }
 
         private bool TryApplyAnimationDisplayerReservedRemoteUtilityEquipOwnerEffect(
@@ -3086,38 +3277,53 @@ namespace HaCreator.MapSimulator
             int centerY,
             int currentTime)
         {
-            if (actor == null || currentTime < actor.FlightStartTime)
+            if (actor == null)
             {
                 return;
             }
 
-            SkillAnimation animation = actor.IsExploding(currentTime)
+            bool isExploding = actor.IsExploding(currentTime);
+            bool isPreFlight = !isExploding && currentTime < actor.FlightStartTime;
+            SkillAnimation animation = isExploding
                 ? actor.ExplosionAnimation
                 : actor.BallAnimation;
-            int animationTime = actor.IsExploding(currentTime)
+            int animationTime = isExploding
                 ? currentTime - actor.ExplosionTime
-                : currentTime - actor.FlightStartTime;
+                : isPreFlight
+                    ? currentTime - actor.StartTime
+                    : currentTime - actor.FlightStartTime;
             SkillFrame frame = animation?.GetFrameAtTime(Math.Max(0, animationTime));
             if (frame?.Texture == null)
             {
                 return;
             }
 
-            Vector2 position = actor.IsExploding(currentTime)
-                ? RemoteUserActorPool.ResolveRemoteGrenadePositionForParity(
+            Vector2 position;
+            if (isExploding)
+            {
+                position = RemoteUserActorPool.ResolveRemoteGrenadePositionForParity(
                     actor.Origin,
                     actor.Impact,
                     actor.ExplosionTime - actor.FlightStartTime,
                     actor.ExplosionTime - actor.FlightStartTime,
                     actor.DragX,
-                    actor.DragY)
-                : RemoteUserActorPool.ResolveRemoteGrenadePositionForParity(
+                    actor.DragY);
+            }
+            else if (isPreFlight)
+            {
+                // CGrenade exists during init delay before vec-control flight starts.
+                position = actor.Origin;
+            }
+            else
+            {
+                position = RemoteUserActorPool.ResolveRemoteGrenadePositionForParity(
                     actor.Origin,
                     actor.Impact,
                     currentTime - actor.FlightStartTime,
                     actor.ExplosionTime - actor.FlightStartTime,
                     actor.DragX,
                     actor.DragY);
+            }
             bool shouldFlip = actor.FacingRight ^ frame.Flip;
             int screenX = (int)MathF.Round(position.X) - mapShiftX + centerX;
             int screenY = (int)MathF.Round(position.Y) - mapShiftY + centerY;
@@ -3188,6 +3394,9 @@ namespace HaCreator.MapSimulator
 
                     return actor.Position;
                 },
+                initialElapsedMs: actor.PacketOwnedQuestDeliveryEffectAppliedTime != int.MinValue
+                    ? Math.Max(0, currTickCount - actor.PacketOwnedQuestDeliveryEffectAppliedTime)
+                    : 0,
                 out _);
         }
 
@@ -4359,12 +4568,15 @@ namespace HaCreator.MapSimulator
             SkillCastInfo castInfo)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int? effectBranchLastIndex = castInfo?.EffectBranchLastIndex;
             if (castInfo?.RequestedBranchNames != null)
             {
                 for (int i = 0; i < castInfo.RequestedBranchNames.Count; i++)
                 {
                     string branchName = castInfo.RequestedBranchNames[i];
-                    if (string.IsNullOrWhiteSpace(branchName) || !seen.Add(branchName))
+                    if (string.IsNullOrWhiteSpace(branchName)
+                        || !ShouldIncludeAnimationDisplayerEffectBranchForTesting(branchName, effectBranchLastIndex)
+                        || !seen.Add(branchName))
                     {
                         continue;
                     }
@@ -6042,7 +6254,7 @@ namespace HaCreator.MapSimulator
 
         private void ClearAnimationDisplayerFollowAnimations()
         {
-            foreach (KeyValuePair<int, List<int>> entry in _animationDisplayerFollowAnimationIds)
+            foreach (KeyValuePair<int, List<AnimationDisplayerFollowRegistrationEntry>> entry in _animationDisplayerFollowAnimationIds)
             {
                 if (entry.Value == null)
                 {
@@ -6051,7 +6263,11 @@ namespace HaCreator.MapSimulator
 
                 for (int i = 0; i < entry.Value.Count; i++)
                 {
-                    _animationEffects.RemoveFollow(entry.Value[i]);
+                    AnimationDisplayerFollowRegistrationEntry followEntry = entry.Value[i];
+                    if (followEntry?.FollowId >= 0)
+                    {
+                        _animationEffects.RemoveFollow(followEntry.FollowId);
+                    }
                 }
             }
 
@@ -6072,13 +6288,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_animationDisplayerFollowAnimationIds.TryGetValue(registrationKey, out List<int> followIds))
+            if (_animationDisplayerFollowAnimationIds.TryGetValue(registrationKey, out List<AnimationDisplayerFollowRegistrationEntry> followEntries))
             {
-                if (followIds != null)
+                if (followEntries != null)
                 {
-                    for (int i = 0; i < followIds.Count; i++)
+                    for (int i = 0; i < followEntries.Count; i++)
                     {
-                        _animationEffects.RemoveFollow(followIds[i]);
+                        AnimationDisplayerFollowRegistrationEntry followEntry = followEntries[i];
+                        if (followEntry?.FollowId >= 0)
+                        {
+                            _animationEffects.RemoveFollow(followEntry.FollowId);
+                        }
                     }
                 }
 
@@ -6152,9 +6372,9 @@ namespace HaCreator.MapSimulator
         private bool HasAnimationDisplayerFollowRegistration(int registrationKey)
         {
             return registrationKey != 0
-                && _animationDisplayerFollowAnimationIds.TryGetValue(registrationKey, out List<int> followIds)
-                && followIds != null
-                && followIds.Count > 0;
+                && _animationDisplayerFollowAnimationIds.TryGetValue(registrationKey, out List<AnimationDisplayerFollowRegistrationEntry> followEntries)
+                && followEntries != null
+                && followEntries.Count > 0;
         }
 
         private void ClearAnimationDisplayerLocalQuestDeliveryOwner()

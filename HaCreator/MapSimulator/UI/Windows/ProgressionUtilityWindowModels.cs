@@ -802,10 +802,22 @@ namespace HaCreator.MapSimulator.UI
 
         private static void AddEntryDetailRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)
         {
-            AddDetailRecords(records, entry?.Detail, ResolveEntryDetailStyleIndex(entry), top, measureTextWidth);
+            AddDetailRecords(
+                records,
+                entry?.Detail,
+                ResolveEntryDetailStyleIndex(entry),
+                ResolveEntryDetailValueStyleIndex(entry),
+                top,
+                measureTextWidth);
         }
 
-        private static void AddDetailRecords(List<CollectionBookRecordSnapshot> records, string detail, int styleIndex, int top, Func<string, int, float> measureTextWidth = null)
+        private static void AddDetailRecords(
+            List<CollectionBookRecordSnapshot> records,
+            string detail,
+            int leftStyleIndex,
+            int rightStyleIndex,
+            int top,
+            Func<string, int, float> measureTextWidth = null)
         {
             if (records == null || string.IsNullOrWhiteSpace(detail))
             {
@@ -820,7 +832,7 @@ namespace HaCreator.MapSimulator.UI
                     ClientCollectionTextLaneLeft,
                     top,
                     ClientCollectionDetailPairLaneWidth,
-                    styleIndex,
+                    leftStyleIndex,
                     CollectionBookTextAlignment.Left,
                     CollectionBookRecordRole.Detail,
                     measureTextWidth);
@@ -830,7 +842,7 @@ namespace HaCreator.MapSimulator.UI
                     ClientCollectionDetailPairRightLaneLeft,
                     top,
                     ClientCollectionDetailPairLaneWidth,
-                    styleIndex,
+                    rightStyleIndex,
                     CollectionBookTextAlignment.Right,
                     CollectionBookRecordRole.Detail,
                     measureTextWidth);
@@ -843,7 +855,7 @@ namespace HaCreator.MapSimulator.UI
                 ClientCollectionTextLaneLeft,
                 top,
                 ClientCollectionTextLaneWidthInt,
-                styleIndex,
+                leftStyleIndex,
                 CollectionBookTextAlignment.Left,
                 CollectionBookRecordRole.Detail,
                 measureTextWidth);
@@ -851,10 +863,22 @@ namespace HaCreator.MapSimulator.UI
 
         private static int GetEntryDetailBottom(CollectionBookEntrySnapshot entry, int top, int fallbackBottom, Func<string, int, float> measureTextWidth = null)
         {
-            return GetDetailRecordBottom(entry?.Detail, ResolveEntryDetailStyleIndex(entry), top, fallbackBottom, measureTextWidth);
+            return GetDetailRecordBottom(
+                entry?.Detail,
+                ResolveEntryDetailStyleIndex(entry),
+                ResolveEntryDetailValueStyleIndex(entry),
+                top,
+                fallbackBottom,
+                measureTextWidth);
         }
 
-        private static int GetDetailRecordBottom(string detail, int styleIndex, int top, int fallbackBottom, Func<string, int, float> measureTextWidth = null)
+        private static int GetDetailRecordBottom(
+            string detail,
+            int leftStyleIndex,
+            int rightStyleIndex,
+            int top,
+            int fallbackBottom,
+            Func<string, int, float> measureTextWidth = null)
         {
             if (string.IsNullOrWhiteSpace(detail))
             {
@@ -863,12 +887,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (TryResolveCompactDetailPair(detail, out string leftClause, out string rightClause))
             {
-                int leftBottom = GetWrappedRecordBottom(leftClause, top, ClientCollectionDetailPairLaneWidth, styleIndex, measureTextWidth);
-                int rightBottom = GetWrappedRecordBottom(rightClause, top, ClientCollectionDetailPairLaneWidth, styleIndex, measureTextWidth);
+                int leftBottom = GetWrappedRecordBottom(leftClause, top, ClientCollectionDetailPairLaneWidth, leftStyleIndex, measureTextWidth);
+                int rightBottom = GetWrappedRecordBottom(rightClause, top, ClientCollectionDetailPairLaneWidth, rightStyleIndex, measureTextWidth);
                 return Math.Max(leftBottom, rightBottom);
             }
 
-            return GetWrappedRecordBottom(detail, top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
+            return GetWrappedRecordBottom(detail, top, ClientCollectionTextLaneWidthInt, leftStyleIndex, measureTextWidth);
         }
 
         private static void AddWrappedTextRecords(
@@ -1267,6 +1291,14 @@ namespace HaCreator.MapSimulator.UI
         private static int ResolveEntryDetailStyleIndex(CollectionBookEntrySnapshot entry)
         {
             return 10;
+        }
+
+        private static int ResolveEntryDetailValueStyleIndex(CollectionBookEntrySnapshot entry)
+        {
+            CollectionBookEntryTone tone = entry?.Tone ?? CollectionBookEntryTone.Normal;
+            return tone is CollectionBookEntryTone.Normal or CollectionBookEntryTone.Muted
+                ? ResolveEntryDetailStyleIndex(entry)
+                : ResolveEntryValueStyleIndex(entry);
         }
 
         private static bool TryResolveCompactDetailPair(string detail, out string leftClause, out string rightClause)

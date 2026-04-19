@@ -2220,7 +2220,9 @@ namespace HaCreator.MapSimulator.Fields
 
             if (existingState.Value.State == 0)
             {
-                return RemoteTownPortalOverlayState;
+                return packetState == 0
+                    ? RemoteTownPortalOverlayState
+                    : packetState;
             }
 
             return existingState.Value.State;

@@ -12,7 +12,8 @@ namespace HaCreator.MapSimulator.Managers
         Failure = 4,
         Throttled = 5,
         Deferred = 6,
-        Dispatched = 7
+        Dispatched = 7,
+        NoHpPotion = 8
     }
 
     /// <summary>

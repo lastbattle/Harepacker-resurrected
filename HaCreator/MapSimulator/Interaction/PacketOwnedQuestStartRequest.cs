@@ -64,6 +64,23 @@ namespace HaCreator.MapSimulator.Interaction
             return !isAutoAlertQuest;
         }
 
+        internal static bool ResolveIsAutoCompletionAlertQuest(
+            bool hasQuestInfoAutoComplete,
+            bool hasQuestInfoAutoPreComplete)
+        {
+            // WZ QuestInfo.img publishes both autoComplete and autoPreComplete
+            // completion-alert families that feed the client auto-alert owner.
+            return hasQuestInfoAutoComplete || hasQuestInfoAutoPreComplete;
+        }
+
+        internal static bool ResolveIsAutoAlertQuest(
+            bool isAutoStartQuest,
+            bool isAutoCompletionAlertQuest)
+        {
+            // CQuestMan::IsAutoAlertQuest = IsAutoStartQuest || IsAutoCompletionAlertQuest.
+            return isAutoStartQuest || isAutoCompletionAlertQuest;
+        }
+
         internal static bool TryDecodePayload(
             IReadOnlyList<byte> payload,
             out int requestKind,

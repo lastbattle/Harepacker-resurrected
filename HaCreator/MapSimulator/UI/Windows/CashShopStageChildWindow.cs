@@ -1990,9 +1990,11 @@ namespace HaCreator.MapSimulator.UI
 
             int nextRemainingSeconds = Math.Max(0, (state.Hour * 3600) + (state.Minute * 60) + state.Second);
             string nextPacketStateSignature = state.PacketStateSignature ?? string.Empty;
-            bool pendingChanged = !_oneADayRuntimeSeeded || state.IsPending != _oneADayPending;
+            bool packetOwnedPending = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 1) != 0;
+            bool effectivePending = state.IsPending || packetOwnedPending;
+            bool pendingChanged = !_oneADayRuntimeSeeded || effectivePending != _oneADayPending;
             bool countdownRestarted = _oneADayRuntimeSeeded
-                && state.IsPending
+                && effectivePending
                 && nextRemainingSeconds > 0
                 && (nextRemainingSeconds > (_oneADayRemainingSeconds + 1) || _oneADayCountdownDeadlineTick == int.MinValue);
             bool selectorReseedRequested = force || !_oneADayRuntimeSeeded;
@@ -2003,10 +2005,26 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            bool packetOwnedPending = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 1) != 0;
-            _oneADayPending = state.IsPending || packetOwnedPending;
+            _oneADayPending = effectivePending;
             _oneADayPacketStateSignature = nextPacketStateSignature;
             if (selectorReseedRequested)
+            {
+                int packetOwnedSelectorIndex = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 2) != 0 ? 1 : 0;
+                _oneADaySelectorIndex = Math.Clamp(
+                    state.HasPacketRewardSessionByte ? packetOwnedSelectorIndex : state.SelectorIndex,
+                    0,
+                    Math.Max(0, state.SelectorCount - 1));
+                _oneADayShortcutHelpActive = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 4) != 0;
+            }
+            else if (packetStateChanged && state.HasPacketRewardSessionByte)
+            {
+                _oneADaySelectorIndex = Math.Clamp(
+                    (state.PacketRewardSessionByte & 2) != 0 ? 1 : 0,
+                    0,
+                    Math.Max(0, state.SelectorCount - 1));
+                _oneADayShortcutHelpActive = (state.PacketRewardSessionByte & 4) != 0;
+            }
+            else if (packetStateChanged)
             {
                 _oneADaySelectorIndex = Math.Clamp(state.SelectorIndex, 0, Math.Max(0, state.SelectorCount - 1));
                 _oneADayShortcutHelpActive = false;
@@ -2017,7 +2035,7 @@ namespace HaCreator.MapSimulator.UI
             if (pendingChanged || countdownRestarted)
             {
                 _oneADayRemainingSeconds = nextRemainingSeconds;
-                _oneADayCountdownDeadlineTick = state.IsPending && nextRemainingSeconds > 0
+                _oneADayCountdownDeadlineTick = _oneADayPending && nextRemainingSeconds > 0
                     ? Environment.TickCount + (nextRemainingSeconds * 1000)
                     : int.MinValue;
             }
@@ -2028,7 +2046,7 @@ namespace HaCreator.MapSimulator.UI
             RefreshOneADayPlateButtonRuntime(state);
             RefreshOneADayRewardSessionRuntime(state);
             _oneADayRuntimeSeeded = true;
-            _oneADaySessionState = state.IsPending
+            _oneADaySessionState = _oneADayPending
                 ? $"CCSWnd_OneADay::ChangeState(0,1) armed selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)}, {_oneADayCounterRuntime.Count.ToString(CultureInfo.InvariantCulture)} counter slots, and {_oneADayPlateButtonRuntime.Count.ToString(CultureInfo.InvariantCulture)} recovered plate-button lanes."
                 : $"CCSWnd_OneADay::ChangeState(0,1) left selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} and {_oneADayPlateButtonRuntime.Count.ToString(CultureInfo.InvariantCulture)} plate-button lanes alive while no packet-authored reward is pending.";
             _statusMessage = _oneADaySessionState;

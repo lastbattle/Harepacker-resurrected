@@ -228,9 +228,22 @@ namespace HaCreator.MapSimulator
             string resolvedCharacterName = !string.IsNullOrWhiteSpace(sync.CharacterName)
                 ? sync.CharacterName.Trim()
                 : ownerIdentity.CharacterName;
+            CharacterBuild targetBuild = ResolvePacketOwnedMonsterBookSyncBuild(
+                resolvedCharacterId,
+                resolvedCharacterName,
+                ownerIdentity.Build);
+            if (resolvedCharacterId <= 0 && targetBuild?.Id > 0)
+            {
+                resolvedCharacterId = targetBuild.Id;
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedCharacterName))
+            {
+                resolvedCharacterName = targetBuild?.Name ?? ownerIdentity.CharacterName;
+            }
 
             MonsterBookSnapshot snapshot = _monsterBookManager.ApplyOwnershipSync(
-                ownerIdentity.Build,
+                targetBuild,
                 resolvedCharacterId,
                 resolvedCharacterName,
                 sync.CardCountsByMob,
@@ -265,6 +278,62 @@ namespace HaCreator.MapSimulator
                 sync.StatusText,
                 $"{summary} Owned card types now {appliedCount.ToString(CultureInfo.InvariantCulture)}/{totalCount.ToString(CultureInfo.InvariantCulture)}; registered mob {registeredMobId.ToString(CultureInfo.InvariantCulture)}.");
             return true;
+        }
+
+        private CharacterBuild ResolvePacketOwnedMonsterBookSyncBuild(
+            int characterId,
+            string characterName,
+            CharacterBuild fallbackBuild)
+        {
+            CharacterBuild activeBuild = _playerManager?.Player?.Build;
+            if (characterId > 0)
+            {
+                if (activeBuild?.Id == characterId)
+                {
+                    return activeBuild;
+                }
+
+                if (fallbackBuild?.Id == characterId)
+                {
+                    return fallbackBuild;
+                }
+
+                foreach (LoginCharacterRosterEntry entry in _loginCharacterRoster.Entries)
+                {
+                    if (entry?.Build?.Id == characterId)
+                    {
+                        return entry.Build;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(characterName))
+            {
+                string lookupName = characterName.Trim();
+                if (!string.IsNullOrWhiteSpace(activeBuild?.Name)
+                    && string.Equals(activeBuild.Name.Trim(), lookupName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return activeBuild;
+                }
+
+                if (!string.IsNullOrWhiteSpace(fallbackBuild?.Name)
+                    && string.Equals(fallbackBuild.Name.Trim(), lookupName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return fallbackBuild;
+                }
+
+                foreach (LoginCharacterRosterEntry entry in _loginCharacterRoster.Entries)
+                {
+                    if (entry?.Build != null
+                        && !string.IsNullOrWhiteSpace(entry.Build.Name)
+                        && string.Equals(entry.Build.Name.Trim(), lookupName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return entry.Build;
+                    }
+                }
+            }
+
+            return fallbackBuild ?? activeBuild ?? _loginCharacterRoster.SelectedEntry?.Build;
         }
 
         internal static bool TryDecodeMonsterBookRegistrationResultPayloadForTests(
@@ -444,14 +513,23 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                bool clearRequested = ReadBoolean(root, false, "clear", "reset", "clearRequested");
-                bool replaceExisting = ReadBoolean(root, true, "replaceExisting", "replace", "overwrite");
-                int? characterId = NormalizePositiveInt(ReadInt(root, "characterId", "charId", "id"));
-                string characterName = ReadString(root, "characterName", "charName", "name", "ownerName");
-                int? registeredMobId = NormalizePositiveInt(ReadInt(root, "registeredMobId", "registeredMob", "selectedMobId"));
-                string statusText = ReadString(root, "statusText", "message", "text", "notice");
+                JsonElement payloadRoot = ResolveMonsterBookJsonPayloadRoot(
+                    root,
+                    IsMonsterBookOwnershipSyncJsonObject,
+                    out bool usedNestedRoot);
 
-                if (root.TryGetProperty("owner", out JsonElement ownerElement)
+                bool clearRequested = ReadBoolean(payloadRoot, false, "clear", "reset", "clearRequested");
+                bool replaceExisting = ReadBoolean(payloadRoot, true, "replaceExisting", "replace", "overwrite");
+                int? characterId = NormalizePositiveInt(ReadInt(payloadRoot, "characterId", "charId", "id"));
+                string characterName = ReadString(payloadRoot, "characterName", "charName", "name", "ownerName");
+                int? registeredMobId = NormalizePositiveInt(ReadInt(payloadRoot, "registeredMobId", "registeredMob", "selectedMobId"));
+                string statusText = ReadString(payloadRoot, "statusText", "message", "text", "notice");
+                if (string.IsNullOrWhiteSpace(statusText) && usedNestedRoot)
+                {
+                    statusText = ReadString(root, "statusText", "message", "text", "notice");
+                }
+
+                if (payloadRoot.TryGetProperty("owner", out JsonElement ownerElement)
                     && ownerElement.ValueKind == JsonValueKind.Object)
                 {
                     characterId ??= NormalizePositiveInt(ReadInt(ownerElement, "characterId", "charId", "id"));
@@ -459,10 +537,25 @@ namespace HaCreator.MapSimulator
                     {
                         characterName = ReadString(ownerElement, "characterName", "charName", "name");
                     }
+
+                    registeredMobId ??= NormalizePositiveInt(ReadInt(ownerElement, "registeredMobId", "registeredMob", "selectedMobId"));
+                }
+                else if (usedNestedRoot
+                    && root.TryGetProperty("owner", out JsonElement outerOwnerElement)
+                    && outerOwnerElement.ValueKind == JsonValueKind.Object)
+                {
+                    characterId ??= NormalizePositiveInt(ReadInt(outerOwnerElement, "characterId", "charId", "id"));
+                    if (string.IsNullOrWhiteSpace(characterName))
+                    {
+                        characterName = ReadString(outerOwnerElement, "characterName", "charName", "name");
+                    }
+
+                    registeredMobId ??= NormalizePositiveInt(ReadInt(outerOwnerElement, "registeredMobId", "registeredMob", "selectedMobId"));
                 }
 
                 Dictionary<int, int> counts = new();
-                if (TryReadMonsterBookCardCounts(root, out Dictionary<int, int> parsedCounts))
+                if (TryReadMonsterBookCardCounts(payloadRoot, out Dictionary<int, int> parsedCounts)
+                    || (usedNestedRoot && TryReadMonsterBookCardCounts(root, out parsedCounts)))
                 {
                     counts = parsedCounts;
                 }
@@ -813,13 +906,22 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                bool success = ReadBoolean(root, true, "success", "succeeded", "ok", "accepted")
-                    && !ReadBoolean(root, false, "failure", "failed", "rejected", "error");
-                int? requestId = NormalizePositiveInt(ReadInt(root, "requestId", "requestToken", "token", "sequence", "seq"));
-                int? mobId = NormalizePositiveInt(ReadInt(root, "mobId", "mob", "targetMobId", "nMobID"));
-                bool? registered = ReadNullableBoolean(root, "registered", "isRegistered", "register", "cover");
-                int? reasonCode = ReadInt(root, "reasonCode", "reason", "errorCode", "rejectReason");
-                string statusText = ReadString(root, "statusText", "message", "text", "notice", "localizedText");
+                JsonElement payloadRoot = ResolveMonsterBookJsonPayloadRoot(
+                    root,
+                    IsMonsterBookRegistrationResultJsonObject,
+                    out bool usedNestedRoot);
+
+                bool success = ReadBoolean(payloadRoot, true, "success", "succeeded", "ok", "accepted")
+                    && !ReadBoolean(payloadRoot, false, "failure", "failed", "rejected", "error");
+                int? requestId = NormalizePositiveInt(ReadInt(payloadRoot, "requestId", "requestToken", "token", "sequence", "seq"));
+                int? mobId = NormalizePositiveInt(ReadInt(payloadRoot, "mobId", "mob", "targetMobId", "nMobID"));
+                bool? registered = ReadNullableBoolean(payloadRoot, "registered", "isRegistered", "register", "cover");
+                int? reasonCode = ReadInt(payloadRoot, "reasonCode", "reason", "errorCode", "rejectReason");
+                string statusText = ReadString(payloadRoot, "statusText", "message", "text", "notice", "localizedText");
+                if (string.IsNullOrWhiteSpace(statusText) && usedNestedRoot)
+                {
+                    statusText = ReadString(root, "statusText", "message", "text", "notice", "localizedText");
+                }
 
                 result = new MonsterBookRegistrationResultPayload(
                     success,
@@ -836,6 +938,89 @@ namespace HaCreator.MapSimulator
                 detail = $"Monster Book registration result JSON payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        private static JsonElement ResolveMonsterBookJsonPayloadRoot(
+            JsonElement root,
+            Func<JsonElement, bool> isPayloadRoot,
+            out bool usedNestedRoot)
+        {
+            usedNestedRoot = false;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return root;
+            }
+
+            if (isPayloadRoot != null && isPayloadRoot(root))
+            {
+                return root;
+            }
+
+            foreach (string candidateName in new[] { "monsterBook", "book", "result", "registration", "ownershipSync", "payload", "data", "body" })
+            {
+                if (!root.TryGetProperty(candidateName, out JsonElement nested))
+                {
+                    continue;
+                }
+
+                if (nested.ValueKind == JsonValueKind.Object
+                    && (isPayloadRoot == null || isPayloadRoot(nested)))
+                {
+                    usedNestedRoot = true;
+                    return nested;
+                }
+            }
+
+            return root;
+        }
+
+        private static bool IsMonsterBookOwnershipSyncJsonObject(JsonElement element)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (element.TryGetProperty("owner", out JsonElement owner)
+                && owner.ValueKind == JsonValueKind.Object)
+            {
+                return true;
+            }
+
+            return element.TryGetProperty("cardCountsByMob", out _)
+                || element.TryGetProperty("cards", out _)
+                || element.TryGetProperty("counts", out _)
+                || element.TryGetProperty("ownership", out _)
+                || element.TryGetProperty("bookByMob", out _)
+                || element.TryGetProperty("clear", out _)
+                || element.TryGetProperty("clearRequested", out _)
+                || element.TryGetProperty("replaceExisting", out _)
+                || element.TryGetProperty("registeredMobId", out _)
+                || element.TryGetProperty("selectedMobId", out _);
+        }
+
+        private static bool IsMonsterBookRegistrationResultJsonObject(JsonElement element)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            return element.TryGetProperty("success", out _)
+                || element.TryGetProperty("succeeded", out _)
+                || element.TryGetProperty("ok", out _)
+                || element.TryGetProperty("accepted", out _)
+                || element.TryGetProperty("failure", out _)
+                || element.TryGetProperty("failed", out _)
+                || element.TryGetProperty("rejected", out _)
+                || element.TryGetProperty("requestId", out _)
+                || element.TryGetProperty("requestToken", out _)
+                || element.TryGetProperty("mobId", out _)
+                || element.TryGetProperty("targetMobId", out _)
+                || element.TryGetProperty("registered", out _)
+                || element.TryGetProperty("isRegistered", out _)
+                || element.TryGetProperty("reasonCode", out _)
+                || element.TryGetProperty("errorCode", out _);
         }
 
         private static bool TryDecodeMonsterBookRegistrationBinaryPayload(

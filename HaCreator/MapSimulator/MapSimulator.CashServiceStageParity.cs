@@ -146,6 +146,7 @@ namespace HaCreator.MapSimulator
                 cashTradingRoomWindow.SetFont(_fontChat);
                 cashTradingRoomWindow.SetWalletProvider(() => (int)Math.Clamp(ResolveCurrentCashServiceMesoBalance(), 0L, int.MaxValue));
                 cashTradingRoomWindow.SetTraderNames(_playerManager?.Player?.Build?.Name, "CashTrader");
+                cashTradingRoomWindow.SetPacketSessionProvider(BuildCashTradingRoomPacketSessionSnapshot);
             }
 
             WireCashShopModalOwnerWindows();
@@ -262,6 +263,12 @@ namespace HaCreator.MapSimulator
                     CashShopOneADayArtSnapshot artSnapshot = ResolveCashShopOneADayArtSnapshot();
                     IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries =
                         BuildCashShopOneADayHistoryEntryStates(stageWindow);
+                    int selectorIndex = Math.Clamp(oneADayWindow.GetOneADaySelectorIndex(), 0, 1);
+                    if (stageWindow.CashOneADayHasPacketRewardSessionByte)
+                    {
+                        selectorIndex = (stageWindow.CashOneADayPacketRewardSessionByte & 2) != 0 ? 1 : 0;
+                    }
+
                     int currentCommoditySerialNumber = Math.Max(0, stageWindow.CashOneADayItemSerialNumber);
                     TryResolveCashShopOneADayRemainingTime(
                         stageWindow.CashOneADayItemDate,
@@ -273,7 +280,7 @@ namespace HaCreator.MapSimulator
                     {
                         IsPending = stageWindow.IsOneADayPending,
                         NoticeState = stageWindow.NoticeState,
-                        SelectorIndex = 0,
+                        SelectorIndex = selectorIndex,
                         SelectorControlId = 2001,
                         SelectorStartX = 2,
                         SelectorStartY = 2,
@@ -281,6 +288,7 @@ namespace HaCreator.MapSimulator
                         TodaySelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A1, "Today"),
                         PreviousSelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A2, "Previous"),
                         SelectorEntries = BuildCashShopOneADaySelectorEntryStates(
+                            selectorIndex,
                             MapleStoryStringPool.GetOrFallback(0x16A1, "Today"),
                             MapleStoryStringPool.GetOrFallback(0x16A2, "Previous")),
                         HasKeyFocusCanvas = artSnapshot.HasKeyFocusCanvas,
@@ -383,24 +391,117 @@ namespace HaCreator.MapSimulator
         }
 
         private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState> BuildCashShopOneADaySelectorEntryStates(
+            int activeSelectorIndex,
             string todayLabel,
             string previousLabel)
         {
+            int clampedSelectorIndex = Math.Clamp(activeSelectorIndex, 0, 1);
             return new[]
             {
                 new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
                 {
                     Index = 0,
                     Label = string.IsNullOrWhiteSpace(todayLabel) ? "Today" : todayLabel.Trim(),
-                    IsActive = true
+                    IsActive = clampedSelectorIndex == 0
                 },
                 new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
                 {
                     Index = 1,
                     Label = string.IsNullOrWhiteSpace(previousLabel) ? "Previous" : previousLabel.Trim(),
-                    IsActive = false
+                    IsActive = clampedSelectorIndex == 1
                 }
             };
+        }
+
+        private CashTradingRoomWindow.PacketTradeSessionSnapshot BuildCashTradingRoomPacketSessionSnapshot()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is not AdminShopDialogUI cashShopWindow)
+            {
+                return null;
+            }
+
+            AdminShopDialogUI.ListOwnerSnapshot listSnapshot = cashShopWindow.GetListOwnerSnapshot();
+            if (listSnapshot == null || listSnapshot.VisibleEntries == null || listSnapshot.VisibleEntries.Count == 0)
+            {
+                return null;
+            }
+
+            AdminShopDialogUI.OwnerEntrySnapshot selectedEntry = listSnapshot.VisibleEntries.FirstOrDefault(entry => entry.IsSelected);
+            if (selectedEntry == null)
+            {
+                int selectedVisibleIndex = listSnapshot.SelectedIndex - listSnapshot.ScrollOffset;
+                if (selectedVisibleIndex >= 0 && selectedVisibleIndex < listSnapshot.VisibleEntries.Count)
+                {
+                    selectedEntry = listSnapshot.VisibleEntries[selectedVisibleIndex];
+                }
+            }
+
+            selectedEntry ??= listSnapshot.VisibleEntries[0];
+
+            int commoditySerialNumber = Math.Max(0, selectedEntry.CommoditySerialNumber);
+            int itemId = Math.Max(0, selectedEntry.RewardItemId);
+            int price = ParseCashServicePriceLabel(selectedEntry.PriceLabel);
+            if (price <= 0
+                && commoditySerialNumber > 0
+                && AdminShopDialogUI.TryResolveCommodityBySerialNumber(commoditySerialNumber, out int resolvedItemId, out long resolvedPrice, out _, out _))
+            {
+                itemId = resolvedItemId > 0 ? resolvedItemId : itemId;
+                price = resolvedPrice > 0 ? (int)Math.Clamp(resolvedPrice, 0L, int.MaxValue) : price;
+            }
+
+            string listingTitle = string.IsNullOrWhiteSpace(selectedEntry.Title)
+                ? "Selected listing"
+                : selectedEntry.Title.Trim();
+            string seller = string.IsNullOrWhiteSpace(selectedEntry.Seller)
+                ? "CashTrader"
+                : selectedEntry.Seller.Trim();
+            string paneLabel = string.IsNullOrWhiteSpace(listSnapshot.PaneLabel) ? "Unknown" : listSnapshot.PaneLabel.Trim();
+            string packetSummary =
+                $"CCSWnd_List handed {paneLabel} selection {listingTitle} to CCashTradingRoomDlg (SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, item {itemId.ToString(CultureInfo.InvariantCulture)}).";
+
+            return new CashTradingRoomWindow.PacketTradeSessionSnapshot
+            {
+                Signature = string.Join(
+                    "|",
+                    paneLabel,
+                    listSnapshot.BrowseModeLabel ?? string.Empty,
+                    listSnapshot.CategoryLabel ?? string.Empty,
+                    listSnapshot.SelectedIndex.ToString(CultureInfo.InvariantCulture),
+                    listSnapshot.ScrollOffset.ToString(CultureInfo.InvariantCulture),
+                    commoditySerialNumber.ToString(CultureInfo.InvariantCulture),
+                    itemId.ToString(CultureInfo.InvariantCulture),
+                    price.ToString(CultureInfo.InvariantCulture),
+                    selectedEntry.StateLabel ?? string.Empty,
+                    listingTitle,
+                    seller),
+                CommoditySerialNumber = commoditySerialNumber,
+                ItemId = itemId,
+                Price = price,
+                ListingTitle = listingTitle,
+                Seller = seller,
+                PacketSummary = packetSummary
+            };
+        }
+
+        private static int ParseCashServicePriceLabel(string priceLabel)
+        {
+            if (string.IsNullOrWhiteSpace(priceLabel))
+            {
+                return 0;
+            }
+
+            StringBuilder digits = new(priceLabel.Length);
+            foreach (char ch in priceLabel)
+            {
+                if (char.IsDigit(ch))
+                {
+                    digits.Append(ch);
+                }
+            }
+
+            return int.TryParse(digits.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedPrice)
+                ? Math.Max(0, parsedPrice)
+                : 0;
         }
 
         private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.CounterSlotState> BuildCashShopOneADayCounterSlotStates(

@@ -2799,9 +2799,10 @@ namespace HaCreator.MapSimulator.Pools
 
             bool packetNamePresent = candidates.Any(static candidate => candidate.IsPacketNamePresent);
             bool hasPacketNameMatch = candidates.Any(static candidate => candidate.MatchesPacketName);
+            bool unresolvedPacketName = packetNamePresent && !hasPacketNameMatch;
             if (candidates.Count == 1)
             {
-                if (packetNamePresent && !hasPacketNameMatch)
+                if (unresolvedPacketName)
                 {
                     // Narrow unresolved packet-name adoption only when template/position/flip
                     // resolution leaves exactly one authored candidate with no conflicting name.
@@ -2813,13 +2814,6 @@ namespace HaCreator.MapSimulator.Pools
                 index = candidates[0].Index;
                 selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
                 return true;
-            }
-
-            if (packetNamePresent && !hasPacketNameMatch)
-            {
-                // Keep packet-enter ownership conservative when the packet carries a
-                // name but multiple authored candidates remain unresolved.
-                return false;
             }
 
             static bool TrySelectUniqueCandidate(
@@ -2901,6 +2895,13 @@ namespace HaCreator.MapSimulator.Pools
                     selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
                     return true;
                 }
+            }
+
+            if (unresolvedPacketName)
+            {
+                // Keep unresolved packet-name ownership conservative when multiple
+                // authored candidates remain ambiguous after recovered client signals.
+                return false;
             }
 
             if (TrySelectFullyAmbiguousWzAuthoredOrderCandidate(scope, initialState, out index))
@@ -3698,17 +3699,13 @@ namespace HaCreator.MapSimulator.Pools
         {
             fallbackAnimationOwnerState = activeAnimationState >= 0
                 ? activeAnimationState
-                : visualState;
+                : transientHitSourceState >= 0
+                    ? transientHitSourceState
+                    : visualState;
             fallbackHitOwnerState = transientHitSourceState >= 0
                 && transientHitSourceState != fallbackAnimationOwnerState
                     ? transientHitSourceState
                     : -1;
-
-            if (fallbackAnimationOwnerState < 0 && transientHitSourceState >= 0)
-            {
-                fallbackAnimationOwnerState = transientHitSourceState;
-                fallbackHitOwnerState = -1;
-            }
         }
 
         internal static void CommitPacketLayerSourceOwnership(ReactorRuntimeData data, int visualState)

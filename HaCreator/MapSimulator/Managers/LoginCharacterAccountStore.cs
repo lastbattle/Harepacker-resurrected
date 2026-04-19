@@ -108,6 +108,11 @@ namespace HaCreator.MapSimulator.Managers
             public bool PacketOwnedRadioCreateLayerLeftContextValue { get; init; }
             public int PacketOwnedRadioCreateLayerMutationSequence { get; init; }
             public string PacketOwnedRadioCreateLayerLastMutationSource { get; init; } = string.Empty;
+            public bool HasPacketOwnedRadioScheduleContextValue { get; init; }
+            public string PacketOwnedRadioScheduleTrackDescriptor { get; init; } = string.Empty;
+            public int PacketOwnedRadioScheduleTimeValue { get; init; }
+            public int PacketOwnedRadioScheduleMutationSequence { get; init; }
+            public string PacketOwnedRadioScheduleLastMutationSource { get; init; } = string.Empty;
         }
 
         private static readonly JsonSerializerOptions JsonOptions = new()
@@ -238,6 +243,7 @@ namespace HaCreator.MapSimulator.Managers
                 .ToList()
                 ?? new List<LoginCharacterAccountEntryState>();
             MergePersistedPacketOwnedRadioCreateLayerState(normalizedEntries, existingState);
+            MergePersistedPacketOwnedRadioScheduleState(normalizedEntries, existingState);
             LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
                 NormalizeExtraCharInfoResultProfile(extraCharInfoResult, accountId);
             int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
@@ -355,10 +361,129 @@ namespace HaCreator.MapSimulator.Managers
                     PacketOwnedRadioCreateLayerMutationSequence = Math.Max(0, mutationSequence),
                     PacketOwnedRadioCreateLayerLastMutationSource = string.IsNullOrWhiteSpace(mutationSource)
                         ? string.Empty
-                        : mutationSource.Trim()
+                        : mutationSource.Trim(),
+                    HasPacketOwnedRadioScheduleContextValue = existingEntry.HasPacketOwnedRadioScheduleContextValue,
+                    PacketOwnedRadioScheduleTrackDescriptor = existingEntry.PacketOwnedRadioScheduleTrackDescriptor ?? string.Empty,
+                    PacketOwnedRadioScheduleTimeValue = existingEntry.HasPacketOwnedRadioScheduleContextValue
+                        ? Math.Max(0, existingEntry.PacketOwnedRadioScheduleTimeValue)
+                        : 0,
+                    PacketOwnedRadioScheduleMutationSequence = Math.Max(0, existingEntry.PacketOwnedRadioScheduleMutationSequence),
+                    PacketOwnedRadioScheduleLastMutationSource = existingEntry.PacketOwnedRadioScheduleLastMutationSource ?? string.Empty
                 };
 
                 if (AreEquivalentPacketOwnedRadioCreateLayerState(existingEntry, updatedEntry))
+                {
+                    continue;
+                }
+
+                entries[entryIndex] = updatedEntry;
+                PersistedAccountState updatedState = ClonePersistedState(persistedState);
+                updatedState.Entries = entries;
+                _accountsByKey[key] = updatedState;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                SaveToDisk();
+            }
+
+            return changed;
+        }
+
+        public bool UpdatePacketOwnedRadioScheduleState(
+            string accountName,
+            int worldId,
+            int characterId,
+            bool hasContextValue,
+            string trackDescriptor,
+            int timeValue,
+            int mutationSequence,
+            string mutationSource,
+            int? accountId = null)
+        {
+            if (characterId <= 0)
+            {
+                return false;
+            }
+
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            int normalizedWorldId = Math.Max(0, worldId);
+            bool changed = false;
+
+            foreach (string key in EnumerateStateKeys(normalizedAccountName, normalizedWorldId, accountId))
+            {
+                if (!_accountsByKey.TryGetValue(key, out PersistedAccountState persistedState) || persistedState == null)
+                {
+                    continue;
+                }
+
+                List<LoginCharacterAccountEntryState> entries = persistedState.Entries?
+                    .Where(entry => entry != null)
+                    .Select(CloneEntryState)
+                    .ToList()
+                    ?? new List<LoginCharacterAccountEntryState>();
+                int entryIndex = entries.FindIndex(entry => entry.CharacterId == characterId);
+                if (entryIndex < 0)
+                {
+                    continue;
+                }
+
+                LoginCharacterAccountEntryState existingEntry = entries[entryIndex];
+                string normalizedTrackDescriptor = hasContextValue && !string.IsNullOrWhiteSpace(trackDescriptor)
+                    ? trackDescriptor.Trim()
+                    : string.Empty;
+                LoginCharacterAccountEntryState updatedEntry = new()
+                {
+                    CharacterId = existingEntry.CharacterId,
+                    Name = existingEntry.Name,
+                    Gender = existingEntry.Gender,
+                    Skin = existingEntry.Skin,
+                    Level = existingEntry.Level,
+                    Job = existingEntry.Job,
+                    SubJob = existingEntry.SubJob,
+                    JobName = existingEntry.JobName,
+                    GuildName = existingEntry.GuildName,
+                    AllianceName = existingEntry.AllianceName,
+                    Fame = existingEntry.Fame,
+                    WorldRank = existingEntry.WorldRank,
+                    JobRank = existingEntry.JobRank,
+                    Exp = existingEntry.Exp,
+                    ExpToNextLevel = existingEntry.ExpToNextLevel,
+                    HP = existingEntry.HP,
+                    MaxHP = existingEntry.MaxHP,
+                    MP = existingEntry.MP,
+                    MaxMP = existingEntry.MaxMP,
+                    Strength = existingEntry.Strength,
+                    Dexterity = existingEntry.Dexterity,
+                    Intelligence = existingEntry.Intelligence,
+                    Luck = existingEntry.Luck,
+                    AbilityPoints = existingEntry.AbilityPoints,
+                    FieldMapId = existingEntry.FieldMapId,
+                    FieldDisplayName = existingEntry.FieldDisplayName,
+                    CanDelete = existingEntry.CanDelete,
+                    PreviousWorldRank = existingEntry.PreviousWorldRank,
+                    PreviousJobRank = existingEntry.PreviousJobRank,
+                    AvatarLookPacket = existingEntry.AvatarLookPacket != null
+                        ? (byte[])existingEntry.AvatarLookPacket.Clone()
+                        : Array.Empty<byte>(),
+                    Portal = existingEntry.Portal,
+                    HasPacketOwnedRadioCreateLayerLeftContextValue = existingEntry.HasPacketOwnedRadioCreateLayerLeftContextValue,
+                    PacketOwnedRadioCreateLayerLeftContextValue = existingEntry.HasPacketOwnedRadioCreateLayerLeftContextValue && existingEntry.PacketOwnedRadioCreateLayerLeftContextValue,
+                    PacketOwnedRadioCreateLayerMutationSequence = Math.Max(0, existingEntry.PacketOwnedRadioCreateLayerMutationSequence),
+                    PacketOwnedRadioCreateLayerLastMutationSource = existingEntry.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty,
+                    HasPacketOwnedRadioScheduleContextValue = hasContextValue,
+                    PacketOwnedRadioScheduleTrackDescriptor = normalizedTrackDescriptor,
+                    PacketOwnedRadioScheduleTimeValue = hasContextValue ? Math.Max(0, timeValue) : 0,
+                    PacketOwnedRadioScheduleMutationSequence = Math.Max(0, mutationSequence),
+                    PacketOwnedRadioScheduleLastMutationSource = string.IsNullOrWhiteSpace(mutationSource)
+                        ? string.Empty
+                        : mutationSource.Trim()
+                };
+
+                if (AreEquivalentPacketOwnedRadioScheduleState(existingEntry, updatedEntry))
                 {
                     continue;
                 }
@@ -750,7 +875,16 @@ namespace HaCreator.MapSimulator.Managers
                 HasPacketOwnedRadioCreateLayerLeftContextValue = entry.HasPacketOwnedRadioCreateLayerLeftContextValue,
                 PacketOwnedRadioCreateLayerLeftContextValue = entry.HasPacketOwnedRadioCreateLayerLeftContextValue && entry.PacketOwnedRadioCreateLayerLeftContextValue,
                 PacketOwnedRadioCreateLayerMutationSequence = Math.Max(0, entry.PacketOwnedRadioCreateLayerMutationSequence),
-                PacketOwnedRadioCreateLayerLastMutationSource = entry.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty
+                PacketOwnedRadioCreateLayerLastMutationSource = entry.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty,
+                HasPacketOwnedRadioScheduleContextValue = entry.HasPacketOwnedRadioScheduleContextValue,
+                PacketOwnedRadioScheduleTrackDescriptor = entry.HasPacketOwnedRadioScheduleContextValue
+                    ? (entry.PacketOwnedRadioScheduleTrackDescriptor ?? string.Empty)
+                    : string.Empty,
+                PacketOwnedRadioScheduleTimeValue = entry.HasPacketOwnedRadioScheduleContextValue
+                    ? Math.Max(0, entry.PacketOwnedRadioScheduleTimeValue)
+                    : 0,
+                PacketOwnedRadioScheduleMutationSequence = Math.Max(0, entry.PacketOwnedRadioScheduleMutationSequence),
+                PacketOwnedRadioScheduleLastMutationSource = entry.PacketOwnedRadioScheduleLastMutationSource ?? string.Empty
             };
         }
 
@@ -835,7 +969,100 @@ namespace HaCreator.MapSimulator.Managers
                 HasPacketOwnedRadioCreateLayerLeftContextValue = source.HasPacketOwnedRadioCreateLayerLeftContextValue,
                 PacketOwnedRadioCreateLayerLeftContextValue = source.HasPacketOwnedRadioCreateLayerLeftContextValue && source.PacketOwnedRadioCreateLayerLeftContextValue,
                 PacketOwnedRadioCreateLayerMutationSequence = Math.Max(0, source.PacketOwnedRadioCreateLayerMutationSequence),
-                PacketOwnedRadioCreateLayerLastMutationSource = source.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty
+                PacketOwnedRadioCreateLayerLastMutationSource = source.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty,
+                HasPacketOwnedRadioScheduleContextValue = target.HasPacketOwnedRadioScheduleContextValue,
+                PacketOwnedRadioScheduleTrackDescriptor = target.HasPacketOwnedRadioScheduleContextValue
+                    ? (target.PacketOwnedRadioScheduleTrackDescriptor ?? string.Empty)
+                    : string.Empty,
+                PacketOwnedRadioScheduleTimeValue = target.HasPacketOwnedRadioScheduleContextValue
+                    ? Math.Max(0, target.PacketOwnedRadioScheduleTimeValue)
+                    : 0,
+                PacketOwnedRadioScheduleMutationSequence = Math.Max(0, target.PacketOwnedRadioScheduleMutationSequence),
+                PacketOwnedRadioScheduleLastMutationSource = target.PacketOwnedRadioScheduleLastMutationSource ?? string.Empty
+            };
+        }
+
+        private static void MergePersistedPacketOwnedRadioScheduleState(
+            IList<LoginCharacterAccountEntryState> entries,
+            PersistedAccountState existingState)
+        {
+            if (entries == null || entries.Count == 0 || existingState?.Entries == null || existingState.Entries.Count == 0)
+            {
+                return;
+            }
+
+            foreach ((LoginCharacterAccountEntryState entry, int index) in entries.Select((entry, index) => (entry, index)))
+            {
+                if (entry == null || HasPersistedPacketOwnedRadioScheduleState(entry))
+                {
+                    continue;
+                }
+
+                LoginCharacterAccountEntryState persistedEntry = existingState.Entries.FirstOrDefault(candidate =>
+                    candidate != null &&
+                    candidate.CharacterId > 0 &&
+                    candidate.CharacterId == entry.CharacterId);
+                if (persistedEntry == null || !HasPersistedPacketOwnedRadioScheduleState(persistedEntry))
+                {
+                    continue;
+                }
+
+                entries[index] = CopyPacketOwnedRadioScheduleState(entry, persistedEntry);
+            }
+        }
+
+        private static LoginCharacterAccountEntryState CopyPacketOwnedRadioScheduleState(
+            LoginCharacterAccountEntryState target,
+            LoginCharacterAccountEntryState source)
+        {
+            return new LoginCharacterAccountEntryState
+            {
+                CharacterId = target.CharacterId,
+                Name = target.Name,
+                Gender = target.Gender,
+                Skin = target.Skin,
+                Level = target.Level,
+                Job = target.Job,
+                SubJob = target.SubJob,
+                JobName = target.JobName,
+                GuildName = target.GuildName,
+                AllianceName = target.AllianceName,
+                Fame = target.Fame,
+                WorldRank = target.WorldRank,
+                JobRank = target.JobRank,
+                Exp = target.Exp,
+                ExpToNextLevel = target.ExpToNextLevel,
+                HP = target.HP,
+                MaxHP = target.MaxHP,
+                MP = target.MP,
+                MaxMP = target.MaxMP,
+                Strength = target.Strength,
+                Dexterity = target.Dexterity,
+                Intelligence = target.Intelligence,
+                Luck = target.Luck,
+                AbilityPoints = target.AbilityPoints,
+                FieldMapId = target.FieldMapId,
+                FieldDisplayName = target.FieldDisplayName,
+                CanDelete = target.CanDelete,
+                PreviousWorldRank = target.PreviousWorldRank,
+                PreviousJobRank = target.PreviousJobRank,
+                AvatarLookPacket = target.AvatarLookPacket != null
+                    ? (byte[])target.AvatarLookPacket.Clone()
+                    : Array.Empty<byte>(),
+                Portal = target.Portal,
+                HasPacketOwnedRadioCreateLayerLeftContextValue = target.HasPacketOwnedRadioCreateLayerLeftContextValue,
+                PacketOwnedRadioCreateLayerLeftContextValue = target.HasPacketOwnedRadioCreateLayerLeftContextValue && target.PacketOwnedRadioCreateLayerLeftContextValue,
+                PacketOwnedRadioCreateLayerMutationSequence = Math.Max(0, target.PacketOwnedRadioCreateLayerMutationSequence),
+                PacketOwnedRadioCreateLayerLastMutationSource = target.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty,
+                HasPacketOwnedRadioScheduleContextValue = source.HasPacketOwnedRadioScheduleContextValue,
+                PacketOwnedRadioScheduleTrackDescriptor = source.HasPacketOwnedRadioScheduleContextValue
+                    ? (source.PacketOwnedRadioScheduleTrackDescriptor ?? string.Empty)
+                    : string.Empty,
+                PacketOwnedRadioScheduleTimeValue = source.HasPacketOwnedRadioScheduleContextValue
+                    ? Math.Max(0, source.PacketOwnedRadioScheduleTimeValue)
+                    : 0,
+                PacketOwnedRadioScheduleMutationSequence = Math.Max(0, source.PacketOwnedRadioScheduleMutationSequence),
+                PacketOwnedRadioScheduleLastMutationSource = source.PacketOwnedRadioScheduleLastMutationSource ?? string.Empty
             };
         }
 
@@ -845,6 +1072,14 @@ namespace HaCreator.MapSimulator.Managers
                    (entry.HasPacketOwnedRadioCreateLayerLeftContextValue ||
                     entry.PacketOwnedRadioCreateLayerMutationSequence > 0 ||
                     !string.IsNullOrWhiteSpace(entry.PacketOwnedRadioCreateLayerLastMutationSource));
+        }
+
+        private static bool HasPersistedPacketOwnedRadioScheduleState(LoginCharacterAccountEntryState entry)
+        {
+            return entry != null &&
+                   (entry.HasPacketOwnedRadioScheduleContextValue ||
+                    entry.PacketOwnedRadioScheduleMutationSequence > 0 ||
+                    !string.IsNullOrWhiteSpace(entry.PacketOwnedRadioScheduleLastMutationSource));
         }
 
         private static bool AreEquivalentPacketOwnedRadioCreateLayerState(
@@ -861,6 +1096,28 @@ namespace HaCreator.MapSimulator.Managers
                    string.Equals(
                        left.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty,
                        right.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty,
+                       StringComparison.Ordinal);
+        }
+
+        private static bool AreEquivalentPacketOwnedRadioScheduleState(
+            LoginCharacterAccountEntryState left,
+            LoginCharacterAccountEntryState right)
+        {
+            return left != null &&
+                   right != null &&
+                   left.HasPacketOwnedRadioScheduleContextValue == right.HasPacketOwnedRadioScheduleContextValue &&
+                   (!left.HasPacketOwnedRadioScheduleContextValue ||
+                    (string.Equals(
+                         left.PacketOwnedRadioScheduleTrackDescriptor ?? string.Empty,
+                         right.PacketOwnedRadioScheduleTrackDescriptor ?? string.Empty,
+                         StringComparison.Ordinal) &&
+                     Math.Max(0, left.PacketOwnedRadioScheduleTimeValue) ==
+                     Math.Max(0, right.PacketOwnedRadioScheduleTimeValue))) &&
+                   Math.Max(0, left.PacketOwnedRadioScheduleMutationSequence) ==
+                   Math.Max(0, right.PacketOwnedRadioScheduleMutationSequence) &&
+                   string.Equals(
+                       left.PacketOwnedRadioScheduleLastMutationSource ?? string.Empty,
+                       right.PacketOwnedRadioScheduleLastMutationSource ?? string.Empty,
                        StringComparison.Ordinal);
         }
 

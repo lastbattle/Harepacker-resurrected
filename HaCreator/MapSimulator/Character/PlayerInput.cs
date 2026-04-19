@@ -401,6 +401,31 @@ namespace HaCreator.MapSimulator.Character
             return count;
         }
 
+        public static IReadOnlyList<Buttons> GetClientJoypadSelectableButtons()
+        {
+            return UtilityConfigGamepadButtons;
+        }
+
+        public static int GetDetectedClientJoypadSelectableButtonCount(PlayerIndex index)
+        {
+            GamePadCapabilities capabilities = GamePad.GetCapabilities(index);
+            if (!capabilities.IsConnected)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < UtilityConfigGamepadButtons.Length; i++)
+            {
+                if (HasConfigurableButtonCapability(capabilities, UtilityConfigGamepadButtons[i]))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
         private static bool HasConfigurableButtonCapability(GamePadCapabilities capabilities, Buttons button)
         {
             return button switch

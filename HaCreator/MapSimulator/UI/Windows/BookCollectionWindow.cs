@@ -3382,7 +3382,7 @@ namespace HaCreator.MapSimulator.UI
 
         protected override void ResetImePresentationPlacement()
         {
-            if (_font == null || ResolveImeWindowHandle == null)
+            if (ResolveImeWindowHandle == null)
             {
                 return;
             }

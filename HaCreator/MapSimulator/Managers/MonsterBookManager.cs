@@ -768,18 +768,18 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static string ResolveCharacterKey(CharacterBuild build, int characterId, string characterName)
         {
+            if (characterId > 0)
+            {
+                return $"id:{characterId}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(characterName))
+            {
+                return $"name:{characterName.Trim().ToLowerInvariant()}";
+            }
+
             if (build == null)
             {
-                if (characterId > 0)
-                {
-                    return $"id:{characterId}";
-                }
-
-                if (!string.IsNullOrWhiteSpace(characterName))
-                {
-                    return $"name:{characterName.Trim().ToLowerInvariant()}";
-                }
-
                 return "session:default";
             }
 

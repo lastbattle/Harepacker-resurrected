@@ -100,7 +100,10 @@ namespace HaCreator.MapSimulator
 
             int requestItemToken = ResolveItemUpgradeRequestItemToken(request);
             int requestSlotPosition = Math.Max(0, request.ConsumableSlotIndex + 1);
-            int consumeCashUseRequestTick = ConsumeItemUpgradeConsumeCashUseRequestTick(request, currTickCount);
+            bool hasMatchedConsumeCashSeed = TryConsumeItemUpgradeConsumeCashUseRequestTick(
+                request,
+                currTickCount,
+                out int consumeCashUseRequestTick);
             byte[] encodedRequestPayload = BuildItemUpgradeRequestPayload(
                 requestItemToken,
                 requestSlotPosition,
@@ -111,8 +114,15 @@ namespace HaCreator.MapSimulator
                 request.ConsumableItemId,
                 requestItemToken,
                 currTickCount);
+            bool useConsumeCashRequestPayload = ShouldUseConsumeCashItemUseRequestPayload(
+                request.ConsumableInventoryType,
+                hasMatchedConsumeCashSeed);
+            byte[] outboundPayload = useConsumeCashRequestPayload
+                ? encodedConsumeCashRequestPayload
+                : encodedRequestPayload;
             string requestDispatchSummary = BuildItemUpgradeOutboundRequestDispatchLabel(
-                encodedConsumeCashRequestPayload,
+                outboundPayload,
+                useConsumeCashRequestPayload,
                 out int responseDelayMs);
 
             _pendingItemUpgradeOwnerRequest = new PendingItemUpgradeOwnerRequestState
@@ -500,25 +510,29 @@ namespace HaCreator.MapSimulator
 
         private string BuildItemUpgradeOutboundRequestDispatchLabel(
             byte[] payload,
+            bool useConsumeCashRequestPayload,
             out int responseDelayMs)
         {
             responseDelayMs = ItemUpgradeOwnerResultFallbackDelayMs;
             string payloadHex = payload?.Length > 0 ? Convert.ToHexString(payload) : "<empty>";
             string dispatchStatus = "live bridge unavailable";
             string outboxStatus = "packet outbox unavailable";
+            string requestPathLabel = useConsumeCashRequestPayload
+                ? "consume-cash-prefixed request body"
+                : "CUIItemUpgrade::OnButtonClicked 3xDecode4 request body";
 
             if (payload != null &&
                 _localUtilityOfficialSessionBridge.TrySendOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out dispatchStatus))
             {
                 responseDelayMs = ItemUpgradeOwnerExternalResultFallbackDelayMs;
-                return $"Mirrored item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}";
+                return $"Mirrored item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] ({requestPathLabel}) through the live local-utility bridge. {dispatchStatus}";
             }
 
             if (payload != null &&
                 _localUtilityPacketOutbox.TrySendOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out outboxStatus))
             {
                 responseDelayMs = ItemUpgradeOwnerExternalResultFallbackDelayMs;
-                return $"Mirrored item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+                return $"Mirrored item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] ({requestPathLabel}) through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
             }
 
             if (payload != null &&
@@ -526,17 +540,17 @@ namespace HaCreator.MapSimulator
                 _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out string queuedBridgeStatus))
             {
                 responseDelayMs = ItemUpgradeOwnerExternalResultFallbackDelayMs;
-                return $"Queued item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] for deferred official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+                return $"Queued item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] ({requestPathLabel}) for deferred official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
             }
 
             if (payload != null &&
                 _localUtilityPacketOutbox.TryQueueOutboundPacket(ItemUpgradeOwnerRequestOpcode, payload, out string queuedOutboxStatus))
             {
                 responseDelayMs = ItemUpgradeOwnerExternalResultFallbackDelayMs;
-                return $"Queued item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+                return $"Queued item-upgrade request opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] ({requestPathLabel}) for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
             }
 
-            return $"The item-upgrade owner kept opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted the request. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            return $"The item-upgrade owner kept opcode {ItemUpgradeOwnerRequestOpcode} [{payloadHex}] ({requestPathLabel}) simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted the request. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
         }
 
         private static bool TryDecodeItemUpgradeRequestPayload(
@@ -651,6 +665,20 @@ namespace HaCreator.MapSimulator
                 out itemToken,
                 out slotPosition,
                 out updateTick);
+        }
+
+        private static bool ShouldUseConsumeCashItemUseRequestPayload(
+            InventoryType consumableInventoryType,
+            bool hasMatchedConsumeCashSeed)
+        {
+            return hasMatchedConsumeCashSeed && consumableInventoryType == InventoryType.CASH;
+        }
+
+        internal static bool ShouldUseConsumeCashItemUseRequestPayloadForTests(
+            InventoryType consumableInventoryType,
+            bool hasMatchedConsumeCashSeed)
+        {
+            return ShouldUseConsumeCashItemUseRequestPayload(consumableInventoryType, hasMatchedConsumeCashSeed);
         }
 
         private static bool TryMapItemUpgradeResultCode(byte resultCode, out bool success)
@@ -854,8 +882,12 @@ namespace HaCreator.MapSimulator
             _itemUpgradeOwnerConsumeCashUseItemId = itemId;
         }
 
-        private int ConsumeItemUpgradeConsumeCashUseRequestTick(ItemUpgradeUI.ItemUpgradeOwnerRequest request, int fallbackTick)
+        private bool TryConsumeItemUpgradeConsumeCashUseRequestTick(
+            ItemUpgradeUI.ItemUpgradeOwnerRequest request,
+            int fallbackTick,
+            out int consumeCashUseRequestTick)
         {
+            consumeCashUseRequestTick = fallbackTick;
             bool isMatchingConsumableSeed =
                 _itemUpgradeOwnerConsumeCashUseRequestTick != int.MinValue &&
                 request.ConsumableInventoryType == _itemUpgradeOwnerConsumeCashUseInventoryType &&
@@ -863,14 +895,14 @@ namespace HaCreator.MapSimulator
                 request.ConsumableItemId == _itemUpgradeOwnerConsumeCashUseItemId;
             if (!isMatchingConsumableSeed)
             {
-                return fallbackTick;
+                return false;
             }
 
-            int consumeCashUseRequestTick = _itemUpgradeOwnerConsumeCashUseRequestTick;
+            consumeCashUseRequestTick = _itemUpgradeOwnerConsumeCashUseRequestTick;
             _itemUpgradeOwnerConsumeCashUseRequestTick = int.MinValue;
             _itemUpgradeOwnerConsumeCashUseSlotIndex = -1;
             _itemUpgradeOwnerConsumeCashUseItemId = 0;
-            return consumeCashUseRequestTick;
+            return true;
         }
     }
 }

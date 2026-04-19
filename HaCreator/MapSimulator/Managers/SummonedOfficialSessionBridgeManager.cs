@@ -1739,8 +1739,9 @@ namespace HaCreator.MapSimulator.Managers
                             int mismatched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
                             string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group);
                             string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group);
+                            string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group);
                             return
-                                $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}) template={group.Key.TemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram}";
+                                $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}) template={group.Key.TemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} parityClasses={replayParityClassHistogram}";
                         }));
                 var equivalenceGroups = entries
                     .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
@@ -1781,7 +1782,8 @@ namespace HaCreator.MapSimulator.Managers
                             string vecCtrlHistogram = BuildSg88VecCtrlHistogram(group.Select(entry => entry.VecCtrlState));
                             string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group.Select(entry => entry.Entry));
                             string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group.Select(entry => entry.Entry));
-                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} stateTemplate={group.Key.StateTemplateHex} vecCtrls={vecCtrlHistogram} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram}";
+                            string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group.Select(entry => entry.Entry));
+                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} stateTemplate={group.Key.StateTemplateHex} vecCtrls={vecCtrlHistogram} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} parityClasses={replayParityClassHistogram}";
                         }));
 
                 return "Summoned official-session bridge SG-88 first-use replay matrix:"
@@ -1847,10 +1849,9 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 byte[] bytes = Convert.FromHexString(templateHex);
-                const int vecCtrlByteIndex = sizeof(ushort) + (sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 1;
-                if (bytes.Length > vecCtrlByteIndex)
+                if (bytes.Length > PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseVecCtrlByteIndex)
                 {
-                    bytes[vecCtrlByteIndex] = 0;
+                    bytes[PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseVecCtrlByteIndex] = 0;
                 }
 
                 return Convert.ToHexString(bytes);
@@ -1869,37 +1870,35 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             var histogram = group
-                .SelectMany(entry =>
-                {
-                    if (entry.DecodedSg88FirstUseReplayMismatchByteIndices is { Length: > 0 })
-                    {
-                        return entry.DecodedSg88FirstUseReplayMismatchByteIndices;
-                    }
-
-                    if (entry.DecodedSg88FirstUseReplayMismatchPairs is { Length: > 0 })
-                    {
-                        return entry.DecodedSg88FirstUseReplayMismatchPairs
-                            .Select(pair => PacketOwnedMechanicRepeatSkillRuntime.TryParseSg88ReplayParityMismatchPair(pair, out int index, out _)
-                                ? index
-                                : -1)
-                            .Where(index => index >= 0)
-                            .ToArray();
-                    }
-
-                    return entry.DecodedSg88FirstUseReplayMismatchByteIndex.HasValue
-                        ? new[] { entry.DecodedSg88FirstUseReplayMismatchByteIndex.Value }
-                        : Array.Empty<int>();
-                })
+                .SelectMany(ResolveSg88ReplayMismatchByteIndices)
                 .Distinct()
                 .OrderBy(index => index)
                 .SelectMany(index =>
                 {
                     int count = group.Count(entry =>
-                        (entry.DecodedSg88FirstUseReplayMismatchByteIndices is { Length: > 0 }
-                            && entry.DecodedSg88FirstUseReplayMismatchByteIndices.Contains(index))
-                        || entry.DecodedSg88FirstUseReplayMismatchByteIndex == index);
+                        ResolveSg88ReplayMismatchByteIndices(entry).Contains(index));
                     return count > 0 ? new[] { $"byte{index}x{count}" } : Array.Empty<string>();
                 })
+                .ToArray();
+            return histogram.Length == 0
+                ? "none"
+                : string.Join(",", histogram);
+        }
+
+        private static string BuildSg88ReplayParityClassHistogram(IEnumerable<OutboundPacketTrace> group)
+        {
+            if (group == null)
+            {
+                return "none";
+            }
+
+            string[] histogram = group
+                .Select(entry => ClassifySg88FirstUseReplayParity(
+                    entry.DecodedSg88FirstUseReplayParityMatched,
+                    ResolveSg88ReplayMismatchByteIndices(entry)))
+                .GroupBy(label => label, StringComparer.Ordinal)
+                .OrderBy(grouping => grouping.Key, StringComparer.Ordinal)
+                .Select(grouping => $"{grouping.Key}x{grouping.Count()}")
                 .ToArray();
             return histogram.Length == 0
                 ? "none"
@@ -1945,6 +1944,68 @@ namespace HaCreator.MapSimulator.Managers
         private static string FormatByteHex(byte value)
         {
             return $"0x{value:X2}";
+        }
+
+        internal static string ClassifySg88FirstUseReplayParity(
+            bool? replayParityMatched,
+            IReadOnlyCollection<int> mismatchByteIndices)
+        {
+            if (!replayParityMatched.HasValue)
+            {
+                return "unknown";
+            }
+
+            if (replayParityMatched.Value)
+            {
+                return "matched";
+            }
+
+            if (mismatchByteIndices == null || mismatchByteIndices.Count == 0)
+            {
+                return "mismatch:unspecified";
+            }
+
+            bool includesVecCtrlByte = mismatchByteIndices.Contains(PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseVecCtrlByteIndex);
+            if (!includesVecCtrlByte)
+            {
+                return "mismatch:nonVecCtrl";
+            }
+
+            return mismatchByteIndices.Count == 1
+                ? "mismatch:vecCtrlOnly"
+                : "mismatch:vecCtrlPlusOther";
+        }
+
+        internal static int[] ResolveSg88ReplayMismatchByteIndices(OutboundPacketTrace entry)
+        {
+            if (entry.DecodedSg88FirstUseReplayMismatchByteIndices is { Length: > 0 })
+            {
+                return entry.DecodedSg88FirstUseReplayMismatchByteIndices
+                    .Where(index => index >= 0)
+                    .Distinct()
+                    .OrderBy(index => index)
+                    .ToArray();
+            }
+
+            if (entry.DecodedSg88FirstUseReplayMismatchPairs is { Length: > 0 })
+            {
+                int[] parsedFromPairs = entry.DecodedSg88FirstUseReplayMismatchPairs
+                    .Select(pair => PacketOwnedMechanicRepeatSkillRuntime.TryParseSg88ReplayParityMismatchPair(pair, out int index, out _)
+                        ? index
+                        : -1)
+                    .Where(index => index >= 0)
+                    .Distinct()
+                    .OrderBy(index => index)
+                    .ToArray();
+                if (parsedFromPairs.Length > 0)
+                {
+                    return parsedFromPairs;
+                }
+            }
+
+            return entry.DecodedSg88FirstUseReplayMismatchByteIndex.HasValue
+                ? new[] { entry.DecodedSg88FirstUseReplayMismatchByteIndex.Value }
+                : Array.Empty<int>();
         }
 
         private void TryAssignSg88ManualAttackRequestPacket(

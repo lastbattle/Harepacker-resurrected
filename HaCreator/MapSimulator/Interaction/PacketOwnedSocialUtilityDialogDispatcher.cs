@@ -661,7 +661,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (entry?.HasItemAttachment == true)
             {
-                noticeBuilder.Append(PacketOwnedSocialUtilityStringPoolText.ResolveParcelArrivalItemNotice(ResolveArrivalItemName(entry.AttachmentItemId)));
+                noticeBuilder.Append(PacketOwnedSocialUtilityStringPoolText.ResolveParcelArrivalItemNotice(
+                    ResolveArrivalItemName(entry.AttachmentItemId),
+                    Math.Max(1, entry.AttachmentQuantity)));
             }
 
             return noticeBuilder.ToString();

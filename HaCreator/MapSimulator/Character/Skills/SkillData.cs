@@ -2136,6 +2136,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public int Id { get; set; }
         public int ProjectileId { get; set; }
+        public bool IsDetachedFromProjectile { get; set; }
         public BulletAnimationPresentation Presentation { get; init; }
         public Vector2 CurrentPosition { get; set; }
         public Vector2 PreviousPosition { get; set; }

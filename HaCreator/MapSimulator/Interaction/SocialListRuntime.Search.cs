@@ -456,6 +456,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             entries.Insert(0, mergedEntry);
+
+            if (TryFindCharacterInfoPartyLaunchEntryIndex(launch, out int partyIndex))
+            {
+                List<SocialSearchEntryState> partyEntries = _searchEntriesByTab[SocialSearchTab.Party];
+                partyEntries[partyIndex] = MergeCharacterInfoPartyEntry(partyEntries[partyIndex], launch);
+                _searchSelectedIndexByTab[SocialSearchTab.Party] = partyIndex;
+            }
         }
 
         private void ClearCharacterInfoSearchLaunch()
@@ -482,6 +489,59 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 IsCharacterInfoOwned = true
             };
+        }
+
+        private static SocialSearchEntryState MergeCharacterInfoPartyEntry(
+            SocialSearchEntryState existingEntry,
+            CharacterInfoSearchLaunchState launch)
+        {
+            if (existingEntry == null)
+            {
+                return null;
+            }
+
+            return new SocialSearchEntryState(
+                existingEntry.Title,
+                existingEntry.PrimaryText,
+                existingEntry.SecondaryText,
+                existingEntry.CapacityText,
+                string.IsNullOrWhiteSpace(launch.LocationSummary) ? existingEntry.LocationSummary : launch.LocationSummary,
+                launch.Channel > 0 ? launch.Channel : Math.Max(1, existingEntry.Channel),
+                ResolveCharacterInfoSearchStatusText(launch.StatusText));
+        }
+
+        private bool TryFindCharacterInfoPartyLaunchEntryIndex(CharacterInfoSearchLaunchState launch, out int index)
+        {
+            index = -1;
+            if (!_searchEntriesByTab.TryGetValue(SocialSearchTab.Party, out List<SocialSearchEntryState> partyEntries)
+                || partyEntries == null
+                || partyEntries.Count == 0
+                || string.IsNullOrWhiteSpace(launch.Name))
+            {
+                return false;
+            }
+
+            string name = launch.Name.Trim();
+            for (int i = 0; i < partyEntries.Count; i++)
+            {
+                SocialSearchEntryState entry = partyEntries[i];
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                bool titleMatch = string.Equals(entry.Title, name, StringComparison.OrdinalIgnoreCase);
+                bool leaderMatch = string.Equals(entry.PrimaryText, name, StringComparison.OrdinalIgnoreCase);
+                if (!titleMatch && !leaderMatch)
+                {
+                    continue;
+                }
+
+                index = i;
+                return true;
+            }
+
+            return false;
         }
 
         private static string ResolveCharacterInfoSearchPrimaryText(CharacterBuild build)
@@ -520,7 +580,18 @@ namespace HaCreator.MapSimulator.Interaction
             // CUIUserList::OnCreate seeds m_nCurTab from m_nOption when the owner is created.
             if (launchOption.HasValue && Enum.IsDefined(typeof(SocialSearchTab), launchOption.Value))
             {
-                return (SocialSearchTab)launchOption.Value;
+                SocialSearchTab requestedTab = (SocialSearchTab)launchOption.Value;
+                if (!isRemoteTarget || requestedTab != SocialSearchTab.Party || !_characterInfoSearchLaunch.HasValue)
+                {
+                    return requestedTab;
+                }
+
+                // When BtSearch launches with a Party-tab option but there is no matching
+                // party listing for the inspected target, keep the target handoff visible on
+                // the PartyMember tab instead of selecting an unrelated party row.
+                return TryFindCharacterInfoPartyLaunchEntryIndex(_characterInfoSearchLaunch.Value, out _)
+                    ? SocialSearchTab.Party
+                    : SocialSearchTab.PartyMember;
             }
 
             if (isRemoteTarget)

@@ -47,6 +47,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int SkillEffectRequestOpcode = 71;
         public const int Sg88FirstUseSummonOpcode = 103;
         public const int Sg88SkillId = 35121003;
+        public const int Sg88FirstUseMoveActionByteIndex = sizeof(ushort) + (sizeof(int) * 2) + 1 + (sizeof(short) * 2);
+        public const int Sg88FirstUseVecCtrlByteIndex = Sg88FirstUseMoveActionByteIndex + 1;
 
         public static bool TryEncodeSkillEffectRequestPayload(
             int skillId,
@@ -421,28 +423,30 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            const string marker = "mismatchBytes=[";
-            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.Ordinal);
-            if (markerIndex >= 0)
+            if (TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
+                    "mismatchBytes=[",
+                    requireClosingBracket: true,
+                    out int[] bracketByteIndices))
             {
-                int valueStart = markerIndex + marker.Length;
-                int valueEnd = decodeDetail.IndexOf(']', valueStart);
-                if (valueEnd > valueStart)
-                {
-                    int[] parsed = decodeDetail
-                        .Substring(valueStart, valueEnd - valueStart)
-                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                        .Select(token => int.TryParse(token, out int value) ? value : -1)
-                        .Where(value => value >= 0)
-                        .Distinct()
-                        .OrderBy(value => value)
-                        .ToArray();
-                    if (parsed.Length > 0)
-                    {
-                        byteIndices = parsed;
-                        return true;
-                    }
-                }
+                byteIndices = bracketByteIndices;
+                return true;
+            }
+
+            if (TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
+                    "mismatchBytes=",
+                    requireClosingBracket: false,
+                    out int[] compactByteIndices))
+            {
+                byteIndices = compactByteIndices;
+                return true;
+            }
+
+            if (TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByte=", out int mismatchByteIndex))
+            {
+                byteIndices = new[] { mismatchByteIndex };
+                return true;
             }
 
             if (TryExtractSg88ReplayParityMismatchPairs(decodeDetail, out string[] mismatchPairs)
@@ -462,27 +466,152 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             const string legacyMarker = "byteIndex=";
-            int legacyMarkerIndex = decodeDetail.IndexOf(legacyMarker, StringComparison.Ordinal);
-            if (legacyMarkerIndex < 0)
-            {
-                return false;
-            }
-
-            int legacyValueStart = legacyMarkerIndex + legacyMarker.Length;
-            int legacyValueEnd = legacyValueStart;
-            while (legacyValueEnd < decodeDetail.Length && char.IsDigit(decodeDetail[legacyValueEnd]))
-            {
-                legacyValueEnd++;
-            }
-
-            if (legacyValueEnd <= legacyValueStart
-                || !int.TryParse(decodeDetail.Substring(legacyValueStart, legacyValueEnd - legacyValueStart), out int legacyByteIndex))
+            if (!TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, legacyMarker, out int legacyByteIndex))
             {
                 return false;
             }
 
             byteIndices = new[] { legacyByteIndex };
             return true;
+        }
+
+        private static bool TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+            string decodeDetail,
+            string marker,
+            bool requireClosingBracket,
+            out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
+            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.Ordinal);
+            if (markerIndex < 0)
+            {
+                return false;
+            }
+
+            int valueStart = markerIndex + marker.Length;
+            int valueEnd = valueStart;
+            if (requireClosingBracket)
+            {
+                valueEnd = decodeDetail.IndexOf(']', valueStart);
+                if (valueEnd <= valueStart)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                while (valueEnd < decodeDetail.Length)
+                {
+                    char token = decodeDetail[valueEnd];
+                    if (char.IsWhiteSpace(token) || token is ')' or ';')
+                    {
+                        break;
+                    }
+
+                    valueEnd++;
+                }
+
+                if (valueEnd <= valueStart)
+                {
+                    return false;
+                }
+            }
+
+            List<int> parsedByteIndices = ParseSg88ReplayParityMismatchByteList(
+                decodeDetail.Substring(valueStart, valueEnd - valueStart));
+            if (parsedByteIndices.Count == 0)
+            {
+                return false;
+            }
+
+            byteIndices = parsedByteIndices
+                .Distinct()
+                .OrderBy(value => value)
+                .ToArray();
+            return true;
+        }
+
+        private static bool TryExtractSg88ReplayParityMismatchSingleByteValue(
+            string decodeDetail,
+            string marker,
+            out int byteIndex)
+        {
+            byteIndex = -1;
+            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.Ordinal);
+            if (markerIndex < 0)
+            {
+                return false;
+            }
+
+            int valueStart = markerIndex + marker.Length;
+            int valueEnd = valueStart;
+            while (valueEnd < decodeDetail.Length && char.IsDigit(decodeDetail[valueEnd]))
+            {
+                valueEnd++;
+            }
+
+            if (valueEnd <= valueStart
+                || !int.TryParse(decodeDetail.Substring(valueStart, valueEnd - valueStart), out int parsedByteIndex)
+                || parsedByteIndex < 0)
+            {
+                return false;
+            }
+
+            byteIndex = parsedByteIndex;
+            return true;
+        }
+
+        private static List<int> ParseSg88ReplayParityMismatchByteList(string rawSegment)
+        {
+            List<int> parsedByteIndices = new();
+            if (string.IsNullOrWhiteSpace(rawSegment))
+            {
+                return parsedByteIndices;
+            }
+
+            string[] tokens = rawSegment.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (string rawToken in tokens)
+            {
+                if (string.IsNullOrWhiteSpace(rawToken))
+                {
+                    continue;
+                }
+
+                string token = rawToken.Trim();
+                if (token.StartsWith("byte", StringComparison.OrdinalIgnoreCase))
+                {
+                    token = token.Substring("byte".Length);
+                }
+
+                if (token.Contains('-', StringComparison.Ordinal))
+                {
+                    string[] bounds = token.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (bounds.Length != 2
+                        || !int.TryParse(bounds[0], out int start)
+                        || !int.TryParse(bounds[1], out int end)
+                        || start < 0
+                        || end < 0)
+                    {
+                        continue;
+                    }
+
+                    int clampedStart = Math.Min(start, end);
+                    int clampedEnd = Math.Max(start, end);
+                    for (int i = clampedStart; i <= clampedEnd; i++)
+                    {
+                        parsedByteIndices.Add(i);
+                    }
+
+                    continue;
+                }
+
+                if (int.TryParse(token, out int parsedByteIndex) && parsedByteIndex >= 0)
+                {
+                    parsedByteIndices.Add(parsedByteIndex);
+                }
+            }
+
+            return parsedByteIndices;
         }
 
         public static bool TryExtractSg88ReplayParityMismatchPairs(string decodeDetail, out string[] mismatchPairs)

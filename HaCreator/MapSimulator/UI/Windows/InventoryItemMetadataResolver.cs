@@ -87,6 +87,9 @@ namespace HaCreator.MapSimulator.UI
         private const int WeddingInvitationTicketItemId = 5251100;
         private const int WeddingInvitationEtcCardStartGroup = 4211;
         private const int WeddingInvitationEtcCardEndGroup = 4212;
+        private const string WeddingKeyword = "wedding";
+        private const string InvitationKeyword = "invitation";
+        private const string InvitationMisspellingKeyword = "inviation";
         private static readonly Regex SkillBookSuccessRateRegex = new(@"(\d+)\s*%\s*chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly (string Key, string Label)[] CurableStatusEffectKeys =
         {
@@ -1213,7 +1216,26 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            return false;
+            string resolvedItemName = !string.IsNullOrWhiteSpace(itemName)
+                ? itemName
+                : (TryResolveItemName(itemId, out string metadataName) ? metadataName : null);
+            string resolvedItemDescription = !string.IsNullOrWhiteSpace(itemDescription)
+                ? itemDescription
+                : (TryResolveItemDescription(itemId, out string metadataDescription) ? metadataDescription : null);
+
+            return ContainsWeddingInvitationPhrase(resolvedItemName)
+                   || ContainsWeddingInvitationPhrase(resolvedItemDescription);
+        }
+
+        private static bool ContainsWeddingInvitationPhrase(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || !ContainsPhrase(text, WeddingKeyword))
+            {
+                return false;
+            }
+
+            return ContainsPhrase(text, InvitationKeyword)
+                   || ContainsPhrase(text, InvitationMisspellingKeyword);
         }
 
         internal static bool ShouldAutoRunOnPickupInteraction(WzSubProperty itemProperty)

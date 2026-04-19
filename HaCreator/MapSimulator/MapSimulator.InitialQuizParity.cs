@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator
         private bool _initialQuizOwnerResultSent;
         private bool _initialQuizOwnerTimeoutCloseArmed;
         private InitialQuizOwnerFocusTarget _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+        private InitialQuizOwnerCaptureState _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
 
         private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs);
         private sealed record InitialQuizButtonFrame(Texture2D Texture, Point Origin);
@@ -101,6 +102,13 @@ namespace HaCreator.MapSimulator
             Pressed,
             Disabled,
             KeyFocused
+        }
+
+        internal enum InitialQuizOwnerCaptureState
+        {
+            None,
+            OwnerOnly,
+            OwnerWithEditFocus
         }
 
         private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
@@ -160,6 +168,9 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerEditControl.Reset();
             }
             ResetInitialQuizOwnerHeldEditKey();
+            _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
+                ownerActive: true,
+                _initialQuizOwnerFocusTarget);
         }
 
         private void ClearInitialQuizOwnerInputState()
@@ -176,6 +187,7 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerEditControl.Clear();
             }
             ResetInitialQuizOwnerHeldEditKey();
+            _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
         }
 
         private void UpdateInitialQuizOwner(int currentTickCount)
@@ -185,6 +197,10 @@ namespace HaCreator.MapSimulator
                 ClearInitialQuizOwnerInputState();
                 return;
             }
+
+            _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
+                ownerActive: true,
+                _initialQuizOwnerFocusTarget);
 
             InitialQuizOwnerTimeoutBehavior timeoutBehavior = ResolveInitialQuizOwnerTimeoutBehavior(
                 snapshot.RemainingMs,
@@ -786,7 +802,8 @@ namespace HaCreator.MapSimulator
 
         private bool DoesInitialQuizOwnerCaptureWindowInput()
         {
-            return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out _);
+            return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out _)
+                && _initialQuizOwnerCaptureState != InitialQuizOwnerCaptureState.None;
         }
 
         internal static bool ShouldForwardInitialQuizOwnerInputToActiveWindow(bool ownerCapturesWindowInput)
@@ -1358,6 +1375,9 @@ namespace HaCreator.MapSimulator
         {
             InitialQuizOwnerFocusTarget previousFocus = _initialQuizOwnerFocusTarget;
             _initialQuizOwnerFocusTarget = focusTarget;
+            _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
+                _initialQuizOwnerCaptureState != InitialQuizOwnerCaptureState.None,
+                focusTarget);
             if (!ShouldClearInitialQuizOwnerImeOnFocusChange(previousFocus, focusTarget))
             {
                 return;
@@ -1408,6 +1428,20 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldSubmitInitialQuizOwnerOkButtonRelease(bool pressedOkButton, bool hoveringOkButton, bool enabled)
         {
             return enabled && pressedOkButton && hoveringOkButton;
+        }
+
+        internal static InitialQuizOwnerCaptureState ResolveInitialQuizOwnerCaptureState(
+            bool ownerActive,
+            InitialQuizOwnerFocusTarget focusTarget)
+        {
+            if (!ownerActive)
+            {
+                return InitialQuizOwnerCaptureState.None;
+            }
+
+            return focusTarget == InitialQuizOwnerFocusTarget.Input
+                ? InitialQuizOwnerCaptureState.OwnerWithEditFocus
+                : InitialQuizOwnerCaptureState.OwnerOnly;
         }
 
         internal static bool ShouldDrawInitialQuizOwnerCursor(int currentTickCount, int cursorBlinkStartedAt)

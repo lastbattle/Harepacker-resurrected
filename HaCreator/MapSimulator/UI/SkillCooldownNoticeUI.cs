@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Effects;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -553,6 +554,39 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return activeOwnerSkillId == incomingSkillId;
+        }
+
+        internal static bool HasActiveStatusBarItemMsgOwnerForClientParity(
+            IReadOnlyList<WeatherMessageInfo> weatherMessages,
+            int currentTime)
+        {
+            if (weatherMessages == null || weatherMessages.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < weatherMessages.Count; i++)
+            {
+                WeatherMessageInfo message = weatherMessages[i];
+                if (message == null)
+                {
+                    continue;
+                }
+
+                int duration = Math.Max(0, message.Duration);
+                if (duration <= 0)
+                {
+                    continue;
+                }
+
+                int elapsed = unchecked(currentTime - message.StartTime);
+                if (elapsed >= 0 && elapsed < duration)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool ShouldAcceptIncomingNoticeForClientParity(

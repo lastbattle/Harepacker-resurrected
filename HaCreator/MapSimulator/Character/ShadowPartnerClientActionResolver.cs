@@ -261,6 +261,36 @@ namespace HaCreator.MapSimulator.Character
                 ["alert7"] = CreateIndexedPieces(
                     ("alert", 0, 360),
                     ("alert", 1, 300)),
+                // Mounted Character/00002000 rows below carry full piece-authored
+                // frame+delay metadata; keep built-in parity plans so fallback stays
+                // on client-init timing even when mounted rows are unavailable.
+                ["rain"] = CreateIndexedPieces(
+                    ("stand1", 1, -60),
+                    ("swingT1", 1, -90),
+                    ("swingT1", 0, -390),
+                    ("swingT1", 2, 120),
+                    ("stand1", 1, 60)),
+                ["paralyze"] = CreateIndexedPieces(
+                    ("swingO3", 0, -350),
+                    ("stabO2", 1, 450)),
+                ["shoot6"] = CreateIndexedPieces(
+                    ("shootF", 0, -480),
+                    ("shootF", 1, -160),
+                    ("shootF", 2, 260)),
+                ["arrowRain"] = CreateIndexedPieces(
+                    ("swingT1", 1, -120),
+                    ("swingT1", 0, -510),
+                    ("swingT1", 2, 330),
+                    ("alert", 0, 0)),
+                ["arrowEruption"] = CreateIndexedPieces(
+                    ("swingT1", 1, -120),
+                    ("swingT1", 0, -510),
+                    ("swingT1", 2, 330),
+                    ("alert", 0, 0)),
+                ["chargeBlow"] = CreateIndexedPieces(
+                    ("stabO1", 0, -300),
+                    ("stabO1", 1, 420),
+                    ("alert", 0, 90)),
                 // `Character/00002000.img/alert8/0` is another mounted indexed-alert
                 // helper row; it reuses the authored jump helper frame with its own delay.
                 ["alert8"] = CreateIndexedPieces(
@@ -1922,6 +1952,11 @@ namespace HaCreator.MapSimulator.Character
                    && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
                    && !string.Equals(rawActionName, actionName, StringComparison.OrdinalIgnoreCase)
                    && IsAttackAction(rawActionName);
+        }
+
+        public static bool ShouldUseAttackIdentityForObservation(string observedPlayerActionName, PlayerState state)
+        {
+            return state == PlayerState.Attacking || IsAttackAction(observedPlayerActionName);
         }
 
         private static bool IsAuthoredAttackAction(string actionName)

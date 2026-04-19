@@ -652,6 +652,15 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
+                bool allOutputOnlyEntries = entries.TrueForAll(entry =>
+                    entry.BucketKey < 0
+                    && entry.OutputItemId > 0);
+                if (allOutputOnlyEntries)
+                {
+                    additions = entries;
+                    return true;
+                }
+
                 bool containsRemovalWildcard = entries.Exists(entry =>
                     entry.OutputItemId <= 0
                     || entry.BucketKey < 0);

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Managers
@@ -206,6 +207,48 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             rawPacket = Convert.FromHexString(normalized.ToString());
+            return true;
+        }
+
+        internal static bool TryParseRawPacketHexSequence(
+            string hexSequenceText,
+            out IReadOnlyList<byte[]> rawPackets,
+            out string errorMessage)
+        {
+            rawPackets = Array.Empty<byte[]>();
+            errorMessage = null;
+
+            if (string.IsNullOrWhiteSpace(hexSequenceText))
+            {
+                errorMessage = "A raw packet hex string is required.";
+                return false;
+            }
+
+            string[] segments = hexSequenceText
+                .Split(new[] { ',', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(segment => segment.Trim())
+                .Where(segment => segment.Length > 0)
+                .ToArray();
+            if (segments.Length == 0)
+            {
+                errorMessage = "A raw packet hex string is required.";
+                return false;
+            }
+
+            List<byte[]> parsedPackets = new(segments.Length);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                string segment = segments[i];
+                if (!TryParseRawPacketHex(segment, out byte[] rawPacket, out string parseError))
+                {
+                    errorMessage = $"Invalid packet #{i + 1}: {parseError}";
+                    return false;
+                }
+
+                parsedPackets.Add(rawPacket);
+            }
+
+            rawPackets = parsedPackets;
             return true;
         }
     }

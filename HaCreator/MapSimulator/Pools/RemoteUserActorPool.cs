@@ -443,6 +443,10 @@ namespace HaCreator.MapSimulator.Pools
         private const string RemoteTemporaryStatWeaponChargeActionOwnerName = "aux.remote.temporaryStat.weaponCharge.persistent";
         private const string RemoteTemporaryStatAuraActionOwnerName = "aux.remote.temporaryStat.aura.persistent";
         private const int RemoteTemporaryStatAffectedLayerTransitionDurationMs = 180;
+        private const int RemoteTemporaryStatAffectedLayerShiftCadenceUpdates = 0x21;
+        private const int RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMs = 16;
+        private const int RemoteTemporaryStatAffectedLayerShiftCadenceDurationMs =
+            RemoteTemporaryStatAffectedLayerShiftCadenceUpdates * RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMs;
         private const string RemoteTemporaryStatMoreWildActionOwnerName = "aux.remote.temporaryStat.moreWild.persistent";
         private const string RemoteTemporaryStatBarrierActionOwnerName = "aux.remote.temporaryStat.barrier.persistent";
         private const string RemoteTemporaryStatBlessingArmorActionOwnerName = "aux.remote.temporaryStat.blessingArmor.persistent";
@@ -452,6 +456,7 @@ namespace HaCreator.MapSimulator.Pools
         private const string RemotePacketOwnedEmotionActionOwnerName = "aux.remote.packetOwnedEmotion.persistent";
         private const string RemoteEffectByItemActionOwnerName = "aux.remote.effectByItem.oneTime";
         private const string RemoteCarryItemEffectActionOwnerName = "aux.remote.carryItemEffect.persistent";
+        private const string RemoteQuestDeliveryActionOwnerName = "aux.remote.questDelivery.persistent";
         private const string RemoteActiveEffectMotionBlurActionOwnerName = "aux.remote.activeEffectMotionBlur.persistent";
         private const string RemoteRelationshipOverlayGenericActionOwnerName = "aux.remote.relationshipOverlay.generic.oneTime";
         private const string RemoteRelationshipOverlayCoupleActionOwnerName = "aux.remote.relationshipOverlay.couple.persistent";
@@ -3834,7 +3839,7 @@ namespace HaCreator.MapSimulator.Pools
                         return false;
                     }
 
-                    actor.PacketOwnedQuestDeliveryEffectItemId = itemId;
+                    ApplyRemoteQuestDeliveryState(actor, itemId, currentTime);
                     if (TryResolveRemoteConsumeEffectSoundDescriptor(itemId, out string questDeliverySoundDescriptor))
                     {
                         RegisterClientSoundPresentation(
@@ -3847,7 +3852,7 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
 
                 case RemoteUserEffectSubtype.QuestDeliveryEnd:
-                    actor.PacketOwnedQuestDeliveryEffectItemId = null;
+                    ClearRemoteQuestDeliveryState(actor, currentTime);
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} cleared quest-delivery presentation.";
                     return true;
 
@@ -6825,6 +6830,74 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private void ApplyRemoteQuestDeliveryState(RemoteUserActor actor, int itemId, int currentTime)
+        {
+            if (actor == null || itemId <= 0)
+            {
+                return;
+            }
+
+            string ownerActionName = ResolveRemoteTemporaryStatAvatarEffectActionName(actor);
+            bool ownerFacingRight = actor.FacingRight;
+            if (actor.PacketOwnedQuestDeliveryEffectItemId is int existingItemId
+                && actor.PacketOwnedQuestDeliveryEffectAppliedTime != int.MinValue)
+            {
+                StoreRemoteAuxiliaryLayerOwnerCounter(
+                    actor.CharacterId,
+                    RemoteQuestDeliveryActionOwnerName,
+                    ResolveRemoteQuestDeliveryCounterSkillId(existingItemId),
+                    string.IsNullOrWhiteSpace(actor.PacketOwnedQuestDeliveryOwnerActionName)
+                        ? ownerActionName
+                        : actor.PacketOwnedQuestDeliveryOwnerActionName,
+                    actor.PacketOwnedQuestDeliveryOwnerFacingRight,
+                    Math.Max(0, currentTime - actor.PacketOwnedQuestDeliveryEffectAppliedTime),
+                    currentTime);
+            }
+
+            bool hasRestoredAnimationElapsed = TryRestoreRemoteAuxiliaryLayerOwnerCounter(
+                actor.CharacterId,
+                RemoteQuestDeliveryActionOwnerName,
+                ResolveRemoteQuestDeliveryCounterSkillId(itemId),
+                ownerActionName,
+                ownerFacingRight,
+                out int restoredAnimationElapsedMs);
+            actor.PacketOwnedQuestDeliveryEffectItemId = itemId;
+            actor.PacketOwnedQuestDeliveryOwnerActionName = ownerActionName;
+            actor.PacketOwnedQuestDeliveryOwnerFacingRight = ownerFacingRight;
+            actor.PacketOwnedQuestDeliveryEffectAppliedTime = hasRestoredAnimationElapsed
+                ? unchecked(currentTime - restoredAnimationElapsedMs)
+                : currentTime;
+        }
+
+        private void ClearRemoteQuestDeliveryState(RemoteUserActor actor, int currentTime = int.MinValue)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            if (currentTime != int.MinValue
+                && actor.PacketOwnedQuestDeliveryEffectItemId is int itemId
+                && actor.PacketOwnedQuestDeliveryEffectAppliedTime != int.MinValue)
+            {
+                StoreRemoteAuxiliaryLayerOwnerCounter(
+                    actor.CharacterId,
+                    RemoteQuestDeliveryActionOwnerName,
+                    ResolveRemoteQuestDeliveryCounterSkillId(itemId),
+                    string.IsNullOrWhiteSpace(actor.PacketOwnedQuestDeliveryOwnerActionName)
+                        ? ResolveRemoteTemporaryStatAvatarEffectActionName(actor)
+                        : actor.PacketOwnedQuestDeliveryOwnerActionName,
+                    actor.PacketOwnedQuestDeliveryOwnerFacingRight,
+                    Math.Max(0, currentTime - actor.PacketOwnedQuestDeliveryEffectAppliedTime),
+                    currentTime);
+            }
+
+            actor.PacketOwnedQuestDeliveryEffectItemId = null;
+            actor.PacketOwnedQuestDeliveryEffectAppliedTime = int.MinValue;
+            actor.PacketOwnedQuestDeliveryOwnerActionName = null;
+            actor.PacketOwnedQuestDeliveryOwnerFacingRight = true;
+        }
+
         private void ApplyRemoteActiveEffectMotionBlurState(
             RemoteUserActor actor,
             ActiveEffectItemMotionBlurDefinition definition,
@@ -8915,6 +8988,14 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private static int ResolveRemoteQuestDeliveryCounterSkillId(int itemId)
+        {
+            unchecked
+            {
+                return (itemId * 131) ^ 0x1900_0000;
+            }
+        }
+
         private static string ResolveRemoteRelationshipOverlayActionOwnerName(RemoteRelationshipOverlayType relationshipType)
         {
             return relationshipType switch
@@ -9045,6 +9126,11 @@ namespace HaCreator.MapSimulator.Pools
             return RemoteCarryItemEffectActionOwnerName;
         }
 
+        internal static string ResolveRemoteQuestDeliveryOwnerNameForTesting()
+        {
+            return RemoteQuestDeliveryActionOwnerName;
+        }
+
         internal static string ResolveRemoteActiveEffectMotionBlurOwnerNameForTesting()
         {
             return RemoteActiveEffectMotionBlurActionOwnerName;
@@ -9089,6 +9175,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int ResolveRemoteActiveEffectMotionBlurCounterSkillIdForTesting(int itemId)
         {
             return ResolveRemoteActiveEffectMotionBlurCounterSkillId(itemId);
+        }
+
+        internal static int ResolveRemoteQuestDeliveryCounterSkillIdForTesting(int itemId)
+        {
+            return ResolveRemoteQuestDeliveryCounterSkillId(itemId);
         }
 
         internal static bool IsRemoteAuxiliaryLayerOwnerCounterContextMatchForTesting(
@@ -10152,10 +10243,67 @@ namespace HaCreator.MapSimulator.Pools
             ConfigureRemoteTemporaryStatAvatarEffectTransition(
                 tailState,
                 currentTime,
-                RemoteTemporaryStatAffectedLayerTransitionDurationMs,
+                ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(previousState, currentState),
                 startAlpha: 1f,
                 endAlpha: 0f);
             return true;
+        }
+
+        private static int ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState)
+        {
+            int leadFrameDelayMs = ResolveRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(currentState);
+            if (leadFrameDelayMs <= 0)
+            {
+                leadFrameDelayMs = ResolveRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(previousState);
+            }
+
+            int authoredBlendWindowMs = leadFrameDelayMs > 0
+                ? Math.Max(1, leadFrameDelayMs) * 2
+                : 0;
+            return Math.Max(
+                RemoteTemporaryStatAffectedLayerTransitionDurationMs,
+                Math.Max(
+                    authoredBlendWindowMs,
+                    RemoteTemporaryStatAffectedLayerShiftCadenceDurationMs));
+        }
+
+        private static int ResolveRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(
+            RemoteTemporaryStatAvatarEffectState state)
+        {
+            if (state == null)
+            {
+                return 0;
+            }
+
+            int minimumDelayMs = int.MaxValue;
+            AccumulateRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(state.OverlayAnimation, ref minimumDelayMs);
+            AccumulateRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(state.OverlaySecondaryAnimation, ref minimumDelayMs);
+            AccumulateRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(state.UnderFaceAnimation, ref minimumDelayMs);
+            AccumulateRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(state.UnderFaceSecondaryAnimation, ref minimumDelayMs);
+            return minimumDelayMs == int.MaxValue ? 0 : minimumDelayMs;
+        }
+
+        private static void AccumulateRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(
+            SkillAnimation animation,
+            ref int minimumDelayMs)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return;
+            }
+
+            int delayMs = animation.Frames[0]?.Delay ?? 0;
+            if (delayMs <= 0)
+            {
+                return;
+            }
+
+            if (delayMs < minimumDelayMs)
+            {
+                minimumDelayMs = delayMs;
+            }
         }
 
         private static void PruneExpiredRemoteTemporaryStatAvatarEffectTailStates(
@@ -10187,6 +10335,13 @@ namespace HaCreator.MapSimulator.Pools
                 currentState,
                 currentTime,
                 out tailState);
+        }
+
+        internal static int ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationForTesting(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState)
+        {
+            return ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(previousState, currentState);
         }
 
         internal static float ResolveRemoteTemporaryStatAvatarEffectTransitionAlphaForTesting(
@@ -11205,7 +11360,8 @@ namespace HaCreator.MapSimulator.Pools
                 presentation.ObservedRawActionCode = rawActionCode;
                 presentation.ObservedPlayerActionTriggerTime = actionTriggerTime;
 
-                if (ShadowPartnerClientActionResolver.IsAttackAction(observedPlayerActionName))
+                bool observedAttackAction = ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(observedPlayerActionName, state);
+                if (observedAttackAction)
                 {
                     if (TryResolveRemoteShadowPartnerAttackAction(
                             actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
@@ -12718,6 +12874,9 @@ namespace HaCreator.MapSimulator.Pools
         public int? PartyHpPercent { get; set; }
             public int? PartyHpGaugePos { get; set; }
             public int? PacketOwnedQuestDeliveryEffectItemId { get; set; }
+            public int PacketOwnedQuestDeliveryEffectAppliedTime { get; set; } = int.MinValue;
+            public string PacketOwnedQuestDeliveryOwnerActionName { get; set; }
+            public bool PacketOwnedQuestDeliveryOwnerFacingRight { get; set; } = true;
             public RemoteUserEffectPacket LastEffect { get; set; }
             public int? LastEffectByItemId { get; set; }
             public RemoteUserActorPool.RemoteHitState LastHit { get; set; }

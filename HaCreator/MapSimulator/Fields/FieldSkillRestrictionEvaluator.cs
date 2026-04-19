@@ -621,7 +621,20 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int skillClass = GetClientJobClassGrade(skillRoot);
-            return skillClass > 0 && listedClass == skillClass;
+            if (skillClass > 0)
+            {
+                return listedClass == skillClass;
+            }
+
+            foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
+            {
+                if (candidate == listedClass)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsEvanSkillClassRoot(int jobId)

@@ -1824,6 +1824,103 @@ namespace HaCreator.MapSimulator
                 out message);
         }
 
+        private bool TryQueueMechanicAuthorityResultFromStatePayload(
+            MechanicEquipPacketPayload statePayload,
+            out string message)
+        {
+            message = null;
+            List<PendingEquipmentChangeEnvelope> mechanicCandidates = new();
+            foreach (PendingEquipmentChangeEnvelope envelope in _pendingEquipmentChangeRequests.Values)
+            {
+                if (envelope?.Request != null
+                    && envelope.AwaitingMechanicPacketAuthority
+                    && IsMechanicEquipmentRequest(envelope.Request))
+                {
+                    mechanicCandidates.Add(envelope);
+                }
+            }
+
+            if (mechanicCandidates.Count == 0)
+            {
+                message = "Mechanic state payload did not match an active mechanic packet-owned request.";
+                return false;
+            }
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+            MechanicEquipmentController controller = _playerManager?.CompanionEquipment?.Mechanic;
+            if (build == null || controller == null)
+            {
+                message = "Mechanic equipment runtime is unavailable.";
+                return false;
+            }
+
+            controller.EnsureDefaults(build);
+            IReadOnlyDictionary<MechanicEquipSlot, int> beforeState = CaptureMechanicStateSnapshot(controller);
+            string lastRejectReason = null;
+            for (int i = 0; i < mechanicCandidates.Count; i++)
+            {
+                EquipmentChangeRequest request = mechanicCandidates[i].Request;
+                if (request == null)
+                {
+                    continue;
+                }
+
+                if (!TryGetMechanicRequestScope(
+                        request,
+                        out MechanicEquipSlot requestSlot,
+                        out bool requireClearedSlot,
+                        out string scopeRejectReason))
+                {
+                    lastRejectReason = scopeRejectReason;
+                    continue;
+                }
+
+                if (!TryValidatePacketOwnedMechanicAuthorityScope(
+                        requestSlot,
+                        beforeState,
+                        new MechanicEquipPacketPayload(
+                            MechanicEquipPacketPayloadMode.AuthorityResult,
+                            statePayload.Slot,
+                            statePayload.ItemId,
+                            statePayload.SnapshotItems,
+                            request.RequestId,
+                            request.RequestedAtTick,
+                            AuthorityResultKind: statePayload.Mode switch
+                            {
+                                MechanicEquipPacketPayloadMode.Snapshot => MechanicEquipAuthorityResultKind.SnapshotAccept,
+                                MechanicEquipPacketPayloadMode.SlotMutation => MechanicEquipAuthorityResultKind.SlotMutationAccept,
+                                MechanicEquipPacketPayloadMode.ClearAll => MechanicEquipAuthorityResultKind.ClearAllAccept,
+                                MechanicEquipPacketPayloadMode.ResetDefaults => MechanicEquipAuthorityResultKind.ResetDefaultsAccept,
+                                _ => MechanicEquipAuthorityResultKind.LocalRequestAccept
+                            }),
+                        request.ItemId,
+                        requireClearedSlot,
+                        out string scopeRejectReasonForPayload))
+                {
+                    lastRejectReason = scopeRejectReasonForPayload;
+                    continue;
+                }
+
+                if (!MechanicEquipmentPacketParity.TryTranslateStatePayloadToAuthorityResult(
+                        statePayload,
+                        request.RequestId,
+                        request.RequestedAtTick,
+                        out MechanicEquipPacketPayload authorityPayload,
+                        out string translateRejectReason))
+                {
+                    lastRejectReason = translateRejectReason;
+                    continue;
+                }
+
+                return TryQueuePacketOwnedMechanicAuthorityResult(authorityPayload, out message);
+            }
+
+            message = string.IsNullOrWhiteSpace(lastRejectReason)
+                ? "Mechanic state payload did not match the active mechanic packet-owned request scope."
+                : lastRejectReason;
+            return false;
+        }
+
         private static bool IsMechanicInventoryOperationRequestMismatch(string reason)
         {
             if (string.IsNullOrWhiteSpace(reason))
@@ -1838,6 +1935,43 @@ namespace HaCreator.MapSimulator
                    || reason.StartsWith("Only mechanic equip-in or drag-back-out requests ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Mechanic equip-in request is missing ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Mechanic drag-back-out request is missing ", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryGetMechanicRequestScope(
+            EquipmentChangeRequest request,
+            out MechanicEquipSlot requestSlot,
+            out bool requireClearedSlot,
+            out string rejectReason)
+        {
+            requestSlot = default;
+            requireClearedSlot = false;
+            rejectReason = null;
+            if (request == null)
+            {
+                rejectReason = "Mechanic request is unavailable for scope resolution.";
+                return false;
+            }
+
+            if (request.Kind == EquipmentChangeRequestKind.InventoryToCompanion
+                && request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                && request.TargetMechanicSlot.HasValue)
+            {
+                requestSlot = request.TargetMechanicSlot.Value;
+                requireClearedSlot = false;
+                return true;
+            }
+
+            if (request.Kind == EquipmentChangeRequestKind.CompanionToInventory
+                && request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                && request.SourceMechanicSlot.HasValue)
+            {
+                requestSlot = request.SourceMechanicSlot.Value;
+                requireClearedSlot = true;
+                return true;
+            }
+
+            rejectReason = "Only mechanic equip-in and drag-back-out requests expose a resolvable mechanic request scope.";
+            return false;
         }
 
         private bool TryQueueCharacterAuthorityResultFromInventoryOperationPayload(

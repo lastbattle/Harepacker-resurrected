@@ -781,6 +781,85 @@ namespace HaCreator.MapSimulator.Companions
                    || payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.ResetDefaultsAccept;
         }
 
+        internal static bool TryTranslateStatePayloadToAuthorityResult(
+            MechanicEquipPacketPayload payload,
+            int requestId,
+            int requestedAtTick,
+            out MechanicEquipPacketPayload authorityPayload,
+            out string rejectReason)
+        {
+            authorityPayload = default;
+            rejectReason = null;
+            if (requestId <= 0)
+            {
+                rejectReason = "Mechanic authority translation requires a pending request id.";
+                return false;
+            }
+
+            if (requestedAtTick <= 0)
+            {
+                rejectReason = "Mechanic authority translation requires the original request timestamp.";
+                return false;
+            }
+
+            switch (payload.Mode)
+            {
+                case MechanicEquipPacketPayloadMode.Snapshot:
+                    authorityPayload = new MechanicEquipPacketPayload(
+                        MechanicEquipPacketPayloadMode.AuthorityResult,
+                        null,
+                        0,
+                        payload.SnapshotItems,
+                        requestId,
+                        requestedAtTick,
+                        AuthorityResultKind: MechanicEquipAuthorityResultKind.SnapshotAccept);
+                    return true;
+                case MechanicEquipPacketPayloadMode.SlotMutation:
+                    if (!payload.Slot.HasValue)
+                    {
+                        rejectReason = "Mechanic slot-mutation payload is missing the target mechanic slot.";
+                        return false;
+                    }
+
+                    authorityPayload = new MechanicEquipPacketPayload(
+                        MechanicEquipPacketPayloadMode.AuthorityResult,
+                        payload.Slot,
+                        payload.ItemId,
+                        null,
+                        requestId,
+                        requestedAtTick,
+                        AuthorityResultKind: MechanicEquipAuthorityResultKind.SlotMutationAccept);
+                    return true;
+                case MechanicEquipPacketPayloadMode.ClearAll:
+                    authorityPayload = new MechanicEquipPacketPayload(
+                        MechanicEquipPacketPayloadMode.AuthorityResult,
+                        null,
+                        0,
+                        null,
+                        requestId,
+                        requestedAtTick,
+                        AuthorityResultKind: MechanicEquipAuthorityResultKind.ClearAllAccept);
+                    return true;
+                case MechanicEquipPacketPayloadMode.ResetDefaults:
+                    authorityPayload = new MechanicEquipPacketPayload(
+                        MechanicEquipPacketPayloadMode.AuthorityResult,
+                        null,
+                        0,
+                        null,
+                        requestId,
+                        requestedAtTick,
+                        AuthorityResultKind: MechanicEquipAuthorityResultKind.ResetDefaultsAccept);
+                    return true;
+                case MechanicEquipPacketPayloadMode.AuthorityRequest:
+                case MechanicEquipPacketPayloadMode.AuthorityResult:
+                    rejectReason = "Mechanic authority translation only supports direct mechanic state payload modes 0-3.";
+                    return false;
+                default:
+                    rejectReason = $"Mechanic authority translation does not support payload mode {(byte)payload.Mode}.";
+                    return false;
+            }
+        }
+
         private static Dictionary<MechanicEquipSlot, int> ReadSnapshotItems(BinaryReader reader)
         {
             return new Dictionary<MechanicEquipSlot, int>

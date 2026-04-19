@@ -19,6 +19,13 @@ namespace HaCreator.MapSimulator.UI
         private const byte ItemSlotTypeBundle = 2;
         private const byte ItemSlotTypePet = 3;
         internal const int ClientInventoryOperationPacketType = 28;
+        private readonly record struct CharacterInventoryOperationContext(
+            bool SawPositiveEquipRemove,
+            bool SawExpectedPositiveEquipRemove,
+            bool SawNegativeEquipRemove,
+            bool SawExpectedNegativeEquipRemove,
+            bool SawExpectedTargetEquipRemove,
+            bool SawExpectedTargetCashRemove);
 
         internal static bool TryRecognizeClientInventoryOperationCompletion(
             EquipmentChangeRequest request,
@@ -54,10 +61,8 @@ namespace HaCreator.MapSimulator.UI
                 using BinaryReader reader = new(stream);
                 bool sawMatchingAddEntry = false;
                 bool sawMatchingSwap = false;
-                bool sawPositiveEquipRemove = false;
-                bool sawExpectedPositiveEquipRemove = false;
-                bool sawNegativeEquipRemove = false;
-                bool sawExpectedNegativeEquipRemove = false;
+                bool sawDisplacedAddEntry = false;
+                CharacterInventoryOperationContext operationContext = default;
                 bool sawConflictingCharacterMutation = false;
                 string conflictingCharacterMutationRejectReason = null;
                 _ = reader.ReadByte(); // bExclRequestSent reset marker
@@ -90,14 +95,11 @@ namespace HaCreator.MapSimulator.UI
                             }
 
                             short toPosition = reader.ReadInt16();
-                            ObserveCharacterInventoryOperationRemove(
+                            operationContext = ObserveCharacterInventoryOperationRemove(
                                 request,
+                                operationContext,
                                 inventoryType,
-                                fromPosition,
-                                ref sawPositiveEquipRemove,
-                                ref sawExpectedPositiveEquipRemove,
-                                ref sawNegativeEquipRemove,
-                                ref sawExpectedNegativeEquipRemove);
+                                fromPosition);
                             if (TryMatchesCharacterInventoryOperationSwap(
                                     request,
                                     inventoryType,
@@ -130,14 +132,11 @@ namespace HaCreator.MapSimulator.UI
                             _ = reader.ReadInt16();
                             break;
                         case 3:
-                            ObserveCharacterInventoryOperationRemove(
+                            operationContext = ObserveCharacterInventoryOperationRemove(
                                 request,
+                                operationContext,
                                 inventoryType,
-                                fromPosition,
-                                ref sawPositiveEquipRemove,
-                                ref sawExpectedPositiveEquipRemove,
-                                ref sawNegativeEquipRemove,
-                                ref sawExpectedNegativeEquipRemove);
+                                fromPosition);
                             break;
                         case 4:
                             if (stream.Length - stream.Position < sizeof(int))
@@ -174,10 +173,24 @@ namespace HaCreator.MapSimulator.UI
                             {
                                 sawMatchingAddEntry = true;
                             }
+                            else if (TryMatchesExpectedCharacterDisplacedAdd(
+                                         request,
+                                         operationContext,
+                                         inventoryType,
+                                         fromPosition,
+                                         addedItemId,
+                                         sawDisplacedAddEntry,
+                                         out string displacedAddRejectReason))
+                            {
+                                sawDisplacedAddEntry = true;
+                            }
                             else if (IsSupportedClientCharacterInventoryType(inventoryType))
                             {
                                 sawConflictingCharacterMutation = true;
                                 conflictingCharacterMutationRejectReason ??=
+                                    !string.IsNullOrWhiteSpace(displacedAddRejectReason)
+                                        ? displacedAddRejectReason
+                                        :
                                     string.IsNullOrWhiteSpace(addMismatchRejectReason)
                                         ? "Inventory-operation payload mutated an unexpected character inventory add entry while resolving the active request."
                                         : addMismatchRejectReason;
@@ -207,10 +220,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     return TryValidateCharacterAddEntrySourceEvidence(
                         request,
-                        sawPositiveEquipRemove,
-                        sawExpectedPositiveEquipRemove,
-                        sawNegativeEquipRemove,
-                        sawExpectedNegativeEquipRemove,
+                        operationContext,
                         out rejectReason);
                 }
             }
@@ -224,19 +234,23 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        private static void ObserveCharacterInventoryOperationRemove(
+        private static CharacterInventoryOperationContext ObserveCharacterInventoryOperationRemove(
             EquipmentChangeRequest request,
+            CharacterInventoryOperationContext context,
             byte inventoryType,
-            short sourcePosition,
-            ref bool sawPositiveEquipRemove,
-            ref bool sawExpectedPositiveEquipRemove,
-            ref bool sawNegativeEquipRemove,
-            ref bool sawExpectedNegativeEquipRemove)
+            short sourcePosition)
         {
             if (request == null)
             {
-                return;
+                return context;
             }
+
+            bool sawPositiveEquipRemove = context.SawPositiveEquipRemove;
+            bool sawExpectedPositiveEquipRemove = context.SawExpectedPositiveEquipRemove;
+            bool sawNegativeEquipRemove = context.SawNegativeEquipRemove;
+            bool sawExpectedNegativeEquipRemove = context.SawExpectedNegativeEquipRemove;
+            bool sawExpectedTargetEquipRemove = context.SawExpectedTargetEquipRemove;
+            bool sawExpectedTargetCashRemove = context.SawExpectedTargetCashRemove;
 
             if (sourcePosition > 0)
             {
@@ -249,7 +263,13 @@ namespace HaCreator.MapSimulator.UI
                     sawExpectedPositiveEquipRemove = sawExpectedPositiveEquipRemove || sourcePosition == expectedSourcePosition;
                 }
 
-                return;
+                return new CharacterInventoryOperationContext(
+                    sawPositiveEquipRemove,
+                    sawExpectedPositiveEquipRemove,
+                    sawNegativeEquipRemove,
+                    sawExpectedNegativeEquipRemove,
+                    sawExpectedTargetEquipRemove,
+                    sawExpectedTargetCashRemove);
             }
 
             if (sourcePosition < 0)
@@ -263,15 +283,39 @@ namespace HaCreator.MapSimulator.UI
                     short expectedSourcePosition = ToClientEquipPosition(request.SourceEquipSlot.Value);
                     sawExpectedNegativeEquipRemove = sawExpectedNegativeEquipRemove || sourcePosition == expectedSourcePosition;
                 }
+
+                if ((request.Kind == EquipmentChangeRequestKind.InventoryToCharacter
+                     || request.Kind == EquipmentChangeRequestKind.CharacterToCharacter)
+                    && request.TargetEquipSlot.HasValue
+                    && IsExpectedCharacterTargetInventory(request, inventoryType))
+                {
+                    short expectedTargetPosition = ToClientEquipPosition(request.TargetEquipSlot.Value);
+                    if (sourcePosition == expectedTargetPosition)
+                    {
+                        if (inventoryType == ClientCashInventoryType)
+                        {
+                            sawExpectedTargetCashRemove = true;
+                        }
+                        else if (inventoryType == ClientEquipInventoryType)
+                        {
+                            sawExpectedTargetEquipRemove = true;
+                        }
+                    }
+                }
             }
+
+            return new CharacterInventoryOperationContext(
+                sawPositiveEquipRemove,
+                sawExpectedPositiveEquipRemove,
+                sawNegativeEquipRemove,
+                sawExpectedNegativeEquipRemove,
+                sawExpectedTargetEquipRemove,
+                sawExpectedTargetCashRemove);
         }
 
         private static bool TryValidateCharacterAddEntrySourceEvidence(
             EquipmentChangeRequest request,
-            bool sawPositiveEquipRemove,
-            bool sawExpectedPositiveEquipRemove,
-            bool sawNegativeEquipRemove,
-            bool sawExpectedNegativeEquipRemove,
+            CharacterInventoryOperationContext operationContext,
             out string rejectReason)
         {
             rejectReason = null;
@@ -284,13 +328,13 @@ namespace HaCreator.MapSimulator.UI
             switch (request.Kind)
             {
                 case EquipmentChangeRequestKind.InventoryToCharacter:
-                    if (sawPositiveEquipRemove && !sawExpectedPositiveEquipRemove)
+                    if (operationContext.SawPositiveEquipRemove && !operationContext.SawExpectedPositiveEquipRemove)
                     {
                         rejectReason = "Inventory-operation add entry did not include removal from the requested source inventory slot.";
                         return false;
                     }
 
-                    if (!sawExpectedPositiveEquipRemove)
+                    if (!operationContext.SawExpectedPositiveEquipRemove)
                     {
                         rejectReason = "Inventory-operation add entry is missing source-slot removal for the requested equip-in operation.";
                         return false;
@@ -299,13 +343,13 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 case EquipmentChangeRequestKind.CharacterToCharacter:
                 case EquipmentChangeRequestKind.CharacterToInventory:
-                    if (sawNegativeEquipRemove && !sawExpectedNegativeEquipRemove)
+                    if (operationContext.SawNegativeEquipRemove && !operationContext.SawExpectedNegativeEquipRemove)
                     {
                         rejectReason = "Inventory-operation add entry did not include removal from the requested character source slot.";
                         return false;
                     }
 
-                    if (!sawExpectedNegativeEquipRemove)
+                    if (!operationContext.SawExpectedNegativeEquipRemove)
                     {
                         rejectReason = "Inventory-operation add entry is missing source-slot removal for the requested character equipment operation.";
                         return false;
@@ -318,10 +362,114 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static bool TryMatchesExpectedCharacterDisplacedAdd(
+            EquipmentChangeRequest request,
+            CharacterInventoryOperationContext operationContext,
+            byte inventoryType,
+            short targetPosition,
+            int addedItemId,
+            bool sawDisplacedAddEntry,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null || addedItemId <= 0)
+            {
+                return false;
+            }
+
+            switch (request.Kind)
+            {
+                case EquipmentChangeRequestKind.CharacterToCharacter:
+                    if (!request.SourceEquipSlot.HasValue || !request.TargetEquipSlot.HasValue)
+                    {
+                        return false;
+                    }
+
+                    if (inventoryType != ClientEquipInventoryType)
+                    {
+                        return false;
+                    }
+
+                    if (targetPosition != ToClientEquipPosition(request.SourceEquipSlot.Value))
+                    {
+                        return false;
+                    }
+
+                    if (!operationContext.SawExpectedTargetEquipRemove)
+                    {
+                        rejectReason = "Inventory-operation add entry returned a displaced character slot item before the requested target slot was removed.";
+                        return false;
+                    }
+
+                    if (sawDisplacedAddEntry)
+                    {
+                        rejectReason = "Inventory-operation payload returned duplicate displaced character-slot add entries for one move request.";
+                        return false;
+                    }
+
+                    return true;
+                case EquipmentChangeRequestKind.InventoryToCharacter:
+                    if (!request.TargetEquipSlot.HasValue
+                        || !IsSupportedClientCharacterInventoryType(inventoryType)
+                        || targetPosition <= 0)
+                    {
+                        return false;
+                    }
+
+                    bool sawExpectedTargetRemove = inventoryType switch
+                    {
+                        ClientEquipInventoryType => operationContext.SawExpectedTargetEquipRemove,
+                        ClientCashInventoryType => operationContext.SawExpectedTargetCashRemove,
+                        _ => false
+                    };
+                    if (!sawExpectedTargetRemove)
+                    {
+                        rejectReason = "Inventory-operation add entry returned a displaced target-slot item before the requested character slot was removed.";
+                        return false;
+                    }
+
+                    if (sawDisplacedAddEntry)
+                    {
+                        rejectReason = "Inventory-operation payload returned duplicate displaced target-slot add entries for one equip-in request.";
+                        return false;
+                    }
+
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static bool IsExpectedCharacterSourceInventory(EquipmentChangeRequest request, byte inventoryType)
         {
             if (request?.Kind is not EquipmentChangeRequestKind.CharacterToCharacter
                 and not EquipmentChangeRequestKind.CharacterToInventory)
+            {
+                return false;
+            }
+
+            if (request.Kind == EquipmentChangeRequestKind.CharacterToCharacter)
+            {
+                return inventoryType == ClientEquipInventoryType;
+            }
+
+            if (request.RequestedPart?.IsCash == true)
+            {
+                return inventoryType == ClientCashInventoryType;
+            }
+
+            if (request.RequestedPart?.IsCash == false)
+            {
+                return inventoryType == ClientEquipInventoryType;
+            }
+
+            return IsSupportedClientCharacterInventoryType(inventoryType);
+        }
+
+        private static bool IsExpectedCharacterTargetInventory(EquipmentChangeRequest request, byte inventoryType)
+        {
+            if (request?.Kind is not EquipmentChangeRequestKind.InventoryToCharacter
+                and not EquipmentChangeRequestKind.CharacterToCharacter)
             {
                 return false;
             }

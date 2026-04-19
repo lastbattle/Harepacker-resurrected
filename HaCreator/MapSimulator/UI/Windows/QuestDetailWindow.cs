@@ -46,6 +46,8 @@ namespace HaCreator.MapSimulator.UI
         private const float ConditionTextInset = 6f;
         private const float ConditionValueGap = 8f;
         private const float ConditionRowGap = 4f;
+        // CUIQuestInfoDetail accumulates body rows by CT height; keep section tail spacing neutral.
+        private const float ClientSectionTailGap = 0f;
         private const int ConditionIconSize = 18;
         private const float ConditionSectionBodyGap = 6f;
         private const float ClientTitleScale = 0.74f;
@@ -801,7 +803,7 @@ namespace HaCreator.MapSimulator.UI
                 y = DrawConditionLines(sprite, clipRect, _state.RequirementLines, x, y, maxWidth, false);
             }
 
-            return y + 8f;
+            return y + ClientSectionTailGap;
         }
 
         private float DrawRewardSection(SpriteBatch sprite, Rectangle clipRect, float y, float x, float maxWidth)
@@ -834,7 +836,7 @@ namespace HaCreator.MapSimulator.UI
                 y = DrawConditionLines(sprite, clipRect, _state.RewardLines, x, y, maxWidth, true);
             }
 
-            return y + 8f;
+            return y + ClientSectionTailGap;
         }
 
         private bool HasRequirementContent()
@@ -1561,7 +1563,7 @@ namespace HaCreator.MapSimulator.UI
                     return hovered;
                 }
 
-                y += 8f;
+                y += ClientSectionTailGap;
             }
 
             if (HasRewardContent())
@@ -1596,7 +1598,7 @@ namespace HaCreator.MapSimulator.UI
                     return hovered;
                 }
 
-                y += 8f;
+                y += ClientSectionTailGap;
             }
 
             if (!string.IsNullOrWhiteSpace(_state.HintText))
@@ -1675,7 +1677,7 @@ namespace HaCreator.MapSimulator.UI
                     y = AdvanceConditionLines(_state.RequirementLines, Position.X + ClientTextArrayX, y, ClientContentWidth, false);
                 }
 
-                y += 8f;
+                y += ClientSectionTailGap;
             }
 
             if (HasRewardContent())
@@ -1709,7 +1711,7 @@ namespace HaCreator.MapSimulator.UI
                     y = AdvanceConditionLines(_state.RewardLines, Position.X + ClientTextArrayX, y, ClientContentWidth, true);
                 }
 
-                y += 8f;
+                y += ClientSectionTailGap;
             }
 
             if (!string.IsNullOrWhiteSpace(_state.HintText))
@@ -2138,7 +2140,7 @@ namespace HaCreator.MapSimulator.UI
                     y = AdvanceConditionLines(_state.RequirementLines, Position.X + ClientContentX, y, ClientContentWidth, false);
                 }
 
-                y += 8f;
+                y += ClientSectionTailGap;
             }
 
             if (HasRewardContent())
@@ -2158,7 +2160,7 @@ namespace HaCreator.MapSimulator.UI
                     y = AdvanceConditionLines(_state.RewardLines, Position.X + ClientContentX, y, ClientContentWidth, true);
                 }
 
-                y += 8f;
+                y += ClientSectionTailGap;
             }
 
             if (!string.IsNullOrWhiteSpace(_state.HintText))

@@ -138,7 +138,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            return TryResolveChargeElementByKnownPayloadCandidates(payload, startOffset, preferredSkillId, out chargeElement);
+            return TryResolveChargeElementByKnownPayloadCandidates(
+                payload,
+                startOffset,
+                preferredSkillId,
+                maxScanBytes,
+                out chargeElement);
         }
 
         internal static bool TryResolveChargeElementFromTemporaryStatMetadata(
@@ -404,6 +409,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             ReadOnlySpan<byte> payload,
             int startOffset,
             int preferredSkillId,
+            int maxScanBytes,
             out int chargeElement)
         {
             chargeElement = 0;
@@ -420,8 +426,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
             }
 
+            int scanEndExclusive = payload.Length;
+            if (maxScanBytes > 0)
+            {
+                long boundedEnd = (long)startOffset + maxScanBytes;
+                if (boundedEnd < scanEndExclusive)
+                {
+                    scanEndExclusive = (int)Math.Max(0, boundedEnd);
+                }
+            }
+
+            if (alignedStartOffset > scanEndExclusive - sizeof(int))
+            {
+                return false;
+            }
+
             int matchedChargeElement = 0;
-            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            for (int offset = alignedStartOffset; offset <= scanEndExclusive - sizeof(int); offset += sizeof(int))
             {
                 int candidateSkillId = payload[offset]
                     | (payload[offset + 1] << 8)

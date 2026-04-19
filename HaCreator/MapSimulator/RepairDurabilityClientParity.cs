@@ -172,6 +172,35 @@ namespace HaCreator.MapSimulator
             return TryEncodeLegacyEquippedPosition(slot, out encodedPosition);
         }
 
+        internal static bool TryEncodeEquippedPositionFromAvatarLook(
+            EquipSlot slot,
+            int itemId,
+            bool preferHiddenLayer,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
+            out int encodedPosition)
+        {
+            if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out byte bodyPart)
+                && bodyPart > 0
+                && bodyPart <= 59)
+            {
+                encodedPosition = -bodyPart;
+                return true;
+            }
+
+            if (TryResolveEncodedPositionFromAvatarLook(
+                    itemId,
+                    preferHiddenLayer,
+                    visibleEquipmentByBodyPart,
+                    hiddenEquipmentByBodyPart,
+                    out encodedPosition))
+            {
+                return true;
+            }
+
+            return TryEncodeLegacyEquippedPosition(slot, out encodedPosition);
+        }
+
         internal static bool TryEncodeLegacyEquippedPosition(EquipSlot slot, out int encodedPosition)
         {
             if (TryResolveLegacyBodyPart(slot, out int legacyBodyPart))
@@ -1017,19 +1046,30 @@ namespace HaCreator.MapSimulator
             out (Rectangle Rect, int FrameIndex)[] candidates)
         {
             candidates = null;
-            if (!TryGetTooltipFrameLayout(tooltipFrameOrigins, tooltipFrameSizes, 0, out Point leftOrigin, out Point leftSize)
+            if (!TryGetTooltipFrameLayout(tooltipFrameOrigins, tooltipFrameSizes, 0, out Point aboveLeftOrigin, out Point aboveLeftSize)
                 || !TryGetTooltipFrameLayout(tooltipFrameOrigins, tooltipFrameSizes, 1, out Point rightOrigin, out Point rightSize))
             {
                 return false;
             }
 
+            bool hasBelowLeftFrame = TryGetTooltipFrameLayout(
+                tooltipFrameOrigins,
+                tooltipFrameSizes,
+                2,
+                out Point belowLeftOrigin,
+                out Point belowLeftSize);
             Point aboveAnchorPoint = new(anchorPoint.X, anchorPoint.Y - tooltipHeight - cursorGap);
             candidates = new (Rectangle Rect, int FrameIndex)[]
             {
                 (CreateTooltipRectFromFrameOrigin(anchorPoint, tooltipWidth, tooltipHeight, rightOrigin, rightSize), 1),
-                (CreateTooltipRectFromFrameOrigin(anchorPoint, tooltipWidth, tooltipHeight, leftOrigin, leftSize), 0),
+                (CreateTooltipRectFromFrameOrigin(
+                    anchorPoint,
+                    tooltipWidth,
+                    tooltipHeight,
+                    hasBelowLeftFrame ? belowLeftOrigin : aboveLeftOrigin,
+                    hasBelowLeftFrame ? belowLeftSize : aboveLeftSize), hasBelowLeftFrame ? 2 : 0),
                 (CreateTooltipRectFromFrameOrigin(aboveAnchorPoint, tooltipWidth, tooltipHeight, rightOrigin, rightSize), 1),
-                (CreateTooltipRectFromFrameOrigin(aboveAnchorPoint, tooltipWidth, tooltipHeight, leftOrigin, leftSize), 0)
+                (CreateTooltipRectFromFrameOrigin(aboveAnchorPoint, tooltipWidth, tooltipHeight, aboveLeftOrigin, aboveLeftSize), 0)
             };
             return true;
         }

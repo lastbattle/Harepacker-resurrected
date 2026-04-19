@@ -91,19 +91,38 @@ namespace HaCreator.MapSimulator.Character.Skills
                 55, // iceStrike
                 210, // quadBlow
                 // IDA `IsAbleTamingMobAction` admits raw actions 4 and 42-46 for mounted action
-                // coverage before vehicle-specific branches (including 1932000 and 1932016).
+                // coverage before vehicle-specific branches.
                 // Keep these as owner-preservation only for mounts that already own the seam.
                 42, // paralyze
                 43, // ladder2
                 44, // rope2
-                45, // shoot6
-                46, // arrowRain
                 // IDA `CActionMan::LoadTamingMobAction` remaps these raw actions to mount-safe
                 // fallback actions before vehicle-family gating:
                 // 270 -> 43 (ladder2), 271 -> 2 (stand1), 272 -> 2 (stand1).
                 270, // braveslash3
                 271, // braveslash4
                 272  // chargeBlow
+            );
+
+        private static readonly string[] ClientConfirmedVehicle193FamilyOnlyActionNames =
+            ResolveClientRawActionNames(
+                // IDA `CActionMan::LoadTamingMobAction` admits these raw actions in the
+                // nVehicleID/10000 == 193 branch before IsAbleTamingMobAction checks.
+                58,  // avenger
+                59,  // assaulter
+                118, // firestrike
+                119, // flamegear
+                132, // tripleSwing
+                133, // finalCharge
+                144  // comboJudgement
+            );
+
+        private static readonly string[] ClientConfirmedMechanicAndEventVehicleType2OnlyActionNames =
+            ResolveClientRawActionNames(
+                // IDA `CActionMan::LoadTamingMobAction` routes raw 45/46 through the
+                // 193-family event/jaguar/1932016 gate and does not admit 1932000 here.
+                45, // shoot6
+                46  // arrowRain
             );
 
         private static readonly string[] MechanicClientOwnedVehicleMountedMoveActions =
@@ -462,6 +481,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsBattleshipVehicleOwnedCurrentActionName(string actionName, bool includeSupportActions = false)
         {
             return IsBattleshipVehicleActionName(actionName, includeSupportActions)
+                   || ContainsActionName(ClientConfirmedVehicle193FamilyOnlyActionNames, actionName)
                    || ContainsActionName(SharedClientOwnedVehicleVehicleIdOnlyActionNames, actionName)
                    || IsMountedMoveActionName(actionName);
         }
@@ -484,6 +504,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return IsMountedMoveActionName(actionName)
+                   || ContainsActionName(ClientConfirmedVehicle193FamilyOnlyActionNames, actionName)
+                   || ContainsActionName(ClientConfirmedMechanicAndEventVehicleType2OnlyActionNames, actionName)
                    || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName);
         }
 
@@ -535,6 +557,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             return IsMountedMoveActionName(actionName)
                    || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName)
                    || ContainsActionName(SharedClientOwnedVehicleVehicleIdOnlyActionNames, actionName)
+                   || ContainsActionName(ClientConfirmedVehicle193FamilyOnlyActionNames, actionName)
+                   || ContainsActionName(ClientConfirmedMechanicAndEventVehicleType2OnlyActionNames, actionName)
                    || ContainsActionName(ClientConfirmedMechanicVehicleCurrentActionNames, actionName)
                    || ContainsActionName(ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames, actionName)
                    || IsClientAdmittedMechanicVehicleOneTimeActionName(actionName);

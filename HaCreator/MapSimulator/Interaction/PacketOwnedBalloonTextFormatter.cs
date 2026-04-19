@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
         private static readonly Regex NumericPrefixedStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex TerminatedInlineStyleRegex = new(@"#(?<tag>[bkrgdenmc])#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex MalformedPunctuationTagRegex = new(@"#(?<punct>[!?,.;:)])#?", RegexOptions.Compiled);
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -136,6 +137,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = TerminatedInlineStyleRegex.Replace(
                 formatted,
                 static match => "#" + match.Groups["tag"].Value.ToLowerInvariant());
+            formatted = MalformedPunctuationTagRegex.Replace(formatted, "${punct}");
             formatted = PluralSuffixRegex.Replace(formatted, "s");
             formatted = PlaceholderRegex.Replace(formatted, match => ResolvePlaceholderText(match.Groups["token"].Value, context, match.Value));
             return formatted;
@@ -212,6 +214,10 @@ namespace HaCreator.MapSimulator.Interaction
                 "green" => 4,
                 "blue" => 6,
                 "prob" => 6,
+                "yellow" => 10,
+                "orange" => 10,
+                "gray" => 10,
+                "grey" => 10,
                 "purple" => 8,
                 "violet" => 8,
                 "magenta" => 8,

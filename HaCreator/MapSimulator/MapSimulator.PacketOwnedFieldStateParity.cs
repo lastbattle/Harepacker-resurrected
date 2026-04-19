@@ -163,6 +163,11 @@ namespace HaCreator.MapSimulator
                 return dojoMessage;
             }
 
+            if (TryHandleCurrentWrapperFieldSpecificRelayPacket(payload, currentTick, out string relayMessage))
+            {
+                return relayMessage;
+            }
+
             if (TryApplyStructuredFieldSpecificDataPayload(payload, currentTick, out string structuredMessage))
             {
                 return structuredMessage;
@@ -197,6 +202,49 @@ namespace HaCreator.MapSimulator
             }
 
             return applied || !string.IsNullOrWhiteSpace(wrapperMessage);
+        }
+
+        private bool TryHandleCurrentWrapperFieldSpecificRelayPacket(byte[] payload, int currentTick, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            // Preserve string-pair owner routing before considering relay decoding.
+            if (PacketFieldSpecificDataCodec.TryDecodeStringPairs(
+                    payload,
+                    out _,
+                    out _))
+            {
+                return false;
+            }
+
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int packetType,
+                    out byte[] packetPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(
+                packetType,
+                packetPayload,
+                currentTick,
+                out string wrapperMessage);
+            if (!applied)
+            {
+                return false;
+            }
+
+            string relaySummary = $"CField::OnFieldSpecificData decoded wrapper relay packet {packetType} with {packetPayload.Length} payload byte(s).";
+            message = string.IsNullOrWhiteSpace(wrapperMessage)
+                ? relaySummary
+                : $"{relaySummary} {wrapperMessage}";
+            return true;
         }
 
         private static bool TryDecodeDojoFieldSpecificRelayPayload(
@@ -628,8 +676,30 @@ namespace HaCreator.MapSimulator
             {
                 if (!PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> decodedPairs, out int headerSize))
                 {
-                    error = "Portal session-value impact packet did not decode into Maple string pairs.";
-                    return false;
+                    if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                            payload,
+                            out int relayedPacketType,
+                            out byte[] relayedPayload,
+                            out string relayError))
+                    {
+                        error = "Portal session-value impact packet did not decode into Maple string pairs.";
+                        return false;
+                    }
+
+                    if (!TryDecodePortalSessionValueImpactPacketPairs(
+                            relayedPacketType,
+                            relayedPayload,
+                            out pairs,
+                            out string relayedError))
+                    {
+                        error =
+                            $"Portal session-value impact field-specific relay packet {relayedPacketType} did not decode into usable key/value pairs. {relayedError}";
+                        return false;
+                    }
+
+                    error =
+                        $"decoded field-specific relay packet {relayedPacketType} after Maple string-pair decode miss. {relayError}";
+                    return true;
                 }
 
                 if (!TryNormalizePortalSessionValueImpactPairs(packetType, decodedPairs, out pairs))

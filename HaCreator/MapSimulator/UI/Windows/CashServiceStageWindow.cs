@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.UI
             public int DiscountRate { get; init; }
             public int RawByteLength { get; init; } = CashItemInfoPacketByteLength;
             public int BuyerCharacterIdByteLength { get; init; } = 13;
+            public string BuyerCharacterIdRawHex { get; init; } = string.Empty;
         }
 
         private sealed class CashInventoryMutationPacketSnapshot
@@ -137,6 +138,8 @@ namespace HaCreator.MapSimulator.UI
             public int RawByteLength { get; init; } = GiftListPacketByteLength;
             public int SenderByteLength { get; init; } = 13;
             public int MessageByteLength { get; init; } = 73;
+            public string SenderRawHex { get; init; } = string.Empty;
+            public string MessageRawHex { get; init; } = string.Empty;
         }
 
         public sealed class CashNameChangePossibleState
@@ -1484,10 +1487,22 @@ namespace HaCreator.MapSimulator.UI
             int itemId = reader.ReadInt32();
             int quantity = Math.Max(1, (int)reader.ReadInt16());
             int prepaidCost = Math.Max(0, reader.ReadInt32());
+            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeTrailingCashItemInfoSnapshots(reader, maxCount: 4);
             // Client evidence (CCashShop::OnCashItemResGiftDone @ 0x497050):
             // payload shape is recipient name + item id + count + prepaid cost, without GW_CashItemInfo rows.
             _cashGiftLastSummary =
                 $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} x{quantity.ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} for {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
+                embeddedSnapshots,
+                paneLabel: "Packet gifts",
+                browseModeLabel: "Gift",
+                titlePrefix: "Gift packet body",
+                seller: "CCashShop",
+                stateLabel: "Gift body");
+            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            {
+                _cashGiftLastSummary += $" {embeddedSummary}";
+            }
 
             AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
             {
@@ -1731,10 +1746,22 @@ namespace HaCreator.MapSimulator.UI
             int itemCount = Math.Max(0, (int)reader.ReadUInt16());
             int bonusCount = Math.Max(0, (int)reader.ReadUInt16());
             int prepaidCost = Math.Max(0, reader.ReadInt32());
+            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeTrailingCashItemInfoSnapshots(reader, maxCount: 8);
             // Client evidence (CCashShop::OnCashItemResGiftPackageDone @ 0x496dc0):
             // payload shape is recipient name + package id + count + bonus + prepaid cost, without GW_CashItemInfo rows.
             _cashGiftLastSummary =
                 $"Gifted package {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s), {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count, and {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
+                embeddedSnapshots,
+                paneLabel: "Packet package",
+                browseModeLabel: "Package",
+                titlePrefix: "Gift package body",
+                seller: "CCashShop",
+                stateLabel: "Gift package body");
+            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            {
+                _cashGiftLastSummary += $" {embeddedSummary}";
+            }
 
             AppendCashPacketCatalogEntry("Packet package", "Package", new PacketCatalogEntry
             {
@@ -2248,6 +2275,18 @@ namespace HaCreator.MapSimulator.UI
             string failureMessage = reason >= 0
                 ? $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}."
                 : $"{ownerName} failed before a reason byte could be decoded.";
+            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeEmbeddedCashItemInfoSnapshots(payload, startOffset: 2, maxCount: 4);
+            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
+                embeddedSnapshots,
+                paneLabel: "Packet purchase",
+                browseModeLabel: "Buy",
+                titlePrefix: "Failure packet body",
+                seller: "CCashShop",
+                stateLabel: "Failed body");
+            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            {
+                failureMessage += $" {embeddedSummary}";
+            }
             _noticeState = failureMessage;
 
             if (ownerName.Contains("Coupon", StringComparison.Ordinal))
@@ -2273,6 +2312,19 @@ namespace HaCreator.MapSimulator.UI
         private string BuildCashSimpleResult(string ownerName, byte[] payload)
         {
             _noticeState = $"{ownerName} completed with {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state.";
+            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeEmbeddedCashItemInfoSnapshots(payload, startOffset: 1, maxCount: 4);
+            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
+                embeddedSnapshots,
+                paneLabel: "Packet purchase",
+                browseModeLabel: "Buy",
+                titlePrefix: "Packet body",
+                seller: "CCashShop",
+                stateLabel: "Embedded body");
+            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            {
+                _noticeState += $" {embeddedSummary}";
+            }
+
             return _noticeState;
         }
 
@@ -2292,6 +2344,19 @@ namespace HaCreator.MapSimulator.UI
                 PriceLabel = value > 0 ? value.ToString(CultureInfo.InvariantCulture) : string.Empty,
                 StateLabel = "Purchase EXP"
             });
+            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeEmbeddedCashItemInfoSnapshots(payload, startOffset: sizeof(int), maxCount: 4);
+            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
+                embeddedSnapshots,
+                paneLabel: "Packet purchase",
+                browseModeLabel: "Buy",
+                titlePrefix: "Purchase-exp body",
+                seller: "CCashShop",
+                stateLabel: "Purchase EXP body");
+            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            {
+                _noticeState += $" {embeddedSummary}";
+            }
+
             return _noticeState;
         }
 
@@ -3659,10 +3724,11 @@ namespace HaCreator.MapSimulator.UI
                 ItemId = reader.ReadInt32(),
                 CommodityId = reader.ReadInt32(),
                 Quantity = Math.Max(1, (int)reader.ReadInt16()),
-                BuyerCharacterId = ReadFixedPacketString(reader, 13),
+                BuyerCharacterId = ReadFixedPacketString(reader, 13, out string buyerCharacterIdRawHex),
                 RawExpireFileTime = reader.ReadInt64(),
                 PaybackRate = Math.Max(0, reader.ReadInt32()),
-                DiscountRate = Math.Max(0, reader.ReadInt32())
+                DiscountRate = Math.Max(0, reader.ReadInt32()),
+                BuyerCharacterIdRawHex = buyerCharacterIdRawHex
             };
             return true;
         }
@@ -3741,8 +3807,8 @@ namespace HaCreator.MapSimulator.UI
             // GW_GiftList rows are packed as liSN(8) + nItemID(4) + sFrom[13] + sText[73].
             long serialNumber = reader.ReadInt64();
             int itemId = Math.Max(0, reader.ReadInt32());
-            string senderRaw = ReadFixedPacketString(reader, 13, trimWhitespace: false);
-            string messageRaw = ReadFixedPacketString(reader, 73, trimWhitespace: false);
+            string senderRaw = ReadFixedPacketString(reader, 13, out string senderRawHex, trimWhitespace: false);
+            string messageRaw = ReadFixedPacketString(reader, 73, out string messageRawHex, trimWhitespace: false);
             snapshot = new GiftListPacketSnapshot
             {
                 SerialNumber = serialNumber,
@@ -3751,19 +3817,28 @@ namespace HaCreator.MapSimulator.UI
                 Message = messageRaw.Trim(),
                 SenderRaw = senderRaw,
                 MessageRaw = messageRaw,
-                RowIndex = Math.Max(1, rowIndex)
+                RowIndex = Math.Max(1, rowIndex),
+                SenderRawHex = senderRawHex,
+                MessageRawHex = messageRawHex
             };
             return true;
         }
 
         private static string ReadFixedPacketString(BinaryReader reader, int length, bool trimWhitespace = true)
         {
+            return ReadFixedPacketString(reader, length, out _, trimWhitespace);
+        }
+
+        private static string ReadFixedPacketString(BinaryReader reader, int length, out string rawHex, bool trimWhitespace = true)
+        {
+            rawHex = string.Empty;
             if (reader == null || length <= 0)
             {
                 return string.Empty;
             }
 
             byte[] bytes = reader.ReadBytes(length);
+            rawHex = bytes.Length > 0 ? Convert.ToHexString(bytes) : string.Empty;
             int terminatorIndex = Array.IndexOf(bytes, (byte)0);
             int count = terminatorIndex >= 0 ? terminatorIndex : bytes.Length;
             if (count <= 0)
@@ -3850,7 +3925,7 @@ namespace HaCreator.MapSimulator.UI
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"GW_CashItemInfo[{snapshot.RawByteLength}]: liSN={snapshot.SerialNumber}, nAccountID={snapshot.AccountId}, nCharacterID={snapshot.CharacterId}, nItemID={snapshot.ItemId}, nCommodityID={snapshot.CommodityId}, nNumber={Math.Max(1, snapshot.Quantity)}, sBuyCharacterID[{snapshot.BuyerCharacterIdByteLength}]={SanitizePacketString(snapshot.BuyerCharacterId, string.Empty)}, ftExpire={snapshot.RawExpireFileTime}, nPaybackRate={snapshot.PaybackRate}, nDiscountRate={snapshot.DiscountRate}");
+                $"GW_CashItemInfo[{snapshot.RawByteLength}]: liSN={snapshot.SerialNumber}, nAccountID={snapshot.AccountId}, nCharacterID={snapshot.CharacterId}, nItemID={snapshot.ItemId}, nCommodityID={snapshot.CommodityId}, nNumber={Math.Max(1, snapshot.Quantity)}, sBuyCharacterID[{snapshot.BuyerCharacterIdByteLength}]={SanitizePacketString(snapshot.BuyerCharacterId, string.Empty)}, sBuyCharacterIDRawHex[{snapshot.BuyerCharacterIdByteLength}]={snapshot.BuyerCharacterIdRawHex}, ftExpire={snapshot.RawExpireFileTime}, nPaybackRate={snapshot.PaybackRate}, nDiscountRate={snapshot.DiscountRate}");
         }
 
         private static string BuildGiftListFieldSummary(GiftListPacketSnapshot snapshot)
@@ -3866,7 +3941,81 @@ namespace HaCreator.MapSimulator.UI
             string rawMessage = EscapePacketAsciiLiteral(snapshot.MessageRaw);
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"GW_GiftList[{snapshot.RawByteLength}] row {Math.Max(1, snapshot.RowIndex)}: liSN={snapshot.SerialNumber}, nItemID={snapshot.ItemId}, sFrom[{snapshot.SenderByteLength}]={sender}, sFromRaw[{snapshot.SenderByteLength}]=\"{rawSender}\", sText[{snapshot.MessageByteLength}]={message}, sTextRaw[{snapshot.MessageByteLength}]=\"{rawMessage}\", acceptOpcode={snapshot.AcceptRequestOpcode}");
+                $"GW_GiftList[{snapshot.RawByteLength}] row {Math.Max(1, snapshot.RowIndex)}: liSN={snapshot.SerialNumber}, nItemID={snapshot.ItemId}, sFrom[{snapshot.SenderByteLength}]={sender}, sFromRaw[{snapshot.SenderByteLength}]=\"{rawSender}\", sFromRawHex[{snapshot.SenderByteLength}]={snapshot.SenderRawHex}, sText[{snapshot.MessageByteLength}]={message}, sTextRaw[{snapshot.MessageByteLength}]=\"{rawMessage}\", sTextRawHex[{snapshot.MessageByteLength}]={snapshot.MessageRawHex}, acceptOpcode={snapshot.AcceptRequestOpcode}");
+        }
+
+        private List<CashItemInfoPacketSnapshot> TryDecodeTrailingCashItemInfoSnapshots(BinaryReader reader, int maxCount)
+        {
+            if (reader?.BaseStream == null || maxCount <= 0)
+            {
+                return new List<CashItemInfoPacketSnapshot>();
+            }
+
+            Stream stream = reader.BaseStream;
+            byte[] trailingPayload = new byte[Math.Max(0, stream.Length - stream.Position)];
+            if (trailingPayload.Length > 0)
+            {
+                _ = reader.Read(trailingPayload, 0, trailingPayload.Length);
+            }
+
+            return TryDecodeEmbeddedCashItemInfoSnapshots(trailingPayload, startOffset: 0, maxCount: maxCount);
+        }
+
+        private static List<CashItemInfoPacketSnapshot> TryDecodeEmbeddedCashItemInfoSnapshots(byte[] payload, int startOffset, int maxCount)
+        {
+            List<CashItemInfoPacketSnapshot> snapshots = new();
+            if (payload == null || maxCount <= 0 || startOffset < 0 || payload.Length < startOffset + CashItemInfoPacketByteLength)
+            {
+                return snapshots;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            stream.Position = startOffset;
+            while (snapshots.Count < maxCount && stream.Length - stream.Position >= CashItemInfoPacketByteLength)
+            {
+                long initialPosition = stream.Position;
+                if (!TryReadOptionalCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
+                {
+                    break;
+                }
+
+                snapshots.Add(snapshot);
+                if (stream.Position <= initialPosition)
+                {
+                    break;
+                }
+            }
+
+            return snapshots;
+        }
+
+        private string AppendEmbeddedCashItemInfoCatalogEntries(
+            IReadOnlyList<CashItemInfoPacketSnapshot> snapshots,
+            string paneLabel,
+            string browseModeLabel,
+            string titlePrefix,
+            string seller,
+            string stateLabel)
+        {
+            if (snapshots == null || snapshots.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<PacketCatalogEntry> decodedEntries = new(snapshots.Count);
+            for (int i = snapshots.Count - 1; i >= 0; i--)
+            {
+                PacketCatalogEntry entry = BuildCashItemInfoPacketEntry(snapshots[i], titlePrefix, seller, stateLabel);
+                decodedEntries.Add(entry);
+                AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, entry);
+            }
+
+            PacketCatalogEntry firstEntry = decodedEntries[decodedEntries.Count - 1];
+            string firstSummary = string.IsNullOrWhiteSpace(firstEntry.PacketFieldSummary)
+                ? firstEntry.Detail
+                : firstEntry.PacketFieldSummary;
+            return $"Decoded {snapshots.Count.ToString(CultureInfo.InvariantCulture)} embedded GW_CashItemInfo row(s){(string.IsNullOrWhiteSpace(firstSummary) ? "." : $": {firstSummary}.")}";
         }
 
         private static string EscapePacketAsciiLiteral(string value)

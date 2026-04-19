@@ -1213,6 +1213,14 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            bool hasPvpOwnershipContext =
+                _specialFieldRuntime?.SpecialEffects?.Battlefield?.IsActive == true
+                || _specialFieldRuntime?.Minigames?.MonsterCarnival?.IsVisible == true;
+            if (!hasPvpOwnershipContext)
+            {
+                return false;
+            }
+
             if (TryResolveBattlefieldAffectedAreaOwnerTeam(areaObjectId, ownerId, out int ownerBattlefieldTeamId, out int localBattlefieldTeamId))
             {
                 return ownerBattlefieldTeamId != localBattlefieldTeamId;
@@ -1224,7 +1232,51 @@ namespace HaCreator.MapSimulator
                 return ownerCarnivalTeam != carnival.LocalTeam;
             }
 
-            return false;
+            // When owner-team reconstruction is unavailable, only keep enemy-local
+            // replay for areas with explicit hostile WZ metadata.
+            return ShouldAssumeRemoteAffectedAreaOwnerIsEnemyFromHostileMetadata(
+                hasResolvedOwnerTeam: false,
+                hasExplicitHostileMetadata: HasExplicitHostileRemoteAffectedAreaMetadataForLocalPlayer(areaObjectId));
+        }
+
+        private bool HasExplicitHostileRemoteAffectedAreaMetadataForLocalPlayer(int areaObjectId)
+        {
+            if (areaObjectId <= 0
+                || _affectedAreaPool?.TryGetArea(areaObjectId, out ActiveAffectedArea area) != true
+                || area?.SourceKind != AffectedAreaSourceKind.PlayerSkill)
+            {
+                return false;
+            }
+
+            bool preferPvpLevelData = ShouldUseRemoteAffectedAreaPvpLevelData();
+            SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
+            if (skill == null)
+            {
+                return false;
+            }
+
+            SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
+            SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel, preferPvpLevelData);
+            if (levelData == null)
+            {
+                return false;
+            }
+
+            RemoteAffectedAreaSkillRuntime[] hostileSkillRuntimes =
+                ResolveRemoteAffectedAreaHostileSkillRuntimes(skill, levelData, area.SkillLevel, preferPvpLevelData, supportSkills);
+            if (hostileSkillRuntimes.Length <= 0)
+            {
+                return false;
+            }
+
+            return FilterRemoteAffectedAreaLocalPlayerHostileSkillRuntimes(hostileSkillRuntimes).Length > 0;
+        }
+
+        internal static bool ShouldAssumeRemoteAffectedAreaOwnerIsEnemyFromHostileMetadata(
+            bool hasResolvedOwnerTeam,
+            bool hasExplicitHostileMetadata)
+        {
+            return !hasResolvedOwnerTeam && hasExplicitHostileMetadata;
         }
 
         private bool TryResolveBattlefieldAffectedAreaOwnerTeam(

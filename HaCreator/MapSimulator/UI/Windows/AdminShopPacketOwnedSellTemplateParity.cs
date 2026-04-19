@@ -124,6 +124,16 @@ namespace HaCreator.MapSimulator.UI
                 && packetItemId <= 0;
         }
 
+        internal static bool CanCreateFallbackPacketOwnedSellTemplateRow(
+            int packetSerialNumber,
+            int packetItemId,
+            long packetPrice)
+        {
+            return packetPrice <= 0
+                && packetSerialNumber > 0
+                && packetItemId <= 0;
+        }
+
         private static bool IsPreferredCandidate(
             PacketOwnedCommodityMetadataCandidate candidate,
             PacketOwnedCommodityMetadataCandidate existing,

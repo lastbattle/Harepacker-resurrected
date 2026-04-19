@@ -32,7 +32,8 @@ namespace HaCreator.MapSimulator.Pools
             int elementAttribute,
             int phase,
             AffectedAreaSourceKind sourceKind,
-            bool preferPvpLevelData = false)
+            bool preferPvpLevelData = false,
+            int durationOverrideMs = 0)
         {
             ObjectId = objectId;
             Type = type;
@@ -45,6 +46,7 @@ namespace HaCreator.MapSimulator.Pools
             Phase = phase;
             SourceKind = sourceKind;
             PreferPvpLevelData = preferPvpLevelData;
+            DurationOverrideMs = Math.Max(0, durationOverrideMs);
         }
 
         public int ObjectId { get; }
@@ -58,6 +60,7 @@ namespace HaCreator.MapSimulator.Pools
         public int Phase { get; }
         public AffectedAreaSourceKind SourceKind { get; }
         public bool PreferPvpLevelData { get; }
+        public int DurationOverrideMs { get; }
     }
 
     public sealed class ActiveAffectedArea
@@ -293,7 +296,9 @@ namespace HaCreator.MapSimulator.Pools
                 dummySkillId => _skillLoader?.FindDummySkillParentIds(dummySkillId) ?? Array.Empty<int>(),
                 resolveLevelData,
                 createInfo.SkillLevel);
-            int expireTime = ResolveExpireTime(startTime, metadata.DurationSeconds);
+            int expireTime = createInfo.DurationOverrideMs > 0
+                ? ResolveExpireTimeByDurationMs(startTime, createInfo.DurationOverrideMs)
+                : ResolveExpireTime(startTime, metadata.DurationSeconds);
 
             return new ActiveAffectedArea
             {
@@ -545,6 +550,17 @@ namespace HaCreator.MapSimulator.Pools
         private static int ResolveExpireTime(int currentTime, int durationSeconds)
         {
             return durationSeconds > 0 ? currentTime + (durationSeconds * 1000) : 0;
+        }
+
+        private static int ResolveExpireTimeByDurationMs(int currentTime, int durationMs)
+        {
+            if (durationMs <= 0)
+            {
+                return 0;
+            }
+
+            long expireTime = (long)currentTime + durationMs;
+            return expireTime >= int.MaxValue ? int.MaxValue : (int)expireTime;
         }
 
         private static int ResolveAreaBuffItemExpireTime(

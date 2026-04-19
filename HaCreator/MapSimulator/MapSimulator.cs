@@ -367,6 +367,8 @@ namespace HaCreator.MapSimulator
         private int _activeQuestDetailQuestId;
         private QuestDetailInlineReference? _lastQuestDetailInlineWorldMapReference;
         private IReadOnlyList<int> _lastQuestDetailInlineWorldMapIds = Array.Empty<int>();
+        private int _lastQuestDetailInlineItemQuestId;
+        private int _lastQuestDetailInlineItemId;
         private int _activeMemoAttachmentId = -1;
         private NpcItem _activeNpcInteractionNpc;
         private int _activeNpcInteractionNpcId;
@@ -706,6 +708,7 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedTeleportTargetPortalName;
         private int _lastPacketOwnedTeleportRegistrationTick = int.MinValue;
         private int _lastPacketOwnedTeleportMovePathAttribute = -1;
+        private byte[] _lastPacketOwnedTeleportMovePathPayload = Array.Empty<byte>();
         private bool _lastPacketOwnedTeleportSetItemBackgroundActive = false;
         private int _lastPacketOwnedTeleportEffectTick = int.MinValue;
         private string _lastPacketOwnedTeleportEffectPath;
@@ -713,7 +716,9 @@ namespace HaCreator.MapSimulator
         private byte[] _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
         private string _lastPacketOwnedTeleportOutboundSummary;
         private int _lastCollisionVerticalJumpMovePathAttribute = -1;
+        private byte[] _lastCollisionVerticalJumpMovePathPayload = Array.Empty<byte>();
         private int _lastCollisionCustomImpactMovePathAttribute = -1;
+        private byte[] _lastCollisionCustomImpactMovePathPayload = Array.Empty<byte>();
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -723,7 +728,6 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _lastRemotePlayerPickupTimes = new();
         private readonly Dictionary<long, int> _lastRemotePetPickupTimes = new();
         private readonly Dictionary<long, int> _recentPickupRemoteNoticeTimes = new();
-        private readonly Dictionary<Keys, int> _skillMacroForwardedNonFunctionHotkeySlotsByPhysicalKey = new();
         private int _simulatorWorldId = DefaultSimulatorWorldId;
         private int _simulatorChannelIndex = DefaultSimulatorChannelIndex;
         private int _selectorBrowseWorldId = DefaultSimulatorWorldId;
@@ -22833,6 +22837,13 @@ namespace HaCreator.MapSimulator
         }
 
 
+        private readonly struct ConsumableMobSkillEffect
+        {
+            public int SkillId { get; init; }
+            public int Level { get; init; }
+            public int Target { get; init; }
+        }
+
         private readonly struct ConsumableItemEffect
         {
             public int FlatHp { get; init; }
@@ -22900,6 +22911,7 @@ namespace HaCreator.MapSimulator
             public bool CuresAttract { get; init; }
             public bool CuresReverseInput { get; init; }
             public bool CuresUndead { get; init; }
+            public ConsumableMobSkillEffect[] MobSkillEffects { get; init; }
 
 
             public bool HasSupportedRecovery =>
@@ -22989,6 +23001,9 @@ namespace HaCreator.MapSimulator
                 CuresAttract ||
                 CuresReverseInput ||
                 CuresUndead;
+
+            public bool HasSupportedMobSkill =>
+                MobSkillEffects != null && MobSkillEffects.Length > 0;
         }
 
 
@@ -28035,19 +28050,59 @@ namespace HaCreator.MapSimulator
 
         private void HandleSkillMacroClientForwardedNonFunctionPhysicalKeyStateChanged(Keys key, bool keyDown, bool controlHeld, bool shiftHeld)
         {
-            Func<InputAction, KeyBinding> bindingResolver = _playerManager?.Input != null
-                ? _playerManager.Input.GetBinding
-                : null;
-            if (!TryResolveSkillMacroForwardedNonFunctionHotkeySlotForTesting(
-                    key,
-                    controlHeld,
-                    bindingResolver,
-                    out int hotkeySlot))
+            if (!keyDown)
             {
                 return;
             }
 
-            HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, keyDown);
+            Func<InputAction, KeyBinding> bindingResolver = _playerManager?.Input != null
+                ? _playerManager.Input.GetBinding
+                : null;
+            if (!TryResolveSkillMacroForwardedUtilityFunctionIdForTesting(
+                    key,
+                    bindingResolver,
+                    out int clientFunctionId))
+            {
+                return;
+            }
+
+            TryDispatchPacketOwnedRawFunctionEntry(clientFunctionId, currTickCount);
+        }
+
+        internal static bool TryResolveSkillMacroForwardedUtilityFunctionIdForTesting(
+            Keys key,
+            Func<InputAction, KeyBinding> bindingResolver,
+            out int clientFunctionId)
+        {
+            clientFunctionId = -1;
+            if (key == Keys.None || bindingResolver == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
+            {
+                (int candidateClientFunctionId, InputAction action) = PacketOwnedKnownFunctionBindings[i];
+                if (ResolvePacketOwnedRawFunctionOwner(candidateClientFunctionId) == PacketOwnedRawFunctionOwner.None
+                    && ResolvePacketOwnedRawChatOwner(candidateClientFunctionId) == PacketOwnedRawChatOwner.None)
+                {
+                    continue;
+                }
+
+                KeyBinding binding = bindingResolver(action);
+                if (binding == null)
+                {
+                    continue;
+                }
+
+                if (binding.PrimaryKey == key || binding.SecondaryKey == key)
+                {
+                    clientFunctionId = candidateClientFunctionId;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool TryResolveSkillMacroForwardedNonFunctionHotkeySlotForTesting(
@@ -29233,6 +29288,27 @@ namespace HaCreator.MapSimulator
             return Math.Max(normalizedPortalDelayMs, Math.Max(0, requestDelayMs));
         }
 
+        private static byte[] TryEncodePortalOwnedMovePathSnapshot(
+            CVecCtrl physics,
+            int currentTime,
+            out bool encoded)
+        {
+            encoded = false;
+            if (physics == null)
+            {
+                return Array.Empty<byte>();
+            }
+
+            List<MovePathElement> path = physics.GetMovePathSnapshot(currentTime);
+            if (!CMovePathClientPacketCodec.TryEncode(path, out byte[] payload, out _))
+            {
+                return Array.Empty<byte>();
+            }
+
+            encoded = true;
+            return payload ?? Array.Empty<byte>();
+        }
+
         private byte ResolveCollisionScriptPortalFieldKey()
         {
             int mapId = _mapBoard?.MapInfo?.id ?? 0;
@@ -29410,6 +29486,10 @@ namespace HaCreator.MapSimulator
             player.Physics.SetMovePathAttribute(CollisionVerticalJumpMovePathAttribute);
             player.Physics.SetImpactNext(horizontalImpact, CollisionVerticalJumpVelocityY);
             _lastCollisionVerticalJumpMovePathAttribute = CollisionVerticalJumpMovePathAttribute;
+            _lastCollisionVerticalJumpMovePathPayload = TryEncodePortalOwnedMovePathSnapshot(
+                player.Physics,
+                currentTime,
+                out _);
             TryRegisterCollisionVerticalJumpEffect(currentTime);
             _ = ClearPacketOwnedTeleportPassengerLink();
             return true;
@@ -29501,6 +29581,10 @@ namespace HaCreator.MapSimulator
             player.Physics.SetMovePathAttribute(CollisionCustomImpactMovePathAttribute);
             player.Physics.SetImpactNext(velocityX, velocityY);
             _lastCollisionCustomImpactMovePathAttribute = CollisionCustomImpactMovePathAttribute;
+            _lastCollisionCustomImpactMovePathPayload = TryEncodePortalOwnedMovePathSnapshot(
+                player.Physics,
+                currentTime,
+                out _);
             TryRegisterCollisionCustomImpactEffect(currentTime, velocityX);
             return true;
         }
@@ -31968,7 +32052,7 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.SkillMacroWindow.OnMacroDeleted = _ => PersistSkillMacros();
                 uiWindowManager.SkillMacroWindow.OnImeCandidateSelected = TrySelectSkillMacroImeCandidate;
                 uiWindowManager.SkillMacroWindow.OnClientForwardedFunctionKeyStateChanged = HandleSkillMacroClientForwardedFunctionKeyStateChanged;
-                uiWindowManager.SkillMacroWindow.OnClientForwardedNonFunctionHotkeyStateChanged = null;
+                uiWindowManager.SkillMacroWindow.OnClientForwardedNonFunctionHotkeyStateChanged = HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged;
                 uiWindowManager.SkillMacroWindow.OnClientForwardedNonFunctionPhysicalKeyStateChanged = HandleSkillMacroClientForwardedNonFunctionPhysicalKeyStateChanged;
                 uiWindowManager.SkillMacroWindow.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
                 _playerManager.Skills.SetMacroResolver(index => uiWindowManager.SkillMacroWindow.GetMacro(index));
@@ -32578,6 +32662,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (_activeQuestDetailQuestId != questId)
+            {
+                ResetQuestDetailInlineItemSelection();
+            }
 
             _activeQuestDetailQuestId = questId;
             UpdateQuestDetailWindow();
@@ -32596,6 +32684,7 @@ namespace HaCreator.MapSimulator
             if (_activeQuestDetailQuestId == questId && uiWindowManager.QuestDetailWindow?.IsVisible == true)
             {
                 _activeQuestDetailQuestId = 0;
+                ResetQuestDetailInlineItemSelection();
                 uiWindowManager.QuestDetailWindow.SetDetailState(null, -1, 0);
                 uiWindowManager.QuestDetailWindow.Hide();
                 return;
@@ -32656,6 +32745,7 @@ namespace HaCreator.MapSimulator
         private void ResetQuestDetailFromQuestAlarmMutation()
         {
             _activeQuestDetailQuestId = 0;
+            ResetQuestDetailInlineItemSelection();
             uiWindowManager?.QuestDetailWindow?.SetDetailState(null, -1, 0);
         }
 
@@ -32689,6 +32779,10 @@ namespace HaCreator.MapSimulator
 
             if (navigationIndex < 0)
             {
+                if (_activeQuestDetailQuestId != questIds[0])
+                {
+                    ResetQuestDetailInlineItemSelection();
+                }
                 _activeQuestDetailQuestId = questIds[0];
                 navigationIndex = 0;
                 SelectQuestInActiveWindow(_activeQuestDetailQuestId);
@@ -32752,6 +32846,7 @@ namespace HaCreator.MapSimulator
 
 
             _activeQuestDetailQuestId = questIds[nextIndex];
+            ResetQuestDetailInlineItemSelection();
             SelectQuestInActiveWindow(_activeQuestDetailQuestId);
             UpdateQuestDetailWindow();
         }
@@ -32784,6 +32879,11 @@ namespace HaCreator.MapSimulator
 
         private void HandleQuestDetailInlineReference(QuestDetailInlineReference reference)
         {
+            if (reference.Kind == QuestDetailInlineReferenceKind.Item)
+            {
+                RememberQuestDetailInlineItemSelection(_activeQuestDetailQuestId, reference.TargetId);
+            }
+
             QuestWindowActionResult result = OpenQuestDetailInlineReferenceWorldMap(reference);
             HandleQuestWindowActionResult(result);
         }
@@ -33212,10 +33312,16 @@ namespace HaCreator.MapSimulator
                     if (_questRuntime.TryBuildQuestDemandItemQuery(questId, out QuestDemandItemQueryState itemQueryState)
                         && itemQueryState != null)
                     {
+                        int preferredVisibleItemId = ResolveQuestDetailInlineSelectedItemId(questId);
+                        if (preferredVisibleItemId <= 0 && target.EntityId.GetValueOrDefault() > 0)
+                        {
+                            preferredVisibleItemId = target.EntityId.Value;
+                        }
+
                         return new QuestWindowActionResult
                         {
                             QuestId = questId,
-                            Messages = new[] { LaunchQuestDemandItemQuery(itemQueryState) }
+                            Messages = new[] { LaunchQuestDemandItemQuery(itemQueryState, preferredVisibleItemId) }
                         };
                     }
 
@@ -33267,15 +33373,46 @@ namespace HaCreator.MapSimulator
             QuestWindowDetailState detailState = GetQuestWindowDetailStateWithPacketState(questId);
             int detailTargetItemId = detailState?.TargetItemId ?? 0;
             QuestDetailDeliveryType detailDeliveryType = detailState?.DeliveryType ?? QuestDetailDeliveryType.None;
+            int targetItemOverride = ResolveQuestDetailInlineSelectedItemId(questId);
+            if (targetItemOverride <= 0)
+            {
+                targetItemOverride = detailTargetItemId;
+            }
+
             return HandleQuestDeliveryLocalHandoff(
                 questId,
                 completionPhase,
                 sourceContext: $"quest-detail {(completionPhase ? "completion" : "accept")} button",
                 localHandoff: () => ApplyDeliveryQuestLaunch(
                     questId,
-                    detailTargetItemId,
+                    targetItemOverride,
                     Array.Empty<int>(),
-                    detailDeliveryType));
+                    detailDeliveryType),
+                targetItemIdOverride: targetItemOverride);
+        }
+
+        private void RememberQuestDetailInlineItemSelection(int questId, int itemId)
+        {
+            if (questId <= 0 || itemId <= 0)
+            {
+                return;
+            }
+
+            _lastQuestDetailInlineItemQuestId = questId;
+            _lastQuestDetailInlineItemId = itemId;
+        }
+
+        private int ResolveQuestDetailInlineSelectedItemId(int questId)
+        {
+            return _lastQuestDetailInlineItemQuestId == questId
+                ? Math.Max(0, _lastQuestDetailInlineItemId)
+                : 0;
+        }
+
+        private void ResetQuestDetailInlineItemSelection()
+        {
+            _lastQuestDetailInlineItemQuestId = 0;
+            _lastQuestDetailInlineItemId = 0;
         }
 
         private QuestWindowActionResult HandleQuestDeliveryLocalHandoff(
@@ -33909,7 +34046,9 @@ namespace HaCreator.MapSimulator
             bool hasFloatNoticeOwner =
                 _localOverlayRuntime?.HasDamageMeterTimer(currentTime) == true
                 || _localOverlayRuntime?.HasActiveFieldHazardNotice(currentTime) == true;
-            bool hasItemMsgOwner = _pickupNoticeUI?.NoticeCount > 0;
+            bool hasItemMsgOwner = SkillCooldownNoticeUI.HasActiveStatusBarItemMsgOwnerForClientParity(
+                _fieldEffects?.WeatherMessages,
+                currentTime);
             return hasQuizPanelOwner || hasFloatNoticeOwner || hasItemMsgOwner;
         }
 
