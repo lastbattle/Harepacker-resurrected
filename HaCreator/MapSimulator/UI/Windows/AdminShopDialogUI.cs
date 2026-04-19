@@ -1762,7 +1762,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (_packetOwnedAdminShopSession.IsActive)
             {
-                if (_packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                AdminShopPacketOwnedOwnerVisibilityState previousVisibilityState = _packetOwnedAdminShopSession.OwnerVisibilityState;
+                if (_packetOwnedAdminShopSession.ShouldRestoreOwnerSurfaceOnShow
                     && _packetOwnedAdminShopRows.Count > 0)
                 {
                     bool preservePacketOwnedUserSelection = TryCapturePacketOwnedSetUserItemsSelection(
@@ -1778,8 +1779,10 @@ namespace HaCreator.MapSimulator.UI
                         preservedUserSelectionSlotPosition,
                         preservedUserSelectionPacketSerialNumber,
                         preservedUserSelectionScrollOffset);
-                    _packetOwnedAdminShopSession.SetLastOwnerState(
-                        "CAdminShopDlg surfaced the staged packet 367 payload after the unique-modeless blocker cleared.");
+                    string ownerState = previousVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily
+                        ? "CAdminShopDlg resumed the packet-owned owner surface after the Cash Shop owner family became visible again."
+                        : "CAdminShopDlg surfaced the staged packet 367 payload after the unique-modeless blocker cleared.";
+                    _packetOwnedAdminShopSession.SetLastOwnerState(ownerState);
                 }
 
                 RecordPacketOwnedAdminShopOwnerSurfaceShown();
@@ -7537,6 +7540,7 @@ namespace HaCreator.MapSimulator.UI
                 commodity.SerialNumber,
                 commodity.ItemId,
                 commodity.Price,
+                commodity.SaleState == 0,
                 metadataCandidates);
             return resolvedSerialNumber > 0
                 && TryGetCommodityBySerialNumber(resolvedSerialNumber, out resolvedCommodity)

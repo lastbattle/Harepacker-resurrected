@@ -25,10 +25,12 @@ namespace HaCreator.MapSimulator.Managers
         internal const byte FollowCharacterWithdrawAutoRequest = 0;
         internal const byte FollowCharacterWithdrawKeyInput = 1;
         private const string DefaultProcessName = "MapleStory";
+        private const int SentOutboundHistoryCapacity = 64;
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
+        private readonly ConcurrentQueue<PendingOutboundPacket> _sentOutboundHistory = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -254,9 +256,7 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 pair.ServerSession.SendPacket(rawPacket);
-                SentCount++;
-                LastSentOpcode = opcode;
-                LastSentRawPacket = rawPacket;
+                RecordSentOutboundPacket(opcode, rawPacket);
                 status = $"Injected local utility outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
                 return true;
@@ -317,6 +317,32 @@ namespace HaCreator.MapSimulator.Managers
 
             byte[] target = rawPacket as byte[] ?? rawPacket.ToArray();
             return LastSentRawPacket.AsSpan().SequenceEqual(target);
+        }
+
+        public bool HasSentOutboundPacket(int opcode, IReadOnlyList<byte> rawPacket)
+        {
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue || rawPacket == null)
+            {
+                return false;
+            }
+
+            byte[] target = rawPacket as byte[] ?? rawPacket.ToArray();
+            if (LastSentOpcode == opcode && LastSentRawPacket.AsSpan().SequenceEqual(target))
+            {
+                return true;
+            }
+
+            PendingOutboundPacket[] history = _sentOutboundHistory.ToArray();
+            for (int i = history.Length - 1; i >= 0; i--)
+            {
+                PendingOutboundPacket sent = history[i];
+                if (sent.Opcode == opcode && sent.RawPacket.AsSpan().SequenceEqual(target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static byte[] BuildFollowCharacterRequestPayload(int driverId, bool autoRequest, bool keyInput)
@@ -537,6 +563,9 @@ namespace HaCreator.MapSimulator.Managers
                 while (_pendingOutboundPackets.TryDequeue(out _))
                 {
                 }
+                while (_sentOutboundHistory.TryDequeue(out _))
+                {
+                }
 
                 SentCount = 0;
                 LastSentOpcode = -1;
@@ -563,9 +592,7 @@ namespace HaCreator.MapSimulator.Managers
                     break;
                 }
 
-                SentCount++;
-                LastSentOpcode = dequeuedPacket.Opcode;
-                LastSentRawPacket = dequeuedPacket.RawPacket;
+                RecordSentOutboundPacket(dequeuedPacket.Opcode, dequeuedPacket.RawPacket);
                 flushed++;
             }
 
@@ -579,6 +606,18 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             ReceivedCount = 0;
+        }
+
+        private void RecordSentOutboundPacket(int opcode, byte[] rawPacket)
+        {
+            SentCount++;
+            LastSentOpcode = opcode;
+            LastSentRawPacket = rawPacket ?? Array.Empty<byte>();
+            _sentOutboundHistory.Enqueue(new PendingOutboundPacket(opcode, LastSentRawPacket));
+            while (_sentOutboundHistory.Count > SentOutboundHistoryCapacity
+                   && _sentOutboundHistory.TryDequeue(out _))
+            {
+            }
         }
 
         private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)

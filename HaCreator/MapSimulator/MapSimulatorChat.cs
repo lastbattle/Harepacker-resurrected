@@ -2440,6 +2440,10 @@ namespace HaCreator.MapSimulator
 
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             _isWhisperTargetPickerComboDropdownOpen = _whisperCandidates.Count > 0;
+            if (_isWhisperTargetPickerComboDropdownOpen)
+            {
+                EnsureWhisperTargetPickerDropdownSelectionSeeded();
+            }
         }
 
         internal void ToggleWhisperTargetPickerModalComboDropdown()
@@ -2453,6 +2457,10 @@ namespace HaCreator.MapSimulator
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             _isWhisperTargetPickerComboDropdownOpen = !_isWhisperTargetPickerComboDropdownOpen
                 && _whisperCandidates.Count > 0;
+            if (_isWhisperTargetPickerComboDropdownOpen)
+            {
+                EnsureWhisperTargetPickerDropdownSelectionSeeded();
+            }
         }
 
         internal bool AcceptWhisperTargetPickerModalComboSelection()
@@ -2470,6 +2478,21 @@ namespace HaCreator.MapSimulator
             _isWhisperTargetPickerComboDropdownOpen = false;
             SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
             return true;
+        }
+
+        private void EnsureWhisperTargetPickerDropdownSelectionSeeded()
+        {
+            if (_whisperTargetPickerSelectionIndex >= 0
+                && _whisperTargetPickerSelectionIndex < _whisperCandidates.Count)
+            {
+                return;
+            }
+
+            _whisperTargetPickerSelectionIndex = Math.Clamp(
+                _whisperTargetPickerFirstVisibleIndex,
+                0,
+                _whisperCandidates.Count - 1);
+            EnsureWhisperTargetPickerSelectionVisible();
         }
 
         internal void ToggleWhisperTargetPickerModalFocusTarget()

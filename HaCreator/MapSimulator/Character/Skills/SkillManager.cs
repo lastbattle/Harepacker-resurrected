@@ -2257,7 +2257,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, int> _recentOwnerAttackTargetTimes = new();
         private readonly HashSet<int> _activeRepeatSustainTimerCancelFamilyKeys = new();
         private readonly HashSet<int> _activeClientTimerBatchCancelFamilyKeys = new();
+        private readonly HashSet<int> _activeClientUpdateBatchCancelFamilyKeys = new();
         private bool _isDispatchingClientTimerExpirationBatch;
+        private bool _isDispatchingClientUpdateCancelBatch;
 
         /// <summary>
         /// Queue a skill for execution (used by skill macros)
@@ -2692,6 +2694,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (ShouldSuppressClientUpdateBatchCancelRequest(skillId))
+            {
+                return false;
+            }
+
             int normalizedPacketSkillId = ClientSkillCancelResolver.NormalizeClientCancelRequestSkillId(skillId);
             int[] cancelSkillIds = ResolveClientCancelRequestSkillIds(skillId);
             if (cancelSkillIds.Length == 0)
@@ -2728,15 +2735,37 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private bool ShouldSuppressClientTimerBatchCancelRequest(int skillId)
         {
-            if (!_isDispatchingClientTimerExpirationBatch || skillId <= 0)
+            return ShouldSuppressClientCancelBatchRequest(
+                _isDispatchingClientTimerExpirationBatch,
+                _activeClientTimerBatchCancelFamilyKeys,
+                skillId,
+                ResolveClientCancelRequestSkillIds);
+        }
+
+        private bool ShouldSuppressClientUpdateBatchCancelRequest(int skillId)
+        {
+            return ShouldSuppressClientCancelBatchRequest(
+                _isDispatchingClientUpdateCancelBatch,
+                _activeClientUpdateBatchCancelFamilyKeys,
+                skillId,
+                ResolveClientCancelRequestSkillIds);
+        }
+
+        internal static bool ShouldSuppressClientCancelBatchRequest(
+            bool isDispatchingBatch,
+            ISet<int> activeCancelFamilyKeys,
+            int skillId,
+            Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds)
+        {
+            if (!isDispatchingBatch || skillId <= 0 || activeCancelFamilyKeys == null)
             {
                 return false;
             }
 
             return !TryRegisterClientTimerBatchCancelFamily(
-                _activeClientTimerBatchCancelFamilyKeys,
+                activeCancelFamilyKeys,
                 skillId,
-                ResolveClientCancelRequestSkillIds);
+                resolveCancelRequestSkillIds);
         }
 
         internal static bool TryRegisterClientTimerBatchCancelFamily(
@@ -3563,6 +3592,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 CasterX = _player.X,
                 CasterY = _player.Y,
                 FacingRight = _player.FacingRight,
+                EffectBranchLastIndex = ResolveClientLocalShowSkillEffectEffectBranchLastIndexOverride(skill),
                 DelayRateOverride = ResolveClientLocalShowSkillEffectDelayRateOverride(skill)
             };
 
@@ -6588,6 +6618,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SourceSkillId = sourceSkillId,
                 RequestTime = currentTime,
                 BranchNames = branchNames,
+                EffectBranchLastIndex = ResolveClientShowSkillEffectEffectBranchLastIndex(),
                 WorldOrigin = worldOrigin,
                 OriginOffset = originOffset,
                 FollowOwnerPosition = followOwnerPosition,
@@ -7735,6 +7766,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             return (1000 * (actionSpeed + 10)) / 16;
         }
 
+        internal static int ResolveClientShowSkillEffectEffectBranchLastIndex()
+        {
+            // IDA evidence (`CUser::ShowSkillEffect`) loops effect branches through
+            // the caller-provided `nLast`. Local non-melee callers such as
+            // `DoActiveSkill_Heal`, `DoActiveSkill_TownPortal`, `DoActiveSkill_Summon`,
+            // and `DoActiveSkill_SmokeShell` pass `0x7FFFFFFF`.
+            return int.MaxValue;
+        }
+
         internal static int? ResolveClientLocalShowSkillEffectDelayRateOverride(SkillData skill)
         {
             if (skill == null
@@ -7751,6 +7791,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             // `CUser::ShowSkillEffect`; the shared owner then applies the same
             // `1000 * (speed + 10) / 16` rate used by melee/shoot/magic callers.
             return ResolveClientShowSkillEffectDelayRateFromActionSpeed(0);
+        }
+
+        internal static int? ResolveClientLocalShowSkillEffectEffectBranchLastIndexOverride(SkillData skill)
+        {
+            if (skill == null
+                || skill.IsAttack
+                || skill.IsKeydownSkill
+                || skill.IsPrepareSkill)
+            {
+                return null;
+            }
+
+            return ResolveClientShowSkillEffectEffectBranchLastIndex();
         }
 
         internal static int ResolveEffectiveWeaponAttackSpeed(CharacterBuild build)
@@ -11608,12 +11661,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             int currentTime,
             bool hasActiveClientOwnedOneTimeAction)
         {
-            if (startupActionDurationMs > 0
-                && currentTime - launchStartTime < startupActionDurationMs)
-            {
-                return false;
-            }
-
+            // `TryDoingRocketBoosterEnd` gates touchdown progression on one-time action
+            // completion and `m_nRocketBoosterVY` ownership; it does not enforce an
+            // extra startup-duration wall once the clip has already ended.
             return !hasActiveClientOwnedOneTimeAction;
         }
 
@@ -11782,6 +11832,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // even when WZ does not publish an authored `action/0` surface.
             return skill != null
                    && (skill.SkillId == WindWalkSkillId
+                       || skill.SkillId == WildHunterJaguarJumpSkillId
                        || skill.SkillId == NightLordFlashJumpSkillId
                        || skill.SkillId == ShadowerFlashJumpSkillId
                        || skill.SkillId == DualBladeFlashJumpSkillId
@@ -15792,15 +15843,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SyncBulletAnimationOwner(owner, projectile, currentTime);
                 UpdateBulletAnimationOwnerAfterimages(owner, currentTime);
 
-                bool hasAfterimages = owner?.AfterimageLayers?.Count > 0;
-                bool beforeStart = owner?.Presentation != null && currentTime < owner.Presentation.StartTime;
-                bool finished = owner?.Presentation == null
-                    || currentTime >= owner.Presentation.EndTime;
-                if (!beforeStart && finished && !hasAfterimages)
+                if (ShouldRemoveBulletAnimationOwner(owner, currentTime))
                 {
                     _bulletAnimationOwners.RemoveAt(i);
                 }
             }
+        }
+
+        internal static bool ShouldRemoveBulletAnimationOwner(ActiveBulletAnimationOwner owner, int currentTime)
+        {
+            bool hasAfterimages = owner?.AfterimageLayers?.Count > 0;
+            bool beforeStart = owner?.Presentation != null && currentTime < owner.Presentation.StartTime;
+            bool finished = owner?.Presentation == null
+                || currentTime >= owner.Presentation.EndTime;
+            return !beforeStart && finished && !hasAfterimages;
         }
 
         private ActiveProjectile FindActiveProjectile(int projectileId)
@@ -15851,10 +15907,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             owner.PreviousPosition = owner.CurrentPosition;
 
-            if (projectile != null && !projectile.IsExpired && !projectile.IsExploding)
+            if (ShouldSyncBulletAnimationOwnerFromProjectile(owner, projectile))
             {
-                owner.StopTime = null;
-                owner.StopPosition = null;
                 owner.CurrentPosition = ResolveBulletAnimationOwnerCurrentPosition(
                     projectile,
                     owner.Presentation,
@@ -15880,6 +15934,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 owner.CurrentPosition,
                 owner.PreviousPosition,
                 owner.FacingRight);
+        }
+
+        internal static bool ShouldSyncBulletAnimationOwnerFromProjectile(
+            ActiveBulletAnimationOwner owner,
+            ActiveProjectile projectile)
+        {
+            return owner?.Presentation != null
+                   && !owner.StopTime.HasValue
+                   && projectile != null
+                   && !projectile.IsExpired
+                   && !projectile.IsExploding;
         }
 
         private void UpdateBulletAnimationOwnerAfterimages(ActiveBulletAnimationOwner owner, int currentTime)
@@ -16677,8 +16742,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 summon.LastAttackTime = currentTime;
-                // Client `CUserPool::DoHealNearHealingRobot` probes the local robot first, then
-                // iterates party-member robots without a first-success short-circuit.
+                // Client `CUserPool::DoHealNearHealingRobot` probes local first and exits the
+                // poll loop on first successful support attempt.
+                break;
             }
         }
 
@@ -16983,15 +17049,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (UsesClientFinalDamageLineSubHitAnimation(skill.SkillId))
             {
                 int subHitIndex = IsFinalDamageLineInAttackPack(damageIndex, attackCount) ? 1 : 0;
-                // `TryDoingShootAttack` still references both `CSkill_HitAni::operator()`
-                // and `GetSubHitAni` for this lane. Keep target-order ownership intact for
-                // authored multi-branch hit data, then layer the final-line sub-hit split.
-                if (HasClientIndexedTargetHitAnimation(skill.TargetHitEffects))
-                {
-                    int requestedIndex = Math.Max(Math.Max(0, targetOrder), subHitIndex);
-                    return ResolveIndexedTargetHitAnimation(skill.TargetHitEffects, requestedIndex) ?? fallbackAnimation;
-                }
-
+                // `CSkill_HitAni::CreateForFlashRain` pre-fills `m_absHitAni[nOrder]` from
+                // `asHitUOL[0]` and `m_absSubHitAni[nOrder]` from `asHitUOL[1]` for every
+                // target index, while `TryDoingShootAttack` later uses `operator()` plus
+                // `GetSubHitAni` on final damage lines. Keep this lane on the base/sub split
+                // and do not widen it into target-order branch selection.
                 return ResolveIndexedTargetHitAnimation(skill.TargetHitEffects, subHitIndex) ?? fallbackAnimation;
             }
 
@@ -24117,7 +24179,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (IsDirectBuffIconFamilyProperty(propertyName)
+            if (IsVehicleTransformContextProperty(propertyName)
                 && IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel))
             {
                 label = TransformBuffLabel;
@@ -25271,8 +25333,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(propertyName, "indieSpeed", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "jump", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "psdJump", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(propertyName, "indieJump", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(propertyName, "incCraft", StringComparison.OrdinalIgnoreCase);
+                  || string.Equals(propertyName, "indieJump", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(propertyName, "incCraft", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsVehicleTransformContextProperty(string propertyName)
+        {
+            if (IsDirectBuffIconFamilyProperty(propertyName))
+            {
+                return true;
+            }
+
+            return string.Equals(propertyName, "emhp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "emmp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "mhpX", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "mmpX", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "mhpR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "mmpR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "indieMhp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "indieMmp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "indieMhpR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "indieMmpR", StringComparison.OrdinalIgnoreCase);
         }
 
         private static int GetAuthoredTemporaryStatOrder(
@@ -26339,71 +26420,81 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public void Update(int currentTime, float deltaTime)
         {
-            UpdateCooldownNotifications(currentTime);
-            UpdateClientSkillTimers(currentTime);
-            UpdateRepeatSkillSustain(currentTime);
-            UpdateSwallowState(currentTime);
-            UpdateSkillZones(currentTime);
-            UpdateAffectedSkillPassives(currentTime);
-
-            // Update current cast
-            if (_currentCast != null)
+            _isDispatchingClientUpdateCancelBatch = true;
+            _activeClientUpdateBatchCancelFamilyKeys.Clear();
+            try
             {
-                // Check if cast animation is complete
-                var effectAnimation = _currentCast.SuppressEffectAnimation
-                    ? null
-                    : _currentCast.EffectAnimation ?? _currentCast.SkillData?.Effect;
-                if (effectAnimation != null)
+                UpdateCooldownNotifications(currentTime);
+                UpdateClientSkillTimers(currentTime);
+                UpdateRepeatSkillSustain(currentTime);
+                UpdateSwallowState(currentTime);
+                UpdateSkillZones(currentTime);
+                UpdateAffectedSkillPassives(currentTime);
+
+                // Update current cast
+                if (_currentCast != null)
                 {
-                    if (effectAnimation.IsComplete(_currentCast.AnimationTime))
+                    // Check if cast animation is complete
+                    var effectAnimation = _currentCast.SuppressEffectAnimation
+                        ? null
+                        : _currentCast.EffectAnimation ?? _currentCast.SkillData?.Effect;
+                    if (effectAnimation != null)
                     {
-                        _currentCast.IsComplete = true;
+                        if (effectAnimation.IsComplete(_currentCast.AnimationTime))
+                        {
+                            _currentCast.IsComplete = true;
+                        }
+                    }
+                    else
+                    {
+                        // No effect animation, complete after delay
+                        if (_currentCast.AnimationTime > 500)
+                        {
+                            _currentCast.IsComplete = true;
+                        }
                     }
                 }
-                else
+
+                if (_preparedSkill?.IsKeydownSkill == true)
                 {
-                    // No effect animation, complete after delay
-                    if (_currentCast.AnimationTime > 500)
-                    {
-                        _currentCast.IsComplete = true;
-                    }
+                    UpdateKeydownSkill(currentTime);
                 }
-            }
+                else if (_preparedSkill != null && _preparedSkill.Progress(currentTime) >= 1f)
+                {
+                    ReleasePreparedSkill(currentTime);
+                }
 
-            if (_preparedSkill?.IsKeydownSkill == true)
+                ProcessPendingProjectileSpawns(currentTime);
+                ProcessDeferredSkillPayloads(currentTime);
+                UpdateRocketBooster(currentTime);
+                UpdateCyclone(currentTime);
+                ProcessQueuedFollowUpAttacks(currentTime);
+                ProcessQueuedSerialAttack(currentTime);
+                ProcessQueuedSparkAttack(currentTime);
+                ProcessQueuedSummonAttacks(currentTime);
+                UpdateClientOwnedVehicleTamingMobState(currentTime);
+                UpdateMapFlyingRepeatAvatarEffect(currentTime);
+
+                // Process skill queue (for macros)
+                ProcessSkillQueue(currentTime);
+
+                // Update projectiles
+                UpdateProjectiles(currentTime, deltaTime);
+
+                // Update summons
+                UpdateSummons(currentTime, deltaTime);
+                UpdateMine(currentTime);
+
+                // Update hit effects (remove expired)
+                UpdateHitEffects(currentTime);
+                UpdateSummonTileEffects(currentTime);
+                UpdateSummonReactiveChainEffects(currentTime);
+            }
+            finally
             {
-                UpdateKeydownSkill(currentTime);
+                _activeClientUpdateBatchCancelFamilyKeys.Clear();
+                _isDispatchingClientUpdateCancelBatch = false;
             }
-            else if (_preparedSkill != null && _preparedSkill.Progress(currentTime) >= 1f)
-            {
-                ReleasePreparedSkill(currentTime);
-            }
-
-            ProcessPendingProjectileSpawns(currentTime);
-            ProcessDeferredSkillPayloads(currentTime);
-            UpdateRocketBooster(currentTime);
-            UpdateCyclone(currentTime);
-            ProcessQueuedFollowUpAttacks(currentTime);
-            ProcessQueuedSerialAttack(currentTime);
-            ProcessQueuedSparkAttack(currentTime);
-            ProcessQueuedSummonAttacks(currentTime);
-            UpdateClientOwnedVehicleTamingMobState(currentTime);
-            UpdateMapFlyingRepeatAvatarEffect(currentTime);
-
-            // Process skill queue (for macros)
-            ProcessSkillQueue(currentTime);
-
-            // Update projectiles
-            UpdateProjectiles(currentTime, deltaTime);
-
-            // Update summons
-            UpdateSummons(currentTime, deltaTime);
-            UpdateMine(currentTime);
-
-            // Update hit effects (remove expired)
-            UpdateHitEffects(currentTime);
-            UpdateSummonTileEffects(currentTime);
-            UpdateSummonReactiveChainEffects(currentTime);
         }
 
         private void UpdateCooldownNotifications(int currentTime)
@@ -29495,7 +29586,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 CasterId = 0,
                 CasterX = _player.X,
                 CasterY = _player.Y,
-                FacingRight = facingRight
+                FacingRight = facingRight,
+                EffectBranchLastIndex = ResolveClientLocalShowSkillEffectEffectBranchLastIndexOverride(skill)
             };
 
             TriggerSkillAnimation(skill, currentTime);

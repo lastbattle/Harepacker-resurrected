@@ -482,9 +482,9 @@ namespace HaCreator.MapSimulator.Character
                 ["stabD1"] = new[] { "stabO1", "swingO3", "stabT1" },
                 ["tripleStab"] = new[] { "alert", "swingO1", "swingO3" },
                 ["flyingAssaulter"] = new[] { "swingPF", "swingOF", "stabT1", "swingO2" },
-                ["tornadoDash"] = new[] { "swingO3" },
+                ["tornadoDash"] = new[] { "swingO3", "fly", "jump", "stand" },
                 ["tornadoRush"] = new[] { "alert", "swingOF" },
-                ["tornadoDashStop"] = new[] { "swingOF" },
+                ["tornadoDashStop"] = new[] { "swingOF", "fly", "jump", "stand" },
                 ["fatalBlow"] = new[] { "alert", "stabO1", "swingO1", "swingOF" },
                 ["upperStab"] = new[] { "alert", "swingPF" },
                 ["chainPull"] = new[] { "stabO1", "swingO3" },
@@ -609,9 +609,10 @@ namespace HaCreator.MapSimulator.Character
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedJumpMorphFallbackAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
-                // Skill/531.img/skill/5311003 still publishes `cannonJump`, while the
-                // current morph surfaces continue to expose only generic `jump`.
-                ["cannonJump"] = new[] { "jump" },
+                // Skill/531.img/skill/5311003 still publishes `cannonJump`, while
+                // Character/00002000.img keeps the body redirect on `swingOF` and the
+                // checked Morph/*.img templates publish no verbatim `cannonJump` root.
+                ["cannonJump"] = new[] { "swingOF", "jump" },
                 // The client morph action table also carries `spiritJump`; current
                 // Morph/*.img surfaces publish generic jump instead of that raw root.
                 ["spiritJump"] = new[] { "jump" },
@@ -631,17 +632,15 @@ namespace HaCreator.MapSimulator.Character
                 ["stand1"] = new[] { "stand", "walk" },
                 ["stand2"] = new[] { "stand", "walk" },
                 // Skill/2002.img/skill/20020111 still publishes the raw action `fastest`
-                // with flag-only morph metadata; the suffix-resolved Morph/0111.img
-                // movement surface publishes no verbatim `fastest` branch.
-                ["fastest"] = new[] { "fly", "jump", "stand" },
+                // with flag-only morph metadata, while Character/00002000.img keeps
+                // `fastest` body redirects on `rope`, `swingPF`, and `swingOF` before
+                // generic movement fallback. The suffix-resolved Morph/0111.img still
+                // publishes no verbatim `fastest` branch.
+                ["fastest"] = new[] { "rope", "swingPF", "swingOF", "fly", "jump", "stand" },
                 // Skill/2100.img/skill/21001001 still publishes `combatStep`, and
                 // Character/00002000.img keeps that row on `walk2` body redirects.
                 // Morph/*.img still publishes only generic locomotion roots.
                 ["combatStep"] = new[] { "walk", "move", "stand" },
-                // The client morph action table carries the dual-blade dash pair, but
-                // the checked morph images publish no verbatim `tornadoDash*` roots.
-                ["tornadoDash"] = new[] { "fly", "jump", "stand" },
-                ["tornadoDashStop"] = new[] { "fly", "jump", "stand" },
                 // Client raw action code 87 remains `dash` and Character/00002000.img
                 // still redirects that branch through `walk1`, while checked Morph/*.img
                 // keeps no verbatim `dash` root.

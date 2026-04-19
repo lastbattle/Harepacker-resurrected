@@ -214,19 +214,47 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case SocialListClientFriendResultKind.Reset:
                 case SocialListClientFriendResultKind.Refresh:
-                    return ApplyClientFriendListReplace(SocialListTab.Friend, packet.Entries, packet.Kind);
+                    return AppendAutoResolvedPacketOwnedRequest(
+                        ApplyClientFriendListReplace(SocialListTab.Friend, packet.Entries, packet.Kind),
+                        TryAutoResolvePacketOwnedRequest(
+                            SocialListTab.Friend,
+                            approved: true,
+                            packet.Kind,
+                            packet.Summary,
+                            "Friend"));
 
                 case SocialListClientFriendResultKind.ResetBlocked:
-                    return ApplyClientFriendListReplace(SocialListTab.Blacklist, packet.Entries, packet.Kind);
+                    return AppendAutoResolvedPacketOwnedRequest(
+                        ApplyClientFriendListReplace(SocialListTab.Blacklist, packet.Entries, packet.Kind),
+                        TryAutoResolvePacketOwnedRequest(
+                            SocialListTab.Blacklist,
+                            approved: true,
+                            packet.Kind,
+                            packet.Summary,
+                            "Blacklist"));
 
                 case SocialListClientFriendResultKind.Update:
                 case SocialListClientFriendResultKind.Insert:
                     return packet.Entry.HasValue
-                        ? UpsertClientFriendEntry(SocialListTab.Friend, packet.Entry.Value, packet.Kind, packet.Summary)
+                        ? AppendAutoResolvedPacketOwnedRequest(
+                            UpsertClientFriendEntry(SocialListTab.Friend, packet.Entry.Value, packet.Kind, packet.Summary),
+                            TryAutoResolvePacketOwnedRequest(
+                                SocialListTab.Friend,
+                                approved: true,
+                                packet.Kind,
+                                packet.Summary,
+                                "Friend"))
                         : $"Client OnFriendResult({(byte)packet.Kind}) did not include a friend entry.";
 
                 case SocialListClientFriendResultKind.Channel:
-                    return ApplyClientFriendChannelUpdate(packet);
+                    return AppendAutoResolvedPacketOwnedRequest(
+                        ApplyClientFriendChannelUpdate(packet),
+                        TryAutoResolvePacketOwnedRequest(
+                            SocialListTab.Friend,
+                            approved: true,
+                            packet.Kind,
+                            packet.Summary,
+                            "Friend"));
 
                 case SocialListClientFriendResultKind.Capacity:
                     return SetPacketSyncSummary(SocialListTab.Friend, $"Client OnFriendResult({(byte)packet.Kind}) updated friend capacity to {packet.FriendMax}.");
@@ -241,11 +269,18 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialListClientFriendResultKind.NoticeBlocked:
                 case SocialListClientFriendResultKind.NoticeRequestDenied:
                 case SocialListClientFriendResultKind.NoticeCapacityExpanded:
-                    return SetPacketSyncSummary(
-                        SocialListTab.Friend,
-                        string.IsNullOrWhiteSpace(packet.Summary)
-                            ? $"Client OnFriendResult({(byte)packet.Kind}) reported {packet.Kind}."
-                            : $"Client OnFriendResult({(byte)packet.Kind}) reported {packet.Summary.Trim()}.");
+                    return AppendAutoResolvedPacketOwnedRequest(
+                        SetPacketSyncSummary(
+                            SocialListTab.Friend,
+                            string.IsNullOrWhiteSpace(packet.Summary)
+                                ? $"Client OnFriendResult({(byte)packet.Kind}) reported {packet.Kind}."
+                                : $"Client OnFriendResult({(byte)packet.Kind}) reported {packet.Summary.Trim()}."),
+                        TryAutoResolvePacketOwnedRequest(
+                            SocialListTab.Friend,
+                            approved: false,
+                            packet.Kind,
+                            packet.Summary,
+                            "Friend"));
 
                 default:
                     return $"Unsupported client friend-result subtype {(byte)packet.Kind}.";
@@ -258,12 +293,26 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case SocialListClientPartyResultKind.Load:
                 case SocialListClientPartyResultKind.Refresh:
-                    return ApplyClientPartyListReplace(packet);
+                    return AppendAutoResolvedPacketOwnedRequest(
+                        ApplyClientPartyListReplace(packet),
+                        TryAutoResolvePacketOwnedRequest(
+                            SocialListTab.Party,
+                            approved: true,
+                            packet.Kind,
+                            packet.Summary,
+                            "Party"));
 
                 case SocialListClientPartyResultKind.Join:
                     if (packet.Entries.Count > 0)
                     {
-                        return ApplyClientPartyListReplace(packet);
+                        return AppendAutoResolvedPacketOwnedRequest(
+                            ApplyClientPartyListReplace(packet),
+                            TryAutoResolvePacketOwnedRequest(
+                                SocialListTab.Party,
+                                approved: true,
+                                packet.Kind,
+                                packet.Summary,
+                                "Party"));
                     }
 
                     return SetPacketSyncSummary(
@@ -273,13 +322,34 @@ namespace HaCreator.MapSimulator.Interaction
                             : $"Client OnPartyResult({(byte)packet.Kind}) reported {packet.ActorName} joining party {packet.PartyId}.");
 
                 case SocialListClientPartyResultKind.Create:
-                    return ApplyClientPartyCreate(packet);
+                    return AppendAutoResolvedPacketOwnedRequest(
+                        ApplyClientPartyCreate(packet),
+                        TryAutoResolvePacketOwnedRequest(
+                            SocialListTab.Party,
+                            approved: true,
+                            packet.Kind,
+                            packet.Summary,
+                            "Party"));
 
                 case SocialListClientPartyResultKind.LeaderChange:
-                    return ApplyClientPartyLeaderChange(packet);
+                    return AppendAutoResolvedPacketOwnedRequest(
+                        ApplyClientPartyLeaderChange(packet),
+                        TryAutoResolvePacketOwnedRequest(
+                            SocialListTab.Party,
+                            approved: true,
+                            packet.Kind,
+                            packet.Summary,
+                            "Party"));
 
                 case SocialListClientPartyResultKind.MemberJobLevel:
-                    return ApplyClientPartyJobLevelChange(packet);
+                    return AppendAutoResolvedPacketOwnedRequest(
+                        ApplyClientPartyJobLevelChange(packet),
+                        TryAutoResolvePacketOwnedRequest(
+                            SocialListTab.Party,
+                            approved: true,
+                            packet.Kind,
+                            packet.Summary,
+                            "Party"));
 
                 case SocialListClientPartyResultKind.Notice9:
                 case SocialListClientPartyResultKind.Notice10:
@@ -363,6 +433,48 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Client OnPartyResult({(byte)packet.Kind}) created party {packet.PartyId} and seeded the local leader row.";
             ResetSelectionAfterMutation(SocialListTab.Party);
             return _lastPacketSyncSummaryByTab[SocialListTab.Party];
+        }
+
+        private string TryAutoResolvePacketOwnedRequest(
+            SocialListTab tab,
+            bool approved,
+            Enum resultKind,
+            string resultSummary,
+            params string[] pendingRequestPrefixes)
+        {
+            if (!_lastPendingRequestByTab.TryGetValue(tab, out string pendingRequest)
+                || string.IsNullOrWhiteSpace(pendingRequest))
+            {
+                return null;
+            }
+
+            if (pendingRequestPrefixes is { Length: > 0 }
+                && Array.TrueForAll(
+                    pendingRequestPrefixes,
+                    prefix => !pendingRequest.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                return null;
+            }
+
+            string trimmedSummary = string.IsNullOrWhiteSpace(resultSummary)
+                ? $"Client {GetHeaderTitle(tab)} result {resultKind} {(approved ? "approved" : "rejected")} staged {pendingRequest.ToLowerInvariant()}."
+                : $"Client {GetHeaderTitle(tab)} result {resultKind}: {resultSummary.Trim()}";
+            return ResolvePacketOwnedRequest(tab, approved, trimmedSummary);
+        }
+
+        private static string AppendAutoResolvedPacketOwnedRequest(string primary, string resolution)
+        {
+            if (string.IsNullOrWhiteSpace(primary))
+            {
+                return resolution;
+            }
+
+            if (string.IsNullOrWhiteSpace(resolution))
+            {
+                return primary;
+            }
+
+            return $"{primary} {resolution}";
         }
 
         internal string ApplyClientAllianceResultDelta(SocialListClientAllianceResultPacket packet)

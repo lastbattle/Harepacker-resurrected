@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMessengerSessionCommand(string[] args)
         {
-            const string usage = "Usage: /messenger session [status|table|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /messenger session [status|table|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|blocked <inviter> [localName] [blocked]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]|blocked <inviter> [localName] [blocked]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMessengerOfficialSessionBridgeStatus());
@@ -190,25 +190,17 @@ namespace HaCreator.MapSimulator
                     || !int.TryParse(args[3], out int remotePort)
                     || remotePort <= 0)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session start <listenPort> <serverHost> <serverPort> [inboundOpcode]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]");
                 }
 
                 ushort inboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", 0);
                 if (args.Length >= 5)
                 {
-                    if (!ushort.TryParse(args[4], out ushort requestedInboundOpcode) || requestedInboundOpcode == 0)
-                    {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /messenger session start <listenPort> <serverHost> <serverPort> [inboundOpcode]");
-                    }
-
-                    ushort resolvedInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", requestedInboundOpcode);
-                    if (resolvedInboundOpcode != requestedInboundOpcode)
+                    if (!PacketOwnedSocialUtilityPacketTable.TryResolveRecoveredInboundOpcodeToken("Messenger", args[4], out inboundOpcode))
                     {
                         return ChatCommandHandler.CommandResult.Error(
-                            $"Messenger inbound opcode {requestedInboundOpcode} is outside the recovered table ({string.Join("/", PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes("Messenger"))}).");
+                            $"Usage: /messenger session start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]. {PacketOwnedSocialUtilityPacketTable.DescribeRecoveredInboundOpcodeSet("Messenger")}");
                     }
-
-                    inboundOpcode = resolvedInboundOpcode;
                 }
 
                 _messengerOfficialSessionBridgeEnabled = true;
@@ -231,22 +223,21 @@ namespace HaCreator.MapSimulator
                     || !int.TryParse(args[2], out int autoRemotePort)
                     || autoRemotePort <= 0)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]");
                 }
 
                 int argumentIndex = 3;
                 ushort autoInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", 0);
-                if (args.Length >= 4 && ushort.TryParse(args[3], out ushort parsedInboundOpcode) && parsedInboundOpcode != 0)
+                if (args.Length >= 4
+                    && PacketOwnedSocialUtilityPacketTable.TryResolveRecoveredInboundOpcodeToken("Messenger", args[3], out ushort parsedInboundOpcode))
                 {
-                    ushort resolvedInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", parsedInboundOpcode);
-                    if (resolvedInboundOpcode != parsedInboundOpcode)
-                    {
-                        return ChatCommandHandler.CommandResult.Error(
-                            $"Messenger inbound opcode {parsedInboundOpcode} is outside the recovered table ({string.Join("/", PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes("Messenger"))}).");
-                    }
-
-                    autoInboundOpcode = resolvedInboundOpcode;
+                    autoInboundOpcode = parsedInboundOpcode;
                     argumentIndex = 4;
+                }
+                else if (args.Length >= 4 && IsMessengerInboundOpcodeToken(args[3]))
+                {
+                    return ChatCommandHandler.CommandResult.Error(
+                        $"Usage: /messenger session startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]. {PacketOwnedSocialUtilityPacketTable.DescribeRecoveredInboundOpcodeSet("Messenger")}");
                 }
 
                 string processSelector = args.Length >= argumentIndex + 1 ? args[argumentIndex] : null;
@@ -255,7 +246,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (!int.TryParse(args[argumentIndex + 1], out int parsedLocalPort) || parsedLocalPort <= 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /messenger session startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /messenger session startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]");
                     }
 
                     localPortFilter = parsedLocalPort;
@@ -296,6 +287,20 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(usage);
+        }
+
+        private static bool IsMessengerInboundOpcodeToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalizedToken = token.Trim();
+            return string.Equals(normalizedToken, "table", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "default", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "auto", StringComparison.OrdinalIgnoreCase)
+                || ushort.TryParse(normalizedToken, out _);
         }
     }
 }

@@ -1099,7 +1099,7 @@ namespace HaCreator.MapSimulator.Effects
                     "CField_MassacreResult::OnMassacreResult + WZ-backed bonus/result wrapper clear carryover"),
                 MassacreRoundOutcome.Fail => (
                     MassacreResultPresentation.Fail,
-                    "CField_MassacreResult::OnMassacreResult + result-wrapper fail carryover from prior field timer state"),
+                    "CField_MassacreResult::OnMassacreResult + WZ-backed direct result-wrapper fail carryover"),
                 _ => (
                     MassacreResultPresentation.PacketOwned,
                     "CField_MassacreResult::OnMassacreResult")
@@ -1916,10 +1916,9 @@ namespace HaCreator.MapSimulator.Effects
             return currentMode switch
             {
                 MassacreMapMode.Bonus => MassacreRoundOutcome.Clear,
-                // WZ marks the result wrapper through `info/onUserEnter = Massacre_result`, but does not
-                // encode a clear/fail branch there. Keep direct Main->Result transitions packet-owned
-                // unless an explicit clear carryover (bonus-wrapper path) or prior owner signal exists.
-                MassacreMapMode.Main => MassacreRoundOutcome.None,
+                // WZ-backed wrapper flow: `killing_BonusSetting` marks the clear route before result,
+                // while direct Main -> Result (`onUserEnter = Massacre_result`) is the fail branch.
+                MassacreMapMode.Main => MassacreRoundOutcome.Fail,
                 _ => _pendingResultOutcome
             };
         }

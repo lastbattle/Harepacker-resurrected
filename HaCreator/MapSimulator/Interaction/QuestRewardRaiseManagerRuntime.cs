@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             bool reuseRetainedClosedRaise = ShouldReuseRetainedClosedRaise(retainedState, prompt);
+            bool reusedOwnerIdentity = reuseObservedOwnerState || reuseRetainedClosedRaise;
             if (reuseRetainedClosedRaise)
             {
                 ActiveRaise = retainedState.CloneShallow();
@@ -92,6 +93,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveRaise.AwaitingConfirmAck = snapshot?.AwaitingConfirmAck ?? ActiveRaise.AwaitingConfirmAck;
             ActiveRaise.AwaitingOwnerDestroyAck = snapshot?.AwaitingOwnerDestroyAck ?? ActiveRaise.AwaitingOwnerDestroyAck;
             ActiveRaise.IsWindowDismissedLocally = false;
+            ActiveRaise.ReusedOwnerIdentityOnOpen = reusedOwnerIdentity;
 
             if (questId > 0)
             {

@@ -101,7 +101,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             string normalizedRequest = string.IsNullOrWhiteSpace(requestKind) ? "Roster update" : requestKind.Trim();
             _lastPendingRequestByTab[tab] = normalizedRequest;
-            requestMessage = $"{normalizedRequest} is staged locally, but {tab} currently follows packet-owned roster authority.";
+            requestMessage =
+                $"{normalizedRequest} is staged locally, and {tab} currently follows packet-owned roster authority until a matching client result resolves it.";
             return true;
         }
     }

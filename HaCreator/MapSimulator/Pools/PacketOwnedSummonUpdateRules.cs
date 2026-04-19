@@ -189,7 +189,8 @@ namespace HaCreator.MapSimulator.Pools
         internal static byte ResolvePacketOwnedRuntimeMoveActionRaw(
             ActiveSummon summon,
             byte packetMoveActionRaw,
-            int teslaCoilSkillId)
+            int teslaCoilSkillId,
+            byte fallbackMoveActionRaw = 0)
         {
             if (summon?.SkillId != teslaCoilSkillId
                 || (summon.TeslaCoilState != 1 && summon.TeslaCoilState != 2))
@@ -197,9 +198,11 @@ namespace HaCreator.MapSimulator.Pools
                 return packetMoveActionRaw;
             }
 
-            byte facingBit = (byte)(((packetMoveActionRaw != 0
+            byte facingBit = (byte)((packetMoveActionRaw != 0
                     ? packetMoveActionRaw
-                    : (summon.FacingRight ? 0 : 1)) & 1));
+                    : (fallbackMoveActionRaw != 0
+                        ? fallbackMoveActionRaw
+                        : (summon.FacingRight ? 0 : 1))) & 1);
             return (byte)(ClientTeslaForcedMoveAction | facingBit);
         }
 

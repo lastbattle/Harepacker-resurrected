@@ -371,7 +371,6 @@ namespace HaCreator.MapSimulator.AI
         private int _angerChargeCount = 0;
         private int _angerAttackIndex = -1;
         private int _runtimeAngerGaugeFullChargeEffectIntervalMs;
-        private bool _hasSpecialAttackFullChargeEffectOwnerTiming;
         private int _fullChargeEffectStartTime = int.MinValue;
 
         // Status effects
@@ -418,7 +417,7 @@ namespace HaCreator.MapSimulator.AI
         public int AngerGaugeFullChargeEffectIntervalMs =>
             _runtimeAngerGaugeFullChargeEffectIntervalMs;
         public bool HasSpecialAttackFullChargeEffectOwnerTiming =>
-            _hasSpecialAttackFullChargeEffectOwnerTiming;
+            HasAnySpecialAttackFullChargeEffectOwnerTiming();
 
         // Status effect properties
         public MobStatusEffect StatusEffects => _statusEffects;
@@ -476,7 +475,6 @@ namespace HaCreator.MapSimulator.AI
             _angerChargeCount = 0;
             _angerAttackIndex = -1;
             _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
-            _hasSpecialAttackFullChargeEffectOwnerTiming = false;
             _fullChargeEffectStartTime = int.MinValue;
 
             // Bosses have larger aggro range
@@ -527,11 +525,6 @@ namespace HaCreator.MapSimulator.AI
             if (attack?.IsAngerAttack == true)
             {
                 _angerAttackIndex = _attacks.Count;
-            }
-
-            if (attack?.IsSpecialAttack == true && attack.AttackAfter > 0)
-            {
-                _hasSpecialAttackFullChargeEffectOwnerTiming = true;
             }
 
             _attacks.Add(attack);
@@ -1220,7 +1213,7 @@ namespace HaCreator.MapSimulator.AI
 
             UpdateAngerGaugeFullChargeEffectInterval(attack);
             int repeatIntervalMs = _runtimeAngerGaugeFullChargeEffectIntervalMs;
-            if (!_hasSpecialAttackFullChargeEffectOwnerTiming || repeatIntervalMs <= 0)
+            if (!HasAnySpecialAttackFullChargeEffectOwnerTiming() || repeatIntervalMs <= 0)
             {
                 return false;
             }
@@ -1249,7 +1242,7 @@ namespace HaCreator.MapSimulator.AI
                 return attack.AttackAfter <= 0;
             }
 
-            return !_hasSpecialAttackFullChargeEffectOwnerTiming;
+            return !HasAnySpecialAttackFullChargeEffectOwnerTiming();
         }
 
         /// <summary>
@@ -2436,6 +2429,20 @@ namespace HaCreator.MapSimulator.AI
             {
                 _runtimeAngerGaugeFullChargeEffectIntervalMs = Math.Max(0, attack.AttackAfter);
             }
+        }
+
+        private bool HasAnySpecialAttackFullChargeEffectOwnerTiming()
+        {
+            for (int i = 0; i < _attacks.Count; i++)
+            {
+                MobAttackEntry attack = _attacks[i];
+                if (attack?.IsSpecialAttack == true && attack.AttackAfter > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
         #endregion
 

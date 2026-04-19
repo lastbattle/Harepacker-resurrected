@@ -186,7 +186,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -985,6 +985,14 @@ namespace HaCreator.MapSimulator
                 case "summon":
                     return HandlePacketOwnedBattleRecordIncludeCommand(args.Skip(1).ToArray(), option: 1);
 
+                case "damage":
+                    return HandlePacketOwnedBattleRecordDamageCommand(args.Skip(1).ToArray());
+
+                case "forceoff":
+                    _packetOwnedBattleRecordRuntime.ApplyForcedOffCalc();
+                    uiWindowManager?.HideWindow(MapSimulatorWindowNames.BattleRecord);
+                    return ChatCommandHandler.CommandResult.Ok(BuildPacketOwnedBattleRecordFooter());
+
                 case "clear":
                     return HandlePacketOwnedBattleRecordClearCommand(args.Skip(1).ToArray());
 
@@ -1024,7 +1032,7 @@ namespace HaCreator.MapSimulator
                             hasCloseOutbound ? null : closeOnCalcMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
             }
         }
 
@@ -1077,6 +1085,63 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Ok(_packetOwnedBattleRecordRuntime.SetAdditionDamageInclude(enabled, option));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordDamageCommand(string[] args)
+        {
+            if (args == null
+                || args.Length < 1
+                || !int.TryParse(args[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int damage))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]");
+            }
+
+            bool critical = false;
+            bool isSummon = false;
+            int? attrRate = null;
+            for (int i = 1; i < args.Length; i++)
+            {
+                string argument = args[i];
+                if (argument.StartsWith("critical=", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!TryParseOnOffArgument(argument.Substring("critical=".Length), out critical))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]");
+                    }
+
+                    continue;
+                }
+
+                if (argument.StartsWith("summon=", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!TryParseOnOffArgument(argument.Substring("summon=".Length), out isSummon))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]");
+                    }
+
+                    continue;
+                }
+
+                if (argument.StartsWith("attrrate=", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!int.TryParse(argument.Substring("attrrate=".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedAttrRate))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]");
+                    }
+
+                    attrRate = parsedAttrRate;
+                    continue;
+                }
+
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]");
+            }
+
+            return ChatCommandHandler.CommandResult.Ok(
+                _packetOwnedBattleRecordRuntime.ApplyBattleDamageInfo(
+                    damage,
+                    critical,
+                    isSummon,
+                    attrRate));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordClearCommand(string[] args)

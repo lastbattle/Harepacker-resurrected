@@ -14,6 +14,8 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _weddingRemoteItemEffectRevisionByCharacterId = new();
         private readonly Dictionary<int, int> _weddingRemoteAvatarModifiedRevisionByCharacterId = new();
         private readonly Dictionary<int, int> _weddingRemoteNameTagRevisionByCharacterId = new();
+        private readonly Dictionary<int, int> _weddingRemoteProfileMetadataRevisionByCharacterId = new();
+        private readonly Dictionary<int, int> _weddingRemoteGuildMarkRevisionByCharacterId = new();
 
         private void SyncWeddingRemoteActorsToSharedPool(WeddingField field)
         {
@@ -45,13 +47,35 @@ namespace HaCreator.MapSimulator
                     snapshot.ActionName,
                     WeddingRemoteUserSourceTag,
                     isVisibleInWorld: true);
-                if (ShouldSyncWeddingNameTagMetadata(
-                        _weddingRemoteNameTagRevisionByCharacterId,
+                bool shouldSyncNameTag = ShouldSyncWeddingNameTagMetadata(
+                    _weddingRemoteNameTagRevisionByCharacterId,
+                    characterId,
+                    snapshot.NameTagRevision);
+                bool shouldSyncProfileMetadata = shouldSyncNameTag
+                    || ShouldSyncWeddingProfileMetadata(
+                        _weddingRemoteProfileMetadataRevisionByCharacterId,
                         characterId,
-                        snapshot.NameTagRevision))
+                        snapshot.ProfileMetadataRevision);
+                bool shouldSyncGuildMarkMetadata = shouldSyncNameTag
+                    || ShouldSyncWeddingGuildMarkMetadata(
+                        _weddingRemoteGuildMarkRevisionByCharacterId,
+                        characterId,
+                        snapshot.GuildMarkRevision);
+
+                if (shouldSyncProfileMetadata)
                 {
                     TryApplyWeddingRemoteProfileMetadata(_remoteUserPool, characterId, build, out _);
+                    _weddingRemoteProfileMetadataRevisionByCharacterId[characterId] = snapshot.ProfileMetadataRevision;
+                }
+
+                if (shouldSyncGuildMarkMetadata)
+                {
                     TryApplyWeddingRemoteGuildMarkMetadata(_remoteUserPool, characterId, build, out _);
+                    _weddingRemoteGuildMarkRevisionByCharacterId[characterId] = snapshot.GuildMarkRevision;
+                }
+
+                if (shouldSyncNameTag)
+                {
                     _weddingRemoteNameTagRevisionByCharacterId[characterId] = snapshot.NameTagRevision;
                 }
 
@@ -117,6 +141,16 @@ namespace HaCreator.MapSimulator
             {
                 _weddingRemoteNameTagRevisionByCharacterId.Remove(characterId);
             }
+
+            foreach (int characterId in _weddingRemoteProfileMetadataRevisionByCharacterId.Keys.Except(desiredCharacterIds).ToArray())
+            {
+                _weddingRemoteProfileMetadataRevisionByCharacterId.Remove(characterId);
+            }
+
+            foreach (int characterId in _weddingRemoteGuildMarkRevisionByCharacterId.Keys.Except(desiredCharacterIds).ToArray())
+            {
+                _weddingRemoteGuildMarkRevisionByCharacterId.Remove(characterId);
+            }
         }
 
         private void ClearWeddingRemoteActorsFromSharedPool()
@@ -125,6 +159,8 @@ namespace HaCreator.MapSimulator
             _weddingRemoteItemEffectRevisionByCharacterId.Clear();
             _weddingRemoteAvatarModifiedRevisionByCharacterId.Clear();
             _weddingRemoteNameTagRevisionByCharacterId.Clear();
+            _weddingRemoteProfileMetadataRevisionByCharacterId.Clear();
+            _weddingRemoteGuildMarkRevisionByCharacterId.Clear();
         }
 
         internal static bool ShouldSyncWeddingNameTagMetadata(
@@ -135,6 +171,26 @@ namespace HaCreator.MapSimulator
             return syncedNameTagRevisionByCharacterId == null
                 || !syncedNameTagRevisionByCharacterId.TryGetValue(characterId, out int syncedRevision)
                 || syncedRevision != participantNameTagRevision;
+        }
+
+        internal static bool ShouldSyncWeddingProfileMetadata(
+            IReadOnlyDictionary<int, int> syncedProfileMetadataRevisionByCharacterId,
+            int characterId,
+            int participantProfileMetadataRevision)
+        {
+            return syncedProfileMetadataRevisionByCharacterId == null
+                || !syncedProfileMetadataRevisionByCharacterId.TryGetValue(characterId, out int syncedRevision)
+                || syncedRevision != participantProfileMetadataRevision;
+        }
+
+        internal static bool ShouldSyncWeddingGuildMarkMetadata(
+            IReadOnlyDictionary<int, int> syncedGuildMarkRevisionByCharacterId,
+            int characterId,
+            int participantGuildMarkRevision)
+        {
+            return syncedGuildMarkRevisionByCharacterId == null
+                || !syncedGuildMarkRevisionByCharacterId.TryGetValue(characterId, out int syncedRevision)
+                || syncedRevision != participantGuildMarkRevision;
         }
 
         internal static bool TryApplyWeddingRemoteProfileMetadata(

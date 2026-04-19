@@ -477,8 +477,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild BBS write mode is not active.";
             }
 
-            string resolvedTitle = _compose.Title?.Trim() ?? string.Empty;
-            string resolvedBody = _compose.Body?.Trim() ?? string.Empty;
+            string resolvedTitle = _compose.Title ?? string.Empty;
+            string resolvedBody = _compose.Body ?? string.Empty;
             if (string.IsNullOrWhiteSpace(resolvedTitle))
             {
                 return GetEnterTitleNotice();
@@ -489,12 +489,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return GetEnterTextNotice();
             }
 
-            if (!ClientCurseProcessParity.TryValidateText(resolvedTitle, out string titleNotice))
+            if (!TryProcessTitleForClientRegister(resolvedTitle, out string processedTitle, out string titleNotice))
             {
                 return titleNotice;
             }
 
-            if (!ClientCurseProcessParity.TryValidateText(resolvedBody, out string bodyNotice))
+            if (!TryProcessBodyForClientRegister(resolvedBody, out string processedBody, out string bodyNotice))
             {
                 return bodyNotice;
             }
@@ -527,8 +527,8 @@ namespace HaCreator.MapSimulator.Interaction
                     return "Only your own Guild BBS thread or an officer-moderated thread can be edited here.";
                 }
 
-                existingThread.Title = resolvedTitle;
-                existingThread.Body = resolvedBody;
+                existingThread.Title = processedTitle;
+                existingThread.Body = processedBody;
                 existingThread.IsNotice = _compose.IsNotice;
                 existingThread.CreatedAt = DateTimeOffset.Now;
                 existingThread.EmoticonKind = _compose.EmoticonKind;
@@ -541,8 +541,8 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildBbsThreadState newThread = new GuildBbsThreadState
                 {
                     ThreadId = _nextThreadId++,
-                    Title = resolvedTitle,
-                    Body = resolvedBody,
+                    Title = processedTitle,
+                    Body = processedBody,
                     Author = _localPlayerName,
                     CreatedAt = DateTimeOffset.Now,
                     IsNotice = _compose.IsNotice,
@@ -555,10 +555,10 @@ namespace HaCreator.MapSimulator.Interaction
                 _draftCounter++;
             }
 
-            RecordClientRequest("register", BuildClientRegisterRequestPayload(resolvedTitle, resolvedBody));
+            RecordClientRequest("register", BuildClientRegisterRequestPayload(processedTitle, processedBody));
             _threadPageIndex = 0;
             RecordClientRequest("load-list", BuildClientLoadListRequestPayload());
-            NotifySocialChatObserved(resolvedTitle, resolvedBody);
+            NotifySocialChatObserved(processedTitle, processedBody);
             IsWriteMode = false;
             _compose = new GuildBbsComposeState();
             SelectThread(_selectedThreadId, recordClientRequest: false);
@@ -613,13 +613,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild BBS replies are locked for the current simulator guild role.";
             }
 
-            string replyBody = _replyDraft.Body?.Trim() ?? string.Empty;
+            string replyBody = _replyDraft.Body ?? string.Empty;
             if (string.IsNullOrWhiteSpace(replyBody))
             {
                 return GetEnterTextNotice();
             }
 
-            if (!ClientCurseProcessParity.TryValidateText(replyBody, out string notice))
+            if (!TryProcessReplyForClientComment(replyBody, out string processedReplyBody, out string notice))
             {
                 return notice;
             }
@@ -628,7 +628,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 CommentId = _nextCommentId++,
                 Author = _localPlayerName,
-                Body = replyBody,
+                Body = processedReplyBody,
                 CreatedAt = DateTimeOffset.Now,
                 EmoticonKind = _replyDraft.EmoticonKind,
                 EmoticonSlot = _replyDraft.EmoticonSlot,
@@ -643,9 +643,9 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments.OrderBy(comment => comment.CreatedAt).ToArray();
             _commentPageIndex = Math.Max(0, (orderedComments.Count - 1) / VisibleCommentCount);
             RecordClientRequests(
-                ("comment", BuildClientCommentRequestPayload(selectedThread.ThreadId, replyBody)),
+                ("comment", BuildClientCommentRequestPayload(selectedThread.ThreadId, processedReplyBody)),
                 ("load-list", BuildClientLoadListRequestPayload()));
-            NotifySocialChatObserved(replyBody);
+            NotifySocialChatObserved(processedReplyBody);
             return $"Added a Guild BBS reply to thread #{selectedThread.ThreadId}.";
         }
 
@@ -928,8 +928,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild BBS write mode is not active.";
             }
 
-            string resolvedTitle = _compose.Title?.Trim() ?? string.Empty;
-            string resolvedBody = _compose.Body?.Trim() ?? string.Empty;
+            string resolvedTitle = _compose.Title ?? string.Empty;
+            string resolvedBody = _compose.Body ?? string.Empty;
             if (string.IsNullOrWhiteSpace(resolvedTitle))
             {
                 return GetEnterTitleNotice();
@@ -940,17 +940,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return GetEnterTextNotice();
             }
 
-            if (!ClientCurseProcessParity.TryValidateText(resolvedTitle, out string titleNotice))
+            if (!TryProcessTitleForClientRegister(resolvedTitle, out string processedTitle, out string titleNotice))
             {
                 return titleNotice;
             }
 
-            if (!ClientCurseProcessParity.TryValidateText(resolvedBody, out string bodyNotice))
+            if (!TryProcessBodyForClientRegister(resolvedBody, out string processedBody, out string bodyNotice))
             {
                 return bodyNotice;
             }
 
-            return FormatClientPacketPreview("register", BuildClientRegisterRequestPayload(resolvedTitle, resolvedBody));
+            return FormatClientPacketPreview("register", BuildClientRegisterRequestPayload(processedTitle, processedBody));
         }
 
         public string BuildClientCommentRequestPreview()
@@ -961,18 +961,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select a Guild BBS thread before replying.";
             }
 
-            string replyBody = _replyDraft.Body?.Trim() ?? string.Empty;
+            string replyBody = _replyDraft.Body ?? string.Empty;
             if (string.IsNullOrWhiteSpace(replyBody))
             {
                 return GetEnterTextNotice();
             }
 
-            if (!ClientCurseProcessParity.TryValidateText(replyBody, out string notice))
+            if (!TryProcessReplyForClientComment(replyBody, out string processedReplyBody, out string notice))
             {
                 return notice;
             }
 
-            return FormatClientPacketPreview("comment", BuildClientCommentRequestPayload(selectedThread.ThreadId, replyBody));
+            return FormatClientPacketPreview("comment", BuildClientCommentRequestPayload(selectedThread.ThreadId, processedReplyBody));
         }
 
         public string BuildClientLoadListRequestPreview()
@@ -1213,6 +1213,36 @@ namespace HaCreator.MapSimulator.Interaction
                 .Replace("\n", " ")
                 .TrimStart();
             return singleLine.Length <= maxLength ? singleLine : singleLine[..maxLength];
+        }
+
+        private static bool TryProcessTitleForClientRegister(string title, out string processedTitle, out string notice)
+        {
+            return TryProcessTextForClientSubmission(title, ignoreNewLine: true, out processedTitle, out notice);
+        }
+
+        private static bool TryProcessBodyForClientRegister(string body, out string processedBody, out string notice)
+        {
+            return TryProcessTextForClientSubmission(body, ignoreNewLine: true, out processedBody, out notice);
+        }
+
+        private static bool TryProcessReplyForClientComment(string body, out string processedBody, out string notice)
+        {
+            return TryProcessTextForClientSubmission(body, ignoreNewLine: true, out processedBody, out notice);
+        }
+
+        private static bool TryProcessTextForClientSubmission(
+            string value,
+            bool ignoreNewLine,
+            out string processedValue,
+            out string notice)
+        {
+            bool processed = ClientCurseProcessParity.TryProcessString(
+                value,
+                ignoreNewLine,
+                out processedValue,
+                out _,
+                out notice);
+            return processed;
         }
 
         private bool TryResolveEmoticonSelection(

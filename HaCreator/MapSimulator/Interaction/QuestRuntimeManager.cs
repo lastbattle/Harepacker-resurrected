@@ -3594,7 +3594,9 @@ namespace HaCreator.MapSimulator.Interaction
                 sayProperty,
                 npcId,
                 build?.Job ?? 0,
+                build?.SubJob ?? 0,
                 build?.Level ?? 0,
+                build?.Fame ?? 0,
                 build?.Gender,
                 GetQuestState);
             if (ReferenceEquals(selectedProperty, sayProperty))
@@ -3620,7 +3622,9 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty property,
             int npcId,
             int currentJob,
+            int currentSubJob,
             int currentLevel,
+            int currentFame,
             CharacterGender? currentGender,
             Func<int, QuestStateType> questStateResolver)
         {
@@ -3638,7 +3642,7 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < variantChildren.Count; i++)
             {
                 WzImageProperty variantChild = variantChildren[i];
-                if (!MatchesConversationVariantMetadata(variantChild, npcId, currentJob, currentLevel, currentGender, questStateResolver))
+                if (!MatchesConversationVariantMetadata(variantChild, npcId, currentJob, currentSubJob, currentLevel, currentFame, currentGender, questStateResolver))
                 {
                     continue;
                 }
@@ -3647,7 +3651,9 @@ namespace HaCreator.MapSimulator.Interaction
                     variantChild,
                     npcId,
                     currentJob,
+                    currentSubJob,
                     currentLevel,
+                    currentFame,
                     currentGender,
                     questStateResolver);
                 return nestedSelection ?? variantChild;
@@ -3686,6 +3692,10 @@ namespace HaCreator.MapSimulator.Interaction
             return property?["npc"] != null ||
                    property?["job"] != null ||
                    property?["quest"] != null ||
+                   property?["subJob"] != null ||
+                   property?["subJobFlags"] != null ||
+                   property?["pop"] != null ||
+                   property?["fame"] != null ||
                    property?["lvmin"] != null ||
                    property?["lvmax"] != null ||
                    property?["gender"] != null ||
@@ -3696,7 +3706,9 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty property,
             int npcId,
             int currentJob,
+            int currentSubJob,
             int currentLevel,
+            int currentFame,
             CharacterGender? currentGender,
             Func<int, QuestStateType> questStateResolver)
         {
@@ -3713,6 +3725,24 @@ namespace HaCreator.MapSimulator.Interaction
 
             IReadOnlyList<int> allowedJobs = ParseJobIds(property["job"]);
             if (allowedJobs.Count > 0 && !MatchesAllowedJobs(currentJob, allowedJobs))
+            {
+                return false;
+            }
+
+            int? requiredSubJob = ParseInt(property["subJob"]);
+            if (requiredSubJob.HasValue && requiredSubJob.Value >= 0 && currentSubJob != requiredSubJob.Value)
+            {
+                return false;
+            }
+
+            int requiredSubJobFlags = ParsePositiveInt(property["subJobFlags"]).GetValueOrDefault();
+            if (requiredSubJobFlags > 0 && !MatchesQuestSubJobFlags(currentJob, currentSubJob, requiredSubJobFlags))
+            {
+                return false;
+            }
+
+            int minimumFame = ParsePositiveInt(property["pop"] ?? property["fame"]).GetValueOrDefault();
+            if (minimumFame > 0 && currentFame < minimumFame)
             {
                 return false;
             }

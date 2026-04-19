@@ -280,7 +280,8 @@ namespace HaCreator.MapSimulator.Companions
             _worldAnchor = ResolveAnchor(owner, animationSet, currentTime);
             bool suppressedForMap = ShouldSuppressForCurrentMap();
             bool suppressedForMount = ShouldSuppressForCurrentMount(owner);
-            bool ownerUpdateVisible = ResolveClientOwnerUpdateVisibility(owner?.IsAlive == true, suppressedForMap);
+            bool ownerUpdated = owner?.IsAlive == true;
+            bool ownerUpdateVisible = ResolveClientOwnerUpdateVisibility(ownerUpdated, suppressedForMap);
             _isSuppressed = suppressedForMap || suppressedForMount;
             ApplyQuestInfoState(_questInfoStateProvider?.Invoke());
 
@@ -1369,7 +1370,8 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static bool ResolveClientOwnerUpdateVisibility(bool ownerUpdated, bool suppressedForMap)
         {
-            return ownerUpdated && !suppressedForMap;
+            _ = suppressedForMap;
+            return ownerUpdated;
         }
 
         private void UpdateAuxiliaryLayers(PlayerCharacter owner, int currentTime)

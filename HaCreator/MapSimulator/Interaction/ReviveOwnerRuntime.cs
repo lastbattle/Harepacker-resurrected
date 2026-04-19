@@ -306,6 +306,15 @@ namespace HaCreator.MapSimulator.Interaction
                 hasNoButton);
         }
 
+        public static Point ResolveNativeWindowPosition(int screenWidth, int screenHeight)
+        {
+            int normalizedScreenWidth = Math.Max(0, screenWidth);
+            int normalizedScreenHeight = Math.Max(0, screenHeight);
+            return new Point(
+                Math.Max(0, (normalizedScreenWidth / 2) + NativeWindowLeft),
+                Math.Max(0, (normalizedScreenHeight / 2) + NativeWindowTop));
+        }
+
         public static int GetConsumableCashItemId(ReviveOwnerVariant variant)
         {
             return variant switch

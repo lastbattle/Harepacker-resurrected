@@ -1167,6 +1167,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonHitAnimation { get; set; } // Summon hit reaction sequence
         public SkillAnimation SummonRemovalAnimation { get; set; } // Optional self-destruct / removal branch
         public string ClientSummonedUolPath { get; set; }
+        public string ClientTileUolPath { get; set; }
+        public string ClientBallUolPath { get; set; }
+        public string ClientFlipBallUolPath { get; set; }
         public string ResolvedSummonAssetPath { get; set; }
         public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
         public List<string> SummonProjectileAnimationPaths { get; set; } = new();
@@ -2388,6 +2391,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SourceSkillId { get; set; }
         public int RequestTime { get; set; }
         public IReadOnlyList<string> BranchNames { get; set; }
+        public int? EffectBranchLastIndex { get; set; }
         public Vector2? WorldOrigin { get; set; }
         public Point OriginOffset { get; set; }
         public bool FollowOwnerPosition { get; set; } = true;
@@ -2414,6 +2418,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float CasterY { get; set; }
         public bool FacingRight { get; set; }
         public IReadOnlyList<string> RequestedBranchNames { get; set; }
+        public int? EffectBranchLastIndex { get; set; }
         public Point OriginOffset { get; set; }
         public bool FollowOwnerPosition { get; set; } = true;
         public bool FollowOwnerFacing { get; set; } = true;

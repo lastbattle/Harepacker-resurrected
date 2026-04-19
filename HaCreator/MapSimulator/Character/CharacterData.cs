@@ -3025,9 +3025,19 @@ namespace HaCreator.MapSimulator.Character
                 return ComputeDisplayedMagicAttack();
             }
 
+            int absoluteJobId = Math.Abs(Job);
+            int primaryStat = profile.PrimaryStat;
+            int secondaryStat = profile.SecondaryStat;
+            if (IsXenonJob(absoluteJobId))
+            {
+                // Xenon stat rows use the hybrid STR+DEX+LUK primary surface.
+                primaryStat = TotalSTR + TotalDEX + TotalLUK;
+                secondaryStat = 0;
+            }
+
             float attackStat = Math.Max(1f, TotalWeaponAttackStat);
-            float maxDamage = ((profile.PrimaryStat * profile.WeaponMultiplier) + profile.SecondaryStat) * attackStat / 100f;
-            float minDamage = ((((profile.PrimaryStat * profile.WeaponMultiplier) * profile.MasteryPrimaryScale) * (TotalMastery / 100f)) + profile.SecondaryStat) * attackStat / 100f;
+            float maxDamage = ((primaryStat * profile.WeaponMultiplier) + secondaryStat) * attackStat / 100f;
+            float minDamage = ((((primaryStat * profile.WeaponMultiplier) * profile.MasteryPrimaryScale) * (TotalMastery / 100f)) + secondaryStat) * attackStat / 100f;
             return Math.Max(0, (int)MathF.Round((minDamage + maxDamage) * 0.5f));
         }
 

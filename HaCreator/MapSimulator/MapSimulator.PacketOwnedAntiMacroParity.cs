@@ -660,10 +660,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return _localUtilityOfficialSessionBridge.WasLastSentOutboundPacket(
-                       PacketOwnedAntiMacroAnswerSubmitOpcode,
-                       _lastPacketOwnedAntiMacroSubmittedRawPacket)
-                   || _localUtilityOfficialSessionBridge.HasConnectedSession;
+            return _localUtilityOfficialSessionBridge.HasSentOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket);
         }
 
         internal static int ResolvePacketOwnedAntiMacroRoundTripLatencyMs(int submittedTick, int resultTick)
@@ -992,8 +991,15 @@ namespace HaCreator.MapSimulator
                 return "left the deferred official-session queue and was injected into the live Maple session";
             }
 
+            if (_localUtilityOfficialSessionBridge.HasSentOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return "left the deferred official-session queue and was injected into the live Maple session";
+            }
+
             return _localUtilityOfficialSessionBridge.HasConnectedSession
-                ? "left the deferred official-session queue and is awaiting an authoritative anti-macro result"
+                ? "left the deferred official-session queue without a confirmed opcode 117 injection record"
                 : "no longer present in the deferred official-session queue";
         }
 

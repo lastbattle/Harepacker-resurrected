@@ -183,7 +183,7 @@ namespace HaCreator.MapSimulator
                 PacketOwnedDropPetPickupPresentation.SoundStringPoolId,
                 PacketOwnedDropPetPickupPresentation.SoundDescriptorFallback);
 
-            if (!TryResolvePacketOwnedWzSound(descriptor, "Game.img", out WzBinaryProperty soundProperty, out string resolvedDescriptor)
+            if (!TryResolvePacketOwnedWzSound(descriptor, "Game.img", out WzBinaryProperty soundProperty, out string resolvedDescriptor, false)
                 || soundProperty == null)
             {
                 return PacketOwnedDropPetPickupPresentation.SoundName;

@@ -23,10 +23,13 @@ namespace HaCreator.MapSimulator
         private const byte ItemUpgradePacketResultCodeSuccess = 1;
         private const byte ItemUpgradePacketResultCodeClientNoUpgradeSlot = 65;
         private const byte ItemUpgradePacketResultCodeClientRejected = 66;
+        private const int ItemUpgradePacketOutcomeStateFail = 0;
+        private const int ItemUpgradePacketOutcomeStateSuccess = 1;
         private const int ItemUpgradeClientBusyResultFallbackValue = 9;
 
         private bool _itemUpgradeOwnerRequestSent;
         private int _itemUpgradeOwnerRequestSentTick = int.MinValue;
+        private int _itemUpgradeOwnerLastResultValue = ItemUpgradeClientBusyResultFallbackValue;
         private PendingItemUpgradeOwnerRequestState _pendingItemUpgradeOwnerRequest;
 
         private sealed class PendingItemUpgradeOwnerRequestState
@@ -45,6 +48,14 @@ namespace HaCreator.MapSimulator
             public int RequestSlotPosition { get; init; }
         }
 
+        private readonly record struct ItemUpgradeResultDecodeState(
+            byte ResultCode,
+            bool HasReasonCode,
+            int ReasonCode,
+            bool HasOutcomeState,
+            int OutcomeResultValue,
+            int OutcomeUpgradeState);
+
         private void WireItemUpgradeOwnerCallbacks(ItemUpgradeUI itemUpgradeWindow)
         {
             if (itemUpgradeWindow == null)
@@ -59,7 +70,7 @@ namespace HaCreator.MapSimulator
         {
             if (HasActiveItemUpgradeOwnerRequestBlock(currTickCount))
             {
-                string busyNotice = ResolveItemUpgradeBusyNotice(ItemUpgradeClientBusyResultFallbackValue);
+                string busyNotice = ResolveItemUpgradeBusyNotice(_itemUpgradeOwnerLastResultValue);
                 ShowUtilityFeedbackMessage(busyNotice);
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
                 {
@@ -179,17 +190,16 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedItemUpgradeResultPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!TryDecodeItemUpgradeResultPayload(payload, out byte resultCode))
+            if (!TryDecodeItemUpgradeResultPayloadState(payload, out ItemUpgradeResultDecodeState decodeState, out string decodeError))
             {
-                message = "Packet-owned item-upgrade result payload is empty.";
+                message = decodeError;
                 return false;
             }
 
-            bool hasReasonCode = TryDecodeItemUpgradeResultReasonCode(payload, out int reasonCode);
-            bool hasOutcomeState = TryDecodeItemUpgradeResultOutcomeState(
-                payload,
-                out int packetResultValue,
-                out _);
+            if (decodeState.HasOutcomeState)
+            {
+                _itemUpgradeOwnerLastResultValue = decodeState.OutcomeResultValue;
+            }
 
             // CUIItemUpgrade::OnItemUpgradeResult clears request-sent and stamps the
             // exclusive resend timer immediately when the result packet arrives.
@@ -197,13 +207,13 @@ namespace HaCreator.MapSimulator
 
             if (_pendingItemUpgradeOwnerRequest == null)
             {
-                message = $"Observed packet-owned item-upgrade result code {resultCode}, but no pending request is waiting for it.";
+                message = $"Observed packet-owned item-upgrade result code {decodeState.ResultCode}, but no pending request is waiting for it.";
                 return true;
             }
 
-            if (resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot &&
-                hasReasonCode &&
-                reasonCode == 0)
+            if (decodeState.ResultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot &&
+                decodeState.HasReasonCode &&
+                decodeState.ReasonCode == 0)
             {
                 int recoverySlotCountArgument = ResolveItemUpgradeRecoveredSlotCountArgument(_pendingItemUpgradeOwnerRequest.Request.Slot);
                 _pendingItemUpgradeOwnerRequest.ForcedSuccess = true;
@@ -212,16 +222,16 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride =
                     ResolveItemUpgradeRecoveredSlotNotice(recoverySlotCountArgument);
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
-                _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = resultCode;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
                 _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
-                message = $"Queued packet-owned item-upgrade recovery apply result code {resultCode}.";
+                message = $"Queued packet-owned item-upgrade recovery apply result code {decodeState.ResultCode}.";
                 return true;
             }
 
             if (TryResolveItemUpgradePacketOwnedNoticeOnlyResult(
-                    resultCode,
-                    hasReasonCode ? reasonCode : (int?)null,
-                    hasOutcomeState ? packetResultValue : (int?)null,
+                    decodeState.ResultCode,
+                    decodeState.HasReasonCode ? decodeState.ReasonCode : (int?)null,
+                    decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : _itemUpgradeOwnerLastResultValue,
                     out string noticeMessage))
             {
                 _pendingItemUpgradeOwnerRequest.ForcedSuccess = null;
@@ -229,16 +239,27 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.PacketOwnedStatusMessage = noticeMessage;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
-                _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = resultCode;
+                _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
                 _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
-                message = $"Queued packet-owned item-upgrade notice result code {resultCode}.";
+                message = $"Queued packet-owned item-upgrade notice result code {decodeState.ResultCode}.";
                 return true;
             }
 
-            if (!TryMapItemUpgradeResultCode(resultCode, out bool success))
+            if (!TryMapItemUpgradeResultCode(decodeState.ResultCode, out bool success))
             {
-                message = $"Unsupported packet-owned item-upgrade result code {resultCode}.";
+                message = $"Unsupported packet-owned item-upgrade result code {decodeState.ResultCode}.";
                 return false;
+            }
+
+            if (decodeState.HasOutcomeState)
+            {
+                if (!TryMapItemUpgradeOutcomeStateResult(decodeState.OutcomeResultValue, out bool outcomeSuccess))
+                {
+                    message = $"Unsupported packet-owned item-upgrade outcome result value {decodeState.OutcomeResultValue} for result code {decodeState.ResultCode}.";
+                    return false;
+                }
+
+                success = outcomeSuccess;
             }
 
             _pendingItemUpgradeOwnerRequest.ForcedSuccess = success;
@@ -246,11 +267,11 @@ namespace HaCreator.MapSimulator
             _pendingItemUpgradeOwnerRequest.PacketOwnedStatusMessage = null;
             _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
-            _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = resultCode;
+            _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
             _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
             message = success
-                ? $"Queued packet-owned item-upgrade success result code {resultCode}."
-                : $"Queued packet-owned item-upgrade fail result code {resultCode}.";
+                ? $"Queued packet-owned item-upgrade success result code {decodeState.ResultCode}."
+                : $"Queued packet-owned item-upgrade fail result code {decodeState.ResultCode}.";
             return true;
         }
 
@@ -337,6 +358,55 @@ namespace HaCreator.MapSimulator
 
             packetResultValue = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int)));
             packetUpgradeState = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte) + sizeof(int), sizeof(int)));
+            return true;
+        }
+
+        private static bool TryDecodeItemUpgradeResultPayloadState(
+            byte[] payload,
+            out ItemUpgradeResultDecodeState decodeState,
+            out string decodeError)
+        {
+            decodeState = default;
+            decodeError = null;
+
+            if (!TryDecodeItemUpgradeResultPayload(payload, out byte resultCode))
+            {
+                decodeError = "Packet-owned item-upgrade result payload is empty.";
+                return false;
+            }
+
+            if (resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot ||
+                resultCode == ItemUpgradePacketResultCodeClientRejected)
+            {
+                if (!TryDecodeItemUpgradeResultReasonCode(payload, out int reasonCode))
+                {
+                    decodeError = $"Packet-owned item-upgrade result code {resultCode} requires a reason payload field.";
+                    return false;
+                }
+
+                decodeState = new ItemUpgradeResultDecodeState(
+                    resultCode,
+                    HasReasonCode: true,
+                    ReasonCode: reasonCode,
+                    HasOutcomeState: false,
+                    OutcomeResultValue: 0,
+                    OutcomeUpgradeState: 0);
+                return true;
+            }
+
+            if (!TryDecodeItemUpgradeResultOutcomeState(payload, out int packetResultValue, out int packetUpgradeState))
+            {
+                decodeError = $"Packet-owned item-upgrade result code {resultCode} requires outcome-state payload fields.";
+                return false;
+            }
+
+            decodeState = new ItemUpgradeResultDecodeState(
+                resultCode,
+                HasReasonCode: false,
+                ReasonCode: 0,
+                HasOutcomeState: true,
+                OutcomeResultValue: packetResultValue,
+                OutcomeUpgradeState: packetUpgradeState);
             return true;
         }
 
@@ -553,9 +623,41 @@ namespace HaCreator.MapSimulator
             return resultCode == ItemUpgradePacketResultCodeSuccess || resultCode == ItemUpgradePacketResultCodeFail;
         }
 
+        private static bool TryMapItemUpgradeOutcomeStateResult(int packetResultValue, out bool success)
+        {
+            success = packetResultValue == ItemUpgradePacketOutcomeStateSuccess;
+            return packetResultValue == ItemUpgradePacketOutcomeStateFail ||
+                   packetResultValue == ItemUpgradePacketOutcomeStateSuccess;
+        }
+
         internal static bool TryMapItemUpgradeResultCodeForTests(byte resultCode, out bool success)
         {
             return TryMapItemUpgradeResultCode(resultCode, out success);
+        }
+
+        internal static bool TryMapItemUpgradeOutcomeStateResultForTests(int packetResultValue, out bool success)
+        {
+            return TryMapItemUpgradeOutcomeStateResult(packetResultValue, out success);
+        }
+
+        internal static bool TryDecodeItemUpgradeResultPayloadStateForTests(
+            byte[] payload,
+            out byte resultCode,
+            out bool hasReasonCode,
+            out int reasonCode,
+            out bool hasOutcomeState,
+            out int outcomeResultValue,
+            out int outcomeUpgradeState,
+            out string decodeError)
+        {
+            bool decoded = TryDecodeItemUpgradeResultPayloadState(payload, out ItemUpgradeResultDecodeState decodeState, out decodeError);
+            resultCode = decodeState.ResultCode;
+            hasReasonCode = decodeState.HasReasonCode;
+            reasonCode = decodeState.ReasonCode;
+            hasOutcomeState = decodeState.HasOutcomeState;
+            outcomeResultValue = decodeState.OutcomeResultValue;
+            outcomeUpgradeState = decodeState.OutcomeUpgradeState;
+            return decoded;
         }
 
         private static bool TryResolveItemUpgradePacketOwnedNoticeOnlyResult(

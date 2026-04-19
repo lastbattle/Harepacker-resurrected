@@ -145,6 +145,11 @@ namespace HaCreator.MapSimulator.Fields
         public int ReactorRequiredHits { get; set; }
     }
 
+    internal readonly record struct PendingGuardianPlacement(
+        MonsterCarnivalEntry Entry,
+        MonsterCarnivalTeam Team,
+        bool CountAlreadyApplied);
+
     public sealed class MonsterCarnivalUiDataRowState
     {
         public MonsterCarnivalUiDataRowState(MonsterCarnivalTab tab, int index, int clientOrdinal, int id, int cost, string name, string description)
@@ -1141,6 +1146,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<int, MonsterCarnivalGuardianPlacement> _guardianPlacements = new();
         private readonly Dictionary<string, MonsterCarnivalTeam> _knownCharacterTeams = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<int> _occupiedGuardianSlots = new();
+        private readonly Queue<PendingGuardianPlacement> _pendingGuardianPlacements = new();
         private readonly MonsterCarnivalTeamState _team0 = new();
         private readonly MonsterCarnivalTeamState _team1 = new();
         private MonsterCarnivalFieldDefinition _definition;
@@ -1154,6 +1160,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _nextMobSpawnPointIndex;
         private int _lastRequestTab;
         private int _lastRequestIndex;
+        private string _lastRequestFailureChatRoute;
         private bool _isVisible;
         private bool _enteredField;
         private string _localCharacterName;
@@ -1196,6 +1203,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool Season2SubDialogOkEnabled => _season2SubDialogOkEnabled;
         public bool Season2SubDialogSelectionLocked => _season2SubDialogSelectionLocked;
         public string Season2SubDialogSummary => _season2SubDialogSummary;
+        public string LastRequestFailureChatRoute => _lastRequestFailureChatRoute;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -1265,6 +1273,7 @@ namespace HaCreator.MapSimulator.Fields
                 myTeam.TotalCp,
                 enemyTeam.CurrentCp,
                 enemyTeam.TotalCp);
+            UpdateSeason2SubDialogOnEnter();
 
             ShowStatus(BuildEnterStatusMessage(localTeam), Environment.TickCount);
             if (_definition?.IsWaitingRoom == true)
@@ -1299,6 +1308,8 @@ namespace HaCreator.MapSimulator.Fields
             _localTeam = localTeam;
             RegisterKnownCharacterTeam(_localCharacterName, _localTeam);
             _uiWindowState.ApplyEnter(localTeam, 0, 0, 0, 0, 0, 0);
+            ResetSeason2SubDialogState(
+                "Season 2 sub dialog is not owned by the revive wrapper; revive OnEnter only updates team ownership.");
 
             string ownerLabel = _definition?.ClientOwnerLabel ?? "CField_MonsterCarnivalRevive";
             ShowStatus(
@@ -1495,6 +1506,7 @@ namespace HaCreator.MapSimulator.Fields
             RecordRecoveredClientOwnerAction(
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult accepted tab {(int)tab}, index {entryIndex}, and reset the local request timer state.",
                 successDefinition.HasValue ? new[] { successDefinition.Value.StringPoolId } : Array.Empty<int>());
+            UpdateSeason2SubDialogOnRequest(entry, success: true, reasonCode: null);
         }
 
         public void OnRequestFailure(int reasonCode, int tickCount)
@@ -1502,12 +1514,24 @@ namespace HaCreator.MapSimulator.Fields
             ShowStatus(DescribeRequestFailure(reasonCode), tickCount);
             MonsterCarnivalStringPoolMessage? definition = GetRequestFailureMessage(reasonCode);
             _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "failure", _lastRequestTab, _lastRequestIndex);
+            if (definition.HasValue)
+            {
+                _lastRequestFailureChatRoute =
+                    $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult(reject) reason={reasonCode} -> CUIStatusBar::ChatLogAdd(type=7,item=-1)";
+            }
+            else
+            {
+                _lastRequestFailureChatRoute = null;
+            }
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.Request,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} rejected request reason {reasonCode} on the shared Carnival seam.");
             RecordRecoveredClientOwnerAction(
-                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult rejected reason {reasonCode} and reset the local request timer state.",
+                definition.HasValue
+                    ? $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult rejected reason {reasonCode}, routed the StringPool notice through CUIStatusBar::ChatLogAdd(type=7,item=-1), and reset the local request timer state."
+                    : $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult rejected reason {reasonCode} and reset the local request timer state.",
                 definition.HasValue ? new[] { definition.Value.StringPoolId } : Array.Empty<int>());
+            UpdateSeason2SubDialogOnRequest(entry: null, success: false, reasonCode: reasonCode);
         }
 
         public void OnShowGameResult(int resultCode, int tickCount)
@@ -1519,6 +1543,11 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             ShowStatus(status, tickCount);
+            if (_definition?.IsSeason2Mode == true)
+            {
+                ResetSeason2SubDialogState(
+                    $"Season 2 sub dialog closed after OnShowGameResult code {resultCode} routed through the result owner seam.");
+            }
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.ResultRoute,
                 BuildVariantResultSummary(resultCode));
@@ -1538,6 +1567,7 @@ namespace HaCreator.MapSimulator.Fields
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.DeathState,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} routed ProcessForDeath for {FormatTeam(team)} through the packet-owned status-bar message seam.");
+            UpdateSeason2SubDialogOnProcessForDeath(team, characterName, lostCp);
             RecordRecoveredClientOwnerAction(
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnProcessForDeath decoded packet CP loss {Math.Max(0, lostCp)} for {FormatTeam(team)} without mutating CP counters.",
                 lostCp > 0
@@ -1660,7 +1690,18 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            MonsterCarnivalEntry entry = ResolveGuardianEntryForSlot(resolvedSlotIndex);
+            bool countAlreadyApplied = false;
+            MonsterCarnivalEntry entry;
+            if (!TryDequeuePendingGuardianPlacement(resolvedTeam, out PendingGuardianPlacement pendingPlacement))
+            {
+                entry = ResolveGuardianEntryForSlot(resolvedSlotIndex);
+            }
+            else
+            {
+                entry = pendingPlacement.Entry;
+                countAlreadyApplied = pendingPlacement.CountAlreadyApplied;
+            }
+
             if (entry == null)
             {
                 return false;
@@ -1683,7 +1724,10 @@ namespace HaCreator.MapSimulator.Fields
 
             _guardianPlacements[resolvedSlotIndex] = placement;
             _occupiedGuardianSlots.Add(resolvedSlotIndex);
-            SetEntryCount(_guardianCounts, entry.Id, GetEntryCount(_guardianCounts, entry.Id) + 1);
+            if (!countAlreadyApplied)
+            {
+                SetEntryCount(_guardianCounts, entry.Id, GetEntryCount(_guardianCounts, entry.Id) + 1);
+            }
 
             slotIndex = resolvedSlotIndex;
             message =
@@ -2088,6 +2132,16 @@ namespace HaCreator.MapSimulator.Fields
                 new Vector2(mainHeaderBounds.X + 12, timerY + 34),
                 Color.LightGoldenrodYellow,
                 0.72f);
+            if (_definition?.IsSeason2Mode == true)
+            {
+                DrawShadowedText(
+                    spriteBatch,
+                    font,
+                    TrimForDisplay($"Season2 sub={DescribeSeason2SubDialogState()}", 92),
+                    new Vector2(mainHeaderBounds.X + 12, timerY + 50),
+                    Color.LightPink,
+                    0.66f);
+            }
 
             DrawCpRow(spriteBatch, pixelTexture, font, teamHeaderBounds);
             DrawTabs(spriteBatch, pixelTexture, font, headerBounds.X + ClientTabControlX, headerBounds.Y + ClientTabControlY);
@@ -2102,7 +2156,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "Monster Carnival runtime is inactive on this map.";
             }
 
-            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)} | variantPhase={DescribeVariantSessionPhase()} | seam={BuildClientOwnerStatusSummary()}{Environment.NewLine}{_uiWindowState.DescribeStatus()}";
+            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)} | pendingGuardianReconcile={_pendingGuardianPlacements.Count} | variantPhase={DescribeVariantSessionPhase()} | season2SubDialog={DescribeSeason2SubDialogState()} | seam={BuildClientOwnerStatusSummary()}{Environment.NewLine}{_uiWindowState.DescribeStatus()}";
         }
 
         public void Reset()
@@ -2121,6 +2175,7 @@ namespace HaCreator.MapSimulator.Fields
             _personalTotalCp = 0;
             _isVisible = false;
             _enteredField = false;
+            _lastRequestFailureChatRoute = null;
             _lastClientOwnerAction = null;
             _lastClientOwnerStringPoolIds = Array.Empty<int>();
             _variantActionTrail.Clear();
@@ -2131,6 +2186,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastVariantDelegatedRawPacket = false;
             _lastVariantDelegatedOwner = null;
             _lastVariantDelegatedSummary = null;
+            ResetSeason2SubDialogState(null);
         }
 
         private void ClearRoundState()
@@ -2142,10 +2198,13 @@ namespace HaCreator.MapSimulator.Fields
             _guardianPlacements.Clear();
             _knownCharacterTeams.Clear();
             _occupiedGuardianSlots.Clear();
+            _pendingGuardianPlacements.Clear();
             _nextMobSpawnPointIndex = 0;
             _selectedEntryIndex = 0;
             _lastRequestTab = -1;
             _lastRequestIndex = -1;
+            _lastRequestFailureChatRoute = null;
+            ResetSeason2SubDialogState(null);
         }
 
         private void DrawCpRow(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Rectangle teamBounds)
@@ -2396,7 +2455,7 @@ namespace HaCreator.MapSimulator.Fields
             return _definition.ResolvedFieldType switch
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | waiting-room wrapper panel only | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | UI/UIWindow2.img/MonsterCarnival/main+summonList+sub | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | UI/UIWindow2.img/MonsterCarnival/main+summonList+sub | subDialog={DescribeSeason2SubDialogState()} | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
                 FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | revive owner packets raw 346/353 only | OnEnter team byte -> CUserLocal team slot + RedrawGuildNameTag | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | no CUIMonsterCarnival surface",
                 _ => $"{mapLabel} | shared Carnival packet family 346-353 | UI 0x102B-0x1033"
             };
@@ -2770,8 +2829,8 @@ namespace HaCreator.MapSimulator.Fields
             return _definition.ResolvedFieldType switch
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | ui={_uiWindowState.DescribeStatus()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F | result StringPool=0x1020/0x1021/0x1022/0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | ui={_uiWindowState.DescribeStatus()} | subDialog={DescribeSeason2SubDialogState()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | result StringPool=0x1020/0x1021/0x1022/0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
         }
@@ -2932,15 +2991,29 @@ namespace HaCreator.MapSimulator.Fields
 
                 if (!guardianPlacementResolved)
                 {
-                    guardianSlotIndex = entry.Index;
-                    guardianSpawnPoint = ResolveGuardianSpawnPoint(entry.Index);
-                    resolvedOwnerTeam = guardianSpawnPoint.Team ?? ownerTeam;
+                    TryEnqueuePendingGuardianPlacement(entry, resolvedOwnerTeam, countAlreadyApplied: true);
+                    return;
                 }
 
                 if (!spendLocalCp && !ownerTeamKnown)
                 {
                     MonsterCarnivalTeamState inferredTeamState = GetTeamState(resolvedOwnerTeam);
                     inferredTeamState.CurrentCp = Math.Max(0, inferredTeamState.CurrentCp - entry.Cost);
+                }
+
+                if (guardianSlotIndex < 0)
+                {
+                    TryEnqueuePendingGuardianPlacement(entry, resolvedOwnerTeam, countAlreadyApplied: true);
+                    return;
+                }
+
+                if (_guardianPlacements.TryGetValue(guardianSlotIndex, out MonsterCarnivalGuardianPlacement displacedPlacement)
+                    && displacedPlacement?.Entry != null)
+                {
+                    SetEntryCount(
+                        _guardianCounts,
+                        displacedPlacement.Entry.Id,
+                        Math.Max(0, GetEntryCount(_guardianCounts, displacedPlacement.Entry.Id) - 1));
                 }
 
                 _occupiedGuardianSlots.Add(guardianSlotIndex);
@@ -3201,6 +3274,71 @@ namespace HaCreator.MapSimulator.Fields
             return entries
                 .OrderBy(candidate => Math.Abs(candidate.Index - slotIndex))
                 .FirstOrDefault();
+        }
+
+        private void TryEnqueuePendingGuardianPlacement(MonsterCarnivalEntry entry, MonsterCarnivalTeam team, bool countAlreadyApplied)
+        {
+            if (entry?.Tab != MonsterCarnivalTab.Guardian)
+            {
+                return;
+            }
+
+            _pendingGuardianPlacements.Enqueue(new PendingGuardianPlacement(entry, team, countAlreadyApplied));
+        }
+
+        private bool TryDequeuePendingGuardianPlacement(MonsterCarnivalTeam team, out PendingGuardianPlacement placement)
+        {
+            placement = default;
+            if (_pendingGuardianPlacements.Count <= 0)
+            {
+                return false;
+            }
+
+            int pendingCount = _pendingGuardianPlacements.Count;
+            List<PendingGuardianPlacement> unmatched = new(pendingCount);
+            bool hasMatch = false;
+            PendingGuardianPlacement matchedPlacement = default;
+            for (int i = 0; i < pendingCount; i++)
+            {
+                PendingGuardianPlacement next = _pendingGuardianPlacements.Dequeue();
+                if (next.Entry == null)
+                {
+                    continue;
+                }
+
+                if (!hasMatch && next.Team == team)
+                {
+                    matchedPlacement = next;
+                    hasMatch = true;
+                    continue;
+                }
+
+                unmatched.Add(next);
+            }
+
+            if (hasMatch)
+            {
+                foreach (PendingGuardianPlacement pending in unmatched)
+                {
+                    _pendingGuardianPlacements.Enqueue(pending);
+                }
+
+                placement = matchedPlacement;
+                return true;
+            }
+
+            if (unmatched.Count <= 0)
+            {
+                return false;
+            }
+
+            placement = unmatched[0];
+            for (int i = 1; i < unmatched.Count; i++)
+            {
+                _pendingGuardianPlacements.Enqueue(unmatched[i]);
+            }
+
+            return true;
         }
 
         private void RegisterKnownCharacterTeam(string characterName, MonsterCarnivalTeam team)
@@ -3504,9 +3642,111 @@ namespace HaCreator.MapSimulator.Fields
                 Array.Empty<int>());
         }
 
+        private void UpdateSeason2SubDialogOnEnter()
+        {
+            if (_definition?.IsSeason2Mode != true)
+            {
+                return;
+            }
+
+            SetSeason2SubDialogState(
+                visible: false,
+                okEnabled: false,
+                selectionLocked: false,
+                "UIWindow2.img/MonsterCarnival/sub kept its owner surface idle after OnEnter; request/result traffic controls visibility.");
+        }
+
+        private void UpdateSeason2SubDialogOnRequest(MonsterCarnivalEntry entry, bool success, int? reasonCode)
+        {
+            if (_definition?.IsSeason2Mode != true)
+            {
+                return;
+            }
+
+            if (success)
+            {
+                string entryLabel = entry == null
+                    ? "unknown-entry"
+                    : $"tab={(int)entry.Tab},index={entry.Index},id={entry.Id},name={entry.Name},cost={entry.Cost}";
+                SetSeason2SubDialogState(
+                    visible: true,
+                    okEnabled: true,
+                    selectionLocked: false,
+                    $"Season 2 request accepted; UIWindow2.img/MonsterCarnival/sub surfaced {entryLabel} and kept BtOK active for local acknowledgement.");
+                return;
+            }
+
+            int resolvedReasonCode = Math.Max(0, reasonCode ?? 0);
+            bool lockSelection = resolvedReasonCode is 3 or 4 or 5;
+            SetSeason2SubDialogState(
+                visible: true,
+                okEnabled: true,
+                selectionLocked: lockSelection,
+                $"Season 2 request rejected (reason={resolvedReasonCode}); sub dialog remained visible with BtOK while {(lockSelection ? "lock icons remained active" : "selection locks stayed clear")}.");
+        }
+
+        private void UpdateSeason2SubDialogOnProcessForDeath(MonsterCarnivalTeam team, string characterName, int lostCp)
+        {
+            if (_definition?.IsSeason2Mode != true)
+            {
+                return;
+            }
+
+            string actor = string.IsNullOrWhiteSpace(characterName) ? "unknown-member" : characterName.Trim();
+            SetSeason2SubDialogState(
+                visible: true,
+                okEnabled: true,
+                selectionLocked: true,
+                $"Season 2 death-state kept sub dialog ownership visible for {actor} ({FormatTeam(team)}) with lostCP={Math.Max(0, lostCp)} and lock indicators active.");
+        }
+
+        private void SetSeason2SubDialogState(bool visible, bool okEnabled, bool selectionLocked, string summary)
+        {
+            if (_definition?.IsSeason2Mode != true)
+            {
+                ResetSeason2SubDialogState(null);
+                return;
+            }
+
+            _season2SubDialogVisible = visible;
+            _season2SubDialogOkEnabled = visible && okEnabled;
+            _season2SubDialogSelectionLocked = visible && selectionLocked;
+            _season2SubDialogSummary = string.IsNullOrWhiteSpace(summary)
+                ? null
+                : summary.Trim();
+        }
+
+        private void ResetSeason2SubDialogState(string summary)
+        {
+            _season2SubDialogVisible = false;
+            _season2SubDialogOkEnabled = false;
+            _season2SubDialogSelectionLocked = false;
+            _season2SubDialogSummary = string.IsNullOrWhiteSpace(summary)
+                ? null
+                : summary.Trim();
+        }
+
+        private string DescribeSeason2SubDialogState()
+        {
+            if (_definition?.IsSeason2Mode != true)
+            {
+                return "n/a";
+            }
+
+            string visibilityLabel = _season2SubDialogVisible ? "visible" : "hidden";
+            string detail = _season2SubDialogVisible
+                ? $"ok={_season2SubDialogOkEnabled},lock={_season2SubDialogSelectionLocked}"
+                : "ok=false,lock=false";
+
+            return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
+                ? $"{visibilityLabel} ({detail})"
+                : $"{visibilityLabel} ({detail}) {_season2SubDialogSummary}";
+        }
+
         private void InitializeClientOwnedUiWindowState(MonsterCarnivalFieldDefinition definition)
         {
             _uiWindowState.Reset();
+            ResetSeason2SubDialogState(null);
             if (definition == null || definition.IsDeprecatedMode)
             {
                 return;
@@ -3529,6 +3769,14 @@ namespace HaCreator.MapSimulator.Fields
 
             bool preferWindow2Assets = definition.IsSeason2Mode;
             _uiWindowState.CreateFromDefinition(definition, preferWindow2Assets);
+            if (preferWindow2Assets)
+            {
+                SetSeason2SubDialogState(
+                    visible: false,
+                    okEnabled: false,
+                    selectionLocked: false,
+                    "Season 2 UIWindow2 sub dialog owner initialized and waiting for request/death traffic.");
+            }
             RecordClientOwnerAction(
                 preferWindow2Assets
                     ? $"{definition.ClientOwnerLabel}::CreateUIWindow -> UIWindow2.img/MonsterCarnival/main/summonList/sub -> CUIMonsterCarnival::SetUIData(mob={_uiWindowState.MobRows},skill={_uiWindowState.SkillRows},guardian={_uiWindowState.GuardianRows}) -> CUIMonsterCarnival::ResetUI."
@@ -3555,6 +3803,14 @@ namespace HaCreator.MapSimulator.Fields
 
             bool preferWindow2Assets = _definition.IsSeason2Mode;
             _uiWindowState.CreateFromDefinition(_definition, preferWindow2Assets);
+            if (preferWindow2Assets)
+            {
+                SetSeason2SubDialogState(
+                    visible: false,
+                    okEnabled: false,
+                    selectionLocked: false,
+                    "Season 2 sub dialog owner recreated during OnEnter and remained hidden until request/death updates.");
+            }
             if (ShouldTrackVariantClientOwnerAction())
             {
                 SetVariantSessionPhase(

@@ -27,8 +27,8 @@ namespace HaCreator.MapSimulator.UI
 
             return activeTab switch
             {
+                global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Receive => ParcelDialogKeyboardAction.ClaimReceiveAttachment,
                 global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Send => ParcelDialogKeyboardAction.DispatchSend,
-                global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.QuickSend => ParcelDialogKeyboardAction.DispatchSend,
                 _ => ParcelDialogKeyboardAction.None
             };
         }

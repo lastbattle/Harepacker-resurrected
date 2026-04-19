@@ -5077,6 +5077,19 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryResolveCharacterInfoPresenceFromPacketWhisperFind(
+                    characterName,
+                    _socialListRuntime,
+                    out string whisperLocation,
+                    out int whisperChannel))
+            {
+                locationSummary = whisperLocation;
+                channel = whisperChannel > 0
+                    ? whisperChannel
+                    : Math.Max(channel, 1);
+                return true;
+            }
+
             if (TryResolveCharacterInfoPresenceFromFallbackSnapshots(
                     characterName,
                     _messengerRuntime.GetRemoteParticipantSnapshots(),
@@ -5114,6 +5127,31 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static bool TryResolveCharacterInfoPresenceFromPacketWhisperFind(
+            string characterName,
+            SocialListRuntime socialListRuntime,
+            out string locationSummary,
+            out int channel)
+        {
+            locationSummary = "Location unknown";
+            channel = 0;
+            if (socialListRuntime == null || string.IsNullOrWhiteSpace(characterName))
+            {
+                return false;
+            }
+
+            if (!socialListRuntime.TryResolvePacketWhisperFindPresence(characterName, out string resolvedLocation, out int resolvedChannel))
+            {
+                return false;
+            }
+
+            locationSummary = string.IsNullOrWhiteSpace(resolvedLocation)
+                ? "Location unknown"
+                : resolvedLocation.Trim();
+            channel = Math.Max(0, resolvedChannel);
+            return true;
         }
 
         internal static bool ApplyCharacterInfoProfileAuthorityFromSocialTrackedEntry(
@@ -21166,6 +21204,43 @@ namespace HaCreator.MapSimulator
                    || effect.HasSupportedFieldProtection;
         }
 
+        private bool ShouldAutoApplyRunOnPickupConsumableItem(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            bool isRunOnPickup = InventoryItemMetadataResolver.IsRunOnPickup(itemId);
+            bool hasAuthoredNpcInteraction = InventoryItemMetadataResolver.HasAuthoredNpcInteraction(itemId);
+            ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
+            return ShouldAutoApplyRunOnPickupConsumableInteraction(
+                isRunOnPickup,
+                hasAuthoredNpcInteraction,
+                HasSupportedPickupConsumableOutcome(effect));
+        }
+
+        internal static bool ShouldAutoApplyRunOnPickupConsumableInteraction(
+            bool isRunOnPickup,
+            bool hasAuthoredNpcInteraction,
+            bool hasSupportedConsumableOutcome)
+        {
+            return isRunOnPickup
+                   && !hasAuthoredNpcInteraction
+                   && hasSupportedConsumableOutcome;
+        }
+
+        private static bool HasSupportedPickupConsumableOutcome(ConsumableItemEffect effect)
+        {
+            return effect.HasSupportedRecovery
+                   || effect.HasSupportedProgression
+                   || effect.HasSupportedMovement
+                   || effect.HasSupportedMorph
+                   || effect.HasSupportedTemporaryBuff
+                   || effect.HasSupportedCure
+                   || effect.HasSupportedFieldProtection;
+        }
+
         private bool ShouldAutoHandlePickedUpItem(int itemId)
         {
             if (itemId <= 0)
@@ -21180,6 +21255,7 @@ namespace HaCreator.MapSimulator
 
             return InventoryItemMetadataResolver.IsConsumedOnPickup(itemId)
                    || ShouldAutoConsumePickedUpItem(itemId)
+                   || ShouldAutoApplyRunOnPickupConsumableItem(itemId)
                    || InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId);
         }
 
@@ -21355,9 +21431,36 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            return TryApplyPickedUpConsumableRuntime(itemId, allowConsumedOnPickupFallback: true);
+        }
+
+        private bool TryApplyRunOnPickupConsumableRuntime(int itemId)
+        {
+            if (itemId <= 0
+                || !InventoryItemMetadataResolver.IsRunOnPickup(itemId)
+                || InventoryItemMetadataResolver.HasAuthoredNpcInteraction(itemId))
+            {
+                return false;
+            }
+
+            return TryApplyPickedUpConsumableRuntime(itemId, allowConsumedOnPickupFallback: false);
+        }
+
+        private bool TryApplyPickedUpConsumableRuntime(int itemId, bool allowConsumedOnPickupFallback)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
             if (TryApplyQuestBuffItemReward(itemId))
             {
                 return true;
+            }
+
+            if (!allowConsumedOnPickupFallback)
+            {
+                return false;
             }
 
             ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
@@ -21822,7 +21925,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            foreach (SocialRoomKind candidateKind in new[] { SocialRoomKind.EntrustedShop, SocialRoomKind.PersonalShop })
+            SocialRoomKind? hintedKind = _packetOwnedEmployeePoolDispatcher.TryResolveKindHintForEmployer(employerId, out SocialRoomKind resolvedHintedKind)
+                ? resolvedHintedKind
+                : null;
+            SocialRoomKind? preferredKind = _socialRoomEmployeeOfficialSessionBridge.PreferredKind;
+            foreach (SocialRoomKind candidateKind in BuildEmployeeBridgeKindSearchOrderForTesting(hintedKind, preferredKind))
             {
                 if (TryGetSocialRoomRuntime(candidateKind, out SocialRoomRuntime candidateRuntime)
                     && candidateRuntime.MatchesEmployeeEmployerId(employerId))
@@ -21834,6 +21941,33 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static IReadOnlyList<SocialRoomKind> BuildEmployeeBridgeKindSearchOrderForTesting(
+            SocialRoomKind? hintedKind,
+            SocialRoomKind? preferredKind)
+        {
+            List<SocialRoomKind> order = new(2);
+            TryAppendEmployeeBridgeMerchantKind(order, hintedKind);
+            TryAppendEmployeeBridgeMerchantKind(order, preferredKind);
+            TryAppendEmployeeBridgeMerchantKind(order, SocialRoomKind.EntrustedShop);
+            TryAppendEmployeeBridgeMerchantKind(order, SocialRoomKind.PersonalShop);
+            return order;
+        }
+
+        private static void TryAppendEmployeeBridgeMerchantKind(List<SocialRoomKind> order, SocialRoomKind? kind)
+        {
+            if (!kind.HasValue || !IsMerchantSocialRoomKind(kind.Value) || order.Contains(kind.Value))
+            {
+                return;
+            }
+
+            order.Add(kind.Value);
+        }
+
+        private static bool IsMerchantSocialRoomKind(SocialRoomKind kind)
+        {
+            return kind == SocialRoomKind.EntrustedShop || kind == SocialRoomKind.PersonalShop;
         }
 
         private bool TryResolveSocialRoomEmployeeBridgeRuntimeByHintScore(
@@ -22035,10 +22169,14 @@ namespace HaCreator.MapSimulator
                 bool consumeOnPickupMonsterCard = _monsterBookManager.IsConsumeOnPickupCardItem(itemId);
                 bool consumedOnPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsConsumedOnPickup(itemId);
                 bool autoConsumePickedUpItem = !consumeOnPickupMonsterCard && ShouldAutoConsumePickedUpItem(itemId);
+                bool autoRunConsumablePickedUpItem = !consumeOnPickupMonsterCard
+                                                     && !autoConsumePickedUpItem
+                                                     && ShouldAutoApplyRunOnPickupConsumableItem(itemId);
                 bool autoRunPickedUpItem = !consumeOnPickupMonsterCard
                                            && !autoConsumePickedUpItem
+                                           && !autoRunConsumablePickedUpItem
                                            && InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId);
-                bool autoHandlePickedUpItem = autoConsumePickedUpItem || autoRunPickedUpItem;
+                bool autoHandlePickedUpItem = autoConsumePickedUpItem || autoRunConsumablePickedUpItem || autoRunPickedUpItem;
                 // Monster Book card entries in Item/Consume/0238.img are authored as only=1 plus
                 // consumeOnPickup=1, so a consumed card pickup advances one card copy even if a
                 // simulator or packet-injected drop carried a larger stack quantity.
@@ -22089,10 +22227,22 @@ namespace HaCreator.MapSimulator
                         AddItemToInventoryWindow(drop.ItemId, remainderQuantity);
                     }
                 }
+                else if (autoRunConsumablePickedUpItem)
+                {
+                    bool interactionOpened = TryApplyRunOnPickupConsumableRuntime(itemId);
+                    int remainderQuantity = ResolvePickupRunOnPickupInventoryRemainder(
+                        Math.Max(1, drop.Quantity),
+                        interactionOpened,
+                        consumeOnUse: !InventoryItemMetadataResolver.IsNotConsumedOnUse(itemId));
+                    if (remainderQuantity > 0)
+                    {
+                        AddItemToInventoryWindow(drop.ItemId, remainderQuantity);
+                    }
+                }
                 else if (ShouldBurnUnsupportedConsumeOnPickupRemainder(
                              consumedOnPickupMetadata,
                              autoConsumePickedUpItem,
-                             autoRunPickedUpItem))
+                             autoRunPickedUpItem || autoRunConsumablePickedUpItem))
                 {
                     // Keep consumeOnPickup rows pickup-owned even when the simulator does not
                     // model their authored effect family yet.
@@ -24476,8 +24626,7 @@ namespace HaCreator.MapSimulator
         {
             if (hideTooltip == MapleBool.True
                 || !IsClientMinimapTooltipPortalType(portalType)
-                || targetMapId <= 0
-                || targetMapId == MapConstants.MaxMap)
+                || targetMapId < 0)
             {
                 return null;
             }
@@ -25233,13 +25382,14 @@ namespace HaCreator.MapSimulator
                 bool hasFriendshipOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Friendship);
                 bool hasCoupleOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Couple);
                 bool hasMarriageOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
-                if (!hasFriendshipOverlay && !hasCoupleOverlay && !hasMarriageOverlay)
+                bool hasNewYearCardOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.NewYearCard);
+                if (!hasFriendshipOverlay && !hasCoupleOverlay && !hasMarriageOverlay && !hasNewYearCardOverlay)
                 {
                     continue;
                 }
 
                 MinimapTrackedUserState state = GetOrCreateMinimapTrackedUserState(trackedUsers, actor.Name);
-                state.IsFriend |= hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay;
+                state.IsFriend |= hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay || hasNewYearCardOverlay;
                 state.IsCouplePartner |= hasCoupleOverlay;
                 state.IsMarriedPartner |= hasMarriageOverlay;
                 if (!state.HasPosition)
@@ -26405,6 +26555,105 @@ namespace HaCreator.MapSimulator
             _reactorPool?.DestroyReactor(reactorIndex, playerId: 0, currentTick);
         }
 
+        private void TryReconcileMonsterCarnivalGuardianFromSpawnedReactor(ReactorItem reactor, int currentTick)
+        {
+            MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            MonsterCarnivalFieldDefinition definition = carnivalField?.Definition;
+            if (carnivalField?.IsVisible != true || definition == null)
+            {
+                return;
+            }
+
+            if (!TryResolveReactorTemplateId(reactor, out int reactorTemplateId))
+            {
+                return;
+            }
+
+            int reactorRed = Math.Max(0, definition.ReactorRed);
+            int reactorBlue = Math.Max(0, definition.ReactorBlue);
+            if (reactorTemplateId != reactorRed && reactorTemplateId != reactorBlue)
+            {
+                return;
+            }
+
+            if (TryFindMonsterCarnivalGuardianSlot(reactor, out _))
+            {
+                return;
+            }
+
+            if (!TryGetReactorPoolIndex(reactor, out int reactorIndex))
+            {
+                return;
+            }
+
+            ReactorRuntimeData runtimeData = _reactorPool?.GetReactorData(reactorIndex);
+            int defaultRequiredHits = reactorTemplateId == reactorRed
+                ? Math.Max(1, definition.ReactorRedRequiredHits)
+                : Math.Max(1, definition.ReactorBlueRequiredHits);
+            int requiredHits = Math.Max(1, runtimeData?.RequiredHits ?? defaultRequiredHits);
+            int hitCount = Math.Clamp(runtimeData?.HitCount ?? 0, 0, requiredHits);
+
+            if (!carnivalField.TryReconcileLiveGuardianPlacement(
+                    reactorTemplateId,
+                    reactor.ReactorInstance.X,
+                    reactor.ReactorInstance.Y,
+                    reactor.ReactorInstance.Flip,
+                    hitCount,
+                    requiredHits,
+                    out int slotIndex,
+                    out string reconcileMessage))
+            {
+                return;
+            }
+
+            _monsterCarnivalGuardianSlotToReactorIndex[slotIndex] = reactorIndex;
+            _monsterCarnivalGuardianReactorIndexToSlot[reactorIndex] = slotIndex;
+            if (runtimeData != null
+                && carnivalField.GuardianPlacements.TryGetValue(slotIndex, out MonsterCarnivalGuardianPlacement placement)
+                && placement?.Entry != null)
+            {
+                runtimeData.RequiredHits = Math.Max(1, placement.ReactorRequiredHits);
+                runtimeData.HitCount = Math.Clamp(placement.ReactorHitCount, 0, runtimeData.RequiredHits);
+            }
+
+            if (!string.IsNullOrWhiteSpace(reconcileMessage))
+            {
+                _chat?.AddMessage(reconcileMessage, new Color(255, 228, 151), currentTick);
+            }
+        }
+
+        private bool TryResolveReactorTemplateId(ReactorItem reactor, out int reactorTemplateId)
+        {
+            reactorTemplateId = 0;
+            string templateIdText = reactor?.ReactorInstance?.ReactorInfo?.ID;
+            return !string.IsNullOrWhiteSpace(templateIdText)
+                   && int.TryParse(templateIdText, NumberStyles.Integer, CultureInfo.InvariantCulture, out reactorTemplateId)
+                   && reactorTemplateId > 0;
+        }
+
+        private bool TryGetReactorPoolIndex(ReactorItem reactor, out int reactorIndex)
+        {
+            reactorIndex = -1;
+            IReadOnlyList<ReactorItem> reactors = _reactorPool?.Reactors;
+            if (reactor == null || reactors == null || reactors.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < reactors.Count; i++)
+            {
+                if (!ReferenceEquals(reactors[i], reactor))
+                {
+                    continue;
+                }
+
+                reactorIndex = i;
+                return true;
+            }
+
+            return false;
+        }
+
         private bool TryFindMonsterCarnivalGuardianSlot(ReactorItem reactor, out int slotIndex)
         {
             slotIndex = -1;
@@ -26766,12 +27015,14 @@ namespace HaCreator.MapSimulator
                 return IsClientBodyLaneAreaCompatible(skill);
             }
 
+            bool hasExplicitOwnerBranch = IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skill.SkillId);
             bool hasAreaMetadata =
                 skill.IsMesoExplosion
                 || skill.AreaAttack
                 || !string.IsNullOrWhiteSpace(skill.AffectedSkillEffect)
                 || !string.IsNullOrWhiteSpace(skill.DotType)
-                || RemoteAffectedAreaSupportResolver.HasHostileMobGameplay(skill, levelData);
+                || RemoteAffectedAreaSupportResolver.HasHostileMobGameplay(skill, levelData)
+                || hasExplicitOwnerBranch;
             if (!hasAreaMetadata)
             {
                 return false;
@@ -26809,7 +27060,7 @@ namespace HaCreator.MapSimulator
             SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
             int type = Math.Max(0, skill?.ClientInfoType ?? 0);
-            int phase = ResolveLocalOwnedAffectedAreaPhase(skill);
+            int phase = ResolveLocalOwnedAffectedAreaPhase(skill, ownerLane);
             int elementAttribute = ResolveLocalOwnedAffectedAreaElementAttribute(skill);
             short startDelayUnits = ResolveLocalOwnedAffectedAreaStartDelayUnits(skill, levelData, ownerLane);
             return new LocalOwnedAffectedAreaCreateMetadata(
@@ -26819,9 +27070,22 @@ namespace HaCreator.MapSimulator
                 Phase: phase);
         }
 
-        internal static int ResolveLocalOwnedAffectedAreaPhase(SkillData skill)
+        internal static int ResolveLocalOwnedAffectedAreaPhase(
+            SkillData skill,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
+            if (skill == null)
+            {
+                return 0;
+            }
+
             if (skill?.IsMesoExplosion == true)
+            {
+                return 1;
+            }
+
+            if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack
+                || IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skill.SkillId))
             {
                 return 1;
             }
@@ -27016,21 +27280,41 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            // IDA coverage for TryDoingBodyAttack includes an explicit 32121003 branch.
-            if (skill.SkillId == 32121003)
+            if (IsClientBodyLaneExplicitAreaSkillId(skill.SkillId))
             {
                 return true;
             }
 
-            // IDA: TryDoingBodyAttack also owns `is_teleport_mastery_skill` path.
-            if (IsClientTeleportMasterySkillId(skill.SkillId))
+            if (ClientShootAttackFamilyResolver.UsesClientShootAttackLane(skill.SkillId)
+                || skill.Projectile != null
+                || skill.AttackType == SkillAttackType.Ranged
+                || IsClientShootInfoType(skill.ClientInfoType)
+                || skill.AttackType == SkillAttackType.Magic
+                || skill.IsMagicDamageSkill
+                || IsClientMagicInfoType(skill.ClientInfoType))
             {
-                return true;
+                return false;
             }
 
             return skill.UsesAffectedSkillBodyAttack
                    || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
                    || (skill.AreaAttack && (IsClientBodyInfoType(skill.ClientInfoType) || !string.IsNullOrWhiteSpace(skill.AffectedSkillEffect)));
+        }
+
+        private static bool IsLocalAttackAreaExplicitOwnerBranch(
+            SkillManager.LocalAttackAreaOwnerLane ownerLane,
+            int skillId)
+        {
+            return ownerLane switch
+            {
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack =>
+                    IsClientShootLaneExplicitAreaSkillId(skillId),
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack =>
+                    IsClientMagicLaneExplicitAreaSkillId(skillId),
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack =>
+                    IsClientBodyLaneExplicitAreaSkillId(skillId),
+                _ => false
+            };
         }
 
         private static bool IsClientShootLaneExplicitAreaSkillId(int skillId)
@@ -27052,6 +27336,14 @@ namespace HaCreator.MapSimulator
                    || skillId == 22161001
                    || skillId == 22181002
                    || skillId == 32121004;
+        }
+
+        private static bool IsClientBodyLaneExplicitAreaSkillId(int skillId)
+        {
+            // IDA coverage for TryDoingBodyAttack includes explicit 32121003 and
+            // `is_teleport_mastery_skill` ownership in the same lane.
+            return skillId == 32121003
+                   || IsClientTeleportMasterySkillId(skillId);
         }
 
         private static bool IsClientTeleportMasterySkillId(int skillId)
@@ -28112,7 +28404,7 @@ namespace HaCreator.MapSimulator
         private PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision EvaluatePassiveTransferFieldQueuedRetryDecision(int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
-            bool hasActiveOneTimeAction = player?.HasActivePassiveTransferFieldOneTimeAction() == true;
+            bool hasActiveOneTimeAction = HasActivePassiveTransferFieldOneTimeAction(player);
             bool hasLiveFieldInterface = HasPassiveTransferFieldInterface();
             bool hasCollidingTransferPortal = HasPassiveTransferFieldPortalCollision();
             return PassiveTransferFieldReadinessEvaluator.EvaluateQueuedRetryDecision(
@@ -28192,7 +28484,7 @@ namespace HaCreator.MapSimulator
 
             return PassiveTransferFieldReadinessEvaluator.CanReplayHandleUpKeyDown(
                 new PassiveTransferFieldReplayState(
-                    HasOneTimeActionCompleted: !player.HasActivePassiveTransferFieldOneTimeAction(),
+                    HasOneTimeActionCompleted: !HasActivePassiveTransferFieldOneTimeAction(player),
                     IsImmovable: player.IsImmovableForPassiveTransferField(currentTime),
                     IsAttractLocked: player.IsAttractLockedForPassiveTransferField(currentTime),
                     IsOnFoothold: player.Physics.IsOnFoothold()));
@@ -28201,8 +28493,18 @@ namespace HaCreator.MapSimulator
         private bool ShouldQueuePassiveTransferFieldRequest()
         {
             return PassiveTransferFieldReadinessEvaluator.CanQueuePassiveTransferFieldRequest(
-                _playerManager?.Player?.HasActivePassiveTransferFieldOneTimeAction() == true,
+                HasActivePassiveTransferFieldOneTimeAction(_playerManager?.Player),
                 HasPassiveTransferFieldPortalCollision());
+        }
+
+        private static bool HasActivePassiveTransferFieldOneTimeAction(PlayerCharacter player)
+        {
+            return HasActivePassiveTransferFieldOneTimeAction(player?.IsPlayingClientOwnedOneTimeAction == true);
+        }
+
+        internal static bool HasActivePassiveTransferFieldOneTimeAction(bool isPlayingClientOwnedOneTimeAction)
+        {
+            return isPlayingClientOwnedOneTimeAction;
         }
 
         private bool HasPassiveTransferFieldPortalCollision()
@@ -29738,6 +30040,15 @@ namespace HaCreator.MapSimulator
             _reactorPool.SetOnReactorActivated((reactor, playerId) =>
             {
                 System.Diagnostics.Debug.WriteLine($"[ReactorPool] Reactor activated: {reactor.ReactorInstance.Name}");
+            });
+            _reactorPool.SetOnReactorSpawned(reactor =>
+            {
+                if (reactor?.ReactorInstance == null)
+                {
+                    return;
+                }
+
+                TryReconcileMonsterCarnivalGuardianFromSpawnedReactor(reactor, Environment.TickCount);
             });
             _reactorPool.SetOnReactorHit((reactor, playerId) =>
             {
@@ -32181,11 +32492,19 @@ namespace HaCreator.MapSimulator
                 if (routesToDeliveryHandoff)
                 {
                     bool completionPhase = detailState.DeliveryType == QuestDetailDeliveryType.Complete;
+                    int inlineTargetItemId = reference.TargetId > 0
+                        ? reference.TargetId
+                        : detailState.TargetItemId.GetValueOrDefault();
                     return HandleQuestDeliveryLocalHandoff(
                         _activeQuestDetailQuestId,
                         completionPhase,
                         sourceContext: $"quest-detail inline demand-item {(completionPhase ? "completion" : "accept")} handoff",
-                        localHandoff: () => ApplyDeliveryQuestLaunch(_activeQuestDetailQuestId, detailState.TargetItemId.GetValueOrDefault(), Array.Empty<int>()));
+                        localHandoff: () => ApplyDeliveryQuestLaunch(
+                            _activeQuestDetailQuestId,
+                            inlineTargetItemId,
+                            Array.Empty<int>(),
+                            detailState.DeliveryType),
+                        targetItemIdOverride: inlineTargetItemId);
                 }
 
                 if (hasDetailItemQuery &&
@@ -32581,7 +32900,14 @@ namespace HaCreator.MapSimulator
                     }
                     else
                     {
-                        string deliveryMessage = ApplyDeliveryQuestLaunch(questId, target.EntityId ?? 0, Array.Empty<int>());
+                        QuestDetailDeliveryType detailDeliveryType =
+                            GetQuestWindowDetailStateWithPacketState(questId)?.DeliveryType
+                            ?? QuestDetailDeliveryType.None;
+                        string deliveryMessage = ApplyDeliveryQuestLaunch(
+                            questId,
+                            target.EntityId ?? 0,
+                            Array.Empty<int>(),
+                            detailDeliveryType);
                         return new QuestWindowActionResult
                         {
                             QuestId = questId,
@@ -32611,11 +32937,18 @@ namespace HaCreator.MapSimulator
 
         private QuestWindowActionResult HandleQuestDetailDeliveryAction(int questId, bool completionPhase)
         {
+            QuestWindowDetailState detailState = GetQuestWindowDetailStateWithPacketState(questId);
+            int detailTargetItemId = detailState?.TargetItemId ?? 0;
+            QuestDetailDeliveryType detailDeliveryType = detailState?.DeliveryType ?? QuestDetailDeliveryType.None;
             return HandleQuestDeliveryLocalHandoff(
                 questId,
                 completionPhase,
                 sourceContext: $"quest-detail {(completionPhase ? "completion" : "accept")} button",
-                localHandoff: () => ApplyDeliveryQuestLaunch(questId, GetQuestWindowDetailStateWithPacketState(questId)?.TargetItemId ?? 0, Array.Empty<int>()));
+                localHandoff: () => ApplyDeliveryQuestLaunch(
+                    questId,
+                    detailTargetItemId,
+                    Array.Empty<int>(),
+                    detailDeliveryType));
         }
 
         private QuestWindowActionResult HandleQuestDeliveryLocalHandoff(
@@ -32623,12 +32956,26 @@ namespace HaCreator.MapSimulator
             bool completionPhase,
             string sourceContext,
             Func<string> localHandoff,
+            int targetItemIdOverride = 0,
             MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType resolvedInventoryType = MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.NONE,
             int resolvedRuntimeSlotIndex = -1,
             int resolvedClientSlotIndex = 0)
         {
             QuestWindowDetailState state = GetQuestWindowDetailStateWithPacketState(questId);
-            if (state?.TargetItemId is not int targetItemId || targetItemId <= 0)
+            int targetItemId = 0;
+            if (targetItemIdOverride > 0 &&
+                state?.DeliveryType is QuestDetailDeliveryType.Accept or QuestDetailDeliveryType.Complete &&
+                _questRuntime.IsQuestDeliveryRequirementItem(questId, targetItemIdOverride, state.DeliveryType))
+            {
+                targetItemId = targetItemIdOverride;
+            }
+
+            if (targetItemId <= 0)
+            {
+                targetItemId = state?.TargetItemId ?? 0;
+            }
+
+            if (targetItemId <= 0)
             {
                 return new QuestWindowActionResult
                 {
@@ -32638,7 +32985,13 @@ namespace HaCreator.MapSimulator
             }
 
             int cashItemId = state.DeliveryCashItemId ?? 0;
-            string targetItemName = string.IsNullOrWhiteSpace(state.TargetItemName) ? $"Item {targetItemId}" : state.TargetItemName;
+            string targetItemName = state.TargetItemId == targetItemId && !string.IsNullOrWhiteSpace(state.TargetItemName)
+                ? state.TargetItemName
+                : ResolvePickupItemName(targetItemId);
+            if (string.IsNullOrWhiteSpace(targetItemName))
+            {
+                targetItemName = $"Item {targetItemId}";
+            }
             string cashItemName = string.IsNullOrWhiteSpace(state.DeliveryCashItemName) ? $"Cash item {cashItemId}" : state.DeliveryCashItemName;
             MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType deliveryInventoryType = resolvedInventoryType;
             int deliveryRuntimeSlotIndex = resolvedRuntimeSlotIndex;
@@ -32875,6 +33228,9 @@ namespace HaCreator.MapSimulator
                     castInfo.RequestedBranchNames,
                     castInfo.EffectAnimation,
                     castInfo.SecondaryEffectAnimation),
+                EffectBranchLastIndex = castInfo.EffectBranchLastIndex
+                                        ?? SkillManager.ResolveClientLocalShowSkillEffectEffectBranchLastIndexOverride(
+                                            castInfo.SkillData),
                 WorldOrigin = new Microsoft.Xna.Framework.Vector2(castInfo.CasterX, castInfo.CasterY),
                 OriginOffset = castInfo.OriginOffset,
                 FollowOwnerPosition = castInfo.FollowOwnerPosition,

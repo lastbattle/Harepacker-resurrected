@@ -745,6 +745,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            TryStampObservedVegaModifierItemToken(
+                launchPayload.InventoryType,
+                launchPayload.SlotIndex,
+                launchPayload.ModifierItemId,
+                launchPayload.ModifierItemToken);
             QueueVegaSpellWindowLaunch(
                 launchPayload.ModifierItemId,
                 launchPayload.InventoryType,
@@ -1063,6 +1068,72 @@ namespace HaCreator.MapSimulator
             }
 
             slot = candidate.Clone();
+            return true;
+        }
+
+        private void TryStampObservedVegaModifierItemToken(
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            int observedToken)
+        {
+            if (observedToken == 0 || uiWindowManager?.InventoryWindow is not UI.IInventoryRuntime inventoryWindow)
+            {
+                return;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(inventoryType);
+            TryStampObservedVegaModifierItemToken(slots, slotIndex, itemId, observedToken);
+        }
+
+        private static bool TryStampObservedVegaModifierItemToken(
+            IReadOnlyList<InventorySlotData> slots,
+            int slotIndex,
+            int itemId,
+            int observedToken)
+        {
+            if (slots == null || observedToken == 0 || itemId <= 0)
+            {
+                return false;
+            }
+
+            if (TryStampObservedVegaModifierItemTokenAtSlot(slots, slotIndex, itemId, observedToken))
+            {
+                return true;
+            }
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                if (TryStampObservedVegaModifierItemTokenAtSlot(slots, i, itemId, observedToken))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryStampObservedVegaModifierItemTokenAtSlot(
+            IReadOnlyList<InventorySlotData> slots,
+            int slotIndex,
+            int itemId,
+            int observedToken)
+        {
+            if (slotIndex < 0 || slotIndex >= slots.Count)
+            {
+                return false;
+            }
+
+            InventorySlotData slot = slots[slotIndex];
+            if (slot == null
+                || slot.IsDisabled
+                || slot.ItemId != itemId
+                || Math.Max(0, slot.Quantity) <= 0)
+            {
+                return false;
+            }
+
+            slot.ClientItemToken = observedToken;
             return true;
         }
 
@@ -1387,6 +1458,19 @@ namespace HaCreator.MapSimulator
             return TryDecodeVegaResultPayload(payload, out resultCode);
         }
 
+        internal static bool TryStampObservedVegaModifierItemTokenForTests(
+            IReadOnlyList<InventorySlotData> slots,
+            int slotIndex,
+            int itemId,
+            int observedToken)
+        {
+            return TryStampObservedVegaModifierItemToken(
+                slots,
+                slotIndex,
+                itemId,
+                observedToken);
+        }
+
         internal static bool IsVegaExclusiveRequestBlockedForTests(bool requestSent, int lastRequestTick, int currentTick)
         {
             return IsVegaExclusiveRequestBlocked(requestSent, lastRequestTick, currentTick);
@@ -1532,7 +1616,7 @@ namespace HaCreator.MapSimulator
 
             string descriptor = ResolveVegaResultLoopSoundDescriptor();
 
-            if (!TryResolvePacketOwnedWzSound(descriptor, "UI.img", out MapleLib.WzLib.WzProperties.WzBinaryProperty soundProperty, out string resolvedDescriptor))
+            if (!TryResolvePacketOwnedWzSound(descriptor, "UI.img", out MapleLib.WzLib.WzProperties.WzBinaryProperty soundProperty, out string resolvedDescriptor, false))
             {
                 return;
             }

@@ -154,6 +154,8 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyList<CounterSlotState> CounterSlots { get; init; } = Array.Empty<CounterSlotState>();
             public IReadOnlyList<PlateButtonState> PlateButtons { get; init; } = Array.Empty<PlateButtonState>();
             public string RewardSessionSummary { get; init; } = string.Empty;
+            public bool HasPacketRewardSessionByte { get; init; }
+            public int PacketRewardSessionByte { get; init; }
             public string PacketStateSignature { get; init; } = string.Empty;
             public IReadOnlyList<HistoryEntryState> HistoryEntries { get; init; } = Array.Empty<HistoryEntryState>();
             public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
@@ -239,6 +241,7 @@ namespace HaCreator.MapSimulator.UI
         private int _oneADayRewardSessionByte;
         private int _oneADayRewardSessionRevision;
         private int _oneADayNumberCanvasReadyMask;
+        private bool _oneADayRewardSessionPacketOwned;
 
         public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
             : base(frame)
@@ -1986,7 +1989,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _oneADayPending = state.IsPending;
+            bool packetOwnedPending = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 1) != 0;
+            _oneADayPending = state.IsPending || packetOwnedPending;
             _oneADayPacketStateSignature = nextPacketStateSignature;
             if (selectorReseedRequested)
             {
@@ -2220,25 +2224,48 @@ namespace HaCreator.MapSimulator.UI
 
         private void RefreshOneADayRewardSessionRuntime(OneADayOwnerState state)
         {
-            int nextSessionByte = 0;
-            if (state?.IsPending == true)
+            int nextSessionByte;
+            if (state?.HasPacketRewardSessionByte == true)
             {
-                nextSessionByte |= 1;
+                nextSessionByte = state.PacketRewardSessionByte & 0xFF;
+                nextSessionByte = _oneADaySelectorIndex == 1
+                    ? nextSessionByte | 2
+                    : nextSessionByte & ~2;
+                nextSessionByte = _oneADayShortcutHelpActive
+                    ? nextSessionByte | 4
+                    : nextSessionByte & ~4;
+                nextSessionByte = _oneADayPending
+                    ? nextSessionByte | 1
+                    : nextSessionByte & ~1;
+                nextSessionByte = (state.HistoryEntries?.Count ?? 0) > 0
+                    ? nextSessionByte | 8
+                    : nextSessionByte & ~8;
+                _oneADayRewardSessionPacketOwned = true;
             }
-
-            if (_oneADaySelectorIndex == 1)
+            else
             {
-                nextSessionByte |= 2;
-            }
+                nextSessionByte = 0;
+                if (_oneADayPending)
+                {
+                    nextSessionByte |= 1;
+                }
 
-            if (_oneADayShortcutHelpActive)
-            {
-                nextSessionByte |= 4;
-            }
+                if (_oneADaySelectorIndex == 1)
+                {
+                    nextSessionByte |= 2;
+                }
 
-            if (state?.HistoryEntries?.Count > 0)
-            {
-                nextSessionByte |= 8;
+                if (_oneADayShortcutHelpActive)
+                {
+                    nextSessionByte |= 4;
+                }
+
+                if (state?.HistoryEntries?.Count > 0)
+                {
+                    nextSessionByte |= 8;
+                }
+
+                _oneADayRewardSessionPacketOwned = false;
             }
 
             if (_oneADayRewardSessionByte != nextSessionByte)
@@ -2268,7 +2295,8 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildOneADayRewardSessionSummary()
         {
-            return $"Reward session byte 0x{_oneADayRewardSessionByte:X2} rev {_oneADayRewardSessionRevision.ToString(CultureInfo.InvariantCulture)}  Selector runtime {_oneADaySelectorRuntime.Count.ToString(CultureInfo.InvariantCulture)}  Number mask 0x{_oneADayNumberCanvasReadyMask:X3}.";
+            string sourceLabel = _oneADayRewardSessionPacketOwned ? "packet-owned" : "owner-approx";
+            return $"Reward session {sourceLabel} byte 0x{_oneADayRewardSessionByte:X2} rev {_oneADayRewardSessionRevision.ToString(CultureInfo.InvariantCulture)}  Selector runtime {_oneADaySelectorRuntime.Count.ToString(CultureInfo.InvariantCulture)}  Number mask 0x{_oneADayNumberCanvasReadyMask:X3}.";
         }
 
         private string DescribeOneADaySelectorRuntime()

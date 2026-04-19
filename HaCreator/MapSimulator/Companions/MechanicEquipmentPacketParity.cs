@@ -255,8 +255,10 @@ namespace HaCreator.MapSimulator.Companions
                             break;
                         }
                         default:
-                            rejectReason = $"Inventory-operation mode {operationMode} is unsupported for mechanic completion matching.";
-                            return false;
+                            // CWvsContext::OnInventoryOperation falls through unknown modes after
+                            // decoding the shared operation header; keep scanning the remaining
+                            // entries instead of rejecting mechanic completion eagerly.
+                            break;
                     }
                 }
             }

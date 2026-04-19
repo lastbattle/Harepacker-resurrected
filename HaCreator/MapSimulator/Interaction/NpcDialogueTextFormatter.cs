@@ -152,9 +152,21 @@ namespace HaCreator.MapSimulator.Interaction
             string preservedMarkers = RewardCategoryRegex.Replace(
                 text,
                 match => BuildQuestSurfaceMarker(match.Value.TrimStart('#', 'W', 'w').TrimEnd('#')));
+            preservedMarkers = QuestDetailFontNameRegex.Replace(
+                preservedMarkers,
+                match => BuildQuestFontMarker(match.Groups["name"].Value));
+            preservedMarkers = QuestDetailFontSizeRegex.Replace(
+                preservedMarkers,
+                match => BuildQuestFontSizeMarker(match.Groups["size"].Value));
             preservedMarkers = UiCanvasRegex.Replace(
                 preservedMarkers,
-                match => BuildUiCanvasMarker(match.Groups["path"].Value));
+                match =>
+                {
+                    string canvasPath = match.Groups["path"].Value;
+                    return IsClientQuestDetailCanvasTokenPayload(canvasPath)
+                        ? BuildUiCanvasMarker(canvasPath)
+                        : string.Empty;
+                });
             preservedMarkers = ItemIconRegex.Replace(
                 preservedMarkers,
                 match => int.TryParse(match.Value.TrimStart('#', 'i', 'I', 'v', 'V').TrimEnd('#', ':'), out int itemId) && itemId > 0
@@ -183,12 +195,6 @@ namespace HaCreator.MapSimulator.Interaction
             preservedMarkers = MalformedQuestDetailStyleRegex.Replace(
                 preservedMarkers,
                 match => BuildQuestStyleMarker(match.Groups["tag"].Value));
-            preservedMarkers = QuestDetailFontNameRegex.Replace(
-                preservedMarkers,
-                match => BuildQuestFontMarker(match.Groups["name"].Value));
-            preservedMarkers = QuestDetailFontSizeRegex.Replace(
-                preservedMarkers,
-                match => BuildQuestFontSizeMarker(match.Groups["size"].Value));
             preservedMarkers = Regex.Replace(
                 preservedMarkers,
                 "#c#",
@@ -199,6 +205,19 @@ namespace HaCreator.MapSimulator.Interaction
                 preservedMarkers,
                 match => PreserveQuestDetailStyleTag(match, styleInput));
             return Format(preservedMarkers, context);
+        }
+
+        private static bool IsClientQuestDetailCanvasTokenPayload(string canvasPath)
+        {
+            if (string.IsNullOrWhiteSpace(canvasPath))
+            {
+                return false;
+            }
+
+            string normalizedPath = canvasPath.Trim().Replace('\\', '/');
+            string[] pathSegments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            return pathSegments.Length >= 2 &&
+                   pathSegments[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string PreserveQuestDetailStyleTag(Match match, string text)

@@ -370,6 +370,7 @@ namespace HaCreator.MapSimulator.Character
             public int LastInsertCanvasLayerObjectId { get; set; }
             public AvatarRenderLayer? LastInsertCanvasSourceLayer { get; set; }
             public AvatarRenderLayer? LastInsertCanvasOverlayTargetLayer { get; set; }
+            public int LastInsertCanvasSourcePartsObjectId { get; set; }
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
@@ -524,34 +525,9 @@ namespace HaCreator.MapSimulator.Character
                                                          && CurrentSkillAnimationStartTime != int.MinValue;
         public bool HasActivePassiveTransferFieldOneTimeAction()
         {
-            if (IsPlayingClientOwnedOneTimeAction)
-            {
-                return true;
-            }
-
-            if (_avatarActionLayerState != null
-                && string.Equals(_avatarActionLayerState.ActionOwnerName, AvatarOneTimeActionOwnerName, StringComparison.Ordinal)
-                && AvatarActionLayerCoordinator.HasActiveOneTimeActionOwner(_avatarActionLayerState.ActionName))
-            {
-                return true;
-            }
-
-            if (_mountedActionLayerState == null)
-            {
-                return false;
-            }
-
-            bool hasMountedBodyOneTimeAction =
-                string.Equals(_mountedActionLayerState.CurrentBodyOwnerName, MountedBodyOneTimeActionOwnerName, StringComparison.Ordinal)
-                && AvatarActionLayerCoordinator.HasActiveOneTimeActionOwner(_mountedActionLayerState.CharacterOneTimeActionName);
-            if (hasMountedBodyOneTimeAction)
-            {
-                return true;
-            }
-
-            return string.Equals(_mountedActionLayerState.CurrentTamingMobOwnerName, MountedTamingMobOneTimeActionOwnerName, StringComparison.Ordinal)
-                   && AvatarActionLayerCoordinator.HasActiveOneTimeActionOwner(
-                       _mountedTamingMobOneTimeActionName ?? _mountedActionLayerState.TamingMobOneTimeActionName);
+            // Passive transfer replay is gated by the same one-time attack owner that
+            // blocks local "Up" handling in the client handoff seam.
+            return IsPlayingClientOwnedOneTimeAction;
         }
         public bool IsRecordingMovementPath => Physics?.IsRecordingPath == true;
         public bool IsMovementLockedBySkillTransform => GetActiveAvatarTransform()?.LocksMovement == true;
@@ -6318,6 +6294,7 @@ namespace HaCreator.MapSimulator.Character
                     LastInsertCanvasLayerObjectId = 0,
                     LastInsertCanvasSourceLayer = null,
                     LastInsertCanvasOverlayTargetLayer = null,
+                    LastInsertCanvasSourcePartsObjectId = 0,
                     PreparedFacingRight = false,
                     PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
@@ -6485,6 +6462,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
                 preparedLayer.RenderLayer,
+                ResolveMirrorImageSourcePartsObjectId(liveSourceParts),
+                preparedLayer.LastInsertCanvasSourcePartsObjectId,
                 preparedLayer.LastInsertCanvasSourceLayer,
                 preparedLayer.OverlayTargetLayer,
                 preparedLayer.LastInsertCanvasOverlayTargetLayer,
@@ -6566,7 +6545,8 @@ namespace HaCreator.MapSimulator.Character
                     preparedLayer,
                     sourceSignature,
                     currentTime,
-                    hasSourceCanvas);
+                    hasSourceCanvas,
+                    sourceParts);
                 preparedLayer.PreparedFacingRight = facingRight;
                 ApplyMirrorImagePreparedLayerClientProperties(
                     preparedLayer,
@@ -6611,7 +6591,8 @@ namespace HaCreator.MapSimulator.Character
                     preparedLayer,
                     sourceSignature,
                     currentTime,
-                    hasLiveInsertCanvasSource);
+                    hasLiveInsertCanvasSource,
+                    sourceParts);
                 preparedLayer.PreparedFacingRight = facingRight;
                 ApplyMirrorImagePreparedLayerClientProperties(
                     preparedLayer,
@@ -6676,7 +6657,8 @@ namespace HaCreator.MapSimulator.Character
                 sourceSignature,
                 currentTime,
                 HasMirrorImageInsertCanvasSource(
-                    HasMirrorImageLiveSourceCanvas(sourceParts)));
+                    HasMirrorImageLiveSourceCanvas(sourceParts)),
+                sourceParts);
             preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
@@ -6707,6 +6689,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasLayerObjectId = 0;
             preparedLayer.LastInsertCanvasSourceLayer = null;
             preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
+            preparedLayer.LastInsertCanvasSourcePartsObjectId = 0;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
@@ -6718,7 +6701,8 @@ namespace HaCreator.MapSimulator.Character
             MirrorImagePreparedSourceLayer preparedLayer,
             int sourceSignature,
             int currentTime,
-            bool hasSourceCanvas)
+            bool hasSourceCanvas,
+            IReadOnlyList<AssembledPart> sourceParts)
         {
             if (preparedLayer == null)
             {
@@ -6744,6 +6728,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasOverlayTargetLayer = ResolveMirrorImageLastInsertCanvasOverlayTargetLayer(
                 preparedLayer.LastInsertCanvasOverlayTargetLayer,
                 preparedLayer.OverlayTargetLayer,
+                hasSourceCanvas);
+            preparedLayer.LastInsertCanvasSourcePartsObjectId = ResolveMirrorImageLastInsertCanvasSourcePartsObjectId(
+                preparedLayer.LastInsertCanvasSourcePartsObjectId,
+                ResolveMirrorImageSourcePartsObjectId(sourceParts),
                 hasSourceCanvas);
         }
 
@@ -7029,6 +7017,23 @@ namespace HaCreator.MapSimulator.Character
                 : existingOverlayTargetLayer;
         }
 
+        internal static int ResolveMirrorImageSourcePartsObjectId(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            return sourceParts != null
+                ? RuntimeHelpers.GetHashCode(sourceParts)
+                : 0;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasSourcePartsObjectId(
+            int existingSourcePartsObjectId,
+            int currentSourcePartsObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentSourcePartsObjectId > 0
+                ? currentSourcePartsObjectId
+                : existingSourcePartsObjectId;
+        }
+
         internal static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
             IReadOnlyList<int> existingPartCounts,
             IReadOnlyList<bool> existingFacingRightByLayer,
@@ -7248,6 +7253,8 @@ namespace HaCreator.MapSimulator.Character
             int preparedLayerObjectId,
             int lastInsertCanvasLayerObjectId,
             AvatarRenderLayer sourceLayer,
+            int sourcePartsObjectId,
+            int lastInsertCanvasSourcePartsObjectId,
             AvatarRenderLayer? lastInsertCanvasSourceLayer,
             AvatarRenderLayer overlayTargetLayer,
             AvatarRenderLayer? lastInsertCanvasOverlayTargetLayer,
@@ -7266,6 +7273,12 @@ namespace HaCreator.MapSimulator.Character
 
             if (lastInsertCanvasSourceLayer.HasValue
                 && lastInsertCanvasSourceLayer.Value != sourceLayer)
+            {
+                return false;
+            }
+
+            if (lastInsertCanvasSourcePartsObjectId > 0
+                && sourcePartsObjectId != lastInsertCanvasSourcePartsObjectId)
             {
                 return false;
             }
@@ -9281,8 +9294,16 @@ namespace HaCreator.MapSimulator.Character
 
         internal static string ResolvePortableChairActionName(PortableChair chair)
         {
-            // CUser::SetActivePortableChair owns additional layers and riding-chair handoff;
-            // sitAction remains item metadata rather than an avatar action override.
+            // WZ setup-chair metadata can override the seated avatar action through info/sitAction.
+            // Keep sit as the fallback when sitAction is absent or points to an unknown action code.
+            if (chair?.SitActionId is int sitActionId
+                && sitActionId > 0
+                && CharacterPart.TryGetActionStringFromCode(sitActionId, out string authoredActionName)
+                && !string.IsNullOrWhiteSpace(authoredActionName))
+            {
+                return authoredActionName;
+            }
+
             return CharacterPart.GetActionString(CharacterAction.Sit);
         }
 

@@ -57,6 +57,10 @@ namespace HaCreator.MapSimulator.UI
         public string LastOwnerState { get; private set; } = string.Empty;
         public bool LastCloseOpenedWishlist { get; private set; }
         public bool AskItemWishlist { get; private set; }
+        public bool ShouldRestoreOwnerSurfaceOnShow =>
+            IsActive
+            && (OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                || OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily);
         public int PendingWishlistRegisterItemId { get; private set; }
         public string PendingWishlistRegisterTitle { get; private set; } = string.Empty;
         public string PendingWishlistRegisterCategoryLabel { get; private set; } = string.Empty;

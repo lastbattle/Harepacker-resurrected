@@ -2437,6 +2437,8 @@ namespace HaCreator.MapSimulator.Animation
 
     internal enum CanvasLayerRecoveredNativeOperationKind
     {
+        CreateTemporaryCanvas,
+        InsertTemporaryCanvas,
         CreateLayer,
         SetLayerOption,
         SetLayerPriority,
@@ -2753,12 +2755,44 @@ namespace HaCreator.MapSimulator.Animation
             CanvasLayerRecoveredRegistrationTrace registrationTrace,
             CanvasLayerRecoveredOwnerTrace? ownerTrace)
         {
+            CanvasLayerRecoveredTemporaryCanvasOperation[] ownerTemporaryCanvasOperations =
+                ownerTrace?.TemporaryCanvasOperations ?? Array.Empty<CanvasLayerRecoveredTemporaryCanvasOperation>();
             CanvasLayerRecoveredInsertCommand[] insertCommands =
                 registrationTrace.InsertCommands ?? Array.Empty<CanvasLayerRecoveredInsertCommand>();
             bool hasOverlayPositionWrite = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
-            int capacity = 3 + insertCommands.Length + 1 + (hasOverlayPositionWrite ? 1 : 0)
+            int capacity = ownerTemporaryCanvasOperations.Length + 3 + insertCommands.Length + 1 + (hasOverlayPositionWrite ? 1 : 0)
                 + (registrationTrace.RegistersOneTimeAnimation ? 1 : 0);
-            var operations = new List<CanvasLayerRecoveredNativeOperation>(capacity)
+            var operations = new List<CanvasLayerRecoveredNativeOperation>(capacity);
+
+            for (int i = 0; i < ownerTemporaryCanvasOperations.Length; i++)
+            {
+                CanvasLayerRecoveredTemporaryCanvasOperation operation = ownerTemporaryCanvasOperations[i];
+                if (operation.Kind == CanvasLayerRecoveredTemporaryCanvasOperationKind.CreateCanvas)
+                {
+                    operations.Add(new CanvasLayerRecoveredNativeOperation(
+                        CanvasLayerRecoveredNativeOperationKind.CreateTemporaryCanvas,
+                        null,
+                        Point.Zero,
+                        0,
+                        default,
+                        default,
+                        default,
+                        0));
+                    continue;
+                }
+
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.InsertTemporaryCanvas,
+                    null,
+                    operation.Source.CanvasOffset,
+                    0,
+                    default,
+                    default,
+                    default,
+                    0));
+            }
+
+            operations.AddRange(new CanvasLayerRecoveredNativeOperation[]
             {
                 new(
                     CanvasLayerRecoveredNativeOperationKind.CreateLayer,
@@ -2787,7 +2821,7 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     default,
                     registrationTrace.LayerSettings.LayerPriorityValue)
-            };
+            });
 
             for (int i = 0; i < insertCommands.Length; i++)
             {

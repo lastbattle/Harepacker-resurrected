@@ -405,22 +405,23 @@ namespace HaCreator.MapSimulator.Managers
             if (reader.BaseStream.Position < reader.BaseStream.Length)
             {
                 // Some maker-session compact delta variants append hidden-list deltas without
-                // setting the hidden-list override bit. Keep this tail parser permissive and let
-                // state-runtime semantics decide whether entries mutate the authoritative roster.
-                hiddenRecipeAdditions = ReadHiddenRecipeEntries16(
-                    reader,
-                    "Maker-session compact delta hidden recipe addition");
+                // setting the hidden-list override bit. Keep this tail parser permissive and
+                // accept the observed add+remove lane plus one-list variants.
+                byte[] hiddenTailPayload = reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
+                if (!TryDecodeCompactHiddenTail(
+                    hiddenTailPayload,
+                    out hiddenRecipeAdditions,
+                    out hiddenRecipeRemovals,
+                    out error))
+                {
+                    return false;
+                }
+
                 if (hiddenRecipeAdditions?.Count > 0)
                 {
                     deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions;
                 }
-            }
 
-            if (reader.BaseStream.Position < reader.BaseStream.Length)
-            {
-                hiddenRecipeRemovals = ReadHiddenRecipeRemovalEntries16(
-                    reader,
-                    "Maker-session compact delta hidden recipe removal");
                 if (hiddenRecipeRemovals?.Count > 0)
                 {
                     deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals;
@@ -497,6 +498,141 @@ namespace HaCreator.MapSimulator.Managers
                 HiddenRecipeRemovals = hiddenRecipeRemovals ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
             };
             return true;
+        }
+
+        private static bool TryDecodeCompactHiddenTail(
+            byte[] payload,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> additions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> removals,
+            out string error)
+        {
+            additions = null;
+            removals = null;
+            error = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return true;
+            }
+
+            if (TryDecodeCompactHiddenTailAdditionsThenRemovals(payload, out additions, out removals)
+                || TryDecodeCompactHiddenTailSingleList(payload, out additions, out removals))
+            {
+                return true;
+            }
+
+            error = "Maker-session compact delta hidden tail could not be decoded.";
+            return false;
+        }
+
+        private static bool TryDecodeCompactHiddenTailAdditionsThenRemovals(
+            byte[] payload,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> additions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> removals)
+        {
+            additions = null;
+            removals = null;
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                additions = ReadHiddenRecipeEntries16(
+                    reader,
+                    "Maker-session compact delta hidden recipe addition");
+                if (reader.BaseStream.Position < reader.BaseStream.Length)
+                {
+                    removals = ReadHiddenRecipeRemovalEntries16(
+                        reader,
+                        "Maker-session compact delta hidden recipe removal");
+                }
+
+                return reader.BaseStream.Position == reader.BaseStream.Length;
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TryDecodeCompactHiddenTailSingleList(
+            byte[] payload,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> additions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> removals)
+        {
+            additions = null;
+            removals = null;
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                List<PacketOwnedItemMakerSessionHiddenEntry> entries = ReadHiddenRecipeRemovalEntries16(
+                    reader,
+                    "Maker-session compact delta hidden recipe entry");
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                if (entries == null || entries.Count == 0)
+                {
+                    return true;
+                }
+
+                bool containsRemovalWildcard = entries.Exists(entry =>
+                    entry.OutputItemId <= 0
+                    || entry.BucketKey < 0);
+                if (!containsRemovalWildcard)
+                {
+                    additions = entries;
+                    return true;
+                }
+
+                additions = new List<PacketOwnedItemMakerSessionHiddenEntry>(entries.Count);
+                removals = new List<PacketOwnedItemMakerSessionHiddenEntry>(entries.Count);
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    PacketOwnedItemMakerSessionHiddenEntry entry = entries[i];
+                    if (entry.OutputItemId > 0 && entry.BucketKey >= 0)
+                    {
+                        additions.Add(entry);
+                    }
+                    else
+                    {
+                        removals.Add(entry);
+                    }
+                }
+
+                if (additions.Count == 0)
+                {
+                    additions = null;
+                }
+
+                if (removals.Count == 0)
+                {
+                    removals = null;
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                return false;
+            }
         }
 
         private static List<PacketOwnedItemMakerDisassemblyTargetEntry> ReadDisassemblyTargetEntries(BinaryReader reader, string label)

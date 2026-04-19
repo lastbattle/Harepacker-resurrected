@@ -669,7 +669,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string normalizedHex = string.Concat(rawPacketHex.Where(ch => ch != '-' && !char.IsWhiteSpace(ch)));
+            if (!TryNormalizeOutboundRawPacketHex(rawPacketHex, out string normalizedHex, out status))
+            {
+                return false;
+            }
+
             if (normalizedHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
                 normalizedHex = normalizedHex[2..];
@@ -706,6 +710,59 @@ namespace HaCreator.MapSimulator.Managers
                 rawPacket = Array.Empty<byte>();
                 return false;
             }
+        }
+
+        private static bool TryNormalizeOutboundRawPacketHex(string rawPacketHex, out string normalizedHex, out string status)
+        {
+            normalizedHex = string.Empty;
+            status = null;
+
+            if (string.IsNullOrWhiteSpace(rawPacketHex))
+            {
+                status = "Transport outbound raw packet hex cannot be empty.";
+                return false;
+            }
+
+            string trimmed = rawPacketHex.Trim();
+
+            // Accept captured-history snippets such as:
+            // "raw=0801002C..." or "... raw=08-01-00-2C ..."
+            int rawEqualsIndex = trimmed.IndexOf("raw=", StringComparison.OrdinalIgnoreCase);
+            if (rawEqualsIndex >= 0)
+            {
+                trimmed = trimmed[(rawEqualsIndex + "raw=".Length)..];
+            }
+
+            string[] recognizedPrefixes =
+            {
+                "packetoutraw",
+                "packetraw",
+                "raw",
+                "hex",
+                "payloadhex"
+            };
+            foreach (string prefix in recognizedPrefixes)
+            {
+                if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    trimmed = trimmed[prefix.Length..].TrimStart(' ', '\t', ':', '=');
+                    break;
+                }
+            }
+
+            normalizedHex = string.Concat(trimmed.Where(ch =>
+                !char.IsWhiteSpace(ch)
+                && ch != '-'
+                && ch != ':'
+                && ch != ','
+                && ch != ';'));
+            if (string.IsNullOrWhiteSpace(normalizedHex))
+            {
+                status = "Transport outbound raw packet hex cannot be empty.";
+                return false;
+            }
+
+            return true;
         }
 
         public void RecordDispatchResult(string source, TransportationPacketInboxMessage message, bool success, string result)

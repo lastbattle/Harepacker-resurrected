@@ -1454,10 +1454,26 @@ namespace HaCreator.MapSimulator.Character
                 : PortableChairBackZ + relativeZ;
         }
 
-        private static bool IsPortableChairAction(string actionName)
+        private bool IsPortableChairAction(string actionName)
         {
-            return !string.IsNullOrWhiteSpace(actionName)
-                   && actionName.StartsWith("sit", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (actionName.StartsWith("sit", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            PortableChair chair = _build?.ActivePortableChair;
+            if (chair == null)
+            {
+                return false;
+            }
+
+            string chairActionName = PlayerCharacter.ResolvePortableChairActionName(chair);
+            return string.Equals(actionName, chairActionName, StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool ShouldSuppressBaseAvatarForState(CharacterBuild build, string actionName)

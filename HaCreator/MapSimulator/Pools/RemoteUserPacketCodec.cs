@@ -400,7 +400,7 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
     public readonly record struct RemoteUserReceiveHpPacket(int CharacterId, int CurrentHp, int MaxHp);
-    public readonly record struct RemoteUserThrowGrenadePacket(int CharacterId, int X, int Y, int KeyDownTime, int SkillId, int GrenadeId);
+    public readonly record struct RemoteUserThrowGrenadePacket(int CharacterId, int X, int Y, int KeyDownTime, int SkillId, int SkillLevel);
     public readonly record struct RemoteUserGuildNameChangedPacket(int CharacterId, string GuildName);
     public readonly record struct RemoteUserGuildMarkChangedPacket(
         int CharacterId,
@@ -1356,23 +1356,42 @@ namespace HaCreator.MapSimulator.Pools
 
         private static string TryParseOptionalHitString(ReadOnlySpan<byte> payload)
         {
-            if (payload.Length < sizeof(ushort))
+            if (payload.Length == 0)
             {
                 return null;
             }
 
             try
             {
-                var reader = new PacketReader(payload);
-                string value = reader.ReadString16();
-                return reader.RemainingLength == 0 && !string.IsNullOrWhiteSpace(value)
-                    ? value.Trim()
-                    : null;
+                if (payload.Length >= sizeof(ushort))
+                {
+                    var reader = new PacketReader(payload);
+                    string value = reader.ReadString16();
+                    if (reader.RemainingLength == 0 && !string.IsNullOrWhiteSpace(value))
+                    {
+                        return value.Trim();
+                    }
+                }
             }
             catch (InvalidOperationException)
             {
+            }
+
+            string utf8 = Encoding.UTF8.GetString(payload).TrimEnd('\0').Trim();
+            if (string.IsNullOrWhiteSpace(utf8))
+            {
                 return null;
             }
+
+            for (int i = 0; i < utf8.Length; i++)
+            {
+                if (char.IsControl(utf8[i]))
+                {
+                    return null;
+                }
+            }
+
+            return utf8;
         }
 
         public static bool TryParseEffect(ReadOnlySpan<byte> payload, out RemoteUserEffectPacket packet, out string error)
@@ -1659,7 +1678,9 @@ namespace HaCreator.MapSimulator.Pools
                 int y = reader.ReadInt32();
                 int keyDownTime = reader.ReadInt32();
                 int skillId = reader.ReadInt32();
-                int grenadeId = reader.ReadInt32();
+                // CUserRemote::OnThrowGrenade decodes the final int as `nSLV`
+                // and forwards it to CUser::ThrowGrenade(nSkillID, nSLV, ...).
+                int skillLevel = reader.ReadInt32();
                 if (reader.RemainingLength != 0)
                 {
                     error = $"Remote user throw-grenade packet has {reader.RemainingLength} unread bytes remaining.";
@@ -1678,7 +1699,7 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                packet = new RemoteUserThrowGrenadePacket(characterId, x, y, Math.Max(0, keyDownTime), skillId, grenadeId);
+                packet = new RemoteUserThrowGrenadePacket(characterId, x, y, Math.Max(0, keyDownTime), skillId, skillLevel);
                 return true;
             }
             catch (InvalidOperationException ex)

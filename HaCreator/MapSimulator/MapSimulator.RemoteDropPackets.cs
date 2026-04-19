@@ -305,13 +305,13 @@ namespace HaCreator.MapSimulator
             Func<int, bool> observedPartyAnchorEvaluator = null,
             Func<int, int> partyActorOwnerResolver = null)
         {
-            if (ownerId <= 0 || actorId <= 0)
+            int normalizedOwnerId = NormalizeDropPartyActorId(ownerId, partyActorOwnerResolver);
+            int normalizedActorId = NormalizeDropPartyActorId(actorId, partyActorOwnerResolver);
+            if (!HasUsableDropPartyActorId(ownerId, normalizedOwnerId)
+                || !HasUsableDropPartyActorId(actorId, normalizedActorId))
             {
                 return false;
             }
-
-            int normalizedOwnerId = NormalizeDropPartyActorId(ownerId, partyActorOwnerResolver);
-            int normalizedActorId = NormalizeDropPartyActorId(actorId, partyActorOwnerResolver);
 
             if (localPartyId > 0 && ownerId == localPartyId)
             {
@@ -371,6 +371,11 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool HasUsableDropPartyActorId(int actorId, int normalizedActorId)
+        {
+            return actorId != 0 || normalizedActorId != 0;
         }
 
         private int ResolveDropPartyActorOwnerId(int actorId)
@@ -465,7 +470,7 @@ namespace HaCreator.MapSimulator
             int firstActorId,
             int secondActorId)
         {
-            if (actorParents == null || firstActorId <= 0 || secondActorId <= 0)
+            if (actorParents == null || firstActorId == 0 || secondActorId == 0)
             {
                 return;
             }
@@ -485,7 +490,7 @@ namespace HaCreator.MapSimulator
             int firstActorId,
             int secondActorId)
         {
-            if (actorParents == null || firstActorId <= 0 || secondActorId <= 0)
+            if (actorParents == null || firstActorId == 0 || secondActorId == 0)
             {
                 return false;
             }
@@ -503,7 +508,7 @@ namespace HaCreator.MapSimulator
             Func<int, bool> legacyTrackedActorEvaluator,
             Func<int, bool> persistedPartyAnchorEvaluator = null)
         {
-            if (actorParents == null || actorId <= 0)
+            if (actorParents == null || actorId == 0)
             {
                 return false;
             }

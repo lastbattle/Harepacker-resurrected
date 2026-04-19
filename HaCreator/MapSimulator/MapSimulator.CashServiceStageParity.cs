@@ -314,6 +314,8 @@ namespace HaCreator.MapSimulator
                             remainingHour,
                             remainingMinute,
                             remainingSecond),
+                        HasPacketRewardSessionByte = stageWindow.CashOneADayHasPacketRewardSessionByte,
+                        PacketRewardSessionByte = stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
                         PacketStateSignature = BuildCashShopOneADayPacketStateSignature(stageWindow, historyEntries),
                         HistoryEntries = historyEntries,
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
@@ -462,6 +464,13 @@ namespace HaCreator.MapSimulator
                 approximatedRewardSessionByte |= 8;
             }
 
+            int rewardSessionByte = stageWindow.CashOneADayHasPacketRewardSessionByte
+                ? stageWindow.CashOneADayPacketRewardSessionByte & 0xFF
+                : approximatedRewardSessionByte;
+            string sessionByteSource = stageWindow.CashOneADayHasPacketRewardSessionByte
+                ? "packet-owned"
+                : "owner-approx";
+
             string todayState = stageWindow.IsOneADayPending
                 ? $"today armed for SN {currentCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
                 : "today idle";
@@ -469,7 +478,10 @@ namespace HaCreator.MapSimulator
                 ? $"history {(historyEntries?.Count ?? 0).ToString(CultureInfo.InvariantCulture)}/{CashShopOneADayHistorySlotCount.ToString(CultureInfo.InvariantCulture)} loaded"
                 : "no previous history";
             string counterState = $"{remainingHour.ToString("00", CultureInfo.InvariantCulture)}:{remainingMinute.ToString("00", CultureInfo.InvariantCulture)}:{remainingSecond.ToString("00", CultureInfo.InvariantCulture)}";
-            return $"Reward session approx 0x{approximatedRewardSessionByte:X2}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10 (mask 0x{artSnapshot.NumberCanvasReadyMask:X3}).";
+            string mismatchSuffix = stageWindow.CashOneADayHasPacketRewardSessionByte && rewardSessionByte != approximatedRewardSessionByte
+                ? $" (owner-approx 0x{approximatedRewardSessionByte:X2})"
+                : string.Empty;
+            return $"Reward session {sessionByteSource} 0x{rewardSessionByte:X2}{mismatchSuffix}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10 (mask 0x{artSnapshot.NumberCanvasReadyMask:X3}).";
         }
 
         internal static int ResolveCashShopOneADayHistorySlotCount()
@@ -491,6 +503,8 @@ namespace HaCreator.MapSimulator
                 stageWindow.IsOneADayPending ? "1" : "0",
                 stageWindow.CashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture),
                 stageWindow.CashOneADayItemDate.ToString(CultureInfo.InvariantCulture),
+                stageWindow.CashOneADayHasPacketRewardSessionByte ? "packet-byte" : "no-packet-byte",
+                stageWindow.CashOneADayPacketRewardSessionByte.ToString(CultureInfo.InvariantCulture),
                 stageWindow.NoticeState ?? string.Empty
             };
 
@@ -1883,7 +1897,11 @@ namespace HaCreator.MapSimulator
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
         }
 
-        private void ShowCashReceiveGiftFollowUpNoticeDialog(CashServiceStageWindow stageWindow, int nextGiftIndex, string acceptanceSummary)
+        private void ShowCashReceiveGiftFollowUpNoticeDialog(
+            CashServiceStageWindow stageWindow,
+            int nextGiftIndex,
+            string ownerNotice,
+            string acceptanceSummary)
         {
             if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, out CashServiceModalOwnerWindow modalWindow))
             {
@@ -1899,6 +1917,7 @@ namespace HaCreator.MapSimulator
                 "The current GW_GiftList row returned from CDialog::DoModal and staged its follow-up owner notice.",
                 new[]
                 {
+                    ownerNotice,
                     acceptanceSummary,
                     $"Decoded queue still has {remainingRows.ToString(CultureInfo.InvariantCulture)} row(s) after this accept branch."
                 },
@@ -2160,7 +2179,15 @@ namespace HaCreator.MapSimulator
                 && TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog, out CashServiceModalOwnerWindow modalWindow)
                 && uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
-                string selectorSummary = BuildCashPurchaseConfirmSelectionSummary(modalWindow);
+                CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+                int selectedPaymentControlId = modalWindow.SelectedCheckBoxControlId;
+                string selectedPaymentLabel = ResolveCashPurchasePaymentLabel(selectedPaymentControlId);
+                string selectorSummary = stageWindow?.RecordPurchaseDialogSelection(
+                        selectedPaymentControlId,
+                        selectedPaymentLabel,
+                        modalWindow.SelectedComboValue,
+                        modalWindow.SelectedComboLabel)
+                    ?? BuildCashPurchaseConfirmSelectionSummary(modalWindow);
                 string comboFocusSummary = TryApplyCashPurchaseVariantSelection(cashShopWindow, modalWindow.SelectedComboValue);
                 string purchaseMessage = cashShopWindow.ExecuteCashStageListAction("BtBuy");
                 message = string.Join(
@@ -2215,6 +2242,9 @@ namespace HaCreator.MapSimulator
             string dispatchSummary = buttonIndex == 0
                 ? DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText)
                 : string.Empty;
+            string ownerNotice = buttonIndex == 0
+                ? stageWindow.BuildReceiveGiftAcceptOwnerNotice(selectedGift, normalizedReplyText)
+                : string.Empty;
             string message = buttonIndex == 0
                 ? stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, normalizedReplyText, dispatchSummary)
                 : "CUIReceiveGift skipped the current decoded gift row and advanced to the next modal-owner pass without sending the accept packet.";
@@ -2225,7 +2255,7 @@ namespace HaCreator.MapSimulator
                 TryTriggerSpecialistPetSocialFeedback(
                     BuildCashReceiveGiftSpecialistMessages(selectedGift, normalizedReplyText),
                     currTickCount);
-                ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, selectedGiftIndex, message);
+                ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, selectedGiftIndex, ownerNotice, message);
                 return;
             }
 
@@ -2256,13 +2286,7 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
-            string payment = modalWindow.SelectedCheckBoxControlId switch
-            {
-                1000 => "Maple Point",
-                1001 => "Prepaid Cash",
-                1002 => "Nexon Cash",
-                _ => string.Empty
-            };
+            string payment = ResolveCashPurchasePaymentLabel(modalWindow.SelectedCheckBoxControlId);
             string combo = modalWindow.SelectedComboValue > 0
                 ? $"combo 1003 selected {modalWindow.SelectedComboLabel}"
                 : string.Empty;
@@ -2280,6 +2304,17 @@ namespace HaCreator.MapSimulator
             return parts.Count == 0
                 ? string.Empty
                 : $"CConfirmPurchaseDlg confirmed with {string.Join(" and ", parts)}.";
+        }
+
+        private static string ResolveCashPurchasePaymentLabel(int selectedCheckBoxControlId)
+        {
+            return selectedCheckBoxControlId switch
+            {
+                1000 => "Maple Point",
+                1001 => "Prepaid Cash",
+                1002 => "Nexon Cash",
+                _ => string.Empty
+            };
         }
 
         private string TryApplyCashPurchaseVariantSelection(AdminShopDialogUI cashShopWindow, int selectedComboValue)

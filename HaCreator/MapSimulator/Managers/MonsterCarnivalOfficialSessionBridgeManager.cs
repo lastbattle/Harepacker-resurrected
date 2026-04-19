@@ -1435,10 +1435,14 @@ namespace HaCreator.MapSimulator.Managers
                 return $"No established TCP sessions matched {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
             }
 
-            return string.Join(
+            string matches = string.Join(
                 Environment.NewLine,
                 filteredCandidates.Select(candidate =>
                     $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+            return
+                $"{matches}{Environment.NewLine}" +
+                "Use /mcarnival session attach ... for passive status-only observation of an already-established socket pair. " +
+                "Use /mcarnival session attachproxy ... (or start/startauto) for live inbound 346-353 decrypt and outbound opcode 262 inject ownership after reconnect through 127.0.0.1.";
         }
 
         private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)

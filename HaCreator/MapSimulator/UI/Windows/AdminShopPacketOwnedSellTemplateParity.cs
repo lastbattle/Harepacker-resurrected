@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.UI
             int packetSerialNumber,
             int packetItemId,
             long packetPrice,
+            bool? expectedOnSale,
             IReadOnlyList<PacketOwnedCommodityMetadataCandidate> candidates)
         {
             if (packetItemId <= 0 || candidates == null || candidates.Count == 0)
@@ -83,7 +84,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (!hasBest || IsPreferredCandidate(candidate, best, packetSerialNumber, normalizedPacketPrice))
+                if (!hasBest || IsPreferredCandidate(candidate, best, packetSerialNumber, normalizedPacketPrice, expectedOnSale))
                 {
                     best = candidate;
                     hasBest = true;
@@ -97,7 +98,8 @@ namespace HaCreator.MapSimulator.UI
             PacketOwnedCommodityMetadataCandidate candidate,
             PacketOwnedCommodityMetadataCandidate existing,
             int packetSerialNumber,
-            long normalizedPacketPrice)
+            long normalizedPacketPrice,
+            bool? expectedOnSale)
         {
             bool candidateExactSerial = packetSerialNumber > 0 && candidate.SerialNumber == packetSerialNumber;
             bool existingExactSerial = packetSerialNumber > 0 && existing.SerialNumber == packetSerialNumber;
@@ -111,6 +113,16 @@ namespace HaCreator.MapSimulator.UI
             if (candidateExactPrice != existingExactPrice)
             {
                 return candidateExactPrice;
+            }
+
+            if (expectedOnSale.HasValue)
+            {
+                bool candidateMatchesPacketSaleState = candidate.OnSale == expectedOnSale.Value;
+                bool existingMatchesPacketSaleState = existing.OnSale == expectedOnSale.Value;
+                if (candidateMatchesPacketSaleState != existingMatchesPacketSaleState)
+                {
+                    return candidateMatchesPacketSaleState;
+                }
             }
 
             if (candidate.OnSale != existing.OnSale)

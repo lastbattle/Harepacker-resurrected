@@ -477,6 +477,11 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryClickReadyButton(int tickCount, out string message)
         {
+            if (!TryEnsureNoPendingPromptForLocalAction("sending a ready request", out message))
+            {
+                return false;
+            }
+
             if (_stage != RoomStage.Lobby)
             {
                 message = "Ready requests are only valid from the Match Cards lobby.";
@@ -492,6 +497,11 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryClickStartButton(int tickCount, out string message)
         {
+            if (!TryEnsureNoPendingPromptForLocalAction("starting the Match Cards round", out message))
+            {
+                return false;
+            }
+
             if (_stage != RoomStage.Lobby)
             {
                 message = "Start requests are only valid from the Match Cards lobby.";
@@ -542,6 +552,12 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryRevealCard(int cardIndex, int tickCount, int playerIndex, out string message)
         {
+            if (playerIndex == _localPlayerIndex
+                && !TryEnsureNoPendingPromptForLocalAction("turning up a card", out message))
+            {
+                return false;
+            }
+
             if (_stage != RoomStage.Playing)
             {
                 message = "The board is not active.";
@@ -1004,6 +1020,12 @@ namespace HaCreator.MapSimulator.Fields
             EnsureRoomOpenFromMiniRoomRuntime();
 
             byte packetType = packetBytes[0];
+            if (_pendingPrompt.IsActive && IsLocalRequestPacketSubtype(packetType))
+            {
+                message = "Finish the current Match Cards confirmation prompt before sending another outbound request.";
+                return false;
+            }
+
             bool handled = packetType switch
             {
                 MiniRoomBaseLeavePacketType => TryApplyOutgoingLobbyLeavePacket(out message),
@@ -1624,9 +1646,9 @@ namespace HaCreator.MapSimulator.Fields
             switch (packetType)
             {
                 case MemoryGameReadyPacketType:
-                    return TryApplyGuestReadyPacket(isReady: true, out message);
+                    return TryApplyRemoteReadyPacket(isReady: true, out message);
                 case MemoryGameCancelReadyPacketType:
-                    return TryApplyGuestReadyPacket(isReady: false, out message);
+                    return TryApplyRemoteReadyPacket(isReady: false, out message);
                 case MemoryGameStartPacketType:
                     return TryApplyStartPacket(reader, tickCount, out message);
                 case MemoryGameTurnUpCardPacketType:
@@ -1690,13 +1712,13 @@ namespace HaCreator.MapSimulator.Fields
         }
 
 
-        private bool TryApplyGuestReadyPacket(bool isReady, out string message)
+        private bool TryApplyRemoteReadyPacket(bool isReady, out string message)
         {
-            const int guestPlayerIndex = 1;
-            bool handled = TrySetReady(guestPlayerIndex, isReady, out message);
+            int remotePlayerIndex = _localPlayerIndex == 0 ? 1 : 0;
+            bool handled = TrySetReady(remotePlayerIndex, isReady, out message);
             if (handled)
             {
-                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {ResolveParticipantName(guestPlayerIndex)} {(isReady ? "is ready." : "canceled ready.")}");
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {ResolveParticipantName(remotePlayerIndex)} {(isReady ? "is ready." : "canceled ready.")}");
             }
 
 
@@ -2898,6 +2920,36 @@ namespace HaCreator.MapSimulator.Fields
         {
             message = "The Match Cards prompt could not be resolved.";
             return false;
+        }
+
+        private bool TryEnsureNoPendingPromptForLocalAction(string actionDescription, out string message)
+        {
+            if (!_pendingPrompt.IsActive)
+            {
+                message = null;
+                return true;
+            }
+
+            message = $"Finish the current Match Cards confirmation prompt before {actionDescription}.";
+            return false;
+        }
+
+        private static bool IsLocalRequestPacketSubtype(byte packetType)
+        {
+            return packetType switch
+            {
+                MiniRoomBaseLeavePacketType => true,
+                MemoryGameTieRequestPacketType => true,
+                MemoryGameTieResultPacketType => true,
+                MemoryGameClientGiveUpPacketType => true,
+                MemoryGameClientBookLeavePacketType => true,
+                MemoryGameClientCancelLeavePacketType => true,
+                MemoryGameReadyPacketType => true,
+                MemoryGameCancelReadyPacketType => true,
+                MemoryGameClientBanOrTurnUpCardPacketType => true,
+                MemoryGameStartPacketType => true,
+                _ => false
+            };
         }
 
 

@@ -230,7 +230,11 @@ namespace HaCreator.MapSimulator
         internal readonly record struct AnimationDisplayerReservedEffectMetadata(
             int Type,
             int StartDelayMs,
-            string VisualEffectUol);
+            string VisualEffectUol,
+            string SoundEffectDescriptor,
+            int FieldId,
+            string ActionName,
+            int EmotionId);
 
         private void RegisterAnimationDisplayerChatCommand()
         {
@@ -1251,19 +1255,35 @@ namespace HaCreator.MapSimulator
             out AnimationDisplayerReservedEffectMetadata metadata)
         {
             metadata = default;
+            IReadOnlyList<AnimationDisplayerReservedEffectMetadata> metadataEntries =
+                EnumerateAnimationDisplayerReservedEffectMetadata(effectUol, propertyResolver);
+            if (metadataEntries.Count <= 0)
+            {
+                return false;
+            }
+
+            metadata = metadataEntries[0];
+            return true;
+        }
+
+        internal static IReadOnlyList<AnimationDisplayerReservedEffectMetadata> EnumerateAnimationDisplayerReservedEffectMetadata(
+            string effectUol,
+            Func<string, WzImageProperty> propertyResolver)
+        {
             string normalizedEffectUol = NormalizeRemotePacketOwnedStringEffectUol(effectUol);
             if (string.IsNullOrWhiteSpace(normalizedEffectUol))
             {
-                return false;
+                return Array.Empty<AnimationDisplayerReservedEffectMetadata>();
             }
 
             Func<string, WzImageProperty> resolver = propertyResolver ?? ResolveAnimationDisplayerPropertyStatic;
             WzImageProperty rootProperty = WzInfoTools.GetRealProperty(resolver(normalizedEffectUol));
             if (rootProperty == null)
             {
-                return false;
+                return Array.Empty<AnimationDisplayerReservedEffectMetadata>();
             }
 
+            var entries = new List<AnimationDisplayerReservedEffectMetadata>();
             if (rootProperty is WzSubProperty rootSubProperty)
             {
                 var children = rootSubProperty.WzProperties;
@@ -1277,31 +1297,64 @@ namespace HaCreator.MapSimulator
                             continue;
                         }
 
-                        string visualPath = NormalizeRemotePacketOwnedStringEffectUol(child["visual"]?.GetString());
-                        if (string.IsNullOrWhiteSpace(visualPath))
+                        if (!TryBuildAnimationDisplayerReservedEffectMetadata(child, out AnimationDisplayerReservedEffectMetadata childMetadata))
                         {
                             continue;
                         }
 
-                        metadata = new AnimationDisplayerReservedEffectMetadata(
-                            Type: child["type"]?.GetInt() ?? 0,
-                            StartDelayMs: Math.Max(0, child["start"]?.GetInt() ?? 0),
-                            VisualEffectUol: visualPath);
-                        return true;
+                        entries.Add(childMetadata);
                     }
                 }
             }
 
-            string rootVisualPath = NormalizeRemotePacketOwnedStringEffectUol(rootProperty["visual"]?.GetString());
-            if (string.IsNullOrWhiteSpace(rootVisualPath))
+            if (entries.Count > 0)
+            {
+                return entries;
+            }
+
+            return TryBuildAnimationDisplayerReservedEffectMetadata(rootProperty, out AnimationDisplayerReservedEffectMetadata rootMetadata)
+                ? new[] { rootMetadata }
+                : Array.Empty<AnimationDisplayerReservedEffectMetadata>();
+        }
+
+        private static bool TryBuildAnimationDisplayerReservedEffectMetadata(
+            WzImageProperty property,
+            out AnimationDisplayerReservedEffectMetadata metadata)
+        {
+            metadata = default;
+            if (property == null)
+            {
+                return false;
+            }
+
+            int type = property["type"]?.GetInt() ?? 0;
+            int startDelayMs = Math.Max(0, property["start"]?.GetInt() ?? 0);
+            string visualPath = NormalizeRemotePacketOwnedStringEffectUol(property["visual"]?.GetString());
+            string soundDescriptor = NormalizeAnimationDisplayerPath(property["sound"]?.GetString());
+            int fieldId = Math.Max(0, property["field"]?.GetInt() ?? 0);
+            int emotionId = property["x"]?.GetInt() ?? -1;
+            string actionName = property["action"]?.GetString()?.Trim();
+
+            bool hasEntryData = !string.IsNullOrWhiteSpace(visualPath)
+                || !string.IsNullOrWhiteSpace(soundDescriptor)
+                || fieldId > 0
+                || !string.IsNullOrWhiteSpace(actionName)
+                || emotionId >= 0
+                || startDelayMs > 0
+                || type != 0;
+            if (!hasEntryData)
             {
                 return false;
             }
 
             metadata = new AnimationDisplayerReservedEffectMetadata(
-                Type: rootProperty["type"]?.GetInt() ?? 0,
-                StartDelayMs: Math.Max(0, rootProperty["start"]?.GetInt() ?? 0),
-                VisualEffectUol: rootVisualPath);
+                Type: type,
+                StartDelayMs: startDelayMs,
+                VisualEffectUol: visualPath,
+                SoundEffectDescriptor: soundDescriptor,
+                FieldId: fieldId,
+                ActionName: actionName,
+                EmotionId: emotionId);
             return true;
         }
 
@@ -2418,55 +2471,29 @@ namespace HaCreator.MapSimulator
                 return fallbackPosition;
             };
 
-            if (TryResolveAnimationDisplayerReservedEffectMetadata(
-                    effectUol,
-                    ResolveAnimationDisplayerProperty,
-                    out AnimationDisplayerReservedEffectMetadata reservedMetadata))
+            IReadOnlyList<AnimationDisplayerReservedEffectMetadata> reservedMetadataEntries =
+                EnumerateAnimationDisplayerReservedEffectMetadata(effectUol, ResolveAnimationDisplayerProperty);
+            bool consumedReservedEntry = false;
+            for (int entryIndex = 0; entryIndex < reservedMetadataEntries.Count; entryIndex++)
             {
+                AnimationDisplayerReservedEffectMetadata reservedMetadata = reservedMetadataEntries[entryIndex];
                 int registerTime = ResolveAnimationDisplayerReservedStartRegistrationTime(
                     presentation.CurrentTime,
                     reservedMetadata.StartDelayMs);
 
-                if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(
-                        reservedMetadata.VisualEffectUol,
-                        out int reservedSquibVariant))
-                {
-                    return TryRegisterAnimationDisplayerSquib(
-                        presentation.CharacterId,
+                if (TryApplyAnimationDisplayerReservedRemoteUtilityOwnerEffect(
+                        presentation,
                         getPosition,
-                        reservedSquibVariant,
-                        registerTime,
-                        out _);
-                }
-
-                if (TryResolveAnimationDisplayerTransformedOnLadderFromEffectUol(
-                        reservedMetadata.VisualEffectUol,
-                        out bool reservedTransformedOnLadder))
+                        effectUol,
+                        reservedMetadata,
+                        registerTime))
                 {
-                    return TryRegisterAnimationDisplayerTransformed(
-                        presentation.CharacterId,
-                        getPosition,
-                        reservedTransformedOnLadder,
-                        registerTime,
-                        out _);
+                    consumedReservedEntry = true;
                 }
-
-                if (TryGetAnimationDisplayerFrames(
-                        $"reserved:{effectUol}:{reservedMetadata.Type}:{reservedMetadata.VisualEffectUol}",
-                        reservedMetadata.VisualEffectUol,
-                        out List<IDXObject> reservedFrames))
-                {
-                    Vector2 reservedFallbackPosition = getPosition();
-                    _animationEffects.AddOneTimeAttached(
-                        reservedFrames,
-                        getPosition,
-                        getFlip: null,
-                        reservedFallbackPosition.X,
-                        reservedFallbackPosition.Y,
-                        fallbackFlip: false,
-                        registerTime);
-                    return true;
-                }
+            }
+            if (consumedReservedEntry)
+            {
+                return true;
             }
 
             if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(effectUol, out int squibVariant))
@@ -2487,6 +2514,104 @@ namespace HaCreator.MapSimulator
                     transformedOnLadder,
                     presentation.CurrentTime,
                     out _);
+            }
+
+            return false;
+        }
+
+        private bool TryApplyAnimationDisplayerReservedRemoteUtilityOwnerEffect(
+            RemoteUserActorPool.RemoteStringEffectPresentation presentation,
+            Func<Vector2> getPosition,
+            string sourceEffectUol,
+            AnimationDisplayerReservedEffectMetadata metadata,
+            int registerTime)
+        {
+            if (metadata.Type == 6 && metadata.EmotionId >= 0)
+            {
+                return _remoteUserPool?.TryApplyEmotion(
+                           new RemoteUserEmotionPacket(
+                               presentation.CharacterId,
+                               metadata.EmotionId,
+                               DurationMs: 0,
+                               ByItemOption: false),
+                           registerTime,
+                           out _)
+                       == true;
+            }
+
+            if (metadata.Type == 5
+                && TryPlayAnimationDisplayerReservedSoundEffect(metadata.SoundEffectDescriptor))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(metadata.VisualEffectUol))
+            {
+                return false;
+            }
+
+            if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(
+                    metadata.VisualEffectUol,
+                    out int reservedSquibVariant))
+            {
+                return TryRegisterAnimationDisplayerSquib(
+                    presentation.CharacterId,
+                    getPosition,
+                    reservedSquibVariant,
+                    registerTime,
+                    out _);
+            }
+
+            if (TryResolveAnimationDisplayerTransformedOnLadderFromEffectUol(
+                    metadata.VisualEffectUol,
+                    out bool reservedTransformedOnLadder))
+            {
+                return TryRegisterAnimationDisplayerTransformed(
+                    presentation.CharacterId,
+                    getPosition,
+                    reservedTransformedOnLadder,
+                    registerTime,
+                    out _);
+            }
+
+            if (TryGetAnimationDisplayerFrames(
+                    $"reserved:{sourceEffectUol}:{metadata.Type}:{metadata.VisualEffectUol}",
+                    metadata.VisualEffectUol,
+                    out List<IDXObject> reservedFrames))
+            {
+                Vector2 reservedFallbackPosition = getPosition();
+                _animationEffects.AddOneTimeAttached(
+                    reservedFrames,
+                    getPosition,
+                    getFlip: null,
+                    reservedFallbackPosition.X,
+                    reservedFallbackPosition.Y,
+                    fallbackFlip: false,
+                    registerTime);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryPlayAnimationDisplayerReservedSoundEffect(string descriptor)
+        {
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                return false;
+            }
+
+            string[] defaultImages = { "Game.img", "Field.img", "Bgm.img", "UI.img" };
+            for (int i = 0; i < defaultImages.Length; i++)
+            {
+                if (TryPlayPacketOwnedWzSound(
+                        descriptor,
+                        defaultImages[i],
+                        out _,
+                        out _))
+                {
+                    return true;
+                }
             }
 
             return false;
@@ -2572,10 +2697,8 @@ namespace HaCreator.MapSimulator
                 ballAnimation,
                 explosionAnimation);
 
-            _animationDisplayerRemoteGrenadeActors.RemoveAll(active =>
-                active.CharacterId == presentation.CharacterId
-                && active.SkillId == presentation.SkillId
-                && active.StartTime <= presentation.CurrentTime);
+            // CUser::ThrowGrenade appends each spawned CGrenade into m_lpGrenade without
+            // replacing prior active grenades from the same user/skill.
             _animationDisplayerRemoteGrenadeActors.Add(new AnimationDisplayerRemoteGrenadeActor
             {
                 CharacterId = presentation.CharacterId,
@@ -3066,6 +3189,7 @@ namespace HaCreator.MapSimulator
                 effectSkill?.EffectSecondary,
                 casterPosition,
                 request.BranchNames,
+                request.EffectBranchLastIndex,
                 request.OriginOffset,
                 request.FollowOwnerPosition,
                 request.FollowOwnerFacing);
@@ -3130,6 +3254,7 @@ namespace HaCreator.MapSimulator
             SkillAnimation secondaryEffectAnimation,
             Vector2? casterPositionOverride = null,
             IReadOnlyList<string> requestedBranchNames = null,
+            int? effectBranchLastIndex = null,
             Point originOffset = default,
             bool followOwnerPosition = true,
             bool followOwnerFacing = true)
@@ -3154,6 +3279,7 @@ namespace HaCreator.MapSimulator
                     requestedBranchNames,
                     effectAnimation,
                     secondaryEffectAnimation),
+                EffectBranchLastIndex = effectBranchLastIndex,
                 OriginOffset = originOffset,
                 FollowOwnerPosition = followOwnerPosition,
                 FollowOwnerFacing = followOwnerFacing
@@ -3862,13 +3988,18 @@ namespace HaCreator.MapSimulator
         private IEnumerable<string> EnumerateAnimationDisplayerSkillUseBranchNames(SkillCastInfo castInfo)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int? effectBranchLastIndex = castInfo?.EffectBranchLastIndex;
 
-            if (!string.IsNullOrWhiteSpace(castInfo?.EffectAnimation?.Name) && seen.Add(castInfo.EffectAnimation.Name))
+            if (!string.IsNullOrWhiteSpace(castInfo?.EffectAnimation?.Name)
+                && ShouldIncludeAnimationDisplayerEffectBranchForTesting(castInfo.EffectAnimation.Name, effectBranchLastIndex)
+                && seen.Add(castInfo.EffectAnimation.Name))
             {
                 yield return castInfo.EffectAnimation.Name;
             }
 
-            if (!string.IsNullOrWhiteSpace(castInfo?.SecondaryEffectAnimation?.Name) && seen.Add(castInfo.SecondaryEffectAnimation.Name))
+            if (!string.IsNullOrWhiteSpace(castInfo?.SecondaryEffectAnimation?.Name)
+                && ShouldIncludeAnimationDisplayerEffectBranchForTesting(castInfo.SecondaryEffectAnimation.Name, effectBranchLastIndex)
+                && seen.Add(castInfo.SecondaryEffectAnimation.Name))
             {
                 yield return castInfo.SecondaryEffectAnimation.Name;
             }
@@ -3888,7 +4019,9 @@ namespace HaCreator.MapSimulator
 
             foreach (WzImageProperty child in skillNode.WzProperties)
             {
-                if (!IsAnimationDisplayerSkillUseBranchName(child?.Name) || !seen.Add(child.Name))
+                if (!IsAnimationDisplayerSkillUseBranchName(child?.Name)
+                    || !ShouldIncludeAnimationDisplayerEffectBranchForTesting(child.Name, effectBranchLastIndex)
+                    || !seen.Add(child.Name))
                 {
                     continue;
                 }
@@ -4071,6 +4204,47 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        internal static bool ShouldIncludeAnimationDisplayerEffectBranchForTesting(
+            string branchName,
+            int? effectBranchLastIndex)
+        {
+            if (!effectBranchLastIndex.HasValue)
+            {
+                return true;
+            }
+
+            if (effectBranchLastIndex.Value < 0)
+            {
+                return false;
+            }
+
+            int? effectBranchIndex = TryResolveAnimationDisplayerEffectBranchIndex(branchName);
+            if (!effectBranchIndex.HasValue)
+            {
+                return true;
+            }
+
+            return effectBranchIndex.Value <= effectBranchLastIndex.Value;
+        }
+
+        private static int? TryResolveAnimationDisplayerEffectBranchIndex(string branchName)
+        {
+            if (!IsAnimationDisplayerSkillUseBranchName(branchName))
+            {
+                return null;
+            }
+
+            if (branchName.Length == "effect".Length)
+            {
+                return 0;
+            }
+
+            string suffix = branchName.Substring("effect".Length);
+            return int.TryParse(suffix, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
+                ? index
+                : null;
         }
 
         private static string BuildAnimationDisplayerSkillUseBranchUol(int skillId, string branchName)
@@ -4905,11 +5079,23 @@ namespace HaCreator.MapSimulator
                     ?? GetAnimationDisplayerNumericValue(effectProperty, "rx1")
                     ?? GetAnimationDisplayerNumericValue(effectProperty, "dx")
                     ?? spawnOffsetMin.X,
-                GetAnimationDisplayerNumericValue(effectProperty, "y1")
-                    ?? GetAnimationDisplayerNumericValue(effectProperty, "ry1")
-                    ?? GetAnimationDisplayerNumericValue(effectProperty, "dy")
-                    ?? GetAnimationDisplayerNumericValue(effectProperty, "dx")
-                    ?? spawnOffsetMin.Y);
+                ResolveAnimationDisplayerFollowEquipmentSpawnOffsetMaxY(
+                    GetAnimationDisplayerNumericValue(effectProperty, "y1"),
+                    GetAnimationDisplayerNumericValue(effectProperty, "ry1"),
+                    GetAnimationDisplayerNumericValue(effectProperty, "dy"),
+                    spawnOffsetMin.Y));
+        }
+
+        internal static int ResolveAnimationDisplayerFollowEquipmentSpawnOffsetMaxY(
+            int? authoredY1,
+            int? authoredRy1,
+            int? authoredDy,
+            int fallbackMinY)
+        {
+            return authoredY1
+                ?? authoredRy1
+                ?? authoredDy
+                ?? fallbackMinY;
         }
 
         private static float BuildAnimationDisplayerFollowEquipmentRadius(IReadOnlyList<Vector2> generationPoints, Point spawnOffsetMax)

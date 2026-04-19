@@ -603,13 +603,21 @@ namespace HaCreator.MapSimulator.Effects
                 return string.Empty;
             }
 
+            string layerState = _ceremonyTextOverlayActive
+                ? "text overlay"
+                : _ceremonyCardOverlayActive
+                    ? "card overlay"
+                    : _ceremonyCelebrationActive
+                        ? "celebration particles"
+                        : "no ceremony layer";
+
             if (_weddingPhotoScenePresentationPacketTrail.Count == 0)
             {
-                return "wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets.";
+                return $"wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets; active layer state is {layerState}.";
             }
 
             WeddingPhotoScenePresentationPacketRecord last = _weddingPhotoScenePresentationPacketTrail[^1];
-            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}.";
+            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}; active layer state is {layerState}.";
         }
         public void SetParticipantPosition(int characterId, Vector2 worldPosition)
         {
@@ -2515,25 +2523,20 @@ namespace HaCreator.MapSimulator.Effects
             _brideId = brideId;
             UpdateParticipantState();
 
-            if (npcId <= 0)
-            {
-                // Wedding-photo scenes still consume the ceremony packet family for owner state,
-                // even when no altar NPC contract is present on the active map.
-                SetCeremonyTextOverlay(false);
-                SetCeremonyCardOverlay(false);
-                SetCeremonyCelebration(active: false);
-                return;
-            }
+            bool hasCeremonyNpc = npcId > 0;
 
 
-            // Step 0: Start ceremony - play wedding BGM
+            // Step 0 keeps the declaration layer active; later steps transition into card/celebration.
             if (step == 0)
             {
                 SetBlessEffect(false, currentTimeMs);
                 SetCeremonyTextOverlay(true);
                 SetCeremonyCardOverlay(false);
                 SetCeremonyCelebration(active: false);
-                _requestBgmOverride?.Invoke(WeddingCeremonyClientText.ResolveOpeningBgmPath(_mapId));
+                if (_isActive)
+                {
+                    _requestBgmOverride?.Invoke(WeddingCeremonyClientText.ResolveOpeningBgmPath(_mapId));
+                }
             }
             else
             {
@@ -2544,9 +2547,10 @@ namespace HaCreator.MapSimulator.Effects
             }
 
 
-            // Show dialog for current step
-
-            ShowWeddingDialog(step, currentTimeMs);
+            if (hasCeremonyNpc)
+            {
+                ShowWeddingDialog(step, currentTimeMs);
+            }
 
         }
 
@@ -2566,6 +2570,12 @@ namespace HaCreator.MapSimulator.Effects
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             DismissCurrentDialog();
             SetCeremonyTextOverlay(active: false);
+            if (IsWeddingPhotoSceneOwnerActive && !_isActive)
+            {
+                SetCeremonyCardOverlay(true);
+                SetCeremonyCelebration(active: true);
+            }
+
             SetBlessEffect(true, currentTimeMs);
         }
 

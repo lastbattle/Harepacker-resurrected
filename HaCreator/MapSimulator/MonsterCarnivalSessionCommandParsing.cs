@@ -4,7 +4,7 @@ namespace HaCreator.MapSimulator
 {
     internal static class MonsterCarnivalSessionCommandParsing
     {
-        internal const string SessionUsage = "Usage: /mcarnival session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort>|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]";
+        internal const string SessionUsage = "Usage: /mcarnival session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]";
         internal const string DiscoverUsage = "Usage: /mcarnival session discover <remotePort> [processName|pid] [localPort]";
         internal const string AttachUsage = "Usage: /mcarnival session attach <remotePort> [processName|pid] [localPort]";
         internal const string AttachProxyUsage = "Usage: /mcarnival session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]";

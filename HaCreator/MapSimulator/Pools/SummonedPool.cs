@@ -783,11 +783,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.MovementSnapshot = movementSnapshot ?? throw new ArgumentNullException(nameof(movementSnapshot));
+            byte previousMoveActionRaw = state.LastMoveActionRaw;
             state.LastMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
                 state.Summon,
                 moveAction,
-                TeslaCoilSkillId);
-            ApplyMovementSnapshot(state, currentTime);
+                TeslaCoilSkillId,
+                previousMoveActionRaw);
+            ApplyMovementSnapshot(state, currentTime, previousMoveActionRaw);
             SyncPuppet(state, currentTime);
             return true;
         }
@@ -988,11 +990,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return oneTimeAction > 0
-                   || oneTimeActionEndTime != int.MinValue
-                   || oneTimeActionClip.HasValue
-                   || summon.OneTimeActionFallbackAnimation?.Frames.Count > 0
-                   || summon.OneTimeActionFallbackActionCode > 0;
+            return true;
         }
 
         internal static void ClearPacketOwnedTeslaSiblingSkillActionOwner(
@@ -1958,7 +1956,10 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private void ApplyMovementSnapshot(PacketOwnedSummonState state, int currentTime)
+        private void ApplyMovementSnapshot(
+            PacketOwnedSummonState state,
+            int currentTime,
+            byte fallbackMoveActionRaw = 0)
         {
             PassivePositionSnapshot sampled = state.MovementSnapshot.SampleAtTime(currentTime);
             state.Summon.PreviousPositionX = state.Summon.PositionX;
@@ -1971,6 +1972,7 @@ namespace HaCreator.MapSimulator.Pools
                 state.Summon,
                 state.LastMoveActionRaw,
                 sampled.FacingRight,
+                fallbackMoveActionRaw,
                 TeslaCoilSkillId,
                 out byte resolvedMoveActionRaw);
             state.LastMoveActionRaw = resolvedMoveActionRaw;
@@ -2078,13 +2080,15 @@ namespace HaCreator.MapSimulator.Pools
             ActiveSummon summon,
             byte packetMoveActionRaw,
             bool sampledFacingRight,
+            byte fallbackMoveActionRaw,
             int teslaCoilSkillId,
             out byte resolvedMoveActionRaw)
         {
             resolvedMoveActionRaw = PacketOwnedSummonUpdateRules.ResolvePacketOwnedRuntimeMoveActionRaw(
                 summon,
                 packetMoveActionRaw,
-                teslaCoilSkillId);
+                teslaCoilSkillId,
+                fallbackMoveActionRaw);
             return resolvedMoveActionRaw != 0
                 ? DecodeFacingRight(resolvedMoveActionRaw)
                 : sampledFacingRight;
@@ -6120,10 +6124,20 @@ namespace HaCreator.MapSimulator.Pools
                     }
 
                     string relativeToken = NormalizePacketMobAttackGeneralEffectColonPathSeparators(token) ?? token;
-                    if (!TryCombinePacketMobAttackGeneralEffectPath(
+                    string frameRelativeBasePath = ResolvePacketMobAttackGeneralEffectSequenceRelativeSourceBasePath(
+                        previousNormalizedSourcePath);
+                    string combinedSourcePath = null;
+                    bool combinedAgainstFrameBase = !string.IsNullOrWhiteSpace(frameRelativeBasePath)
+                        && TryCombinePacketMobAttackGeneralEffectPath(
+                            frameRelativeBasePath,
+                            relativeToken,
+                            out combinedSourcePath);
+                    bool combinedAgainstAnyBase = combinedAgainstFrameBase
+                        || TryCombinePacketMobAttackGeneralEffectPath(
                             previousNormalizedSourcePath,
                             relativeToken,
-                            out string combinedSourcePath)
+                            out combinedSourcePath);
+                    if (!combinedAgainstAnyBase
                         || !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
                             combinedSourcePath,
                             defaultCategory,
@@ -6174,6 +6188,28 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalizedSequenceRootPath;
+        }
+
+        private static string ResolvePacketMobAttackGeneralEffectSequenceRelativeSourceBasePath(
+            string normalizedSourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedSourcePath))
+            {
+                return null;
+            }
+
+            string[] segments = normalizedSourcePath
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 3)
+            {
+                return null;
+            }
+
+            segments = TrimPacketMobAttackGeneralEffectSourceLeafSuffixSegments(segments);
+            return segments.Length >= 3
+                ? string.Join("/", segments)
+                : null;
         }
 
         private static string[] TrimPacketMobAttackGeneralEffectSourceLeafSuffixSegments(string[] segments)

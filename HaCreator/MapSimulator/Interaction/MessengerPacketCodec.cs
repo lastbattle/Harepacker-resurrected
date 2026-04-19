@@ -506,8 +506,14 @@ namespace HaCreator.MapSimulator.Interaction
                 case 6:
                     if (TryParseClientChat(body, out MessengerClientChatPacket chatPacket, out _))
                     {
-                        string chatKind = chatPacket.IsWhisper ? "whisper" : "room-chat";
                         string speaker = string.IsNullOrWhiteSpace(chatPacket.ContactName) ? "unknown" : chatPacket.ContactName;
+                        if (chatPacket.IsActivityPulse)
+                        {
+                            summary = $"CUIMessenger::OnChat activity name={speaker} active={chatPacket.ActivityEnabled}";
+                            return true;
+                        }
+
+                        string chatKind = chatPacket.IsWhisper ? "whisper" : "room-chat";
                         summary = $"CUIMessenger::OnChat {chatKind} speaker={speaker} message={chatPacket.Message}";
                         return true;
                     }

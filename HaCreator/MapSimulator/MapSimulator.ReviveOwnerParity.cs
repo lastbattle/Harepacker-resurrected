@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator
                 variant,
                 currentTick);
 
+            ApplyReviveOwnerWindowPlacement();
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Revive);
         }
 
@@ -864,6 +865,18 @@ namespace HaCreator.MapSimulator
             }
 
             return normalized.Trim();
+        }
+
+        private void ApplyReviveOwnerWindowPlacement()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Revive) is not ReviveConfirmationWindow reviveWindow)
+            {
+                return;
+            }
+
+            reviveWindow.Position = ReviveOwnerRuntime.ResolveNativeWindowPosition(
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight);
         }
 
         private string DispatchReviveOwnerTransferFieldRequest(ReviveOwnerTransferRequest request)

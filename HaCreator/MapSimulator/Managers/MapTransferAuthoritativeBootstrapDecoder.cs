@@ -903,14 +903,25 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            ushort length = BitConverter.ToUInt16(payload.Slice(offset, sizeof(ushort)));
-            int cursor = offset + sizeof(ushort);
-            if (payload.Length - cursor < length)
+            short encodedLength = BitConverter.ToInt16(payload.Slice(offset, sizeof(short)));
+            int cursor = offset + sizeof(short);
+            int byteLength;
+            if (encodedLength < 0)
+            {
+                int charLength = -encodedLength;
+                byteLength = checked(charLength * sizeof(char));
+            }
+            else
+            {
+                byteLength = encodedLength;
+            }
+
+            if (payload.Length - cursor < byteLength)
             {
                 return false;
             }
 
-            nextOffset = cursor + length;
+            nextOffset = cursor + byteLength;
             return true;
         }
 
@@ -1112,19 +1123,32 @@ namespace HaCreator.MapSimulator.Managers
 
         private static string ReadMapleString(BinaryReader reader)
         {
-            int length = reader.ReadUInt16();
-            if (length <= 0)
+            short encodedLength = reader.ReadInt16();
+            if (encodedLength == 0)
             {
                 return string.Empty;
             }
 
-            byte[] bytes = reader.ReadBytes(length);
-            if (bytes.Length != length)
+            if (encodedLength > 0)
             {
-                throw new EndOfStreamException("Maple string exceeded the remaining post-map-transfer tail payload.");
+                int byteLength = encodedLength;
+                byte[] bytes = reader.ReadBytes(byteLength);
+                if (bytes.Length != byteLength)
+                {
+                    throw new EndOfStreamException("Maple string exceeded the remaining post-map-transfer tail payload.");
+                }
+
+                return Encoding.Default.GetString(bytes);
             }
 
-            return Encoding.Default.GetString(bytes);
+            int unicodeByteLength = checked((-encodedLength) * sizeof(char));
+            byte[] unicodeBytes = reader.ReadBytes(unicodeByteLength);
+            if (unicodeBytes.Length != unicodeByteLength)
+            {
+                throw new EndOfStreamException("Unicode maple string exceeded the remaining post-map-transfer tail payload.");
+            }
+
+            return Encoding.Unicode.GetString(unicodeBytes);
         }
     }
 }

@@ -458,6 +458,14 @@ namespace HaCreator.MapSimulator
                 return BuildQuestRewardRaiseOpenSummary(activeRaise);
             }
 
+            if (activeRaise.ReusedOwnerIdentityOnOpen
+                && activeRaise.ManagerSessionId > 0
+                && activeRaise.RequestId > 0
+                && activeRaise.OwnerItemId > 0)
+            {
+                return $"{BuildQuestRewardRaiseOpenSummary(activeRaise)} Reused the retained raise owner/session seam without emitting another synthetic open-owner request.";
+            }
+
             string openDispatchSummary = DescribeQuestRewardRaiseOutboundDispatch(QuestRewardRaiseOutboundRequest.CreateOpenOwner(activeRaise));
             return $"{BuildQuestRewardRaiseOpenSummary(activeRaise)} {openDispatchSummary}";
         }
@@ -695,6 +703,7 @@ namespace HaCreator.MapSimulator
             switch (packet.Kind)
             {
                 case QuestRewardRaiseInboundPacketKind.OwnerSync:
+                    ApplyPacketOwnedQuestRewardRaiseOwnerSync(observedRaise, packet);
                     break;
 
                 case QuestRewardRaiseInboundPacketKind.PutItemAddResult:
@@ -732,6 +741,37 @@ namespace HaCreator.MapSimulator
 
             _questRewardRaiseManager.ObserveInboundPacket(packet, inboundSummary);
             return observedRaise.LastInboundSummary;
+        }
+
+        private void ApplyPacketOwnedQuestRewardRaiseOwnerSync(QuestRewardRaiseState activeRaise, QuestRewardRaiseInboundPacket packet)
+        {
+            if (activeRaise?.PlacedPieces == null || packet?.Payload == null)
+            {
+                return;
+            }
+
+            QuestRewardRaisePacketPayload payload = packet.Payload;
+            bool hasPieceEcho = payload.PlacedPieceCount > 0 && payload.ItemId > 0;
+            if (!hasPieceEcho)
+            {
+                return;
+            }
+
+            QuestRewardRaisePlacedPiece placedPiece = ResolveQuestRewardRaisePlacedPiece(activeRaise, packet, createIfMissing: true);
+            if (placedPiece == null)
+            {
+                return;
+            }
+
+            EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, payload);
+            ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
+            if (placedPiece.LifecycleState == QuestRewardRaisePieceLifecycleState.PendingReleaseAck
+                || placedPiece.LifecycleState == QuestRewardRaisePieceLifecycleState.PendingConfirmAck)
+            {
+                return;
+            }
+
+            placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.Active;
         }
 
         private void ApplyPacketOwnedQuestRewardRaiseAddResult(QuestRewardRaiseState activeRaise, QuestRewardRaiseInboundPacket packet)

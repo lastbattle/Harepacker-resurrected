@@ -216,6 +216,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            EnsureInitialQuizOwnerVisualsLoaded();
             Rectangle ownerBounds = ResolveInitialQuizOwnerBounds();
             Rectangle okButtonBounds = ResolveInitialQuizOwnerOkButtonBounds(ownerBounds);
             Rectangle inputBounds = ResolveInitialQuizOwnerInputBounds(ownerBounds);
@@ -1043,13 +1044,69 @@ namespace HaCreator.MapSimulator
             return new Rectangle(left, top, ownerWidth, ownerHeight);
         }
 
-        private static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds)
+        private Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds)
+        {
+            Point buttonSize = ResolveInitialQuizOwnerOkButtonHitSize(
+                _initialQuizOwnerOkButtonNormalFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonNormalFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonHoverFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonHoverFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonPressedFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonPressedFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonDisabledFrame?.Texture?.Height ?? 0,
+                _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Width ?? 0,
+                _initialQuizOwnerOkButtonKeyFocusedFrame?.Texture?.Height ?? 0);
+            return ResolveInitialQuizOwnerOkButtonBounds(ownerBounds, buttonSize.X, buttonSize.Y);
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds, int buttonWidth, int buttonHeight)
         {
             return new Rectangle(
                 ownerBounds.X + InitialQuizOwnerOkButtonLeft,
                 ownerBounds.Y + InitialQuizOwnerOkButtonTop,
-                InitialQuizOwnerOkButtonWidth,
-                InitialQuizOwnerOkButtonHeight);
+                Math.Max(1, buttonWidth),
+                Math.Max(1, buttonHeight));
+        }
+
+        internal static Point ResolveInitialQuizOwnerOkButtonHitSize(
+            int normalWidth,
+            int normalHeight,
+            int hoverWidth,
+            int hoverHeight,
+            int pressedWidth,
+            int pressedHeight,
+            int disabledWidth,
+            int disabledHeight,
+            int keyFocusedWidth,
+            int keyFocusedHeight)
+        {
+            if (normalWidth > 0 && normalHeight > 0)
+            {
+                return new Point(normalWidth, normalHeight);
+            }
+
+            if (hoverWidth > 0 && hoverHeight > 0)
+            {
+                return new Point(hoverWidth, hoverHeight);
+            }
+
+            if (pressedWidth > 0 && pressedHeight > 0)
+            {
+                return new Point(pressedWidth, pressedHeight);
+            }
+
+            if (disabledWidth > 0 && disabledHeight > 0)
+            {
+                return new Point(disabledWidth, disabledHeight);
+            }
+
+            if (keyFocusedWidth > 0 && keyFocusedHeight > 0)
+            {
+                return new Point(keyFocusedWidth, keyFocusedHeight);
+            }
+
+            return new Point(InitialQuizOwnerOkButtonWidth, InitialQuizOwnerOkButtonHeight);
         }
 
         private static Rectangle ResolveInitialQuizOwnerInputBounds(Rectangle ownerBounds)

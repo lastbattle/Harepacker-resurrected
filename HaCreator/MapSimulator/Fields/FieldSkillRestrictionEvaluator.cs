@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.Fields
             5101002,
             5101004,
             5201006,
+            5121004,
             5121005,
             21100002,
             21110003,

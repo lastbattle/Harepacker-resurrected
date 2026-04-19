@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly record struct SummonActionCacheKey(int SkillId, int SkillLevel, string ActionKey);
         private readonly record struct SummonSourceCandidate(int SkillId, SkillData Skill, WzImageProperty SkillNode);
         private readonly record struct ItemBulletAnimationCacheKey(int ItemId, int WeaponItemId, int WeaponCode);
+        private readonly record struct ClientSummonedUolCandidateValue(string Value, string[] ContextPathParts);
 
         private static readonly string[] PreferredSummonAnimationBranches =
         {
@@ -94,6 +95,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             "summonedUol",
             "summonUOL",
             "summonUol"
+        };
+        private static readonly string[] ClientTileUolPropertyNames =
+        {
+            "sTileUOL",
+            "tileUOL",
+            "tileUol"
+        };
+        private static readonly string[] ClientBallUolPropertyNames =
+        {
+            "sBallUOL",
+            "ballUOL",
+            "ballUol"
+        };
+        private static readonly string[] ClientFlipBallUolPropertyNames =
+        {
+            "sFlipBallUOL",
+            "flipBallUOL",
+            "flipBallUol"
         };
         private const string ClientSummonedUolBranchName = "summon";
         private static readonly char[] ClientSummonedUolTokenTrimChars =
@@ -610,6 +629,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.PassiveLinkedSkillIds = ParseLinkedSkillIds(skillNode["psdSkill"]);
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
                 skill.ClientSummonedUolPath = ResolveClientSummonedUolPath(skillNode, infoNode);
+                skill.ClientTileUolPath = ResolveClientTileUolPath(skillNode, infoNode);
+                skill.ClientBallUolPath = ResolveClientBallUolPath(skillNode, infoNode, flip: false);
+                skill.ClientFlipBallUolPath = ResolveClientBallUolPath(skillNode, infoNode, flip: true);
                 skill.DotType = GetString(infoNode, "dotType");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
                 skill.RequireHighestJump = GetInt(infoNode, "requireHighestJump") == 1;
@@ -635,6 +657,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.Element = ResolvePrimarySkillElement(skill.ElementAttributeToken);
             }
             skill.ClientSummonedUolPath ??= ResolveClientSummonedUolPath(skillNode, infoNode);
+            skill.ClientTileUolPath ??= ResolveClientTileUolPath(skillNode, infoNode);
+            skill.ClientBallUolPath ??= ResolveClientBallUolPath(skillNode, infoNode, flip: false);
+            skill.ClientFlipBallUolPath ??= ResolveClientBallUolPath(skillNode, infoNode, flip: true);
 
             // Check common nodes
             var commonNode = skillNode["common"];
@@ -1170,17 +1195,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var tileNode = skillNode["tile"];
-            if (tileNode != null)
+            if (tileNode != null || !string.IsNullOrWhiteSpace(skill.ClientTileUolPath))
             {
-                skill.ZoneEffect = LoadZoneEffect(tileNode, skillNode);
+                skill.ZoneEffect = LoadZoneEffect(tileNode, skillNode, skill.ClientTileUolPath);
                 skill.ZoneAnimation = skill.ZoneEffect?.Animation;
             }
 
             // Load projectile/ball
             var ballNode = skillNode["ball"];
-            if (ballNode != null)
+            if (ballNode != null
+                || !string.IsNullOrWhiteSpace(skill.ClientBallUolPath)
+                || !string.IsNullOrWhiteSpace(skill.ClientFlipBallUolPath))
             {
-                skill.Projectile = LoadProjectile(skill.SkillId, ballNode, skillNode);
+                skill.Projectile = LoadProjectile(
+                    skill.SkillId,
+                    ballNode,
+                    skillNode,
+                    skill.ClientBallUolPath,
+                    skill.ClientFlipBallUolPath);
             }
         }
 
@@ -3282,9 +3314,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             ApplyBranchFlipToAnimationFrames(animation);
         }
 
-        private ZoneEffectData LoadZoneEffect(WzImageProperty tileNode, WzImageProperty skillNode)
+        private ZoneEffectData LoadZoneEffect(WzImageProperty tileNode, WzImageProperty skillNode, string explicitTileUolPath = null)
         {
-            if (tileNode == null)
+            if (tileNode == null && string.IsNullOrWhiteSpace(explicitTileUolPath))
             {
                 return null;
             }
@@ -3293,11 +3325,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 Animation = LoadZoneAnimation(tileNode),
                 AnimationPath = LoadZoneAnimationPath(tileNode),
-                TileUolPath = NormalizeSkillAssetPath(tileNode),
+                TileUolPath = !string.IsNullOrWhiteSpace(explicitTileUolPath)
+                    ? explicitTileUolPath
+                    : NormalizeSkillAssetPath(tileNode),
                 VariantAnimations = LoadSummonIndexedAnimations(tileNode, "tile"),
                 VariantAnimationPaths = LoadSummonIndexedAnimationPaths(tileNode),
                 EffectDistance = GetInt(tileNode, "effectDistance")
             };
+
+            if (zoneEffect.Animation?.Frames.Count <= 0)
+            {
+                zoneEffect.Animation = !string.IsNullOrWhiteSpace(explicitTileUolPath)
+                    ? LoadSkillAnimationByNormalizedPath(explicitTileUolPath)
+                    : null;
+            }
 
             if (zoneEffect.Animation?.Frames.Count <= 0)
             {
@@ -3307,11 +3348,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             PopulateZoneCharacterLevelVariants(zoneEffect, skillNode?["CharLevel"]);
             PopulateZoneLevelVariants(zoneEffect, skillNode?["level"]);
 
+            if (!string.IsNullOrWhiteSpace(explicitTileUolPath))
+            {
+                zoneEffect.AnimationPath ??= explicitTileUolPath;
+            }
+
             bool hasRenderableAnimation = zoneEffect.Animation?.Frames.Count > 0
                 || zoneEffect.VariantAnimations.Count > 0
                 || zoneEffect.CharacterLevelVariantAnimations.Count > 0
                 || zoneEffect.LevelVariantAnimations.Count > 0;
-            return hasRenderableAnimation ? zoneEffect : null;
+            bool hasClientPathFallback = !string.IsNullOrWhiteSpace(zoneEffect.TileUolPath)
+                || !string.IsNullOrWhiteSpace(zoneEffect.AnimationPath);
+            return hasRenderableAnimation || hasClientPathFallback ? zoneEffect : null;
         }
 
         private SkillAnimation LoadZoneAnimation(WzImageProperty tileNode)
@@ -5469,9 +5517,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static string ResolveClientSummonedUolPath(WzImageProperty skillNode, WzImageProperty infoNode)
         {
-            foreach (string value in EnumerateClientSummonedUolCandidateValues(skillNode, infoNode))
+            foreach (ClientSummonedUolCandidateValue candidate in EnumerateClientSummonedUolCandidateValues(
+                         skillNode,
+                         infoNode,
+                         ClientSummonedUolPropertyNames))
             {
-                string normalizedPath = NormalizeClientSummonedUolPath(value);
+                string normalizedPath = NormalizeClientSummonedUolCandidatePath(candidate.Value, candidate.ContextPathParts);
                 if (!string.IsNullOrWhiteSpace(normalizedPath))
                 {
                     return normalizedPath;
@@ -5481,10 +5532,49 @@ namespace HaCreator.MapSimulator.Character.Skills
             return BuildClientSummonedUolPathFromSkillNode(skillNode);
         }
 
-        private static IEnumerable<string> EnumerateClientSummonedUolCandidateValues(
-            WzImageProperty skillNode,
-            WzImageProperty infoNode)
+        private static string ResolveClientTileUolPath(WzImageProperty skillNode, WzImageProperty infoNode)
         {
+            return ResolveClientSkillAssetUolPath(skillNode, infoNode, ClientTileUolPropertyNames);
+        }
+
+        private static string ResolveClientBallUolPath(WzImageProperty skillNode, WzImageProperty infoNode, bool flip)
+        {
+            return ResolveClientSkillAssetUolPath(
+                skillNode,
+                infoNode,
+                flip ? ClientFlipBallUolPropertyNames : ClientBallUolPropertyNames);
+        }
+
+        private static string ResolveClientSkillAssetUolPath(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode,
+            IReadOnlyList<string> propertyNames)
+        {
+            foreach (ClientSummonedUolCandidateValue candidate in EnumerateClientSummonedUolCandidateValues(
+                         skillNode,
+                         infoNode,
+                         propertyNames))
+            {
+                string normalizedPath = NormalizeClientSummonedUolCandidatePath(candidate.Value, candidate.ContextPathParts);
+                if (!string.IsNullOrWhiteSpace(normalizedPath))
+                {
+                    return normalizedPath;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolCandidateValues(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode,
+            IReadOnlyList<string> propertyNames)
+        {
+            if (propertyNames == null || propertyNames.Count == 0)
+            {
+                yield break;
+            }
+
             foreach (WzImageProperty node in new[] { infoNode, skillNode })
             {
                 if (node == null)
@@ -5492,15 +5582,74 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                foreach (string propertyName in ClientSummonedUolPropertyNames)
+                foreach (string propertyName in propertyNames)
                 {
                     string value = GetString(node, propertyName);
                     if (!string.IsNullOrWhiteSpace(value))
                     {
-                        yield return value;
+                        yield return new ClientSummonedUolCandidateValue(
+                            value,
+                            BuildClientSummonedUolCandidateContextPathParts(node, propertyName, skillNode));
                     }
                 }
             }
+        }
+
+        private static string[] BuildClientSummonedUolCandidateContextPathParts(
+            WzImageProperty node,
+            string propertyName,
+            WzImageProperty skillNode)
+        {
+            string normalizedNodePath = NormalizeClientSummonedUolFullPath(node?.FullPath)
+                                        ?? BuildMountedSkillRootPathFromSkillNode(skillNode);
+            if (string.IsNullOrWhiteSpace(normalizedNodePath))
+            {
+                return null;
+            }
+
+            var parts = normalizedNodePath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .ToList();
+            if (!string.IsNullOrWhiteSpace(propertyName))
+            {
+                parts.Add(propertyName);
+            }
+
+            return parts.ToArray();
+        }
+
+        private static string BuildMountedSkillRootPathFromSkillNode(WzImageProperty skillNode)
+        {
+            return TryParseRequiredSkillId(skillNode?.Name, out int skillId)
+                ? $"Skill/{skillId / 10000}.img/skill/{skillId}"
+                : null;
+        }
+
+        private static string NormalizeClientSummonedUolCandidatePath(
+            string value,
+            string[] contextPathParts)
+        {
+            string normalizedPath = NormalizeClientSummonedUolPath(value);
+            if (!string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return normalizedPath;
+            }
+
+            if (contextPathParts == null || contextPathParts.Length == 0)
+            {
+                return null;
+            }
+
+            foreach (string token in EnumerateClientSummonedUolPathTokensFromValue(value))
+            {
+                normalizedPath = NormalizeClientSummonedUolPathToken(token, contextPathParts);
+                if (!string.IsNullOrWhiteSpace(normalizedPath))
+                {
+                    return normalizedPath;
+                }
+            }
+
+            return null;
         }
 
         private static string BuildClientSummonedUolPathFromSkillNode(WzImageProperty skillNode)
@@ -5525,6 +5674,53 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static string NormalizeClientSummonedUolFullPathForTest(string summonedUolFullPath)
         {
             return NormalizeClientSummonedUolFullPath(summonedUolFullPath);
+        }
+
+        internal static string NormalizeClientSummonedUolCandidatePathForTest(
+            string candidateValue,
+            int contextSkillId,
+            bool infoNodeContext = true)
+        {
+            if (!TryParseRequiredSkillId(contextSkillId.ToString(CultureInfo.InvariantCulture), out int skillId))
+            {
+                return NormalizeClientSummonedUolPath(candidateValue);
+            }
+
+            string contextPath = $"Skill/{skillId / 10000}.img/skill/{skillId}";
+            if (infoNodeContext)
+            {
+                contextPath += "/info";
+            }
+
+            string[] contextPathParts = contextPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .Concat(new[] { "sSummonedUOL" })
+                .ToArray();
+            return NormalizeClientSummonedUolCandidatePath(candidateValue, contextPathParts);
+        }
+
+        internal static string NormalizeClientSkillAssetUolCandidatePathForTest(
+            string candidateValue,
+            int contextSkillId,
+            string propertyName,
+            bool infoNodeContext = true)
+        {
+            if (!TryParseRequiredSkillId(contextSkillId.ToString(CultureInfo.InvariantCulture), out int skillId))
+            {
+                return NormalizeClientSummonedUolPath(candidateValue);
+            }
+
+            string contextPath = $"Skill/{skillId / 10000}.img/skill/{skillId}";
+            if (infoNodeContext)
+            {
+                contextPath += "/info";
+            }
+
+            string[] contextPathParts = contextPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .Concat(new[] { string.IsNullOrWhiteSpace(propertyName) ? "uol" : propertyName })
+                .ToArray();
+            return NormalizeClientSummonedUolCandidatePath(candidateValue, contextPathParts);
         }
 
         internal static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPathForTest(
@@ -6981,33 +7177,56 @@ namespace HaCreator.MapSimulator.Character.Skills
             animation.CalculateDuration();
         }
 
-        private ProjectileData LoadProjectile(int skillId, WzImageProperty ballNode, WzImageProperty skillNode)
+        private ProjectileData LoadProjectile(
+            int skillId,
+            WzImageProperty ballNode,
+            WzImageProperty skillNode,
+            string explicitBallUolPath = null,
+            string explicitFlipBallUolPath = null)
         {
             var projectile = new ProjectileData
             {
                 SkillId = skillId,
-                BallUolPath = NormalizeSkillAssetPath(ballNode),
-                FlipBallUolPath = NormalizeSkillAssetPath(skillNode?["flipBall"])
+                BallUolPath = !string.IsNullOrWhiteSpace(explicitBallUolPath)
+                    ? explicitBallUolPath
+                    : NormalizeSkillAssetPath(ballNode),
+                FlipBallUolPath = !string.IsNullOrWhiteSpace(explicitFlipBallUolPath)
+                    ? explicitFlipBallUolPath
+                    : NormalizeSkillAssetPath(skillNode?["flipBall"])
             };
 
             // Load ball animation
             projectile.Animation = LoadSkillAnimation(ballNode, "ball");
             projectile.FlipAnimation = LoadSkillAnimation(skillNode?["flipBall"], "flipBall");
-            projectile.AnimationPath = NormalizeSkillAssetPath(ballNode);
+            projectile.AnimationPath = NormalizeSkillAssetPath(ballNode) ?? projectile.BallUolPath;
             projectile.VariantAnimations = LoadSummonIndexedAnimations(ballNode, "ball");
             projectile.VariantAnimationPaths = LoadSummonIndexedAnimationPaths(ballNode);
             if (projectile.Animation?.Frames.Count <= 0)
             {
+                projectile.Animation = !string.IsNullOrWhiteSpace(projectile.BallUolPath)
+                    ? LoadSkillAnimationByNormalizedPath(projectile.BallUolPath)
+                    : null;
+            }
+
+            if (projectile.Animation?.Frames.Count <= 0)
+            {
                 projectile.Animation = projectile.ResolveAnimationVariant(level: 1);
                 projectile.AnimationPath = projectile.VariantAnimationPaths.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path))
-                    ?? projectile.AnimationPath;
+                    ?? projectile.AnimationPath
+                    ?? projectile.BallUolPath;
+            }
+
+            if (projectile.FlipAnimation?.Frames.Count <= 0
+                && !string.IsNullOrWhiteSpace(projectile.FlipBallUolPath))
+            {
+                projectile.FlipAnimation = LoadSkillAnimationByNormalizedPath(projectile.FlipBallUolPath);
             }
 
             PopulateProjectileCharacterLevelVariants(projectile, skillNode?["CharLevel"]);
             PopulateProjectileLevelVariants(projectile, skillNode?["level"]);
 
             // Load hit animation
-            var hitNode = ballNode["hit"] ?? skillNode["hit"];
+            var hitNode = ballNode?["hit"] ?? skillNode["hit"];
             if (hitNode != null)
             {
                 projectile.HitAnimation = LoadSkillAnimation(hitNode, "hit");

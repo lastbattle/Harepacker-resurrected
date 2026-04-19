@@ -40,6 +40,10 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftPrecursorLastContextDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - 1;
         private const int PacketOwnedLogoutGiftPredictQuitContextByteOffset = 0x40A4;
         private const int PacketOwnedLogoutGiftCommodityContextByteOffset = 0x40A8;
+        private const int PacketOwnedLogoutGiftPrecursorFirstContextByteOffset =
+            PacketOwnedLogoutGiftPredictQuitContextByteOffset - (PacketOwnedLogoutGiftPrecursorContextSlotCount * sizeof(int));
+        private const int PacketOwnedLogoutGiftPrecursorLastContextByteOffset =
+            PacketOwnedLogoutGiftPredictQuitContextByteOffset - sizeof(int);
 
         private readonly int[] _packetOwnedLogoutGiftCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
         private bool _packetOwnedLogoutGiftHasConfig;
@@ -1209,10 +1213,20 @@ namespace HaCreator.MapSimulator
 
         private static string ResolvePacketOwnedLogoutGiftLeadingContextSemanticName(int dwordIndex)
         {
-            return dwordIndex >= PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex
-                   && dwordIndex <= PacketOwnedLogoutGiftPrecursorLastContextDwordIndex
-                ? $"CWvsContext::dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}] (pre-`m_bPredictQuit`)"
-                : null;
+            if (dwordIndex < PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex
+                || dwordIndex > PacketOwnedLogoutGiftPrecursorLastContextDwordIndex)
+            {
+                return null;
+            }
+
+            int byteOffset = ResolvePacketOwnedLogoutGiftContextByteOffset(dwordIndex);
+            if (byteOffset < PacketOwnedLogoutGiftPrecursorFirstContextByteOffset
+                || byteOffset > PacketOwnedLogoutGiftPrecursorLastContextByteOffset)
+            {
+                return $"CWvsContext::dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}] (pre-`m_bPredictQuit`)";
+            }
+
+            return $"CWvsContext::field_{byteOffset.ToString("X4", CultureInfo.InvariantCulture)} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)";
         }
 
         private static IEnumerable<string> EnumeratePacketOwnedLogoutGiftButtonResourcePathCandidates()

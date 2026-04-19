@@ -87,7 +87,7 @@ namespace HaCreator.MapSimulator.UI
                 Keys.Delete => false,
                 Keys.C or Keys.V or Keys.X => !controlHeld,
                 Keys.Home or Keys.End => controlHeld,
-                Keys.Down => !ShouldDeferDownKeyToIme(controlHeld, shiftHeld, imeCompositionActive, imeCandidateWindowActive),
+                Keys.Down => true,
                 Keys.Insert => !shiftHeld,
                 Keys.Enter or Keys.Left or Keys.Right or Keys.Up => true,
                 _ => true
@@ -97,17 +97,6 @@ namespace HaCreator.MapSimulator.UI
         internal static bool ShouldForwardClientOwnedNonFunctionKeyUpToParent(Keys key)
         {
             return !TryGetClientForwardedFunctionKeyIndex(key, out _);
-        }
-
-        internal static bool ShouldDeferDownKeyToIme(
-            bool controlHeld,
-            bool shiftHeld,
-            bool imeCompositionActive,
-            bool imeCandidateWindowActive)
-        {
-            // Mirrors the native CCtrlEdit edit-host behavior where plain Down
-            // can be deferred to IME-owned candidate/composition handling first.
-            return !controlHeld && !shiftHeld && (imeCompositionActive || imeCandidateWindowActive);
         }
 
         internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)

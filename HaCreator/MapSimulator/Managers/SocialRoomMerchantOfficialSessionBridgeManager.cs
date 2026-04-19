@@ -19,6 +19,8 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class SocialRoomMerchantOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18490;
+        public const ushort DefaultInboundMiniRoomOpcode = 373;
+        public const ushort OutboundMiniRoomOpcode = 144;
         private const int MaxRecentOutboundPackets = 32;
 
         private readonly ConcurrentQueue<SocialRoomMerchantPacketInboxMessage> _pendingMessages = new();
@@ -83,6 +85,7 @@ namespace HaCreator.MapSimulator.Managers
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public ushort InboundOpcode { get; private set; }
+        public ushort AutoDetectedInboundOpcode { get; private set; }
         public SocialRoomKind? PreferredKind { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
@@ -102,11 +105,24 @@ namespace HaCreator.MapSimulator.Managers
                 : "no active Maple session";
             string inboundOpcode = InboundOpcode > 0
                 ? $"inbound opcode={InboundOpcode}"
+                : AutoDetectedInboundOpcode > 0
+                    ? $"auto-detected inbound opcode={AutoDetectedInboundOpcode}"
                 : "inbound opcode unset";
             string preferredKind = PreferredKind.HasValue
                 ? $"targeting {DescribeKind(PreferredKind.Value)}"
                 : "merchant owner unset";
             return $"Merchant-room official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; injected={SentCount}; {inboundOpcode}; {preferredKind}. {LastStatus}";
+        }
+
+        public string DescribeMerchantOpcodeMap()
+        {
+            string inbound = InboundOpcode > 0
+                ? $"inbound opcode {InboundOpcode} is configured"
+                : AutoDetectedInboundOpcode > 0
+                    ? $"inbound opcode {AutoDetectedInboundOpcode} was auto-detected from modeled merchant payloads"
+                    : $"inbound opcode is not mapped yet; auto-detection shape-checks CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket result payloads on opcode {DefaultInboundMiniRoomOpcode}";
+            return
+                $"Merchant-room opcode map: outbound MiniRoom requests use opcode {OutboundMiniRoomOpcode}; server-owned merchant updates currently model subtypes 24, 25, 26, 27, 40, 42, 44, 46, and 47 through CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket with subtype 25 forwarding into CMiniRoomBaseDlg::OnPacketBase. {inbound}.";
         }
 
         public string DescribeRecentOutboundPackets(int maxCount = 10)
@@ -193,7 +209,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public void Start(SocialRoomKind preferredKind, int listenPort, string remoteHost, int remotePort, ushort inboundOpcode)
+        public void Start(SocialRoomKind preferredKind, int listenPort, string remoteHost, int remotePort, ushort inboundOpcode = 0)
         {
             if (!IsMerchantKind(preferredKind))
             {
@@ -217,8 +233,9 @@ namespace HaCreator.MapSimulator.Managers
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus =
-                        $"Merchant-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, filtering inbound opcode {InboundOpcode}, and targeting {DescribeKind(preferredKind)}.";
+                    LastStatus = InboundOpcode > 0
+                        ? $"Merchant-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, filtering inbound opcode {InboundOpcode}, and targeting {DescribeKind(preferredKind)}."
+                        : $"Merchant-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and targeting {DescribeKind(preferredKind)}; inbound opcode is unset so packets are shape-checked for merchant result subtypes 24, 25, 26, 27, 40, 42, 44, 46, and 47.";
                 }
                 catch (Exception ex)
                 {
@@ -447,11 +464,8 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
                 if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload)
-                    || InboundOpcode <= 0
-                    || opcode != InboundOpcode
-                    || payload.Length == 0
                     || !PreferredKind.HasValue
-                    || !IsModeledMerchantPacketType(payload[0]))
+                    || !ShouldQueueInboundMerchantPacket(opcode, payload, out string autoMapDetail))
                 {
                     return;
                 }
@@ -462,7 +476,7 @@ namespace HaCreator.MapSimulator.Managers
                     $"official-session:{pair.RemoteEndpoint}",
                     $"packetrecv {opcode} {Convert.ToHexString(payload)}"));
                 ReceivedCount++;
-                LastStatus = $"Queued {DescribeKind(PreferredKind.Value)} opcode {opcode} subtype {payload[0]} from live session {pair.RemoteEndpoint}.";
+                LastStatus = $"Queued {DescribeKind(PreferredKind.Value)} opcode {opcode} subtype {payload[0]} from live session {pair.RemoteEndpoint}. {autoMapDetail}";
             }
             catch (Exception ex)
             {
@@ -492,6 +506,7 @@ namespace HaCreator.MapSimulator.Managers
         private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
         {
             if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
+                || opcode != OutboundMiniRoomOpcode
                 || payload.Length == 0)
             {
                 return;
@@ -577,6 +592,7 @@ namespace HaCreator.MapSimulator.Managers
             ForwardedOutboundCount = 0;
             SentCount = 0;
             LastSentOpcode = -1;
+            AutoDetectedInboundOpcode = 0;
             lock (_sync)
             {
                 _recentOutboundPackets.Clear();
@@ -654,6 +670,12 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (opcode != OutboundMiniRoomOpcode)
+            {
+                error = $"Merchant-room outbound packet opcode must be {OutboundMiniRoomOpcode}, but was {opcode}.";
+                return false;
+            }
+
             packetType = payload[0];
             return true;
         }
@@ -666,6 +688,141 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsModeledMerchantPacketType(byte packetType)
         {
             return packetType is 24 or 25 or 26 or 27 or 40 or 42 or 44 or 46 or 47;
+        }
+
+        private bool ShouldQueueInboundMerchantPacket(int opcode, byte[] payload, out string detail)
+        {
+            detail = string.Empty;
+            if (payload == null || payload.Length == 0 || !IsModeledMerchantPacketType(payload[0]))
+            {
+                return false;
+            }
+
+            if (InboundOpcode > 0)
+            {
+                if (opcode != InboundOpcode)
+                {
+                    return false;
+                }
+
+                detail = $"Configured inbound opcode {InboundOpcode} matched the merchant OnPacket subtype table.";
+                return true;
+            }
+
+            if (!TryIdentifyMerchantInboundPayloadForAutoMapping(payload, out detail))
+            {
+                return false;
+            }
+
+            if (AutoDetectedInboundOpcode == 0)
+            {
+                AutoDetectedInboundOpcode = (ushort)Math.Clamp(opcode, ushort.MinValue, ushort.MaxValue);
+                detail = $"Auto-detected inbound opcode {AutoDetectedInboundOpcode} because {detail}";
+                return true;
+            }
+
+            if (opcode != AutoDetectedInboundOpcode)
+            {
+                return false;
+            }
+
+            detail = $"Auto-detected inbound opcode {AutoDetectedInboundOpcode} matched again because {detail}";
+            return true;
+        }
+
+        public static bool TryIdentifyMerchantInboundPayloadForAutoMapping(byte[] payload, out string detail)
+        {
+            detail = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                detail = "the payload is empty";
+                return false;
+            }
+
+            byte packetType = payload[0];
+            switch (packetType)
+            {
+                case 24:
+                    if (payload.Length >= 2)
+                    {
+                        detail = "subtype 24 has the personal-shop buy-result byte for CPersonalShopDlg::OnPacket.";
+                        return true;
+                    }
+
+                    break;
+                case 25:
+                    if (payload.Length >= 2 && IsKnownMiniRoomBaseSubtype(payload[1]))
+                    {
+                        detail = $"subtype 25 wraps CMiniRoomBaseDlg::OnPacketBase subtype {payload[1]}.";
+                        return true;
+                    }
+
+                    break;
+                case 26:
+                    if (payload.Length >= 2)
+                    {
+                        detail = "subtype 26 has the sold-item result shape for CPersonalShopDlg::OnSoldItemResult.";
+                        return true;
+                    }
+
+                    break;
+                case 27:
+                    if (payload.Length >= 3)
+                    {
+                        detail = "subtype 27 has the move-to-inventory row shape for CPersonalShopDlg::OnMoveItemToInventoryResult.";
+                        return true;
+                    }
+
+                    break;
+                case 40:
+                    if (payload.Length == 5)
+                    {
+                        detail = "subtype 40 has the exact arrange-result int shape for CEntrustedShopDlg::OnArrangeItemResult.";
+                        return true;
+                    }
+
+                    break;
+                case 42:
+                    if (payload.Length == 2)
+                    {
+                        detail = "subtype 42 has the exact withdraw-all result-byte shape for CEntrustedShopDlg::OnPacket.";
+                        return true;
+                    }
+
+                    break;
+                case 44:
+                    if (payload.Length == 1)
+                    {
+                        detail = "subtype 44 has the exact withdraw-money no-body shape for CEntrustedShopDlg::OnPacket.";
+                        return true;
+                    }
+
+                    break;
+                case 46:
+                    if (payload.Length >= 2)
+                    {
+                        detail = "subtype 46 has the entrusted visit-list result shape for CEntrustedShopDlg::OnPacket.";
+                        return true;
+                    }
+
+                    break;
+                case 47:
+                    if (payload.Length >= 2)
+                    {
+                        detail = "subtype 47 has the entrusted blacklist result shape for CEntrustedShopDlg::OnPacket.";
+                        return true;
+                    }
+
+                    break;
+            }
+
+            detail = $"subtype {packetType} does not match a modeled merchant OnPacket payload shape.";
+            return false;
+        }
+
+        private static bool IsKnownMiniRoomBaseSubtype(byte packetSubType)
+        {
+            return packetSubType is 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10 or 14;
         }
 
         private static string DescribeKind(SocialRoomKind kind)

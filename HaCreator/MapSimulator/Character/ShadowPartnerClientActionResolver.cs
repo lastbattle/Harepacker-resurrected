@@ -631,12 +631,24 @@ namespace HaCreator.MapSimulator.Character
                 {
                     yield return rawActionName;
                 }
+
+                foreach (string candidate in rawActionSupported
+                             ? EnumerateHeuristicAttackAliases(rawActionName, state, weaponType)
+                             : Array.Empty<string>())
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
 
             bool playerActionFamilyUnsupported = IsFamilyUnsupportedClientRawActionName(playerActionName, supportedRawActionNames);
             if (!string.IsNullOrWhiteSpace(playerActionName))
             {
-                if (!playerActionFamilyUnsupported && yielded.Add(playerActionName))
+                if (!playerActionFamilyUnsupported
+                    && !ShouldSuppressRawBackedGenericAttackIdentityCandidate(playerActionName, rawActionCode)
+                    && yielded.Add(playerActionName))
                 {
                     yield return playerActionName;
                 }
@@ -1242,7 +1254,12 @@ namespace HaCreator.MapSimulator.Character
                 firstPieceAnimation ??= pieceAnimation;
                 if (piece.SourceFrameIndex.HasValue)
                 {
-                    int frameIndex = Math.Clamp(piece.SourceFrameIndex.Value, 0, pieceAnimation.Frames.Count - 1);
+                    int frameIndex = piece.SourceFrameIndex.Value;
+                    if (frameIndex < 0 || frameIndex >= pieceAnimation.Frames.Count)
+                    {
+                        continue;
+                    }
+
                     SkillFrame frame = CloneSkillFrame(
                         pieceAnimation.Frames[frameIndex],
                         piece.DelayOverrideMs,
@@ -1814,7 +1831,9 @@ namespace HaCreator.MapSimulator.Character
             bool airborne = state is PlayerState.Jumping or PlayerState.Falling or PlayerState.Swimming or PlayerState.Flying;
             bool stationary = state is PlayerState.Standing or PlayerState.Walking or PlayerState.Sitting or PlayerState.Prone;
 
-            foreach (string candidate in new[] { "create2", "create3", "create4" })
+            // Preserve `create2/3/4` priority from authored `special/*` rows, then
+            // fall back to mounted legacy helper rows (`create1`, `create0`).
+            foreach (string candidate in new[] { "create2", "create3", "create4", "create1", "create0" })
             {
                 string stateVariant = airborne
                     ? candidate + "_f"

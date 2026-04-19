@@ -158,6 +158,11 @@ namespace HaCreator.MapSimulator
                 return wrapperMessage;
             }
 
+            if (TryHandleDojoFieldSpecificDataPacket(payload, currentTick, out string dojoMessage))
+            {
+                return dojoMessage;
+            }
+
             if (TryApplyStructuredFieldSpecificDataPayload(payload, currentTick, out string structuredMessage))
             {
                 return structuredMessage;
@@ -165,6 +170,62 @@ namespace HaCreator.MapSimulator
 
             string areaName = _specialFieldRuntime.ActiveArea?.ToString() ?? "no active special-field owner";
             return $"handoff target={areaName}";
+        }
+
+        private bool TryHandleDojoFieldSpecificDataPacket(byte[] payload, int currentTick, out string message)
+        {
+            message = null;
+            if (_specialFieldRuntime.ActiveArea != SpecialFieldBacklogArea.MuLungDojoFieldFlow)
+            {
+                return false;
+            }
+
+            if (!TryDecodeDojoFieldSpecificRelayPayload(payload, out int packetType, out byte[] packetPayload, out string decodeSummary))
+            {
+                return false;
+            }
+
+            bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(packetType, packetPayload, currentTick, out string wrapperMessage);
+            string handoffSummary = $"CField_MuLungDojo::OnFieldSpecificData decoded relay packet {packetType} and dispatched it through the active Dojo wrapper owner.";
+            if (string.IsNullOrWhiteSpace(wrapperMessage))
+            {
+                message = $"{handoffSummary} {decodeSummary}";
+            }
+            else
+            {
+                message = $"{handoffSummary} {wrapperMessage} {decodeSummary}";
+            }
+
+            return applied || !string.IsNullOrWhiteSpace(wrapperMessage);
+        }
+
+        private static bool TryDecodeDojoFieldSpecificRelayPayload(
+            byte[] payload,
+            out int packetType,
+            out byte[] packetPayload,
+            out string summary)
+        {
+            packetType = -1;
+            packetPayload = Array.Empty<byte>();
+            if (DojoField.TryDecodeFieldSpecificPacketPayload(payload, out packetType, out packetPayload, out string decodeError))
+            {
+                summary =
+                    $"Dojo field-specific relay decoded packet {packetType} with {packetPayload.Length} payload byte(s).";
+                return true;
+            }
+
+            string candidateSummary = DojoField.DescribeFieldSpecificPayloadCandidates(payload);
+            if (string.IsNullOrWhiteSpace(candidateSummary) ||
+                string.Equals(candidateSummary, "unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                summary = $"Dojo field-specific relay decode failed. {decodeError}";
+            }
+            else
+            {
+                summary = $"Dojo field-specific relay decode failed. {decodeError} Candidate payloads: {candidateSummary}.";
+            }
+
+            return false;
         }
 
         private bool TryApplyStructuredFieldSpecificDataPayload(byte[] payload, int currentTick, out string message)

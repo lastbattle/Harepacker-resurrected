@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
         private readonly Dictionary<int, MessageBoxVisual> _visualCache = new();
         private readonly Dictionary<int, string> _itemNameCache = new();
+        private readonly ManagedOneTimeAnimationDisplayer _oneTimeAnimationDisplayer = new();
         private readonly Random _random = new();
         private GraphicsDevice _graphicsDevice;
         private Texture2D _pixelTexture;
@@ -98,6 +99,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _entries.Clear();
             _leavingEntries.Clear();
+            _oneTimeAnimationDisplayer.Clear();
             _statusMessage = "Field message-box pool cleared.";
         }
 
@@ -147,7 +149,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolveItemName(resolvedItemId),
                 ComputeInitialBobAngleRadians(),
                 currentTick,
-                source);
+                source,
+                _oneTimeAnimationDisplayer);
 
             _entries[resolvedId] = entry;
             _statusMessage = $"Registered {source.GetLabel()} field message-box {resolvedId} for {trimmedName} using item {resolvedItemId}.";
@@ -162,6 +165,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int leavingIndex = _leavingEntries.FindIndex(leaving => leaving.Id == messageBoxId);
                 if (leavingIndex >= 0)
                 {
+                    _leavingEntries[leavingIndex].CancelLeave();
                     _leavingEntries.RemoveAt(leavingIndex);
                     _statusMessage = $"Removed field message-box {messageBoxId} from the leave-field queue.";
                     return _statusMessage;
@@ -179,7 +183,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             FrozenMessageBoxRenderState leaveRenderState = CaptureLeaveRenderState(entry);
-            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, leaveRenderState, currentTick));
+            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, leaveRenderState, currentTick, _oneTimeAnimationDisplayer));
             _statusMessage = $"{entry.Source.GetLabel()} field message-box {messageBoxId} began its client leave-field fade.";
             return _statusMessage;
         }
@@ -214,6 +218,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void Update(int currentTick)
         {
+            _oneTimeAnimationDisplayer.Update(currentTick);
             if (_entries.Count == 0 && _leavingEntries.Count == 0)
             {
                 return;
@@ -1737,7 +1742,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static (int VectorObjectStringPoolId, int LayerColorValue, int InitialAlpha, int AnimationMode, bool CreatesVector, bool CreatesLayer, bool LoadsAnimationLayer, bool AttachesLayerToVector, bool LoadsCanvasObject, int? LoadedCanvasIndex) GetEnterFieldRegistrationTraceForTest()
         {
-            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(Point.Zero, currentTick: 0);
+            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(Point.Zero, currentTick: 0, new ManagedOneTimeAnimationDisplayer());
             return (
                 layer.VectorObjectStringPoolId.GetValueOrDefault(),
                 layer.LayerColorValue.GetValueOrDefault(),
@@ -1822,7 +1827,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static (string LeaveState, int? RemovedCanvasIndex, int? InsertCanvasDuration, int? InsertCanvasStartAlphaValue, int? InsertCanvasEndAlphaValue, int AnimationMode, bool RegisteredOneTimeAnimation, bool ShouldRemoveAtFadeEnd) SimulateClientLeaveLayerForTest(int currentTick)
         {
-            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(Point.Zero, currentTick);
+            ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer = new();
+            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(Point.Zero, currentTick, oneTimeAnimationDisplayer);
             layer.BeginLeave(
                 Point.Zero,
                 currentTick,
@@ -1844,7 +1850,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static (int? GetCanvasIndex, int? RemovedCanvasIndex, bool RemovedCanvasCaptured, int? InsertCanvasDuration, int? InsertCanvasStartAlphaValue, int? InsertCanvasEndAlphaValue, bool InsertedCapturedCanvas, bool VectorResetForLeave, int AnimationMode, bool RegisteredOneTimeAnimation, bool RegisteredLayerObject) SimulateClientLeaveCanvasOwnershipForTest(int currentTick)
         {
-            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(new Point(11, 29), currentTick);
+            ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer = new();
+            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(new Point(11, 29), currentTick, oneTimeAnimationDisplayer);
             layer.BeginLeave(
                 new Point(11, 29),
                 currentTick,
@@ -1865,6 +1872,27 @@ namespace HaCreator.MapSimulator.Interaction
                 layer.AnimationMode,
                 layer.RegisteredOneTimeAnimation,
                 layer.RegisteredOneTimeAnimationLayerObject);
+        }
+
+        internal static (int RegistrationId, bool ActiveAfterRegister, bool ActiveAfterHalfFade, bool ActiveAfterFadeEnd) SimulateClientOneTimeAnimationLifecycleForTest(int currentTick)
+        {
+            ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer = new();
+            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(Point.Zero, currentTick, oneTimeAnimationDisplayer);
+            layer.BeginLeave(
+                Point.Zero,
+                currentTick,
+                new FrozenMessageBoxRenderState(
+                    DisplayTexture: new Texture2D(GraphicsDeviceServiceForTests.Instance, 1, 1),
+                    DisplayOrigin: Point.Zero,
+                    TextLayout: MessageBoxTextLayout.Default,
+                    DrawTextOverTexture: false));
+            int registrationId = layer.OneTimeAnimationRegistrationId.GetValueOrDefault();
+            bool activeAfterRegister = layer.OneTimeAnimationRegistrationActive;
+            oneTimeAnimationDisplayer.Update(currentTick + (ClientLeaveCanvasFadeDurationMs / 2));
+            bool activeAfterHalfFade = layer.OneTimeAnimationRegistrationActive;
+            oneTimeAnimationDisplayer.Update(currentTick + ClientLeaveCanvasFadeDurationMs);
+            bool activeAfterFadeEnd = layer.OneTimeAnimationRegistrationActive;
+            return (registrationId, activeAfterRegister, activeAfterHalfFade, activeAfterFadeEnd);
         }
 
         private FrozenMessageBoxRenderState CaptureLeaveRenderState(FieldMessageBoxEntry entry)
@@ -2150,7 +2178,8 @@ namespace HaCreator.MapSimulator.Interaction
                 string itemName,
                 float initialBobAngleRadians,
                 int currentTick,
-                MessageBoxEntrySource source)
+                MessageBoxEntrySource source,
+                ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer)
             {
                 Id = id;
                 ItemId = itemId;
@@ -2163,7 +2192,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Source = source;
                 _bobAngleRadians = initialBobAngleRadians;
                 _nextFrameTick = currentTick + (visual?.GetFrameDelay(0) ?? DefaultFrameDelayMs);
-                ClientLayer = ManagedMessageBoxLayer.CreateLoaded(layerPosition, currentTick);
+                ClientLayer = ManagedMessageBoxLayer.CreateLoaded(layerPosition, currentTick, oneTimeAnimationDisplayer);
             }
 
             public int Id { get; }
@@ -2221,17 +2250,26 @@ namespace HaCreator.MapSimulator.Interaction
             private readonly ManagedMessageBoxLayer _clientLayer;
 
             internal LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, FrozenMessageBoxRenderState leaveRenderState, int leaveStartedAt, MessageBoxEntrySource source)
-                : this(id, messageText, layerPosition, visual, null, leaveRenderState, leaveStartedAt, source)
+                : this(id, messageText, layerPosition, visual, null, leaveRenderState, leaveStartedAt, source, new ManagedOneTimeAnimationDisplayer())
             {
             }
 
-            internal LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, ManagedMessageBoxLayer clientLayer, FrozenMessageBoxRenderState leaveRenderState, int leaveStartedAt, MessageBoxEntrySource source)
+            internal LeavingMessageBoxEntry(
+                int id,
+                string messageText,
+                Point layerPosition,
+                MessageBoxVisual visual,
+                ManagedMessageBoxLayer clientLayer,
+                FrozenMessageBoxRenderState leaveRenderState,
+                int leaveStartedAt,
+                MessageBoxEntrySource source,
+                ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer)
             {
                 Id = id;
                 MessageText = messageText;
                 LayerPosition = layerPosition;
                 Visual = visual;
-                _clientLayer = clientLayer ?? ManagedMessageBoxLayer.CreateLoaded(layerPosition, leaveStartedAt);
+                _clientLayer = clientLayer ?? ManagedMessageBoxLayer.CreateLoaded(layerPosition, leaveStartedAt, oneTimeAnimationDisplayer);
                 Source = source;
                 _clientLayer.BeginLeave(layerPosition, leaveStartedAt, leaveRenderState);
             }
@@ -2255,7 +2293,16 @@ namespace HaCreator.MapSimulator.Interaction
                 _clientLayer.UpdateLeave(currentTick);
             }
 
-            public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, FrozenMessageBoxRenderState leaveRenderState, int currentTick)
+            public void CancelLeave()
+            {
+                _clientLayer.RemoveFromPool(immediate: true);
+            }
+
+            public static LeavingMessageBoxEntry FromEntry(
+                FieldMessageBoxEntry entry,
+                FrozenMessageBoxRenderState leaveRenderState,
+                int currentTick,
+                ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer)
             {
                 return new LeavingMessageBoxEntry(
                     entry.Id,
@@ -2265,7 +2312,8 @@ namespace HaCreator.MapSimulator.Interaction
                     entry.ClientLayer,
                     leaveRenderState,
                     currentTick,
-                    entry.Source);
+                    entry.Source,
+                    oneTimeAnimationDisplayer);
             }
 
             public bool ShouldRemove(int currentTick)
@@ -2312,11 +2360,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed class ManagedMessageBoxLayer
         {
+            private readonly ManagedOneTimeAnimationDisplayer _oneTimeAnimationDisplayer;
             private readonly ManagedMessageBoxLayerObject _layerObject;
             private int _leaveStartedAt;
+            private int? _oneTimeAnimationRegistrationId;
 
-            private ManagedMessageBoxLayer(Point currentPosition)
+            private ManagedMessageBoxLayer(Point currentPosition, ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer)
             {
+                _oneTimeAnimationDisplayer = oneTimeAnimationDisplayer ?? throw new ArgumentNullException(nameof(oneTimeAnimationDisplayer));
                 CurrentPosition = currentPosition;
                 LeaveState = LeaveCanvasState.NotLeaving;
                 AnimationMode = ClientLayerRepeatAnimation;
@@ -2346,10 +2397,17 @@ namespace HaCreator.MapSimulator.Interaction
             public bool RemovedCanvasCaptured { get; private set; }
             public bool InsertedCapturedCanvas { get; private set; }
             public bool RegisteredOneTimeAnimationLayerObject { get; private set; }
+            public int? OneTimeAnimationRegistrationId => _oneTimeAnimationRegistrationId;
+            public bool OneTimeAnimationRegistrationActive =>
+                _oneTimeAnimationRegistrationId.HasValue
+                && _oneTimeAnimationDisplayer.Contains(_oneTimeAnimationRegistrationId.Value);
 
-            public static ManagedMessageBoxLayer CreateLoaded(Point position, int currentTick)
+            public static ManagedMessageBoxLayer CreateLoaded(
+                Point position,
+                int currentTick,
+                ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer)
             {
-                ManagedMessageBoxLayer layer = new(position)
+                ManagedMessageBoxLayer layer = new(position, oneTimeAnimationDisplayer)
                 {
                     _leaveStartedAt = currentTick
                 };
@@ -2391,7 +2449,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ClientLeaveInsertCanvasEndAlphaValue,
                     currentTick + ClientLeaveCanvasReinsertDelayMs);
                 Animate(ClientLayerStopAnimation);
-                RegisterOneTimeAnimation(_layerObject);
+                RegisterOneTimeAnimation(_layerObject, _leaveStartedAt + ClientLeaveCanvasFadeDurationMs);
             }
 
             public void RemoveFromPool(bool immediate)
@@ -2399,6 +2457,7 @@ namespace HaCreator.MapSimulator.Interaction
                 RemovedFromPool = true;
                 if (immediate)
                 {
+                    CompleteOneTimeAnimationRegistration();
                     LeaveState = LeaveCanvasState.Removed;
                     Animate(ClientLayerStopAnimation);
                 }
@@ -2495,16 +2554,34 @@ namespace HaCreator.MapSimulator.Interaction
                 VectorResetForLeave = true;
             }
 
-            private void RegisterOneTimeAnimation(ManagedMessageBoxLayerObject layerObject)
+            private void RegisterOneTimeAnimation(ManagedMessageBoxLayerObject layerObject, int removeAtTick)
             {
                 RegisteredOneTimeAnimation = true;
                 RegisteredOneTimeAnimationLayerObject = ReferenceEquals(layerObject, _layerObject);
+                if (!RegisteredOneTimeAnimationLayerObject)
+                {
+                    return;
+                }
+
+                _oneTimeAnimationRegistrationId = _oneTimeAnimationDisplayer.Register(layerObject, removeAtTick);
+            }
+
+            private void CompleteOneTimeAnimationRegistration()
+            {
+                if (!_oneTimeAnimationRegistrationId.HasValue)
+                {
+                    return;
+                }
+
+                _oneTimeAnimationDisplayer.Complete(_oneTimeAnimationRegistrationId.Value);
+                _oneTimeAnimationRegistrationId = null;
             }
 
             public void UpdateLeave(int currentTick)
             {
                 if (ShouldRemoveAfterLeave(currentTick))
                 {
+                    CompleteOneTimeAnimationRegistration();
                     LeaveState = LeaveCanvasState.Removed;
                 }
             }
@@ -2520,10 +2597,67 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private sealed class ManagedOneTimeAnimationDisplayer
+        {
+            private readonly Dictionary<int, ManagedOneTimeAnimationRegistration> _registrations = new();
+            private int _nextRegistrationId = 1;
+
+            public int ActiveCount => _registrations.Count;
+
+            public int Register(ManagedMessageBoxLayerObject layerObject, int removeAtTick)
+            {
+                if (layerObject == null)
+                {
+                    return 0;
+                }
+
+                int registrationId = _nextRegistrationId++;
+                _registrations[registrationId] = new ManagedOneTimeAnimationRegistration(registrationId, layerObject, removeAtTick);
+                return registrationId;
+            }
+
+            public bool Complete(int registrationId)
+            {
+                return registrationId > 0 && _registrations.Remove(registrationId);
+            }
+
+            public bool Contains(int registrationId)
+            {
+                return registrationId > 0 && _registrations.ContainsKey(registrationId);
+            }
+
+            public void Update(int currentTick)
+            {
+                if (_registrations.Count == 0)
+                {
+                    return;
+                }
+
+                int[] expiredRegistrationIds = _registrations.Values
+                    .Where(registration => currentTick >= registration.RemoveAtTick)
+                    .Select(registration => registration.Id)
+                    .ToArray();
+                foreach (int registrationId in expiredRegistrationIds)
+                {
+                    _registrations.Remove(registrationId);
+                }
+            }
+
+            public void Clear()
+            {
+                _registrations.Clear();
+            }
+        }
+
         private sealed class ManagedMessageBoxLayerObject
         {
             public ManagedMessageBoxCanvas Canvas { get; set; }
         }
+
+        private readonly record struct ManagedOneTimeAnimationRegistration(
+            int Id,
+            ManagedMessageBoxLayerObject LayerObject,
+            int RemoveAtTick);
 
         private sealed record ManagedMessageBoxCanvas(int Index, FrozenMessageBoxRenderState? FrozenRenderState);
 

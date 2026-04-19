@@ -418,6 +418,7 @@ namespace HaCreator.MapSimulator.Interaction
             long CashSerialNumber,
             int NativeItemTypeIndex,
             string Title,
+            string PacketDisplayName,
             string MetadataSummary,
             long? NonCashSerialNumber,
             long? ExpirationTime,
@@ -2340,6 +2341,7 @@ namespace HaCreator.MapSimulator.Interaction
                 out long? expirationTime,
                 out int? tailValue,
                 out string tailMetadataSummary,
+                out string packetDisplayName,
                 out int decodedBodyByteLength,
                 out int residualTailByteLength))
             {
@@ -2365,6 +2367,7 @@ namespace HaCreator.MapSimulator.Interaction
                 cashSerialNumber,
                 ResolveTradePacketNativeItemTypeIndex(itemId),
                 title,
+                packetDisplayName,
                 metadataSummary,
                 nonCashSerialNumber,
                 expirationTime,
@@ -2390,6 +2393,7 @@ namespace HaCreator.MapSimulator.Interaction
             out long? expirationTime,
             out int? tailValue,
             out string tailMetadataSummary,
+            out string packetDisplayName,
             out int decodedBodyByteLength,
             out int residualTailByteLength)
         {
@@ -2405,6 +2409,7 @@ namespace HaCreator.MapSimulator.Interaction
             expirationTime = null;
             tailValue = null;
             tailMetadataSummary = string.Empty;
+            packetDisplayName = string.Empty;
             decodedBodyByteLength = 0;
             residualTailByteLength = 0;
 
@@ -2438,13 +2443,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             baseExpirationTime = reader.ReadInt64();
-            return slotType switch
+            bool decoded = slotType switch
             {
                 1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out serialNumber, out title, out metadataSummary, out nonCashSerialNumber, out expirationTime, out tailValue, out tailMetadataSummary, out decodedBodyByteLength, out residualTailByteLength),
                 2 => TryDecodePacketOwnedBundleBody(reader, itemId, out serialNumber, out quantity, out title, out metadataSummary, out tailMetadataSummary, out decodedBodyByteLength, out residualTailByteLength),
                 3 => TryDecodePacketOwnedPetBody(reader, out serialNumber, out title, out metadataSummary, out expirationTime, out tailMetadataSummary, out decodedBodyByteLength, out residualTailByteLength),
                 _ => false
             };
+
+            if (decoded)
+            {
+                packetDisplayName = ResolveTradePacketDisplayName(itemId, title, tailMetadataSummary);
+            }
+
+            return decoded;
         }
 
         private static string BuildTradingRoomPacketItemDetail(string ownerLabel, int slotIndex, PacketOwnedTradeItem item)
@@ -2469,6 +2481,9 @@ namespace HaCreator.MapSimulator.Interaction
             string titleText = string.IsNullOrWhiteSpace(item.Title)
                 ? string.Empty
                 : $" | {titleLabel} {item.Title}";
+            string packetNameText = string.IsNullOrWhiteSpace(item.PacketDisplayName)
+                ? string.Empty
+                : $" | sPacketName {item.PacketDisplayName}";
             string metadataText = string.IsNullOrWhiteSpace(item.MetadataSummary)
                 ? string.Empty
                 : $" | {item.MetadataSummary}";
@@ -2491,7 +2506,7 @@ namespace HaCreator.MapSimulator.Interaction
             string residualTailText = item.ResidualTailByteLength > 0
                 ? $" | residualTail {item.ResidualTailByteLength}B"
                 : string.Empty;
-            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{slotTypeText}{baseExpirationText}{cashText}{serialText}{nativeTypeText}{quantityText}{titleText}{metadataText}{nonCashText}{tailText}{decodeLengthText}{residualTailText}{tailMetadataText}";
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{slotTypeText}{baseExpirationText}{cashText}{serialText}{nativeTypeText}{quantityText}{titleText}{packetNameText}{metadataText}{nonCashText}{tailText}{decodeLengthText}{residualTailText}{tailMetadataText}";
         }
 
         private static bool TryDecodePacketOwnedEquipBody(
@@ -2748,9 +2763,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             List<string> fields = new List<string>();
             int offset = 0;
-            if (TryReadResidualTradePacketMapleString(leftover, ref offset, out string tailString))
+            int stringFieldCount = 0;
+            while (TryReadResidualTradePacketMapleString(leftover, ref offset, out string tailString) && stringFieldCount < 2)
             {
-                fields.Add($"sTailName {tailString}");
+                fields.Add(stringFieldCount == 0 ? $"sTailName {tailString}" : $"sTailName{stringFieldCount + 1} {tailString}");
+                stringFieldCount++;
             }
 
             if (leftover.Length - offset >= sizeof(long))
@@ -2764,7 +2781,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int intFieldCount = 0;
-            while (leftover.Length - offset >= sizeof(int) && intFieldCount < 3)
+            while (leftover.Length - offset >= sizeof(int) && intFieldCount < 6)
             {
                 int intValue = BinaryPrimitives.ReadInt32LittleEndian(leftover.Slice(offset, sizeof(int)));
                 if (intValue != 0)
@@ -2777,7 +2794,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int shortFieldCount = 0;
-            while (leftover.Length - offset >= sizeof(short) && shortFieldCount < 2)
+            while (leftover.Length - offset >= sizeof(short) && shortFieldCount < 4)
             {
                 short shortValue = BinaryPrimitives.ReadInt16LittleEndian(leftover.Slice(offset, sizeof(short)));
                 if (shortValue != 0)
@@ -2789,12 +2806,86 @@ namespace HaCreator.MapSimulator.Interaction
                 shortFieldCount++;
             }
 
-            if (leftover.Length - offset == 1 && leftover[offset] != 0)
+            int byteFieldCount = 0;
+            while (leftover.Length - offset > 0 && byteFieldCount < 4)
             {
-                fields.Add($"nTailB {leftover[offset]}");
+                byte byteValue = leftover[offset];
+                if (byteValue != 0)
+                {
+                    fields.Add(byteFieldCount == 0 ? $"nTailB {byteValue}" : $"nTailB{byteFieldCount + 1} {byteValue}");
+                }
+
+                offset++;
+                byteFieldCount++;
+            }
+
+            if (leftover.Length - offset > 0)
+            {
+                fields.Add($"tailRemainder {leftover.Length - offset}B");
             }
 
             return fields.Count == 0 ? string.Empty : $"{label} fields {string.Join(", ", fields)}";
+        }
+
+        private static string ResolveTradePacketDisplayName(int itemId, string title, string tailMetadataSummary)
+        {
+            if (string.IsNullOrWhiteSpace(tailMetadataSummary))
+            {
+                return string.Empty;
+            }
+
+            if (!TryExtractTradePacketNamedField(tailMetadataSummary, "sTailName ", out string tailName))
+            {
+                return string.Empty;
+            }
+
+            string normalizedTailName = NormalizeTradePacketFixedString(tailName, maxClientBytesIncludingTerminator: 33);
+            if (string.IsNullOrWhiteSpace(normalizedTailName))
+            {
+                return string.Empty;
+            }
+
+            string baseLabel = ResolveItemLabel(itemId);
+            if (!string.IsNullOrWhiteSpace(baseLabel) &&
+                string.Equals(normalizedTailName, baseLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(title) &&
+                string.Equals(normalizedTailName, title.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+
+            return normalizedTailName;
+        }
+
+        private static bool TryExtractTradePacketNamedField(string summary, string fieldPrefix, out string value)
+        {
+            value = string.Empty;
+            if (string.IsNullOrWhiteSpace(summary) || string.IsNullOrWhiteSpace(fieldPrefix))
+            {
+                return false;
+            }
+
+            int start = summary.IndexOf(fieldPrefix, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return false;
+            }
+
+            start += fieldPrefix.Length;
+            int end = summary.IndexOfAny(new[] { ',', '|' }, start);
+            string segment = end >= start ? summary[start..end] : summary[start..];
+            segment = segment.Trim();
+            if (segment.Length == 0)
+            {
+                return false;
+            }
+
+            value = segment;
+            return true;
         }
 
         private static bool TryReadResidualTradePacketMapleString(ReadOnlySpan<byte> payload, ref int offset, out string value)
@@ -3206,6 +3297,7 @@ namespace HaCreator.MapSimulator.Interaction
             long? BaseExpirationTime,
             int NativeItemTypeIndex,
             string Title,
+            string PacketDisplayName,
             string MetadataSummary,
             string TailMetadataSummary,
             long? NonCashSerialNumber,
@@ -3241,6 +3333,7 @@ namespace HaCreator.MapSimulator.Interaction
                 item.BaseExpirationTime,
                 item.NativeItemTypeIndex,
                 item.Title,
+                item.PacketDisplayName,
                 item.MetadataSummary,
                 item.TailMetadataSummary,
                 item.NonCashSerialNumber,
@@ -3979,6 +4072,69 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (nestedPayload.Length >= 3)
+            {
+                ushort opcodeEnvelope = BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)));
+                byte opcodePacketType = nestedPayload[2];
+                if (IsMiniRoomSubtype6ForwardablePacket(opcodePacketType))
+                {
+                    byte[] forwardedPayload = nestedPayload.Skip(2).ToArray();
+                    if (TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+                    {
+                        result = result with
+                        {
+                            EnvelopeSummary = $"opcode-framed envelope {opcodeEnvelope}",
+                            ForwardedPayload = forwardedPayload
+                        };
+                        return true;
+                    }
+                }
+            }
+
+            if (TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 2)
+            {
+                return false;
+            }
+
+            int maxOffset = Math.Min(8, nestedPayload.Length - 1);
+            for (int offset = 1; offset <= maxOffset; offset++)
+            {
+                byte packetType = nestedPayload[offset];
+                if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+                {
+                    continue;
+                }
+
+                byte[] forwardedPayload = nestedPayload.Skip(offset).ToArray();
+                if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+                {
+                    continue;
+                }
+
+                byte[] prefixBytes = nestedPayload.Take(offset).ToArray();
+                string prefixPreview = BuildPacketHexPreview(prefixBytes);
+                result = result with
+                {
+                    EnvelopeSummary = $"offset envelope +{offset} ({prefixPreview})",
+                    ForwardedPayload = forwardedPayload
+                };
+                return true;
+            }
+
             return false;
         }
 
@@ -4086,6 +4242,16 @@ namespace HaCreator.MapSimulator.Interaction
         private static string ResolveTradePacketItemLabel(PacketOwnedTradeItem item)
         {
             string baseLabel = ResolveItemLabel(item.ItemId);
+            if (!string.IsNullOrWhiteSpace(item.PacketDisplayName))
+            {
+                string packetDisplayName = item.PacketDisplayName.Trim();
+                if (packetDisplayName.Length > 0 &&
+                    !string.Equals(packetDisplayName, baseLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"{packetDisplayName} [{baseLabel}]";
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(item.Title))
             {
                 return baseLabel;

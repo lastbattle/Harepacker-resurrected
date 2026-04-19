@@ -516,10 +516,15 @@ namespace HaCreator.MapSimulator.Fields
 
             if (!message.HasValue)
             {
-                SetLifecyclePhase(
-                    TournamentLifecyclePhase.SessionNotice,
-                    $"Tournament UEW code {uewCode} fell outside the client's recovered 2/4/8/16 notice branches and was ignored.");
-                RecordIgnoredPacket($"uew (377) ignored code={uewCode}", currentTimeMs);
+                SetStatus(
+                    string.Empty,
+                    currentTimeMs,
+                    Array.Empty<int>(),
+                    $"uew (377) code={uewCode} produced an empty CUtilDlg::Notice payload",
+                    "CUtilDlg::Notice");
+                SetSessionPhase(
+                    TournamentSessionPhase.Uew,
+                    $"CField_Tournament::OnTournamentUEW emitted an empty notice payload for unknown code {uewCode}.");
                 return;
             }
 

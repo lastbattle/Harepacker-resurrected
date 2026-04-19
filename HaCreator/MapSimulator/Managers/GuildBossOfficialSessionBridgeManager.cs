@@ -500,8 +500,17 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
         {
-            if (!IsRunning && !HasAttachedClient && !HasPassiveEstablishedSocketPair)
+            if (!IsRunning && !HasAttachedClient)
             {
+                if (HasPassiveEstablishedSocketPair)
+                {
+                    status =
+                        $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. " +
+                        $"It cannot queue opcode {OutboundPulleyRequestOpcode} while only passively observing an already-established socket pair; arm `/guildboss session attachproxy ...` or `/guildboss session startauto ...` and reconnect through localhost first.";
+                    LastStatus = status;
+                    return false;
+                }
+
                 status = "Guild boss official-session bridge is not armed for deferred live-session injection.";
                 LastStatus = status;
                 return false;

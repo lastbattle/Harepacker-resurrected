@@ -31,7 +31,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class MessengerOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18504;
-        public const ushort DefaultInboundResultOpcode = 372;
+        public const ushort DefaultInboundResultOpcode = PacketOwnedSocialUtilityPacketTable.MessengerInboundOpcode;
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxRecentInboundPackets = 32;
         private const string DefaultProcessName = "MapleStory";
@@ -132,7 +132,11 @@ namespace HaCreator.MapSimulator.Managers
         public string LastStatus { get; private set; } = "Messenger official-session bridge inactive.";
 
         public MessengerOfficialSessionBridgeManager()
-            : this("Messenger", DefaultListenPort, DefaultInboundResultOpcode, MessengerPacketCodec.ClientMessengerRequestOpcode)
+            : this(
+                "Messenger",
+                DefaultListenPort,
+                PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", 0),
+                PacketOwnedSocialUtilityPacketTable.MessengerOutboundOpcode)
         {
         }
 
@@ -140,13 +144,23 @@ namespace HaCreator.MapSimulator.Managers
         {
             _ownerName = string.IsNullOrWhiteSpace(ownerName) ? "Messenger" : ownerName.Trim();
             _defaultListenPort = defaultListenPort <= 0 ? DefaultListenPort : defaultListenPort;
-            _defaultInboundOpcode = defaultInboundOpcode == 0 ? DefaultInboundResultOpcode : defaultInboundOpcode;
-            _defaultOutboundOpcode = defaultOutboundOpcode;
-            _additionalInboundOpcodes = new HashSet<ushort>((additionalInboundOpcodes ?? Array.Empty<ushort>()).Where(opcode => opcode != 0));
+            ushort recoveredInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode(_ownerName, defaultInboundOpcode);
+            _defaultInboundOpcode = recoveredInboundOpcode == 0 ? DefaultInboundResultOpcode : recoveredInboundOpcode;
+
+            ushort recoveredOutboundOpcode = PacketOwnedSocialUtilityPacketTable.GetRecoveredOutboundOpcodes(_ownerName).FirstOrDefault();
+            _defaultOutboundOpcode = defaultOutboundOpcode != 0 ? defaultOutboundOpcode : recoveredOutboundOpcode;
+
+            _additionalInboundOpcodes = new HashSet<ushort>(
+                (additionalInboundOpcodes ?? Array.Empty<ushort>())
+                .Concat(PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes(_ownerName))
+                .Where(opcode => opcode != 0 && opcode != _defaultInboundOpcode));
             _additionalOutboundOpcodes = new HashSet<ushort>();
-            if (string.Equals(_ownerName, "Messenger", StringComparison.OrdinalIgnoreCase))
+            foreach (ushort outboundOpcode in PacketOwnedSocialUtilityPacketTable.GetRecoveredOutboundOpcodes(_ownerName))
             {
-                _additionalOutboundOpcodes.Add(PacketOwnedSocialUtilityPacketTable.MessengerClaimRequestOpcode);
+                if (outboundOpcode != 0 && outboundOpcode != _defaultOutboundOpcode)
+                {
+                    _additionalOutboundOpcodes.Add(outboundOpcode);
+                }
             }
 
             ListenPort = _defaultListenPort;
@@ -243,12 +257,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public string DescribeRecoveredPacketTable()
         {
-            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
-            {
-                return "Recovered MapleTV packet table: inbound CMapleTVMan::OnSetMessage(405), CMapleTVMan::OnClearMessage(406), CMapleTVMan::OnSendMessageResult(407); outbound CUserLocal::ConsumeCashItem(85).";
-            }
-
-            return "Recovered Messenger packet table: inbound CUIMessenger::OnPacket(372) subtypes 0-8; outbound CUIMessenger::TryNew/OnDestroy/SendInviteMsg/OnInvite blacklist auto-reject/ProcessChat on opcode 143 subtypes 0/2/3/5/6, plus CWvsContext::SendClaimRequest on opcode 118.";
+            return PacketOwnedSocialUtilityPacketTable.DescribeRecoveredPacketTable(_ownerName);
         }
 
         public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)

@@ -297,6 +297,33 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal static bool TryProcessString(
+            string text,
+            bool ignoreNewLine,
+            out string processedText,
+            out bool filtered,
+            out string notice)
+        {
+            string source = text ?? string.Empty;
+            filtered = false;
+            notice = null;
+            processedText = source;
+            if (string.IsNullOrEmpty(source))
+            {
+                return true;
+            }
+
+            if (!TryConvertBlockedContent(source, ignoreNewLine, out string convertedText, out bool converted))
+            {
+                notice = GetInappropriateContentNotice();
+                return false;
+            }
+
+            processedText = convertedText;
+            filtered = converted;
+            return true;
+        }
+
         internal static string GetInappropriateContentNotice()
         {
             return MapleStoryStringPool.GetOrFallback(
@@ -330,6 +357,93 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private static bool TryConvertBlockedContent(string text, bool ignoreNewLine, out string convertedText, out bool converted)
+        {
+            convertedText = text ?? string.Empty;
+            converted = false;
+            if (string.IsNullOrEmpty(convertedText))
+            {
+                return true;
+            }
+
+            string lowered = convertedText.ToLowerInvariant();
+            var normalizedBuilder = new StringBuilder(lowered.Length);
+            var normalizedToSourceMap = new List<int>(lowered.Length);
+            for (int index = 0; index < lowered.Length; index++)
+            {
+                char value = lowered[index];
+                if (ignoreNewLine && (value == '\r' || value == '\n'))
+                {
+                    continue;
+                }
+
+                if (ContainsFilteredCharacter(value))
+                {
+                    continue;
+                }
+
+                normalizedBuilder.Append(value);
+                normalizedToSourceMap.Add(index);
+            }
+
+            if (normalizedBuilder.Length == 0)
+            {
+                return true;
+            }
+
+            string normalized = normalizedBuilder.ToString();
+            bool[] maskedSourceIndices = new bool[lowered.Length];
+            foreach (string blockedTerm in BlockedTerms.Value)
+            {
+                if (string.IsNullOrWhiteSpace(blockedTerm))
+                {
+                    continue;
+                }
+
+                int searchIndex = 0;
+                while (searchIndex < normalized.Length)
+                {
+                    int matchIndex = normalized.IndexOf(blockedTerm, searchIndex, StringComparison.Ordinal);
+                    if (matchIndex < 0)
+                    {
+                        break;
+                    }
+
+                    for (int offset = 0; offset < blockedTerm.Length; offset++)
+                    {
+                        int normalizedIndex = matchIndex + offset;
+                        if (normalizedIndex >= 0 && normalizedIndex < normalizedToSourceMap.Count)
+                        {
+                            int sourceIndex = normalizedToSourceMap[normalizedIndex];
+                            if (sourceIndex >= 0 && sourceIndex < maskedSourceIndices.Length)
+                            {
+                                maskedSourceIndices[sourceIndex] = true;
+                            }
+                        }
+                    }
+
+                    searchIndex = matchIndex + 1;
+                }
+            }
+
+            char[] output = convertedText.ToCharArray();
+            for (int index = 0; index < output.Length; index++)
+            {
+                if (!maskedSourceIndices[index])
+                {
+                    continue;
+                }
+
+                output[index] = '*';
+                converted = true;
+            }
+
+            convertedText = converted
+                ? new string(output)
+                : convertedText;
+            return true;
         }
 
         private static HashSet<string> LoadBlockedTerms()
@@ -446,6 +560,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private static bool ContainsFilteredCharacter(char value)
+        {
+            if (value > byte.MaxValue)
+            {
+                return false;
+            }
+
+            return ContainsFilteredCharacter((byte)value);
         }
     }
 }

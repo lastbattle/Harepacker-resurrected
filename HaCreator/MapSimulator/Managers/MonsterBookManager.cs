@@ -419,6 +419,95 @@ namespace HaCreator.MapSimulator.Managers
             return GetSnapshot(build, characterId, characterName);
         }
 
+        public MonsterBookSnapshot ApplyOwnershipSync(
+            CharacterBuild build,
+            int characterId,
+            string characterName,
+            IReadOnlyDictionary<int, int> cardCountsByMob,
+            int registeredMobId = 0,
+            bool replaceExisting = true)
+        {
+            MonsterBookRecord record = GetRecord(build, characterId, characterName, createIfMissing: true);
+            Dictionary<int, MonsterBookCardDefinition> catalogByMobId = EnsureCatalogByMobId();
+
+            Dictionary<int, int> normalizedCounts = new();
+            if (cardCountsByMob != null)
+            {
+                foreach (KeyValuePair<int, int> entry in cardCountsByMob)
+                {
+                    if (entry.Key <= 0
+                        || entry.Value <= 0
+                        || !catalogByMobId.ContainsKey(entry.Key))
+                    {
+                        continue;
+                    }
+
+                    normalizedCounts[entry.Key] = Math.Clamp(entry.Value, 0, 5);
+                }
+            }
+
+            bool changed = false;
+            if (replaceExisting)
+            {
+                if (record.CardCountsByMob.Count != normalizedCounts.Count
+                    || record.CardCountsByMob.Any(pair => !normalizedCounts.TryGetValue(pair.Key, out int syncedValue) || syncedValue != pair.Value))
+                {
+                    record.CardCountsByMob.Clear();
+                    foreach (KeyValuePair<int, int> entry in normalizedCounts)
+                    {
+                        record.CardCountsByMob[entry.Key] = entry.Value;
+                    }
+
+                    changed = true;
+                }
+            }
+            else
+            {
+                foreach (KeyValuePair<int, int> entry in normalizedCounts)
+                {
+                    if (!record.CardCountsByMob.TryGetValue(entry.Key, out int existingValue)
+                        || existingValue != entry.Value)
+                    {
+                        record.CardCountsByMob[entry.Key] = entry.Value;
+                        changed = true;
+                    }
+                }
+            }
+
+            int normalizedRegisteredMobId = registeredMobId > 0
+                && record.CardCountsByMob.TryGetValue(registeredMobId, out int ownedCopies)
+                && ownedCopies > 0
+                ? registeredMobId
+                : 0;
+            int previousRegisteredMobId = ResolveRegisteredMobId(record);
+            if (normalizedRegisteredMobId > 0)
+            {
+                if (record.RegisteredMobIds.Count != 1 || !record.RegisteredMobIds.Contains(normalizedRegisteredMobId))
+                {
+                    record.RegisteredMobIds.Clear();
+                    record.RegisteredMobIds.Add(normalizedRegisteredMobId);
+                    changed = true;
+                }
+            }
+            else if (record.RegisteredMobIds.Count > 0)
+            {
+                record.RegisteredMobIds.Clear();
+                changed = true;
+            }
+
+            if (!changed && previousRegisteredMobId != ResolveRegisteredMobId(record))
+            {
+                changed = true;
+            }
+
+            if (changed)
+            {
+                SaveToDisk();
+            }
+
+            return GetSnapshot(build, characterId, characterName);
+        }
+
         private static string BuildPageSubtitle(IEnumerable<MonsterBookCardSnapshot> cards)
         {
             List<MonsterBookCardSnapshot> pageCards = cards?.ToList() ?? new List<MonsterBookCardSnapshot>();

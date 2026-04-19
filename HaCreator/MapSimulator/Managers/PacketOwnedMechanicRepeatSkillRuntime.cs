@@ -234,6 +234,29 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public static bool TryCreateSg88FirstUseReplayTemplatePacket(
+            PacketOwnedSg88FirstUseRequest request,
+            out byte[] templateRawPacket,
+            out string error)
+        {
+            templateRawPacket = Array.Empty<byte>();
+            if (!TryCreateSg88FirstUseRequest(
+                    requestTime: 0,
+                    request.SkillLevel,
+                    x: 0,
+                    y: 0,
+                    request.MoveActionLowBit,
+                    request.VecCtrlState,
+                    out PacketOwnedSg88FirstUseRequest template,
+                    out error))
+            {
+                return false;
+            }
+
+            templateRawPacket = template.RawPacket;
+            return true;
+        }
+
         private static bool TryDecodeSg88FirstUseRawPacketCore(
             byte[] rawPacket,
             bool requireCanonicalMoveActionLowBit,
@@ -354,6 +377,38 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return $"SG-88 first-use replay parity length mismatch observedLen={observedRawPacket.Length} rebuiltLen={rebuiltRawPacket.Length}.";
+        }
+
+        public static bool TryExtractSg88ReplayParityMismatchByteIndex(string decodeDetail, out int byteIndex)
+        {
+            byteIndex = -1;
+            const string marker = "byteIndex=";
+            if (string.IsNullOrWhiteSpace(decodeDetail))
+            {
+                return false;
+            }
+
+            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.Ordinal);
+            if (markerIndex < 0)
+            {
+                return false;
+            }
+
+            int valueStart = markerIndex + marker.Length;
+            int valueEnd = valueStart;
+            while (valueEnd < decodeDetail.Length && char.IsDigit(decodeDetail[valueEnd]))
+            {
+                valueEnd++;
+            }
+
+            if (valueEnd <= valueStart)
+            {
+                return false;
+            }
+
+            return int.TryParse(
+                decodeDetail.Substring(valueStart, valueEnd - valueStart),
+                out byteIndex);
         }
 
         public static bool TryDecodeRepeatSkillModeEndAck(

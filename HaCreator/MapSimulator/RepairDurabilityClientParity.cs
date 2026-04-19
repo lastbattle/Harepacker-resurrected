@@ -418,40 +418,39 @@ namespace HaCreator.MapSimulator
             }
 
             int? encodedSlotPosition = null;
-            int remainingLength = payload.Length - offset;
-            if (remainingLength >= sizeof(int) + 1
-                && payload[offset] != 0
-                && payload[offset] != 1)
+            TryReadEncodedSlotPosition(payload, ref offset, out encodedSlotPosition);
+
+            if (!operationCode.HasValue)
             {
-                int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
-                int remainingAfterSlotPosition = payload.Length - (offset + sizeof(int));
-                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
-                    && (remainingAfterSlotPosition == 1 || remainingAfterSlotPosition >= 1 + sizeof(int)))
+                int trailingOpcodeOffset = offset;
+                if (TryReadRepairOpcode(payload, ref trailingOpcodeOffset, out short? trailingOperationCode))
                 {
-                    encodedSlotPosition = candidateEncodedSlotPosition;
-                    offset += sizeof(int);
+                    operationCode = trailingOperationCode;
+                    offset = trailingOpcodeOffset;
                 }
             }
 
-            remainingLength = payload.Length - offset;
-            if (remainingLength != 1 && remainingLength < 1 + sizeof(int))
+            if (!encodedSlotPosition.HasValue)
             {
-                error = "Repair-result payload must be empty, [result], [result+reason], [opcode+result], [opcode16+result], [slot+result], or [opcode/slot+result+reason(+text)].";
+                int trailingSlotOffset = offset;
+                if (TryReadEncodedSlotPosition(payload, ref trailingSlotOffset, out int? trailingSlotPosition))
+                {
+                    encodedSlotPosition = trailingSlotPosition;
+                    offset = trailingSlotOffset;
+                }
+            }
+
+            if (!TryDecodeResultAndReasonFromOffset(
+                    payload,
+                    offset,
+                    successIndexInTail: 0,
+                    out bool success,
+                    out int? reasonCode,
+                    out string statusText,
+                    out string decodeError))
+            {
+                error = decodeError ?? "Repair-result payload must be empty, [result], [result+reason], [opcode+result], [opcode16+result], [slot+result], [slot+opcode+result], or [opcode/slot+result+reason(+text)].";
                 return false;
-            }
-
-            bool success = payload[offset] == 0;
-            int? reasonCode = null;
-            string statusText = string.Empty;
-            if (remainingLength >= 1 + sizeof(int))
-            {
-                reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset + 1, sizeof(int)));
-                int textOffset = offset + 1 + sizeof(int);
-                int textLength = payload.Length - textOffset;
-                if (textLength > 0)
-                {
-                    statusText = DecodeResultStatusText(payload.AsSpan(textOffset, textLength));
-                }
             }
 
             result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
@@ -467,48 +466,102 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int offset = 1;
-            TryReadRepairOpcode(payload, ref offset, out short? operationCode);
-
+            int headerOffset = 1;
+            short? operationCode = null;
             int? encodedSlotPosition = null;
-            if (payload.Length - offset >= sizeof(int))
-            {
-                int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
-                int remainingAfterSlot = payload.Length - (offset + sizeof(int));
-                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
-                    && ShouldTreatResultFirstIntAsEncodedSlot(payload[0] == 0, candidateEncodedSlotPosition, remainingAfterSlot))
-                {
-                    encodedSlotPosition = candidateEncodedSlotPosition;
-                    offset += sizeof(int);
-                }
-            }
-
-            int remainingLength = payload.Length - offset;
-            if (remainingLength is not 0 && remainingLength < sizeof(int))
+            if (!TryReadResultFirstHeader(payload, ref headerOffset, out operationCode, out encodedSlotPosition))
             {
                 error = "Result-first repair-result payload has trailing bytes after the echoed opcode/slot.";
                 return false;
             }
 
-            int? reasonCode = null;
-            string statusText = string.Empty;
-            if (remainingLength >= sizeof(int))
+            if (!TryDecodeResultAndReasonFromOffset(
+                    payload,
+                    headerOffset - 1,
+                    successIndexInTail: 0,
+                    out bool success,
+                    out int? reasonCode,
+                    out string statusText,
+                    out string decodeError))
             {
-                reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
-                int textOffset = offset + sizeof(int);
-                int textLength = payload.Length - textOffset;
-                if (textLength > 0)
-                {
-                    statusText = DecodeResultStatusText(payload.AsSpan(textOffset, textLength));
-                }
+                error = decodeError ?? "Result-first repair-result payload has trailing bytes after the echoed opcode/slot.";
+                return false;
             }
 
             result = new ResultPayload(
-                success: payload[0] == 0,
+                success: success,
                 reasonCode,
                 operationCode,
                 encodedSlotPosition,
                 statusText);
+            return true;
+        }
+
+        private static bool TryReadResultFirstHeader(
+            byte[] payload,
+            ref int offset,
+            out short? operationCode,
+            out int? encodedSlotPosition)
+        {
+            operationCode = null;
+            encodedSlotPosition = null;
+
+            int bestOffset = offset;
+            short? bestOperationCode = null;
+            int? bestEncodedSlotPosition = null;
+            int bestScore = int.MinValue;
+
+            foreach (bool opcodeFirst in new[] { true, false })
+            {
+                int candidateOffset = offset;
+                short? candidateOperationCode = null;
+                int? candidateEncodedSlotPosition = null;
+
+                if (opcodeFirst)
+                {
+                    TryReadRepairOpcode(payload, ref candidateOffset, out candidateOperationCode);
+                    TryReadEncodedSlotPosition(payload, ref candidateOffset, out candidateEncodedSlotPosition);
+                }
+                else
+                {
+                    TryReadEncodedSlotPosition(payload, ref candidateOffset, out candidateEncodedSlotPosition);
+                    TryReadRepairOpcode(payload, ref candidateOffset, out candidateOperationCode);
+                }
+
+                int remaining = payload.Length - candidateOffset;
+                if (remaining != 0 && remaining < sizeof(short))
+                {
+                    continue;
+                }
+
+                int score = candidateOffset - offset;
+                if (candidateOperationCode.HasValue)
+                {
+                    score += 4;
+                }
+
+                if (candidateEncodedSlotPosition.HasValue)
+                {
+                    score += 2;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestOffset = candidateOffset;
+                    bestOperationCode = candidateOperationCode;
+                    bestEncodedSlotPosition = candidateEncodedSlotPosition;
+                }
+            }
+
+            if (bestScore < 0)
+            {
+                return false;
+            }
+
+            offset = bestOffset;
+            operationCode = bestOperationCode;
+            encodedSlotPosition = bestEncodedSlotPosition;
             return true;
         }
 
@@ -528,6 +581,92 @@ namespace HaCreator.MapSimulator
             }
 
             return success && remainingAfterSlot == 0;
+        }
+
+        private static bool TryReadEncodedSlotPosition(byte[] payload, ref int offset, out int? encodedSlotPosition)
+        {
+            encodedSlotPosition = null;
+            if (payload == null || payload.Length - offset < sizeof(int))
+            {
+                return false;
+            }
+
+            int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            int remainingAfterSlot = payload.Length - (offset + sizeof(int));
+            if (!LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
+                || !ShouldTreatResultFirstIntAsEncodedSlot(success: true, candidateEncodedSlotPosition, remainingAfterSlot))
+            {
+                return false;
+            }
+
+            encodedSlotPosition = candidateEncodedSlotPosition;
+            offset += sizeof(int);
+            return true;
+        }
+
+        private static bool TryDecodeResultAndReasonFromOffset(
+            byte[] payload,
+            int offset,
+            int successIndexInTail,
+            out bool success,
+            out int? reasonCode,
+            out string statusText,
+            out string error)
+        {
+            success = true;
+            reasonCode = null;
+            statusText = string.Empty;
+            error = null;
+
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                error = "Repair-result payload is missing the result byte.";
+                return false;
+            }
+
+            int remainingLength = payload.Length - offset;
+            if (remainingLength < 1 || successIndexInTail < 0 || successIndexInTail >= remainingLength)
+            {
+                error = "Repair-result payload is missing the result byte.";
+                return false;
+            }
+
+            byte resultByte = payload[offset + successIndexInTail];
+            if (resultByte is not (byte)0 and not (byte)1)
+            {
+                error = "Repair-result payload result byte must be 0 (success) or 1 (failure).";
+                return false;
+            }
+
+            success = resultByte == 0;
+            int reasonOffset = offset + successIndexInTail + 1;
+            int reasonPayloadLength = payload.Length - reasonOffset;
+            if (reasonPayloadLength == 0)
+            {
+                return true;
+            }
+
+            if (reasonPayloadLength >= sizeof(int))
+            {
+                reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int)));
+                int textOffset = reasonOffset + sizeof(int);
+                int textLength = payload.Length - textOffset;
+                if (textLength > 0)
+                {
+                    statusText = DecodeResultStatusText(payload.AsSpan(textOffset, textLength));
+                }
+
+                return true;
+            }
+
+            if (reasonPayloadLength == sizeof(short))
+            {
+                reasonCode = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(reasonOffset, sizeof(short)));
+                return true;
+            }
+
+            error = "Repair-result payload reason segment must be Int16 or Int32 when present.";
+            return false;
         }
 
         private static bool TryReadRepairOpcode(byte[] payload, ref int offset, out short? operationCode)

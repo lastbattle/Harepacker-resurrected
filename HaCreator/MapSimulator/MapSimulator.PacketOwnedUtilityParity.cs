@@ -51,6 +51,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedRadioUiFrameDelayMs = 150;
         private const int PacketOwnedRadioUiFadeDurationMs = 100;
         private const int PacketOwnedRadioUpdatePollIntervalMs = 2000;
+        private const int PacketOwnedEventSoundPathTemplateStringPoolId = 0x0A23;
+        private const int PacketOwnedMinigameSoundPathPrefixStringPoolId = 0x08C4;
         private const int PacketOwnedClassCompetitionAuthRefreshIntervalMs = 180000;
         private const int PacketOwnedClassCompetitionAuthLifetimeMs = 300000;
         private const int PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs = 250;
@@ -362,7 +364,7 @@ namespace HaCreator.MapSimulator
         private int _messengerOfficialSessionBridgeConfiguredListenPort = MessengerOfficialSessionBridgeManager.DefaultListenPort;
         private string _messengerOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
         private int _messengerOfficialSessionBridgeConfiguredRemotePort;
-        private ushort _messengerOfficialSessionBridgeConfiguredInboundOpcode = MessengerOfficialSessionBridgeManager.DefaultInboundResultOpcode;
+        private ushort _messengerOfficialSessionBridgeConfiguredInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", 0);
         private string _messengerOfficialSessionBridgeConfiguredProcessSelector;
         private int? _messengerOfficialSessionBridgeConfiguredLocalPort;
         private const int MessengerOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
@@ -372,7 +374,7 @@ namespace HaCreator.MapSimulator
         private int _mapleTvOfficialSessionBridgeConfiguredListenPort = 18505;
         private string _mapleTvOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
         private int _mapleTvOfficialSessionBridgeConfiguredRemotePort;
-        private ushort _mapleTvOfficialSessionBridgeConfiguredInboundOpcode = MapleTvRuntime.PacketTypeSetMessage;
+        private ushort _mapleTvOfficialSessionBridgeConfiguredInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("MapleTV", 0);
         private string _mapleTvOfficialSessionBridgeConfiguredProcessSelector;
         private int? _mapleTvOfficialSessionBridgeConfiguredLocalPort;
         private const int MapleTvOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
@@ -1503,7 +1505,15 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            NpcItem targetNpc = FindNpcById(entry.TargetNpcId) ?? CreateNpcPreview(entry.TargetNpcId, includeTooltips: false);
+            NpcItem targetNpc = CreateNpcPreview(entry.TargetNpcId, includeTooltips: false) ?? FindNpcById(entry.TargetNpcId);
+            if (targetNpc?.NpcInstance?.NpcInfo == null)
+            {
+                _chat?.AddErrorMessage(
+                    $"Packet-authored delivery could not resolve NPC template #{entry.TargetNpcId}, so the created-NPC interaction stayed closed.",
+                    currTickCount);
+                return;
+            }
+
             string npcName = targetNpc?.NpcInstance?.NpcInfo?.StringName;
             if (string.IsNullOrWhiteSpace(npcName))
             {
@@ -2637,7 +2647,7 @@ namespace HaCreator.MapSimulator
             string listeningText = _messengerOfficialSessionBridge.IsRunning
                 ? $"listening on 127.0.0.1:{_messengerOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_messengerOfficialSessionBridgeConfiguredListenPort}";
-            return $"Messenger session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, inbound opcode {_messengerOfficialSessionBridgeConfiguredInboundOpcode}. {_messengerOfficialSessionBridge.DescribeStatus()}";
+            return $"Messenger session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, inbound opcode {_messengerOfficialSessionBridgeConfiguredInboundOpcode}, recovered set {string.Join("/", PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes("Messenger"))}. {_messengerOfficialSessionBridge.DescribeStatus()}";
         }
 
         private string DescribeMapleTvOfficialSessionBridgeStatus()
@@ -2655,7 +2665,7 @@ namespace HaCreator.MapSimulator
             string listeningText = _mapleTvOfficialSessionBridge.IsRunning
                 ? $"listening on 127.0.0.1:{_mapleTvOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_mapleTvOfficialSessionBridgeConfiguredListenPort}";
-            return $"MapleTV session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, inbound opcode {_mapleTvOfficialSessionBridgeConfiguredInboundOpcode}, additional inbound opcodes {MapleTvRuntime.PacketTypeClearMessage}/{MapleTvRuntime.PacketTypeSendMessageResult}, outbound opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode}. {_mapleTvOfficialSessionBridge.DescribeStatus()}";
+            return $"MapleTV session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, inbound opcode {_mapleTvOfficialSessionBridgeConfiguredInboundOpcode}, recovered set {string.Join("/", PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes("MapleTV"))}, outbound opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode}. {_mapleTvOfficialSessionBridge.DescribeStatus()}";
         }
 
         private void EnsureLocalUtilityOfficialSessionBridgeState(bool shouldRun)
@@ -3488,16 +3498,18 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedMesoGiveFailedPayload(byte[] payload, out string message)
         {
             message = null;
-            if (payload != null && payload.Length > 0)
+            if (!PacketOwnedRewardResultRuntime.TryDecodeMesoGiveFailed(payload, out int trailingByteCount, out string decodeError))
             {
-                message = $"Meso-give failure payload should be empty, but received {payload.Length} byte(s).";
+                message = decodeError ?? "Meso-give failure payload could not be decoded.";
                 return false;
             }
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.GetMesoGiveFailedText();
             ShowPacketOwnedRewardResultNotice(noticeText);
-            message = "Applied packet-owned meso-give failure through the dedicated reward-result notice owner.";
+            message = trailingByteCount > 0
+                ? $"Applied packet-owned meso-give failure through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
+                : "Applied packet-owned meso-give failure through the dedicated reward-result notice owner.";
             return true;
         }
 
@@ -3527,16 +3539,18 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedRandomMesobagFailedPayload(byte[] payload, out string message)
         {
             message = null;
-            if (payload != null && payload.Length > 0)
+            if (!PacketOwnedRewardResultRuntime.TryDecodeRandomMesoBagFailed(payload, out int trailingByteCount, out string decodeError))
             {
-                message = $"Random-mesobag failure payload should be empty, but received {payload.Length} byte(s).";
+                message = decodeError ?? "Random-mesobag failure payload could not be decoded.";
                 return false;
             }
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.GetRandomMesoBagFailedText();
             ShowPacketOwnedRewardResultNotice(noticeText);
-            message = "Applied packet-owned random meso sack failure through the dedicated reward-result notice owner.";
+            message = trailingByteCount > 0
+                ? $"Applied packet-owned random meso sack failure through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
+                : "Applied packet-owned random meso sack failure through the dedicated reward-result notice owner.";
             return true;
         }
 
@@ -4437,6 +4451,44 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodeQuestAlarmRegistrationSyncCountPayload(
+                    payload,
+                    out opened,
+                    out minimized,
+                    out autoRegisterEnabled,
+                    out clearHiddenAutoTombstones,
+                    out questIds,
+                    out error))
+            {
+                return true;
+            }
+
+            return TryDecodeQuestAlarmRegistrationSyncFixedSlotPayload(
+                payload,
+                out opened,
+                out minimized,
+                out autoRegisterEnabled,
+                out clearHiddenAutoTombstones,
+                out questIds,
+                out error);
+        }
+
+        private static bool TryDecodeQuestAlarmRegistrationSyncCountPayload(
+            byte[] payload,
+            out bool opened,
+            out bool minimized,
+            out bool autoRegisterEnabled,
+            out bool clearHiddenAutoTombstones,
+            out int[] questIds,
+            out string error)
+        {
+            opened = false;
+            minimized = true;
+            autoRegisterEnabled = false;
+            clearHiddenAutoTombstones = false;
+            questIds = Array.Empty<int>();
+            error = null;
+
             using var stream = new MemoryStream(payload, writable: false);
             using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
 
@@ -4458,8 +4510,48 @@ namespace HaCreator.MapSimulator
             minimized = (flags & 0x02) != 0;
             autoRegisterEnabled = (flags & 0x04) != 0;
             clearHiddenAutoTombstones = (flags & 0x08) != 0;
+            questIds = DecodeQuestAlarmRegistrationQuestIds(reader, count);
+            return true;
+        }
 
-            List<int> decodedQuestIds = new(count);
+        private static bool TryDecodeQuestAlarmRegistrationSyncFixedSlotPayload(
+            byte[] payload,
+            out bool opened,
+            out bool minimized,
+            out bool autoRegisterEnabled,
+            out bool clearHiddenAutoTombstones,
+            out int[] questIds,
+            out string error)
+        {
+            opened = false;
+            minimized = true;
+            autoRegisterEnabled = false;
+            clearHiddenAutoTombstones = false;
+            questIds = Array.Empty<int>();
+            error = "Quest-alarm registration-sync payload quest-id list length does not match its count.";
+
+            int expectedLength = sizeof(byte) + (5 * sizeof(ushort));
+            if (payload == null || payload.Length != expectedLength)
+            {
+                return false;
+            }
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+
+            byte flags = reader.ReadByte();
+            opened = (flags & 0x01) != 0;
+            minimized = (flags & 0x02) != 0;
+            autoRegisterEnabled = (flags & 0x04) != 0;
+            clearHiddenAutoTombstones = (flags & 0x08) != 0;
+            questIds = DecodeQuestAlarmRegistrationQuestIds(reader, 5);
+            error = null;
+            return true;
+        }
+
+        private static int[] DecodeQuestAlarmRegistrationQuestIds(BinaryReader reader, int count)
+        {
+            List<int> decodedQuestIds = new(Math.Max(0, count));
             for (int i = 0; i < count; i++)
             {
                 int questId = reader.ReadUInt16();
@@ -4469,8 +4561,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            questIds = decodedQuestIds.ToArray();
-            return true;
+            return decodedQuestIds.ToArray();
         }
 
         private bool TryApplyPacketOwnedMakerResultPayload(byte[] payload, out string message)
@@ -7170,7 +7261,18 @@ namespace HaCreator.MapSimulator
             return !string.IsNullOrWhiteSpace(formattedDescriptor);
         }
 
-        private static IEnumerable<string> BuildPacketOwnedWzSoundDescriptorCandidates(string descriptor, string defaultImageName)
+        internal static IReadOnlyList<string> BuildPacketOwnedWzSoundDescriptorCandidatesForTests(
+            string descriptor,
+            string defaultImageName,
+            bool strictClientSoundFamily)
+        {
+            return BuildPacketOwnedWzSoundDescriptorCandidates(descriptor, defaultImageName, strictClientSoundFamily).ToArray();
+        }
+
+        private static IEnumerable<string> BuildPacketOwnedWzSoundDescriptorCandidates(
+            string descriptor,
+            string defaultImageName,
+            bool strictClientSoundFamily)
         {
             string normalized = NormalizePacketOwnedClientSoundDescriptor(descriptor);
             if (string.IsNullOrWhiteSpace(normalized))
@@ -7187,34 +7289,106 @@ namespace HaCreator.MapSimulator
                     yield return directDescriptor;
                 }
             }
-            else
+
+            if (strictClientSoundFamily
+                && TryBuildPacketOwnedClientSoundTemplateDescriptor(normalized, defaultImageName, out string templateDescriptor)
+                && yieldedDescriptors.Add(templateDescriptor))
             {
-                if (!string.IsNullOrWhiteSpace(defaultImageName))
-                {
-                    string defaultDescriptor = $"{NormalizePacketOwnedSoundImageName(defaultImageName)}/{normalized}";
-                    if (yieldedDescriptors.Add(defaultDescriptor))
-                    {
-                        yield return defaultDescriptor;
-                    }
-                }
+                yield return templateDescriptor;
+            }
 
-                string[] fallbackImages =
+            if (!string.IsNullOrWhiteSpace(defaultImageName))
+            {
+                string defaultDescriptor = $"{NormalizePacketOwnedSoundImageName(defaultImageName)}/{normalized}";
+                if (yieldedDescriptors.Add(defaultDescriptor))
                 {
-                    "Field.img",
-                    "UI.img",
-                    "Game.img",
-                    "MiniGame.img",
-                };
-
-                for (int i = 0; i < fallbackImages.Length; i++)
-                {
-                    string fallbackDescriptor = $"{fallbackImages[i]}/{normalized}";
-                    if (yieldedDescriptors.Add(fallbackDescriptor))
-                    {
-                        yield return fallbackDescriptor;
-                    }
+                    yield return defaultDescriptor;
                 }
             }
+
+            if (strictClientSoundFamily)
+            {
+                yield break;
+            }
+
+            string[] fallbackImages =
+            {
+                "Field.img",
+                "UI.img",
+                "Game.img",
+                "MiniGame.img",
+            };
+
+            for (int i = 0; i < fallbackImages.Length; i++)
+            {
+                string fallbackDescriptor = $"{fallbackImages[i]}/{normalized}";
+                if (yieldedDescriptors.Add(fallbackDescriptor))
+                {
+                    yield return fallbackDescriptor;
+                }
+            }
+        }
+
+        private static bool TryBuildPacketOwnedClientSoundTemplateDescriptor(
+            string descriptor,
+            string defaultImageName,
+            out string templateDescriptor)
+        {
+            templateDescriptor = null;
+            string normalizedDefaultImage = NormalizePacketOwnedSoundImageName(defaultImageName);
+
+            if (string.Equals(normalizedDefaultImage, "Field.img", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryFormatPacketOwnedClientSoundDescriptorTemplate(
+                    PacketOwnedEventSoundPathTemplateStringPoolId,
+                    descriptor,
+                    out templateDescriptor);
+            }
+
+            if (string.Equals(normalizedDefaultImage, "MiniGame.img", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryFormatPacketOwnedClientSoundDescriptorPrefix(
+                    PacketOwnedMinigameSoundPathPrefixStringPoolId,
+                    descriptor,
+                    out templateDescriptor);
+            }
+
+            return false;
+        }
+
+        private static bool TryFormatPacketOwnedClientSoundDescriptorPrefix(
+            int stringPoolId,
+            string descriptor,
+            out string formattedDescriptor)
+        {
+            formattedDescriptor = null;
+            string normalized = NormalizePacketOwnedClientSoundDescriptor(descriptor);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            string prefix = MapleStoryStringPool.GetOrNull(stringPoolId);
+            if (string.IsNullOrWhiteSpace(prefix))
+            {
+                return false;
+            }
+
+            string normalizedPrefix = NormalizePacketOwnedClientSoundDescriptor(prefix);
+            if (string.IsNullOrWhiteSpace(normalizedPrefix))
+            {
+                return false;
+            }
+
+            if (normalizedPrefix.Contains("%s", StringComparison.Ordinal))
+            {
+                formattedDescriptor = NormalizePacketOwnedClientSoundDescriptor(string.Format(prefix, normalized));
+                return !string.IsNullOrWhiteSpace(formattedDescriptor);
+            }
+
+            formattedDescriptor = NormalizePacketOwnedClientSoundDescriptor(
+                $"{normalizedPrefix.TrimEnd('/')}/{normalized}");
+            return !string.IsNullOrWhiteSpace(formattedDescriptor);
         }
 
         private static bool TryCreatePacketOwnedRadioTrackResolution(
@@ -7405,16 +7579,16 @@ namespace HaCreator.MapSimulator
                 return normalizedFallback;
             }
 
-            if (propertyContainer["name"] is WzStringProperty nameProperty
-                && !string.IsNullOrWhiteSpace(nameProperty.Value))
-            {
-                return nameProperty.Value.Trim();
-            }
-
             if (propertyContainer["Name"] is WzStringProperty clientNameProperty
                 && !string.IsNullOrWhiteSpace(clientNameProperty.Value))
             {
                 return clientNameProperty.Value.Trim();
+            }
+
+            if (propertyContainer["name"] is WzStringProperty nameProperty
+                && !string.IsNullOrWhiteSpace(nameProperty.Value))
+            {
+                return nameProperty.Value.Trim();
             }
 
             return normalizedFallback;
@@ -10494,10 +10668,15 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private string ApplyPacketOwnedEventSound(string descriptor, bool minigame)
+        private string ApplyPacketOwnedEventSound(string descriptor, bool minigame, bool strictClientSoundFamily = false)
         {
             StampPacketOwnedUtilityRequestState();
-            if (!TryPlayPacketOwnedWzSound(descriptor, minigame ? "MiniGame.img" : "Field.img", out string resolvedDescriptor, out string error))
+            if (!TryPlayPacketOwnedWzSound(
+                    descriptor,
+                    minigame ? "MiniGame.img" : "Field.img",
+                    out string resolvedDescriptor,
+                    out string error,
+                    strictClientSoundFamily))
             {
                 ShowUtilityFeedbackMessage(error);
                 return error;
@@ -10526,12 +10705,29 @@ namespace HaCreator.MapSimulator
             return TryPlayPacketOwnedWzSound(descriptor, "UI.img", out _, out _);
         }
 
-        private bool TryPlayPacketOwnedWzSound(string descriptor, string defaultImageName, out string resolvedDescriptor, out string error)
+        private bool TryPlayPacketOwnedWzSound(
+            string descriptor,
+            string defaultImageName,
+            out string resolvedDescriptor,
+            out string error,
+            bool strictClientSoundFamily = false)
         {
-            return TryPlayPacketOwnedWzSound(descriptor, defaultImageName, 1f, out resolvedDescriptor, out error);
+            return TryPlayPacketOwnedWzSound(
+                descriptor,
+                defaultImageName,
+                1f,
+                out resolvedDescriptor,
+                out error,
+                strictClientSoundFamily);
         }
 
-        private bool TryPlayPacketOwnedWzSound(string descriptor, string defaultImageName, float volumeScale, out string resolvedDescriptor, out string error)
+        private bool TryPlayPacketOwnedWzSound(
+            string descriptor,
+            string defaultImageName,
+            float volumeScale,
+            out string resolvedDescriptor,
+            out string error,
+            bool strictClientSoundFamily = false)
         {
             resolvedDescriptor = null;
             error = null;
@@ -10542,7 +10738,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryResolvePacketOwnedWzSound(descriptor, defaultImageName, out WzBinaryProperty soundProperty, out resolvedDescriptor))
+            if (!TryResolvePacketOwnedWzSound(
+                    descriptor,
+                    defaultImageName,
+                    out WzBinaryProperty soundProperty,
+                    out resolvedDescriptor,
+                    strictClientSoundFamily))
             {
                 error = $"Packet-owned sound '{descriptor}' was not found in the loaded Sound/*.img data.";
                 return false;
@@ -10554,12 +10755,20 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private static bool TryResolvePacketOwnedWzSound(string descriptor, string defaultImageName, out WzBinaryProperty soundProperty, out string resolvedDescriptor)
+        private static bool TryResolvePacketOwnedWzSound(
+            string descriptor,
+            string defaultImageName,
+            out WzBinaryProperty soundProperty,
+            out string resolvedDescriptor,
+            bool strictClientSoundFamily)
         {
             soundProperty = null;
             resolvedDescriptor = null;
 
-            foreach (string descriptorCandidate in BuildPacketOwnedWzSoundDescriptorCandidates(descriptor, defaultImageName))
+            foreach (string descriptorCandidate in BuildPacketOwnedWzSoundDescriptorCandidates(
+                         descriptor,
+                         defaultImageName,
+                         strictClientSoundFamily))
             {
                 if (!TrySplitPacketOwnedClientSoundDescriptor(descriptorCandidate, out string imageName, out string propertyPath))
                 {
@@ -12215,7 +12424,10 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            message = ApplyPacketOwnedEventSound(descriptor, minigame);
+            message = ApplyPacketOwnedEventSound(
+                descriptor,
+                minigame,
+                strictClientSoundFamily: requireExactClientPayload);
             return true;
         }
 
@@ -12778,6 +12990,11 @@ namespace HaCreator.MapSimulator
 
             resetMarker = rawResetMarker == 1;
             operationCount = payload[1];
+            if (payload.Length < 2 + operationCount)
+            {
+                return false;
+            }
+
             return true;
         }
 
@@ -13513,7 +13730,10 @@ namespace HaCreator.MapSimulator
             }
             else if (hasOwnerState)
             {
-                _packetOwnedRankingOwnerState = ownerState ?? new PacketOwnedRankingOwnerStateSnapshot();
+                _packetOwnedRankingOwnerState = NormalizePacketOwnedRankingOwnerState(
+                    ownerState,
+                    _lastRankingOpenTick,
+                    Environment.TickCount);
             }
 
             _lastPacketOwnedRankingTick = Environment.TickCount;
@@ -13528,6 +13748,39 @@ namespace HaCreator.MapSimulator
                 allowVisibleReset: false);
             message = _lastPacketOwnedRankingSummary;
             return true;
+        }
+
+        private static PacketOwnedRankingOwnerStateSnapshot NormalizePacketOwnedRankingOwnerState(
+            PacketOwnedRankingOwnerStateSnapshot ownerState,
+            int rankingOpenTick,
+            int nowTick)
+        {
+            PacketOwnedRankingOwnerStateSnapshot normalized = ownerState ?? new PacketOwnedRankingOwnerStateSnapshot();
+            if (normalized.IsLoading != true || normalized.LoadingStartTick != int.MinValue)
+            {
+                return normalized;
+            }
+
+            int resolvedLoadingStartTick = rankingOpenTick != int.MinValue
+                ? rankingOpenTick
+                : nowTick;
+            return new PacketOwnedRankingOwnerStateSnapshot
+            {
+                Subtitle = normalized.Subtitle,
+                StatusText = normalized.StatusText,
+                NavigationCaption = normalized.NavigationCaption,
+                NavigationSeedText = normalized.NavigationSeedText,
+                NavigateUrl = normalized.NavigateUrl,
+                NavigationHostText = normalized.NavigationHostText,
+                NavigationRequestText = normalized.NavigationRequestText,
+                NavigationStateText = normalized.NavigationStateText,
+                ServerHost = normalized.ServerHost,
+                TemplateId = normalized.TemplateId,
+                WorldId = normalized.WorldId,
+                CharacterId = normalized.CharacterId,
+                IsLoading = normalized.IsLoading,
+                LoadingStartTick = resolvedLoadingStartTick
+            };
         }
 
         private static bool TryDecodePacketOwnedEventAlarmTextPayload(

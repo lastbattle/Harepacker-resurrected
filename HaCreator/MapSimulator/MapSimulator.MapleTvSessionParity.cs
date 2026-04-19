@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMapleTvSessionCommand(string[] args)
         {
-            const string usage = "Usage: /mapletv session [status|table|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send consume <inventoryPosition> [itemId]|queue consume <inventoryPosition> [itemId]|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [405|406|407|table]|startauto <listenPort> <remotePort> [405|406|407|table] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /mapletv session [status|table|discover <remotePort> [processName|pid] [localPort]|history [count]|historyin [count]|clearhistory|clearhistoryin|replay <historyIndex>|send consume <inventoryPosition> [itemId]|queue consume <inventoryPosition> [itemId]|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]|startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMapleTvOfficialSessionBridgeStatus());
@@ -164,15 +164,15 @@ namespace HaCreator.MapSimulator
                     || !int.TryParse(args[3], out int remotePort)
                     || remotePort <= 0)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session start <listenPort> <serverHost> <serverPort> [405|406|407|table]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]");
                 }
 
-                ushort inboundOpcode = MapleTvRuntime.PacketTypeSetMessage;
+                ushort inboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("MapleTV", 0);
                 if (args.Length >= 5
-                    && !TryResolveMapleTvInboundOpcodeToken(args[4], out inboundOpcode))
+                    && !PacketOwnedSocialUtilityPacketTable.TryResolveRecoveredInboundOpcodeToken("MapleTV", args[4], out inboundOpcode))
                 {
                     return ChatCommandHandler.CommandResult.Error(
-                        $"Usage: /mapletv session start <listenPort> <serverHost> <serverPort> [405|406|407|table]. {DescribeMapleTvInboundOpcodeSet()}");
+                        $"Usage: /mapletv session start <listenPort> <serverHost> <serverPort> [inboundOpcode|table]. {PacketOwnedSocialUtilityPacketTable.DescribeRecoveredInboundOpcodeSet("MapleTV")}");
                 }
 
                 _mapleTvOfficialSessionBridgeEnabled = true;
@@ -195,22 +195,22 @@ namespace HaCreator.MapSimulator
                     || !int.TryParse(args[2], out int autoRemotePort)
                     || autoRemotePort <= 0)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session startauto <listenPort> <remotePort> [405|406|407|table] [processName|pid] [localPort]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]");
                 }
 
                 int argumentIndex = 3;
-                ushort autoInboundOpcode = MapleTvRuntime.PacketTypeSetMessage;
-                if (args.Length >= 4 && TryResolveMapleTvInboundOpcodeToken(args[3], out ushort parsedInboundOpcode))
+                ushort autoInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("MapleTV", 0);
+                if (args.Length >= 4
+                    && PacketOwnedSocialUtilityPacketTable.TryResolveRecoveredInboundOpcodeToken("MapleTV", args[3], out ushort parsedInboundOpcode))
                 {
                     autoInboundOpcode = parsedInboundOpcode;
                     argumentIndex = 4;
                 }
                 else if (args.Length >= 4
-                         && IsMapleTvInboundOpcodeToken(args[3])
-                         && !TryResolveMapleTvInboundOpcodeToken(args[3], out _))
+                         && IsMapleTvInboundOpcodeToken(args[3]))
                 {
                     return ChatCommandHandler.CommandResult.Error(
-                        $"Usage: /mapletv session startauto <listenPort> <remotePort> [405|406|407|table] [processName|pid] [localPort]. {DescribeMapleTvInboundOpcodeSet()}");
+                        $"Usage: /mapletv session startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]. {PacketOwnedSocialUtilityPacketTable.DescribeRecoveredInboundOpcodeSet("MapleTV")}");
                 }
 
                 string processSelector = args.Length >= argumentIndex + 1 ? args[argumentIndex] : null;
@@ -219,7 +219,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (!int.TryParse(args[argumentIndex + 1], out int parsedLocalPort) || parsedLocalPort <= 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session startauto <listenPort> <remotePort> [405|406|407|table] [processName|pid] [localPort]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /mapletv session startauto <listenPort> <remotePort> [inboundOpcode|table] [processName|pid] [localPort]");
                     }
 
                     localPortFilter = parsedLocalPort;
@@ -252,7 +252,7 @@ namespace HaCreator.MapSimulator
                 _mapleTvOfficialSessionBridgeUseDiscovery = false;
                 _mapleTvOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
                 _mapleTvOfficialSessionBridgeConfiguredRemotePort = 0;
-                _mapleTvOfficialSessionBridgeConfiguredInboundOpcode = MapleTvRuntime.PacketTypeSetMessage;
+                _mapleTvOfficialSessionBridgeConfiguredInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("MapleTV", 0);
                 _mapleTvOfficialSessionBridgeConfiguredProcessSelector = null;
                 _mapleTvOfficialSessionBridgeConfiguredLocalPort = null;
                 _mapleTvOfficialSessionBridge.Stop();
@@ -260,11 +260,6 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(usage);
-        }
-
-        private static string DescribeMapleTvInboundOpcodeSet()
-        {
-            return $"Recovered MapleTV inbound opcodes are {MapleTvRuntime.PacketTypeSetMessage}/{MapleTvRuntime.PacketTypeClearMessage}/{MapleTvRuntime.PacketTypeSendMessageResult}.";
         }
 
         private static bool IsMapleTvInboundOpcodeToken(string token)
@@ -279,39 +274,6 @@ namespace HaCreator.MapSimulator
                 || string.Equals(normalizedToken, "default", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedToken, "auto", StringComparison.OrdinalIgnoreCase)
                 || ushort.TryParse(normalizedToken, out _);
-        }
-
-        private static bool TryResolveMapleTvInboundOpcodeToken(string token, out ushort inboundOpcode)
-        {
-            inboundOpcode = MapleTvRuntime.PacketTypeSetMessage;
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                return true;
-            }
-
-            string normalizedToken = token.Trim();
-            if (string.Equals(normalizedToken, "table", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedToken, "default", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedToken, "auto", StringComparison.OrdinalIgnoreCase))
-            {
-                inboundOpcode = MapleTvRuntime.PacketTypeSetMessage;
-                return true;
-            }
-
-            if (!ushort.TryParse(normalizedToken, out ushort parsedOpcode))
-            {
-                return false;
-            }
-
-            if (parsedOpcode == MapleTvRuntime.PacketTypeSetMessage
-                || parsedOpcode == MapleTvRuntime.PacketTypeClearMessage
-                || parsedOpcode == MapleTvRuntime.PacketTypeSendMessageResult)
-            {
-                inboundOpcode = parsedOpcode;
-                return true;
-            }
-
-            return false;
         }
 
         private bool TryMirrorMapleTvConsumeCashItemUseClientRequest(

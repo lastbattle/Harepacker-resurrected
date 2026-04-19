@@ -954,10 +954,136 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<string>();
             }
 
-            return QuestAlarmTextLayout.WrapText(
-                text,
-                Math.Min(Math.Max(1, width - (ClientCollectionTextAnalyzerMargin * 2)), ClientCollectionTextAnalyzerWrapWidth),
-                segment => measureTextWidth?.Invoke(segment, styleIndex) ?? MeasureApproximateCollectionTextWidth(segment));
+            int wrapWidth = Math.Min(
+                Math.Max(1, width - (ClientCollectionTextAnalyzerMargin * 2)),
+                ClientCollectionTextAnalyzerWrapWidth);
+            Func<string, float> measureWidth = segment => measureTextWidth?.Invoke(segment, styleIndex) ?? MeasureApproximateCollectionTextWidth(segment);
+            return WrapCollectionTextWithClientAnalyzerSpacing(text, wrapWidth, measureWidth);
+        }
+
+        private static IReadOnlyList<string> WrapCollectionTextWithClientAnalyzerSpacing(string text, int maxWidth, Func<string, float> measureWidth)
+        {
+            if (string.IsNullOrWhiteSpace(text) || measureWidth == null || maxWidth <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> lines = new();
+            string[] blocks = text.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
+            foreach (string block in blocks)
+            {
+                string trimmedBlock = block.Trim();
+                if (trimmedBlock.Length == 0)
+                {
+                    continue;
+                }
+
+                string currentLine = string.Empty;
+                foreach ((string token, bool isWhitespace) in TokenizeCollectionBlock(trimmedBlock))
+                {
+                    if (isWhitespace)
+                    {
+                        if (string.IsNullOrEmpty(currentLine))
+                        {
+                            continue;
+                        }
+
+                        string whitespaceCandidate = currentLine + token;
+                        if (measureWidth(whitespaceCandidate) <= maxWidth)
+                        {
+                            currentLine = whitespaceCandidate;
+                        }
+                        else
+                        {
+                            lines.Add(currentLine.TrimEnd());
+                            currentLine = string.Empty;
+                        }
+
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(currentLine))
+                    {
+                        AppendTokenWithHardSplit(lines, ref currentLine, token, maxWidth, measureWidth);
+                        continue;
+                    }
+
+                    string candidate = currentLine + token;
+                    if (measureWidth(candidate) <= maxWidth)
+                    {
+                        currentLine = candidate;
+                        continue;
+                    }
+
+                    lines.Add(currentLine.TrimEnd());
+                    currentLine = string.Empty;
+                    AppendTokenWithHardSplit(lines, ref currentLine, token, maxWidth, measureWidth);
+                }
+
+                if (!string.IsNullOrWhiteSpace(currentLine))
+                {
+                    lines.Add(currentLine.TrimEnd());
+                }
+            }
+
+            return lines;
+        }
+
+        private static IEnumerable<(string Token, bool IsWhitespace)> TokenizeCollectionBlock(string block)
+        {
+            if (string.IsNullOrEmpty(block))
+            {
+                yield break;
+            }
+
+            int index = 0;
+            while (index < block.Length)
+            {
+                bool isWhitespace = char.IsWhiteSpace(block[index]);
+                int start = index;
+                while (index < block.Length && char.IsWhiteSpace(block[index]) == isWhitespace)
+                {
+                    index++;
+                }
+
+                yield return (block[start..index], isWhitespace);
+            }
+        }
+
+        private static void AppendTokenWithHardSplit(
+            List<string> lines,
+            ref string currentLine,
+            string token,
+            int maxWidth,
+            Func<string, float> measureWidth)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                return;
+            }
+
+            if (measureWidth(token) <= maxWidth)
+            {
+                currentLine = token;
+                return;
+            }
+
+            string pending = string.Empty;
+            foreach (char character in token)
+            {
+                string candidate = pending + character;
+                if (pending.Length > 0 && measureWidth(candidate) > maxWidth)
+                {
+                    lines.Add(pending);
+                    pending = character.ToString();
+                }
+                else
+                {
+                    pending = candidate;
+                }
+            }
+
+            currentLine = pending;
         }
 
         private static int ResolveAnalyzedTextLeft(

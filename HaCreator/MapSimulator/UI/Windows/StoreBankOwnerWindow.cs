@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private const int RowCashIconRightX = 42;
         private const int RowPrimaryTextX = 53;
         private const int RowPrimaryTextY = 3;
+        private const int RowSecondaryTextX = 53;
         private const int RowSecondaryTextY = 20;
         private const int ScrollBarX = 190;
         private const int ScrollBarY = 93;
@@ -306,29 +307,34 @@ namespace HaCreator.MapSimulator.UI
         private void DrawRows(SpriteBatch sprite)
         {
             IReadOnlyList<StoreBankOwnerRowSnapshot> rows = GetRows();
-            int visibleCount = Math.Min(VisibleRowCount, Math.Max(0, rows.Count - _scrollOffset));
+            int ownerSlotCount = Math.Max(0, _runtime?.OwnerSlotCount ?? 0);
+            int visibleCount = VisibleRowCount;
             for (int i = 0; i < visibleCount; i++)
             {
                 int rowIndex = _scrollOffset + i;
-                StoreBankOwnerRowSnapshot row = rows[rowIndex];
                 int drawX = Position.X + RowX;
                 int drawY = Position.Y + RowY + (i * RowPitch);
 
-                if (_rowTexture != null && row.DrawsClientSlotBackground)
+                bool drawsClientSlotBackground = rowIndex < ownerSlotCount
+                    || (rowIndex >= 0 && rowIndex < rows.Count && rows[rowIndex].DrawsClientSlotBackground);
+                if (_rowTexture != null && drawsClientSlotBackground)
                 {
                     sprite.Draw(_rowTexture, new Vector2(drawX, drawY), Color.White);
                 }
 
-                if (rowIndex == _selectedRowIndex)
+                if (rowIndex >= 0 && rowIndex < rows.Count && rowIndex == _selectedRowIndex)
                 {
                     sprite.Draw(_selectionTexture, new Rectangle(drawX, drawY, RowWidth, RowHeight), new Color(255, 224, 128, 70));
                 }
 
-                if (_font == null)
+                DrawRowSeparator(sprite, drawX, drawY);
+
+                if (rowIndex < 0 || rowIndex >= rows.Count || _font == null)
                 {
                     continue;
                 }
 
+                StoreBankOwnerRowSnapshot row = rows[rowIndex];
                 DrawItemIcon(sprite, row, drawX, drawY);
 
                 string primary = TrimToWidth(row.PrimaryText, RowWidth - RowPrimaryTextX - 8f, 0.62f);
@@ -340,10 +346,20 @@ namespace HaCreator.MapSimulator.UI
                     Color.White,
                     0.62f);
 
+                string secondary = TrimToWidth(row.SecondaryText, RowWidth - RowSecondaryTextX - 40f, 0.52f);
+                if (!string.IsNullOrWhiteSpace(secondary))
+                {
+                    InventoryRenderUtil.DrawOutlinedText(
+                        sprite,
+                        _font,
+                        secondary,
+                        new Vector2(drawX + RowSecondaryTextX, drawY + RowSecondaryTextY),
+                        new Color(255, 235, 194),
+                        0.52f);
+                }
+
                 DrawClientStock(sprite, row, drawX, drawY);
                 DrawCashIcon(sprite, row, drawX, drawY);
-
-                DrawRowSeparator(sprite, drawX, drawY);
             }
         }
 

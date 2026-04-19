@@ -27,10 +27,12 @@ namespace HaCreator.MapSimulator.UI
             int BottomHeight,
             int ExtraPartCount);
 
-        private const int MaxNotices = 3;
-        // Client evidence: CUIStatusBar::FloatNotice passes 0x1388 to SetItemMsg,
-        // and CUIStatusBar::Update expires m_dwItemMsg/m_dwFloatNotice directly.
-        // Keep cooldown notices on the same fixed-duration, no-fade expiration seam.
+        private const int MaxNotices = 1;
+        // Client evidence:
+        // - CUIStatusBar::SetItemMsg refuses new notice layers while quiz/item/float notice layers exist.
+        // - CUIStatusBar::FloatNotice passes 0x1388 to SetItemMsg before creating its own notice layer.
+        // - CUIStatusBar::Update expires m_dwItemMsg/m_dwFloatNotice directly on timer overflow.
+        // Keep cooldown notices on the same single-layer, fixed-duration, no-fade expiration seam.
         private const int ClientNoticeDurationMs = 5000;
         private const int SlideSpeed = 0;
         private const float SpawnSlideOffset = 0f;
@@ -495,6 +497,11 @@ namespace HaCreator.MapSimulator.UI
         internal static int ResolveNoticeDurationForClientParity(SkillCooldownNoticeType type)
         {
             return ClientNoticeDurationMs;
+        }
+
+        internal static int ResolveMaxConcurrentNoticesForClientParity()
+        {
+            return MaxNotices;
         }
 
         private void DrawTiledNoticeCenter(SpriteBatch spriteBatch, int x, int startY, int centerHeight, Color color)

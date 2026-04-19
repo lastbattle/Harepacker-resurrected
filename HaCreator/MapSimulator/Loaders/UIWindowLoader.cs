@@ -9217,7 +9217,9 @@ namespace HaCreator.MapSimulator.Loaders
                 return sourceTexture;
             }
 
-            Color[] clientFrameData = CreateAccountMoreInfoClientFramePixels(clientOwnerWidth, clientOwnerHeight);
+            // CWnd::SetBackgrnd creates a destination canvas and copies the source
+            // canvas into it; it does not seed a synthetic frame color first.
+            Color[] clientFrameData = new Color[clientOwnerWidth * clientOwnerHeight];
             Color[] sourceData = new Color[sourceTexture.Width * sourceTexture.Height];
             sourceTexture.GetData(sourceData);
 
@@ -9227,9 +9229,11 @@ namespace HaCreator.MapSimulator.Loaders
             int sourceStartY = Math.Max(0, -sourceOffset.Y);
             int copyWidth = Math.Min(clientOwnerWidth - destinationStartX, sourceTexture.Width - sourceStartX);
             int copyHeight = Math.Min(clientOwnerHeight - destinationStartY, sourceTexture.Height - sourceStartY);
+            Texture2D clientSizedTexture = new Texture2D(device, clientOwnerWidth, clientOwnerHeight);
             if (copyWidth <= 0 || copyHeight <= 0)
             {
-                return new Texture2D(device, clientOwnerWidth, clientOwnerHeight);
+                clientSizedTexture.SetData(clientFrameData);
+                return clientSizedTexture;
             }
 
             for (int y = 0; y < copyHeight; y++)
@@ -9244,27 +9248,8 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            Texture2D clientSizedTexture = new Texture2D(device, clientOwnerWidth, clientOwnerHeight);
             clientSizedTexture.SetData(clientFrameData);
             return clientSizedTexture;
-        }
-
-        private static Color[] CreateAccountMoreInfoClientFramePixels(int width, int height)
-        {
-            Color[] data = new Color[width * height];
-            Color backgroundColor = new(28, 34, 45, 230);
-            Color borderColor = new(86, 100, 130, 255);
-
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    bool border = x == 0 || y == 0 || x == width - 1 || y == height - 1;
-                    data[(y * width) + x] = border ? borderColor : backgroundColor;
-                }
-            }
-
-            return data;
         }
 
         private static Texture2D LoadTextureFromClientUiPath(

@@ -973,28 +973,56 @@ namespace HaCreator.MapSimulator.UI
             bool hasCashSerial,
             out string rejectReason)
         {
+            long entryStart = reader?.BaseStream?.Position ?? 0;
+            if (TryReadClientEquipAddEntryBody(reader, hasCashSerial, statFieldCount: 14, out rejectReason))
+            {
+                return true;
+            }
+
+            if (reader?.BaseStream is { CanSeek: true } stream)
+            {
+                stream.Position = entryStart;
+                return TryReadClientEquipAddEntryBody(reader, hasCashSerial, statFieldCount: 15, out rejectReason);
+            }
+
+            return false;
+        }
+
+        private static bool TryReadClientEquipAddEntryBody(
+            BinaryReader reader,
+            bool hasCashSerial,
+            int statFieldCount,
+            out string rejectReason)
+        {
             rejectReason = null;
-            const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 14);
-            if (!TryEnsureRemaining(reader.BaseStream, equipStatsByteLength, out rejectReason))
+            Stream stream = reader.BaseStream;
+            const int equipStatHeaderByteLength = sizeof(byte) * 2;
+            if (!TryEnsureRemaining(stream, equipStatHeaderByteLength + (sizeof(short) * statFieldCount), out rejectReason))
             {
                 return false;
             }
 
             _ = reader.ReadByte();
             _ = reader.ReadByte();
-            for (int i = 0; i < 14; i++)
+            for (int i = 0; i < statFieldCount; i++)
             {
                 _ = reader.ReadInt16();
             }
 
-            if (!TryReadClientMapleString(reader, out _, out rejectReason))
+            if (!TryReadClientMapleString(reader, out string title, out rejectReason))
             {
+                return false;
+            }
+
+            if (title.Length > 13)
+            {
+                rejectReason = "Inventory-operation equip add entry title is outside the expected client byte range.";
                 return false;
             }
 
             const int equipTailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
             if (!TryEnsureRemaining(
-                    reader.BaseStream,
+                    stream,
                     equipTailLength + (hasCashSerial ? 0 : sizeof(long)) + sizeof(long) + sizeof(int),
                     out rejectReason))
             {

@@ -606,6 +606,11 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (TryMapNestedFieldSpecificDispatchPacket(rawPacket, source, opcode, payload, out message))
+            {
+                return true;
+            }
+
             string mappingReason = "configured";
             if (!_opcodeMappings.TryGetValue(opcode, out int packetType))
             {
@@ -729,6 +734,51 @@ namespace HaCreator.MapSimulator.Managers
             RecordRecentPacket(opcode, rawPacket, packetType, mappedDetail);
             LastStatus =
                 $"Decoded Dojo dispatch opcode {opcode} via {dispatchLabel} packet-id prefix as {DescribePacketType(packetType)} before payload inference.";
+            return true;
+        }
+
+        private bool TryMapNestedFieldSpecificDispatchPacket(
+            byte[] rawPacket,
+            string source,
+            int opcode,
+            byte[] payload,
+            out DojoPacketInboxMessage message)
+        {
+            message = null;
+            if (!Fields.SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int relayedPacketType,
+                    out byte[] relayedPayload,
+                    out _)
+                || relayedPacketType != FieldSpecificDataOpcode
+                || !DojoField.TryDecodeFieldSpecificPacketPayload(
+                    relayedPayload,
+                    out int packetType,
+                    out byte[] packetPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            if (ShouldPersistInferredOpcodeMapping(opcode))
+            {
+                _opcodeMappings[opcode] = packetType;
+            }
+
+            const string nestedDecodeEvidence = "nested-relay:field-specific-prefix";
+            RememberLearnedOpcode(opcode, packetType, nestedDecodeEvidence);
+            message = new DojoPacketInboxMessage(
+                DojoPacketMessageKind.RawPacket,
+                value: 0,
+                option: string.Empty,
+                source: source,
+                rawText: $"packetraw {Convert.ToHexString(rawPacket)}",
+                packetType: packetType,
+                payload: packetPayload);
+            RecordRecentPacket(opcode, rawPacket, packetType, nestedDecodeEvidence);
+            LastStatus = ShouldPersistInferredOpcodeMapping(opcode)
+                ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from nested relay packet-id prefixes."
+                : $"Decoded Dojo shared dispatch opcode {opcode} to {DescribePacketType(packetType)} from nested relay packet-id prefixes; keeping inference payload-scoped because {DescribeSharedDispatchOpcode(opcode)} is not a Dojo-only packet table entry.";
             return true;
         }
 

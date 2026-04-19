@@ -223,7 +223,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}. {LastStatus}";
+            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}. {LastStatus}";
         }
 
         public string DescribePacketMappings()
@@ -254,6 +254,14 @@ namespace HaCreator.MapSimulator.Managers
                         .OrderBy(entry => entry.Key)
                         .Select(entry =>
                             $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count}; officialSessionProof={entry.Value.OfficialSessionProofCount}; source={entry.Value.LastSource}; payloadBytes={entry.Value.LastPayloadLength}; sample={entry.Value.LastPayloadPreviewHex})"));
+            }
+        }
+
+        public string DescribePendingTutorInferenceMappings()
+        {
+            lock (_sync)
+            {
+                return DescribePendingTutorInferenceMappingsNoLock();
             }
         }
 
@@ -369,6 +377,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 _packetMap[opcode] = packetType;
+                _pendingTutorInferenceMap.Remove(opcode);
                 RememberLearnedOpcodeNoLock(opcode, packetType, "manual", isManual: true, source: "manual", payload: null);
             }
 
@@ -384,6 +393,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 removed = _packetMap.Remove(opcode);
                 _learnedPacketMap.Remove(opcode);
+                _pendingTutorInferenceMap.Remove(opcode);
             }
 
             status = removed
@@ -399,6 +409,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _packetMap.Clear();
                 _learnedPacketMap.Clear();
+                _pendingTutorInferenceMap.Clear();
                 foreach (KeyValuePair<ushort, int> entry in DefaultPacketMap)
                 {
                     _packetMap[entry.Key] = entry.Value;
@@ -480,10 +491,23 @@ namespace HaCreator.MapSimulator.Managers
                     }
                     else
                     {
+                        if (!TryObserveTutorInferenceNoLock(opcode, packetType, inferenceReason, source, out PendingTutorInferenceEvidence pendingEvidence, out bool inferenceConfirmed))
+                        {
+                            LastStatus = $"Ignored CUserPool local-user opcode {opcode}: tutor payload inference conflict while collecting evidence for {RemoteUserPacketInboxManager.DescribePacketType(packetType)}.";
+                            return false;
+                        }
+
+                        if (!inferenceConfirmed)
+                        {
+                            LastStatus = $"Observed potential tutor-owner mapping for opcode {opcode} -> {RemoteUserPacketInboxManager.DescribePacketType(packetType)} ({pendingEvidence.Reason}); awaiting official-session proof {pendingEvidence.OfficialSessionObservationCount}/{MinOfficialSessionTutorInferenceProofCount}. {OfficialRemoteOwnerEvidence}";
+                            return false;
+                        }
+
+                        _pendingTutorInferenceMap.Remove(opcode);
                         _packetMap[opcode] = packetType;
-                        string learnedEvidence = $"auto:{inferenceReason}; {OfficialRemoteOwnerEvidence}";
+                        string learnedEvidence = $"auto:{inferenceReason}; inferenceProof={pendingEvidence.OfficialSessionObservationCount}/{MinOfficialSessionTutorInferenceProofCount}; {OfficialRemoteOwnerEvidence}";
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
-                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}); {OfficialRemoteOwnerEvidence}";
+                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session proof {pendingEvidence.OfficialSessionObservationCount}/{MinOfficialSessionTutorInferenceProofCount}; {OfficialRemoteOwnerEvidence}";
                     }
                 }
             }
@@ -610,6 +634,44 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        private bool TryObserveTutorInferenceNoLock(
+            ushort opcode,
+            int packetType,
+            string reason,
+            string source,
+            out PendingTutorInferenceEvidence evidence,
+            out bool inferenceConfirmed)
+        {
+            evidence = null;
+            inferenceConfirmed = false;
+
+            if (_pendingTutorInferenceMap.TryGetValue(opcode, out PendingTutorInferenceEvidence existing))
+            {
+                if (existing.PacketType != packetType)
+                {
+                    _pendingTutorInferenceMap[opcode] = new PendingTutorInferenceEvidence(packetType, reason, source);
+                }
+                else
+                {
+                    existing.Update(packetType, reason, source);
+                }
+            }
+            else
+            {
+                _pendingTutorInferenceMap[opcode] = new PendingTutorInferenceEvidence(packetType, reason, source);
+            }
+
+            evidence = _pendingTutorInferenceMap[opcode];
+            if (!IsOfficialSessionSource(source))
+            {
+                inferenceConfirmed = true;
+                return true;
+            }
+
+            inferenceConfirmed = evidence.OfficialSessionObservationCount >= MinOfficialSessionTutorInferenceProofCount;
+            return true;
         }
 
         private void RememberLearnedOpcodeNoLock(ushort opcode, int packetType, string evidence, bool isManual, string source, byte[] payload)
@@ -844,11 +906,29 @@ namespace HaCreator.MapSimulator.Managers
             {
                 ushort opcode = learnedTutorOpcodes[i];
                 _learnedPacketMap.Remove(opcode);
+                _pendingTutorInferenceMap.Remove(opcode);
                 if (!DefaultPacketMap.ContainsKey(opcode))
                 {
                     _packetMap.Remove(opcode);
                 }
             }
+
+            _pendingTutorInferenceMap.Clear();
+        }
+
+        private string DescribePendingTutorInferenceMappingsNoLock()
+        {
+            if (_pendingTutorInferenceMap.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                ", ",
+                _pendingTutorInferenceMap
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry =>
+                        $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} (observed={entry.Value.ObservationCount}; officialSessionObserved={entry.Value.OfficialSessionObservationCount}; reason={entry.Value.Reason}; source={entry.Value.LastSource})"));
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

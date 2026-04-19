@@ -2366,7 +2366,7 @@ namespace HaCreator.MapSimulator.UI
                 ? $"combo 1003 SN {selectedVariantSerialNumber.ToString(CultureInfo.InvariantCulture)} ({SanitizePacketString(selectedVariantLabel, "variant")})"
                 : "combo 1003 kept the currently focused commodity serial";
             _cashPurchaseDialogSelectionSummary =
-                $"CConfirmPurchaseDlg selection snapshot: control {selectedPaymentControlId.ToString(CultureInfo.InvariantCulture)} ({paymentLabel}), {variantSummary}.";
+                $"CConfirmPurchaseDlg selection snapshot: CCtrlCheckBox {selectedPaymentControlId.ToString(CultureInfo.InvariantCulture)} ({paymentLabel}), CCtrlComboBox {variantSummary}.";
             _noticeState = _cashPurchaseDialogSelectionSummary;
             return _cashPurchaseDialogSelectionSummary;
         }

@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, PacketFieldUtilityStalkMarkerState> _packetFieldUtilityStalkTargets = new();
         private readonly List<PacketFieldUtilityFootholdEntry> _packetFieldUtilityFootholdEntries = new();
         private readonly Dictionary<int, string> _packetFieldUtilityFootholdNamesBySerial = new();
+        private readonly Dictionary<int, int> _packetFieldUtilityFootholdStatesByPlatformId = new();
         private const int PacketOwnedFootholdInfoResponseOpcode = 270;
         private int[] _packetFieldUtilityQuickslotKeyCodes;
         private bool _packetFieldUtilityWeatherOverrideActive;
@@ -350,6 +351,7 @@ namespace HaCreator.MapSimulator
         {
             _packetFieldUtilityFootholdEntries.Clear();
             _packetFieldUtilityFootholdNamesBySerial.Clear();
+            _packetFieldUtilityFootholdStatesByPlatformId.Clear();
             if (entries != null)
             {
                 _packetFieldUtilityFootholdEntries.AddRange(entries);
@@ -420,6 +422,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            _packetFieldUtilityFootholdStatesByPlatformId[platform.Id] = entry.State;
             platform.IsActive = entry.State != 0;
             platform.IsVisible = entry.State != 0;
             if (entry.MovingState != null)
@@ -792,7 +795,11 @@ namespace HaCreator.MapSimulator
 
             entry = new PacketFieldUtilityFootholdEntry(
                 ResolvePacketOwnedDynamicPlatformSnapshotName(platformId, allowPacketCacheNameFallback),
-                platform.IsActive ? 2 : 0,
+                ResolvePacketOwnedSnapshotStateForPacketParity(
+                    _packetFieldUtilityFootholdStatesByPlatformId.TryGetValue(platformId, out int packetOwnedState)
+                        ? packetOwnedState
+                        : null,
+                    platform.IsActive),
                 ResolvePacketOwnedSnapshotSerialNumbers(platformId),
                 new PacketFieldUtilityMovingFootholdState(
                     (int)platform.Speed,
@@ -827,6 +834,11 @@ namespace HaCreator.MapSimulator
                 ResolvePacketOwnedSnapshotSerialNumbers(platformId, cachedEntry),
                 cachedEntry.MovingState);
             return true;
+        }
+
+        internal static int ResolvePacketOwnedSnapshotStateForPacketParity(int? packetOwnedState, bool isRuntimeActive)
+        {
+            return packetOwnedState ?? (isRuntimeActive ? 2 : 0);
         }
 
         private bool TryBuildPacketOwnedDefaultFootholdSnapshotEntry(
@@ -1088,6 +1100,7 @@ namespace HaCreator.MapSimulator
                 _packetFieldUtilityStalkTargets.Clear();
                 _packetFieldUtilityFootholdEntries.Clear();
                 _packetFieldUtilityFootholdNamesBySerial.Clear();
+                _packetFieldUtilityFootholdStatesByPlatformId.Clear();
                 _packetFieldUtilityQuickslotKeyCodes = null;
                 _packetFieldUtilityWeatherOverrideActive = false;
                 _packetFieldUtilityWeatherItemId = 0;

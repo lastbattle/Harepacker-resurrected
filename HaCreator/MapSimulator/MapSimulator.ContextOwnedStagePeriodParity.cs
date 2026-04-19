@@ -268,7 +268,11 @@ namespace HaCreator.MapSimulator
 
         internal static int CalculateContextOwnedStagePeriodElapsedMilliseconds(int currentTick, int startTick)
         {
-            return Math.Max(0, unchecked(currentTick - startTick));
+            // Mirror client-like tick arithmetic across GetTickCount/Environment.TickCount wrap.
+            uint elapsed = unchecked((uint)currentTick - (uint)startTick);
+            return elapsed > int.MaxValue
+                ? int.MaxValue
+                : (int)elapsed;
         }
 
         private void RefreshContextOwnedStagePeriodQuestStateGates()

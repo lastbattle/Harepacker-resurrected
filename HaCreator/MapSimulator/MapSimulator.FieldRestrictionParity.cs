@@ -76,8 +76,9 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            var mapInfo = _mapBoard?.MapInfo;
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
-            return FieldInteractionRestrictionEvaluator.GetMiniGameRestrictionMessage(fieldLimit);
+            return FieldInteractionRestrictionEvaluator.GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, kind);
         }
 
         private string GetPetFieldRestrictionMessage()

@@ -138,6 +138,26 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public static bool TryDecodeMesoGiveFailed(
+            byte[] payload,
+            out int trailingByteCount,
+            out string error)
+        {
+            trailingByteCount = payload?.Length ?? 0;
+            error = null;
+            return true;
+        }
+
+        public static bool TryDecodeRandomMesoBagFailed(
+            byte[] payload,
+            out int trailingByteCount,
+            out string error)
+        {
+            trailingByteCount = payload?.Length ?? 0;
+            error = null;
+            return true;
+        }
+
         public static string FormatMesoGiveSucceededText(uint mesoAmount)
         {
             string format = ResolveTextFormat(

@@ -212,6 +212,8 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation EffectAnimation { get; init; }
             public int AnimationStartTime { get; init; }
             public int ExpireTime { get; init; }
+            public string OwnerActionName { get; init; }
+            public bool OwnerFacingRight { get; init; }
         }
 
         public sealed class RemoteHitState
@@ -230,6 +232,8 @@ namespace HaCreator.MapSimulator.Pools
             public byte HitFlags { get; init; }
             public int HpDelta { get; init; }
             public int? SkillId { get; init; }
+            public byte[] RawTrailingPayload { get; init; }
+            public string HitString { get; init; }
             public int PacketTime { get; init; }
         }
 
@@ -246,6 +250,8 @@ namespace HaCreator.MapSimulator.Pools
             public int ItemId { get; init; }
             public ItemEffectAnimationSet Effect { get; init; }
             public int AnimationStartTime { get; init; }
+            public string OwnerActionName { get; init; }
+            public bool OwnerFacingRight { get; init; }
         }
 
         public sealed class RemoteActiveEffectMotionBlurState
@@ -258,10 +264,17 @@ namespace HaCreator.MapSimulator.Pools
 
         public sealed class RemoteActiveEffectMotionBlurSnapshot
         {
-            public AssembledFrame Frame { get; init; }
+            public IReadOnlyList<RemoteActiveEffectMotionBlurLayerSnapshot> Layers { get; init; } = Array.Empty<RemoteActiveEffectMotionBlurLayerSnapshot>();
+            public int FeetOffset { get; init; }
             public Vector2 Position { get; init; }
             public bool FacingRight { get; init; }
             public int SampleTime { get; init; }
+        }
+
+        public sealed class RemoteActiveEffectMotionBlurLayerSnapshot
+        {
+            public int DrawOrder { get; init; }
+            public IReadOnlyList<AssembledPart> Parts { get; init; } = Array.Empty<AssembledPart>();
         }
 
         private sealed class PendingRemoteTransientSkillUseAvatarEffectState
@@ -338,6 +351,14 @@ namespace HaCreator.MapSimulator.Pools
         private const int RemoteReceiveHpGaugeWidth = 46;
         private const int RemoteReceiveHpGaugeHeight = 5;
         private const int RemoteReceiveHpGaugeVerticalPadding = 4;
+        private static readonly AvatarRenderLayer[] RemoteActiveEffectMotionBlurLayerCaptureOrder =
+        {
+            AvatarRenderLayer.Face,
+            AvatarRenderLayer.OverFace,
+            AvatarRenderLayer.UnderFace,
+            AvatarRenderLayer.OverCharacter,
+            AvatarRenderLayer.UnderCharacter
+        };
         private const int RemoteGrenadeSkillId = 5201002;
         private const int MonsterBombSkillId = 4341003;
         private const int RemoteHitAssassinateEmotionSkillId = 4120002;
@@ -412,6 +433,8 @@ namespace HaCreator.MapSimulator.Pools
         private const string RemoteTemporaryStatRepeatEffectActionOwnerName = "aux.remote.temporaryStat.repeatEffect.persistent";
         private const string RemoteTemporaryStatMagicShieldActionOwnerName = "aux.remote.temporaryStat.magicShield.persistent";
         private const string RemoteTemporaryStatFinalCutActionOwnerName = "aux.remote.temporaryStat.finalCut.persistent";
+        private const string RemotePacketOwnedEmotionActionOwnerName = "aux.remote.packetOwnedEmotion.persistent";
+        private const string RemoteEffectByItemActionOwnerName = "aux.remote.effectByItem.oneTime";
         private static readonly Color RemoteShadowPartnerTint = new(255, 255, 255, 150);
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
         {
@@ -1657,7 +1680,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!packet.ItemId.HasValue || packet.ItemId.Value <= 0)
             {
-                ClearPacketOwnedEmotionState(actor);
+                ClearPacketOwnedEmotionState(actor, currentTime);
                 ClearRemoteActiveEffectMotionBlurState(actor);
                 message = $"Remote user {packet.CharacterId} active effect item cleared.";
                 return true;
@@ -1675,7 +1698,7 @@ namespace HaCreator.MapSimulator.Pools
             }
             else
             {
-                ClearPacketOwnedEmotionState(actor);
+                ClearPacketOwnedEmotionState(actor, currentTime);
             }
 
             bool hasMotionBlur = ActiveEffectItemMotionBlurResolver.TryResolve(
@@ -1731,11 +1754,44 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.TransientItemEffects.RemoveAll(static state => state?.Effect == null);
+            string ownerActionName = ResolveRemoteTemporaryStatAvatarEffectActionName(actor);
+            bool ownerFacingRight = actor.FacingRight;
+            bool hasRestoredAnimationElapsed = TryRestoreRemoteAuxiliaryLayerOwnerCounter(
+                actor.CharacterId,
+                RemoteEffectByItemActionOwnerName,
+                itemId,
+                ownerActionName,
+                ownerFacingRight,
+                out int restoredAnimationElapsedMs);
+
+            for (int i = actor.TransientItemEffects.Count - 1; i >= 0; i--)
+            {
+                RemoteTransientItemEffectState existingState = actor.TransientItemEffects[i];
+                if (existingState?.ItemId != itemId)
+                {
+                    continue;
+                }
+
+                StoreRemoteAuxiliaryLayerOwnerCounter(
+                    actor.CharacterId,
+                    RemoteEffectByItemActionOwnerName,
+                    existingState.ItemId,
+                    existingState.OwnerActionName,
+                    existingState.OwnerFacingRight,
+                    Math.Max(0, currentTime - existingState.AnimationStartTime),
+                    currentTime);
+                actor.TransientItemEffects.RemoveAt(i);
+            }
+
             actor.TransientItemEffects.Add(new RemoteTransientItemEffectState
             {
                 ItemId = itemId,
                 Effect = effect,
-                AnimationStartTime = currentTime
+                AnimationStartTime = hasRestoredAnimationElapsed
+                    ? unchecked(currentTime - restoredAnimationElapsedMs)
+                    : currentTime,
+                OwnerActionName = ownerActionName,
+                OwnerFacingRight = ownerFacingRight
             });
             message = $"Remote user {actor.CharacterId} effect subtype {(byte)RemoteUserEffectSubtype.EffectByItem} registered Effect/ItemEff.img/{itemId} presentation.";
             return true;
@@ -2499,6 +2555,8 @@ namespace HaCreator.MapSimulator.Pools
                 HitFlags = packet.HitFlags,
                 HpDelta = packet.HpDelta,
                 SkillId = packet.SkillId,
+                RawTrailingPayload = packet.RawTrailingPayload,
+                HitString = packet.HitString,
                 PacketTime = currentTime
             };
 
@@ -3917,14 +3975,14 @@ namespace HaCreator.MapSimulator.Pools
                 TryRegisterRemotePreparedSkillReleaseSkillUse(actor, releasedPreparedSkillId, currentTime);
             }
             actor.LastThrowGrenadeSkillId = packet.SkillId;
-            actor.LastThrowGrenadeId = packet.GrenadeId;
+            actor.LastThrowGrenadeSkillLevel = packet.SkillLevel;
             actor.LastThrowGrenadeTarget = new Point(packet.X, packet.Y);
             actor.LastThrowGrenadeKeyDownTime = packet.KeyDownTime;
             actor.LastThrowGrenadePacketTime = currentTime;
             RemoteGrenadePresentation grenadePresentation = BuildRemoteThrowGrenadePresentationForParity(
                 actor.CharacterId,
                 packet.SkillId,
-                packet.GrenadeId,
+                packet.SkillLevel,
                 new Point(packet.X, packet.Y),
                 packet.KeyDownTime,
                 actor.FacingRight,
@@ -5271,7 +5329,8 @@ namespace HaCreator.MapSimulator.Pools
                 bool hasFriendshipOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Friendship);
                 bool hasCoupleOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Couple);
                 bool hasMarriageOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
-                bool hasRelationshipHelperFallback = hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay;
+                bool hasNewYearCardOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.NewYearCard);
+                bool hasRelationshipHelperFallback = hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay || hasNewYearCardOverlay;
                 if (!ShouldIncludePacketAuthoredMinimapHelper(
                         actor?.IsVisibleInWorld == true,
                         actor?.HiddenLikeClient == true,
@@ -5288,6 +5347,7 @@ namespace HaCreator.MapSimulator.Pools
                     hasFriendshipOverlay,
                     hasCoupleOverlay,
                     hasMarriageOverlay,
+                    hasNewYearCardOverlay,
                     actor.BattlefieldTeamId);
 
                 MinimapUI.TrackedUserMarker marker = GetOrCreateHelperMarker(_helperMarkerCount++);
@@ -5321,6 +5381,7 @@ namespace HaCreator.MapSimulator.Pools
             bool hasFriendshipOverlay,
             bool hasCoupleOverlay,
             bool hasMarriageOverlay,
+            bool hasNewYearCardOverlay,
             int? battlefieldTeamId)
         {
             if (battlefieldTeamId.HasValue)
@@ -5333,7 +5394,7 @@ namespace HaCreator.MapSimulator.Pools
                 return explicitHelperMarkerType.Value;
             }
 
-            return hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay
+            return hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay || hasNewYearCardOverlay
                 ? MinimapUI.HelperMarkerType.Friend
                 : MinimapUI.HelperMarkerType.Another;
         }
@@ -6523,6 +6584,31 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            string ownerActionName = ResolveRemoteTemporaryStatAvatarEffectActionName(actor);
+            bool ownerFacingRight = actor.FacingRight;
+            int ownerSkillId = ResolveRemotePacketOwnedEmotionCounterSkillId(itemId, emotionId, byItemOption);
+            bool hasRestoredAnimationElapsed = TryRestoreRemoteAuxiliaryLayerOwnerCounter(
+                actor.CharacterId,
+                RemotePacketOwnedEmotionActionOwnerName,
+                ownerSkillId,
+                ownerActionName,
+                ownerFacingRight,
+                out int restoredAnimationElapsedMs);
+            if (actor.PacketOwnedEmotion != null)
+            {
+                StoreRemoteAuxiliaryLayerOwnerCounter(
+                    actor.CharacterId,
+                    RemotePacketOwnedEmotionActionOwnerName,
+                    ResolveRemotePacketOwnedEmotionCounterSkillId(
+                        actor.PacketOwnedEmotion.ItemId,
+                        actor.PacketOwnedEmotion.EmotionId,
+                        actor.PacketOwnedEmotion.ByItemOption),
+                    actor.PacketOwnedEmotion.OwnerActionName,
+                    actor.PacketOwnedEmotion.OwnerFacingRight,
+                    Math.Max(0, currentTime - actor.PacketOwnedEmotion.AnimationStartTime),
+                    currentTime);
+            }
+
             SkillAnimation effectAnimation = loadEffectAnimation
                 ? _loader?.LoadPacketOwnedEmotionEffectAnimation(emotionName)
                 : null;
@@ -6539,8 +6625,12 @@ namespace HaCreator.MapSimulator.Pools
                 EmotionName = emotionName,
                 ByItemOption = byItemOption,
                 EffectAnimation = effectAnimation,
-                AnimationStartTime = currentTime,
-                ExpireTime = expireTime
+                AnimationStartTime = hasRestoredAnimationElapsed
+                    ? unchecked(currentTime - restoredAnimationElapsedMs)
+                    : currentTime,
+                ExpireTime = expireTime,
+                OwnerActionName = ownerActionName,
+                OwnerFacingRight = ownerFacingRight
             };
 
             if (actor.Assembler != null)
@@ -6549,11 +6639,27 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private static void ClearPacketOwnedEmotionState(RemoteUserActor actor)
+        private void ClearPacketOwnedEmotionState(RemoteUserActor actor, int currentTime = int.MinValue)
         {
             if (actor == null)
             {
                 return;
+            }
+
+            if (currentTime != int.MinValue
+                && actor.PacketOwnedEmotion != null)
+            {
+                StoreRemoteAuxiliaryLayerOwnerCounter(
+                    actor.CharacterId,
+                    RemotePacketOwnedEmotionActionOwnerName,
+                    ResolveRemotePacketOwnedEmotionCounterSkillId(
+                        actor.PacketOwnedEmotion.ItemId,
+                        actor.PacketOwnedEmotion.EmotionId,
+                        actor.PacketOwnedEmotion.ByItemOption),
+                    actor.PacketOwnedEmotion.OwnerActionName,
+                    actor.PacketOwnedEmotion.OwnerFacingRight,
+                    Math.Max(0, currentTime - actor.PacketOwnedEmotion.AnimationStartTime),
+                    currentTime);
             }
 
             actor.PacketOwnedEmotion = null;
@@ -6591,7 +6697,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.ActiveEffectMotionBlur = null;
         }
 
-        private static void UpdatePacketOwnedEmotionState(RemoteUserActor actor, int currentTime)
+        private void UpdatePacketOwnedEmotionState(RemoteUserActor actor, int currentTime)
         {
             if (actor?.PacketOwnedEmotion == null)
             {
@@ -6601,7 +6707,7 @@ namespace HaCreator.MapSimulator.Pools
             if (actor.PacketOwnedEmotion.ExpireTime > 0
                 && currentTime >= actor.PacketOwnedEmotion.ExpireTime)
             {
-                ClearPacketOwnedEmotionState(actor);
+                ClearPacketOwnedEmotionState(actor, currentTime);
             }
         }
 
@@ -6616,14 +6722,15 @@ namespace HaCreator.MapSimulator.Pools
             while (currentTime >= state.NextSampleTime)
             {
                 AssembledFrame frame = actor.GetFrameAtTimeForRendering(state.NextSampleTime);
-                if (frame?.Parts != null
-                    && frame.Parts.Count > 0
-                    && frame.Bounds.Width > 0
-                    && frame.Bounds.Height > 0)
+                if (frame != null
+                    && TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
+                        frame,
+                        out List<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots))
                 {
                     state.Snapshots.Add(new RemoteActiveEffectMotionBlurSnapshot
                     {
-                        Frame = frame,
+                        Layers = layerSnapshots,
+                        FeetOffset = frame.FeetOffset,
                         Position = actor.Position,
                         FacingRight = actor.FacingRight,
                         SampleTime = state.NextSampleTime
@@ -6645,7 +6752,108 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private static void UpdateTransientItemEffects(RemoteUserActor actor, int currentTime)
+        internal static bool TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
+            AssembledFrame frame,
+            out List<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots)
+        {
+            layerSnapshots = new List<RemoteActiveEffectMotionBlurLayerSnapshot>(RemoteActiveEffectMotionBlurLayerCaptureOrder.Length);
+            if (frame == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < RemoteActiveEffectMotionBlurLayerCaptureOrder.Length; i++)
+            {
+                AvatarRenderLayer layer = RemoteActiveEffectMotionBlurLayerCaptureOrder[i];
+                IReadOnlyList<AssembledPart> sourceParts = ResolveRemoteActiveEffectMotionBlurLayerParts(frame, layer);
+                if (sourceParts == null || sourceParts.Count == 0)
+                {
+                    continue;
+                }
+
+                var capturedParts = new List<AssembledPart>(sourceParts.Count);
+                for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+                {
+                    AssembledPart part = sourceParts[partIndex];
+                    if (part?.Texture == null || !part.IsVisible)
+                    {
+                        continue;
+                    }
+
+                    capturedParts.Add(CloneRemoteActiveEffectMotionBlurPart(part));
+                }
+
+                if (capturedParts.Count == 0)
+                {
+                    continue;
+                }
+
+                layerSnapshots.Add(new RemoteActiveEffectMotionBlurLayerSnapshot
+                {
+                    DrawOrder = ResolveRemoteActiveEffectMotionBlurLayerDrawOrder(layer),
+                    Parts = capturedParts
+                });
+            }
+
+            layerSnapshots.Sort((left, right) => left.DrawOrder.CompareTo(right.DrawOrder));
+            return layerSnapshots.Count > 0;
+        }
+
+        internal static IReadOnlyList<AssembledPart> ResolveRemoteActiveEffectMotionBlurLayerParts(
+            AssembledFrame frame,
+            AvatarRenderLayer layer)
+        {
+            if (frame?.AvatarRenderLayers != null)
+            {
+                int layerIndex = (int)layer;
+                if (layerIndex >= 0
+                    && layerIndex < frame.AvatarRenderLayers.Length
+                    && frame.AvatarRenderLayers[layerIndex] != null
+                    && frame.AvatarRenderLayers[layerIndex].Count > 0)
+                {
+                    return frame.AvatarRenderLayers[layerIndex];
+                }
+            }
+
+            return frame?.Parts?
+                .Where(part => part != null && part.IsVisible && part.RenderLayer == layer)
+                .ToArray();
+        }
+
+        internal static int ResolveRemoteActiveEffectMotionBlurLayerDrawOrder(AvatarRenderLayer layer)
+        {
+            return layer switch
+            {
+                AvatarRenderLayer.UnderCharacter => 0,
+                AvatarRenderLayer.OverCharacter => 1,
+                AvatarRenderLayer.UnderFace => 2,
+                AvatarRenderLayer.Face => 3,
+                AvatarRenderLayer.OverFace => 4,
+                _ => 2
+            };
+        }
+
+        private static AssembledPart CloneRemoteActiveEffectMotionBlurPart(AssembledPart source)
+        {
+            return new AssembledPart
+            {
+                Texture = source.Texture,
+                OffsetX = source.OffsetX,
+                OffsetY = source.OffsetY,
+                ZLayer = source.ZLayer,
+                ZIndex = source.ZIndex,
+                VisibilityTokens = source.VisibilityTokens,
+                VisibilityPriority = source.VisibilityPriority,
+                IsVisible = source.IsVisible,
+                SourcePart = source.SourcePart,
+                Tint = source.Tint,
+                PartType = source.PartType,
+                SourcePortableChairLayer = source.SourcePortableChairLayer,
+                RenderLayer = source.RenderLayer
+            };
+        }
+
+        private void UpdateTransientItemEffects(RemoteUserActor actor, int currentTime)
         {
             if (actor?.TransientItemEffects == null || actor.TransientItemEffects.Count == 0)
             {
@@ -6657,6 +6865,18 @@ namespace HaCreator.MapSimulator.Pools
                 RemoteTransientItemEffectState state = actor.TransientItemEffects[i];
                 if (state == null || IsTransientItemEffectExpired(state, currentTime))
                 {
+                    if (state != null)
+                    {
+                        StoreRemoteAuxiliaryLayerOwnerCounter(
+                            actor.CharacterId,
+                            RemoteEffectByItemActionOwnerName,
+                            state.ItemId,
+                            state.OwnerActionName,
+                            state.OwnerFacingRight,
+                            Math.Max(0, currentTime - state.AnimationStartTime),
+                            currentTime);
+                    }
+
                     actor.TransientItemEffects.RemoveAt(i);
                 }
             }
@@ -7720,7 +7940,7 @@ namespace HaCreator.MapSimulator.Pools
                     actor.FacingRight,
                     actor.PreferredPortableChairPairCharacterId,
                     null,
-                    IsPortableChairPairSessionActive(actor.Build?.ActivePortableChair),
+                    IsPortableChairPairSessionActive(actor.Build?.ActivePortableChair, actor.ActionName, actor.BaseActionName),
                     actor.IsVisibleInWorld,
                     IsRelationshipOverlaySuppressed(actor)));
             }
@@ -7738,7 +7958,8 @@ namespace HaCreator.MapSimulator.Pools
                     localPlayer.FacingRight,
                     null,
                     null,
-                    IsPortableChairPairSessionActive(localChair),
+                    localPlayer.State == PlayerState.Sitting
+                        && IsPortableChairPairSessionActive(localChair, localPlayer.CurrentActionName),
                     true,
                     IsRelationshipOverlaySuppressed(localPlayer, localCharacterId, ownerCharacterId: 0)));
             }
@@ -7923,9 +8144,45 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
         }
 
-        internal static bool IsPortableChairPairSessionActive(PortableChair chair)
+        internal static bool IsPortableChairPairSessionActive(PortableChair chair, params string[] actionCandidates)
         {
-            return chair?.IsCoupleChair == true;
+            if (chair?.IsCoupleChair != true)
+            {
+                return false;
+            }
+
+            if (actionCandidates == null || actionCandidates.Length == 0)
+            {
+                return true;
+            }
+
+            foreach (string actionName in actionCandidates)
+            {
+                if (IsPortableChairSeatAction(actionName, chair))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsPortableChairSeatAction(string actionName, PortableChair chair)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (actionName.StartsWith("sit", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return string.Equals(
+                actionName,
+                PlayerCharacter.ResolvePortableChairActionName(chair),
+                StringComparison.OrdinalIgnoreCase);
         }
 
         private bool TryResolvePortableChairPairWithLocalPlayer(
@@ -8369,6 +8626,16 @@ namespace HaCreator.MapSimulator.Pools
             return CharacterPart.GetActionString(CharacterAction.Stand1);
         }
 
+        private static int ResolveRemotePacketOwnedEmotionCounterSkillId(int itemId, int emotionId, bool byItemOption)
+        {
+            unchecked
+            {
+                return (itemId * 131)
+                    ^ (emotionId * 17)
+                    ^ (byItemOption ? 0x4000_0000 : 0);
+            }
+        }
+
         private static bool IsRemoteAuxiliaryLayerOwnerCounterContextMatch(
             RemoteAuxiliaryLayerOwnerCounterState ownerCounter,
             int skillId,
@@ -8458,6 +8725,24 @@ namespace HaCreator.MapSimulator.Pools
             };
 
             return ResolveRemoteTemporaryStatAvatarEffectOwnerName(family);
+        }
+
+        internal static string ResolveRemotePacketOwnedEmotionOwnerNameForTesting()
+        {
+            return RemotePacketOwnedEmotionActionOwnerName;
+        }
+
+        internal static string ResolveRemoteEffectByItemOwnerNameForTesting()
+        {
+            return RemoteEffectByItemActionOwnerName;
+        }
+
+        internal static int ResolveRemotePacketOwnedEmotionCounterSkillIdForTesting(
+            int itemId,
+            int emotionId,
+            bool byItemOption)
+        {
+            return ResolveRemotePacketOwnedEmotionCounterSkillId(itemId, emotionId, byItemOption);
         }
 
         internal static bool IsRemoteAuxiliaryLayerOwnerCounterContextMatchForTesting(
@@ -9885,7 +10170,7 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = 0; i < state.Snapshots.Count; i++)
             {
                 RemoteActiveEffectMotionBlurSnapshot snapshot = state.Snapshots[i];
-                if (snapshot?.Frame?.Parts == null || snapshot.Frame.Parts.Count == 0)
+                if (snapshot?.Layers == null || snapshot.Layers.Count == 0)
                 {
                     continue;
                 }
@@ -9908,12 +10193,13 @@ namespace HaCreator.MapSimulator.Pools
                     : snapshot.FacingRight;
                 int screenX = (int)Math.Round(drawPosition.X) - mapShiftX + centerX;
                 int screenY = (int)Math.Round(drawPosition.Y) - mapShiftY + centerY;
-                DrawRemoteMotionBlurFrame(
+                DrawRemoteMotionBlurLayerSnapshots(
                     spriteBatch,
                     skeletonRenderer,
-                    snapshot.Frame,
+                    snapshot.Layers,
                     screenX,
                     screenY,
+                    snapshot.FeetOffset,
                     drawFacingRight,
                     new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, snapshotAlpha));
             }
@@ -9933,31 +10219,41 @@ namespace HaCreator.MapSimulator.Pools
             return (byte)Math.Clamp((int)MathF.Round(baseAlpha * (1f - progress)), 0, byte.MaxValue);
         }
 
-        private static void DrawRemoteMotionBlurFrame(
+        private static void DrawRemoteMotionBlurLayerSnapshots(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
-            AssembledFrame frame,
+            IReadOnlyList<RemoteActiveEffectMotionBlurLayerSnapshot> layerSnapshots,
             int screenX,
             int screenY,
+            int feetOffset,
             bool facingRight,
             Color tint)
         {
-            if (frame?.Parts == null || frame.Parts.Count == 0)
+            if (layerSnapshots == null || layerSnapshots.Count == 0)
             {
                 return;
             }
 
-            int adjustedY = screenY - frame.FeetOffset;
-            for (int i = 0; i < frame.Parts.Count; i++)
+            int adjustedY = screenY - feetOffset;
+            for (int layerIndex = 0; layerIndex < layerSnapshots.Count; layerIndex++)
             {
-                DrawRemoteAssembledPart(
-                    spriteBatch,
-                    skeletonRenderer,
-                    frame.Parts[i],
-                    screenX,
-                    adjustedY,
-                    facingRight,
-                    tint);
+                RemoteActiveEffectMotionBlurLayerSnapshot layerSnapshot = layerSnapshots[layerIndex];
+                if (layerSnapshot?.Parts == null || layerSnapshot.Parts.Count == 0)
+                {
+                    continue;
+                }
+
+                for (int partIndex = 0; partIndex < layerSnapshot.Parts.Count; partIndex++)
+                {
+                    DrawRemoteAssembledPart(
+                        spriteBatch,
+                        skeletonRenderer,
+                        layerSnapshot.Parts[partIndex],
+                        screenX,
+                        adjustedY,
+                        facingRight,
+                        tint);
+                }
             }
         }
 
@@ -11773,7 +12069,7 @@ namespace HaCreator.MapSimulator.Pools
             public int? LastEffectByItemId { get; set; }
             public RemoteUserActorPool.RemoteHitState LastHit { get; set; }
             public int? LastThrowGrenadeSkillId { get; set; }
-        public int? LastThrowGrenadeId { get; set; }
+        public int? LastThrowGrenadeSkillLevel { get; set; }
         public Point? LastThrowGrenadeTarget { get; set; }
         public int LastThrowGrenadeKeyDownTime { get; set; }
         public int LastThrowGrenadePacketTime { get; set; } = int.MinValue;

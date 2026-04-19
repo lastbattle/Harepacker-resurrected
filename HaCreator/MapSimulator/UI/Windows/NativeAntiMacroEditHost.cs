@@ -946,9 +946,9 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldCancelImeCompositionOnFocusChange(bool hasFocus)
         {
-            // `CCtrlEdit::OnSetFocus` clears composition on focus transitions, so keep
-            // the hosted seam aligned for both focus gain and focus loss.
-            return true;
+            // The recovered anti-macro `CCtrlEdit::OnSetFocus(false)` path explicitly
+            // clears composition on blur.
+            return !hasFocus;
         }
 
         internal static bool ShouldForwardDeferredDownKeyToParentAfterIme(bool imeOwnedInputStateAfterKeyDown)

@@ -361,13 +361,16 @@ namespace HaCreator.MapSimulator
             int actionIndex)
         {
             string sessionUsage = kind == SocialRoomKind.EntrustedShop
-                ? "Usage: /socialroom entrustedshop [packet] session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]"
-                : "Usage: /socialroom personalshop [packet] session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
+                ? "Usage: /socialroom entrustedshop [packet] session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]"
+                : "Usage: /socialroom personalshop [packet] session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]";
             string sessionAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
             switch (sessionAction.ToLowerInvariant())
             {
                 case "status":
                     return ChatCommandHandler.CommandResult.Info(DescribeSocialRoomMerchantOfficialSessionBridgeStatus(kind));
+
+                case "opcodes":
+                    return ChatCommandHandler.CommandResult.Info(_socialRoomMerchantOfficialSessionBridge.DescribeMerchantOpcodeMap());
 
                 case "discover":
                     if (args.Length <= actionIndex + 2
@@ -431,39 +434,60 @@ namespace HaCreator.MapSimulator
                         : ChatCommandHandler.CommandResult.Error(sendStatus);
 
                 case "start":
-                    if (args.Length <= actionIndex + 5
+                    if (args.Length <= actionIndex + 4
                         || !int.TryParse(args[actionIndex + 2], out int listenPort)
                         || listenPort <= 0
                         || !int.TryParse(args[actionIndex + 4], out int remotePort)
-                        || remotePort <= 0
-                        || !int.TryParse(args[actionIndex + 5], out int inboundOpcodeValue)
-                        || inboundOpcodeValue < 0
-                        || inboundOpcodeValue > ushort.MaxValue)
+                        || remotePort <= 0)
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
 
-                    _socialRoomMerchantOfficialSessionBridge.Start(kind, listenPort, args[actionIndex + 3], remotePort, (ushort)inboundOpcodeValue);
+                    ushort startInboundOpcode = 0;
+                    if (args.Length > actionIndex + 5)
+                    {
+                        if (!int.TryParse(args[actionIndex + 5], out int inboundOpcodeValue)
+                            || inboundOpcodeValue < 0
+                            || inboundOpcodeValue > ushort.MaxValue)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        startInboundOpcode = (ushort)inboundOpcodeValue;
+                    }
+
+                    _socialRoomMerchantOfficialSessionBridge.Start(kind, listenPort, args[actionIndex + 3], remotePort, startInboundOpcode);
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialRoomMerchantOfficialSessionBridgeStatus(kind));
 
                 case "startauto":
-                    if (args.Length <= actionIndex + 4
+                    if (args.Length <= actionIndex + 3
                         || !int.TryParse(args[actionIndex + 2], out int autoListenPort)
                         || autoListenPort <= 0
                         || !int.TryParse(args[actionIndex + 3], out int autoRemotePort)
-                        || autoRemotePort <= 0
-                        || !int.TryParse(args[actionIndex + 4], out int autoInboundOpcodeValue)
-                        || autoInboundOpcodeValue < 0
-                        || autoInboundOpcodeValue > ushort.MaxValue)
+                        || autoRemotePort <= 0)
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
 
-                    string autoProcessSelector = args.Length > actionIndex + 5 ? args[actionIndex + 5] : null;
-                    int? autoLocalPortFilter = null;
-                    if (args.Length > actionIndex + 6)
+                    ushort autoInboundOpcode = 0;
+                    int startAutoTokenIndex = actionIndex + 4;
+                    if (args.Length > startAutoTokenIndex
+                        && int.TryParse(args[startAutoTokenIndex], out int autoInboundOpcodeValue))
                     {
-                        if (!int.TryParse(args[actionIndex + 6], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
+                        if (autoInboundOpcodeValue < 0 || autoInboundOpcodeValue > ushort.MaxValue)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        autoInboundOpcode = (ushort)autoInboundOpcodeValue;
+                        startAutoTokenIndex++;
+                    }
+
+                    string autoProcessSelector = args.Length > startAutoTokenIndex ? args[startAutoTokenIndex] : null;
+                    int? autoLocalPortFilter = null;
+                    if (args.Length > startAutoTokenIndex + 1)
+                    {
+                        if (!int.TryParse(args[startAutoTokenIndex + 1], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -475,7 +499,7 @@ namespace HaCreator.MapSimulator
                             kind,
                             autoListenPort,
                             autoRemotePort,
-                            (ushort)autoInboundOpcodeValue,
+                            autoInboundOpcode,
                             autoProcessSelector,
                             autoLocalPortFilter,
                             out string startStatus)
@@ -8791,7 +8815,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 
@@ -8858,7 +8882,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 
@@ -9642,7 +9666,7 @@ namespace HaCreator.MapSimulator
 
                 "Drive Messenger state, invite, claim, and remote social lifecycle flows",
 
-                "/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|room <message>>|queue <invite <name>|room <message>>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]]",
+                "/messenger [open|status|invite [name]|accept [name]|reject [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|room <message>>|queue <invite <name>|room <message>>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -9669,10 +9693,26 @@ namespace HaCreator.MapSimulator
                                 args.Length >= 2
                                     ? _messengerRuntime.InviteContact(string.Join(" ", args.Skip(1)))
                                     : _messengerRuntime.InviteNextContact());
+                        case "accept":
+                        case "join":
+                        case "yes":
+                            return TryMirrorMessengerIncomingInviteAcceptClientRequest(
+                                    args.Length >= 2 ? string.Join(" ", args.Skip(1)) : string.Empty,
+                                    out string mirroredAcceptMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(mirroredAcceptMessage)
+                                : ChatCommandHandler.CommandResult.Ok(_messengerRuntime.AcceptIncomingInvite());
+                        case "reject":
+                        case "decline":
+                        case "no":
+                            return TryMirrorMessengerIncomingInviteRejectClientSeam(
+                                    args.Length >= 2 ? string.Join(" ", args.Skip(1)) : string.Empty,
+                                    out string mirroredRejectMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(mirroredRejectMessage)
+                                : ChatCommandHandler.CommandResult.Ok(_messengerRuntime.RejectIncomingInvite());
                         case "claim":
                             return ChatCommandHandler.CommandResult.Ok(_messengerRuntime.SubmitClaim());
                         case "leave":
-                            return ChatCommandHandler.CommandResult.Ok(_messengerRuntime.LeaveMessenger());
+                            return ChatCommandHandler.CommandResult.Ok(TryHandleMessengerLeaveActionThroughClientSeam());
                         case "state":
                             if (args.Length < 2)
                             {
@@ -9760,7 +9800,7 @@ namespace HaCreator.MapSimulator
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|room <message>>|queue <invite <name>|room <message>>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]]");
+                            return ChatCommandHandler.CommandResult.Error("/messenger [open|status|invite [name]|accept [name]|reject [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|room <message>>|queue <invite <name>|room <message>>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]]");
                     }
 
                 });

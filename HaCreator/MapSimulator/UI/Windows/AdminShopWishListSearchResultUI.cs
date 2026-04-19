@@ -760,20 +760,37 @@ namespace HaCreator.MapSimulator.UI
 
             if (serviceStateDetails != null)
             {
-                foreach (string detailLine in serviceStateDetails)
+                List<string> detailLines = serviceStateDetails
+                    .Where(detailLine => !string.IsNullOrWhiteSpace(detailLine))
+                    .ToList();
+                int remainingCapacity = FooterInfoLineCapacity - lines.Count;
+                if (remainingCapacity <= 0 || detailLines.Count <= 0)
                 {
-                    if (string.IsNullOrWhiteSpace(detailLine))
-                    {
-                        continue;
-                    }
-
-                    if (lines.Count >= FooterInfoLineCapacity)
-                    {
-                        break;
-                    }
-
-                    lines.Add((detailLine, new Color(198, 208, 224)));
+                    return lines;
                 }
+
+                if (detailLines.Count <= remainingCapacity)
+                {
+                    foreach (string detailLine in detailLines)
+                    {
+                        lines.Add((detailLine, new Color(198, 208, 224)));
+                    }
+
+                    return lines;
+                }
+
+                if (remainingCapacity == 1)
+                {
+                    lines.Add((detailLines[^1], new Color(198, 208, 224)));
+                    return lines;
+                }
+
+                for (int i = 0; i < remainingCapacity - 1; i++)
+                {
+                    lines.Add((detailLines[i], new Color(198, 208, 224)));
+                }
+
+                lines.Add((detailLines[^1], new Color(198, 208, 224)));
             }
 
             return lines;

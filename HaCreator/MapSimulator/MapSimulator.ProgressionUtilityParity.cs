@@ -214,7 +214,11 @@ namespace HaCreator.MapSimulator
         private void AcceptMessengerIncomingInvitePrompt()
         {
             _messengerInvitePromptOwnedDialogActive = false;
-            string message = _messengerRuntime.AcceptIncomingInvite();
+            string message = TryMirrorMessengerIncomingInviteAcceptClientRequest(
+                string.Empty,
+                out string mirroredMessage)
+                ? mirroredMessage
+                : _messengerRuntime.AcceptIncomingInvite();
             ShowUtilityFeedbackMessage(message);
             if (_messengerRuntime.BuildSnapshot(Environment.TickCount).Participants.Any(participant => participant is { IsLocalPlayer: false }))
             {
@@ -225,7 +229,12 @@ namespace HaCreator.MapSimulator
         private void RejectMessengerIncomingInvitePrompt()
         {
             _messengerInvitePromptOwnedDialogActive = false;
-            ShowUtilityFeedbackMessage(_messengerRuntime.RejectIncomingInvite());
+            string message = TryMirrorMessengerIncomingInviteRejectClientSeam(
+                string.Empty,
+                out string mirroredMessage)
+                ? mirroredMessage
+                : _messengerRuntime.RejectIncomingInvite();
+            ShowUtilityFeedbackMessage(message);
         }
 
         private void HideMessengerIncomingInvitePromptDialog()
@@ -253,8 +262,8 @@ namespace HaCreator.MapSimulator
             string mapName = GetCurrentMapTransferDisplayName();
             int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
             int readyQuestCount = questSnapshot.Entries.Count(entry => entry.IsReadyToComplete);
-            int worldId = Math.Max(0, _simulatorWorldId);
-            int worldRequestId = worldId + 1;
+            int worldId = ResolveRankingRequestWorldId(_simulatorWorldId);
+            int worldRequestId = worldId;
             int characterId = build?.Id ?? 0;
             string landingUrl = BuildRankingLandingUrl(build, worldId, out bool usedResolvedTemplate);
             string webSeedText = BuildRankingLandingSeed(build, worldId, out _);
@@ -723,7 +732,7 @@ namespace HaCreator.MapSimulator
             return ProgressionUtilityParityRules.ResolveRankingLandingUrl(
                 RankingServerHost,
                 RankingStringPoolUrlTemplateId,
-                worldId + 1,
+                worldId,
                 characterId,
                 out usedResolvedTemplate);
         }
@@ -734,9 +743,16 @@ namespace HaCreator.MapSimulator
             return ProgressionUtilityParityRules.FormatRankingLandingSeed(
                 RankingServerHost,
                 RankingStringPoolUrlTemplateId,
-                worldId + 1,
+                worldId,
                 characterId,
                 out usedResolvedTemplate);
+        }
+
+        internal static int ResolveRankingRequestWorldId(int simulatorWorldId)
+        {
+            // Client evidence: CUIRanking::OnCreate formats StringPool[0xAA2] with the
+            // live CWvsContext world value directly (no synthetic +1 remap).
+            return Math.Max(0, simulatorWorldId);
         }
 
         private string BuildRankingOwnerLifecycleDetail(CharacterBuild build, string launchSource, string webSeedText, bool usedResolvedTemplate)

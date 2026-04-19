@@ -253,6 +253,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                         }
                     }
 
+                    if (maxScanBytes > 0)
+                    {
+                        // Keep metadata-scoped resolution deterministic: preserve the earliest
+                        // known charge id in the scoped window when no explicit preference can
+                        // disambiguate mixed payload candidates.
+                        continue;
+                    }
+
                     chargeSkillId = 0;
                     return false;
                 }

@@ -88,8 +88,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (ShouldTreatPropertyNameAsScriptAlias(property.Name)
-                && (ChildrenContainOnlyAliasMetadata(children)
-                    || ChildrenContainOnlyNestedAliasContainers(children)))
+                && ChildrenContainRecoverableAliasStructure(children))
             {
                 Append(property.Name, effectiveDelayMs, publications, seenPublications);
             }
@@ -218,6 +217,46 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return sawNestedContainer;
+        }
+
+        private static bool ChildrenContainRecoverableAliasStructure(IReadOnlyList<WzImageProperty> children)
+        {
+            if (ChildrenContainOnlyAliasMetadata(children))
+            {
+                return true;
+            }
+
+            if (children == null || children.Count == 0)
+            {
+                return false;
+            }
+
+            bool sawRecoverableAliasChild = false;
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (IsAliasMetadataPropertyName(child?.Name))
+                {
+                    continue;
+                }
+
+                if (ShouldTreatPropertyNameAsScriptAlias(child?.Name)
+                    && IsBooleanLikeStateLeaf(child))
+                {
+                    sawRecoverableAliasChild = true;
+                    continue;
+                }
+
+                if (IsNestedAliasContainer(child, allowWrapperContainerNames: true))
+                {
+                    sawRecoverableAliasChild = true;
+                    continue;
+                }
+
+                return false;
+            }
+
+            return sawRecoverableAliasChild;
         }
 
         private static bool IsNestedAliasContainer(

@@ -155,7 +155,7 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolveAnimationDurationMs(SkillAnimation animation)
         {
-            if (animation?.Frames == null || animation.Frames.Count <= 1)
+            if (animation?.Frames == null || animation.Frames.Count == 0)
             {
                 return 0;
             }
@@ -165,7 +165,18 @@ namespace HaCreator.MapSimulator.Pools
                 animation.CalculateDuration();
             }
 
-            return Math.Max(0, animation.TotalDuration);
+            int resolvedDurationMs = Math.Max(0, animation.TotalDuration);
+            if (resolvedDurationMs > 0)
+            {
+                return resolvedDurationMs;
+            }
+
+            // Single-frame fog visuals can still author a meaningful delay.
+            // Keep those packet-owned type=3 fallbacks finite when no other lifetime metadata exists.
+            SkillFrame firstFrame = animation.Frames[0];
+            return firstFrame?.Delay > 0
+                ? firstFrame.Delay
+                : 0;
         }
 
         private static int ResolveDurationSeconds(WzImageProperty itemProperty)

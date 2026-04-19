@@ -709,7 +709,7 @@ namespace HaCreator.MapSimulator
             QuestWindowActionResult result = _questRuntime.TryStartFromPacketOwnedQuestResult(
                 followUpQuestId,
                 _playerManager?.Player?.Build);
-            HandleQuestWindowActionResult(result);
+            ApplyPacketOwnedQuestResultFollowUpStateChanges(result, followUpQuestId);
 
             string resolvedQuestName = string.IsNullOrWhiteSpace(followUpQuestName)
                 ? (_questRuntime.TryGetQuestName(followUpQuestId, out string runtimeQuestName) ? runtimeQuestName : $"Quest #{followUpQuestId}")
@@ -722,6 +722,22 @@ namespace HaCreator.MapSimulator
 
             AppendPacketOwnedQuestAvailabilityRefreshSummary(ref status, availableQuestIdsBeforeFollowUp);
             return status;
+        }
+
+        private void ApplyPacketOwnedQuestResultFollowUpStateChanges(QuestWindowActionResult result, int followUpQuestId)
+        {
+            if (result?.StateChanged != true)
+            {
+                return;
+            }
+
+            // CUserLocal::OnQuestResult subtype 10 continuation uses CWvsContext::StartQuest
+            // (bAutoStart = 0), which is request-owned rather than a quest-window local flow.
+            // Keep packet-owned follow-up state refresh in this seam without replaying
+            // quest-window chat lines or start-script publication surfaces.
+            RefreshQuestUiState();
+            SelectQuestInActiveWindow(followUpQuestId);
+            UpdateQuestDetailWindow();
         }
 
         private IReadOnlyList<int> ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot()

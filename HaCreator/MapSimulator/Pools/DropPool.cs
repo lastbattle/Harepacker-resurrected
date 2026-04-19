@@ -2766,7 +2766,7 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
 
                 case PacketDropLeaveReason.PlayerPickup:
-                    ObservePacketPartyPickupLink(drop, packet);
+                    ObservePacketPartyPickupLink(drop, packet, packet.ActorId);
                     DetachPacketDropLookupForLeave(drop);
                     if (packet.ActorId == localCharacterId)
                     {
@@ -2834,11 +2834,12 @@ namespace HaCreator.MapSimulator.Pools
                             : () => actorPositionResolver(packet.Reason, packet));
 
                 case PacketDropLeaveReason.PetPickup:
-                    ObservePacketPartyPickupLink(drop, packet);
+                    int resolvedPetActorId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;
+                    ObservePacketPartyPickupLink(drop, packet, resolvedPetActorId);
                     DetachPacketDropLookupForLeave(drop);
                     if (packet.ActorId == localCharacterId)
                     {
-                        int localPetId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;
+                        int localPetId = resolvedPetActorId;
                         beforeLocalPetPickup?.Invoke(packet);
                         return CompletePickup(
                             drop,
@@ -2857,10 +2858,9 @@ namespace HaCreator.MapSimulator.Pools
                                 : () => actorPositionResolver(packet.Reason, packet));
                     }
 
-                    int remotePetActorId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;
                     return ResolveRemotePickup(
                         drop,
-                        remotePetActorId,
+                        resolvedPetActorId,
                         currentTime,
                         DropPickupActorKind.Pet,
                         actorNameResolver?.Invoke(packet.Reason, packet),
@@ -2878,7 +2878,10 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private void ObservePacketPartyPickupLink(DropItem drop, RemoteDropLeavePacket packet)
+        private void ObservePacketPartyPickupLink(
+            DropItem drop,
+            RemoteDropLeavePacket packet,
+            int resolvedActorId)
         {
             if (drop?.IsPacketControlled != true
                 || drop.OwnershipType != DropOwnershipType.Party
@@ -2889,6 +2892,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             _onPacketPartyPickupLinkedActors?.Invoke(drop.OwnerId, packet.ActorId);
+            if (resolvedActorId != 0 && resolvedActorId != packet.ActorId)
+            {
+                _onPacketPartyPickupLinkedActors?.Invoke(drop.OwnerId, resolvedActorId);
+            }
         }
 
         private Vector2 ResolvePacketDropStartPosition(RemoteDropEnterPacket packet)
@@ -2913,7 +2920,9 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return !drop.IsPacketControlled || drop.SourceId != 0;
+            // CDropPool pickup gates bypass owner-restricted pickup windows when dwSourceID == 0.
+            // Keep ownership-window admission on the same source-id seam for local and packet drops.
+            return drop.SourceId != 0;
         }
 
         internal static int ResolvePacketExpireTime(int currentTime, bool isMoney, long expireRaw)
@@ -3022,7 +3031,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private bool AreActorsPartyLinked(int ownerId, int actorId)
         {
-            if (ownerId <= 0 || actorId <= 0)
+            if (ownerId == 0 || actorId == 0)
             {
                 return false;
             }

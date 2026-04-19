@@ -85,6 +85,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly string[] SharedClientOwnedVehicleVehicleIdOnlyActionNames =
             ResolveClientRawActionNames(
                 4,  // alert
+                // IDA `CActionMan::LoadTamingMobAction` admits raw 55 and 210 in the
+                // same pre-gate mounted-preservation bucket when a mount owner already
+                // exists, without introducing ownerless inference.
+                55, // iceStrike
+                210, // quadBlow
                 // IDA `IsAbleTamingMobAction` admits raw actions 4 and 42-46 for mounted action
                 // coverage before vehicle-specific branches (including 1932000 and 1932016).
                 // Keep these as owner-preservation only for mounts that already own the seam.

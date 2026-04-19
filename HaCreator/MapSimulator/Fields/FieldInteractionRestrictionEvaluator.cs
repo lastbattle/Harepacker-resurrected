@@ -79,6 +79,32 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetSocialRoomRestrictionMessage(
+            long fieldLimit,
+            MapInfo mapInfo,
+            SocialRoomKind kind)
+        {
+            if (kind is not (SocialRoomKind.MiniRoom or SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop))
+            {
+                return null;
+            }
+
+            string fieldLimitRestriction = GetMiniGameRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestriction))
+            {
+                return fieldLimitRestriction;
+            }
+
+            return kind switch
+            {
+                SocialRoomKind.PersonalShop when mapInfo?.personalShop == false =>
+                    "Personal shops cannot be opened in this map.",
+                SocialRoomKind.EntrustedShop when mapInfo?.entrustedShop == false =>
+                    "Entrusted shops cannot be opened in this map.",
+                _ => null
+            };
+        }
+
         public static string GetParcelOpenRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Parcel_Open_Limit.Check(fieldLimit)

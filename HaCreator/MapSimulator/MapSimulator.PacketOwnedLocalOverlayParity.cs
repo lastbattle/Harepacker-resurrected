@@ -168,8 +168,6 @@ namespace HaCreator.MapSimulator
         private const int FieldHazardPetAutoConsumeClosedOwnershipRetentionMs =
             FieldHazardPetAutoConsumeDeferredDispatchRemoteObservationWindowMs;
         private const int FieldHazardPetAutoConsumeDefaultRequestIndex = 0;
-        private const int FieldHazardPetAutoConsumeForceRequestIndex = 1;
-        private const int FieldHazardPetAutoConsumeBuffSkillRequestIndex = 2;
 
         private void LoadPacketOwnedLocalOverlayAssets()
         {
@@ -3523,14 +3521,11 @@ namespace HaCreator.MapSimulator
 
         internal static int ResolveFieldHazardPetAutoConsumeRequestIndex(bool forceRequest, bool buffSkillRequest)
         {
-            if (buffSkillRequest)
-            {
-                return FieldHazardPetAutoConsumeBuffSkillRequestIndex;
-            }
-
-            return forceRequest
-                ? FieldHazardPetAutoConsumeForceRequestIndex
-                : FieldHazardPetAutoConsumeDefaultRequestIndex;
+            // IDA evidence for CUserLocal::TryConsumePetHP -> CWvsContext::SendStatChangeItemUseRequestByPetQ
+            // shows the field-hazard HP row always emits request index 0 in this owner seam.
+            _ = forceRequest;
+            _ = buffSkillRequest;
+            return FieldHazardPetAutoConsumeDefaultRequestIndex;
         }
 
         internal static bool ShouldUseFieldHazardConfiguredPetForAutoConsume(

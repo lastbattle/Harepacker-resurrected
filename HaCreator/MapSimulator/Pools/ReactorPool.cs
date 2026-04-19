@@ -1771,7 +1771,9 @@ namespace HaCreator.MapSimulator.Pools
 
             ResolvePacketVisualOwnershipSourceStatesForMutation(
                 data,
-                reactor.GetActiveAnimationState(),
+                ResolvePacketMutationFallbackAnimationOwnerState(
+                    reactor.GetActiveAnimationState(),
+                    reactor.TransientHitLayerSourceState),
                 out int packetAnimationSourceState,
                 out int packetHitAnimationState);
             bool wasAnimationClockRunning = IsPacketAnimationClockRunning(data);
@@ -1914,7 +1916,9 @@ namespace HaCreator.MapSimulator.Pools
 
             ResolvePacketVisualOwnershipSourceStatesForMutation(
                 data,
-                reactor.GetActiveAnimationState(),
+                ResolvePacketMutationFallbackAnimationOwnerState(
+                    reactor.GetActiveAnimationState(),
+                    reactor.TransientHitLayerSourceState),
                 out int packetAnimationSourceState,
                 out int packetHitAnimationState);
             int remainingCurrentAnimationDuration = reactor.GetRemainingStoppedAnimationDuration(currentTick);
@@ -2839,7 +2843,18 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (HasDisjointTouchAndReturnedStateSignals(scope, initialState))
+            if (HasDisjointCandidateSignalPair(
+                    scope,
+                    static candidate => candidate.IsLocallyTouched,
+                    candidate => candidate.VisualState == initialState)
+                || HasDisjointCandidateSignalPair(
+                    scope,
+                    static candidate => candidate.IsLocallyTouched,
+                    static candidate => candidate.ContainsCurrentLocalUserPosition)
+                || HasDisjointCandidateSignalPair(
+                    scope,
+                    static candidate => candidate.ContainsCurrentLocalUserPosition,
+                    candidate => candidate.VisualState == initialState))
             {
                 return false;
             }
@@ -2877,29 +2892,36 @@ namespace HaCreator.MapSimulator.Pools
             return isAlreadyLocallyTouched;
         }
 
-        private static bool HasDisjointTouchAndReturnedStateSignals(
+        private static bool HasDisjointCandidateSignalPair(
             IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
-            int initialState)
+            Func<PacketEnterAuthoredReactorCandidate, bool> firstSignal,
+            Func<PacketEnterAuthoredReactorCandidate, bool> secondSignal)
         {
             if (candidates == null || candidates.Count <= 1)
             {
                 return false;
             }
 
-            bool hasTouchedCandidate = false;
-            bool hasReturnedStateCandidate = false;
+            if (firstSignal == null || secondSignal == null)
+            {
+                return false;
+            }
+
+            bool hasFirstSignalCandidate = false;
+            bool hasSecondSignalCandidate = false;
             bool hasCandidateWithBothSignals = false;
 
             foreach (PacketEnterAuthoredReactorCandidate candidate in candidates)
             {
-                bool matchesReturnedState = candidate.VisualState == initialState;
-                hasTouchedCandidate |= candidate.IsLocallyTouched;
-                hasReturnedStateCandidate |= matchesReturnedState;
-                hasCandidateWithBothSignals |= candidate.IsLocallyTouched && matchesReturnedState;
+                bool matchesFirstSignal = firstSignal(candidate);
+                bool matchesSecondSignal = secondSignal(candidate);
+                hasFirstSignalCandidate |= matchesFirstSignal;
+                hasSecondSignalCandidate |= matchesSecondSignal;
+                hasCandidateWithBothSignals |= matchesFirstSignal && matchesSecondSignal;
             }
 
-            return hasTouchedCandidate
-                && hasReturnedStateCandidate
+            return hasFirstSignalCandidate
+                && hasSecondSignalCandidate
                 && !hasCandidateWithBothSignals;
         }
 
@@ -3528,7 +3550,9 @@ namespace HaCreator.MapSimulator.Pools
 
             int sourceState = ResolvePacketHitAnimationState(
                 data,
-                reactor.GetActiveAnimationState());
+                ResolvePacketMutationFallbackAnimationOwnerState(
+                    reactor.GetActiveAnimationState(),
+                    reactor.TransientHitLayerSourceState));
             int packetProperEventIndex = data.PacketProperEventIndex;
             if (!TryResolvePacketLoadLayerProperEventIndex(
                     packetProperEventIndex,
@@ -3630,6 +3654,15 @@ namespace HaCreator.MapSimulator.Pools
                 : data.PacketAnimationSourceState >= 0
                     ? data.PacketAnimationSourceState
                     : fallbackAnimationOwnerState;
+        }
+
+        internal static int ResolvePacketMutationFallbackAnimationOwnerState(
+            int activeAnimationState,
+            int transientHitSourceState)
+        {
+            return transientHitSourceState >= 0
+                ? transientHitSourceState
+                : activeAnimationState;
         }
 
         internal static void CommitPacketLayerSourceOwnership(ReactorRuntimeData data, int visualState)

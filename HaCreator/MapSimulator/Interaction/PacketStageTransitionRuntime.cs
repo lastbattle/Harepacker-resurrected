@@ -1366,6 +1366,7 @@ namespace HaCreator.MapSimulator.Interaction
                     DecodedSectionFlags = decodedSectionFlags,
                     DecodedSectionByteCounts = decodedSectionByteCounts
                 };
+                decoratedSnapshot = DecorateBackwardUpdateInventoryReconciliation(decoratedSnapshot);
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -1627,6 +1628,111 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return count;
+        }
+
+        private static PacketCharacterDataSnapshot DecorateBackwardUpdateInventoryReconciliation(PacketCharacterDataSnapshot snapshot)
+        {
+            if (!snapshot.HasBackwardUpdate)
+            {
+                return snapshot;
+            }
+
+            IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> inventoryItemsByType =
+                snapshot.InventoryItemsByType;
+            Dictionary<InventoryType, int> primaryMatchedCountsByType = new();
+            Dictionary<InventoryType, int> secondaryMatchedCountsByType = new();
+
+            BuildBackwardUpdateRemovedSerialNumberMatchSummary(
+                inventoryItemsByType,
+                snapshot.BackwardUpdatePrimaryRemovedSerialNumbers,
+                static _ => true,
+                primaryMatchedCountsByType,
+                out int primaryMatchedCount,
+                out int primaryUnmatchedCount);
+
+            BuildBackwardUpdateRemovedSerialNumberMatchSummary(
+                inventoryItemsByType,
+                snapshot.BackwardUpdateSecondaryRemovedSerialNumbers,
+                static inventoryType => inventoryType == InventoryType.CASH,
+                secondaryMatchedCountsByType,
+                out int secondaryMatchedCount,
+                out int secondaryUnmatchedCount);
+
+            return snapshot with
+            {
+                BackwardUpdatePrimaryMatchedSerialNumberCountsByType = primaryMatchedCountsByType,
+                BackwardUpdateSecondaryMatchedSerialNumberCountsByType = secondaryMatchedCountsByType,
+                BackwardUpdatePrimaryMatchedSerialNumberCount = primaryMatchedCount,
+                BackwardUpdatePrimaryUnmatchedSerialNumberCount = primaryUnmatchedCount,
+                BackwardUpdateSecondaryMatchedSerialNumberCount = secondaryMatchedCount,
+                BackwardUpdateSecondaryUnmatchedSerialNumberCount = secondaryUnmatchedCount,
+                BackwardUpdateTotalMatchedSerialNumberCount = primaryMatchedCount + secondaryMatchedCount
+            };
+        }
+
+        private static void BuildBackwardUpdateRemovedSerialNumberMatchSummary(
+            IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> inventoryItemsByType,
+            IReadOnlyList<long> removedSerialNumbers,
+            Func<InventoryType, bool> isEligibleInventoryType,
+            IDictionary<InventoryType, int> matchedCountsByType,
+            out int matchedCount,
+            out int unmatchedCount)
+        {
+            matchedCount = 0;
+            unmatchedCount = 0;
+            if (removedSerialNumbers == null || removedSerialNumbers.Count == 0)
+            {
+                return;
+            }
+
+            Dictionary<long, Queue<InventoryType>> serialToInventoryTypes = new();
+            if (inventoryItemsByType != null)
+            {
+                foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+                {
+                    if (!isEligibleInventoryType(inventoryType) ||
+                        !inventoryItemsByType.TryGetValue(inventoryType, out IReadOnlyList<PacketCharacterDataItemSlot> slots) ||
+                        slots == null)
+                    {
+                        continue;
+                    }
+
+                    for (int itemIndex = 0; itemIndex < slots.Count; itemIndex++)
+                    {
+                        PacketCharacterDataItemSlot slot = slots[itemIndex];
+                        if (!slot.HasCashItemSerialNumber || slot.CashItemSerialNumber <= 0)
+                        {
+                            continue;
+                        }
+
+                        if (!serialToInventoryTypes.TryGetValue(slot.CashItemSerialNumber, out Queue<InventoryType> occurrences))
+                        {
+                            occurrences = new Queue<InventoryType>();
+                            serialToInventoryTypes[slot.CashItemSerialNumber] = occurrences;
+                        }
+
+                        occurrences.Enqueue(inventoryType);
+                    }
+                }
+            }
+
+            for (int serialIndex = 0; serialIndex < removedSerialNumbers.Count; serialIndex++)
+            {
+                long removedSerialNumber = removedSerialNumbers[serialIndex];
+                if (removedSerialNumber > 0 &&
+                    serialToInventoryTypes.TryGetValue(removedSerialNumber, out Queue<InventoryType> occurrences) &&
+                    occurrences.Count > 0)
+                {
+                    InventoryType matchedInventoryType = occurrences.Dequeue();
+                    matchedCount++;
+                    matchedCountsByType[matchedInventoryType] = matchedCountsByType.TryGetValue(matchedInventoryType, out int existingCount)
+                        ? existingCount + 1
+                        : 1;
+                    continue;
+                }
+
+                unmatchedCount++;
+            }
         }
 
         private static bool TryDecodeKnownCharacterDataTailSections(
@@ -2946,6 +3052,13 @@ namespace HaCreator.MapSimulator.Interaction
         int BackwardUpdateSecondaryRemovedSerialNumberByteCount = 0,
         int BackwardUpdateSecondaryRemovedSerialNumberCount = 0,
         IReadOnlyList<long> BackwardUpdateSecondaryRemovedSerialNumbers = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePrimaryMatchedSerialNumberCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdateSecondaryMatchedSerialNumberCountsByType = null,
+        int BackwardUpdatePrimaryMatchedSerialNumberCount = 0,
+        int BackwardUpdatePrimaryUnmatchedSerialNumberCount = 0,
+        int BackwardUpdateSecondaryMatchedSerialNumberCount = 0,
+        int BackwardUpdateSecondaryUnmatchedSerialNumberCount = 0,
+        int BackwardUpdateTotalMatchedSerialNumberCount = 0,
         int? Meso = null,
         PacketCharacterDataTwoIntValueRecord? TwoIntValueRecord = null,
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,

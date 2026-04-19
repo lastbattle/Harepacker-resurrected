@@ -196,7 +196,9 @@ namespace HaCreator.MapSimulator.Interaction
             return new FamilyTreeSnapshot
             {
                 Nodes = nodes,
-                TotalMembers = _members.Count,
+                // CUIFamilyChart::Draw reads the header family count from the decoded chart-stat seam
+                // (m_mFamilyRecordTotal / root slot), not from a raw runtime roster count.
+                TotalMembers = BuildTreeFamilyCount(slotMembers, treeTitleMember),
                 FocusName = selectedMember?.Name ?? "Player",
                 TitleText = BuildTreeTitle(treeTitleMember),
                 JuniorCountText = BuildJuniorCountText(slotMembers),

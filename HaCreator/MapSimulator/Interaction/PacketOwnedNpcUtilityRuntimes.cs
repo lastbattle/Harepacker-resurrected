@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.Interaction
         byte SlotType,
         int ItemId,
         int ClientStock,
+        int MaxStackSize,
         int Quantity,
         bool IsTreatSingly,
         InventoryType InventoryType,
@@ -50,6 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
         string SecondaryText,
         string SelectionSummary,
         bool ShowsClientStock,
+        int MaxStackSize,
         bool IsCashItem,
         bool HasCashSerialNumber,
         bool IsRechargeBundle,
@@ -1009,6 +1011,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal bool WasRetainedFromPreviousSnapshot { get; init; }
             internal int Quantity { get; init; }
             internal bool IsTreatSingly { get; init; }
+            internal int MaxStackSize { get; init; }
             internal byte SlotType { get; init; }
             internal bool HasCashSerialNumber { get; init; }
             internal long ItemSerialNumber { get; init; }
@@ -1288,6 +1291,7 @@ namespace HaCreator.MapSimulator.Interaction
                     secondaryText,
                     BuildOwnerSelectionSummary(item),
                     ShowsClientStock(item),
+                    item.MaxStackSize,
                     IsCashItem(item),
                     item.HasCashSerialNumber,
                     item.IsRechargeBundle,
@@ -2170,6 +2174,11 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"qty {item.Quantity.ToString(CultureInfo.InvariantCulture)}");
             }
 
+            if (item.MaxStackSize > 1)
+            {
+                parts.Add($"maxStack {item.MaxStackSize.ToString(CultureInfo.InvariantCulture)}");
+            }
+
             if (item.HasCashSerialNumber)
             {
                 parts.Add("cash serial");
@@ -2307,6 +2316,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (item.EncodedByteLength > 0)
             {
                 parts.Add($"decodeBytes {item.EncodedByteLength.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (item.MaxStackSize > 1)
+            {
+                parts.Add($"maxStack {item.MaxStackSize.ToString(CultureInfo.InvariantCulture)}");
             }
 
             string bodyPreview = FormatHexPreview(item.BodyEncodedBytes, 16);
@@ -2586,7 +2600,7 @@ namespace HaCreator.MapSimulator.Interaction
                 itemName = $"{itemName} ({title})";
             }
 
-            int clientStock = ResolveClientStock(slotType, itemId, quantity, baseExpirationTime, out bool isTreatSingly);
+            int clientStock = ResolveClientStock(slotType, itemId, quantity, baseExpirationTime, out bool isTreatSingly, out int maxStackSize);
             int encodedByteLength = checked((int)(stream.Position - itemStartPosition));
             byte[] rawEncodedBytes = CopyBytesFromStream(stream, itemStartPosition, encodedByteLength);
             byte[] bodyEncodedBytes = CopyBytesFromStream(stream, bodyStartPosition, checked((int)(stream.Position - bodyStartPosition)));
@@ -2608,6 +2622,7 @@ namespace HaCreator.MapSimulator.Interaction
                 WasRetainedFromPreviousSnapshot = false,
                 Quantity = Math.Max(1, quantity),
                 IsTreatSingly = isTreatSingly,
+                MaxStackSize = maxStackSize,
                 SlotType = slotType,
                 HasCashSerialNumber = hasCashSerialNumber,
                 ItemSerialNumber = itemSerialNumber,
@@ -2647,6 +2662,7 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.SlotType,
                 entry.ItemId,
                 entry.ClientStock,
+                entry.MaxStackSize,
                 entry.Quantity,
                 entry.IsTreatSingly,
                 entry.InventoryType,
@@ -2688,6 +2704,7 @@ namespace HaCreator.MapSimulator.Interaction
                 WasRetainedFromPreviousSnapshot = true,
                 Quantity = item.Quantity,
                 IsTreatSingly = item.IsTreatSingly,
+                MaxStackSize = item.MaxStackSize,
                 SlotType = item.SlotType,
                 HasCashSerialNumber = item.HasCashSerialNumber,
                 ItemSerialNumber = item.ItemSerialNumber,
@@ -2770,30 +2787,53 @@ namespace HaCreator.MapSimulator.Interaction
             return typeIndex is >= 1 and <= 5 ? typeIndex : 0;
         }
 
-        private static int ResolveClientStock(byte slotType, int itemId, int quantity, long baseExpirationTime, out bool isTreatSingly)
+        private static int ResolveClientStock(
+            byte slotType,
+            int itemId,
+            int quantity,
+            long baseExpirationTime,
+            out bool isTreatSingly,
+            out int maxStackSize)
         {
             isTreatSingly = false;
+            maxStackSize = 1;
+
+            if (slotType == 2)
+            {
+                InventoryType bundleInventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+                maxStackSize = ResolveBundleMaxStack(itemId, bundleInventoryType);
+            }
+
             return slotType switch
             {
-                2 => (isTreatSingly = IsTreatSingly(itemId, baseExpirationTime)) ? 1 : Math.Max(1, quantity),
+                2 => (isTreatSingly = IsTreatSingly(itemId, baseExpirationTime, maxStackSize)) ? 1 : Math.Max(1, quantity),
                 _ => 1
             };
         }
 
-        private static bool IsTreatSingly(int itemId, long baseExpirationTime)
+        private static bool IsTreatSingly(int itemId, long baseExpirationTime, int maxStackSize)
         {
-            int typeIndex = itemId / 1_000_000;
-            if (typeIndex is not 2 and not 3 and not 4)
-            {
-                return true;
-            }
-
             if (itemId / 10_000 is 207 or 233)
             {
                 return true;
             }
 
-            return baseExpirationTime < TreatSinglyDateExpireCutoffFileTimeUtc;
+            if (baseExpirationTime < TreatSinglyDateExpireCutoffFileTimeUtc)
+            {
+                return true;
+            }
+
+            return maxStackSize <= 1;
+        }
+
+        private static int ResolveBundleMaxStack(int itemId, InventoryType inventoryType)
+        {
+            if (InventoryItemMetadataResolver.TryResolveMaxStackForItem(itemId, out int resolvedMaxStack))
+            {
+                return Math.Max(1, resolvedMaxStack);
+            }
+
+            return InventoryItemMetadataResolver.ResolveMaxStack(inventoryType);
         }
 
         private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary, out StoreBankEquipData equipData)
@@ -3255,6 +3295,12 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastDecodedDotDamage;
         private int _lastDecodedDotHitCount;
         private int? _lastDecodedAttrRate;
+        private int _directDamageTotal;
+        private int _directAttackCount;
+        private int _directCriticalCount;
+        private int _directMissCount;
+        private int _directMaxCriticalDamage;
+        private int _directMinCriticalDamage;
         private int _timerSetMilliseconds;
         private int _timerStopRemainMilliseconds;
         private int _timerExpiryTick;
@@ -3275,6 +3321,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal int LastDotDamage { get; private set; }
         internal int LastDotHitCount { get; private set; }
         internal int? LastAttrRate { get; private set; }
+        internal int DirectDamageTotal => _directDamageTotal;
+        internal int DirectAttackCount => _directAttackCount;
+        internal int DirectCriticalCount => _directCriticalCount;
+        internal int DirectMissCount => _directMissCount;
+        internal int DirectMaxCriticalDamage => _directMaxCriticalDamage;
+        internal int DirectMinCriticalDamage => _directMinCriticalDamage;
         internal string StatusMessage { get; private set; } = "CBattleRecordMan::OnPacket idle.";
 
         internal void Close()
@@ -3454,6 +3506,55 @@ namespace HaCreator.MapSimulator.Interaction
             return TryBuildRequestOnCalcOutboundRequest(enabled, out request, out message);
         }
 
+        internal string ApplyForcedOffCalc()
+        {
+            OnCalc = false;
+            ServerOnCalc = false;
+            IsOpen = false;
+            _timerExpiryTick = 0;
+            _timerSetMilliseconds = 0;
+            _timerStopRemainMilliseconds = 0;
+            StatusMessage = "CBattleRecordMan::SetForcedOffCalc forced m_bOnCalc/m_bServerOnCalc to 0 and followed UI_Close(35).";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
+        internal string ApplyBattleDamageInfo(int damage, bool isCritical, bool isSummon, int? attrRate)
+        {
+            if (!(OnCalc && ServerOnCalc && (!isSummon || SummonTrackingEnabled)))
+            {
+                StatusMessage = $"CBattleRecordMan::SetBattleDamageInfo ignored nDamage={damage.ToString(CultureInfo.InvariantCulture)} (critical={isCritical}, summon={isSummon}) because m_bOnCalc/m_bServerOnCalc were not both armed or summon include was disabled.";
+                AppendNote(StatusMessage);
+                return StatusMessage;
+            }
+
+            _directAttackCount++;
+            _directDamageTotal += damage;
+            if (damage == 0)
+            {
+                _directMissCount++;
+            }
+
+            MaxDamage = Math.Max(MaxDamage, damage);
+            MinDamage = MinDamage == 0 ? damage : Math.Min(MinDamage, damage);
+            if (isCritical)
+            {
+                _directCriticalCount++;
+                _directMaxCriticalDamage = Math.Max(_directMaxCriticalDamage, damage);
+                _directMinCriticalDamage = _directMinCriticalDamage == 0 ? damage : Math.Min(_directMinCriticalDamage, damage);
+            }
+
+            if (attrRate.HasValue)
+            {
+                LastAttrRate = attrRate.Value;
+                _lastDecodedAttrRate = attrRate.Value;
+            }
+
+            StatusMessage = $"CBattleRecordMan::SetBattleDamageInfo applied nDamage={damage.ToString(CultureInfo.InvariantCulture)}, critical={isCritical}, summon={isSummon}, attrRate={(attrRate.HasValue ? attrRate.Value.ToString(CultureInfo.InvariantCulture) : "none")} under the recovered manager gate.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
         internal string SetAdditionDamageInclude(bool enabled, int option)
         {
             switch (option)
@@ -3582,6 +3683,11 @@ namespace HaCreator.MapSimulator.Interaction
                 default:
                     lines.Add($"Total damage: {TotalDamage.ToString(CultureInfo.InvariantCulture)} across {TotalHits.ToString(CultureInfo.InvariantCulture)} DOT hit(s)");
                     lines.Add($"Damage bounds: min={FormatDamage(MinDamage)}, max={FormatDamage(MaxDamage)}, avg={FormatAverageDamage()}");
+                    lines.Add($"Direct manager totals: attacks={_directAttackCount.ToString(CultureInfo.InvariantCulture)}, damage={_directDamageTotal.ToString(CultureInfo.InvariantCulture)}, critical={_directCriticalCount.ToString(CultureInfo.InvariantCulture)}, miss={_directMissCount.ToString(CultureInfo.InvariantCulture)}");
+                    if (_directCriticalCount > 0)
+                    {
+                        lines.Add($"Direct critical bounds: min={FormatDamage(_directMinCriticalDamage)}, max={FormatDamage(_directMaxCriticalDamage)}");
+                    }
                     lines.Add(LastAttrRate.HasValue
                         ? $"Last attr rate: {LastAttrRate.Value.ToString(CultureInfo.InvariantCulture)}"
                         : "Last attr rate: none");
@@ -3669,6 +3775,12 @@ namespace HaCreator.MapSimulator.Interaction
             _lastDecodedDotDamage = 0;
             _lastDecodedDotHitCount = 0;
             _lastDecodedAttrRate = null;
+            _directDamageTotal = 0;
+            _directAttackCount = 0;
+            _directCriticalCount = 0;
+            _directMissCount = 0;
+            _directMaxCriticalDamage = 0;
+            _directMinCriticalDamage = 0;
             _timerSetMilliseconds = 0;
             _timerStopRemainMilliseconds = 0;
             _timerExpiryTick = 0;

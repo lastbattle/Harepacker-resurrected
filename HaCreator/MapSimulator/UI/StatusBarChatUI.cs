@@ -459,6 +459,16 @@ namespace HaCreator.MapSimulator.UI
             return repeatBackward ? mouseY < thumbTop : mouseY >= thumbBottom;
         }
 
+        private void ResetWhisperPickerPointerCaptureState()
+        {
+            _pressedWhisperTarget = null;
+            _pressedWhisperPickerCandidate = false;
+            _pressedWhisperPickerCandidateTarget = null;
+            _pressedWhisperPickerButtonAction = null;
+            _pressedWhisperPickerComboControl = false;
+            _pressedWhisperPickerComboToggle = false;
+        }
+
         /// <summary>
         /// Constructor for the status bar chat window
         /// </summary>
@@ -2414,12 +2424,8 @@ namespace HaCreator.MapSimulator.UI
                     _pressedRightWhisperPickerCandidateTarget,
                     hoveredPickerRegion.WhisperTarget))
             {
-                _pressedWhisperTarget = null;
-                _pressedWhisperPickerCandidate = false;
-                _pressedWhisperPickerCandidateTarget = null;
+                ResetWhisperPickerPointerCaptureState();
                 _pressedRightWhisperPickerCandidateTarget = null;
-                _pressedWhisperPickerButtonAction = null;
-                _pressedWhisperPickerComboToggle = false;
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 if (hoveredPickerRegion.ClientComboDeleteIndex >= 0)
                 {
@@ -2448,12 +2454,7 @@ namespace HaCreator.MapSimulator.UI
                         _whisperPickerDropdownBounds.HasValue,
                         hoveredInteractiveElement))
                 {
-                    _pressedWhisperTarget = null;
-                    _pressedWhisperPickerCandidate = false;
-                    _pressedWhisperPickerCandidateTarget = null;
-                    _pressedWhisperPickerButtonAction = null;
-                    _pressedWhisperPickerComboControl = false;
-                    _pressedWhisperPickerComboToggle = false;
+                    ResetWhisperPickerPointerCaptureState();
                     WhisperTargetPickerModalComboDropdownCloseRequested?.Invoke();
                     return true;
                 }
@@ -2497,10 +2498,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (promptHovered && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
             {
-                _pressedWhisperPickerButtonAction = null;
-                _pressedWhisperPickerComboControl = false;
-                _pressedWhisperPickerComboToggle = false;
-                _pressedWhisperPickerCandidateTarget = null;
+                ResetWhisperPickerPointerCaptureState();
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 WhisperTargetPickerRequested?.Invoke();
                 return true;
@@ -2510,19 +2508,13 @@ namespace HaCreator.MapSimulator.UI
                 && _pressedWhisperPickerComboToggle
                 && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
             {
-                _pressedWhisperPickerButtonAction = null;
-                _pressedWhisperPickerComboControl = false;
-                _pressedWhisperPickerComboToggle = false;
-                _pressedWhisperPickerCandidateTarget = null;
+                ResetWhisperPickerPointerCaptureState();
                 return true;
             }
 
             if (comboHovered && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
             {
-                _pressedWhisperPickerButtonAction = null;
-                _pressedWhisperPickerComboControl = false;
-                _pressedWhisperPickerComboToggle = false;
-                _pressedWhisperPickerCandidateTarget = null;
+                ResetWhisperPickerPointerCaptureState();
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 return true;
             }
@@ -2531,12 +2523,7 @@ namespace HaCreator.MapSimulator.UI
                 && _pressedWhisperPickerButtonAction.HasValue
                 && hoveredButtonRegion.Action == _pressedWhisperPickerButtonAction.Value)
             {
-                _pressedWhisperTarget = null;
-                _pressedWhisperPickerCandidate = false;
-                _pressedWhisperPickerCandidateTarget = null;
-                _pressedWhisperPickerButtonAction = null;
-                _pressedWhisperPickerComboControl = false;
-                _pressedWhisperPickerComboToggle = false;
+                ResetWhisperPickerPointerCaptureState();
                 WhisperTargetPickerModalButtonFocusRequested?.Invoke();
                 InvokeWhisperPickerButtonAction(hoveredButtonRegion.Action);
                 return true;
@@ -2547,11 +2534,7 @@ namespace HaCreator.MapSimulator.UI
                     _pressedWhisperPickerCandidateTarget,
                     hoveredPickerRegion?.WhisperTarget))
             {
-                _pressedWhisperTarget = null;
-                _pressedWhisperPickerCandidate = false;
-                _pressedWhisperPickerCandidateTarget = null;
-                _pressedWhisperPickerComboControl = false;
-                _pressedWhisperPickerComboToggle = false;
+                ResetWhisperPickerPointerCaptureState();
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 WhisperTargetPickerCandidateRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
                 return true;

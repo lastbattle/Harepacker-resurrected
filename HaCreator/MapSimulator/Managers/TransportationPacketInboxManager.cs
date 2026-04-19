@@ -353,16 +353,23 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return payload[0] switch
                 {
-                    ContiMoveStartShip => $"Transport OnContiMove start ({payload[1]})",
-                    ContiMoveMoveField => $"Transport OnContiMove move ({payload[1]})",
-                    ContiMoveEndShip => $"Transport OnContiMove end ({payload[1]})",
+                    ContiMoveStartShip => $"Transport OnContiMove start ({payload[1]}) [client subtype 8 -> OnStartShipMoveField]",
+                    ContiMoveMoveField => $"Transport OnContiMove move ({payload[1]}) [client subtype 10 -> OnMoveField]",
+                    ContiMoveEndShip => $"Transport OnContiMove end ({payload[1]}) [client subtype 12 -> OnEndShipMoveField]",
                     _ => $"Transport OnContiMove ({payload[0]}, {payload[1]})"
                 };
             }
 
             if (packetType == PacketTypeContiState && payload?.Length >= 2)
             {
-                return $"Transport OnContiState ({payload[0]}, {payload[1]})";
+                string stateBranch = payload[0] switch
+                {
+                    0 or 1 or 6 => "EnterShipMove branch",
+                    2 or 5 => "LeaveShipMove branch",
+                    3 or 4 => "AppearShip-or-LeaveShipMove branch",
+                    _ => "unhandled branch"
+                };
+                return $"Transport OnContiState ({payload[0]}, {payload[1]}) [{stateBranch}]";
             }
 
             return $"Transport packet {packetType}";
