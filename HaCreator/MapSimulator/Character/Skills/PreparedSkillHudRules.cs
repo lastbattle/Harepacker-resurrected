@@ -142,6 +142,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skillId switch
             {
+                FireArrowIceArrowSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
+                AssaulterShadowChargeSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
                 SG88SkillId => new PreparedSkillHudProfile(true, "KeyDownBar4", 2000),
                 4341002 => new PreparedSkillHudProfile(true, "KeyDownBar1", 600),
                 PirateScrewPunchSkillId => new PreparedSkillHudProfile(true, "KeyDownBar1", 1000),
@@ -276,7 +278,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static int ResolveGaugeDuration(int skillId, int authoredDurationMs = 0)
         {
             PreparedSkillHudProfile profile = ResolveProfile(skillId);
-            if (ShouldPreferClientGaugeProfile(skillId, profile))
+            bool resolvedAsKeyDownSkill = ResolveKeyDownSkillState(skillId, isKeydownSkill: true);
+            if (resolvedAsKeyDownSkill && ShouldPreferClientGaugeProfile(skillId, profile))
             {
                 return profile.GaugeDurationMs;
             }
@@ -299,7 +302,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static int ResolvePreparedGaugeDuration(int skillId, int explicitGaugeDurationMs = 0, int preparedDurationMs = 0)
         {
             PreparedSkillHudProfile profile = ResolveProfile(skillId);
-            if (ShouldPreferClientGaugeProfile(skillId, profile))
+            bool resolvedAsKeyDownSkill = ResolveKeyDownSkillState(skillId, isKeydownSkill: true);
+            if (resolvedAsKeyDownSkill && ShouldPreferClientGaugeProfile(skillId, profile))
             {
                 return profile.GaugeDurationMs;
             }
@@ -307,6 +311,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (explicitGaugeDurationMs > 0)
             {
                 return explicitGaugeDurationMs;
+            }
+
+            if (!resolvedAsKeyDownSkill && preparedDurationMs > 0)
+            {
+                return preparedDurationMs;
             }
 
             if (skillId == MonkeyWaveSkillId)

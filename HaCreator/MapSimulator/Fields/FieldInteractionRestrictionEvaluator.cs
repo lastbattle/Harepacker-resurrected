@@ -279,7 +279,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return windowName == MapSimulatorWindowNames.MapTransfer
-                ? GetMapTransferRestrictionMessage(fieldLimit)
+                ? GetMapTransferWindowRestrictionMessage(fieldLimit, mapInfo)
                 : null;
         }
 
@@ -332,6 +332,17 @@ namespace HaCreator.MapSimulator.Fields
         public static string GetMapTransferRestrictionMessage(long fieldLimit)
         {
             return GetTeleportItemRestrictionMessage(fieldLimit) ?? GetTransferRestrictionMessage(fieldLimit);
+        }
+
+        private static string GetMapTransferWindowRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string entryRestrictionMessage = GetMapTransferEntryRestrictionMessage(mapInfo, context: null);
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                return entryRestrictionMessage;
+            }
+
+            return GetMapTransferRestrictionMessage(fieldLimit);
         }
 
         public static bool CanPickupDrops(long fieldLimit)

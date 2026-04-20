@@ -59,7 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ResolveCharacterInfoSearchPrimaryText(build),
                     ResolveCharacterInfoSearchSecondaryText(build),
                     ResolveCharacterInfoSearchLocation(locationSummary),
-                    Math.Max(1, channel),
+                    NormalizeCharacterInfoSearchChannel(channel),
                     ResolveCharacterInfoSearchStatusText(handoffStatusText));
                 ApplyCharacterInfoSearchLaunch();
                 _searchSelectedIndexByTab[SocialSearchTab.PartyMember] = 0;
@@ -623,6 +623,17 @@ namespace HaCreator.MapSimulator.Interaction
                 : handoffStatusText.Trim();
         }
 
+        private static int NormalizeCharacterInfoSearchChannel(int channel)
+        {
+            // Keep unknown remote channel context as CH ? instead of coercing it to CH 1.
+            return channel > 0 ? channel : 0;
+        }
+
+        private static string FormatSearchChannelLabel(int channel)
+        {
+            return channel > 0 ? $"CH {channel}" : "CH ?";
+        }
+
         private SocialSearchTab ResolveCharacterInfoSearchLaunchTab(bool isRemoteTarget, int? launchOption)
         {
             // CUIUserList::OnCreate seeds m_nCurTab from m_nOption when the owner is created.
@@ -732,7 +743,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 selectedEntry.Title,
                 $"{selectedEntry.PrimaryText}  {selectedEntry.SecondaryText}".Trim(),
-                $"{selectedEntry.LocationSummary}  CH {selectedEntry.Channel}  {selectedEntry.StatusText}".Trim()
+                $"{selectedEntry.LocationSummary}  {FormatSearchChannelLabel(selectedEntry.Channel)}  {selectedEntry.StatusText}".Trim()
             };
         }
 

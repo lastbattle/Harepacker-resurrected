@@ -559,7 +559,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool HasActiveStatusBarItemMsgOwnerForClientParity(
             IReadOnlyList<WeatherMessageInfo> weatherMessages,
-            int currentTime)
+            int currentTime,
+            int incomingSkillId = 0)
         {
             if (weatherMessages == null || weatherMessages.Count == 0)
             {
@@ -576,6 +577,15 @@ namespace HaCreator.MapSimulator.UI
 
                 if (message.OwnerKind != WeatherMessageOwnerKind.StatusBarItemMsg)
                 {
+                    continue;
+                }
+
+                if (incomingSkillId > 0
+                    && message.OwnerSourceKind == WeatherMessageOwnerSourceKind.SkillCooldownNotice
+                    && message.OwnerSkillId == incomingSkillId)
+                {
+                    // Keep same-skill cooldown owner refreshes on the current row
+                    // while still blocking cross-skill or non-cooldown itemMsg owners.
                     continue;
                 }
 

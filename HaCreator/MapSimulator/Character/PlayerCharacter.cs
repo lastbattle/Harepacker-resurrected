@@ -5675,6 +5675,7 @@ namespace HaCreator.MapSimulator.Character
             int mirrorOverlayInsertionIndex = ResolveMirrorImageOverlayInsertionIndex(
                 avatarLayerInsertionIndices,
                 frame.Parts.Count);
+            bool underFaceOverlayDrawn = false;
             bool underFaceDrawn = avatarEffects.Count == 0;
             bool shadowPartnerDrawn = false;
             bool mirrorImageDrawn = false;
@@ -5692,6 +5693,7 @@ namespace HaCreator.MapSimulator.Character
                     i,
                     mirrorOverlayInsertionIndex,
                     ref mirrorImageDrawn,
+                    ref underFaceOverlayDrawn,
                     ref underFaceDrawn,
                     ref shadowPartnerDrawn,
                     avatarEffects,
@@ -5712,6 +5714,7 @@ namespace HaCreator.MapSimulator.Character
                 frame.Parts.Count,
                 mirrorOverlayInsertionIndex,
                 ref mirrorImageDrawn,
+                ref underFaceOverlayDrawn,
                 ref underFaceDrawn,
                 ref shadowPartnerDrawn,
                 avatarEffects,
@@ -5733,6 +5736,7 @@ namespace HaCreator.MapSimulator.Character
             int insertionIndex,
             int mirrorOverlayInsertionIndex,
             ref bool mirrorImageDrawn,
+            ref bool underFaceOverlayDrawn,
             ref bool underFaceDrawn,
             ref bool shadowPartnerDrawn,
             List<AvatarEffectRenderable> avatarEffects,
@@ -5744,22 +5748,47 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            if (!underFaceDrawn)
+            ResolveUnderFaceSeamDrawAdmissions(
+                underFaceOverlayDrawn,
+                underFaceDrawn,
+                shadowPartnerDrawn,
+                out bool drawUnderFaceOverlayNow,
+                out bool drawUnderFaceEffectsNow,
+                out bool drawShadowPartnerNow);
+
+            if (drawUnderFaceOverlayNow)
             {
                 drawUnderFaceOverlay?.Invoke();
-                DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
-                shadowPartnerDrawn = true;
-                DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, frame, screenX, screenY, tint);
-                underFaceDrawn = true;
+                underFaceOverlayDrawn = true;
             }
-            else if (!shadowPartnerDrawn)
+
+            if (drawShadowPartnerNow)
             {
                 DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
                 shadowPartnerDrawn = true;
             }
 
+            if (drawUnderFaceEffectsNow)
+            {
+                DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, frame, screenX, screenY, tint);
+                underFaceDrawn = true;
+            }
+
             DrawMirrorImage(spriteBatch, skeletonRenderer, frame, currentFrameIndex, screenX, screenY, currentTime, AvatarRenderLayer.UnderFace);
             mirrorImageDrawn = true;
+        }
+
+        private static void ResolveUnderFaceSeamDrawAdmissions(
+            bool underFaceOverlayDrawn,
+            bool underFaceDrawn,
+            bool shadowPartnerDrawn,
+            out bool drawUnderFaceOverlay,
+            out bool drawUnderFaceEffects,
+            out bool drawShadowPartner)
+        {
+            drawUnderFaceOverlay = !underFaceOverlayDrawn;
+            drawUnderFaceEffects = !underFaceDrawn;
+            drawShadowPartner = !shadowPartnerDrawn;
         }
 
         private void DrawMeleeAfterImage(
@@ -6519,7 +6548,8 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.LastInsertCanvasSourceLayer,
                 preparedLayer.OverlayTargetLayer,
                 preparedLayer.LastInsertCanvasOverlayTargetLayer,
-                preparedLayer.LastInsertCanvasTime);
+                preparedLayer.LastInsertCanvasTime,
+                currentTime);
             if (shouldUseLiveSourceLayer)
             {
                 ApplyMirrorImageInsertCanvasMetadata(
@@ -7344,7 +7374,8 @@ namespace HaCreator.MapSimulator.Character
             AvatarRenderLayer? lastInsertCanvasSourceLayer,
             AvatarRenderLayer overlayTargetLayer,
             AvatarRenderLayer? lastInsertCanvasOverlayTargetLayer,
-            int lastInsertCanvasTime)
+            int lastInsertCanvasTime,
+            int currentTime)
         {
             if (preparedLayerObjectId <= 0)
             {
@@ -7378,6 +7409,14 @@ namespace HaCreator.MapSimulator.Character
                 && lastInsertCanvasOverlayTargetLayer.Value != overlayTargetLayer)
             {
                 return false;
+            }
+
+            bool insertTimelineRegressed = currentTime != int.MinValue
+                && lastInsertCanvasTime != int.MinValue
+                && currentTime < lastInsertCanvasTime;
+            if (insertTimelineRegressed)
+            {
+                return true;
             }
 
             bool sourcePartsIdentityChanged = sourcePartsObjectId > 0
@@ -9888,6 +9927,22 @@ namespace HaCreator.MapSimulator.Character
                 previousReplayTriggerTime);
         }
 
+        internal static (bool DrawUnderFaceOverlay, bool DrawUnderFaceEffects, bool DrawShadowPartner)
+            ResolveUnderFaceSeamDrawAdmissionsForTesting(
+                bool underFaceOverlayDrawn,
+                bool underFaceDrawn,
+                bool shadowPartnerDrawn)
+        {
+            ResolveUnderFaceSeamDrawAdmissions(
+                underFaceOverlayDrawn,
+                underFaceDrawn,
+                shadowPartnerDrawn,
+                out bool drawUnderFaceOverlay,
+                out bool drawUnderFaceEffects,
+                out bool drawShadowPartner);
+            return (drawUnderFaceOverlay, drawUnderFaceEffects, drawShadowPartner);
+        }
+
         internal static string ResolveMirrorImageActionOwnerNameForTesting()
         {
             return MirrorImagePersistentActionOwnerName;
@@ -10110,6 +10165,8 @@ namespace HaCreator.MapSimulator.Character
             CharacterPart mountedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(mountedVehicleId);
             if (mountedPart?.Slot == EquipSlot.TamingMob)
             {
+                bool canReuseActiveMountedStateBodyRelMove =
+                    ShouldReuseActiveMountedStateBodyRelMove(mountedVehicleId, mountedStatePart);
                 if (TryResolveCurrentRenderedMountedClientBodyRelMoveY(
                         currentTime,
                         mountedVehicleId,
@@ -10119,9 +10176,7 @@ namespace HaCreator.MapSimulator.Character
                     return mountedBodyRelMoveY;
                 }
 
-                bool activeMountedStateMatchesRequestedVehicle = mountedVehicleId <= 0
-                    || MatchesTamingMobItemId(mountedStatePart, mountedVehicleId);
-                if (activeMountedStateMatchesRequestedVehicle
+                if (canReuseActiveMountedStateBodyRelMove
                     && TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out mountedBodyRelMoveY))
                 {
                     return mountedBodyRelMoveY;
@@ -10190,10 +10245,20 @@ namespace HaCreator.MapSimulator.Character
             out int bodyRelMoveY)
         {
             bodyRelMoveY = 0;
-            bool activeMountedStateMatchesRequestedVehicle = mountedVehicleId <= 0
-                || MatchesTamingMobItemId(mountedStatePart, mountedVehicleId);
-            return activeMountedStateMatchesRequestedVehicle
+            return ShouldReuseActiveMountedStateBodyRelMove(mountedVehicleId, mountedStatePart)
                 && TryResolveMountedClientBodyRelMoveY(frame, out bodyRelMoveY);
+        }
+
+        internal static bool ShouldReuseActiveMountedStateBodyRelMove(
+            int mountedVehicleId,
+            CharacterPart mountedStatePart)
+        {
+            // Keep client ownership on the active mounted state: when no explicit
+            // vehicle is requested, only reuse rendered mounted offsets if the
+            // player is currently mounted.
+            return mountedVehicleId > 0
+                ? MatchesTamingMobItemId(mountedStatePart, mountedVehicleId)
+                : mountedStatePart?.Slot == EquipSlot.TamingMob;
         }
 
         internal bool TryResolveCurrentMountedClientBodyRelMoveY(

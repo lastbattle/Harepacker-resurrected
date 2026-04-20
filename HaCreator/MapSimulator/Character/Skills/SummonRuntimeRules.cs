@@ -388,14 +388,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     // Client action `14` is the subsummon family. Do not flip ownership
                     // unless the authored subsummon branch exists.
-                    return !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "subsummon"));
+                    return HasAuthoredSummonOwnedPacketSkillBranch(skill, normalizedAction);
                 }
 
                 if (normalizedAction >= PacketSkillActionSkillBranchMin
                     && normalizedAction <= PacketSkillActionSkillBranchMax)
                 {
-                    return HasMinionAbilityToken(skill.MinionAbility, "summon")
-                           && !string.IsNullOrWhiteSpace(ResolveLocalSummonActionBranch(skill));
+                    return HasAuthoredSummonOwnedPacketSkillBranch(skill, normalizedAction);
                 }
             }
             else if (assistType == SummonAssistType.Support)
@@ -407,8 +406,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         return false;
                     }
 
-                    return !string.IsNullOrWhiteSpace(
-                        ResolvePacketSkillBranch(skill, normalizedAction, SummonAssistType.Support));
+                    return HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction);
                 }
 
                 if (IsBeholderSupportPacketSkillAction(normalizedAction))
@@ -418,8 +416,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         return false;
                     }
 
-                    return !string.IsNullOrWhiteSpace(
-                        ResolvePacketSkillBranch(skill, normalizedAction, SummonAssistType.Support));
+                    return HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction);
                 }
 
                 if (normalizedAction >= PacketSkillActionSkillBranchMin
@@ -431,14 +428,93 @@ namespace HaCreator.MapSimulator.Character.Skills
                         return false;
                     }
 
-                    bool preferHealFirst = HasMinionAbilityToken(skill.MinionAbility, "heal");
-                    return !string.IsNullOrWhiteSpace(ResolveSupportOwnedBranch(skill, preferHealFirst))
-                           || !string.IsNullOrWhiteSpace(
-                               ResolvePacketSkillBranch(skill, normalizedAction, SummonAssistType.Support));
+                    return HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction);
                 }
             }
 
             return !string.IsNullOrWhiteSpace(ResolvePacketSkillBranch(skill, normalizedAction, assistType));
+        }
+
+        private static bool HasAuthoredSummonOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return false;
+            }
+
+            if (normalizedAction == PacketSkillActionSubsummon)
+            {
+                return !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "subsummon"));
+            }
+
+            if (normalizedAction < PacketSkillActionSkillBranchMin
+                || normalizedAction > PacketSkillActionSkillBranchMax
+                || !HasMinionAbilityToken(skill.MinionAbility, "summon"))
+            {
+                return false;
+            }
+
+            string indexedBranch = $"skill{normalizedAction}";
+            if (normalizedAction == 1)
+            {
+                return !string.IsNullOrWhiteSpace(
+                    ResolveNamedSummonBranch(skill, indexedBranch, "subsummon", "skill2"));
+            }
+
+            if (normalizedAction == 2)
+            {
+                return !string.IsNullOrWhiteSpace(
+                    ResolveNamedSummonBranch(skill, indexedBranch, "subsummon", "skill1"));
+            }
+
+            return !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, indexedBranch));
+        }
+
+        private static bool HasAuthoredSupportOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return false;
+            }
+
+            if (normalizedAction == PacketSkillActionHealingRobotHeal)
+            {
+                return !string.IsNullOrWhiteSpace(
+                    ResolveNamedSummonBranch(skill, "heal", "support", "skill1", "skill2", "stand"));
+            }
+
+            if (skill.SkillId == BeholderSummonSkillId && IsBeholderSupportPacketSkillAction(normalizedAction))
+            {
+                if (normalizedAction == PacketSkillActionBeholderHeal)
+                {
+                    return !string.IsNullOrWhiteSpace(ResolveBeholderHealBranch(skill));
+                }
+
+                int branchIndex = normalizedAction - PacketSkillActionBeholderBuffBase;
+                return !string.IsNullOrWhiteSpace(GetBeholderBranchName(branchIndex))
+                       && !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, GetBeholderBranchName(branchIndex)));
+            }
+
+            if (normalizedAction < PacketSkillActionSkillBranchMin
+                || normalizedAction > PacketSkillActionSkillBranchMax)
+            {
+                return false;
+            }
+
+            string indexedBranch = $"skill{normalizedAction}";
+            return !string.IsNullOrWhiteSpace(
+                ResolveNamedSummonBranch(
+                    skill,
+                    indexedBranch,
+                    "heal",
+                    "support",
+                    "skill1",
+                    "skill2",
+                    "skill3",
+                    "skill4",
+                    "skill5",
+                    "skill6",
+                    "stand"));
         }
 
         public static string ResolvePacketAttackBranch(SkillData skill, byte packetAction)

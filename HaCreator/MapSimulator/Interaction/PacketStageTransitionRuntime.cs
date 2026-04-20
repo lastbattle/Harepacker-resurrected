@@ -1700,6 +1700,11 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.InventoryItemsByType;
             Dictionary<InventoryType, int> primaryMatchedCountsByType = new();
             Dictionary<InventoryType, int> secondaryMatchedCountsByType = new();
+            foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+            {
+                primaryMatchedCountsByType[inventoryType] = 0;
+                secondaryMatchedCountsByType[inventoryType] = 0;
+            }
 
             BuildBackwardUpdateRemovedSerialNumberMatchSummary(
                 inventoryItemsByType,
@@ -1848,6 +1853,23 @@ namespace HaCreator.MapSimulator.Interaction
             positionFallbackInsertedByteCount = 0;
             positionFallbackReplacementCount = 0;
             positionFallbackReplacementByteCount = 0;
+            foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+            {
+                positionValidatedCountsByType[inventoryType] = 0;
+                positionFallbackCountsByType[inventoryType] = 0;
+                positionValidatedByteCountsByType[inventoryType] = 0;
+                positionFallbackByteCountsByType[inventoryType] = 0;
+                positionOutOfRangeCountsByType[inventoryType] = 0;
+                positionOutOfRangeByteCountsByType[inventoryType] = 0;
+                positionSlotOverflowCountsByType[inventoryType] = 0;
+                positionSlotOverflowByteCountsByType[inventoryType] = 0;
+                positionCollisionCountsByType[inventoryType] = 0;
+                positionCollisionByteCountsByType[inventoryType] = 0;
+                positionFallbackInsertedCountsByType[inventoryType] = 0;
+                positionFallbackInsertedByteCountsByType[inventoryType] = 0;
+                positionFallbackReplacementCountsByType[inventoryType] = 0;
+                positionFallbackReplacementByteCountsByType[inventoryType] = 0;
+            }
 
             if (inventoryItemsByType == null)
             {
@@ -1946,58 +1968,58 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                 }
 
+                positionValidatedCountsByType[inventoryType] = validatedForType;
+                positionValidatedByteCountsByType[inventoryType] = validatedBytesForType;
                 if (validatedForType > 0)
                 {
-                    positionValidatedCountsByType[inventoryType] = validatedForType;
-                    positionValidatedByteCountsByType[inventoryType] = validatedBytesForType;
                     positionValidatedCount = checked(positionValidatedCount + validatedForType);
                     positionValidatedByteCount = checked(positionValidatedByteCount + validatedBytesForType);
                 }
 
+                positionFallbackCountsByType[inventoryType] = fallbackForType;
+                positionFallbackByteCountsByType[inventoryType] = fallbackBytesForType;
                 if (fallbackForType > 0)
                 {
-                    positionFallbackCountsByType[inventoryType] = fallbackForType;
-                    positionFallbackByteCountsByType[inventoryType] = fallbackBytesForType;
                     positionFallbackCount = checked(positionFallbackCount + fallbackForType);
                     positionFallbackByteCount = checked(positionFallbackByteCount + fallbackBytesForType);
                 }
 
+                positionOutOfRangeCountsByType[inventoryType] = outOfRangeForType;
+                positionOutOfRangeByteCountsByType[inventoryType] = outOfRangeBytesForType;
                 if (outOfRangeForType > 0)
                 {
-                    positionOutOfRangeCountsByType[inventoryType] = outOfRangeForType;
-                    positionOutOfRangeByteCountsByType[inventoryType] = outOfRangeBytesForType;
                     positionOutOfRangeCount = checked(positionOutOfRangeCount + outOfRangeForType);
                     positionOutOfRangeByteCount = checked(positionOutOfRangeByteCount + outOfRangeBytesForType);
                 }
 
+                positionSlotOverflowCountsByType[inventoryType] = slotOverflowForType;
+                positionSlotOverflowByteCountsByType[inventoryType] = slotOverflowBytesForType;
                 if (slotOverflowForType > 0)
                 {
-                    positionSlotOverflowCountsByType[inventoryType] = slotOverflowForType;
-                    positionSlotOverflowByteCountsByType[inventoryType] = slotOverflowBytesForType;
                     positionSlotOverflowCount = checked(positionSlotOverflowCount + slotOverflowForType);
                     positionSlotOverflowByteCount = checked(positionSlotOverflowByteCount + slotOverflowBytesForType);
                 }
 
+                positionCollisionCountsByType[inventoryType] = collisionForType;
+                positionCollisionByteCountsByType[inventoryType] = collisionBytesForType;
                 if (collisionForType > 0)
                 {
-                    positionCollisionCountsByType[inventoryType] = collisionForType;
-                    positionCollisionByteCountsByType[inventoryType] = collisionBytesForType;
                     positionCollisionCount = checked(positionCollisionCount + collisionForType);
                     positionCollisionByteCount = checked(positionCollisionByteCount + collisionBytesForType);
                 }
 
+                positionFallbackInsertedCountsByType[inventoryType] = fallbackInsertedForType;
+                positionFallbackInsertedByteCountsByType[inventoryType] = fallbackInsertedBytesForType;
                 if (fallbackInsertedForType > 0)
                 {
-                    positionFallbackInsertedCountsByType[inventoryType] = fallbackInsertedForType;
-                    positionFallbackInsertedByteCountsByType[inventoryType] = fallbackInsertedBytesForType;
                     positionFallbackInsertedCount = checked(positionFallbackInsertedCount + fallbackInsertedForType);
                     positionFallbackInsertedByteCount = checked(positionFallbackInsertedByteCount + fallbackInsertedBytesForType);
                 }
 
+                positionFallbackReplacementCountsByType[inventoryType] = fallbackReplacementForType;
+                positionFallbackReplacementByteCountsByType[inventoryType] = fallbackReplacementBytesForType;
                 if (fallbackReplacementForType > 0)
                 {
-                    positionFallbackReplacementCountsByType[inventoryType] = fallbackReplacementForType;
-                    positionFallbackReplacementByteCountsByType[inventoryType] = fallbackReplacementBytesForType;
                     positionFallbackReplacementCount = checked(positionFallbackReplacementCount + fallbackReplacementForType);
                     positionFallbackReplacementByteCount = checked(positionFallbackReplacementByteCount + fallbackReplacementBytesForType);
                 }

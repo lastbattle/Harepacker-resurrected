@@ -139,6 +139,38 @@ namespace HaCreator.MapSimulator.UI
                 && packetItemId <= 0;
         }
 
+        internal static int FindPacketOwnedCommodityRowIndexForGoToCommoditySerial(
+            int commoditySerialNumber,
+            IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> rows)
+        {
+            if (commoditySerialNumber <= 0 || rows == null || rows.Count == 0)
+            {
+                return -1;
+            }
+
+            int fallbackIndex = -1;
+            for (int index = 0; index < rows.Count; index++)
+            {
+                AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot row = rows[index];
+                if (row == null || row.SerialNumber != commoditySerialNumber)
+                {
+                    continue;
+                }
+
+                if (row.Price > 0)
+                {
+                    return index;
+                }
+
+                if (fallbackIndex < 0)
+                {
+                    fallbackIndex = index;
+                }
+            }
+
+            return fallbackIndex;
+        }
+
         internal static bool ShouldUseNonSaleIconVisual(
             bool isPacketOwnedSnapshotRow,
             int commoditySerialNumber,

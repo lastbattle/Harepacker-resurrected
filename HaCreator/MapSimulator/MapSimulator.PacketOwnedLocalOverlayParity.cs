@@ -2375,7 +2375,7 @@ namespace HaCreator.MapSimulator
         {
             ClearFieldHazardPendingInventoryRequest();
             _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-            _pendingFieldHazardPetAutoConsumeRequest = null;
+            CloseFieldHazardPendingPetAutoConsumeRequest(currTickCount, retainRecentOwnership: false);
             _localOverlayRuntime.ClearFieldHazardNotice();
             return "Cleared the packet-authored field hazard notice.";
         }
@@ -2595,7 +2595,7 @@ namespace HaCreator.MapSimulator
             {
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                _pendingFieldHazardPetAutoConsumeRequest = null;
+                CloseFieldHazardPendingPetAutoConsumeRequest(request, currentTickCount, retainRecentOwnership: true);
                 string cancelledDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} for {request.Candidate.ItemName} expired before the client could acknowledge it.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(cancelledDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
@@ -2644,7 +2644,7 @@ namespace HaCreator.MapSimulator
             {
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                _pendingFieldHazardPetAutoConsumeRequest = null;
+                CloseFieldHazardPendingPetAutoConsumeRequest(request, currentTickCount, retainRecentOwnership: true);
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                 string slotExpiredDetail = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
@@ -2712,7 +2712,7 @@ namespace HaCreator.MapSimulator
 
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                _pendingFieldHazardPetAutoConsumeRequest = null;
+                CloseFieldHazardPendingPetAutoConsumeRequest(request, currentTickCount, retainRecentOwnership: true);
                 string remoteUnresolvedDetail = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
                     ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} remained deferred/external after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}."
                     : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} remained externally owned after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
@@ -2727,7 +2727,7 @@ namespace HaCreator.MapSimulator
 
             ClearFieldHazardPendingInventoryRequest();
             _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-            _pendingFieldHazardPetAutoConsumeRequest = null;
+            CloseFieldHazardPendingPetAutoConsumeRequest(request, currentTickCount, retainRecentOwnership: true);
 
             if (player.HP >= player.MaxHP)
             {
@@ -3148,7 +3148,7 @@ namespace HaCreator.MapSimulator
         {
             ClearFieldHazardPendingInventoryRequest();
             _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-            _pendingFieldHazardPetAutoConsumeRequest = null;
+            CloseFieldHazardPendingPetAutoConsumeRequest(request, currentTickCount, retainRecentOwnership: true);
 
             string detail = quantityDropped
                 ? $"{petLabel} {requestMode} request #{request.RequestId} observed a remote quantity change for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} after the packet-owned request left the simulator."
@@ -3245,7 +3245,7 @@ namespace HaCreator.MapSimulator
                 case FieldHazardPetConsumeInboundResultKind.Consumed:
                     ClearFieldHazardPendingInventoryRequest();
                     _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                    _pendingFieldHazardPetAutoConsumeRequest = null;
+                    CloseFieldHazardPendingPetAutoConsumeRequest(request, currentTickCount, retainRecentOwnership: true);
                     if (TryUseConsumableInventoryItemAtSlot(
                             request.Candidate.ItemId,
                             request.Candidate.InventoryType,
@@ -3266,7 +3266,7 @@ namespace HaCreator.MapSimulator
                 case FieldHazardPetConsumeInboundResultKind.NoHpPotion:
                     ClearFieldHazardPendingInventoryRequest();
                     _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                    _pendingFieldHazardPetAutoConsumeRequest = null;
+                    CloseFieldHazardPendingPetAutoConsumeRequest(request, currentTickCount, retainRecentOwnership: true);
                     TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                     _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                     {
@@ -3278,7 +3278,7 @@ namespace HaCreator.MapSimulator
                 default:
                     ClearFieldHazardPendingInventoryRequest();
                     _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                    _pendingFieldHazardPetAutoConsumeRequest = null;
+                    CloseFieldHazardPendingPetAutoConsumeRequest(request, currentTickCount, retainRecentOwnership: true);
                     {
                         string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} failed through the packet-owned result path for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.{resultDetailSuffix}";
                         _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Failure, currentTickCount);
@@ -3935,7 +3935,7 @@ namespace HaCreator.MapSimulator
                 _packetOwnedBalloonState.Clear();
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                _pendingFieldHazardPetAutoConsumeRequest = null;
+                CloseFieldHazardPendingPetAutoConsumeRequest(currTickCount, retainRecentOwnership: false);
                 _localOverlayRuntime.ClearDamageMeter(currTickCount, updateSharedTiming: false);
                 _localOverlayRuntime.ClearFieldHazardNotice();
                 return;
@@ -3965,7 +3965,7 @@ namespace HaCreator.MapSimulator
             {
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                _pendingFieldHazardPetAutoConsumeRequest = null;
+                CloseFieldHazardPendingPetAutoConsumeRequest(currTickCount, retainRecentOwnership: false);
                 _localOverlayRuntime.ClearFieldHazardNotice();
             }
         }

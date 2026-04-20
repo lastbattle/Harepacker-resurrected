@@ -1423,7 +1423,8 @@ namespace HaCreator.MapSimulator
                     out string chairMessage,
                     ResolvePortableChairPairPreferenceFromSeatPacketForParity(
                         (int)RemoteUserPacketType.UserPortableChairOfficial,
-                        officialChairPacket.PairCharacterId));
+                        officialChairPacket.PairCharacterId),
+                    allowPairRecordCreateFromSeatState: false);
                 result = chairApplied
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
                     : chairMessage;
@@ -1753,7 +1754,8 @@ namespace HaCreator.MapSimulator
                         out string chairMessage,
                         ResolvePortableChairPairPreferenceFromSeatPacketForParity(
                             (int)RemoteUserPacketType.UserPortableChair,
-                            chairPacket.PairCharacterId));
+                            chairPacket.PairCharacterId),
+                        allowPairRecordCreateFromSeatState: false);
                     result = chairApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {chairPacket.CharacterId}."
                         : chairMessage;
@@ -2382,13 +2384,30 @@ namespace HaCreator.MapSimulator
             }
 
             string chatLine = $"{speakerName} : {SanitizeRemoteUserChatText(packet.Text)}";
-            int chatLogType = packet.ChatType != 0 ? 11 : 0;
+            int chatLogType = ResolveRemoteUserCommonChatLogType(packet.ChatType);
             _chat?.AddClientChatMessage(
                 chatLine,
                 Environment.TickCount,
                 chatLogType,
                 whisperTargetCandidate: speakerName);
             return $"Applied {DescribeRemoteUserPacketType(fromOutsideOfMap ? (int)RemoteUserPacketType.UserChatFromOutsideMap : (int)RemoteUserPacketType.UserChat)} for {packet.CharacterId}.";
+        }
+
+        internal static int ResolveRemoteUserCommonChatLogType(byte chatType)
+        {
+            // Client CUserPool::OnUserCommonPacket (181/182) routes through CUser::OnChat.
+            // Preserve known ChatLogAdd lType values when packet chatType already carries one;
+            // otherwise keep the existing common non-zero fallback to lType 11.
+            if (chatType == 0)
+            {
+                return 0;
+            }
+
+            return chatType switch
+            {
+                11 or 18 or 19 or 20 or 21 or 22 or 23 => chatType,
+                _ => 11
+            };
         }
 
         private static string SanitizeRemoteUserChatText(string text)

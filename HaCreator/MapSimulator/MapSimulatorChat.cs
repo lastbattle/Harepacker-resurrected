@@ -1506,11 +1506,13 @@ namespace HaCreator.MapSimulator
                 _whisperTargetPickerSelectionIndex = -1;
                 _isWhisperTargetPickerComboDropdownOpen = false;
                 _whisperTargetPickerFirstVisibleIndex = 0;
+                SetInputText(string.Empty);
                 return;
             }
 
             _whisperTargetPickerSelectionIndex = 0;
             _whisperTargetPickerFirstVisibleIndex = 0;
+            SetInputText(_whisperCandidates[0]);
         }
 
         internal void PageWhisperTargetPickerSelection(int deltaPages)

@@ -70,10 +70,11 @@ namespace HaCreator.MapSimulator.Fields
         public static bool ShouldKeepQueuedRetryPending(PassiveTransferFieldQueuedRetryState state)
         {
             // `TryPassiveTransferField` keeps its pending flag while the interface gate is unavailable.
-            // Keep pending ownership independent from momentary interface loss.
+            // Keep pending ownership independent from momentary interface loss, even if
+            // local runtime owner bindings are temporarily unresolved during that drop.
             return !state.HasPendingMapChange
-                   && state.HasBoundPlayer
-                   && state.IsPlayerActive;
+                   && ((state.HasBoundPlayer && state.IsPlayerActive)
+                       || !state.HasLiveFieldInterface);
         }
 
         public static QueuedRetryDecision EvaluateQueuedRetryDecision(PassiveTransferFieldQueuedRetryDecisionState state)

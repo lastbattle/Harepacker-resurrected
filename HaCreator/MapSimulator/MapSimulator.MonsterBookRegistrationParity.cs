@@ -118,6 +118,7 @@ namespace HaCreator.MapSimulator
             public int ResponseDelayMs { get; init; } = MonsterBookOwnershipSaveResponseDelayMs;
             public string SourceSummary { get; init; } = string.Empty;
             public bool SyntheticResultQueued { get; set; }
+            public long SyntheticResultQueuedTick { get; set; } = long.MinValue;
         }
 
         private string DispatchMonsterBookRegistrationRequest(
@@ -638,6 +639,17 @@ namespace HaCreator.MapSimulator
                 if (!saveRejected.HasValue && usedNestedRoot)
                 {
                     saveRejected = ReadNullableBoolean(root, "failure", "failed", "rejected", "error", "denied");
+                }
+
+                if (TryResolveMonsterBookOwnershipSaveResultJsonObject(payloadRoot, root, usedNestedRoot, out JsonElement saveResultElement))
+                {
+                    requestId ??= NormalizePositiveInt(ReadInt(saveResultElement, "requestId", "requestToken", "requestSeq", "sequence", "token", "seq"));
+                    saveAccepted ??= ReadNullableBoolean(saveResultElement, "success", "succeeded", "ok", "accepted", "saved");
+                    saveRejected ??= ReadNullableBoolean(saveResultElement, "failure", "failed", "rejected", "error", "denied");
+                    if (string.IsNullOrWhiteSpace(statusText))
+                    {
+                        statusText = ReadString(saveResultElement, "statusText", "message", "text", "notice");
+                    }
                 }
 
                 if (!saveAccepted.HasValue && saveRejected == true)
@@ -1228,6 +1240,27 @@ namespace HaCreator.MapSimulator
                 || element.TryGetProperty("selectedMobId", out _);
         }
 
+        private static bool TryResolveMonsterBookOwnershipSaveResultJsonObject(
+            JsonElement payloadRoot,
+            JsonElement root,
+            bool usedNestedRoot,
+            out JsonElement saveResultElement)
+        {
+            if (TryFindNestedPropertyObject(payloadRoot, maxDepth: 3, out saveResultElement, "saveResult", "save"))
+            {
+                return true;
+            }
+
+            if (usedNestedRoot
+                && TryFindNestedPropertyObject(root, maxDepth: 3, out saveResultElement, "saveResult", "save"))
+            {
+                return true;
+            }
+
+            saveResultElement = default;
+            return false;
+        }
+
         private void QueuePacketOwnedMonsterBookOwnershipSaveApply(
             CharacterBuild build,
             int characterId,
@@ -1262,7 +1295,8 @@ namespace HaCreator.MapSimulator
                 Payload = savePayload,
                 SentTick = Environment.TickCount64,
                 ResponseDelayMs = MonsterBookOwnershipSaveResponseDelayMs,
-                SourceSummary = source ?? string.Empty
+                SourceSummary = source ?? string.Empty,
+                SyntheticResultQueuedTick = long.MinValue
             };
 
             if (showFeedback)
@@ -1287,9 +1321,14 @@ namespace HaCreator.MapSimulator
             }
 
             bool hasLiveOfficialSession = _localUtilityOfficialSessionBridge?.HasConnectedSession == true;
-            if (!request.SyntheticResultQueued && !hasLiveOfficialSession)
+            bool fallbackFromNoLiveSession = !hasLiveOfficialSession;
+            bool fallbackFromOfficialSessionTimeout = hasLiveOfficialSession
+                && elapsedMs >= request.ResponseDelayMs + MonsterBookOwnershipSaveOfficialSessionTimeoutMs;
+            if (!request.SyntheticResultQueued
+                && (fallbackFromNoLiveSession || fallbackFromOfficialSessionTimeout))
             {
                 request.SyntheticResultQueued = true;
+                request.SyntheticResultQueuedTick = Environment.TickCount64;
                 _localUtilityPacketInbox.EnqueueLocal(
                     LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType,
                     request.Payload,
@@ -1297,15 +1336,76 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            int timeoutMs = hasLiveOfficialSession
-                ? MonsterBookOwnershipSaveOfficialSessionTimeoutMs
-                : MonsterBookOwnershipSaveSyntheticResultTimeoutMs;
-            if (elapsedMs >= request.ResponseDelayMs + timeoutMs)
+            if (request.SyntheticResultQueued)
             {
-                _pendingMonsterBookOwnershipSaveRequest = null;
-                ShowUtilityFeedbackMessage(
-                    $"Monster Book ownership-save request #{request.RequestId.ToString(CultureInfo.InvariantCulture)} timed out while waiting for local utility packet {LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType.ToString(CultureInfo.InvariantCulture)}.");
+                long syntheticElapsedMs = request.SyntheticResultQueuedTick > long.MinValue
+                    ? Environment.TickCount64 - request.SyntheticResultQueuedTick
+                    : elapsedMs;
+                if (syntheticElapsedMs < MonsterBookOwnershipSaveSyntheticResultTimeoutMs)
+                {
+                    return;
+                }
             }
+            else if (elapsedMs < request.ResponseDelayMs + MonsterBookOwnershipSaveOfficialSessionTimeoutMs)
+            {
+                return;
+            }
+
+            _pendingMonsterBookOwnershipSaveRequest = null;
+            ShowUtilityFeedbackMessage(
+                $"Monster Book ownership-save request #{request.RequestId.ToString(CultureInfo.InvariantCulture)} timed out while waiting for local utility packet {LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType.ToString(CultureInfo.InvariantCulture)}.");
+        }
+
+        private static bool TryFindNestedPropertyObject(
+            JsonElement root,
+            int maxDepth,
+            out JsonElement match,
+            params string[] names)
+        {
+            if (maxDepth < 0 || root.ValueKind != JsonValueKind.Object)
+            {
+                match = default;
+                return false;
+            }
+
+            for (int i = 0; i < names.Length; i++)
+            {
+                string name = names[i];
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                if (root.TryGetProperty(name, out JsonElement direct)
+                    && direct.ValueKind == JsonValueKind.Object)
+                {
+                    match = direct;
+                    return true;
+                }
+            }
+
+            if (maxDepth == 0)
+            {
+                match = default;
+                return false;
+            }
+
+            foreach (JsonProperty property in root.EnumerateObject())
+            {
+                JsonElement value = property.Value;
+                if (value.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                if (TryFindNestedPropertyObject(value, maxDepth - 1, out match, names))
+                {
+                    return true;
+                }
+            }
+
+            match = default;
+            return false;
         }
 
         private string DispatchMonsterBookOwnershipSaveRequest(byte[] payload, string source)

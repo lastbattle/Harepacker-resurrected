@@ -750,22 +750,51 @@ namespace HaCreator.MapSimulator.UI
                 EnsureSelectionVisible(snapshot);
                 UpdateButtonStates();
 
-                QuestAlarmEntrySnapshot clickedEntry = snapshot?.Entries?.FirstOrDefault(entry => entry.QuestId == row.QuestId);
-                if (clickedEntry?.IsRecentlyUpdated == true)
-                {
-                    QuestRecentUpdateAcknowledged?.Invoke(row.QuestId);
-                    snapshot = RefreshFilteredSnapshot();
-                    HandleEmptySnapshotVisibility(snapshot);
-                    EnsureSelection(snapshot);
-                    EnsureSelectionVisible(snapshot);
-                    ClampScrollOffset(snapshot);
-                    RefreshFrame(snapshot);
-                    UpdateButtonStates();
-                }
+                AcknowledgeQuestAlertStateForInteraction(row.QuestId, ref snapshot);
 
                 QuestRequested?.Invoke(row.QuestId);
                 return;
             }
+        }
+
+        private void AcknowledgeQuestAlertStateForInteraction(int questId, ref QuestAlarmSnapshot snapshot)
+        {
+            if (questId <= 0 || snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return;
+            }
+
+            QuestAlarmEntrySnapshot interactedEntry = snapshot.Entries.FirstOrDefault(entry => entry.QuestId == questId);
+            if (interactedEntry == null)
+            {
+                return;
+            }
+
+            bool stateChanged = false;
+            if (interactedEntry.IsRecentlyUpdated)
+            {
+                QuestRecentUpdateAcknowledged?.Invoke(questId);
+                stateChanged = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(interactedEntry.TooltipText))
+            {
+                QuestTitleTooltipCleared?.Invoke(questId);
+                stateChanged = true;
+            }
+
+            if (!stateChanged)
+            {
+                return;
+            }
+
+            snapshot = RefreshFilteredSnapshot();
+            HandleEmptySnapshotVisibility(snapshot);
+            EnsureSelection(snapshot);
+            EnsureSelectionVisible(snapshot);
+            ClampScrollOffset(snapshot);
+            RefreshFrame(snapshot);
+            UpdateButtonStates();
         }
 
         private QuestAlarmSnapshot RefreshFilteredSnapshot()
@@ -1688,6 +1717,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (WasPressed(keyboardState, Keys.Enter) && _selectedQuestId > 0)
             {
+                AcknowledgeQuestAlertStateForInteraction(_selectedQuestId, ref snapshot);
                 QuestRequested?.Invoke(_selectedQuestId);
             }
 

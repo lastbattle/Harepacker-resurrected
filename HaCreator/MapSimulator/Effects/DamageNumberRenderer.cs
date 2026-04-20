@@ -1152,48 +1152,59 @@ namespace HaCreator.MapSimulator.Effects
             return new CompositeCanvasPlacement(left, top, width, height);
         }
 
-        private static DamageNumberDigitSet ResolveAnyLoadedDigitSet(string primarySetName, string fallbackSetName)
-        {
-            DamageNumberDigitSet digitSet = DamageNumberLoader.GetDigitSetByName(primarySetName);
-            if (digitSet?.IsLoaded == true)
-                return digitSet;
-
-            digitSet = DamageNumberLoader.GetDigitSetByName(fallbackSetName);
-            if (digitSet?.IsLoaded == true)
-                return digitSet;
-
-            digitSet = DamageNumberLoader.GetDigitSetByName("NoRed0");
-            return digitSet?.IsLoaded == true ? digitSet : null;
-        }
-
         private static DamageNumberDigitSet ResolveLargeDigitSet(DamageColorType colorType, bool isCritical)
         {
-            if (isCritical)
-                return ResolveAnyLoadedDigitSet("NoCri1", "NoRed1");
+            string setName = ResolveLargeDigitSetName(colorType, isCritical);
+            return ResolveDigitSetByName(setName);
+        }
 
-            string setName = colorType switch
+        private static DamageNumberDigitSet ResolveSmallDigitSet(DamageColorType colorType, bool isCritical)
+        {
+            string setName = ResolveSmallDigitSetName(colorType, isCritical);
+            return ResolveDigitSetByName(setName);
+        }
+
+        internal static string ResolveLargeDigitSetName(DamageColorType colorType, bool isCritical)
+        {
+            if (isCritical)
+            {
+                return "NoCri1";
+            }
+
+            return colorType switch
             {
                 DamageColorType.Blue => "NoBlue1",
                 DamageColorType.Violet => "NoViolet1",
                 _ => "NoRed1"
             };
-
-            return ResolveAnyLoadedDigitSet(setName, "NoRed1");
         }
 
-        private static DamageNumberDigitSet ResolveSmallDigitSet(DamageColorType colorType, bool isCritical)
+        internal static string ResolveSmallDigitSetName(DamageColorType colorType, bool isCritical)
         {
             if (isCritical)
-                return ResolveAnyLoadedDigitSet("NoCri0", "NoRed0");
+            {
+                return "NoCri0";
+            }
 
-            string setName = colorType switch
+            return colorType switch
             {
                 DamageColorType.Blue => "NoBlue0",
                 DamageColorType.Violet => "NoViolet0",
                 _ => "NoRed0"
             };
+        }
 
-            return ResolveAnyLoadedDigitSet(setName, "NoRed0");
+        private static DamageNumberDigitSet ResolveDigitSetByName(string setName)
+        {
+            if (string.IsNullOrWhiteSpace(setName))
+            {
+                return null;
+            }
+
+            DamageNumberDigitSet digitSet = DamageNumberLoader.GetDigitSetByName(setName);
+            return digitSet?.IsLoaded == true
+                ? digitSet
+                : null;
         }
 
         private Texture2D CreateCompositeCanvasTexture(

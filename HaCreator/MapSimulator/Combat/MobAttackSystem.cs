@@ -632,7 +632,12 @@ namespace HaCreator.MapSimulator.Combat
                 }
 
                 projectile.PreviousPosition = projectile.Position;
-                projectile.Position += projectile.Velocity * deltaSeconds;
+                projectile.Position = ResolveProjectilePositionAtTime(
+                    projectile.PreviousPosition,
+                    projectile.Target,
+                    projectile.LaunchTime,
+                    projectile.ExpireTime,
+                    currentTime);
 
                 bool targetedSummoned = projectile.TargetInfo?.TargetType == MobTargetType.Summoned;
                 Rectangle projectileHitbox = projectile.GetHitbox(currentTime);
@@ -649,7 +654,7 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                if (currentTime < projectile.ExpireTime && Vector2.DistanceSquared(projectile.Position, projectile.Target) > 400f)
+                if (currentTime < projectile.ExpireTime)
                 {
                     continue;
                 }
@@ -2396,6 +2401,30 @@ namespace HaCreator.MapSimulator.Combat
             float resolvedSpeed = Math.Max(220f, bulletSpeed > 0 ? bulletSpeed : 320f);
             float travelDistance = Vector2.Distance(spawn, target);
             return Math.Max(250, (int)MathF.Round(travelDistance / resolvedSpeed * 1000f));
+        }
+
+        internal static Vector2 ResolveProjectilePositionAtTime(
+            Vector2 launchPoint,
+            Vector2 targetPoint,
+            int launchTime,
+            int expireTime,
+            int currentTime)
+        {
+            if (currentTime <= launchTime)
+            {
+                return launchPoint;
+            }
+
+            if (expireTime <= launchTime)
+            {
+                return targetPoint;
+            }
+
+            float progress = MathHelper.Clamp(
+                (currentTime - launchTime) / (float)(expireTime - launchTime),
+                0f,
+                1f);
+            return Vector2.Lerp(launchPoint, targetPoint, progress);
         }
 
         internal static List<int> BuildAreaAttackRandomDelaySequence(

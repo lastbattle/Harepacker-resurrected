@@ -55,7 +55,6 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedMinigameSoundPathPrefixStringPoolId = 0x08C4;
         private const int PacketOwnedClassCompetitionAuthRefreshIntervalMs = 180000;
         private const int PacketOwnedClassCompetitionAuthLifetimeMs = 300000;
-        private const int PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs = 250;
         private const int PacketOwnedClassCompetitionAuthRequestOpcode = 291;
         private const int PacketOwnedClassCompetitionUrlTemplateStringPoolId = 0x11DC;
         private const int PacketOwnedClassCompetitionMaxRemotePageLines = 12;
@@ -244,6 +243,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedActiveEffectMotionBlurId = -1;
         private Animation.AnimationEffects.SecondaryMotionBlurAnimationState _packetOwnedActiveEffectMotionBlurState;
         private IReadOnlyDictionary<AvatarRenderLayer, int> _packetOwnedActiveEffectMotionBlurLayerHandleIds;
+        private int _packetOwnedActiveEffectMotionBlurOwnerCharacterId;
         private int _lastDeliveryQuestId;
         private int _lastDeliveryItemId;
         private QuestDetailDeliveryType _lastPacketOwnedDeliveryType;
@@ -275,7 +275,6 @@ namespace HaCreator.MapSimulator
         private string _lastClassCompetitionUrl = string.Empty;
         private string _lastClassCompetitionAuthSource = "none";
         private string _lastClassCompetitionAuthDispatchStatus = "No class-competition auth request has been emitted yet.";
-        private int _lastClassCompetitionAuthResponseTick = int.MinValue;
         private readonly List<string> _lastClassCompetitionRemotePageLines = new();
         private readonly List<string> _lastClassCompetitionRemoteLadderLines = new();
         private string _lastClassCompetitionRemoteNavigateUrl = string.Empty;
@@ -1945,7 +1944,6 @@ namespace HaCreator.MapSimulator
                 bool requiresFreshNavigation = !_lastClassCompetitionLoggedIn
                     || string.IsNullOrWhiteSpace(_lastClassCompetitionUrl);
                 _lastClassCompetitionAuthRequestTick = now;
-                _lastClassCompetitionAuthResponseTick = Math.Max(0, unchecked(now + PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs));
                 _lastClassCompetitionAuthPending = true;
                 _lastClassCompetitionNavigatePending = requiresFreshNavigation;
                 _lastClassCompetitionAuthDispatchStatus = DispatchClassCompetitionAuthRequest();
@@ -1960,14 +1958,8 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (_lastClassCompetitionAuthPending
-                && _lastClassCompetitionAuthResponseTick != int.MinValue
-                && Math.Max(0, unchecked(now - _lastClassCompetitionAuthResponseTick)) >= 0)
-            {
-                ApplyClassCompetitionAuthCache(
-                    BuildClassCompetitionAuthKey(now),
-                    "synthetic opcode 291 fallback");
-            }
+            // Keep auth strictly packet-owned: navigation remains pending until opcode 291
+            // provides a real auth cache through CUserLocal::OnOpenClassCompetitionPage flow.
         }
 
         private string DispatchClassCompetitionAuthRequest()
@@ -2016,7 +2008,6 @@ namespace HaCreator.MapSimulator
             string normalizedAuthKey = authKey?.Trim() ?? string.Empty;
             _lastClassCompetitionAuthIssuedTick = now;
             _lastClassCompetitionAuthPending = false;
-            _lastClassCompetitionAuthResponseTick = int.MinValue;
             _lastClassCompetitionAuthKey = normalizedAuthKey;
             _lastClassCompetitionAuthSource = string.IsNullOrWhiteSpace(source)
                 ? "class-competition auth cache"
@@ -2663,14 +2654,6 @@ namespace HaCreator.MapSimulator
                 .Where(line => line.Length > 0)
                 .Take(maxCount)
                 .ToArray();
-        }
-
-        private string BuildClassCompetitionAuthKey(int issuedAtTick)
-        {
-            int buildId = _playerManager?.Player?.Build?.Id ?? 0;
-            int worldId = Math.Max(0, _simulatorWorldId) + 1;
-            int channelId = Math.Max(0, _simulatorChannelIndex) + 1;
-            return $"msim-cc-{worldId:x2}{channelId:x2}-{buildId:x8}-{issuedAtTick:x8}";
         }
 
         private string BuildClassCompetitionUrl(string authKey)
@@ -3774,7 +3757,7 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedMesoGiveSucceededPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!PacketOwnedRewardResultRuntime.TryDecodeMesoGiveSucceeded(payload, out uint mesoAmount, out string decodeError))
+            if (!PacketOwnedRewardResultRuntime.TryDecodeMesoGiveSucceeded(payload, out uint mesoAmount, out int trailingByteCount, out string decodeError))
             {
                 message = decodeError ?? "Meso-give success payload could not be decoded.";
                 return false;
@@ -3783,7 +3766,9 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.FormatMesoGiveSucceededText(mesoAmount);
             ShowPacketOwnedRewardResultNotice(noticeText);
-            message = $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
+            message = trailingByteCount > 0
+                ? $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
+                : $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
             return true;
         }
 
@@ -3808,7 +3793,7 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedRandomMesobagSucceededPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!PacketOwnedRewardResultRuntime.TryDecodeRandomMesoBagSucceeded(payload, out PacketOwnedRandomMesoBagResult result, out string decodeError))
+            if (!PacketOwnedRewardResultRuntime.TryDecodeRandomMesoBagSucceeded(payload, out PacketOwnedRandomMesoBagResult result, out int trailingByteCount, out string decodeError))
             {
                 message = decodeError ?? "Random-mesobag success payload could not be decoded.";
                 return false;
@@ -3817,14 +3802,16 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
             PacketOwnedRandomMesoBagPresentation presentation = PacketOwnedRewardResultRuntime.CreateRandomMesoBagPresentation(result.Rank, result.MesoAmount);
             _chat?.AddClientChatMessage(presentation.ChatLineText, currTickCount, presentation.ChatMessageType);
-            ShowPacketOwnedRandomMesoBagWindow(presentation);
             if (!string.IsNullOrWhiteSpace(presentation.SoundDescriptor)
                 && !TryPlayPacketOwnedWzSound(presentation.SoundDescriptor, "Item.img", out _, out _))
             {
                 ShowUtilityFeedbackMessage($"Random meso sack tried to play {presentation.SoundDescriptor}, but the sound asset was unavailable.");
             }
+            ShowPacketOwnedRandomMesoBagWindow(presentation);
 
-            message = $"Applied packet-owned random meso sack success for {result.MesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos and opened the dedicated Random Meso Bag owner.";
+            message = trailingByteCount > 0
+                ? $"Applied packet-owned random meso sack success for {result.MesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos, opened the dedicated Random Meso Bag owner, and ignored {trailingByteCount} trailing byte(s), matching the native handler."
+                : $"Applied packet-owned random meso sack success for {result.MesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos and opened the dedicated Random Meso Bag owner.";
             return true;
         }
 
@@ -4187,8 +4174,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            int ownerCharacterId = player?.Build?.Id ?? 0;
             IReadOnlyDictionary<AvatarRenderLayer, int> simulatedLayerHandleIds =
-                ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds();
+                ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds(ownerCharacterId);
             if (!TryCreatePacketOwnedActiveEffectMotionBlurFrame(
                     player,
                     currentTime,
@@ -4613,14 +4601,15 @@ namespace HaCreator.MapSimulator
             return handleIds;
         }
 
-        private IReadOnlyDictionary<AvatarRenderLayer, int> ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds()
+        private IReadOnlyDictionary<AvatarRenderLayer, int> ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds(int ownerCharacterId)
         {
-            if (IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMap(_packetOwnedActiveEffectMotionBlurLayerHandleIds))
-            {
-                return _packetOwnedActiveEffectMotionBlurLayerHandleIds;
-            }
-
-            _packetOwnedActiveEffectMotionBlurLayerHandleIds = CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds();
+            (IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds, int resolvedOwnerCharacterId) =
+                ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds(
+                    _packetOwnedActiveEffectMotionBlurLayerHandleIds,
+                    _packetOwnedActiveEffectMotionBlurOwnerCharacterId,
+                    ownerCharacterId);
+            _packetOwnedActiveEffectMotionBlurLayerHandleIds = layerHandleIds;
+            _packetOwnedActiveEffectMotionBlurOwnerCharacterId = resolvedOwnerCharacterId;
             return _packetOwnedActiveEffectMotionBlurLayerHandleIds;
         }
 
@@ -4665,12 +4654,42 @@ namespace HaCreator.MapSimulator
             return IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMap(layerHandleIds);
         }
 
-        internal static IReadOnlyDictionary<AvatarRenderLayer, int> ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIdsForTesting(
-            IReadOnlyDictionary<AvatarRenderLayer, int> existingLayerHandleIds)
+        private static (IReadOnlyDictionary<AvatarRenderLayer, int> LayerHandleIds, int OwnerCharacterId)
+            ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds(
+                IReadOnlyDictionary<AvatarRenderLayer, int> existingLayerHandleIds,
+                int existingOwnerCharacterId,
+                int currentOwnerCharacterId)
         {
-            return IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMap(existingLayerHandleIds)
-                ? existingLayerHandleIds
-                : CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds();
+            bool hasCompleteExistingMap = IsCompletePacketOwnedActiveEffectMotionBlurLayerHandleIdMap(existingLayerHandleIds);
+            if (currentOwnerCharacterId <= 0)
+            {
+                return hasCompleteExistingMap
+                    ? (existingLayerHandleIds, existingOwnerCharacterId)
+                    : (CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds(), existingOwnerCharacterId);
+            }
+
+            bool sameOwner = existingOwnerCharacterId > 0 && existingOwnerCharacterId == currentOwnerCharacterId;
+            if (sameOwner && hasCompleteExistingMap)
+            {
+                return (existingLayerHandleIds, existingOwnerCharacterId);
+            }
+
+            return (CreatePacketOwnedActiveEffectMotionBlurLayerHandleIds(), currentOwnerCharacterId);
+        }
+
+        internal static IReadOnlyDictionary<AvatarRenderLayer, int> ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIdsForTesting(
+            IReadOnlyDictionary<AvatarRenderLayer, int> existingLayerHandleIds,
+            int existingOwnerCharacterId,
+            int currentOwnerCharacterId,
+            out int resolvedOwnerCharacterId)
+        {
+            (IReadOnlyDictionary<AvatarRenderLayer, int> layerHandleIds, int ownerCharacterId) =
+                ResolvePacketOwnedActiveEffectMotionBlurLayerHandleIds(
+                    existingLayerHandleIds,
+                    existingOwnerCharacterId,
+                    currentOwnerCharacterId);
+            resolvedOwnerCharacterId = ownerCharacterId;
+            return layerHandleIds;
         }
 
         internal static int NextPacketOwnedActiveEffectMotionBlurStateIdForTesting()
@@ -9660,7 +9679,7 @@ namespace HaCreator.MapSimulator
                 string.IsNullOrWhiteSpace(storedEntry.PacketOwnedRadioCreateLayerLastMutationSource)
                     ? "persisted-radioctx"
                     : storedEntry.PacketOwnedRadioCreateLayerLastMutationSource,
-                int.MinValue,
+                Environment.TickCount,
                 runtimeCharacterId);
         }
 
@@ -9695,7 +9714,7 @@ namespace HaCreator.MapSimulator
                 string.IsNullOrWhiteSpace(storedEntry.PacketOwnedRadioScheduleLastMutationSource)
                     ? "persisted-radioschedule"
                     : storedEntry.PacketOwnedRadioScheduleLastMutationSource,
-                int.MinValue,
+                Environment.TickCount,
                 runtimeCharacterId);
         }
 
@@ -13797,6 +13816,23 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            string mechanicRejectReason = message;
+            if (TryApplyPassiveMechanicInventoryOperationMutationsFromInventoryOperationPayload(payload, out message))
+            {
+                StampPacketOwnedUtilityRequestState();
+                if (!string.IsNullOrWhiteSpace(collisionScriptResetMessage))
+                {
+                    message = $"{message} {collisionScriptResetMessage}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(questStartRequestResetMessage))
+                {
+                    message = $"{message} {questStartRequestResetMessage}";
+                }
+
+                return true;
+            }
+
             if (TryApplyPacketOwnedMonsterBookInventoryOperationPickupPayload(payload, out string monsterBookPickupMessage))
             {
                 StampPacketOwnedUtilityRequestState();
@@ -13824,6 +13860,13 @@ namespace HaCreator.MapSimulator
             else if (!string.IsNullOrWhiteSpace(characterRejectReason))
             {
                 message = characterRejectReason;
+            }
+
+            if (!string.IsNullOrWhiteSpace(mechanicRejectReason))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? mechanicRejectReason
+                    : $"{message} {mechanicRejectReason}";
             }
 
             if (!consumedCollisionScriptReset && !consumedQuestStartRequestReset)
@@ -13919,6 +13962,93 @@ namespace HaCreator.MapSimulator
             message = fullCardUpdates > 0
                 ? $"Inventory-operation consume-on-pickup Monster Card intake was already at the 5-card completion mark for {fullCardUpdates.ToString(CultureInfo.InvariantCulture)} row(s)."
                 : "Inventory-operation consume-on-pickup Monster Card intake did not change ownership.";
+            return true;
+        }
+
+        private bool TryApplyPassiveMechanicInventoryOperationMutationsFromInventoryOperationPayload(
+            byte[] payload,
+            out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "Inventory-operation payload is empty.";
+                return false;
+            }
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+            MechanicEquipmentController controller = _playerManager?.CompanionEquipment?.Mechanic;
+            if (build == null || controller == null)
+            {
+                return false;
+            }
+
+            InventoryUI inventoryWindow = uiWindowManager?.InventoryWindow as InventoryUI;
+            IReadOnlyList<InventorySlotData> equipInventory =
+                inventoryWindow != null
+                    ? CaptureInventorySnapshot(inventoryWindow, InventoryType.EQUIP)
+                    : Array.Empty<InventorySlotData>();
+            if (!MechanicEquipmentPacketParity.TryDecodePassiveClientInventoryOperationMutations(
+                    payload,
+                    equipInventory,
+                    out IReadOnlyList<MechanicEquipmentPacketParity.MechanicInventoryOperationMutation> mutations,
+                    out string rejectReason))
+            {
+                message = rejectReason;
+                return false;
+            }
+
+            controller.EnsureDefaults(build);
+            int appliedMutationCount = 0;
+            int unchangedMutationCount = 0;
+            for (int i = 0; i < mutations.Count; i++)
+            {
+                MechanicEquipmentPacketParity.MechanicInventoryOperationMutation mutation = mutations[i];
+                int equippedItemId = 0;
+                if (controller.TryGetItem(mutation.Slot, out CompanionEquipItem equippedItem)
+                    && equippedItem?.ItemId > 0)
+                {
+                    equippedItemId = equippedItem.ItemId;
+                }
+
+                if (equippedItemId == mutation.ItemId)
+                {
+                    unchangedMutationCount++;
+                    continue;
+                }
+
+                if (!controller.TryApplyExternalSlotMutation(
+                        build,
+                        mutation.Slot,
+                        mutation.ItemId,
+                        out rejectReason))
+                {
+                    message = rejectReason;
+                    return false;
+                }
+
+                appliedMutationCount++;
+            }
+
+            if (appliedMutationCount <= 0)
+            {
+                if (mutations.Count <= 0)
+                {
+                    return false;
+                }
+
+                message = "Recovered mechanic inventory-operation mutation payload did not change the current machine-part state.";
+                return true;
+            }
+
+            message =
+                $"Applied {appliedMutationCount.ToString(CultureInfo.InvariantCulture)} passive mechanic inventory-operation mutation(s).";
+            if (unchangedMutationCount > 0)
+            {
+                message =
+                    $"{message} {unchangedMutationCount.ToString(CultureInfo.InvariantCulture)} decoded mutation(s) already matched the current machine-part state.";
+            }
+
             return true;
         }
 

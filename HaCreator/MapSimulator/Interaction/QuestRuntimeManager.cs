@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             public int QuestId { get; init; }
             public QuestStateType State { get; init; }
+            public bool MatchesStartedOrCompleted { get; init; }
         }
 
         internal enum QuestTraitType
@@ -4066,7 +4067,7 @@ namespace HaCreator.MapSimulator.Interaction
                 for (int i = 0; i < questRequirements.Count; i++)
                 {
                     QuestStateRequirement requirement = questRequirements[i];
-                    if (questStateResolver(requirement.QuestId) != requirement.State)
+                    if (!IsQuestStateRequirementSatisfied(requirement, questStateResolver(requirement.QuestId)))
                     {
                         return false;
                     }
@@ -4824,8 +4825,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Req",
-                    Text = $"{questName}: {FormatQuestState(requirement.State)}",
-                    IsComplete = currentState == requirement.State
+                    Text = $"{questName}: {FormatQuestStateRequirement(requirement)}",
+                    IsComplete = IsQuestStateRequirementSatisfied(requirement, currentState)
                 });
             }
         }
@@ -4851,8 +4852,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Req",
-                    Text = $"{questName}: {FormatQuestState(requirement.State)}",
-                    IsComplete = currentState == requirement.State
+                    Text = $"{questName}: {FormatQuestStateRequirement(requirement)}",
+                    IsComplete = IsQuestStateRequirementSatisfied(requirement, currentState)
                 });
             }
 
@@ -5833,7 +5834,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestStateRequirement requirement = requirements[i];
                 QuestStateType currentState = GetQuestState(requirement.QuestId);
-                if (currentState == requirement.State)
+                if (IsQuestStateRequirementSatisfied(requirement, currentState))
                 {
                     continue;
                 }
@@ -5841,7 +5842,7 @@ namespace HaCreator.MapSimulator.Interaction
                 string questName = _definitions.TryGetValue(requirement.QuestId, out QuestDefinition requirementDefinition)
                     ? requirementDefinition.Name
                     : $"Quest #{requirement.QuestId}";
-                issues.Add($"{questName} must be {FormatQuestState(requirement.State)}.");
+                issues.Add($"{questName} must be {FormatQuestStateRequirement(requirement)}.");
             }
         }
 
@@ -6891,7 +6892,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 totalSegments++;
                 QuestStateRequirement requirement = definition.EndQuestRequirements[i];
-                if (GetQuestState(requirement.QuestId) == requirement.State)
+                if (IsQuestStateRequirementSatisfied(requirement, GetQuestState(requirement.QuestId)))
                 {
                     progress += 1f;
                 }
@@ -7170,7 +7171,7 @@ namespace HaCreator.MapSimulator.Interaction
                 string questName = _definitions.TryGetValue(requirement.QuestId, out QuestDefinition requirementDefinition)
                     ? requirementDefinition.Name
                     : $"Quest #{requirement.QuestId}";
-                segments.Add($"{questName}: {FormatQuestState(requirement.State)}");
+                segments.Add($"{questName}: {FormatQuestStateRequirement(requirement)}");
             }
 
             AppendQuestDetailQuestRecordEligibilitySegments(
@@ -8186,7 +8187,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
-                IReadOnlyList<string> childNames = ParseScriptNames(property.WzProperties[i]);
+                WzImageProperty child = property.WzProperties[i];
+                if (IsScriptAliasMetadataPropertyName(child?.Name)
+                    && !IsNestedScriptAliasContainer(child))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<string> childNames = ParseScriptNames(child);
                 for (int childIndex = 0; childIndex < childNames.Count; childIndex++)
                 {
                     names.Add(childNames[childIndex]);
@@ -8716,7 +8724,8 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (!requirements.Any(existing =>
                         existing.QuestId == requirement.QuestId &&
-                        existing.State == requirement.State))
+                        existing.State == requirement.State &&
+                        existing.MatchesStartedOrCompleted == requirement.MatchesStartedOrCompleted))
                 {
                     requirements.Add(requirement);
                 }
@@ -8737,13 +8746,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             int questId = ParseInt(property["id"]).GetValueOrDefault();
             int stateValue = ParseInt(property["state"]).GetValueOrDefault();
-            if (questId > 0 && Enum.IsDefined(typeof(QuestStateType), stateValue))
+            if (TryBuildQuestStateRequirement(questId, stateValue, out QuestStateRequirement explicitRequirement))
             {
-                requirement = new QuestStateRequirement
-                {
-                    QuestId = questId,
-                    State = (QuestStateType)stateValue
-                };
+                requirement = explicitRequirement;
                 return true;
             }
 
@@ -8754,15 +8759,46 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int parsedStateValue = ParseInt(property).GetValueOrDefault();
-            if (!Enum.IsDefined(typeof(QuestStateType), parsedStateValue))
+            if (!TryBuildQuestStateRequirement(parsedQuestId, parsedStateValue, out QuestStateRequirement namedRequirement))
+            {
+                return false;
+            }
+
+            requirement = namedRequirement;
+            return true;
+        }
+
+        private static bool TryBuildQuestStateRequirement(
+            int questId,
+            int stateValue,
+            out QuestStateRequirement requirement)
+        {
+            requirement = null;
+            if (questId <= 0)
+            {
+                return false;
+            }
+
+            if (stateValue == 3)
+            {
+                requirement = new QuestStateRequirement
+                {
+                    QuestId = questId,
+                    State = QuestStateType.Started,
+                    MatchesStartedOrCompleted = true
+                };
+                return true;
+            }
+
+            if (!Enum.IsDefined(typeof(QuestStateType), stateValue))
             {
                 return false;
             }
 
             requirement = new QuestStateRequirement
             {
-                QuestId = parsedQuestId,
-                State = (QuestStateType)parsedStateValue
+                QuestId = questId,
+                State = (QuestStateType)stateValue
             };
             return true;
         }
@@ -10866,6 +10902,13 @@ namespace HaCreator.MapSimulator.Interaction
             return GetUnmetQuestRequirementIds(requirements).Count > 0;
         }
 
+        private static bool IsQuestStateRequirementSatisfied(QuestStateRequirement requirement, QuestStateType currentState)
+        {
+            return requirement != null &&
+                   (currentState == requirement.State ||
+                    (requirement.MatchesStartedOrCompleted && currentState == QuestStateType.Completed));
+        }
+
         private IReadOnlyList<int> GetMissingItemRequirementIds(IReadOnlyList<QuestItemRequirement> requirements)
         {
             if (requirements == null)
@@ -10937,7 +10980,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestStateRequirement requirement = requirements[i];
                 if (requirement == null ||
                     requirement.QuestId <= 0 ||
-                    GetQuestState(requirement.QuestId) == requirement.State ||
+                    IsQuestStateRequirementSatisfied(requirement, GetQuestState(requirement.QuestId)) ||
                     questIds.Contains(requirement.QuestId))
                 {
                     continue;
@@ -10984,6 +11027,16 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestStateType.Not_Started => "Not started",
                 _ => FormatQuestState(state)
             };
+        }
+
+        private static string FormatQuestStateRequirement(QuestStateRequirement requirement)
+        {
+            if (requirement?.MatchesStartedOrCompleted == true)
+            {
+                return "started or completed";
+            }
+
+            return FormatQuestState(requirement?.State ?? QuestStateType.Not_Started);
         }
 
         internal static CharacterSubJobFlagType GetRewardSubJobFlags(int currentJob, int currentSubJob)

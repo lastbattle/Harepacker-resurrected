@@ -138,6 +138,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int ItemUpgradeResultPacketType = 1046;
         public const int MonsterBookRegistrationResultPacketType = 1047;
         public const int MonsterBookOwnershipSyncPacketType = 1048;
+        public const int RevivePremiumSafetyCharmContextPacketType = 1049;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -687,6 +688,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("cwvscontext3562", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = RadioCreateLayerContextPacketType;
+                return true;
+            }
+
+            if (token.Equals("revivectx", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("revivecontext", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("premiumsafetycharmctx", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cwvscontext2073", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RevivePremiumSafetyCharmContextPacketType;
                 return true;
             }
 
@@ -1280,6 +1290,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == ItemUpgradeResultPacketType
                 || packetType == MonsterBookRegistrationResultPacketType
                 || packetType == MonsterBookOwnershipSyncPacketType
+                || packetType == RevivePremiumSafetyCharmContextPacketType
                 || packetType == ClassCompetitionRemotePagePacketType;
         }
 
@@ -1494,6 +1505,7 @@ namespace HaCreator.MapSimulator.Managers
                 ItemUpgradeResultPacketType => "ItemUpgradeResult(1046)",
                 MonsterBookRegistrationResultPacketType => "MonsterBookRegistrationResult(1047)",
                 MonsterBookOwnershipSyncPacketType => "MonsterBookOwnershipSync(1048)",
+                RevivePremiumSafetyCharmContextPacketType => "RevivePremiumSafetyCharmContext(1049)",
                 ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
                 _ => $"packet {packetType}"
             };

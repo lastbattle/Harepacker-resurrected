@@ -332,6 +332,7 @@ namespace HaCreator.MapSimulator
         {
             _itemUpgradeOwnerRequestSent = false;
             _itemUpgradeOwnerRequestSentTick = currentTick;
+            StampPacketOwnedUtilityRequestState();
         }
 
         private bool HasActiveItemUpgradeOwnerRequestBlock(int currentTick)
@@ -339,23 +340,64 @@ namespace HaCreator.MapSimulator
             return IsItemUpgradeOwnerRequestBlocked(
                 _itemUpgradeOwnerRequestSent || _pendingItemUpgradeOwnerRequest != null,
                 _itemUpgradeOwnerRequestSentTick,
-                currentTick);
+                _packetOwnedUtilityRequestTick,
+                currentTick,
+                IsLocalCharacterAliveForExclusiveRequest(_playerManager?.Player));
         }
 
         internal static bool IsItemUpgradeOwnerRequestBlockedForTests(bool requestSent, int lastRequestTick, int currentTick)
         {
-            return IsItemUpgradeOwnerRequestBlocked(requestSent, lastRequestTick, currentTick);
+            return IsItemUpgradeOwnerRequestBlocked(
+                requestSent,
+                lastRequestTick,
+                sharedUtilityRequestTick: int.MinValue,
+                currentTick,
+                isLocalCharacterAlive: true);
         }
 
-        private static bool IsItemUpgradeOwnerRequestBlocked(bool requestSent, int lastRequestTick, int currentTick)
+        internal static bool IsItemUpgradeOwnerRequestBlockedForTests(
+            bool requestSent,
+            int lastRequestTick,
+            int sharedUtilityRequestTick,
+            int currentTick,
+            bool isLocalCharacterAlive)
         {
+            return IsItemUpgradeOwnerRequestBlocked(
+                requestSent,
+                lastRequestTick,
+                sharedUtilityRequestTick,
+                currentTick,
+                isLocalCharacterAlive);
+        }
+
+        private static bool IsItemUpgradeOwnerRequestBlocked(
+            bool requestSent,
+            int lastRequestTick,
+            int sharedUtilityRequestTick,
+            int currentTick,
+            bool isLocalCharacterAlive)
+        {
+            // CUIItemUpgrade::OnButtonClicked denies upgrade send while the shared
+            // exclusive-request latch is active or the local character is blocked
+            // by the same dead-state gate used by CWvsContext::CanSendExclRequest.
             if (requestSent)
             {
                 return true;
             }
 
-            return lastRequestTick != int.MinValue &&
-                   unchecked(currentTick - lastRequestTick) < ItemUpgradeOwnerExclusiveRequestCooldownMs;
+            if (!isLocalCharacterAlive)
+            {
+                return true;
+            }
+
+            if (lastRequestTick != int.MinValue &&
+                unchecked(currentTick - lastRequestTick) < ItemUpgradeOwnerExclusiveRequestCooldownMs)
+            {
+                return true;
+            }
+
+            return sharedUtilityRequestTick != int.MinValue &&
+                   unchecked(currentTick - sharedUtilityRequestTick) < ItemUpgradeOwnerExclusiveRequestCooldownMs;
         }
 
         private static bool TryDecodeItemUpgradeResultPayload(byte[] payload, out byte resultCode)

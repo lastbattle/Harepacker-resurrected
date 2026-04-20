@@ -1572,7 +1572,9 @@ namespace HaCreator.MapSimulator
 
             if (string.IsNullOrWhiteSpace(answerText))
             {
-                return new InitialQuizOwnerSubmissionValidation(false, null, true);
+                // `CUIInitialQuiz::SetRet` early-outs for trimmed-empty answers without
+                // forcing focus back to the edit control.
+                return new InitialQuizOwnerSubmissionValidation(false, null, false);
             }
 
             int inputByteLength = Encoding.Default.GetByteCount(answerText ?? string.Empty);

@@ -5790,7 +5790,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 string value = GetClientSummonedUolCandidateValue(Property);
                 if (string.IsNullOrWhiteSpace(value)
-                    || !LooksLikeClientSummonedUolHeuristicCandidateValue(value))
+                    || !LooksLikeClientSummonedUolHeuristicCandidateValue(value, RelativePath))
                 {
                     continue;
                 }
@@ -5946,6 +5946,105 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return value.IndexOf("/skill/", StringComparison.OrdinalIgnoreCase) >= 0
                    && value.IndexOf(".img", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool LooksLikeClientSummonedUolHeuristicCandidateValue(string value, string relativePath)
+        {
+            if (LooksLikeClientSummonedUolHeuristicCandidateValue(value))
+            {
+                return true;
+            }
+
+            return LooksLikeClientSummonedUolHeuristicOwnerPath(relativePath)
+                   && LooksLikeClientSummonedUolHeuristicOwnerValue(value);
+        }
+
+        private static bool LooksLikeClientSummonedUolHeuristicOwnerPath(string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                return false;
+            }
+
+            foreach (string segment in relativePath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string normalizedSegment = NormalizeClientSummonedUolHeuristicPathSegment(segment);
+                if (string.IsNullOrWhiteSpace(normalizedSegment))
+                {
+                    continue;
+                }
+
+                if (normalizedSegment.Contains("summon", StringComparison.Ordinal)
+                    || normalizedSegment.Contains("uol", StringComparison.Ordinal)
+                    || normalizedSegment.Contains("requireskill", StringComparison.Ordinal)
+                    || normalizedSegment.Contains("affectedskill", StringComparison.Ordinal)
+                    || normalizedSegment.Contains("dummyof", StringComparison.Ordinal)
+                    || normalizedSegment.Contains("psdskill", StringComparison.Ordinal)
+                    || normalizedSegment.Equals("req", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string NormalizeClientSummonedUolHeuristicPathSegment(string segment)
+        {
+            if (string.IsNullOrWhiteSpace(segment))
+            {
+                return string.Empty;
+            }
+
+            var normalizedChars = new char[segment.Length];
+            int normalizedLength = 0;
+            foreach (char ch in segment)
+            {
+                if (!char.IsLetterOrDigit(ch))
+                {
+                    continue;
+                }
+
+                normalizedChars[normalizedLength++] = char.ToLowerInvariant(ch);
+            }
+
+            return normalizedLength <= 0
+                ? string.Empty
+                : new string(normalizedChars, 0, normalizedLength);
+        }
+
+        private static bool LooksLikeClientSummonedUolHeuristicOwnerValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            foreach (int parsedLinkedSkillId in ParseLinkedSkillIds(value))
+            {
+                if (LooksLikeClientSummonedUolInferredSkillId(parsedLinkedSkillId))
+                {
+                    return true;
+                }
+            }
+
+            foreach (int fallbackSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(value, contextSkillId: 0))
+            {
+                if (LooksLikeClientSummonedUolInferredSkillId(fallbackSkillId))
+                {
+                    return true;
+                }
+            }
+
+            foreach (string token in EnumerateClientSummonedUolPathTokensFromValue(value))
+            {
+                if (LooksLikeClientSummonedUolRelativePathToken(token))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string GetClientSummonedUolCandidateValue(WzImageProperty node, string propertyName)

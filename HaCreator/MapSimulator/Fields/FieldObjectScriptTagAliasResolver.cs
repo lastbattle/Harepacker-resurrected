@@ -563,26 +563,53 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int normalizedDelayMs = Math.Max(0, delayMs);
-            IReadOnlyList<string> parsedScriptNames = QuestRuntimeManager.ParseScriptNames(normalizedScriptName);
-            if (parsedScriptNames.Count > 1
-                || (parsedScriptNames.Count == 1
-                    && !string.Equals(parsedScriptNames[0], normalizedScriptName, StringComparison.OrdinalIgnoreCase)))
+            var aliasCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in EnumerateScriptAliasCandidates(normalizedScriptName))
             {
-                for (int i = 0; i < parsedScriptNames.Count; i++)
+                if (string.IsNullOrWhiteSpace(candidate))
                 {
-                    AddPublication(parsedScriptNames[i], normalizedDelayMs, publications, seen);
+                    continue;
                 }
 
-                return;
+                IReadOnlyList<string> parsedScriptNames = QuestRuntimeManager.ParseScriptNames(candidate);
+                if (parsedScriptNames.Count > 1
+                    || (parsedScriptNames.Count == 1
+                        && !string.Equals(parsedScriptNames[0], candidate, StringComparison.OrdinalIgnoreCase)))
+                {
+                    for (int i = 0; i < parsedScriptNames.Count; i++)
+                    {
+                        string parsedName = parsedScriptNames[i]?.Trim();
+                        if (IsPotentialAliasArgument(parsedName, argumentIndex: 0))
+                        {
+                            aliasCandidates.Add(parsedName);
+                        }
+                    }
+
+                    continue;
+                }
+
+                string normalizedCandidate = candidate.Trim();
+                if (IsPotentialAliasArgument(normalizedCandidate, argumentIndex: 0))
+                {
+                    aliasCandidates.Add(normalizedCandidate);
+                }
             }
 
-            var key = (normalizedScriptName, normalizedDelayMs);
-            if (!seen.Add(key))
+            if (aliasCandidates.Count == 0)
             {
-                return;
+                aliasCandidates.Add(normalizedScriptName);
             }
 
-            publications.Add(new ScriptAliasPublication(normalizedScriptName, normalizedDelayMs));
+            foreach (string aliasCandidate in aliasCandidates)
+            {
+                var key = (aliasCandidate, normalizedDelayMs);
+                if (!seen.Add(key))
+                {
+                    continue;
+                }
+
+                publications.Add(new ScriptAliasPublication(aliasCandidate, normalizedDelayMs));
+            }
         }
 
         private static string RemoveNestedTimerCallbackCalls(string value)

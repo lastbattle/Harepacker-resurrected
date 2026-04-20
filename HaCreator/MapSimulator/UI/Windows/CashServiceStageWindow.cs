@@ -1377,15 +1377,37 @@ namespace HaCreator.MapSimulator.UI
             {
                 _cashLockerPacketEntries.Add(BuildCashItemInfoPacketEntry(snapshot, "Locker item", "CCSWnd_Locker", "Locker"));
             }
+            ReplaceCashPacketCatalogEntries(
+                "Packet locker",
+                "Locker",
+                _cashLockerPacketEntries.Select(entry => ClonePacketCatalogEntry(entry, "Locker")).ToList());
 
             string firstLockerDetail = snapshots.Count > 0
                 ? DescribeCashItemInfoPacketSnapshot(snapshots[0], includeSerialNumber: true)
                 : string.Empty;
+            string trailingSummary = AppendTrailingCashItemInfoFromReader(
+                reader,
+                maxCount: 4,
+                paneLabel: "Packet locker",
+                browseModeLabel: "Locker",
+                titlePrefix: "Locker packet body",
+                seller: "CCSWnd_Locker",
+                stateLabel: "Locker body");
             _noticeState = snapshots.Count > 0
                 ? $"Cash locker refreshed to {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)}/{_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)} entries. {firstLockerDetail}"
                 : $"Cash locker refreshed to {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)}/{_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)} entries.";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _noticeState += $" {trailingSummary}";
+            }
+
             message =
                 $"CCashShop::OnCashItemResLoadLockerDone loaded {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} cash locker item(s), locker limit {_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)}, character slots {_cashCharacterSlotCount.ToString(CultureInfo.InvariantCulture)}, buy-count {_cashBuyCharacterCount.ToString(CultureInfo.InvariantCulture)}, characters {_cashCharacterCount.ToString(CultureInfo.InvariantCulture)}{(string.IsNullOrWhiteSpace(firstLockerDetail) ? string.Empty : $". First row: {firstLockerDetail}")}.";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+            }
+
             return true;
         }
 
@@ -2162,7 +2184,8 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            int maplePoint = Math.Max(0, BitConverter.ToInt32(payload, 1));
+            long previousMaplePoint = Math.Max(0L, _maplePoint);
+            long maplePoint = Math.Max(0, BitConverter.ToInt32(payload, 1));
             _maplePoint = maplePoint;
             _noticeState = $"Cash-service Maple Point balance changed to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}.";
             string trailingSummary = AppendTrailingCashItemInfoFromPayload(
@@ -2179,6 +2202,15 @@ namespace HaCreator.MapSimulator.UI
                 _noticeState += $" {trailingSummary}";
             }
 
+            AppendCashPacketCatalogEntry("Packet maple-point", "Point", new PacketCatalogEntry
+            {
+                Title = "Maple Point balance",
+                Detail = _noticeState,
+                Seller = "CCSWnd_Status",
+                PriceLabel = $"{previousMaplePoint.ToString("N0", CultureInfo.InvariantCulture)} -> {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}",
+                StateLabel = "Updated",
+                Price = (int)Math.Clamp(_maplePoint, 0L, int.MaxValue)
+            });
             message = $"CCashShop::OnCashItemResChangeMaplePointDone updated the dedicated status owner to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)} Maple Points{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $"; {trailingSummary}")}.";
             return true;
         }
@@ -2534,6 +2566,17 @@ namespace HaCreator.MapSimulator.UI
                 stateLabel: "Limit body");
             _noticeState =
                 $"CCashShop::OnCashItemResLimitGoodsCountChanged updated item {change.ItemId.ToString(CultureInfo.InvariantCulture)}, commodity SN {change.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, remaining {change.RemainCount.ToString(CultureInfo.InvariantCulture)}.{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $" {trailingSummary}")}";
+            AppendCashPacketCatalogEntry("Packet limit-goods", "Limit", new PacketCatalogEntry
+            {
+                Title = ResolveCashStageItemTitle(change.ItemId, change.CommoditySerialNumber, "Limit goods"),
+                Detail = _noticeState,
+                Seller = "CCSWnd_List",
+                PriceLabel = $"Remain {change.RemainCount.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Limit updated",
+                ListingId = change.CommoditySerialNumber,
+                ItemId = change.ItemId,
+                Quantity = change.RemainCount
+            });
             message = _noticeState;
             return true;
         }
@@ -2572,6 +2615,16 @@ namespace HaCreator.MapSimulator.UI
                 stateLabel: "Equip body");
             _noticeState =
                 $"CCashShop::OnCashItemResEnableEquipSlotExtDone enabled equip slot extension part {extension.PartIndex.ToString(CultureInfo.InvariantCulture)} for {extension.Days.ToString(CultureInfo.InvariantCulture)} day(s).{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $" {trailingSummary}")}";
+            AppendCashPacketCatalogEntry("Packet equip-slot-ext", "Equip", new PacketCatalogEntry
+            {
+                Title = "Equip slot extension",
+                Detail = _noticeState,
+                Seller = "CCSWnd_Char",
+                PriceLabel = $"{extension.Days.ToString(CultureInfo.InvariantCulture)} day(s)",
+                StateLabel = "Extended",
+                ListingId = extension.PartIndex,
+                Quantity = extension.Days
+            });
             message = _noticeState;
             return true;
         }
@@ -2830,10 +2883,12 @@ namespace HaCreator.MapSimulator.UI
         public bool TryFinalizeReceiveGiftAcceptResult(
             int cashItemResultSubtype,
             out string summary,
+            out string ownerNotice,
             out bool accepted,
             out int nextGiftIndex)
         {
             summary = string.Empty;
+            ownerNotice = string.Empty;
             accepted = false;
             nextGiftIndex = -1;
             if (_cashReceiveGiftPendingAcceptEntry == null || (cashItemResultSubtype != 107 && cashItemResultSubtype != 108))
@@ -2852,6 +2907,7 @@ namespace HaCreator.MapSimulator.UI
                 nextGiftIndex = remaining > 0 ? Math.Clamp(stagedIndex, 0, remaining - 1) : -1;
                 summary =
                     $"CUIReceiveGift accept-packet branch consumed GW_GiftList row {(pendingEntry.PacketRowIndex > 0 ? pendingEntry.PacketRowIndex : stagedIndex + 1).ToString(CultureInfo.InvariantCulture)} after cash-item subtype 107.";
+                ownerNotice = BuildReceiveGiftAcceptOwnerNotice(pendingEntry, _cashReceiveGiftPendingAcceptReplyText);
             }
             else
             {
@@ -2859,6 +2915,13 @@ namespace HaCreator.MapSimulator.UI
                 nextGiftIndex = remaining > 0 ? Math.Clamp(stagedIndex, 0, remaining - 1) : -1;
                 summary =
                     $"CUIReceiveGift accept-packet branch kept GW_GiftList row {(pendingEntry.PacketRowIndex > 0 ? pendingEntry.PacketRowIndex : stagedIndex + 1).ToString(CultureInfo.InvariantCulture)} after cash-item subtype 108.";
+                string sender = SanitizePacketString(pendingEntry.Seller, "unknown sender");
+                int row = pendingEntry.PacketRowIndex > 0 ? pendingEntry.PacketRowIndex : stagedIndex + 1;
+                string serialLabel = pendingEntry.SerialNumber > 0
+                    ? $"SN {pendingEntry.SerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : "serial unavailable";
+                ownerNotice =
+                    $"The receive-gift owner kept row {row.ToString(CultureInfo.InvariantCulture)} ({serialLabel}) from {sender} after cash-item subtype 108.";
             }
 
             if (!string.IsNullOrWhiteSpace(_cashReceiveGiftPendingAcceptDispatchSummary))
@@ -4843,8 +4906,27 @@ namespace HaCreator.MapSimulator.UI
             UpsertCashLockerPacketEntry(entry);
             AppendCashPacketCatalogEntry("Packet purchase", "Buy", entry);
             string snapshotDetail = DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true);
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                1 + CashItemInfoPacketByteLength,
+                maxCount: 2,
+                paneLabel: "Packet purchase",
+                browseModeLabel: "Buy",
+                titlePrefix: $"{titlePrefix} packet body",
+                seller: seller,
+                stateLabel: $"{stateLabel} body");
             _noticeState = $"{titlePrefix} updated CCSWnd_Locker (now {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} item(s)). {snapshotDetail}";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _noticeState += $" {trailingSummary}";
+            }
+
             message = $"{ownerName} {successDetail}: {snapshotDetail}";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+            }
+
             return true;
         }
 
@@ -4865,8 +4947,39 @@ namespace HaCreator.MapSimulator.UI
                     : "the selected locker item";
             _cashLockerItemCount = Math.Max(0, _cashLockerItemCount - 1);
             RemoveCashLockerPacketEntryBySerialNumber(serialNumber);
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                1 + sizeof(long),
+                maxCount: 2,
+                paneLabel: "Packet locker",
+                browseModeLabel: "Locker",
+                titlePrefix: $"{actionLabel} packet body",
+                seller: "CCSWnd_Locker",
+                stateLabel: $"{actionLabel} body");
             _noticeState = $"{actionLabel} removed {itemTitle} from CCSWnd_Locker.";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _noticeState += $" {trailingSummary}";
+            }
+
+            AppendCashPacketCatalogEntry("Packet locker", "Locker", new PacketCatalogEntry
+            {
+                Title = itemTitle,
+                Detail = _noticeState,
+                Seller = "CCSWnd_Locker",
+                PriceLabel = serialNumber > 0 ? $"SN {serialNumber.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = actionLabel,
+                SerialNumber = serialNumber > 0 ? serialNumber : existingEntry?.SerialNumber ?? 0,
+                ListingId = existingEntry?.ListingId ?? 0,
+                ItemId = existingEntry?.ItemId ?? 0,
+                CommodityId = existingEntry?.CommodityId ?? 0
+            });
             message = $"{ownerName} removed {(serialNumber > 0 ? $"locker serial {serialNumber.ToString(CultureInfo.InvariantCulture)}" : "the selected locker row")} from CCSWnd_Locker.";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                message += $" {trailingSummary}";
+            }
+
             return true;
         }
 

@@ -172,7 +172,9 @@ namespace HaCreator.MapSimulator.Effects
             string message,
             WeatherEffectType weatherType,
             int currentTimeMs,
-            WeatherMessageOwnerKind ownerKind = WeatherMessageOwnerKind.WeatherOverlay)
+            WeatherMessageOwnerKind ownerKind = WeatherMessageOwnerKind.WeatherOverlay,
+            int ownerSkillId = 0,
+            WeatherMessageOwnerSourceKind ownerSourceKind = WeatherMessageOwnerSourceKind.Unknown)
         {
             var msgInfo = new WeatherMessageInfo
             {
@@ -182,7 +184,9 @@ namespace HaCreator.MapSimulator.Effects
                 Duration = 5000, // 5 seconds display
                 FadeIn = true,
                 Alpha = 0f,
-                OwnerKind = ownerKind
+                OwnerKind = ownerKind,
+                OwnerSkillId = ownerSkillId,
+                OwnerSourceKind = ownerSourceKind
             };
             _weatherMessages.Add(msgInfo);
         }
@@ -804,6 +808,13 @@ namespace HaCreator.MapSimulator.Effects
         StatusBarItemMsg = 1
     }
 
+    public enum WeatherMessageOwnerSourceKind
+    {
+        Unknown = 0,
+        SkillCooldownNotice = 1,
+        FieldRuleMessage = 2
+    }
+
     /// <summary>
     /// Weather message info (WEATHERMSGINFO)
     /// </summary>
@@ -812,6 +823,8 @@ namespace HaCreator.MapSimulator.Effects
         public string Message;
         public WeatherEffectType WeatherType;
         public WeatherMessageOwnerKind OwnerKind;
+        public WeatherMessageOwnerSourceKind OwnerSourceKind;
+        public int OwnerSkillId;
         public int StartTime;
         public int Duration;
         public bool FadeIn;

@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<float, float, float, FootholdLine> _findFoothold;
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
+        private Func<DragonCompanionRuntime.OwnerPhaseContext> _dragonOwnerPhaseContextProvider;
         private bool _isFlyingMap;
         private bool _requiresFlyingSkillForMap;
 
@@ -125,6 +126,7 @@ namespace HaCreator.MapSimulator.Character
             Pets = new PetController(device);
             Dragon = new DragonCompanionRuntime(device);
             CompanionEquipment = new CompanionEquipmentController(device);
+            ConfigureDragonOwnerPhaseContextProvider();
         }
 
         /// <summary>
@@ -423,6 +425,12 @@ namespace HaCreator.MapSimulator.Character
             Dragon.SetWrapperOwnedNoDragonSuppression(suppressDragonPresentation);
         }
 
+        internal void SetDragonOwnerPhaseContextProvider(Func<DragonCompanionRuntime.OwnerPhaseContext> ownerPhaseContextProvider)
+        {
+            _dragonOwnerPhaseContextProvider = ownerPhaseContextProvider;
+            ConfigureDragonOwnerPhaseContextProvider();
+        }
+
         public void SetDragonQuestInfoStateProvider(Func<int?> questInfoStateProvider)
         {
             Dragon.SetQuestInfoStateProvider(questInfoStateProvider);
@@ -629,16 +637,45 @@ namespace HaCreator.MapSimulator.Character
             Dragon.SetActionLayerOwnerZProvider(ResolveDragonActionLayerOwnerZFromVecCtrlContext);
         }
 
+        private void ConfigureDragonOwnerPhaseContextProvider()
+        {
+            Dragon.SetOwnerPhaseContextProvider(ResolveDragonOwnerPhaseContext);
+        }
+
+        private DragonCompanionRuntime.OwnerPhaseContext ResolveDragonOwnerPhaseContext()
+        {
+            if (_dragonOwnerPhaseContextProvider != null)
+            {
+                return _dragonOwnerPhaseContextProvider();
+            }
+
+            // The local PlayerManager-owned dragon runtime always tracks the local avatar owner.
+            return Player?.Build == null
+                ? DragonCompanionRuntime.OwnerPhaseContext.NoLocalUser
+                : new DragonCompanionRuntime.OwnerPhaseContext(hasLocalUser: true, ownerMatchesLocalPhase: true, phaseAlpha: byte.MaxValue);
+        }
+
         private int? ResolveDragonActionLayerOwnerZFromVecCtrlContext(Vector2 dragonAnchor)
         {
+            bool onLadderOrRope = Player?.Physics?.IsOnLadderOrRope == true
+                                  || Player?.State is PlayerState.Ladder or PlayerState.Rope;
+            int? layerZFromVecCtrlState = ResolveDragonOwnerLayerZFromVecCtrlState(
+                Player?.Physics?.CurrentFoothold?.LayerNumber,
+                Player?.Physics?.CurrentFoothold?.PlatformNumber,
+                Player?.Physics?.FallStartFoothold?.LayerNumber,
+                Player?.Physics?.FallStartFoothold?.PlatformNumber,
+                onLadderOrRope);
+            if (layerZFromVecCtrlState.HasValue)
+            {
+                return layerZFromVecCtrlState.Value;
+            }
+
             if (_findFoothold == null)
             {
                 return null;
             }
 
             FootholdLine foothold = _findFoothold(dragonAnchor.X, dragonAnchor.Y, DragonVecCtrlLayerSearchRange);
-            bool onLadderOrRope = Player?.Physics?.IsOnLadderOrRope == true
-                                  || Player?.State is PlayerState.Ladder or PlayerState.Rope;
             return ResolveDragonOwnerLayerZFromFoothold(foothold, onLadderOrRope);
         }
 
@@ -652,6 +689,28 @@ namespace HaCreator.MapSimulator.Character
             return DragonCompanionRuntime.ResolveClientOwnerLayerZFromVecCtrlContext(
                 foothold.LayerNumber,
                 foothold.PlatformNumber,
+                onLadderOrRope);
+        }
+
+        internal static int? ResolveDragonOwnerLayerZFromVecCtrlState(
+            int? currentLayerPage,
+            int? currentLayerZMass,
+            int? fallStartLayerPage,
+            int? fallStartLayerZMass,
+            bool onLadderOrRope)
+        {
+            int? currentFootholdLayerZ = DragonCompanionRuntime.ResolveClientOwnerLayerZFromVecCtrlContext(
+                currentLayerPage,
+                currentLayerZMass,
+                onLadderOrRope);
+            if (currentFootholdLayerZ.HasValue)
+            {
+                return currentFootholdLayerZ.Value;
+            }
+
+            return DragonCompanionRuntime.ResolveClientOwnerLayerZFromVecCtrlContext(
+                fallStartLayerPage,
+                fallStartLayerZMass,
                 onLadderOrRope);
         }
 

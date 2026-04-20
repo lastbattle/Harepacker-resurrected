@@ -508,6 +508,8 @@ namespace HaCreator.MapSimulator.Fields
         public int MapId { get; init; }
         public FieldType FieldType { get; init; }
         public int MapType { get; init; } = -1;
+        public int TimerContractMapId { get; init; }
+        public bool UsesDelegatedTimerContract { get; init; }
         public string MapName { get; init; }
         public string StreetName { get; init; }
         public int DefaultTimeSeconds { get; init; }
@@ -631,17 +633,28 @@ namespace HaCreator.MapSimulator.Fields
                 };
             }
 
+            int mapType = ReadInt(property["mapType"], -1);
+            ResolveTimerContractProperty(
+                mapInfo,
+                property,
+                mapType,
+                out WzImageProperty timerContractProperty,
+                out int timerContractMapId,
+                out bool usesDelegatedTimerContract);
+
             return new MonsterCarnivalFieldDefinition
             {
                 MapId = mapInfo?.id ?? 0,
                 FieldType = mapInfo?.fieldType ?? FieldType.FIELDTYPE_DEFAULT,
                 MapName = NormalizeMapLabel(mapInfo?.strMapName, mapInfo?.mapName),
                 StreetName = NormalizeMapLabel(mapInfo?.strStreetName, mapInfo?.streetName),
-                MapType = ReadInt(property["mapType"], -1),
-                DefaultTimeSeconds = ReadInt(property["timeDefault"]),
-                ExpandTimeSeconds = ReadInt(property["timeExpand"]),
-                MessageTimeSeconds = ReadInt(property["timeMessage"]),
-                FinishTimeSeconds = ReadInt(property["timeFinish"]),
+                MapType = mapType,
+                TimerContractMapId = timerContractMapId,
+                UsesDelegatedTimerContract = usesDelegatedTimerContract,
+                DefaultTimeSeconds = ReadInt(timerContractProperty["timeDefault"]),
+                ExpandTimeSeconds = ReadInt(timerContractProperty["timeExpand"]),
+                MessageTimeSeconds = ReadInt(timerContractProperty["timeMessage"]),
+                FinishTimeSeconds = ReadInt(timerContractProperty["timeFinish"]),
                 DeathCp = ReadInt(property["deathCP"]),
                 RewardMapWin = ReadInt(property["rewardMapWin"]),
                 RewardMapLose = ReadInt(property["rewardMapLose"]),
@@ -974,6 +987,100 @@ namespace HaCreator.MapSimulator.Fields
 
             nextState = ReadInt(firstEventProperty["state"], -1);
             return nextState >= 0;
+        }
+
+        private static void ResolveTimerContractProperty(
+            MapInfo mapInfo,
+            WzImageProperty mapMonsterCarnivalProperty,
+            int mapType,
+            out WzImageProperty timerContractProperty,
+            out int timerContractMapId,
+            out bool usesDelegatedTimerContract)
+        {
+            timerContractProperty = mapMonsterCarnivalProperty;
+            timerContractMapId = mapInfo?.id ?? 0;
+            usesDelegatedTimerContract = false;
+
+            if (HasAnyTimerContractValue(mapMonsterCarnivalProperty))
+            {
+                return;
+            }
+
+            if (!TryResolveSiblingTimerContractProperty(
+                    mapInfo,
+                    mapType,
+                    out WzImageProperty siblingTimerContractProperty,
+                    out int siblingMapId))
+            {
+                return;
+            }
+
+            timerContractProperty = siblingTimerContractProperty;
+            timerContractMapId = siblingMapId;
+            usesDelegatedTimerContract = true;
+        }
+
+        private static bool TryResolveSiblingTimerContractProperty(
+            MapInfo mapInfo,
+            int mapType,
+            out WzImageProperty timerContractProperty,
+            out int timerContractMapId)
+        {
+            timerContractProperty = null;
+            timerContractMapId = 0;
+
+            int mapId = mapInfo?.id ?? 0;
+            if (mapId <= 0 || mapType < 0)
+            {
+                return false;
+            }
+
+            int candidateMapId = mapId + 100;
+            WzImage candidateImage = TryResolveMapImage(mapInfo, candidateMapId);
+            WzImageProperty candidateProperty = candidateImage?["monsterCarnival"];
+            if (!HasAnyTimerContractValue(candidateProperty))
+            {
+                return false;
+            }
+
+            timerContractProperty = candidateProperty;
+            timerContractMapId = candidateMapId;
+            return true;
+        }
+
+        private static WzImage TryResolveMapImage(MapInfo mapInfo, int mapId)
+        {
+            string imageName = mapId.ToString("D9", CultureInfo.InvariantCulture) + ".img";
+            if (mapInfo?.Image?.Parent is WzDirectory parentDirectory)
+            {
+                if (parentDirectory[imageName] is WzImage siblingImage)
+                {
+                    return siblingImage;
+                }
+            }
+
+            if (global::HaCreator.Program.WzManager == null)
+            {
+                return null;
+            }
+
+            string categoryName = mapId / 100000000 == 9
+                ? "Map/Map9"
+                : $"Map/Map{Math.Max(0, mapId / 100000000)}";
+            return global::HaCreator.Program.FindImage(categoryName, imageName);
+        }
+
+        private static bool HasAnyTimerContractValue(WzImageProperty monsterCarnivalProperty)
+        {
+            if (monsterCarnivalProperty == null)
+            {
+                return false;
+            }
+
+            return ReadInt(monsterCarnivalProperty["timeDefault"], 0) > 0
+                || ReadInt(monsterCarnivalProperty["timeExpand"], 0) > 0
+                || ReadInt(monsterCarnivalProperty["timeMessage"], 0) > 0
+                || ReadInt(monsterCarnivalProperty["timeFinish"], 0) > 0;
         }
 
         private static WzImage FindImageSafe(string category, string imageName)
@@ -4260,6 +4367,92 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return null;
+        }
+
+        private static void ResolveTimerContractProperty(
+            MapInfo mapInfo,
+            WzImageProperty mapMonsterCarnivalProperty,
+            int mapType,
+            out WzImageProperty timerContractProperty,
+            out int timerContractMapId,
+            out bool usesDelegatedTimerContract)
+        {
+            timerContractProperty = mapMonsterCarnivalProperty;
+            timerContractMapId = mapInfo?.id ?? 0;
+            usesDelegatedTimerContract = false;
+
+            if (HasAnyTimerContractValue(mapMonsterCarnivalProperty))
+            {
+                return;
+            }
+
+            if (!TryResolveSiblingTimerContractProperty(
+                    mapInfo,
+                    mapType,
+                    out WzImageProperty siblingTimerContractProperty,
+                    out int siblingMapId))
+            {
+                return;
+            }
+
+            timerContractProperty = siblingTimerContractProperty;
+            timerContractMapId = siblingMapId;
+            usesDelegatedTimerContract = true;
+        }
+
+        private static bool TryResolveSiblingTimerContractProperty(
+            MapInfo mapInfo,
+            int mapType,
+            out WzImageProperty timerContractProperty,
+            out int timerContractMapId)
+        {
+            timerContractProperty = null;
+            timerContractMapId = 0;
+
+            int mapId = mapInfo?.id ?? 0;
+            if (mapId <= 0 || mapType < 0)
+            {
+                return false;
+            }
+
+            int candidateMapId = mapId + 100;
+            WzImage candidateImage = TryResolveMapImage(mapInfo, candidateMapId);
+            WzImageProperty candidateProperty = candidateImage?["monsterCarnival"];
+            if (!HasAnyTimerContractValue(candidateProperty))
+            {
+                return false;
+            }
+
+            timerContractProperty = candidateProperty;
+            timerContractMapId = candidateMapId;
+            return true;
+        }
+
+        private static WzImage TryResolveMapImage(MapInfo mapInfo, int mapId)
+        {
+            string imageName = mapId.ToString("D9", CultureInfo.InvariantCulture) + ".img";
+            if (mapInfo?.Image?.Parent is WzDirectory parentDirectory)
+            {
+                if (parentDirectory[imageName] is WzImage siblingImage)
+                {
+                    return siblingImage;
+                }
+            }
+
+            if (global::HaCreator.Program.WzManager == null)
+            {
+                return null;
+            }
+
+            return WzInfoTools.FindMapImage(mapId.ToString(CultureInfo.InvariantCulture), global::HaCreator.Program.WzManager);
+        }
+
+        private static bool HasAnyTimerContractValue(WzImageProperty monsterCarnivalProperty)
+        {
+            return monsterCarnivalProperty?["timeDefault"] != null
+                || monsterCarnivalProperty?["timeExpand"] != null
+                || monsterCarnivalProperty?["timeMessage"] != null
+                || monsterCarnivalProperty?["timeFinish"] != null;
         }
 
         private static string TrimVariantActionText(string text, int maxLength)

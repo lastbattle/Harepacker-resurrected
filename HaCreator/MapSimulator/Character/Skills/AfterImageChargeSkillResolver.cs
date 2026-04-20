@@ -92,6 +92,37 @@ namespace HaCreator.MapSimulator.Character.Skills
             return chargeSkillId > 0;
         }
 
+        internal static int ResolvePreferredChargeSkillIdFromWeaponChargeValue(
+            int preferredSkillId,
+            int? weaponChargeValue)
+        {
+            int decodedWeaponChargeValue = weaponChargeValue.GetValueOrDefault();
+            if (decodedWeaponChargeValue <= 0)
+            {
+                return preferredSkillId;
+            }
+
+            if (IsKnownChargeSkillId(decodedWeaponChargeValue))
+            {
+                return decodedWeaponChargeValue;
+            }
+
+            if (!TryGetRepresentativeChargeSkillIdForElement(
+                    decodedWeaponChargeValue,
+                    out int representativeSkillId))
+            {
+                return preferredSkillId;
+            }
+
+            if (TryGetChargeElement(preferredSkillId, out int preferredElement)
+                && preferredElement == decodedWeaponChargeValue)
+            {
+                return preferredSkillId;
+            }
+
+            return representativeSkillId;
+        }
+
         internal static bool TryResolveChargeElementFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeElement)
         {
             return TryResolveChargeElementFromTemporaryStatPayload(payload, 0, out chargeElement);

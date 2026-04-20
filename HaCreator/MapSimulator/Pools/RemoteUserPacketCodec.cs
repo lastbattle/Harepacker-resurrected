@@ -604,6 +604,21 @@ namespace HaCreator.MapSimulator.Pools
             "clear",
             "none"
         };
+        private static readonly HashSet<string> KnownDefaultHelperAncillaryMarkerNames = new(StringComparer.Ordinal)
+        {
+            "npc",
+            "startnpc",
+            "endnpc",
+            "portal",
+            "arrowup",
+            "arrowdown",
+            "arrowright",
+            "arrowleft",
+            "arrowupright",
+            "arrowupleft",
+            "arrowdownright",
+            "arrowdownleft"
+        };
 
         private const int OfficialEnterFieldSuffixLength = sizeof(int) * 6 + sizeof(short) * 2 + sizeof(byte);
 
@@ -1882,7 +1897,7 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                packet = new RemoteUserThrowGrenadePacket(characterId, x, y, Math.Max(0, keyDownTime), skillId, skillLevel);
+                packet = new RemoteUserThrowGrenadePacket(characterId, x, y, keyDownTime, skillId, skillLevel);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -3025,6 +3040,18 @@ namespace HaCreator.MapSimulator.Pools
                 "guild" => "guild",
                 "match" => "match",
                 "party" => "party",
+                "npc" => "npc",
+                "startnpc" => "startnpc",
+                "endnpc" => "endnpc",
+                "portal" => "portal",
+                "arrowup" => "arrowup",
+                "arrowdown" => "arrowdown",
+                "arrowright" => "arrowright",
+                "arrowleft" => "arrowleft",
+                "arrowupright" => "arrowupright",
+                "arrowupleft" => "arrowupleft",
+                "arrowdownright" => "arrowdownright",
+                "arrowdownleft" => "arrowdownleft",
                 "clear" => "clear",
                 "none" => "none",
                 _ => lowered
@@ -3148,8 +3175,7 @@ namespace HaCreator.MapSimulator.Pools
             out MinimapUI.HelperMarkerType? markerType)
         {
             markerType = null;
-            if (string.IsNullOrWhiteSpace(markerName)
-                || markerName.IndexOf("DefaultHelper", StringComparison.OrdinalIgnoreCase) < 0)
+            if (string.IsNullOrWhiteSpace(markerName))
             {
                 return false;
             }
@@ -3160,28 +3186,23 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            switch (normalizedMarkerName)
+            bool hasDefaultHelperPathContext = markerName.IndexOf("DefaultHelper", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool isPlainMarkerToken = markerName.IndexOf('/') < 0 && markerName.IndexOf('\\') < 0;
+            if (!hasDefaultHelperPathContext && !isPlainMarkerToken)
             {
-                case "npc":
-                case "startnpc":
-                case "endnpc":
-                case "portal":
-                case "arrowup":
-                case "arrowdown":
-                case "arrowright":
-                case "arrowleft":
-                case "arrowupright":
-                case "arrowupleft":
-                case "arrowdownright":
-                case "arrowdownleft":
-                    // CUIMiniMap helper packets can still carry DefaultHelper family names
-                    // outside tracked-user icons; keep packet ownership active via the
-                    // neutral remote marker instead of rejecting the entire packet.
-                    markerType = MinimapUI.HelperMarkerType.Another;
-                    return true;
-                default:
-                    return false;
+                return false;
             }
+
+            if (!KnownDefaultHelperAncillaryMarkerNames.Contains(normalizedMarkerName))
+            {
+                return false;
+            }
+
+            // CUIMiniMap helper packets can still carry DefaultHelper family names
+            // outside tracked-user icons; keep packet ownership active via the
+            // neutral remote marker instead of rejecting the entire packet.
+            markerType = MinimapUI.HelperMarkerType.Another;
+            return true;
         }
 
         private static string ResolveHelperMarkerWzName(MinimapUI.HelperMarkerType? markerType)
@@ -3704,6 +3725,7 @@ namespace HaCreator.MapSimulator.Pools
                         rawPayload,
                         weaponChargeMetadataOffset,
                         preferredSkillId: 0,
+                        weaponChargeValue: decodedWeaponChargeValue,
                         out int recoveredChargeSkillId))
                 {
                     chargeSkillId = recoveredChargeSkillId;
@@ -3788,6 +3810,7 @@ namespace HaCreator.MapSimulator.Pools
             ReadOnlySpan<byte> rawPayload,
             int weaponChargeMetadataOffset,
             int preferredSkillId,
+            int? weaponChargeValue,
             out int chargeSkillId)
         {
             chargeSkillId = 0;
@@ -3795,6 +3818,10 @@ namespace HaCreator.MapSimulator.Pools
             {
                 return false;
             }
+
+            int effectivePreferredSkillId = AfterImageChargeSkillResolver.ResolvePreferredChargeSkillIdFromWeaponChargeValue(
+                preferredSkillId,
+                weaponChargeValue);
 
             if (weaponChargeMetadataOffset >= 0
                 && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
@@ -3811,7 +3838,7 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     rawPayload,
                     weaponChargeMetadataOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     maxScanBytes: AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
                     out chargeSkillId))
             {
@@ -3824,7 +3851,7 @@ namespace HaCreator.MapSimulator.Pools
                     rawPayload,
                     sizeof(int) * 4,
                     weaponChargeMetadataOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     out chargeSkillId))
             {
                 return true;
@@ -3834,7 +3861,7 @@ namespace HaCreator.MapSimulator.Pools
             if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     rawPayload,
                     payloadMaskBaseOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     maxScanBytes: AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
                     out chargeSkillId))
             {
@@ -3845,7 +3872,7 @@ namespace HaCreator.MapSimulator.Pools
                     rawPayload,
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     out chargeSkillId))
             {
                 return true;
@@ -3854,15 +3881,15 @@ namespace HaCreator.MapSimulator.Pools
             if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                 rawPayload,
                 payloadMaskBaseOffset,
-                preferredSkillId,
+                effectivePreferredSkillId,
                 out chargeSkillId))
             {
                 return true;
             }
 
-            if (AfterImageChargeSkillResolver.IsKnownChargeSkillId(preferredSkillId))
+            if (AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId))
             {
-                chargeSkillId = preferredSkillId;
+                chargeSkillId = effectivePreferredSkillId;
                 return true;
             }
 
@@ -3878,6 +3905,22 @@ namespace HaCreator.MapSimulator.Pools
                 rawPayload,
                 weaponChargeMetadataOffset,
                 preferredSkillId: 0,
+                weaponChargeValue: null,
+                out chargeSkillId);
+        }
+
+        internal static bool TryResolveChargeSkillIdFromKnownTemporaryStatPayloadForTesting(
+            ReadOnlySpan<byte> rawPayload,
+            int weaponChargeMetadataOffset,
+            int preferredSkillId,
+            int? weaponChargeValue,
+            out int chargeSkillId)
+        {
+            return TryResolveChargeSkillIdFromKnownTemporaryStatPayload(
+                rawPayload,
+                weaponChargeMetadataOffset,
+                preferredSkillId,
+                weaponChargeValue,
                 out chargeSkillId);
         }
 
@@ -3891,6 +3934,7 @@ namespace HaCreator.MapSimulator.Pools
                 rawPayload,
                 weaponChargeMetadataOffset,
                 preferredSkillId,
+                weaponChargeValue: null,
                 out chargeSkillId);
         }
 

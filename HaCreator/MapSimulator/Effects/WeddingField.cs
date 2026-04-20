@@ -656,6 +656,7 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.TemporaryStatDelay,
                     participant.TemporaryStatRevision,
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
@@ -690,6 +691,7 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.TemporaryStatDelay,
                     participant.TemporaryStatRevision,
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
@@ -725,6 +727,7 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.TemporaryStatDelay,
                     participant.TemporaryStatRevision,
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
@@ -1061,6 +1064,7 @@ namespace HaCreator.MapSimulator.Effects
                 participant.PortableChairItemId,
                 participant.PortableChairPairCharacterId,
                 participant.TemporaryStats,
+                participant.TemporaryStatDelay,
                 participant.TemporaryStatRevision,
                 participant.PacketOwnedItemEffectItemId,
                 participant.PacketOwnedItemEffectRevision,
@@ -1243,6 +1247,7 @@ namespace HaCreator.MapSimulator.Effects
             destination.PortableChairItemId = source.PortableChairItemId;
             destination.PortableChairPairCharacterId = source.PortableChairPairCharacterId;
             destination.TemporaryStats = source.TemporaryStats;
+            destination.TemporaryStatDelay = source.TemporaryStatDelay;
             destination.TemporaryStatRevision = Math.Max(destination.TemporaryStatRevision, source.TemporaryStatRevision);
             destination.MovementSnapshot = source.MovementSnapshot;
             destination.MovementDrivenActionSelection = source.MovementDrivenActionSelection;
@@ -1529,7 +1534,7 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            SetParticipantTemporaryStats(participant, packet.TemporaryStats);
+            SetParticipantTemporaryStats(participant, packet.TemporaryStats, packet.Delay);
             return true;
         }
 
@@ -1552,7 +1557,9 @@ namespace HaCreator.MapSimulator.Effects
             if (maskWordCount == 0)
             {
                 participant.TemporaryStats = default;
+                participant.TemporaryStatDelay = 0;
                 ApplyParticipantTemporaryStatPresentation(participant);
+                participant.TemporaryStatRevision++;
                 return true;
             }
 
@@ -1567,7 +1574,8 @@ namespace HaCreator.MapSimulator.Effects
 
             SetParticipantTemporaryStats(
                 participant,
-                RemoteUserPacketCodec.ApplyResetMask(participant.TemporaryStats, remainingMaskWords));
+                RemoteUserPacketCodec.ApplyResetMask(participant.TemporaryStats, remainingMaskWords),
+                delay: 0);
             return true;
         }
 
@@ -1824,7 +1832,8 @@ namespace HaCreator.MapSimulator.Effects
 
         private static void SetParticipantTemporaryStats(
             WeddingRemoteParticipant participant,
-            RemoteUserTemporaryStatSnapshot temporaryStats)
+            RemoteUserTemporaryStatSnapshot temporaryStats,
+            ushort delay = 0)
         {
             if (participant == null)
             {
@@ -1833,6 +1842,7 @@ namespace HaCreator.MapSimulator.Effects
 
             WeddingParticipantNameTagSignature previousNameTagSignature = CreateNameTagSignature(participant);
             participant.TemporaryStats = temporaryStats;
+            participant.TemporaryStatDelay = delay;
             participant.TemporaryStatRevision++;
             ApplyParticipantTemporaryStatPresentation(participant);
             if (participant.NameTagRevision == 0
@@ -2583,6 +2593,12 @@ namespace HaCreator.MapSimulator.Effects
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             DismissCurrentDialog();
             SetCeremonyTextOverlay(active: false);
+            if (IsWeddingPhotoSceneOwnerActive && !_isActive && ResolveCeremonyNpcId(_mapId) == 0)
+            {
+                SetCeremonyCardOverlay(true);
+                SetCeremonyCelebration(active: true);
+            }
+
             SetBlessEffect(true, currentTimeMs);
         }
 
@@ -4474,6 +4490,7 @@ namespace HaCreator.MapSimulator.Effects
         int? PortableChairItemId,
         int? PortableChairPairCharacterId,
         RemoteUserTemporaryStatSnapshot TemporaryStats,
+        ushort TemporaryStatDelay,
         int TemporaryStatRevision,
         int? PacketOwnedItemEffectItemId,
         int PacketOwnedItemEffectRevision,
@@ -4538,6 +4555,7 @@ namespace HaCreator.MapSimulator.Effects
         public int? PortableChairItemId { get; set; }
         public int? PortableChairPairCharacterId { get; set; }
         public RemoteUserTemporaryStatSnapshot TemporaryStats { get; set; }
+        public ushort TemporaryStatDelay { get; set; }
         public int TemporaryStatRevision { get; set; }
         public WeddingPacketOwnedItemEffectState PacketOwnedItemEffect { get; set; }
         public int? PacketOwnedItemEffectItemId { get; set; }

@@ -4383,27 +4383,21 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            Dictionary<int, List<AdminShopEntry>> wishlistRowsByItemId = _paneStates[AdminShopPane.Npc]
-                .SourceEntries
-                .Where(entry => entry != null
-                                && entry.SupportsWishlist
-                                && MatchesWishlistCategory(entry, categoryKey)
-                                && MatchesWishlistPriceRange(entry, priceRangeIndex))
-                .Select(entry => (Entry: entry, ItemId: ResolveWishlistResultItemId(entry)))
-                .Where(entry => entry.ItemId > 0)
-                .GroupBy(entry => entry.ItemId)
-                .ToDictionary(
-                    group => group.Key,
-                    group => group.Select(value => value.Entry).ToList());
+            Dictionary<int, List<AdminShopEntry>> wishlistRowsByItemId = BuildWishlistRowsByItemId(
+                entry => MatchesWishlistCategory(entry, categoryKey)
+                         && MatchesWishlistPriceRange(entry, priceRangeIndex));
             if (wishlistRowsByItemId.Count == 0)
             {
                 summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {packetItemIds.Count.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog.";
                 return true;
             }
 
+            Dictionary<int, List<AdminShopEntry>> wishlistRowsByItemIdWithoutRequestedFilters = BuildWishlistRowsByItemId();
             HashSet<string> seenEntryKeys = new(StringComparer.Ordinal);
             Dictionary<int, int> itemCursorByItemId = new();
+            Dictionary<int, int> unfilteredItemCursorByItemId = new();
             int unresolvedItemCount = 0;
+            int resolvedOutsideRequestedFilterCount = 0;
             IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> packetRows = snapshot.ResultRows ?? Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
             for (int rowIndex = 0; rowIndex < packetItemIds.Count; rowIndex++)
             {
@@ -4411,6 +4405,7 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopPacketOwnedWishlistSearchResultRow packetRow = rowIndex < packetRows.Count
                     ? packetRows[rowIndex]
                     : null;
+                bool resolvedOutsideRequestedFilters = false;
                 if (!TryResolvePacketOwnedWishlistCandidate(
                         wishlistRowsByItemId,
                         itemCursorByItemId,
@@ -4419,10 +4414,26 @@ namespace HaCreator.MapSimulator.UI
                         itemId,
                         out AdminShopEntry candidate))
                 {
+                    if (TryResolvePacketOwnedWishlistCandidate(
+                            wishlistRowsByItemIdWithoutRequestedFilters,
+                            unfilteredItemCursorByItemId,
+                            seenEntryKeys,
+                            packetRow,
+                            itemId,
+                            out candidate))
+                    {
+                        resolvedOutsideRequestedFilters = true;
+                        resolvedOutsideRequestedFilterCount++;
+                    }
+                }
+
+                if (candidate == null)
+                {
                     if (TryBuildPacketOwnedWishlistSyntheticResult(
                             snapshot,
                             packetRow,
                             rowIndex,
+                            itemId,
                             requestedCategoryLabel,
                             out WishlistSearchResult syntheticResult))
                     {
@@ -4458,6 +4469,7 @@ namespace HaCreator.MapSimulator.UI
                             snapshot,
                             packetRow,
                             rowIndex,
+                            itemId,
                             requestedCategoryLabel,
                             out WishlistSearchResult syntheticResult))
                 {
@@ -4483,7 +4495,31 @@ namespace HaCreator.MapSimulator.UI
             summary = unresolvedItemCount > 0
                 ? $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; {unresolvedItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row id(s) could not be resolved against the live NPC catalog."
                 : $"SearchItemName staged {results.Count} packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}.";
+            if (resolvedOutsideRequestedFilterCount > 0)
+            {
+                summary = string.Concat(
+                    summary,
+                    " ",
+                    resolvedOutsideRequestedFilterCount.ToString(CultureInfo.InvariantCulture),
+                    " row(s) were rebound through the live NPC catalog outside the staged local filter lane.");
+            }
+
             return true;
+        }
+
+        private Dictionary<int, List<AdminShopEntry>> BuildWishlistRowsByItemId(Func<AdminShopEntry, bool> predicate = null)
+        {
+            return _paneStates[AdminShopPane.Npc]
+                .SourceEntries
+                .Where(entry => entry != null
+                                && entry.SupportsWishlist
+                                && (predicate == null || predicate(entry)))
+                .Select(entry => (Entry: entry, ItemId: ResolveWishlistResultItemId(entry)))
+                .Where(entry => entry.ItemId > 0)
+                .GroupBy(entry => entry.ItemId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(value => value.Entry).ToList());
         }
 
         private static bool TryResolvePacketOwnedWishlistCandidate(
@@ -4549,11 +4585,16 @@ namespace HaCreator.MapSimulator.UI
         private static string BuildPacketOwnedWishlistSyntheticEntryKey(
             AdminShopPacketOwnedWishlistSearchSnapshot snapshot,
             AdminShopPacketOwnedWishlistSearchResultRow row,
-            int rowIndex)
+            int rowIndex,
+            int fallbackItemId)
         {
             int serviceSessionId = snapshot?.ServiceSessionId ?? -1;
             int searchSessionId = snapshot?.SearchSessionId ?? -1;
-            int itemId = row?.ItemId ?? 0;
+            int itemId = row?.ResultItemId > 0
+                ? row.ResultItemId
+                : row?.ItemId > 0
+                    ? row.ItemId
+                    : fallbackItemId;
             return string.Concat(
                 "wlsr:",
                 Math.Max(-1, serviceSessionId).ToString(CultureInfo.InvariantCulture),
@@ -4569,45 +4610,54 @@ namespace HaCreator.MapSimulator.UI
             AdminShopPacketOwnedWishlistSearchSnapshot snapshot,
             AdminShopPacketOwnedWishlistSearchResultRow row,
             int rowIndex,
+            int fallbackItemId,
             string requestedCategoryLabel,
             out WishlistSearchResult result)
         {
             result = null;
-            if (row == null || (!row.HasMetadata && row.ItemId <= 0))
+            if (row == null && fallbackItemId <= 0)
             {
                 return false;
             }
 
-            int resolvedItemId = row.ResultItemId > 0
+            if (row != null && !row.HasMetadata && row.ItemId <= 0 && row.ResultItemId <= 0 && fallbackItemId <= 0)
+            {
+                return false;
+            }
+
+            int resolvedItemId = row?.ResultItemId > 0
                 ? row.ResultItemId
-                : row.ItemId;
-            string title = !string.IsNullOrWhiteSpace(row.Title)
+                : row?.ItemId > 0
+                    ? row.ItemId
+                    : fallbackItemId;
+            int sourceItemId = row?.ItemId > 0 ? row.ItemId : fallbackItemId;
+            string title = !string.IsNullOrWhiteSpace(row?.Title)
                 ? row.Title
-                : row.ItemId > 0
-                    ? $"Packet row item {row.ItemId.ToString(CultureInfo.InvariantCulture)}"
+                : sourceItemId > 0
+                    ? $"Packet row item {sourceItemId.ToString(CultureInfo.InvariantCulture)}"
                     : "Packet-authored row";
-            string categoryLabel = !string.IsNullOrWhiteSpace(row.CategoryKey)
+            string categoryLabel = !string.IsNullOrWhiteSpace(row?.CategoryKey)
                 ? GetWishlistCategoryLabel(row.CategoryKey)
                 : requestedCategoryLabel;
-            string priceLabel = !string.IsNullOrWhiteSpace(row.PriceLabel)
+            string priceLabel = !string.IsNullOrWhiteSpace(row?.PriceLabel)
                 ? row.PriceLabel
-                : row.Price != long.MinValue
+                : row?.Price != long.MinValue
                     ? FormatCashPriceLabel(row.Price)
                     : "Price unresolved";
             Texture2D iconTexture = ResolveWishlistResultIcon(resolvedItemId);
-            string entryKey = BuildPacketOwnedWishlistSyntheticEntryKey(snapshot, row, rowIndex);
+            string entryKey = BuildPacketOwnedWishlistSyntheticEntryKey(snapshot, row, rowIndex, sourceItemId);
 
             result = new WishlistSearchResult
             {
                 EntryKey = entryKey,
                 Title = title,
-                Seller = row.Seller ?? string.Empty,
+                Seller = row?.Seller ?? string.Empty,
                 PriceLabel = priceLabel,
-                Detail = row.Detail ?? string.Empty,
+                Detail = row?.Detail ?? string.Empty,
                 CategoryLabel = categoryLabel ?? string.Empty,
                 RewardItemId = resolvedItemId,
                 IconTexture = iconTexture,
-                AlreadyWishlisted = row.AlreadyWishlisted.GetValueOrDefault(),
+                AlreadyWishlisted = row?.AlreadyWishlisted.GetValueOrDefault() == true,
                 Score = int.MaxValue - rowIndex,
                 IsClientItemNameResult = false,
                 CanRegister = false,

@@ -1186,13 +1186,14 @@ namespace HaCreator.MapSimulator
                         if (activeTarget.EntityId is int targetMobId &&
                             TryGetPacketQuestGuideMapIds(targetMobId, out IReadOnlyList<int> packetMapIds))
                         {
-                            for (int i = 0; i < packetMapIds.Count; i++)
+                            IReadOnlyList<int> packetOverlayMapIds = ResolveQuestOverlayMapIds(activeTarget, packetMapIds, fallbackMapId);
+                            for (int i = 0; i < packetOverlayMapIds.Count; i++)
                             {
                                 AddWorldMapQuestOverlay(
                                     overlays,
                                     seen,
                                     WorldMapUI.SearchResultKind.Mob,
-                                    packetMapIds[i],
+                                    packetOverlayMapIds[i],
                                     activeTarget.Label,
                                     $"Active quest #{_activeQuestDetailQuestId} mob target",
                                     ref overlayOrder,
@@ -1201,15 +1202,19 @@ namespace HaCreator.MapSimulator
                         }
                         else
                         {
-                            AddWorldMapQuestOverlay(
-                                overlays,
-                                seen,
-                                WorldMapUI.SearchResultKind.Mob,
-                                fallbackMapId,
-                                activeTarget.Label,
-                                $"Active quest #{_activeQuestDetailQuestId} mob target",
-                                ref overlayOrder,
-                                isPriorityTarget: true);
+                            IReadOnlyList<int> fallbackOverlayMapIds = ResolveQuestOverlayMapIds(activeTarget, preferredMapIds: null, fallbackMapId);
+                            for (int i = 0; i < fallbackOverlayMapIds.Count; i++)
+                            {
+                                AddWorldMapQuestOverlay(
+                                    overlays,
+                                    seen,
+                                    WorldMapUI.SearchResultKind.Mob,
+                                    fallbackOverlayMapIds[i],
+                                    activeTarget.Label,
+                                    $"Active quest #{_activeQuestDetailQuestId} mob target",
+                                    ref overlayOrder,
+                                    isPriorityTarget: true);
+                            }
                         }
 
 
@@ -1218,11 +1223,10 @@ namespace HaCreator.MapSimulator
                         int activeItemId = activeTarget.EntityId ?? 0;
                         bool preferDemandQueryMaps = activeItemId > 0 &&
                                                      _lastQuestDemandQueryVisibleItemIds.Contains(activeItemId);
-                        IReadOnlyList<int> itemMapIds = preferDemandQueryMaps
+                        IReadOnlyList<int> itemPreferredMapIds = preferDemandQueryMaps
                             ? ResolveQuestDemandQueryMapIds(activeItemId, fallbackMapId)
-                            : activeTarget.MapIds != null && activeTarget.MapIds.Count > 0
-                                ? activeTarget.MapIds
-                                : new[] { activeTarget.MapId > 0 ? activeTarget.MapId : fallbackMapId };
+                            : null;
+                        IReadOnlyList<int> itemMapIds = ResolveQuestOverlayMapIds(activeTarget, itemPreferredMapIds, fallbackMapId);
                         string itemOverlaySourceSuffix = preferDemandQueryMaps
                             ? $" via {FormatQuestDemandQueryMapSource(ResolveQuestDemandQueryMapSource(activeItemId))}"
                             : string.Empty;
@@ -1240,15 +1244,19 @@ namespace HaCreator.MapSimulator
                         }
                         break;
                     default:
-                        AddWorldMapQuestOverlay(
-                            overlays,
-                            seen,
-                            WorldMapUI.SearchResultKind.Npc,
-                            activeTarget.MapId > 0 ? activeTarget.MapId : fallbackMapId,
-                            activeTarget.Label,
-                            activeTarget.Description,
-                            ref overlayOrder,
-                            isPriorityTarget: true);
+                        IReadOnlyList<int> overlayMapIds = ResolveQuestOverlayMapIds(activeTarget, preferredMapIds: null, fallbackMapId);
+                        for (int i = 0; i < overlayMapIds.Count; i++)
+                        {
+                            AddWorldMapQuestOverlay(
+                                overlays,
+                                seen,
+                                WorldMapUI.SearchResultKind.Npc,
+                                overlayMapIds[i],
+                                activeTarget.Label,
+                                activeTarget.Description,
+                                ref overlayOrder,
+                                isPriorityTarget: true);
+                        }
                         break;
                 }
             }
@@ -1299,6 +1307,43 @@ namespace HaCreator.MapSimulator
 
 
             return overlays;
+        }
+
+        private static IReadOnlyList<int> ResolveQuestOverlayMapIds(
+            QuestWorldMapTarget target,
+            IReadOnlyList<int> preferredMapIds,
+            int fallbackMapId)
+        {
+            IReadOnlyList<int> sourceMapIds = preferredMapIds != null && preferredMapIds.Count > 0
+                ? preferredMapIds
+                : target?.MapIds;
+            if (sourceMapIds != null && sourceMapIds.Count > 0)
+            {
+                int[] normalized = sourceMapIds
+                    .Where(mapId => mapId > 0)
+                    .Distinct()
+                    .OrderBy(mapId => mapId)
+                    .ToArray();
+                if (normalized.Length > 0)
+                {
+                    return normalized;
+                }
+            }
+
+            int fallback = target?.MapId > 0
+                ? target.MapId
+                : fallbackMapId;
+            return fallback > 0
+                ? new[] { fallback }
+                : Array.Empty<int>();
+        }
+
+        internal static IReadOnlyList<int> ResolveQuestOverlayMapIdsForTesting(
+            QuestWorldMapTarget target,
+            IReadOnlyList<int> preferredMapIds,
+            int fallbackMapId)
+        {
+            return ResolveQuestOverlayMapIds(target, preferredMapIds, fallbackMapId);
         }
         private static void AddWorldMapQuestOverlay(
             ICollection<WorldMapUI.QuestOverlayEntry> overlays,
@@ -6889,10 +6934,9 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            return entries
-                .OrderBy(entry => entry.EncodedSlotPosition)
-                .ThenBy(entry => entry.Part?.ItemId ?? entry.InventorySlot?.ItemId ?? 0)
-                .ToList();
+            // CRepairDurabilityDlg::SetItems appends damaged inventory entries first,
+            // then appends damaged equipped entries in client nPOS order.
+            return entries;
         }
         
         private void AppendRepairDurabilityInventoryEntries(
@@ -19866,15 +19910,13 @@ namespace HaCreator.MapSimulator
 
 
 
-            switch (skill.SkillId)
+            if (IsMobSummonSkillForTesting(skill.SkillId))
             {
-                case 200:
-                    ApplyMobSummonSkill(mobItem, skill, currentTick);
-                    break;
-                default:
-                    ApplyMobStatusSkill(mobItem, skill, currentTick);
-                    break;
+                ApplyMobSummonSkill(mobItem, skill, currentTick);
+                return;
             }
+
+            ApplyMobStatusSkill(mobItem, skill, currentTick);
         }
 
 
@@ -20003,7 +20045,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (skill.SkillId == 200)
+            if (IsMobSummonSkillForTesting(skill.SkillId))
             {
                 return CanAutoSelectMobSummonSkill(skill);
             }
@@ -20045,6 +20087,12 @@ namespace HaCreator.MapSimulator
                 120 or 121 or 122 or 123 or 124 or 125 or 126 or 127 or 128 or 129 or 131 or 132 or 133 or 134 or 135 or 136 or 137 or 172 or 173 => true,
                 _ => false
             };
+        }
+
+        // `MobSkill.img/105` and `MobSkill.img/200` both publish summon-entry lists.
+        internal static bool IsMobSummonSkillForTesting(int skillId)
+        {
+            return skillId is 105 or 200;
         }
 
         private IEnumerable<MobAI> EnumerateMobSkillSelectionTargets(
@@ -21783,6 +21831,14 @@ namespace HaCreator.MapSimulator
             return consumedOnPickup && !autoConsumeHandled && !autoRunHandled;
         }
 
+        internal static bool ShouldBurnUnsupportedRunOnPickupRemainder(
+            bool runOnPickup,
+            bool autoRunConsumableHandled,
+            bool autoRunInteractionHandled)
+        {
+            return runOnPickup && !autoRunConsumableHandled && !autoRunInteractionHandled;
+        }
+
 
 
         private string ResolveQuestSkillName(int skillId)
@@ -22290,6 +22346,12 @@ namespace HaCreator.MapSimulator
                 return packetHintKind;
             }
 
+            if (hint.EmployerId > 0
+                && _packetOwnedEmployeePoolDispatcher.TryResolveKindHintForEmployer(hint.EmployerId, out SocialRoomKind employerHintKind))
+            {
+                return employerHintKind;
+            }
+
             if (_packetOwnedEmployeePoolDispatcher.ActiveKind.HasValue)
             {
                 return _packetOwnedEmployeePoolDispatcher.ActiveKind.Value;
@@ -22455,9 +22517,17 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (CanResolveRemotePetPickupSlot(ownerActor, slotIndex))
+            if (!TryResolveRemotePetPickupSlotIndexForPacketParity(
+                    ownerActor.Build?.RemotePetItemIds,
+                    slotIndex,
+                    out int resolvedSlotIndex))
             {
-                position = ResolveRemotePetPickupPosition(ownerActor, slotIndex);
+                return false;
+            }
+
+            if (CanResolveRemotePetPickupSlot(ownerActor, resolvedSlotIndex))
+            {
+                position = ResolveRemotePetPickupPosition(ownerActor, resolvedSlotIndex);
                 return true;
             }
 
@@ -22465,7 +22535,7 @@ namespace HaCreator.MapSimulator
                 ownerActor.Position,
                 ownerActor.FacingRight,
                 ownerActor.Build?.RemotePetItemIds,
-                slotIndex,
+                resolvedSlotIndex,
                 out position);
         }
 
@@ -22481,6 +22551,18 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<int> remotePetItemIds,
             int slotIndex)
         {
+            return TryResolveRemotePetPickupSlotIndexForPacketParity(
+                remotePetItemIds,
+                slotIndex,
+                out _);
+        }
+
+        internal static bool TryResolveRemotePetPickupSlotIndexForPacketParity(
+            IReadOnlyList<int> remotePetItemIds,
+            int slotIndex,
+            out int resolvedSlotIndex)
+        {
+            resolvedSlotIndex = -1;
             if (slotIndex < 0)
             {
                 return false;
@@ -22488,10 +22570,50 @@ namespace HaCreator.MapSimulator
 
             if (remotePetItemIds == null || remotePetItemIds.Count == 0)
             {
-                return slotIndex < RemotePetPickupPredictedSlotCount;
+                resolvedSlotIndex = slotIndex < RemotePetPickupPredictedSlotCount
+                    ? slotIndex
+                    : RemotePetPickupPredictedSlotCount - 1;
+                return resolvedSlotIndex >= 0;
             }
 
-            return slotIndex < remotePetItemIds.Count;
+            if (slotIndex < remotePetItemIds.Count
+                && remotePetItemIds[slotIndex] > 0)
+            {
+                resolvedSlotIndex = slotIndex;
+                return true;
+            }
+
+            int closestSlotIndex = -1;
+            int closestSlotDelta = int.MaxValue;
+            for (int candidateSlotIndex = 0; candidateSlotIndex < remotePetItemIds.Count; candidateSlotIndex++)
+            {
+                if (remotePetItemIds[candidateSlotIndex] <= 0)
+                {
+                    continue;
+                }
+
+                int candidateDelta = Math.Abs(candidateSlotIndex - slotIndex);
+                if (candidateDelta > closestSlotDelta)
+                {
+                    continue;
+                }
+
+                if (candidateDelta == closestSlotDelta && closestSlotIndex >= 0 && candidateSlotIndex > closestSlotIndex)
+                {
+                    continue;
+                }
+
+                closestSlotDelta = candidateDelta;
+                closestSlotIndex = candidateSlotIndex;
+            }
+
+            if (closestSlotIndex < 0)
+            {
+                return false;
+            }
+
+            resolvedSlotIndex = closestSlotIndex;
+            return true;
         }
 
         internal static bool TryResolveRemotePetPickupPositionFromOwnerState(
@@ -22502,13 +22624,16 @@ namespace HaCreator.MapSimulator
             out Vector2 position)
         {
             position = default;
-            if (!CanResolveRemotePetPickupSlotForPacketParity(remotePetItemIds, slotIndex))
+            if (!TryResolveRemotePetPickupSlotIndexForPacketParity(
+                    remotePetItemIds,
+                    slotIndex,
+                    out int resolvedSlotIndex))
             {
                 return false;
             }
 
             float direction = ownerFacingRight ? -1f : 1f;
-            float offsetX = direction * (28f + slotIndex * 18f);
+            float offsetX = direction * (28f + resolvedSlotIndex * 18f);
             position = new Vector2(ownerPosition.X + offsetX, ownerPosition.Y);
             return true;
         }
@@ -22581,6 +22706,7 @@ namespace HaCreator.MapSimulator
                 int itemId = int.TryParse(drop.ItemId, out int parsedItemId) ? parsedItemId : 0;
                 bool consumeOnPickupMonsterCard = _monsterBookManager.IsConsumeOnPickupCardItem(itemId);
                 bool consumedOnPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsConsumedOnPickup(itemId);
+                bool runOnPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsRunOnPickup(itemId);
                 bool autoConsumePickedUpItem = !consumeOnPickupMonsterCard && ShouldAutoConsumePickedUpItem(itemId);
                 bool autoRunConsumablePickedUpItem = !consumeOnPickupMonsterCard
                                                      && !autoConsumePickedUpItem
@@ -22692,6 +22818,14 @@ namespace HaCreator.MapSimulator
                 {
                     // Keep consumeOnPickup rows pickup-owned even when the simulator does not
                     // model their authored effect family yet.
+                }
+                else if (ShouldBurnUnsupportedRunOnPickupRemainder(
+                             runOnPickupMetadata,
+                             autoRunConsumablePickedUpItem,
+                             autoRunPickedUpItem))
+                {
+                    // Keep runOnPickup rows pickup-owned when they do not map to the current
+                    // consumable or authored NPC/script interaction seams.
                 }
                 else if (!autoHandlePickedUpItem || !TryApplyPickedUpItemRuntime(itemId, currentTime))
                 {
@@ -27880,6 +28014,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (IsClientMagicLaneKnownNonOwnerAreaSkillId(skill.SkillId))
+            {
+                return false;
+            }
+
             if (ClientShootAttackFamilyResolver.UsesClientShootAttackLane(skill.SkillId)
                 || skill.Projectile != null
                 || skill.AttackType == SkillAttackType.Ranged
@@ -27979,6 +28118,15 @@ namespace HaCreator.MapSimulator
                    || skillId == 32121004;
         }
 
+        private static bool IsClientMagicLaneKnownNonOwnerAreaSkillId(int skillId)
+        {
+            // IDA: TryDoingMagicAttack references these in neighboring branch tables, but they are
+            // outside the local affected-area owner branch family guarded by CAffectedAreaPool flow.
+            return skillId == 2121006
+                   || skillId == 2221006
+                   || skillId == 2301002;
+        }
+
         private static bool IsClientBodyLaneExplicitAreaSkillId(int skillId)
         {
             // IDA coverage for TryDoingBodyAttack includes explicit 32121003 and
@@ -28050,15 +28198,21 @@ namespace HaCreator.MapSimulator
                 "f" => 1,
                 "fire" => 1,
                 "burn" => 1,
+                "blaze" => 1,
                 "i" => 2,
                 "ice" => 2,
                 "cold" => 2,
+                "freeze" => 2,
+                "frost" => 2,
+                "frostbite" => 2,
                 "l" => 4,
                 "lightning" => 4,
                 "thunder" => 4,
                 "s" => 8,
                 "poison" => 8,
                 "venom" => 8,
+                "paralyze" => 8,
+                "paralysis" => 8,
                 "h" => 16,
                 "holy" => 16,
                 "sacred" => 16,
@@ -34346,7 +34500,11 @@ namespace HaCreator.MapSimulator
         private void HandlePlayerSkillCast(SkillCastInfo castInfo)
 
         {
-            if (!TryRouteLocalShowSkillEffectCastThroughRequestSeam(castInfo))
+            if (ShouldRegisterLocalSkillCastThroughClientShowSkillEffectDirectPathForTesting(castInfo))
+            {
+                TryRegisterAnimationDisplayerSkillUse(castInfo);
+            }
+            else if (!TryRouteLocalShowSkillEffectCastThroughRequestSeam(castInfo))
             {
                 TryRegisterAnimationDisplayerSkillUse(castInfo);
             }
@@ -34634,7 +34792,9 @@ namespace HaCreator.MapSimulator
                 return;
 
 
-            bool hasBlockingStatusNoticeOwner = HasBlockingStatusNoticeOwnerForSkillCooldownNotice(currentTime);
+            bool hasBlockingStatusNoticeOwner = HasBlockingStatusNoticeOwnerForSkillCooldownNotice(
+                currentTime,
+                skill?.SkillId ?? 0);
             bool noticeAccepted = _skillCooldownNoticeUI?.AddNotice(
                 skill?.SkillId ?? 0,
                 ResolveSkillCooldownNotificationName(skill),
@@ -34664,7 +34824,9 @@ namespace HaCreator.MapSimulator
                     message,
                     WeatherEffectType.None,
                     currentTime,
-                    WeatherMessageOwnerKind.StatusBarItemMsg);
+                    WeatherMessageOwnerKind.StatusBarItemMsg,
+                    ownerSkillId: skill?.SkillId ?? 0,
+                    ownerSourceKind: WeatherMessageOwnerSourceKind.SkillCooldownNotice);
             }
 
         }
@@ -34760,7 +34922,7 @@ namespace HaCreator.MapSimulator
             return skillId > 0 && !IsSkillRepresentedOnDirectHotkeyBar(skillId);
         }
 
-        private bool HasBlockingStatusNoticeOwnerForSkillCooldownNotice(int currentTime)
+        private bool HasBlockingStatusNoticeOwnerForSkillCooldownNotice(int currentTime, int incomingSkillId)
         {
             // Client parity seam:
             // CUIStatusBar::SetItemMsg blocks new item/float notice creation while quizPanel,
@@ -34774,7 +34936,8 @@ namespace HaCreator.MapSimulator
                 || _localOverlayRuntime?.HasActiveFieldHazardNotice(currentTime) == true;
             bool hasItemMsgOwner = SkillCooldownNoticeUI.HasActiveStatusBarItemMsgOwnerForClientParity(
                 _fieldEffects?.WeatherMessages,
-                currentTime);
+                currentTime,
+                incomingSkillId);
             return hasQuizPanelOwner || hasFloatNoticeOwner || hasItemMsgOwner;
         }
 
@@ -35085,7 +35248,8 @@ namespace HaCreator.MapSimulator
                     message,
                     WeatherEffectType.None,
                     currentTime,
-                    WeatherMessageOwnerKind.StatusBarItemMsg);
+                    WeatherMessageOwnerKind.StatusBarItemMsg,
+                    ownerSourceKind: WeatherMessageOwnerSourceKind.FieldRuleMessage);
             }
         }
 

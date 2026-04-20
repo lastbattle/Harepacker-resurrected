@@ -105,6 +105,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            bool preserveExistingSelectionProgress =
+                payload.SelectedItemsByGroup?.Count == 0
+                && payload.DisplayMode == QuestRewardRaiseWindowMode.PiecePlacement
+                && payload.WindowMode == QuestRewardRaiseWindowMode.PiecePlacement
+                && SelectedItemsByGroup.Count > 0;
+            if (preserveExistingSelectionProgress)
+            {
+                return;
+            }
+
             ReplaceSelectionProgress(payload.SelectedItemsByGroup);
         }
 

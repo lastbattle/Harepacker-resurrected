@@ -1170,11 +1170,6 @@ namespace HaCreator.MapSimulator
                 return itemToken;
             }
 
-            if (itemId > 0)
-            {
-                return itemId;
-            }
-
             return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition);
         }
 
@@ -1225,11 +1220,6 @@ namespace HaCreator.MapSimulator
             if (TryResolveClientAuthoredVegaInventoryItemToken(slot, out int itemToken))
             {
                 return itemToken;
-            }
-
-            if (itemId > 0)
-            {
-                return itemId;
             }
 
             return BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
@@ -1632,10 +1622,26 @@ namespace HaCreator.MapSimulator
             }
 
             string descriptor = ResolveVegaResultLoopSoundDescriptor();
-
-            if (!TryResolvePacketOwnedWzSound(descriptor, "UI.img", out MapleLib.WzLib.WzProperties.WzBinaryProperty soundProperty, out string resolvedDescriptor, false))
+            if (!TryResolvePacketOwnedWzSound(
+                    descriptor,
+                    "UI.img",
+                    out MapleLib.WzLib.WzProperties.WzBinaryProperty soundProperty,
+                    out string resolvedDescriptor,
+                    false))
             {
-                return;
+                string fallbackDescriptor = NormalizeVegaResultLoopSoundDescriptor(
+                    VegaResultPreludeLoopSoundFallback,
+                    VegaResultPreludeLoopSoundFallback);
+                if (string.Equals(descriptor, fallbackDescriptor, StringComparison.OrdinalIgnoreCase)
+                    || !TryResolvePacketOwnedWzSound(
+                        fallbackDescriptor,
+                        "UI.img",
+                        out soundProperty,
+                        out resolvedDescriptor,
+                        false))
+                {
+                    return;
+                }
             }
 
             string soundKey = BuildVegaResultLoopSoundKey(resolvedDescriptor);

@@ -15,7 +15,7 @@ namespace HaCreator.MapSimulator.Interaction
             result = null;
             error = null;
 
-            if (payload == null || payload.Length < 1)
+            if (payload == null || payload.Length != 1)
             {
                 error = "MiniMapOnOff payload must contain a single on/off byte.";
                 return false;

@@ -264,6 +264,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum QuestDemandItemMapResultSource
     {
         None,
+        PacketOwnedMap,
         PacketOwnedMob,
         WzMobDemand,
         WzNpcFallback,

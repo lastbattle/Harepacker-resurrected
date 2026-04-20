@@ -39,7 +39,7 @@ namespace HaCreator.MapSimulator.Managers
 
     internal static class PacketOwnedMechanicRepeatSkillRuntime
     {
-        private static readonly char[] Sg88MismatchByteListSeparators = { ',', ';', '|', ' ', '/' };
+        private static readonly char[] Sg88MismatchByteListSeparators = { ',', ';', '|', ' ', '/', '+' };
         private static readonly Regex Sg88MismatchPairRegex = new(
             @"byte\s*(?<index>\d+)\s*:\s*0x(?<observed>[0-9A-Fa-f]{1,2})\s*->\s*0x(?<rebuilt>[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -433,21 +433,34 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (TryExtractSg88ReplayParityMismatchByteIndicesSegment(
-                    decodeDetail,
-                    "mismatchBytes=[",
-                    requireClosingBracket: true,
-                    out int[] bracketByteIndices)
-                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
-                    decodeDetail,
-                    "mismatchByteIndices=[",
-                    requireClosingBracket: true,
-                    out bracketByteIndices)
-                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
-                    decodeDetail,
-                    "byteIndices=[",
-                    requireClosingBracket: true,
-                    out bracketByteIndices))
+            static bool TryExtractWrappedByteList(string decodeDetail, string fieldLabel, out int[] byteIndices)
+            {
+                byteIndices = Array.Empty<int>();
+                return TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                           decodeDetail,
+                           $"{fieldLabel}=[",
+                           requireClosingBracket: true,
+                           out byteIndices)
+                       || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                           decodeDetail,
+                           $"{fieldLabel}={{",
+                           requireClosingBracket: true,
+                           out byteIndices)
+                       || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                           decodeDetail,
+                           $"{fieldLabel}=(",
+                           requireClosingBracket: true,
+                           out byteIndices)
+                       || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                           decodeDetail,
+                           $"{fieldLabel}=<",
+                           requireClosingBracket: true,
+                           out byteIndices);
+            }
+
+            if (TryExtractWrappedByteList(decodeDetail, "mismatchBytes", out int[] bracketByteIndices)
+                || TryExtractWrappedByteList(decodeDetail, "mismatchByteIndices", out bracketByteIndices)
+                || TryExtractWrappedByteList(decodeDetail, "byteIndices", out bracketByteIndices))
             {
                 byteIndices = bracketByteIndices;
                 return true;
@@ -525,7 +538,7 @@ namespace HaCreator.MapSimulator.Managers
             out int[] byteIndices)
         {
             byteIndices = Array.Empty<int>();
-            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.Ordinal);
+            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
             if (markerIndex < 0)
             {
                 return false;
@@ -535,7 +548,14 @@ namespace HaCreator.MapSimulator.Managers
             int valueEnd = valueStart;
             if (requireClosingBracket)
             {
-                valueEnd = decodeDetail.IndexOf(']', valueStart);
+                char closingMarker = ']';
+                if (marker.Length > 0
+                    && TryResolveSg88MismatchListClosingMarker(marker[^1], out char resolvedClosingMarker))
+                {
+                    closingMarker = resolvedClosingMarker;
+                }
+
+                valueEnd = decodeDetail.IndexOf(closingMarker, valueStart);
                 if (valueEnd <= valueStart)
                 {
                     return false;
@@ -593,7 +613,7 @@ namespace HaCreator.MapSimulator.Managers
             out int byteIndex)
         {
             byteIndex = -1;
-            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.Ordinal);
+            int markerIndex = decodeDetail.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
             if (markerIndex < 0)
             {
                 return false;
@@ -796,7 +816,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string normalized = token.Trim();
+            string normalized = NormalizeSg88MismatchByteToken(token);
             if (normalized.StartsWith("bytes", StringComparison.OrdinalIgnoreCase))
             {
                 normalized = normalized.Substring("bytes".Length);
@@ -815,6 +835,17 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             normalized = normalized.TrimStart(':', '=').Trim();
+            if (normalized.StartsWith("+", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(1).TrimStart();
+            }
+
+            if (normalized.EndsWith("h", StringComparison.OrdinalIgnoreCase)
+                && normalized.Length > 1
+                && IsSg88HexDigitsOnly(normalized.AsSpan(0, normalized.Length - 1)))
+            {
+                normalized = $"0x{normalized.Substring(0, normalized.Length - 1)}";
+            }
 
             if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
@@ -838,6 +869,47 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byteIndex = parsedByteIndex;
+            return true;
+        }
+
+        private static string NormalizeSg88MismatchByteToken(string token)
+        {
+            string normalized = token.Trim().TrimEnd('.', ',', ';');
+            while (normalized.Length > 0
+                   && TryResolveSg88MismatchTokenWrapper(normalized[0], out _))
+            {
+                normalized = normalized.Substring(1).TrimStart();
+            }
+
+            while (normalized.Length > 0
+                   && TryResolveSg88MismatchClosingTokenWrapper(normalized[^1]))
+            {
+                normalized = normalized.Substring(0, normalized.Length - 1).TrimEnd();
+            }
+
+            return normalized;
+        }
+
+        private static bool TryResolveSg88MismatchClosingTokenWrapper(char closingWrapper)
+        {
+            return closingWrapper is ']' or '}' or ')' or '>';
+        }
+
+        private static bool IsSg88HexDigitsOnly(ReadOnlySpan<char> token)
+        {
+            if (token.IsEmpty)
+            {
+                return false;
+            }
+
+            foreach (char c in token)
+            {
+                if (!Uri.IsHexDigit(c))
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 

@@ -186,7 +186,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -988,6 +988,9 @@ namespace HaCreator.MapSimulator
                 case "damage":
                     return HandlePacketOwnedBattleRecordDamageCommand(args.Skip(1).ToArray());
 
+                case "recovery":
+                    return HandlePacketOwnedBattleRecordRecoveryCommand(args.Skip(1).ToArray());
+
                 case "forceoff":
                     _packetOwnedBattleRecordRuntime.ApplyForcedOffCalc();
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.BattleRecord);
@@ -1032,7 +1035,7 @@ namespace HaCreator.MapSimulator
                             hasCloseOutbound ? null : closeOnCalcMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|damage <value> [critical=<on|off>] [summon=<on|off>] [attrRate=<value>]|recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]|forceoff|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
             }
         }
 
@@ -1142,6 +1145,59 @@ namespace HaCreator.MapSimulator
                     critical,
                     isSummon,
                     attrRate));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordRecoveryCommand(string[] args)
+        {
+            if (args == null
+                || args.Length < 4
+                || !int.TryParse(args[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int hpRecovery)
+                || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int mpRecovery)
+                || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int beforeHp)
+                || !int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int beforeMp))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]");
+            }
+
+            int? currentHp = null;
+            int? currentMp = null;
+            for (int i = 4; i < args.Length; i++)
+            {
+                string argument = args[i];
+                if (argument.StartsWith("currenthp=", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!int.TryParse(argument.Substring("currenthp=".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedCurrentHp))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]");
+                    }
+
+                    currentHp = parsedCurrentHp;
+                    continue;
+                }
+
+                if (argument.StartsWith("currentmp=", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!int.TryParse(argument.Substring("currentmp=".Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedCurrentMp))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]");
+                    }
+
+                    currentMp = parsedCurrentMp;
+                    continue;
+                }
+
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord recovery <hpRecovery> <mpRecovery> <beforeHp> <beforeMp> [currentHp=<value>] [currentMp=<value>]");
+            }
+
+            return ChatCommandHandler.CommandResult.Ok(
+                _packetOwnedBattleRecordRuntime.ApplyBattleRecoveryInfo(
+                    hpRecovery,
+                    mpRecovery,
+                    beforeHp,
+                    beforeMp,
+                    currentHp,
+                    currentMp,
+                    currTickCount));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordClearCommand(string[] args)

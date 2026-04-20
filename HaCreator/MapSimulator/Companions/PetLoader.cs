@@ -733,16 +733,25 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            foreach (string candidate in EnumerateActionCandidates(requestedAction))
+            WzImageProperty[] candidateProperties = petImgEntry.Children
+                .Where(static property => property != null)
+                .ToArray();
+            if (candidateProperties.Length == 0)
             {
-                WzImageProperty property = ResolveActionProperty(petImgEntry[candidate]);
-                if (property != null)
-                {
-                    return property;
-                }
+                return null;
             }
 
-            return ResolveCanonicalActionProperty(petImgEntry.Children, requestedAction);
+            string resolvedActionName = ResolveActionNameForLookup(
+                candidateProperties.Select(static property => property.Name),
+                requestedAction);
+            if (string.IsNullOrWhiteSpace(resolvedActionName))
+            {
+                return null;
+            }
+
+            return ResolveActionProperty(petImgEntry[resolvedActionName] ??
+                                         candidateProperties.FirstOrDefault(property =>
+                                             string.Equals(property.Name, resolvedActionName, StringComparison.Ordinal)));
         }
 
         private static IEnumerable<string> EnumerateActionCandidates(string requestedAction)
@@ -960,44 +969,90 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            foreach (string candidate in EnumerateActionCandidates(requestedAction))
-            {
-                WzImageProperty property = ResolveActionProperty(resolvedRoot[candidate]);
-                if (property != null)
-                {
-                    return property;
-                }
-            }
-
-            return ResolveCanonicalActionProperty(resolvedRoot.WzProperties, requestedAction);
-        }
-
-        private static WzImageProperty ResolveCanonicalActionProperty(
-            IEnumerable<WzImageProperty> candidateProperties,
-            string requestedAction)
-        {
-            string normalizedRequestedAction = PetActionAliases.NormalizeActionName(requestedAction);
-            if (string.IsNullOrWhiteSpace(normalizedRequestedAction) || candidateProperties == null)
+            WzImageProperty[] candidateProperties = resolvedRoot.WzProperties
+                .Where(static property => property != null)
+                .ToArray();
+            if (candidateProperties.Length == 0)
             {
                 return null;
             }
 
-            foreach (WzImageProperty candidateProperty in candidateProperties)
+            string resolvedActionName = ResolveActionNameForLookup(
+                candidateProperties.Select(static property => property.Name),
+                requestedAction);
+            if (string.IsNullOrWhiteSpace(resolvedActionName))
             {
-                if (candidateProperty == null ||
-                    string.IsNullOrWhiteSpace(candidateProperty.Name) ||
-                    !string.Equals(
-                        PetActionAliases.NormalizeActionName(candidateProperty.Name),
-                        normalizedRequestedAction,
-                        StringComparison.Ordinal))
-                {
-                    continue;
-                }
+                return null;
+            }
 
-                WzImageProperty resolvedProperty = ResolveActionProperty(candidateProperty);
-                if (resolvedProperty != null)
+            return ResolveActionProperty(resolvedRoot[resolvedActionName] ??
+                                         candidateProperties.FirstOrDefault(property =>
+                                             string.Equals(property.Name, resolvedActionName, StringComparison.Ordinal)));
+        }
+
+        internal static string ResolveActionNameForLookup(
+            IEnumerable<string> actionNames,
+            string requestedAction)
+        {
+            if (actionNames == null || string.IsNullOrWhiteSpace(requestedAction))
+            {
+                return null;
+            }
+
+            string[] resolvedActionNames = actionNames
+                .Where(static name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (resolvedActionNames.Length == 0)
+            {
+                return null;
+            }
+
+            foreach (string candidate in EnumerateActionCandidates(requestedAction))
+            {
+                string resolvedCandidateName = ResolveCanonicalActionName(resolvedActionNames, candidate);
+                if (!string.IsNullOrWhiteSpace(resolvedCandidateName))
                 {
-                    return resolvedProperty;
+                    return resolvedCandidateName;
+                }
+            }
+
+            return ResolveCanonicalActionName(resolvedActionNames, requestedAction);
+        }
+
+        private static string ResolveCanonicalActionName(
+            IReadOnlyList<string> candidateActionNames,
+            string requestedAction)
+        {
+            if (candidateActionNames == null || string.IsNullOrWhiteSpace(requestedAction))
+            {
+                return null;
+            }
+
+            for (int i = 0; i < candidateActionNames.Count; i++)
+            {
+                string candidateActionName = candidateActionNames[i];
+                if (string.Equals(candidateActionName, requestedAction, StringComparison.Ordinal))
+                {
+                    return candidateActionName;
+                }
+            }
+
+            string normalizedRequestedAction = PetActionAliases.NormalizeActionName(requestedAction);
+            if (!string.IsNullOrWhiteSpace(normalizedRequestedAction))
+            {
+                for (int i = 0; i < candidateActionNames.Count; i++)
+                {
+                    string candidateActionName = candidateActionNames[i];
+                    if (!string.Equals(
+                            PetActionAliases.NormalizeActionName(candidateActionName),
+                            normalizedRequestedAction,
+                            StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    return candidateActionName;
                 }
             }
 
@@ -1007,23 +1062,18 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            foreach (WzImageProperty candidateProperty in candidateProperties)
+            for (int i = 0; i < candidateActionNames.Count; i++)
             {
-                if (candidateProperty == null ||
-                    string.IsNullOrWhiteSpace(candidateProperty.Name) ||
-                    !string.Equals(
-                        PetActionAliases.NormalizeActionStem(candidateProperty.Name),
+                string candidateActionName = candidateActionNames[i];
+                if (!string.Equals(
+                        PetActionAliases.NormalizeActionStem(candidateActionName),
                         normalizedRequestedStem,
                         StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                WzImageProperty resolvedProperty = ResolveActionProperty(candidateProperty);
-                if (resolvedProperty != null)
-                {
-                    return resolvedProperty;
-                }
+                return candidateActionName;
             }
 
             return null;

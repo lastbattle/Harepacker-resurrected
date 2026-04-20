@@ -888,8 +888,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             MemoryGamePromptState prompt = _pendingPrompt;
-            ClearPendingPrompt();
-            return prompt.Type switch
+            bool handled = prompt.Type switch
             {
                 MemoryGamePromptType.OutgoingTieRequest => ConfirmOutgoingTieRequest(tickCount, out message),
                 MemoryGamePromptType.IncomingTieRequest => ConfirmIncomingTieRequest(tickCount, out message),
@@ -900,6 +899,19 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGamePromptType.CloseRoom => ConfirmCloseRoom(prompt.PlayerIndex, tickCount, out message),
                 _ => AssignPromptMissing(out message)
             };
+
+            // Outbound prompt-bound packets clear prompt state through TryConsumePendingPromptForOutgoingPacket.
+            // Non-packet prompt paths (remote-seat resolution) clear it here after a successful confirm.
+            if (handled
+                && _pendingPrompt.IsActive
+                && _pendingPrompt.Type == prompt.Type
+                && _pendingPrompt.PlayerIndex == prompt.PlayerIndex
+                && _pendingPrompt.StringPoolId == prompt.StringPoolId)
+            {
+                ClearPendingPrompt();
+            }
+
+            return handled;
         }
 
         public bool TryCancelPrompt(out string message)
@@ -913,7 +925,6 @@ namespace HaCreator.MapSimulator.Fields
             MemoryGamePromptState prompt = _pendingPrompt;
             if (prompt.Type == MemoryGamePromptType.IncomingTieRequest)
             {
-                ClearPendingPrompt();
                 return TryDispatchOfficialClientSubtype(
                     MemoryGameTieResultPacketType,
                     Environment.TickCount,
@@ -1016,6 +1027,15 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryDispatchOfficialClientPacket(byte[] packetBytes, int tickCount, out string message)
         {
+            return TryDispatchOfficialClientPacket(packetBytes, tickCount, out message, enforcePromptFlow: false);
+        }
+
+        public bool TryDispatchOfficialClientPacket(
+            byte[] packetBytes,
+            int tickCount,
+            out string message,
+            bool enforcePromptFlow)
+        {
             if (packetBytes == null || packetBytes.Length == 0)
             {
                 message = "Memory Game client payload is empty.";
@@ -1032,6 +1052,12 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     return false;
                 }
+            }
+            else if (enforcePromptFlow
+                && IsPromptBoundRequestPacket(packetBytes))
+            {
+                message = $"Match Cards client packet {packetType} requires a confirmation prompt before dispatch.";
+                return false;
             }
 
             bool handled = packetType switch
@@ -3066,7 +3092,7 @@ namespace HaCreator.MapSimulator.Fields
                 Buffer.BlockCopy(extraPayload, 0, payload, 1, extraPayload.Length);
             }
 
-            return TryDispatchOfficialClientPacket(payload, tickCount, out message);
+            return TryDispatchOfficialClientPacket(payload, tickCount, out message, enforcePromptFlow: true);
         }
 
         private void ClearPendingPrompt()
@@ -3152,6 +3178,27 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGameCancelReadyPacketType => true,
                 MemoryGameClientBanOrTurnUpCardPacketType => true,
                 MemoryGameStartPacketType => true,
+                _ => false
+            };
+        }
+
+        private static bool IsPromptBoundRequestPacket(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return false;
+            }
+
+            byte packetType = packetBytes[0];
+            return packetType switch
+            {
+                MiniRoomBaseLeavePacketType => true,
+                MemoryGameTieRequestPacketType => true,
+                MemoryGameTieResultPacketType => true,
+                MemoryGameClientGiveUpPacketType => true,
+                MemoryGameClientBookLeavePacketType => true,
+                MemoryGameClientCancelLeavePacketType => true,
+                MemoryGameClientBanOrTurnUpCardPacketType => packetBytes.Length <= 1,
                 _ => false
             };
         }

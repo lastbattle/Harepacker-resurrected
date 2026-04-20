@@ -219,6 +219,12 @@ namespace HaCreator.MapSimulator
             }
 
             int legacySlotPosition = (int)slot;
+            if (legacySlotPosition == 0)
+            {
+                encodedPosition = 0;
+                return true;
+            }
+
             if (legacySlotPosition > 0 && legacySlotPosition <= 59)
             {
                 encodedPosition = -legacySlotPosition;
@@ -461,12 +467,15 @@ namespace HaCreator.MapSimulator
             }
 
             List<int> ordered = uniquePositions
+                .Where(static position => position == 0)
+                .ToList();
+            ordered.AddRange(uniquePositions
                 .Where(static position => position is <= -1 and >= -59)
                 .OrderByDescending(static position => position)
-                .ToList();
+                .ToList());
 
             foreach (int overflowPosition in uniquePositions
-                         .Where(static position => position is > -1 or < -59)
+                         .Where(static position => position is > 0 or < -59)
                          .OrderByDescending(static position => position))
             {
                 ordered.Add(overflowPosition);

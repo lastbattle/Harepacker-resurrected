@@ -464,6 +464,22 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsOfficialSessionBridge.ClearRecentOutboundPackets());
             }
 
+            if (string.Equals(args[0], "recentin", StringComparison.OrdinalIgnoreCase))
+            {
+                int count = 10;
+                if (args.Length >= 2 && (!int.TryParse(args[1], out count) || count <= 0))
+                {
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.RecentInboundUsage);
+                }
+
+                return ChatCommandHandler.CommandResult.Info(_rockPaperScissorsOfficialSessionBridge.DescribeRecentInboundPackets(count));
+            }
+
+            if (string.Equals(args[0], "clearrecentin", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsOfficialSessionBridge.ClearRecentInboundPackets());
+            }
+
             if (string.Equals(args[0], "attach", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length < 2 || !int.TryParse(args[1], out int remotePort) || remotePort <= 0)

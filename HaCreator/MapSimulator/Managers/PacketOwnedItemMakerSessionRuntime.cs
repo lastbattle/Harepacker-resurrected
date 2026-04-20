@@ -169,7 +169,21 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (payload.Length >= sizeof(int) * 2 && reader.ReadInt32() == DeltaPacketMagic)
                 {
-                    return TryDecodeDeltaPayload(reader, out result, out error);
+                    long deltaPayloadStart = reader.BaseStream.Position;
+                    if (TryDecodeDeltaPayload(reader, out result, out error))
+                    {
+                        return true;
+                    }
+
+                    string deltaDecodeError = error;
+                    reader.BaseStream.Position = deltaPayloadStart;
+                    if (TryDecodeCompactDeltaPayload(reader, out result, out error))
+                    {
+                        return true;
+                    }
+
+                    error = deltaDecodeError ?? error;
+                    return false;
                 }
 
                 reader.BaseStream.Position = 0;

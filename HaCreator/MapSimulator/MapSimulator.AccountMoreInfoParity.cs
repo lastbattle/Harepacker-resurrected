@@ -111,6 +111,10 @@ namespace HaCreator.MapSimulator
 
             ShowWindow(MapSimulatorWindowNames.AccountMoreInfo, window, trackDirectionModeOwner: true);
             uiWindowManager?.BringToFront(window);
+            if (firstEntry)
+            {
+                ShowUtilityFeedbackMessage(AccountMoreInfoOwnerStringPoolText.ResolveFirstEntryPrompt());
+            }
 
             byte[] loadPayload = _accountMoreInfoRuntime.BuildLoadRequestPayload();
             string dispatchStatus = DispatchPacketOwnedAccountMoreInfoClientRequest(
@@ -118,7 +122,10 @@ namespace HaCreator.MapSimulator
                 loadPayload,
                 "CUIAccountMoreInfo::SendLoadAccountMoreInfoRequest");
             _accountMoreInfoRuntime.RecordDispatchStatus(dispatchStatus);
-            return $"CWvsContext::OnAccountMoreInfo opened UI type {PacketOwnedAccountMoreInfoUiType} and marked m_bMoreInfoFirst={(firstEntry ? 1 : 0)}. {dispatchStatus}";
+            string promptStatus = firstEntry
+                ? "Displayed first-entry account-more-info prompt text (StringPool 0x16B5). "
+                : string.Empty;
+            return $"CWvsContext::OnAccountMoreInfo opened UI type {PacketOwnedAccountMoreInfoUiType} and marked m_bMoreInfoFirst={(firstEntry ? 1 : 0)}. {promptStatus}{dispatchStatus}";
         }
 
         private bool ApplyPacketOwnedAccountMoreInfoLoadResult(byte[] payload, out string message)

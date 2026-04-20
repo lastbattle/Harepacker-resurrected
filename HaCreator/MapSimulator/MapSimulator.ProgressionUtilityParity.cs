@@ -866,7 +866,8 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<EventAlarmLineSnapshot> BuildEventAlarmOwnerLines(int currentTick)
         {
-            if (_packetOwnedEventAlarmLines.Count > 0)
+            if (_packetOwnedEventAlarmLines.Count > 0
+                && ShouldRetainPacketOwnedEventAlarmLines(_lastPacketOwnedEventAlarmTick, currentTick))
             {
                 return _packetOwnedEventAlarmLines
                     .Take(EventAlarmOwnerMaxVisibleLines)
@@ -879,6 +880,11 @@ namespace HaCreator.MapSimulator
                         TextColorArgb = line.TextColorArgb
                     })
                     .ToArray();
+            }
+            if (_packetOwnedEventAlarmLines.Count > 0
+                && _lastPacketOwnedEventAlarmTick != int.MinValue)
+            {
+                _packetOwnedEventAlarmLines.Clear();
             }
 
             List<(string Text, int Tick, bool Highlight, bool IsActive)> candidates = new();
@@ -1022,13 +1028,13 @@ namespace HaCreator.MapSimulator
 
         private static bool IsEventAlarmLineRecent(int sourceTick, int currentTick)
         {
-            if (sourceTick == int.MinValue)
-            {
-                return false;
-            }
+            return sourceTick != int.MinValue
+                && ShouldRetainPacketOwnedEventAlarmLines(sourceTick, currentTick);
+        }
 
-            int age = ResolveEventAlarmLineAge(sourceTick, currentTick);
-            return age <= EventAlarmFeedLifetimeMs;
+        internal static bool ShouldRetainPacketOwnedEventAlarmLines(int sourceTick, int currentTick)
+        {
+            return ResolveEventAlarmLineAge(sourceTick, currentTick) <= EventAlarmFeedLifetimeMs;
         }
 
         private static int ResolveEventAlarmLineAge(int sourceTick, int currentTick)

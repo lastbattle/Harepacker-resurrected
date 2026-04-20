@@ -472,7 +472,6 @@ namespace HaCreator.MapSimulator.UI
             _launchContextLabel = npcFunctionText?.Trim();
             _launchFilter = ResolveLaunchFilter(_launchContextLabel);
             RebuildVisiblePages();
-            FocusLaunchContext();
         }
 
         public override void Hide()
@@ -3374,7 +3373,7 @@ namespace HaCreator.MapSimulator.UI
                 if (page.Label.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     _selectedPageIndex = i;
-                    _selectedRecipeIndex = 0;
+                    _selectedRecipeIndex = -1;
                     _recipeScrollOffset = 0;
                     return;
                 }
@@ -3383,8 +3382,8 @@ namespace HaCreator.MapSimulator.UI
                 if (recipeIndex >= 0)
                 {
                     _selectedPageIndex = i;
-                    _selectedRecipeIndex = recipeIndex;
-                    EnsureSelectedRecipeVisible();
+                    _selectedRecipeIndex = -1;
+                    _recipeScrollOffset = 0;
                     return;
                 }
             }

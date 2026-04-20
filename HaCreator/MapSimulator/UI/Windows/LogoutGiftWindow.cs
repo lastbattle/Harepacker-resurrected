@@ -13,7 +13,7 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int DefaultWidth = 250;
         private const int DefaultHeight = 236;
-        private const int ClientIconTop = 182;
+        private const int ClientIconTop = 150;
         private const int ClientIconLeft = 25;
         private const int ClientSelectButtonTop = 196;
         private const int ClientSelectButtonLeft = 21;
@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _hasAuthoredFrameTexture;
         private LogoutGiftButtonSkin _buttonSkin;
         private int _pendingSelectionIndex;
+        private int _hoveredEntryIndex = -1;
 
         internal LogoutGiftWindow(GraphicsDevice device)
             : base(new DXObject(0, 0, CreateFrameTexture(device), 0))
@@ -89,6 +90,7 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
             _currentMouseState = mouseState;
+            _hoveredEntryIndex = ResolveHoveredEntryIndex(mouseState.Position);
 
             if (IsVisible)
             {
@@ -277,6 +279,72 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawHoverTooltip(SpriteBatch sprite)
+        {
+            if (!CanDrawWindowText || _hoveredEntryIndex < 0 || _hoveredEntryIndex >= _snapshot.Entries.Count)
+            {
+                return;
+            }
+
+            LogoutGiftEntrySnapshot entry = _snapshot.Entries[_hoveredEntryIndex];
+            string itemLine = !string.IsNullOrWhiteSpace(entry.ItemName)
+                ? entry.ItemName
+                : entry.ItemId > 0
+                    ? $"Item #{entry.ItemId}"
+                    : $"Commodity SN {entry.CommoditySerialNumber}";
+            string detailLine = entry.CommoditySerialNumber > 0
+                ? $"SN {entry.CommoditySerialNumber}"
+                : "SN unavailable";
+            string priceLine = entry.Price > 0
+                ? $"{entry.Price} NX"
+                : string.Empty;
+            string tooltipText = string.IsNullOrWhiteSpace(priceLine)
+                ? $"{itemLine}\n{detailLine}"
+                : $"{itemLine}\n{detailLine}\n{priceLine}";
+
+            string[] lines = tooltipText.Split('\n');
+            const float tooltipScale = 0.28f;
+            int lineHeight = 12;
+            int padding = 6;
+            float maxWidth = 0f;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                maxWidth = Math.Max(maxWidth, MeasureWindowText(null, lines[i], tooltipScale).X);
+            }
+
+            int width = Math.Max(72, (int)Math.Ceiling(maxWidth) + (padding * 2));
+            int height = (lines.Length * lineHeight) + (padding * 2);
+            Point anchor = new(_currentMouseState.X + 20, _currentMouseState.Y + 20);
+            Rectangle bounds = new(anchor.X, anchor.Y, width, height);
+            int viewportWidth = _pixel?.GraphicsDevice?.Viewport.Width ?? DefaultWidth;
+            int viewportHeight = _pixel?.GraphicsDevice?.Viewport.Height ?? DefaultHeight;
+            if (bounds.Right > viewportWidth - 4)
+            {
+                bounds.X = Math.Max(4, viewportWidth - bounds.Width - 4);
+            }
+
+            if (bounds.Bottom > viewportHeight - 4)
+            {
+                bounds.Y = Math.Max(4, viewportHeight - bounds.Height - 4);
+            }
+
+            sprite.Draw(_pixel, bounds, new Color(33, 26, 19, 235));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(210, 184, 126, 255));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(210, 184, 126, 255));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(210, 184, 126, 255));
+            sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(210, 184, 126, 255));
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                DrawWindowText(
+                    sprite,
+                    lines[i],
+                    new Vector2(bounds.X + padding, bounds.Y + padding + (i * lineHeight)),
+                    new Color(246, 234, 211),
+                    tooltipScale);
+            }
+        }
+
         private void DrawCenteredText(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale)
         {
             if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
@@ -326,6 +394,24 @@ namespace HaCreator.MapSimulator.UI
             Texture2D icon = _itemIconProvider(itemId);
             _itemIconCache[itemId] = icon;
             return icon;
+        }
+
+        private int ResolveHoveredEntryIndex(Point mousePosition)
+        {
+            if (!IsVisible)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < _snapshot.Entries.Count; i++)
+            {
+                if (GetClientIconBounds(Position, i).Contains(mousePosition))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private Rectangle GetSlotBounds(int index)

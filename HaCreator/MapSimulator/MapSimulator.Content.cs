@@ -1941,6 +1941,18 @@ namespace HaCreator.MapSimulator
                     equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                 }
             }
+            if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow && _playerManager?.Player?.Build != null)
+            {
+                inventoryWindow.CharacterBuild = _playerManager.Player.Build;
+                inventoryWindow.SetFont(_fontChat);
+                inventoryWindow.SetCharacterLoader(_playerManager.Loader);
+                inventoryWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForConsumableWithClientCancelIngress;
+                inventoryWindow.ItemUseRequested = TryUseInventoryItem;
+                inventoryWindow.ItemUseRequestedAtSlot = TryUseInventoryItemAtSlot;
+                inventoryWindow.InventoryDropRequested = HandleLocalInventoryDropRequestWithClientCancelIngress;
+                inventoryWindow.MesoDropRequested = HandleLocalMesoDropRequestWithClientCancelIngress;
+                inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
+            }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow && _playerManager?.Player?.Build != null)
             {
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;

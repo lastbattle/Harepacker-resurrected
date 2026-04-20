@@ -2937,12 +2937,10 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            effectPath = string.Format(
-                System.Globalization.CultureInfo.InvariantCulture,
-                "Mob/{0:D7}.img/attack{1}/info/hit",
-                packet.MobTemplateId.Value,
-                attackNumber);
-            return true;
+            // CUserRemote::OnHit only plays the mob-hit visual when the attack row resolves
+            // to a non-empty authored sHit path (or when packet-owned hit-string data exists).
+            // Avoid synthesizing fallback UOL paths that the client never emits.
+            return false;
         }
 
         private static RemoteUserTemporaryStatSnapshot ReconcileChargeSkillIdFromPriorSnapshot(
@@ -3996,9 +3994,14 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static bool ShouldAttachRemotePacketOwnedStringEffectForParity(RemoteUserEffectSubtype? subtype)
         {
-            // CUser::OnEffect case 26 (ItemSoundStringEffect) resolves a packet-time
-            // anchor from m_pvc and does not keep a live vecctrl attachment.
-            return subtype != RemoteUserEffectSubtype.ItemSoundStringEffect;
+            // CUser::OnEffect uses packet-time world anchors for:
+            // - case 20 (ReservedEffect): Effect_Reserved(x,y)
+            // - case 25 (StringEffect): Effect_General(..., x, y, ...)
+            // - case 26 (ItemSoundStringEffect): Effect_General(..., x, y, ...)
+            // Keep those detached from live vecctrl follow.
+            return subtype != RemoteUserEffectSubtype.ReservedEffect
+                && subtype != RemoteUserEffectSubtype.StringEffect
+                && subtype != RemoteUserEffectSubtype.ItemSoundStringEffect;
         }
 
         private static bool IsAriantArenaRemoteActor(RemoteUserActor actor)
@@ -4381,13 +4384,11 @@ namespace HaCreator.MapSimulator.Pools
 
         private static int ResolveRemoteThrowGrenadeKeyDownTimeMs(int skillId, int keyDownTime)
         {
-            int normalizedKeyDownTime = Math.Max(0, keyDownTime);
-            if (skillId == MonsterBombSkillId)
-            {
-                return PreparedSkillHudRules.ResolveReleaseChargeElapsedMs(skillId, normalizedKeyDownTime);
-            }
-
-            return normalizedKeyDownTime;
+            // CUser::ThrowGrenade uses raw packet tKeyDown for non-body-bomb impact scaling,
+            // while Monster Bomb keeps only the >= 500 floor before gauge conversion.
+            return skillId == MonsterBombSkillId
+                ? Math.Max(MonsterBombMinimumKeyDownMs, keyDownTime)
+                : keyDownTime;
         }
 
         private static int ResolveRemoteGrenadeMaxGaugeTimeMs(int skillId)
@@ -10759,9 +10760,14 @@ namespace HaCreator.MapSimulator.Pools
                 normalizedUpdateCount += RemoteTemporaryStatAffectedLayerShiftCadenceUpdates;
             }
 
+            if (normalizedUpdateCount == 0)
+            {
+                return 0;
+            }
+
             int remainingUpdates = RemoteTemporaryStatAffectedLayerShiftCadenceUpdates - normalizedUpdateCount;
             return remainingUpdates <= 0
-                ? RemoteTemporaryStatAffectedLayerShiftCadenceUpdates
+                ? 0
                 : remainingUpdates;
         }
 
@@ -12979,6 +12985,9 @@ namespace HaCreator.MapSimulator.Pools
             RemoteUserTemporaryStatSnapshot snapshot,
             int preferredSkillId)
         {
+            int effectivePreferredSkillId = AfterImageChargeSkillResolver.ResolvePreferredChargeSkillIdFromWeaponChargeValue(
+                preferredSkillId,
+                snapshot.KnownState.WeaponChargeValue);
             if (!snapshot.HasWeaponCharge)
             {
                 return null;
@@ -13010,7 +13019,7 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     snapshot.WeaponChargePayloadOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
                     out int scopedWindowChargeSkillId))
             {
@@ -13023,7 +13032,7 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.RawPayload,
                     sizeof(int) * 4,
                     snapshot.WeaponChargePayloadOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     out int nearestMetadataChargeSkillId))
             {
                 return nearestMetadataChargeSkillId;
@@ -13033,7 +13042,7 @@ namespace HaCreator.MapSimulator.Pools
             if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
                     out int scopedMaskBaseChargeSkillId))
             {
@@ -13044,7 +13053,7 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     out int nearestMaskBaseChargeSkillId))
             {
                 return nearestMaskBaseChargeSkillId;
@@ -13053,11 +13062,11 @@ namespace HaCreator.MapSimulator.Pools
             return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                 snapshot.RawPayload,
                 payloadMaskBaseOffset,
-                preferredSkillId,
+                effectivePreferredSkillId,
                 out int payloadChargeSkillId)
                 ? payloadChargeSkillId
-                : AfterImageChargeSkillResolver.IsKnownChargeSkillId(preferredSkillId)
-                    ? preferredSkillId
+                : AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                    ? effectivePreferredSkillId
                     : null;
         }
 
@@ -13066,6 +13075,9 @@ namespace HaCreator.MapSimulator.Pools
             int preferredSkillId,
             out int chargeElement)
         {
+            int effectivePreferredSkillId = AfterImageChargeSkillResolver.ResolvePreferredChargeSkillIdFromWeaponChargeValue(
+                preferredSkillId,
+                snapshot.KnownState.WeaponChargeValue);
             if (!snapshot.HasWeaponCharge)
             {
                 chargeElement = 0;
@@ -13101,7 +13113,7 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     snapshot.WeaponChargePayloadOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
                     out chargeElement))
             {
@@ -13114,7 +13126,7 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.RawPayload,
                     sizeof(int) * 4,
                     snapshot.WeaponChargePayloadOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     out int nearestMetadataChargeSkillId)
                 && AfterImageChargeSkillResolver.TryGetChargeElement(nearestMetadataChargeSkillId, out chargeElement))
             {
@@ -13125,7 +13137,7 @@ namespace HaCreator.MapSimulator.Pools
             if (AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
                     out chargeElement))
             {
@@ -13146,10 +13158,10 @@ namespace HaCreator.MapSimulator.Pools
             return AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
                 snapshot.RawPayload,
                 payloadMaskBaseOffset,
-                preferredSkillId,
+                effectivePreferredSkillId,
                 out chargeElement)
-                || (AfterImageChargeSkillResolver.IsKnownChargeSkillId(preferredSkillId)
-                    && AfterImageChargeSkillResolver.TryGetChargeElement(preferredSkillId, out chargeElement));
+                || (AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                    && AfterImageChargeSkillResolver.TryGetChargeElement(effectivePreferredSkillId, out chargeElement));
         }
 
         internal static int ResolvePreferredRemoteAfterImageChargeSkillId(

@@ -2177,6 +2177,7 @@ namespace HaCreator.MapSimulator.UI
             AppendSpecExMobSkillMetadataLines(metadataLines, specExProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendCashRateScheduleMetadataLines(metadataLines, infoProperty);
+            AppendAuthoredAssetPathMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
 
@@ -2887,7 +2888,57 @@ namespace HaCreator.MapSimulator.UI
                 {
                     metadataLines.Add(tooltip);
                 }
+
+                AppendCantAccountShareJobFlagsMetadataLines(metadataLines, cantAccountSharableProperty["job"] as WzSubProperty);
             }
+        }
+
+        private static void AppendCantAccountShareJobFlagsMetadataLines(
+            ICollection<string> metadataLines,
+            WzSubProperty jobFlagsProperty)
+        {
+            if (metadataLines == null || jobFlagsProperty?.WzProperties == null)
+            {
+                return;
+            }
+
+            List<(int JobId, int Flag)> resolvedFlags = new();
+            foreach (WzImageProperty child in jobFlagsProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int jobId))
+                {
+                    continue;
+                }
+
+                int flagValue = GetIntOrStringValue(child);
+                if (flagValue <= 0)
+                {
+                    continue;
+                }
+
+                resolvedFlags.Add((jobId, flagValue));
+            }
+
+            if (resolvedFlags.Count <= 0)
+            {
+                return;
+            }
+
+            resolvedFlags.Sort((left, right) => left.JobId.CompareTo(right.JobId));
+
+            const int previewLimit = 6;
+            List<string> previewEntries = new();
+            int previewCount = Math.Min(previewLimit, resolvedFlags.Count);
+            for (int i = 0; i < previewCount; i++)
+            {
+                (int jobId, int flag) = resolvedFlags[i];
+                previewEntries.Add($"{jobId.ToString(CultureInfo.InvariantCulture)}={flag.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            string suffix = resolvedFlags.Count > previewCount
+                ? $" (+{(resolvedFlags.Count - previewCount).ToString(CultureInfo.InvariantCulture)} more)"
+                : string.Empty;
+            metadataLines.Add($"Account-share class flags: {string.Join(", ", previewEntries)}{suffix}");
         }
 
         private static void AppendAuthoredLevelRangeMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -3160,6 +3211,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AppendAuthoredScheduleMetadataLines(metadataLines, infoProperty["time"] as WzSubProperty);
+        }
+
+        private static void AppendAuthoredAssetPathMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            string effectPath = NormalizeTooltipText((infoProperty["path"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(effectPath))
+            {
+                metadataLines.Add($"Field Effect Path: {effectPath}");
+            }
+
+            string bgmPath = NormalizeTooltipText((infoProperty["bgmPath"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(bgmPath))
+            {
+                metadataLines.Add($"BGM Path: {bgmPath}");
+            }
         }
 
         private static void AppendAuthoredScheduleMetadataLines(List<string> metadataLines, WzSubProperty scheduleProperty)

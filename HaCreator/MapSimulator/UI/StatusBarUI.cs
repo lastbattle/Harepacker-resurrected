@@ -59,6 +59,9 @@ namespace HaCreator.MapSimulator.UI {
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
         public bool IsAlerting { get; set; }
+        public int LayerUpdateSequence { get; set; }
+        public int LowDurabilityAlertSequence { get; set; }
+        public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;
     }
 
     public class StatusBarPreparedSkillRenderData
@@ -998,7 +1001,7 @@ namespace HaCreator.MapSimulator.UI {
 
                 if (buffEntry.IsAlerting)
                 {
-                    DrawBuffAlertOverlay(sprite, iconRect, currentTime);
+                    DrawBuffAlertOverlay(sprite, iconRect, buffEntry, currentTime);
                 }
 
                 bool hasCounterText = !string.IsNullOrWhiteSpace(buffEntry.CounterText);
@@ -1019,16 +1022,21 @@ namespace HaCreator.MapSimulator.UI {
             }
         }
 
-        private void DrawBuffAlertOverlay(SpriteBatch sprite, Rectangle iconRect, int currentTime)
+        private void DrawBuffAlertOverlay(
+            SpriteBatch sprite,
+            Rectangle iconRect,
+            StatusBarBuffRenderData buffEntry,
+            int currentTime)
         {
             if (_pixelTexture == null)
             {
                 return;
             }
 
-            int phase = Math.Abs((currentTime / 180) % 2);
-            byte fillAlpha = phase == 0 ? (byte)82 : (byte)46;
-            byte borderAlpha = phase == 0 ? (byte)220 : (byte)168;
+            (byte fillAlpha, byte borderAlpha) = ResolveBuffAlertOverlayPulseAlphasForParity(
+                currentTime,
+                buffEntry?.LowDurabilityAlertStartTime ?? int.MinValue,
+                buffEntry?.LowDurabilityAlertSequence ?? 0);
             Color fillColor = new Color(255, 118, 64, (int)fillAlpha);
             Color borderColor = new Color(255, 204, 96, (int)borderAlpha);
 
@@ -1037,6 +1045,32 @@ namespace HaCreator.MapSimulator.UI {
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Bottom - 1, iconRect.Width, 1), borderColor);
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Y, 1, iconRect.Height), borderColor);
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.Right - 1, iconRect.Y, 1, iconRect.Height), borderColor);
+        }
+
+        internal static (byte FillAlpha, byte BorderAlpha) ResolveBuffAlertOverlayPulseAlphasForParity(
+            int currentTime,
+            int lowDurabilityAlertStartTime,
+            int lowDurabilityAlertSequence)
+        {
+            const int pulsePeriodMs = 180;
+            bool hasAlertStartTime = lowDurabilityAlertStartTime != int.MinValue;
+            int phaseSeedTick;
+            if (hasAlertStartTime)
+            {
+                phaseSeedTick = Math.Max(0, unchecked(currentTime - lowDurabilityAlertStartTime));
+            }
+            else
+            {
+                // When low-bucket entry time is unavailable, keep existing cadence
+                // but desynchronize by alert sequence so overlapping alerts do not flash
+                // in lockstep.
+                phaseSeedTick = currentTime + (Math.Max(0, lowDurabilityAlertSequence - 1) * pulsePeriodMs);
+            }
+
+            int phase = Math.Abs((phaseSeedTick / pulsePeriodMs) % 2);
+            return phase == 0
+                ? ((byte)82, (byte)220)
+                : ((byte)46, (byte)168);
         }
 
         private void DrawHoveredBuffTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)

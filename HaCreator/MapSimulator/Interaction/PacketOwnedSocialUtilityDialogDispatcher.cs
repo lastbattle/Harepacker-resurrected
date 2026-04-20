@@ -634,11 +634,25 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            bool hasAttachment = stream.Position < stream.Length && reader.ReadByte() != 0;
+            bool requiresFadeOwner = !IsOpen;
+            bool shouldDecodeAttachmentFlag = expectsSender || requiresFadeOwner;
+            bool hasAttachment = _lastAlarmWasQuickDelivery;
+            if (shouldDecodeAttachmentFlag)
+            {
+                if (stream.Position >= stream.Length)
+                {
+                    message = expectsSender
+                        ? "Parcel alarm packet is missing the attachment-state flag."
+                        : "Parcel alarm packet 27 is missing the attachment-state flag required by the fade-owner branch.";
+                    return false;
+                }
+
+                hasAttachment = reader.ReadByte() != 0;
+            }
+
             _noticeCount++;
             _lastAlarmSender = sender ?? string.Empty;
             _lastAlarmWasQuickDelivery = hasAttachment;
-            bool requiresFadeOwner = !IsOpen;
             if (requiresFadeOwner)
             {
                 LastAlarmPrompt = BuildParcelAlarmPrompt(LastSubtype, sender, hasAttachment);
@@ -646,7 +660,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             StatusMessage = expectsSender
                 ? $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} {(requiresFadeOwner ? "created" : "refreshed")} a CUIFadeYesNo parcel alarm for {(hasAttachment ? "quick-delivery" : "standard")} delivery from {sender}."
-                : $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} {(requiresFadeOwner ? "created" : "refreshed")} the CUIFadeYesNo empty-sender {(hasAttachment ? "quick-delivery" : "standard")} parcel alarm branch.";
+                : requiresFadeOwner
+                    ? $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} created the CUIFadeYesNo empty-sender {(hasAttachment ? "quick-delivery" : "standard")} parcel alarm branch."
+                    : $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} refreshed the existing parcel owner alarm branch without reopening CUIFadeYesNo.";
             message = StatusMessage;
             return true;
         }
@@ -1170,18 +1186,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static byte[] BuildPutItemRequestPayload(short inventoryPosition, int itemId, int quantity)
         {
-            ushort normalizedPosition = unchecked((ushort)Math.Max((short)0, inventoryPosition));
-            ushort normalizedQuantity = unchecked((ushort)Math.Clamp(quantity, 1, ushort.MaxValue));
+            short normalizedQuantity = (short)Math.Clamp(quantity, 1, short.MaxValue);
+            ushort encodedPosition = unchecked((ushort)inventoryPosition);
+            ushort encodedQuantity = unchecked((ushort)normalizedQuantity);
             byte[] payload = new byte[1 + sizeof(ushort) + sizeof(int) + sizeof(ushort)];
             payload[0] = TrunkPutItemMode;
-            payload[1] = (byte)(normalizedPosition & 0xFF);
-            payload[2] = (byte)((normalizedPosition >> 8) & 0xFF);
+            payload[1] = (byte)(encodedPosition & 0xFF);
+            payload[2] = (byte)((encodedPosition >> 8) & 0xFF);
             payload[3] = (byte)(itemId & 0xFF);
             payload[4] = (byte)((itemId >> 8) & 0xFF);
             payload[5] = (byte)((itemId >> 16) & 0xFF);
             payload[6] = (byte)((itemId >> 24) & 0xFF);
-            payload[7] = (byte)(normalizedQuantity & 0xFF);
-            payload[8] = (byte)((normalizedQuantity >> 8) & 0xFF);
+            payload[7] = (byte)(encodedQuantity & 0xFF);
+            payload[8] = (byte)((encodedQuantity >> 8) & 0xFF);
             return payload;
         }
 

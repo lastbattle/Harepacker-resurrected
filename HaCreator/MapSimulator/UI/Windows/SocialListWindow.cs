@@ -136,6 +136,12 @@ namespace HaCreator.MapSimulator.UI
             _headerLayers[tab] = new HeaderLayer(layer, offset);
         }
 
+        internal void InvalidatePacketOwnedSnapshot()
+        {
+            _currentSnapshot = GetSnapshot();
+            UpdateButtonStates(_currentSnapshot);
+        }
+
         internal void RegisterActionButton(SocialListTab tab, string actionKey, UIObject button)
         {
             if (button == null || string.IsNullOrWhiteSpace(actionKey))

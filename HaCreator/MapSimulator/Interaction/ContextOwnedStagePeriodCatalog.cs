@@ -54,7 +54,7 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes,
             Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId)
         {
-            _themes = themes ?? new Dictionary<string, ContextOwnedStageThemeCatalogEntry>(StringComparer.Ordinal);
+            _themes = themes ?? new Dictionary<string, ContextOwnedStageThemeCatalogEntry>(StringComparer.OrdinalIgnoreCase);
             _affectedMapsByFieldId = affectedMapsByFieldId ?? new Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>>();
         }
 
@@ -196,7 +196,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static Dictionary<string, ContextOwnedStageThemeCatalogEntry> BuildThemes(IEnumerable<WzImageProperty> themeProperties)
         {
-            Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes = new(StringComparer.Ordinal);
+            Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes = new(StringComparer.OrdinalIgnoreCase);
             if (themeProperties == null)
             {
                 return themes;
@@ -341,8 +341,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             string backgroundSet = stageBackImageGroup.Name;
             int entryCountBeforeWrapperParse = entries.Count;
-            AppendNativeStageBackImageEntries(backgroundSet, stageBackImageGroup["back"], front: false, entries);
-            AppendNativeStageBackImageEntries(backgroundSet, stageBackImageGroup["front"], front: true, entries);
+            AppendNativeStageBackImageEntries(backgroundSet, GetChildProperty(stageBackImageGroup, "back"), front: false, entries);
+            AppendNativeStageBackImageEntries(backgroundSet, GetChildProperty(stageBackImageGroup, "front"), front: true, entries);
             if (entries.Count != entryCountBeforeWrapperParse)
             {
                 return;
@@ -371,13 +371,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool TryGetNativeStageBackSide(string name, out bool front)
         {
-            if (string.Equals(name, "back", StringComparison.Ordinal))
+            if (string.Equals(name, "back", StringComparison.OrdinalIgnoreCase))
             {
                 front = false;
                 return true;
             }
 
-            if (string.Equals(name, "front", StringComparison.Ordinal))
+            if (string.Equals(name, "front", StringComparison.OrdinalIgnoreCase))
             {
                 front = true;
                 return true;
@@ -427,7 +427,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            WzImageProperty backImgInfo = property["backImgInfo"];
+            WzImageProperty backImgInfo = GetChildProperty(property, "backImgInfo");
             string spineAnimation = ReadStringWithFallback(property, "spineAni", backImgInfo);
             bool animated = ReadBoolWithFallback(property, "ani", defaultValue: false, backImgInfo);
             BackgroundInfoType infoType = !string.IsNullOrWhiteSpace(spineAnimation)
@@ -435,12 +435,12 @@ namespace HaCreator.MapSimulator.Interaction
                 : animated
                     ? BackgroundInfoType.Animation
                     : BackgroundInfoType.Background;
-            MapleBool flipValue = InfoTool.GetOptionalBool(property["f"]);
+            MapleBool flipValue = InfoTool.GetOptionalBool(GetChildProperty(property, "f"));
             if (!flipValue.HasValue)
             {
-                flipValue = InfoTool.GetOptionalBool(backImgInfo?["f"]);
+                flipValue = InfoTool.GetOptionalBool(GetChildProperty(backImgInfo, "f"));
             }
-            WzImageProperty frontProperty = property["front"] ?? backImgInfo?["front"];
+            WzImageProperty frontProperty = GetChildProperty(property, "front") ?? GetChildProperty(backImgInfo, "front");
             entries.Add(new ContextOwnedStageBackImageEntry(
                 backgroundSet.Trim(),
                 number.ToString(CultureInfo.InvariantCulture),
@@ -471,7 +471,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            WzImageProperty backImgInfo = property["backImgInfo"];
+            WzImageProperty backImgInfo = GetChildProperty(property, "backImgInfo");
             string backgroundSet = ReadClientString(property, MapBackBackgroundSetStringPoolId, "bS", backImgInfo);
             string number = ResolveBackgroundNumber(property) ?? ResolveBackgroundNumber(backImgInfo);
             if (string.IsNullOrWhiteSpace(backgroundSet) || string.IsNullOrWhiteSpace(number))
@@ -487,10 +487,10 @@ namespace HaCreator.MapSimulator.Interaction
                     ? BackgroundInfoType.Animation
                     : BackgroundInfoType.Background;
 
-            MapleBool flipValue = InfoTool.GetOptionalBool(property["f"]);
+            MapleBool flipValue = InfoTool.GetOptionalBool(GetChildProperty(property, "f"));
             if (!flipValue.HasValue)
             {
-                flipValue = InfoTool.GetOptionalBool(backImgInfo?["f"]);
+                flipValue = InfoTool.GetOptionalBool(GetChildProperty(backImgInfo, "f"));
             }
             entry = new ContextOwnedStageBackImageEntry(
                 backgroundSet,
@@ -516,15 +516,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string ResolveBackgroundNumber(WzImageProperty property)
         {
-            if (property?["no"] == null)
+            WzImageProperty numberProperty = GetChildProperty(property, "no");
+            if (numberProperty == null)
             {
                 return null;
             }
 
-            string text = InfoTool.GetString(property["no"]);
+            string text = InfoTool.GetString(numberProperty);
             return !string.IsNullOrWhiteSpace(text)
                 ? text
-                : InfoTool.GetInt(property["no"]).ToString(CultureInfo.InvariantCulture);
+                : InfoTool.GetInt(numberProperty).ToString(CultureInfo.InvariantCulture);
         }
 
         private static int ReadClientInt(
@@ -535,7 +536,9 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty secondaryProperty = null)
         {
             string propertyName = ResolveClientPropertyName(stringPoolId, fallbackName);
-            return InfoTool.GetInt(property?[propertyName] ?? secondaryProperty?[propertyName], defaultValue);
+            WzImageProperty valueProperty = ResolveFirstProperty(property, propertyName, fallbackName)
+                ?? ResolveFirstProperty(secondaryProperty, propertyName, fallbackName);
+            return InfoTool.GetInt(valueProperty, defaultValue);
         }
 
         private static string ReadClientString(
@@ -545,7 +548,9 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty secondaryProperty = null)
         {
             string propertyName = ResolveClientPropertyName(stringPoolId, fallbackName);
-            return InfoTool.GetString(property?[propertyName] ?? secondaryProperty?[propertyName]);
+            WzImageProperty valueProperty = ResolveFirstProperty(property, propertyName, fallbackName)
+                ?? ResolveFirstProperty(secondaryProperty, propertyName, fallbackName);
+            return InfoTool.GetString(valueProperty);
         }
 
         private static int ReadIntWithFallback(
@@ -554,7 +559,9 @@ namespace HaCreator.MapSimulator.Interaction
             int defaultValue = 0,
             WzImageProperty secondaryProperty = null)
         {
-            return InfoTool.GetInt(property?[name] ?? secondaryProperty?[name], defaultValue);
+            WzImageProperty valueProperty = ResolveFirstProperty(property, name)
+                ?? ResolveFirstProperty(secondaryProperty, name);
+            return InfoTool.GetInt(valueProperty, defaultValue);
         }
 
         private static string ReadStringWithFallback(
@@ -562,7 +569,9 @@ namespace HaCreator.MapSimulator.Interaction
             string name,
             WzImageProperty secondaryProperty = null)
         {
-            return InfoTool.GetString(property?[name] ?? secondaryProperty?[name]);
+            WzImageProperty valueProperty = ResolveFirstProperty(property, name)
+                ?? ResolveFirstProperty(secondaryProperty, name);
+            return InfoTool.GetString(valueProperty);
         }
 
         private static bool ReadBoolWithFallback(
@@ -571,10 +580,30 @@ namespace HaCreator.MapSimulator.Interaction
             bool defaultValue = false,
             WzImageProperty secondaryProperty = null)
         {
-            WzImageProperty sourceProperty = property?[name] ?? secondaryProperty?[name];
+            WzImageProperty sourceProperty = ResolveFirstProperty(property, name)
+                ?? ResolveFirstProperty(secondaryProperty, name);
             return sourceProperty == null
                 ? defaultValue
                 : InfoTool.GetBool(sourceProperty);
+        }
+
+        private static WzImageProperty ResolveFirstProperty(WzImageProperty parent, params string[] names)
+        {
+            if (parent == null || names == null)
+            {
+                return null;
+            }
+
+            foreach (string name in names)
+            {
+                WzImageProperty property = GetChildProperty(parent, name);
+                if (property != null)
+                {
+                    return property;
+                }
+            }
+
+            return null;
         }
 
         private static string ResolveClientPropertyName(int stringPoolId, string fallbackName)

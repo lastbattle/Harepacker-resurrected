@@ -17171,13 +17171,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             ActiveBulletAnimationOwner owner,
             ProjectileAfterimageLayer previousLayer)
         {
-            if (previousLayer?.RepeatLayerObjectId > 0)
+            // CAfterImageBullet::Update clones from the active bullet layer each repeat tick.
+            // Keep parent identity anchored to the main layer when available.
+            if (owner?.MainLayerObjectId > 0)
             {
-                return previousLayer.RepeatLayerObjectId;
+                return owner.MainLayerObjectId;
             }
 
-            return owner?.MainLayerObjectId > 0
-                ? owner.MainLayerObjectId
+            return previousLayer?.RepeatLayerObjectId > 0
+                ? previousLayer.RepeatLayerObjectId
                 : 0;
         }
 

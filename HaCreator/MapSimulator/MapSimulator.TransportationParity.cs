@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Managers;
 using System;
+using MapleLib.WzLib.WzStructure;
 
 namespace HaCreator.MapSimulator
 {
@@ -145,6 +146,11 @@ namespace HaCreator.MapSimulator
 
             status = string.Empty;
             return true;
+        }
+
+        internal static bool ShouldUseEditorShipObjectFallbackForTransport(MapInfo mapInfo)
+        {
+            return !IsTransitVoyageWrapperMap(mapInfo);
         }
     }
 }

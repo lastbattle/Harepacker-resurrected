@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator
 
         private readonly MapTransferOfficialSessionBridgeManager _mapTransferOfficialSessionBridge = new();
         private readonly List<PendingOfficialMapTransferRequest> _pendingOfficialMapTransferRequests = new();
+        private readonly Dictionary<MapTransferDestinationBook, MapTransferRuntimeRequest> _lastAuthoritativeRequestByBook = new();
 
         private bool TryDispatchMapTransferRequest(
             CharacterBuild build,
@@ -33,6 +34,7 @@ namespace HaCreator.MapSimulator
         {
             response = _mapTransferRuntime.PreviewRequest(build, request);
             dispatchStatus = null;
+            CacheMapTransferAuthoritativeRequest(request);
 
             if (!_mapTransferOfficialSessionBridge.HasConnectedSession)
             {
@@ -104,6 +106,7 @@ namespace HaCreator.MapSimulator
                     request = NormalizeObservedOfficialMapTransferRequest(observedRequest);
                     if (request != null)
                     {
+                        CacheMapTransferAuthoritativeRequest(request);
                         predictedResponse = _mapTransferRuntime.PreviewRequest(targetBuild, request);
                     }
                 }
@@ -183,6 +186,39 @@ namespace HaCreator.MapSimulator
             if (!requestType.HasValue)
             {
                 return null;
+            }
+
+            MapTransferRuntimeRequest cachedRequest = GetCachedMapTransferAuthoritativeRequest(responseBook, requestType.Value);
+            if (cachedRequest != null)
+            {
+                if (cachedRequest.Type == MapTransferRuntimeRequestType.Register &&
+                    cachedRequest.MapId > 0)
+                {
+                    return CloneMapTransferRuntimeRequest(cachedRequest);
+                }
+
+                if (cachedRequest.Type == MapTransferRuntimeRequestType.Delete)
+                {
+                    int cachedDeleteMapId = cachedRequest.MapId;
+                    if (cachedDeleteMapId <= 0 &&
+                        cachedRequest.SlotIndex >= 0 &&
+                        preApplyFieldList != null &&
+                        cachedRequest.SlotIndex < preApplyFieldList.Count)
+                    {
+                        cachedDeleteMapId = preApplyFieldList[cachedRequest.SlotIndex];
+                    }
+
+                    if (cachedDeleteMapId > 0)
+                    {
+                        return new MapTransferRuntimeRequest
+                        {
+                            Type = MapTransferRuntimeRequestType.Delete,
+                            Book = responseBook,
+                            MapId = cachedDeleteMapId,
+                            SlotIndex = cachedRequest.SlotIndex
+                        };
+                    }
+                }
             }
 
             if (requestType.Value == MapTransferRuntimeRequestType.Register)
@@ -441,6 +477,52 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private void CacheMapTransferAuthoritativeRequest(MapTransferRuntimeRequest request)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            _lastAuthoritativeRequestByBook[request.Book] = CloneMapTransferRuntimeRequest(request);
+        }
+
+        private MapTransferRuntimeRequest GetCachedMapTransferAuthoritativeRequest(
+            MapTransferDestinationBook book,
+            MapTransferRuntimeRequestType expectedType)
+        {
+            if (!_lastAuthoritativeRequestByBook.TryGetValue(book, out MapTransferRuntimeRequest request) ||
+                request == null ||
+                request.Type != expectedType)
+            {
+                return null;
+            }
+
+            return CloneMapTransferRuntimeRequest(request);
+        }
+
+        private void ClearMapTransferAuthoritativeRequestState()
+        {
+            _pendingOfficialMapTransferRequests.Clear();
+            _lastAuthoritativeRequestByBook.Clear();
+        }
+
+        private static MapTransferRuntimeRequest CloneMapTransferRuntimeRequest(MapTransferRuntimeRequest request)
+        {
+            if (request == null)
+            {
+                return null;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = request.Type,
+                Book = request.Book,
+                MapId = request.MapId,
+                SlotIndex = request.SlotIndex
+            };
+        }
+
         private MapTransferRuntimePacketResultCode? ResolveMapTransferRegisterRuntimeRestrictionResultCode(MapTransferRuntimeRequest request)
         {
             if (request?.Type != MapTransferRuntimeRequestType.Register || request.MapId <= 0)
@@ -482,7 +564,7 @@ namespace HaCreator.MapSimulator
                 if (_mapTransferOfficialSessionBridge.IsRunning)
                 {
                     _mapTransferOfficialSessionBridge.Stop();
-                    _pendingOfficialMapTransferRequests.Clear();
+                    ClearMapTransferAuthoritativeRequestState();
                 }
 
                 return;
@@ -498,7 +580,7 @@ namespace HaCreator.MapSimulator
 
                 _mapTransferOfficialSessionBridgeEnabled = false;
                 _mapTransferOfficialSessionBridgeConfiguredListenPort = MapTransferOfficialSessionBridgeManager.DefaultListenPort;
-                _pendingOfficialMapTransferRequests.Clear();
+                ClearMapTransferAuthoritativeRequestState();
                 return;
             }
 
@@ -512,7 +594,7 @@ namespace HaCreator.MapSimulator
                         _mapTransferOfficialSessionBridge.Stop();
                     }
 
-                    _pendingOfficialMapTransferRequests.Clear();
+                    ClearMapTransferAuthoritativeRequestState();
                     return;
                 }
 
@@ -534,7 +616,7 @@ namespace HaCreator.MapSimulator
                     _mapTransferOfficialSessionBridge.Stop();
                 }
 
-                _pendingOfficialMapTransferRequests.Clear();
+                ClearMapTransferAuthoritativeRequestState();
                 return;
             }
 
@@ -684,7 +766,7 @@ namespace HaCreator.MapSimulator
                 _mapTransferOfficialSessionBridgeConfiguredProcessSelector = null;
                 _mapTransferOfficialSessionBridgeConfiguredLocalPort = null;
                 _mapTransferOfficialSessionBridge.Stop();
-                _pendingOfficialMapTransferRequests.Clear();
+                ClearMapTransferAuthoritativeRequestState();
                 return ChatCommandHandler.CommandResult.Ok(DescribeMapTransferOfficialSessionBridgeStatus());
             }
 

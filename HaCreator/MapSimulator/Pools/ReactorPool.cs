@@ -161,6 +161,16 @@ namespace HaCreator.MapSimulator.Pools
         bool UsesPacketObjectId,
         bool IsTouching);
 
+    internal readonly record struct LocalTouchOwnershipPollResult(
+        int Index,
+        int ObjectId,
+        bool IsTouchingNow);
+
+    internal readonly record struct LocalTouchOwnershipDelta(
+        int Index,
+        int ObjectId,
+        bool IsTouching);
+
     public readonly record struct ReactorFootholdPlacement(int Page, int ZMass);
 
     internal readonly record struct PacketEnterAuthoredReactorCandidate(
@@ -562,17 +572,14 @@ namespace HaCreator.MapSimulator.Pools
             float playerY,
             int? currentTick = null)
         {
-            List<(ReactorItem reactor, int index)> touchedReactors = FindTouchReactorAroundLocalUser(
-                playerX,
-                playerY,
-                currentTick: currentTick);
-            Dictionary<int, int> currentTouches = new();
-            List<ReactorTouchStateChange> changes = new();
+            int resolvedTick = currentTick ?? _lastUpdateTick;
+            var pollResults = new List<LocalTouchOwnershipPollResult>();
 
-            foreach ((ReactorItem reactor, int index) in touchedReactors)
+            for (int i = 0; i < GetReactorCount(); i++)
             {
-                ReactorRuntimeData data = GetReactorData(index);
-                if (data == null)
+                ReactorItem reactor = GetReactor(i);
+                ReactorRuntimeData data = GetReactorData(i);
+                if (reactor?.ReactorInstance == null || data == null)
                 {
                     continue;
                 }
@@ -583,39 +590,97 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                currentTouches[objectId] = index;
-                if (_reactorsOnLocalUser.ContainsKey(objectId))
-                {
-                    _reactorsOnLocalUser[objectId] = index;
-                    continue;
-                }
-
-                _reactorsOnLocalUser[objectId] = index;
-                changes.Add(new ReactorTouchStateChange(
-                    reactor,
-                    index,
-                    objectId,
-                    UsesPacketObjectIdForLocalTouch(data, objectId),
-                    IsTouching: true));
+                bool isTouchingNow = CanPollLocalUserTouchReactor(data)
+                    && SupportsActivationType(data, ReactorActivationType.Touch)
+                    && MeetsQuestRequirement(data)
+                    && DoesClientTouchBoundsContainPosition(reactor.GetCurrentBounds(resolvedTick), playerX, playerY);
+                pollResults.Add(new LocalTouchOwnershipPollResult(i, objectId, isTouchingNow));
             }
 
-            foreach ((int objectId, int index) in _reactorsOnLocalUser.ToArray())
-            {
-                if (currentTouches.ContainsKey(objectId))
-                {
-                    continue;
-                }
+            IReadOnlyList<LocalTouchOwnershipDelta> ownershipDeltas = ApplyClientOrderedLocalTouchOwnershipDiffs(
+                pollResults,
+                _reactorsOnLocalUser);
+            List<ReactorTouchStateChange> changes = new();
 
-                _reactorsOnLocalUser.Remove(objectId);
+            foreach (LocalTouchOwnershipDelta delta in ownershipDeltas)
+            {
+                ReactorRuntimeData data = GetReactorData(delta.Index);
                 changes.Add(new ReactorTouchStateChange(
-                    GetReactor(index),
-                    index,
-                    objectId,
-                    UsesPacketObjectIdForLocalTouch(GetReactorData(index), objectId),
-                    IsTouching: false));
+                    GetReactor(delta.Index),
+                    delta.Index,
+                    delta.ObjectId,
+                    UsesPacketObjectIdForLocalTouch(data, delta.ObjectId),
+                    IsTouching: delta.IsTouching));
             }
 
             return changes;
+        }
+
+        internal static IReadOnlyList<LocalTouchOwnershipDelta> ApplyClientOrderedLocalTouchOwnershipDiffs(
+            IReadOnlyList<LocalTouchOwnershipPollResult> pollResults,
+            Dictionary<int, int> reactorsOnLocalUser)
+        {
+            if (reactorsOnLocalUser == null)
+            {
+                return Array.Empty<LocalTouchOwnershipDelta>();
+            }
+
+            List<LocalTouchOwnershipDelta> deltas = new();
+            HashSet<int> seenObjectIds = new();
+
+            if (pollResults != null)
+            {
+                foreach (LocalTouchOwnershipPollResult pollResult in pollResults)
+                {
+                    if (pollResult.ObjectId == 0)
+                    {
+                        continue;
+                    }
+
+                    seenObjectIds.Add(pollResult.ObjectId);
+                    bool wasTouched = reactorsOnLocalUser.TryGetValue(pollResult.ObjectId, out int previousIndex);
+                    if (pollResult.IsTouchingNow)
+                    {
+                        reactorsOnLocalUser[pollResult.ObjectId] = pollResult.Index;
+                        if (!wasTouched)
+                        {
+                            deltas.Add(new LocalTouchOwnershipDelta(
+                                pollResult.Index,
+                                pollResult.ObjectId,
+                                IsTouching: true));
+                        }
+
+                        continue;
+                    }
+
+                    if (!wasTouched)
+                    {
+                        continue;
+                    }
+
+                    reactorsOnLocalUser.Remove(pollResult.ObjectId);
+                    deltas.Add(new LocalTouchOwnershipDelta(
+                        previousIndex,
+                        pollResult.ObjectId,
+                        IsTouching: false));
+                }
+            }
+
+            foreach ((int objectId, int index) in reactorsOnLocalUser.ToArray())
+            {
+                if (seenObjectIds.Contains(objectId))
+                {
+                    continue;
+                }
+
+                reactorsOnLocalUser.Remove(objectId);
+                deltas.Add(new LocalTouchOwnershipDelta(
+                    index,
+                    objectId,
+                    IsTouching: false));
+            }
+
+            return deltas;
         }
 
         public List<ReactorTouchStateChange> DrainPendingPacketTouchStateChanges()

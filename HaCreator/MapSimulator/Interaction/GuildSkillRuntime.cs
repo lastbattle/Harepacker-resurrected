@@ -351,6 +351,21 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{summary.Trim()} {result}";
         }
 
+        internal string TryResolvePendingFromClientResultNotice(bool hasExplicitNotice, string notice)
+        {
+            if (_pendingRequest == null || !hasExplicitNotice)
+            {
+                return null;
+            }
+
+            string resolvedNotice = string.IsNullOrWhiteSpace(notice)
+                ? SocialListGuildResultClientText.GetSharedResultNoticeFallback()
+                : notice.Trim();
+            return ResolvePendingPacketRequest(
+                approved: false,
+                summary: $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported: {resolvedNotice}");
+        }
+
         internal string ApplyPacketOwnedResult(GuildSkillResultPacket packet)
         {
             if (!_isInGuild)

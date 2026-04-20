@@ -589,6 +589,9 @@ namespace HaCreator.MapSimulator.Fields
             string authoredTag = TryReadStringProperty(mapObject, "tag", out string tag)
                 ? tag
                 : null;
+            string authoredTags = TryReadStringProperty(mapObject, "tags", out string tags)
+                ? tags
+                : null;
             string objectKeyName = TryResolveObjectKeyName(mapObject, out string resolvedObjectKeyName)
                 ? resolvedObjectKeyName
                 : null;
@@ -606,6 +609,7 @@ namespace HaCreator.MapSimulator.Fields
                 authoredName,
                 authoredObjName,
                 authoredTag,
+                authoredTags,
                 objectKeyName,
                 piece,
                 x,
@@ -619,6 +623,7 @@ namespace HaCreator.MapSimulator.Fields
             string name,
             string objName,
             string tag,
+            string tags,
             string objectKeyName,
             int? piece,
             int? x,
@@ -642,6 +647,11 @@ namespace HaCreator.MapSimulator.Fields
                 return tag.Trim();
             }
 
+            if (TryResolveFirstTagToken(tags, out string resolvedTagToken))
+            {
+                return resolvedTagToken;
+            }
+
             if (!string.IsNullOrWhiteSpace(objectKeyName))
             {
                 return BuildCanonicalObjectKeyName(objectKeyName, piece, x, y);
@@ -652,6 +662,18 @@ namespace HaCreator.MapSimulator.Fields
                 ? fallbackIndex.ToString(CultureInfo.InvariantCulture)
                 : objectName.Trim();
             return $"dynamic-{fallbackLayerName}-{fallbackObjectName}";
+        }
+
+        private static bool TryResolveFirstTagToken(string tagsValue, out string token)
+        {
+            token = null;
+            foreach (string candidate in SplitDynamicObjectTags(tagsValue))
+            {
+                token = candidate;
+                return true;
+            }
+
+            return false;
         }
 
         private static string ResolvePacketOwnedSnapshotDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, string fallbackName)
@@ -739,14 +761,12 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryReadStringProperty(WzImageProperty parent, string propertyName, out string value)
         {
             value = null;
-            if (!TryGetChildProperty(parent, propertyName, out WzImageProperty property)
-                || property is not WzStringProperty stringProperty
-                || string.IsNullOrWhiteSpace(stringProperty.Value))
+            if (!TryReadTokenProperty(parent, propertyName, out string tokenValue))
             {
                 return false;
             }
 
-            value = stringProperty.Value.Trim();
+            value = tokenValue.Trim();
             return true;
         }
 

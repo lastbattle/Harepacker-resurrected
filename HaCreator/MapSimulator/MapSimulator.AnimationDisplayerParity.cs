@@ -127,6 +127,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<(int ItemId, EquipSlot Slot), AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
         private readonly Dictionary<int, List<AnimationDisplayerFollowRegistrationEntry>> _animationDisplayerFollowAnimationIds = new();
         private readonly Dictionary<int, int> _animationDisplayerFollowRegistrationSignatures = new();
+        private readonly Dictionary<int, AnimationDisplayerRemoteItemMakeOwnerState> _animationDisplayerRemoteItemMakeOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerRemotePacketOwnedStringEffectOwnerState> _animationDisplayerRemotePacketOwnedStringEffectOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerReservedRemoteUtilityActionOwnerState> _animationDisplayerReservedRemoteUtilityActionOwnerStates = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
@@ -177,6 +178,15 @@ namespace HaCreator.MapSimulator
         {
             public byte EffectType { get; init; }
             public string EffectUol { get; init; }
+            public string OwnerActionName { get; init; }
+            public bool OwnerFacingRight { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
+
+        private sealed class AnimationDisplayerRemoteItemMakeOwnerState
+        {
+            public bool Success { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
             public int AnimationStartTime { get; init; }
@@ -667,6 +677,7 @@ namespace HaCreator.MapSimulator
             _animationEffects.ClearAreaAnimations();
             _animationEffects.ClearSecondarySkillAnimationOwners();
             ClearAnimationDisplayerFollowAnimations();
+            _animationDisplayerRemoteItemMakeOwnerStates.Clear();
             _animationDisplayerRemotePacketOwnedStringEffectOwnerStates.Clear();
             _animationDisplayerReservedRemoteUtilityActionOwnerStates.Clear();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
@@ -1605,6 +1616,24 @@ namespace HaCreator.MapSimulator
                     : actionDurationMs > 0
                         ? actionDurationMs
                     : AnimationDisplayerReservedRemoteUtilityActionRestoreFallbackDurationMs);
+        }
+
+        internal static (string PreviousActionName, bool? PreviousFacingRight) ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreTarget(
+            string actorActionName,
+            bool actorFacingRight,
+            string activeReservedActionName,
+            string activePreviousActionName,
+            bool? activePreviousFacingRight)
+        {
+            if (!string.IsNullOrWhiteSpace(actorActionName)
+                && !string.IsNullOrWhiteSpace(activeReservedActionName)
+                && !string.IsNullOrWhiteSpace(activePreviousActionName)
+                && string.Equals(actorActionName, activeReservedActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return (activePreviousActionName, activePreviousFacingRight);
+            }
+
+            return (actorActionName, actorFacingRight);
         }
 
         private bool TryRegisterAnimationDisplayerLocalCooldownReady(int currentTime)
@@ -2907,8 +2936,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            string ownerActionName = ResolveAnimationDisplayerRemotePacketOwnedActionName(actor);
+            bool ownerFacingRight = actor.FacingRight;
+            int initialElapsedMs = ResolveAnimationDisplayerRemoteItemMakeInitialElapsed(
+                presentation.CharacterId,
+                presentation.Success,
+                ownerActionName,
+                ownerFacingRight,
+                presentation.CurrentTime,
+                ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
             Vector2 fallbackPosition = actor.Position;
-            bool fallbackFacingRight = actor.FacingRight;
+            bool fallbackFacingRight = ownerFacingRight;
             _animationEffects.AddOneTimeAttached(
                 frames,
                 () =>
@@ -2934,7 +2972,8 @@ namespace HaCreator.MapSimulator
                 fallbackPosition.X,
                 fallbackPosition.Y,
                 fallbackFacingRight,
-                presentation.CurrentTime);
+                presentation.CurrentTime,
+                initialElapsedMs: initialElapsedMs);
         }
 
         private void HandleRemoteStringEffect(RemoteUserActorPool.RemoteStringEffectPresentation presentation)
@@ -3293,8 +3332,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string previousActionName = actor.ActionName;
-            bool previousFacingRight = actor.FacingRight;
+            _animationDisplayerReservedRemoteUtilityActionOwnerStates.TryGetValue(
+                characterId,
+                out AnimationDisplayerReservedRemoteUtilityActionOwnerState activeState);
+            (string previousActionName, bool? previousFacingRight) =
+                ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreTarget(
+                    actor.ActionName,
+                    actor.FacingRight,
+                    activeState?.ReservedActionName,
+                    activeState?.PreviousActionName,
+                    activeState?.PreviousFacingRight);
             if (_remoteUserPool?.TrySetAction(characterId, actionName, null, out _) != true)
             {
                 return false;
@@ -3833,6 +3880,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            _animationDisplayerRemoteItemMakeOwnerStates.Remove(characterId);
             _animationDisplayerRemotePacketOwnedStringEffectOwnerStates.Remove(characterId);
             _animationEffects.RemoveUserState(characterId, currTickCount);
             ClearAnimationDisplayerRemoteQuestDeliveryOwner(characterId);
@@ -3846,6 +3894,50 @@ namespace HaCreator.MapSimulator
             }
 
             return CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
+        private int ResolveAnimationDisplayerRemoteItemMakeInitialElapsed(
+            int characterId,
+            bool success,
+            string ownerActionName,
+            bool ownerFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (characterId <= 0 || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            int initialElapsedMs = 0;
+            if (_animationDisplayerRemoteItemMakeOwnerStates.TryGetValue(
+                    characterId,
+                    out AnimationDisplayerRemoteItemMakeOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = ResolveAnimationDisplayerRemoteItemMakeRestoreElapsedCore(
+                    existingState.Success,
+                    existingState.OwnerActionName,
+                    existingState.OwnerFacingRight,
+                    existingState.AnimationStartTime,
+                    success,
+                    ownerActionName,
+                    ownerFacingRight,
+                    currentTime,
+                    durationMs);
+            }
+
+            _animationDisplayerRemoteItemMakeOwnerStates[characterId] =
+                new AnimationDisplayerRemoteItemMakeOwnerState
+                {
+                    Success = success,
+                    OwnerActionName = ownerActionName,
+                    OwnerFacingRight = ownerFacingRight,
+                    AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                    DurationMs = durationMs
+                };
+
+            return initialElapsedMs;
         }
 
         private int ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(
@@ -3933,6 +4025,30 @@ namespace HaCreator.MapSimulator
             return Math.Max(0, durationMs);
         }
 
+        private static int ResolveAnimationDisplayerRemoteItemMakeRestoreElapsedCore(
+            bool previousSuccess,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            bool currentSuccess,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousSuccess != currentSuccess
+                || !string.Equals(previousActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
+                || previousFacingRight != currentFacingRight)
+            {
+                return 0;
+            }
+
+            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
         private static int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsedCore(
             byte previousEffectType,
             string previousEffectUol,
@@ -3963,6 +4079,29 @@ namespace HaCreator.MapSimulator
         internal static int ResolveAnimationDisplayerOneTimeFrameDurationMsForTesting(IReadOnlyList<IDXObject> frames)
         {
             return ResolveAnimationDisplayerOneTimeFrameDurationMs(frames);
+        }
+
+        internal static int ResolveAnimationDisplayerRemoteItemMakeRestoreElapsedForTesting(
+            bool previousSuccess,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            bool currentSuccess,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolveAnimationDisplayerRemoteItemMakeRestoreElapsedCore(
+                previousSuccess,
+                previousActionName,
+                previousFacingRight,
+                previousAnimationStartTime,
+                currentSuccess,
+                currentActionName,
+                currentFacingRight,
+                currentTime,
+                durationMs);
         }
 
         internal static int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsedForTesting(
@@ -4197,7 +4336,7 @@ namespace HaCreator.MapSimulator
             return _playerManager?.Player?.Build?.Id ?? 0;
         }
 
-        internal static bool ShouldRouteLocalSkillCastThroughClientSkillEffectRequestSeamForTesting(
+        internal static bool ShouldRegisterLocalSkillCastThroughClientShowSkillEffectDirectPathForTesting(
             SkillCastInfo castInfo)
         {
             if (castInfo?.SkillData == null
@@ -4225,6 +4364,12 @@ namespace HaCreator.MapSimulator
                 castInfo.FollowOwnerFacing,
                 castInfo.FollowOwnerPosition,
                 castInfo.FacingRightOverride);
+        }
+
+        internal static bool ShouldRouteLocalSkillCastThroughClientSkillEffectRequestSeamForTesting(
+            SkillCastInfo castInfo)
+        {
+            return ShouldRegisterLocalSkillCastThroughClientShowSkillEffectDirectPathForTesting(castInfo);
         }
 
         internal static bool HasClientSkillEffectRequestShapingForTesting(
@@ -5997,18 +6142,38 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<string>();
             }
 
-            var variantUols = new List<string>();
+            var variantIndexes = new List<int>();
+            var seenIndexes = new HashSet<int>();
             int childCount = rootSubProperty.WzProperties?.Count ?? 0;
-            for (int index = 0; index < childCount; index++)
+            for (int i = 0; i < childCount; i++)
             {
-                string childName = index.ToString(CultureInfo.InvariantCulture);
+                string childName = rootSubProperty.WzProperties[i]?.Name;
+                if (!int.TryParse(childName, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
+                    || index < 0
+                    || !seenIndexes.Add(index))
+                {
+                    continue;
+                }
+
                 WzImageProperty variantProperty = WzInfoTools.GetRealProperty(rootSubProperty[childName]);
                 if (variantProperty == null)
                 {
-                    break;
+                    continue;
                 }
 
-                variantUols.Add($"{normalizedEffectPath}/{childName}");
+                variantIndexes.Add(index);
+            }
+
+            if (variantIndexes.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            variantIndexes.Sort();
+            var variantUols = new List<string>(variantIndexes.Count);
+            for (int i = 0; i < variantIndexes.Count; i++)
+            {
+                variantUols.Add($"{normalizedEffectPath}/{variantIndexes[i].ToString(CultureInfo.InvariantCulture)}");
             }
 
             return variantUols.ToArray();

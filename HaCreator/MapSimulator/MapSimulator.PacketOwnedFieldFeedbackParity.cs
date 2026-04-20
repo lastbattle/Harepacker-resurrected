@@ -224,7 +224,9 @@ namespace HaCreator.MapSimulator
                 ShowBossTimerClock = ShowPacketOwnedBossTimerClock,
                 ClearBossTimerClock = ClearPacketOwnedBossTimerClock,
                 ShowFieldClock = ShowPacketOwnedFieldClock,
-                ClearFieldClock = ClearPacketOwnedFieldClock
+                ClearFieldClock = ClearPacketOwnedFieldClock,
+                RestoreFieldPropertyClock = RestorePacketOwnedFieldPropertyClock,
+                InvalidateWhisperUserListWindow = InvalidatePacketOwnedWhisperUserListWindow
             };
         }
 
@@ -235,11 +237,21 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _socialListRuntime.SetPacketWhisperLocationInfo(target, locationText);
+            _socialListRuntime.SetPacketWhisperLocationInfo(target, locationText, result, value);
             string normalizedLocation = locationText?.Trim() ?? string.Empty;
             ShowUtilityFeedbackMessage(string.IsNullOrWhiteSpace(normalizedLocation)
                 ? $"Invalidated packet-owned user-list location for {target.Trim()} (result={result}, value={value})."
                 : $"Updated packet-owned user-list location for {target.Trim()} (result={result}, value={value}).");
+        }
+
+        private void InvalidatePacketOwnedWhisperUserListWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.SocialList) is not SocialListWindow socialListWindow)
+            {
+                return;
+            }
+
+            socialListWindow.InvalidatePacketOwnedSnapshot();
         }
 
         private void ShowPacketOwnedFieldWarning(string message)
@@ -748,18 +760,16 @@ namespace HaCreator.MapSimulator
             _packetFieldClockState = null;
         }
 
-        private void RestorePacketOwnedFieldPropertyClockFromMap()
+        private bool RestorePacketOwnedFieldPropertyClock()
         {
             Clock clock = _mapBoard?.BoardItems?.MiscItems?.OfType<Clock>().FirstOrDefault();
             if (clock == null)
             {
-                _packetFieldClockState = null;
-                _packetFieldFeedbackRuntime.ClearFieldClockForMapLoad(BuildPacketFieldFeedbackCallbacks());
-                return;
+                return false;
             }
 
             DateTime now = DateTime.Now;
-            _packetFieldFeedbackRuntime.RestoreFieldPropertyClock(
+            return _packetFieldFeedbackRuntime.RestoreFieldPropertyClock(
                 clock.X,
                 clock.Y,
                 clock.Width,
@@ -770,6 +780,17 @@ namespace HaCreator.MapSimulator
                 currTickCount,
                 BuildPacketFieldFeedbackCallbacks(),
                 out _);
+        }
+
+        private void RestorePacketOwnedFieldPropertyClockFromMap()
+        {
+            if (RestorePacketOwnedFieldPropertyClock())
+            {
+                return;
+            }
+
+            _packetFieldClockState = null;
+            _packetFieldFeedbackRuntime.ClearFieldClockForMapLoad(BuildPacketFieldFeedbackCallbacks());
         }
 
         private void UpdatePacketOwnedBossTimerClockState(int currentTickCount)

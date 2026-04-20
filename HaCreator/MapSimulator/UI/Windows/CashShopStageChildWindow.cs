@@ -747,11 +747,13 @@ namespace HaCreator.MapSimulator.UI
                     ? $"Shortcut surface {ResolveOneADayPlateName(state)} is active beside the reward owner."
                     : _oneADaySelectorIndex == 0
                         ? $"Current reward plate {ResolveOneADayPlateName(state)}  Pending {(state.IsPending ? "yes" : "no")}"
-                        : $"Previous slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}/{Math.Max(0, state.PreviousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}  Buy lane armed from the recovered {state.PreviousOfferCount.ToString(CultureInfo.InvariantCulture)}-slot history.",
+                        : HasOneADayPreviousLane(state)
+                            ? $"Previous slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}/{Math.Max(0, state.PreviousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}  Buy lane armed from the recovered {state.PreviousOfferCount.ToString(CultureInfo.InvariantCulture)}-slot history."
+                            : "Previous reward lane is disabled by the packet-owned reward-session byte.",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
             lineY += _font.LineSpacing;
-            string selectionSummary = _oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive
+            string selectionSummary = _oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive && HasOneADayPreviousLane(state)
                 ? ResolveOneADayHistorySelectionSummary(state)
                 : ResolveOneADayCurrentSelectionSummary(state);
             sprite.DrawString(
@@ -760,7 +762,7 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
-            string selectionDetail = _oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive
+            string selectionDetail = _oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive && HasOneADayPreviousLane(state)
                 ? ResolveOneADayHistorySelectionDetail(state)
                 : ResolveOneADayCurrentSelectionDetail(state);
             if (!string.IsNullOrWhiteSpace(selectionDetail))
@@ -1314,6 +1316,14 @@ namespace HaCreator.MapSimulator.UI
                     }
                     else
                     {
+                        if (!HasOneADayPreviousLane(state))
+                        {
+                            _oneADaySelectorIndex = 0;
+                            _oneADaySessionState = "CCSWnd_OneADay kept the dedicated previous-item lane closed because packet state disabled it.";
+                            RefreshOneADayInteractiveRuntime(state);
+                            break;
+                        }
+
                         _oneADaySelectorIndex = Math.Min(1, Math.Max(0, Math.Max(1, state?.SelectorCount ?? 2) - 1));
                         _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, Math.Max(1, state?.PreviousOfferCount ?? 12) - 1));
                         _oneADaySessionState = state?.HistoryEntries?.Count > 0
@@ -1326,6 +1336,14 @@ namespace HaCreator.MapSimulator.UI
                     _oneADayShortcutHelpActive = false;
                     if (_oneADaySelectorIndex == 1)
                     {
+                        if (!HasOneADayPreviousLane(state))
+                        {
+                            _oneADaySelectorIndex = 0;
+                            _oneADaySessionState = "CCSWnd_OneADay ignored the previous-item join action because packet state disabled that lane.";
+                            RefreshOneADayInteractiveRuntime(state);
+                            break;
+                        }
+
                         OneADayOwnerState.HistoryEntryState historyEntry = ResolveSelectedOneADayHistoryEntry(state);
                         _oneADaySessionState = historyEntry == null
                             ? "CCSWnd_OneADay kept the Previous selector active, but no packet-authored history row is loaded."
@@ -1933,6 +1951,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!HasOneADayPreviousLane(state))
+            {
+                _oneADaySelectorIndex = 0;
+                _oneADaySessionState = "CCSWnd_OneADay kept the previous-item selector closed because the packet-owned reward-session byte disabled that lane.";
+                _statusMessage = _oneADaySessionState;
+                RefreshOneADayInteractiveRuntime(state);
+                return;
+            }
+
             int previousOfferCount = Math.Max(1, state.PreviousOfferCount);
             int step = delta == 0 ? 0 : Math.Sign(delta);
             if (Math.Abs(delta) >= 5)
@@ -1951,6 +1978,15 @@ namespace HaCreator.MapSimulator.UI
 
         private void SelectOneADayPreviousOfferFromMouse(OneADayOwnerState state, Rectangle rowsBounds, Point mousePosition)
         {
+            if (!HasOneADayPreviousLane(state))
+            {
+                _oneADaySelectorIndex = 0;
+                _oneADaySessionState = "CCSWnd_OneADay ignored previous-item row selection because that lane is packet-disabled.";
+                _statusMessage = _oneADaySessionState;
+                RefreshOneADayInteractiveRuntime(state);
+                return;
+            }
+
             int previousOfferCount = Math.Max(1, state?.PreviousOfferCount ?? 12);
             int columns = Math.Min(5, previousOfferCount);
             int rows = Math.Max(1, (int)Math.Ceiling(previousOfferCount / (double)columns));
@@ -2028,6 +2064,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 _oneADaySelectorIndex = Math.Clamp(state.SelectorIndex, 0, Math.Max(0, state.SelectorCount - 1));
                 _oneADayShortcutHelpActive = false;
+            }
+
+            if (!HasOneADayPreviousLane(state))
+            {
+                _oneADaySelectorIndex = 0;
             }
 
             int activeOfferCount = _oneADaySelectorIndex == 1 ? state.PreviousOfferCount : state.PlateCount;
@@ -2280,9 +2321,6 @@ namespace HaCreator.MapSimulator.UI
                 nextSessionByte = _oneADayPending
                     ? nextSessionByte | 1
                     : nextSessionByte & ~1;
-                nextSessionByte = (state.HistoryEntries?.Count ?? 0) > 0
-                    ? nextSessionByte | 8
-                    : nextSessionByte & ~8;
                 _oneADayRewardSessionPacketOwned = true;
             }
             else
@@ -2303,7 +2341,7 @@ namespace HaCreator.MapSimulator.UI
                     nextSessionByte |= 4;
                 }
 
-                if (state?.HistoryEntries?.Count > 0)
+                if (HasOneADayPreviousLane(state))
                 {
                     nextSessionByte |= 8;
                 }
@@ -2322,6 +2360,21 @@ namespace HaCreator.MapSimulator.UI
                 : (state.NumberCanvasReadyMask != 0
                     ? state.NumberCanvasReadyMask
                     : BuildOneADayNumberCanvasReadyMask(state.NumberCanvasCount));
+        }
+
+        private static bool HasOneADayPreviousLane(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                return false;
+            }
+
+            if (state.HasPacketRewardSessionByte)
+            {
+                return (state.PacketRewardSessionByte & 8) != 0;
+            }
+
+            return state.PreviousOfferCount > 0 || (state.HistoryEntries?.Count ?? 0) > 0;
         }
 
         private void RefreshOneADayInteractiveRuntime(OneADayOwnerState state)

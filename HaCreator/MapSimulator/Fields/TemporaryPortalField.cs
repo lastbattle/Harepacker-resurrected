@@ -563,6 +563,19 @@ namespace HaCreator.MapSimulator.Fields
                 townScopedExistingState);
             bool resolvedFromWzFallback = false;
             if (!resolvedDestination.HasValue
+                && TryResolveRemoteTownPortalCurrentMapReturnDestination(currentMapId, out RemoteTownPortalResolvedDestination sourceMapFallbackDestination))
+            {
+                resolvedDestination = sourceMapFallbackDestination;
+                resolvedFromWzFallback = true;
+                RememberRemoteTownPortalObservedFieldMetadata(
+                    packet.OwnerCharacterId,
+                    currentMapId,
+                    sourceMapFallbackDestination,
+                    currentTime,
+                    RemoteTownPortalObservationSource.WzReturnMapFallback);
+            }
+
+            if (!resolvedDestination.HasValue
                 && TryResolveRemoteTownPortalWzFallbackDestination(currentMapId, preferredSourceMapId, out RemoteTownPortalResolvedDestination fallbackDestination))
             {
                 resolvedDestination = fallbackDestination;
@@ -1718,6 +1731,25 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
+        private static bool TryResolveRemoteTownPortalCurrentMapReturnDestination(
+            int currentMapId,
+            out RemoteTownPortalResolvedDestination destination)
+        {
+            destination = default;
+            if (currentMapId <= 0
+                || !TryResolveRemoteTownPortalTownMapForSourceMap(currentMapId, out int townMapId)
+                || townMapId <= 0
+                || townMapId == currentMapId
+                || HasRemoteTownPortalPointInMap(currentMapId)
+                || !TryResolveRemoteTownPortalTownDestinationFallbackPosition(townMapId, out float townX, out float townY))
+            {
+                return false;
+            }
+
+            destination = new RemoteTownPortalResolvedDestination(townMapId, townX, townY);
+            return true;
+        }
+
         private static bool TryResolveRemoteTownPortalWzFallbackDestination(
             int townMapId,
             int? preferredSourceMapId,
@@ -1861,6 +1893,81 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static bool TryResolveRemoteTownPortalTownDestinationFallbackPosition(
+            int townMapId,
+            out float townX,
+            out float townY)
+        {
+            townX = 0f;
+            townY = 0f;
+            WzImage townMapImage = TryGetMapImageForRemoteTownPortalMetadataLookup(townMapId);
+            if (townMapImage == null)
+            {
+                return false;
+            }
+
+            bool shouldUnparse = !townMapImage.Parsed;
+            try
+            {
+                if (!townMapImage.Parsed)
+                {
+                    townMapImage.ParseImage();
+                }
+
+                return TryResolveRemoteTownPortalTownDestinationPortalPosition(townMapImage, out townX, out townY);
+            }
+            finally
+            {
+                if (shouldUnparse)
+                {
+                    townMapImage.UnparseImage();
+                }
+            }
+        }
+
+        private static bool TryResolveRemoteTownPortalTownDestinationPortalPosition(
+            WzImage mapImage,
+            out float townX,
+            out float townY)
+        {
+            townX = 0f;
+            townY = 0f;
+            if (mapImage?["portal"] is not WzSubProperty portalParent)
+            {
+                return false;
+            }
+
+            WzSubProperty startPortal = null;
+            WzSubProperty fallbackPortal = null;
+            foreach (WzSubProperty portal in portalParent.WzProperties.OfType<WzSubProperty>())
+            {
+                fallbackPortal ??= portal;
+                int? portalTypeId = InfoTool.GetOptionalInt(portal["pt"]);
+                string portalName = InfoTool.GetOptionalString(portal["pn"]);
+                if (IsRemoteTownPortalTownPointPortal(portalTypeId, portalName))
+                {
+                    townX = InfoTool.GetInt(portal["x"]);
+                    townY = InfoTool.GetInt(portal["y"]);
+                    return true;
+                }
+
+                if (startPortal == null && IsRemoteTownPortalSourceFallbackStartPortal(portalTypeId, portalName))
+                {
+                    startPortal = portal;
+                }
+            }
+
+            WzSubProperty selectedFallbackPortal = startPortal ?? fallbackPortal;
+            if (selectedFallbackPortal == null)
+            {
+                return false;
+            }
+
+            townX = InfoTool.GetInt(selectedFallbackPortal["x"]);
+            townY = InfoTool.GetInt(selectedFallbackPortal["y"]);
+            return true;
+        }
+
         private static bool TryResolveRemoteTownPortalSourceFallbackPortalPosition(
             WzImage mapImage,
             out float sourceX,
@@ -1898,6 +2005,69 @@ namespace HaCreator.MapSimulator.Fields
             sourceX = InfoTool.GetInt(fallbackPortal["x"]);
             sourceY = InfoTool.GetInt(fallbackPortal["y"]);
             return true;
+        }
+
+        private static bool HasRemoteTownPortalPointInMap(int mapId)
+        {
+            WzImage mapImage = TryGetMapImageForRemoteTownPortalMetadataLookup(mapId);
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            bool shouldUnparse = !mapImage.Parsed;
+            try
+            {
+                if (!mapImage.Parsed)
+                {
+                    mapImage.ParseImage();
+                }
+
+                if (mapImage["portal"] is not WzSubProperty portalParent)
+                {
+                    return false;
+                }
+
+                foreach (WzSubProperty portal in portalParent.WzProperties.OfType<WzSubProperty>())
+                {
+                    int? portalTypeId = InfoTool.GetOptionalInt(portal["pt"]);
+                    string portalName = InfoTool.GetOptionalString(portal["pn"]);
+                    if (IsRemoteTownPortalTownPointPortal(portalTypeId, portalName))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            finally
+            {
+                if (shouldUnparse)
+                {
+                    mapImage.UnparseImage();
+                }
+            }
+        }
+
+        private static bool IsRemoteTownPortalTownPointPortal(int? portalTypeId, string portalName)
+        {
+            if (portalTypeId.HasValue)
+            {
+                if (portalTypeId.Value == (int)PortalType.TownPortalPoint)
+                {
+                    return true;
+                }
+
+                if (Program.InfoManager?.PortalEditor_TypeById != null
+                    && portalTypeId.Value >= 0
+                    && portalTypeId.Value < Program.InfoManager.PortalEditor_TypeById.Count
+                    && Program.InfoManager.PortalEditor_TypeById[portalTypeId.Value] == PortalType.TownPortalPoint)
+                {
+                    return true;
+                }
+            }
+
+            return string.Equals(portalName, PortalType.TownPortalPoint.ToCode(), StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsRemoteTownPortalSourceFallbackStartPortal(int? portalTypeId, string portalName)
@@ -3704,6 +3874,31 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return ResolveUniqueRemoteTownPortalWzFallbackDestinationForTesting(townMapId, candidates);
+        }
+
+        internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalCurrentMapReturnDestinationForTesting(
+            int currentMapId,
+            bool currentMapHasTownPortalPoint,
+            bool hasCurrentMapReturnTownMap,
+            int currentMapReturnTownMapId,
+            bool returnTownHasDestinationPosition,
+            float returnTownDestinationX,
+            float returnTownDestinationY)
+        {
+            if (currentMapId <= 0
+                || currentMapHasTownPortalPoint
+                || !hasCurrentMapReturnTownMap
+                || currentMapReturnTownMapId <= 0
+                || currentMapReturnTownMapId == currentMapId
+                || !returnTownHasDestinationPosition)
+            {
+                return null;
+            }
+
+            return new RemoteTownPortalResolvedDestination(
+                currentMapReturnTownMapId,
+                returnTownDestinationX,
+                returnTownDestinationY);
         }
 
         internal static bool IsRemoteTownPortalSourceFallbackStartPortalForTesting(int? portalTypeId, string portalName)

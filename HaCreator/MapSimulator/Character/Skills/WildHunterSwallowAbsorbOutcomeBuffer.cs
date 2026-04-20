@@ -18,9 +18,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             PruneExpired(currentTime);
+            RemoveMatchingPendingOutcome(skillId, targetMobId);
             if (_pending.Count >= MaxPendingOutcomes)
             {
-                return;
+                _pending.Dequeue();
             }
 
             _pending.Enqueue(new PendingOutcome(
@@ -97,6 +98,31 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsExpired(PendingOutcome pending, int currentTime)
         {
             return currentTime >= pending.ExpireTime;
+        }
+
+        private void RemoveMatchingPendingOutcome(int skillId, int targetMobId)
+        {
+            if (_pending.Count == 0)
+            {
+                return;
+            }
+
+            Queue<PendingOutcome> retained = new();
+            while (_pending.Count > 0)
+            {
+                PendingOutcome pending = _pending.Dequeue();
+                if (pending.SkillId == skillId && pending.TargetMobId == targetMobId)
+                {
+                    continue;
+                }
+
+                retained.Enqueue(pending);
+            }
+
+            while (retained.Count > 0)
+            {
+                _pending.Enqueue(retained.Dequeue());
+            }
         }
 
         private sealed record PendingOutcome(int SkillId, int TargetMobId, bool Success, int ExpireTime);

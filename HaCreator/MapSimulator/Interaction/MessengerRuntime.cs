@@ -745,6 +745,8 @@ namespace HaCreator.MapSimulator.Interaction
             MessengerParticipantState localPlayer = GetLocalParticipant();
             string localPlayerName = localPlayer?.Name ?? "Player";
             int currentTick = Environment.TickCount;
+            _sessionOwnedLeaveRequestInFlight = true;
+            _sessionOwnedLeaveRequestTick = currentTick;
             if (!CanDestroyMessengerWindow())
             {
                 ArmDeleteRequest(
@@ -758,6 +760,7 @@ namespace HaCreator.MapSimulator.Interaction
                 currentTick,
                 $"Queued live Messenger leave for {localPlayerName}; close gate passed with only the local profile present.",
                 "Mirrored CUIMessenger::OnDestroy leave request (opcode 0x8F/2) after the local-only destroy gate passed.");
+            ClearSessionOwnedLeaveRequestInFlight();
             return _lastActionSummary;
         }
 
@@ -1147,6 +1150,7 @@ namespace HaCreator.MapSimulator.Interaction
             _exitPromptActive = false;
             _deleteRequestedTick = int.MinValue;
             _deleteDestroyReadyTick = int.MinValue;
+            ClearSessionOwnedLeaveRequestInFlight();
         }
 
         public string RemoveParticipant(string name, bool rejectedInvite)
@@ -1538,6 +1542,7 @@ namespace HaCreator.MapSimulator.Interaction
         private void Tick(int tickCount)
         {
             TryCompleteDeferredDelete(tickCount);
+            TryExpireSessionOwnedLeaveRequestWait(tickCount);
 
             if (_incomingInvite != null
                 && _incomingInvite.PromptExpireTick != int.MinValue
@@ -2072,7 +2077,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanDestroyMessengerWindow()
         {
-            return _pendingInvite == null && _participants.Count <= 1;
+            return _pendingInvite == null
+                   && _participants.Count <= 1
+                   && !_sessionOwnedLeaveRequestInFlight;
         }
 
         private void TryResolveDeleteGateAfterStateChange(string summary)
@@ -2113,6 +2120,7 @@ namespace HaCreator.MapSimulator.Interaction
             _windowCloseReady = false;
             _deleteRequestedTick = int.MinValue;
             _deleteDestroyReadyTick = int.MinValue;
+            ClearSessionOwnedLeaveRequestInFlight();
         }
 
         private void CompleteDeleteRequest(int currentTick, string summary, string packetSummary)
@@ -2144,6 +2152,45 @@ namespace HaCreator.MapSimulator.Interaction
                 tickCount,
                 "Messenger close gate passed after the deferred room-state timer elapsed.",
                 "Simulated Messenger TryDelete destroy after the deferred local-only gate elapsed.");
+        }
+
+        private void ClearSessionOwnedLeaveRequestInFlight()
+        {
+            _sessionOwnedLeaveRequestInFlight = false;
+            _sessionOwnedLeaveRequestTick = int.MinValue;
+        }
+
+        private void TryResolveSessionOwnedLeaveRequestAfterRoomMutation(string packetSummary)
+        {
+            if (!_sessionOwnedLeaveRequestInFlight || _participants.Count > 1)
+            {
+                return;
+            }
+
+            ClearSessionOwnedLeaveRequestInFlight();
+            if (!string.IsNullOrWhiteSpace(packetSummary))
+            {
+                RecordPacketSummary(packetSummary);
+            }
+
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the server-owned room state cleared.");
+        }
+
+        private void TryExpireSessionOwnedLeaveRequestWait(int tickCount)
+        {
+            if (!_sessionOwnedLeaveRequestInFlight
+                || _sessionOwnedLeaveRequestTick == int.MinValue
+                || unchecked(tickCount - _sessionOwnedLeaveRequestTick) < SessionOwnedLeaveAckTimeoutMs)
+            {
+                return;
+            }
+
+            ClearSessionOwnedLeaveRequestInFlight();
+            string summary = "Timed out waiting for a Messenger leave acknowledgement; keeping local room-state deferral until packet-owned slots clear.";
+            _lastActionSummary = summary;
+            AddSystemLog(summary);
+            RecordPacketSummary($"Timed out waiting for CUIMessenger::OnDestroy leave acknowledgement after {SessionOwnedLeaveAckTimeoutMs} ms.");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after leave-ack timeout and local room state collapse.");
         }
 
         private void ApplyPacketProfile(string name, bool isOnline, int channel, int level, string jobName, string locationSummary, string statusText)

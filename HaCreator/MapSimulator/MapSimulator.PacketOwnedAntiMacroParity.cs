@@ -517,7 +517,7 @@ namespace HaCreator.MapSimulator
             _playerManager?.Input?.SetCtrlComboSuppressed(held);
         }
 
-        private string ApplyPacketOwnedAntiMacroChallenge(int antiMacroType, int answerCount, byte[] jpegBytes)
+        private string ApplyPacketOwnedAntiMacroChallenge(int antiMacroType, int firstAttemptFlag, byte[] jpegBytes)
         {
             RegisterPacketOwnedAntiMacroWindows();
 
@@ -532,16 +532,13 @@ namespace HaCreator.MapSimulator
             uiWindowManager.HideWindow(adminVariant ? MapSimulatorWindowNames.AntiMacro : MapSimulatorWindowNames.AdminAntiMacro);
 
             Texture2D challengeTexture = TryDecodePacketOwnedAntiMacroCanvas(jpegBytes);
-            int remainingMs = ResolvePacketOwnedAntiMacroLaunchRemainingMs(_packetOwnedAntiMacroCurrentRemainingMs, answerCount);
+            int remainingMs = ResolvePacketOwnedAntiMacroLaunchRemainingMs(_packetOwnedAntiMacroCurrentRemainingMs, firstAttemptFlag);
             int expiresAt = Environment.TickCount + remainingMs;
-            string statusText = answerCount > 0
-                ? string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Packet-authored challenge; {0} answer{1} remaining. Ctrl combo input is held.",
-                    answerCount,
-                    answerCount == 1 ? string.Empty : "s")
-                : "Packet-authored challenge; Ctrl combo input is held.";
-            challengeWindow.Configure(challengeTexture, expiresAt, answerCount, statusText);
+            bool firstAttempt = firstAttemptFlag != 0;
+            string statusText = firstAttempt
+                ? "Packet-authored challenge; first attempt. Ctrl combo input is held."
+                : "Packet-authored challenge; retry attempt. Ctrl combo input is held.";
+            challengeWindow.Configure(challengeTexture, expiresAt, firstAttemptFlag, statusText);
             ShowWindow(
                 windowName,
                 challengeWindow,
@@ -621,12 +618,12 @@ namespace HaCreator.MapSimulator
             return _lastPacketOwnedAntiMacroSummary;
         }
 
-        internal static int ResolvePacketOwnedAntiMacroLaunchRemainingMs(int currentRemainingMs, int answerCount)
+        internal static int ResolvePacketOwnedAntiMacroLaunchRemainingMs(int currentRemainingMs, int firstAttemptFlag)
         {
             // `CWvsContext::OnAntiMacroResult` only reseeds the client timer to 60000ms
             // when the decoded question counter is non-zero; otherwise it reuses the
             // current context-owned anti-macro remaining time.
-            return answerCount != 0
+            return firstAttemptFlag != 0
                 ? PacketOwnedAntiMacroDefaultDurationMs
                 : Math.Max(0, currentRemainingMs);
         }
@@ -1212,12 +1209,12 @@ namespace HaCreator.MapSimulator
 
                 if (IsPacketOwnedAntiMacroChallengeLaunchMode(mode))
                 {
-                    int answerCount = reader.BaseStream.Position < reader.BaseStream.Length
+                    int firstAttemptFlag = reader.BaseStream.Position < reader.BaseStream.Length
                         ? reader.ReadByte()
                         : 0;
                     byte[] jpegBytes = ReadPacketOwnedAntiMacroCanvasPayload(reader);
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
-                        ApplyPacketOwnedAntiMacroChallenge(antiMacroType, answerCount, jpegBytes),
+                        ApplyPacketOwnedAntiMacroChallenge(antiMacroType, firstAttemptFlag, jpegBytes),
                         payload,
                         resolvedSource,
                         authoritativeRoundTrip: false);
@@ -1313,10 +1310,10 @@ namespace HaCreator.MapSimulator
                     }
 
                     bool adminVariant = string.Equals(args[1], "admin", StringComparison.OrdinalIgnoreCase);
-                    int answerCount = args.Length >= 3 && string.Equals(args[2], "retry", StringComparison.OrdinalIgnoreCase)
-                        ? 1
-                        : 3;
-                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroChallenge(adminVariant ? 2 : 1, answerCount, null));
+                    int firstAttemptFlag = args.Length >= 3 && string.Equals(args[2], "retry", StringComparison.OrdinalIgnoreCase)
+                        ? 0
+                        : 1;
+                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroChallenge(adminVariant ? 2 : 1, firstAttemptFlag, null));
 
                 case "notice":
                     if (args.Length < 2 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int noticeType))

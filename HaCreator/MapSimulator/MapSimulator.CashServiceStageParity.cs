@@ -263,10 +263,16 @@ namespace HaCreator.MapSimulator
                     CashShopOneADayArtSnapshot artSnapshot = ResolveCashShopOneADayArtSnapshot();
                     IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries =
                         BuildCashShopOneADayHistoryEntryStates(stageWindow);
-                    int selectorIndex = Math.Clamp(oneADayWindow.GetOneADaySelectorIndex(), 0, 1);
-                    if (stageWindow.CashOneADayHasPacketRewardSessionByte)
+                    bool packetOwnedRewardSessionByte = stageWindow.CashOneADayHasPacketRewardSessionByte;
+                    int packetRewardSessionByte = stageWindow.CashOneADayPacketRewardSessionByte & 0xFF;
+                    bool previousLaneEnabled = IsCashShopOneADayPreviousLaneEnabled(
+                        packetOwnedRewardSessionByte,
+                        packetRewardSessionByte,
+                        historyEntries);
+                    int selectorIndex = Math.Clamp(oneADayWindow.GetOneADaySelectorIndex(), 0, previousLaneEnabled ? 1 : 0);
+                    if (packetOwnedRewardSessionByte)
                     {
-                        selectorIndex = (stageWindow.CashOneADayPacketRewardSessionByte & 2) != 0 ? 1 : 0;
+                        selectorIndex = previousLaneEnabled && (packetRewardSessionByte & 2) != 0 ? 1 : 0;
                     }
 
                     int currentCommoditySerialNumber = Math.Max(0, stageWindow.CashOneADayItemSerialNumber);
@@ -287,10 +293,12 @@ namespace HaCreator.MapSimulator
                         SelectorPosition = new Microsoft.Xna.Framework.Point(412, 406),
                         TodaySelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A1, "Today"),
                         PreviousSelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A2, "Previous"),
+                        SelectorCount = previousLaneEnabled ? 2 : 1,
                         SelectorEntries = BuildCashShopOneADaySelectorEntryStates(
                             selectorIndex,
                             MapleStoryStringPool.GetOrFallback(0x16A1, "Today"),
-                            MapleStoryStringPool.GetOrFallback(0x16A2, "Previous")),
+                            MapleStoryStringPool.GetOrFallback(0x16A2, "Previous"),
+                            previousLaneEnabled),
                         HasKeyFocusCanvas = artSnapshot.HasKeyFocusCanvas,
                         HasPlateCanvas = artSnapshot.HasPlateCanvas,
                         HasPlateBigCanvas = artSnapshot.HasPlateBigCanvas,
@@ -299,7 +307,7 @@ namespace HaCreator.MapSimulator
                         ExpectedNumberCanvasCount = 10,
                         PlateCount = Math.Max(1, artSnapshot.PlateCount),
                         PlateButtonCount = 12,
-                        PreviousOfferCount = ResolveCashShopOneADayHistorySlotCount(),
+                        PreviousOfferCount = previousLaneEnabled ? ResolveCashShopOneADayHistorySlotCount() : 0,
                         PlateCanvasBaseName = "NoItem",
                         ShortcutHelpCanvasName = artSnapshot.HasShortcutHelpCanvas ? "ShortcutHelp" : string.Empty,
                         CurrentCommoditySerialNumber = currentCommoditySerialNumber,
@@ -322,8 +330,8 @@ namespace HaCreator.MapSimulator
                             remainingHour,
                             remainingMinute,
                             remainingSecond),
-                        HasPacketRewardSessionByte = stageWindow.CashOneADayHasPacketRewardSessionByte,
-                        PacketRewardSessionByte = stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
+                        HasPacketRewardSessionByte = packetOwnedRewardSessionByte,
+                        PacketRewardSessionByte = packetRewardSessionByte,
                         PacketStateSignature = BuildCashShopOneADayPacketStateSignature(stageWindow, historyEntries),
                         HistoryEntries = historyEntries,
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
@@ -393,9 +401,24 @@ namespace HaCreator.MapSimulator
         private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState> BuildCashShopOneADaySelectorEntryStates(
             int activeSelectorIndex,
             string todayLabel,
-            string previousLabel)
+            string previousLabel,
+            bool includePreviousLane)
         {
-            int clampedSelectorIndex = Math.Clamp(activeSelectorIndex, 0, 1);
+            int selectorCount = includePreviousLane ? 2 : 1;
+            int clampedSelectorIndex = Math.Clamp(activeSelectorIndex, 0, selectorCount - 1);
+            if (!includePreviousLane)
+            {
+                return new[]
+                {
+                    new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
+                    {
+                        Index = 0,
+                        Label = string.IsNullOrWhiteSpace(todayLabel) ? "Today" : todayLabel.Trim(),
+                        IsActive = true
+                    }
+                };
+            }
+
             return new[]
             {
                 new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
@@ -411,6 +434,19 @@ namespace HaCreator.MapSimulator
                     IsActive = clampedSelectorIndex == 1
                 }
             };
+        }
+
+        private static bool IsCashShopOneADayPreviousLaneEnabled(
+            bool hasPacketRewardSessionByte,
+            int packetRewardSessionByte,
+            IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries)
+        {
+            if (hasPacketRewardSessionByte)
+            {
+                return (packetRewardSessionByte & 8) != 0;
+            }
+
+            return (historyEntries?.Count ?? 0) > 0;
         }
 
         private CashTradingRoomWindow.PacketTradeSessionSnapshot BuildCashTradingRoomPacketSessionSnapshot()
@@ -575,9 +611,13 @@ namespace HaCreator.MapSimulator
             string todayState = stageWindow.IsOneADayPending
                 ? $"today armed for SN {currentCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
                 : "today idle";
-            string historyState = (historyEntries?.Count ?? 0) > 0
+            bool previousLaneEnabled = IsCashShopOneADayPreviousLaneEnabled(
+                stageWindow.CashOneADayHasPacketRewardSessionByte,
+                stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
+                historyEntries);
+            string historyState = previousLaneEnabled
                 ? $"history {(historyEntries?.Count ?? 0).ToString(CultureInfo.InvariantCulture)}/{CashShopOneADayHistorySlotCount.ToString(CultureInfo.InvariantCulture)} loaded"
-                : "no previous history";
+                : "previous lane disabled";
             string counterState = $"{remainingHour.ToString("00", CultureInfo.InvariantCulture)}:{remainingMinute.ToString("00", CultureInfo.InvariantCulture)}:{remainingSecond.ToString("00", CultureInfo.InvariantCulture)}";
             string mismatchSuffix = stageWindow.CashOneADayHasPacketRewardSessionByte && rewardSessionByte != approximatedRewardSessionByte
                 ? $" (owner-approx 0x{approximatedRewardSessionByte:X2})"

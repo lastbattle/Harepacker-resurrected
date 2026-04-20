@@ -31,20 +31,55 @@ namespace HaCreator.MapSimulator
                     packetType,
                     payload,
                     packet => _dropPool.ApplyPacketEnter(packet, currTickCount),
-                    packet => _dropPool.ApplyPacketLeave(
-                        packet,
-                        currTickCount,
-                        _playerManager?.Player?.Build?.Id ?? 0,
-                        ResolveRemoteDropPacketActorName,
-                        ResolveRemoteDropPacketTargetPosition,
-                        ResolveRemoteDropPacketPetActorId,
-                        HandlePacketOwnedLocalPetPickup),
+                    packet => ApplyRemoteDropPacketLeave(packet, currTickCount),
                     out string result))
             {
                 return ChatCommandHandler.CommandResult.Error(result ?? $"Failed to apply remote drop packet {packetType}.");
             }
 
             return ChatCommandHandler.CommandResult.Ok($"{result} {DescribeRemoteDropStatus()}");
+        }
+
+        private bool ApplyRemoteDropPacketLeave(RemoteDropLeavePacket packet, int currentTime)
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            bool applied = _dropPool?.ApplyPacketLeave(
+                packet,
+                currentTime,
+                localCharacterId,
+                ResolveRemoteDropPacketActorName,
+                ResolveRemoteDropPacketTargetPosition,
+                ResolveRemoteDropPacketPetActorId,
+                HandlePacketOwnedLocalPetPickup) == true;
+            if (applied)
+            {
+                return true;
+            }
+
+            if (!ShouldReplayMissingDropPacketPickupNotice(packet.Reason, packet.ActorId, localCharacterId)
+                || !TryResolveDropPickupActorKind(packet.Reason, out DropPickupActorKind actorKind))
+            {
+                return false;
+            }
+
+            int actorId = actorKind == DropPickupActorKind.Pet
+                ? ResolveRemoteDropPacketPetActorId(packet)
+                : packet.ActorId;
+            int fallbackOwnerId = packet.Reason switch
+            {
+                PacketDropLeaveReason.PetPickup => packet.ActorId,
+                PacketDropLeaveReason.OtherPickup => packet.ActorId,
+                _ => 0
+            };
+
+            return TrySurfaceRecentRemoteDropPickupNotice(
+                packet.DropId,
+                currentTime,
+                actorKind,
+                actorId,
+                ResolveRemoteDropPacketActorName(packet.Reason, packet),
+                fallbackOwnerId,
+                ResolveRemoteDropPacketTargetPosition(packet.Reason, packet));
         }
 
         private void HandlePacketOwnedLocalPetPickup(RemoteDropLeavePacket packet)
@@ -56,6 +91,47 @@ namespace HaCreator.MapSimulator
             }
 
             PlayPacketOwnedLocalPetPickupSound();
+        }
+
+        internal static bool TryResolveDropPickupActorKind(PacketDropLeaveReason reason, out DropPickupActorKind actorKind)
+        {
+            actorKind = reason switch
+            {
+                PacketDropLeaveReason.PlayerPickup => DropPickupActorKind.Player,
+                PacketDropLeaveReason.PetPickup => DropPickupActorKind.Pet,
+                PacketDropLeaveReason.MobPickup => DropPickupActorKind.Mob,
+                PacketDropLeaveReason.OtherPickup => DropPickupActorKind.Other,
+                _ => default
+            };
+
+            return reason == PacketDropLeaveReason.PlayerPickup
+                || reason == PacketDropLeaveReason.PetPickup
+                || reason == PacketDropLeaveReason.MobPickup
+                || reason == PacketDropLeaveReason.OtherPickup;
+        }
+
+        internal static bool ShouldReplayMissingDropPacketPickupNotice(
+            PacketDropLeaveReason reason,
+            int actorId,
+            int localCharacterId)
+        {
+            if (localCharacterId > 0)
+            {
+                if (reason == PacketDropLeaveReason.PlayerPickup && actorId == localCharacterId)
+                {
+                    return false;
+                }
+
+                if (reason == PacketDropLeaveReason.PetPickup && actorId == localCharacterId)
+                {
+                    return false;
+                }
+            }
+
+            return reason == PacketDropLeaveReason.PlayerPickup
+                || reason == PacketDropLeaveReason.PetPickup
+                || reason == PacketDropLeaveReason.MobPickup
+                || reason == PacketDropLeaveReason.OtherPickup;
         }
 
         private string DescribeRemoteDropStatus()

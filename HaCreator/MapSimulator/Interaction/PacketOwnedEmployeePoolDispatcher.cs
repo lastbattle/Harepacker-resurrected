@@ -154,19 +154,29 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            if (TryResolveSnapshotByRoutingHint(utcNow, pooledEmployee, runtimeResolver, visibilityResolver, out SocialRoomFieldActorSnapshot scoredSnapshot, out SocialRoomKind scoredKind))
+            SocialRoomKind? preferredKind = ResolvePreferredKindForEmployer(pooledEmployee.EmployerId);
+            if (TryResolveSnapshotByRoutingHint(
+                    utcNow,
+                    pooledEmployee,
+                    runtimeResolver,
+                    visibilityResolver,
+                    preferredKind,
+                    out SocialRoomFieldActorSnapshot scoredSnapshot,
+                    out SocialRoomKind scoredKind))
             {
                 _activeKind = scoredKind;
+                RememberEmployerKind(pooledEmployee.EmployerId, scoredKind);
                 return scoredSnapshot;
             }
 
-            foreach (SocialRoomKind kind in EnumerateKindSearchOrder(visibilityResolver))
+            foreach (SocialRoomKind kind in EnumerateKindSearchOrder(visibilityResolver, preferredKind))
             {
                 SocialRoomRuntime runtime = runtimeResolver(kind);
                 SocialRoomFieldActorSnapshot snapshot = runtime?.GetFieldActorSnapshot(utcNow, pooledEmployee);
                 if (snapshot != null)
                 {
                     _activeKind = kind;
+                    RememberEmployerKind(pooledEmployee.EmployerId, kind);
                     return snapshot;
                 }
             }
@@ -179,6 +189,7 @@ namespace HaCreator.MapSimulator.Interaction
             SocialRoomEmployeePoolEntryState pooledEmployee,
             Func<SocialRoomKind, SocialRoomRuntime> runtimeResolver,
             Func<SocialRoomKind, bool> visibilityResolver,
+            SocialRoomKind? preferredKind,
             out SocialRoomFieldActorSnapshot snapshot,
             out SocialRoomKind kind)
         {
@@ -191,7 +202,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             SocialRoomEmployeePoolCodec.RoutingHint hint = BuildRoutingHint(pooledEmployee);
             FieldActorSnapshotCandidate? bestCandidate = null;
-            foreach (SocialRoomKind candidateKind in MerchantKinds)
+            foreach (SocialRoomKind candidateKind in BuildMerchantKindSearchOrder(preferredKind, _activeKind))
             {
                 SocialRoomRuntime runtime = runtimeResolver(candidateKind);
                 if (runtime == null)
@@ -211,9 +222,14 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
+                if (preferredKind.HasValue)
+                {
+                    score += candidateKind == preferredKind.Value ? 20 : -10;
+                }
+
                 bool isVisible = visibilityResolver?.Invoke(candidateKind) == true;
                 FieldActorSnapshotCandidate candidate = new(candidateKind, candidateSnapshot, score, isVisible);
-                if (!bestCandidate.HasValue || IsBetterFieldActorSnapshotCandidate(candidate, bestCandidate.Value, _activeKind))
+                if (!bestCandidate.HasValue || IsBetterFieldActorSnapshotCandidate(candidate, bestCandidate.Value, preferredKind))
                 {
                     bestCandidate = candidate;
                 }
@@ -249,14 +265,30 @@ namespace HaCreator.MapSimulator.Interaction
 
         private IEnumerable<SocialRoomKind> EnumerateKindSearchOrder(Func<SocialRoomKind, bool> visibilityResolver)
         {
+            return EnumerateKindSearchOrder(visibilityResolver, preferredKind: null);
+        }
+
+        private IEnumerable<SocialRoomKind> EnumerateKindSearchOrder(Func<SocialRoomKind, bool> visibilityResolver, SocialRoomKind? preferredKind)
+        {
+            if (preferredKind.HasValue)
+            {
+                yield return preferredKind.Value;
+            }
+
             if (_activeKind.HasValue)
             {
+                if (preferredKind == _activeKind.Value)
+                {
+                    goto enumerate_visible;
+                }
+
                 yield return _activeKind.Value;
             }
 
+enumerate_visible:
             foreach (SocialRoomKind kind in MerchantKinds)
             {
-                if (_activeKind == kind)
+                if (_activeKind == kind || preferredKind == kind)
                 {
                     continue;
                 }
@@ -269,13 +301,71 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (SocialRoomKind kind in MerchantKinds)
             {
-                if (_activeKind == kind || visibilityResolver?.Invoke(kind) == true)
+                if (_activeKind == kind || preferredKind == kind || visibilityResolver?.Invoke(kind) == true)
                 {
                     continue;
                 }
 
                 yield return kind;
             }
+        }
+
+        private SocialRoomKind? ResolvePreferredKindForEmployer(int employerId)
+        {
+            int normalizedEmployerId = Math.Max(0, employerId);
+            if (normalizedEmployerId > 0
+                && _employerKindHints.TryGetValue(normalizedEmployerId, out SocialRoomKind hintedKind)
+                && IsMerchantKind(hintedKind))
+            {
+                return hintedKind;
+            }
+
+            if (_activeKind.HasValue && IsMerchantKind(_activeKind.Value))
+            {
+                return _activeKind.Value;
+            }
+
+            return null;
+        }
+
+        private void RememberEmployerKind(int employerId, SocialRoomKind kind)
+        {
+            int normalizedEmployerId = Math.Max(0, employerId);
+            if (normalizedEmployerId <= 0 || !IsMerchantKind(kind))
+            {
+                return;
+            }
+
+            _employerKindHints[normalizedEmployerId] = kind;
+        }
+
+        private static IReadOnlyList<SocialRoomKind> BuildMerchantKindSearchOrder(
+            SocialRoomKind? preferredKind,
+            SocialRoomKind? activeKind)
+        {
+            return BuildMerchantKindSearchOrderForTesting(preferredKind, activeKind);
+        }
+
+        internal static IReadOnlyList<SocialRoomKind> BuildMerchantKindSearchOrderForTesting(
+            SocialRoomKind? preferredKind,
+            SocialRoomKind? activeKind)
+        {
+            List<SocialRoomKind> order = new(2);
+            TryAppendMerchantKind(order, preferredKind);
+            TryAppendMerchantKind(order, activeKind);
+            TryAppendMerchantKind(order, SocialRoomKind.EntrustedShop);
+            TryAppendMerchantKind(order, SocialRoomKind.PersonalShop);
+            return order;
+        }
+
+        private static void TryAppendMerchantKind(List<SocialRoomKind> order, SocialRoomKind? kind)
+        {
+            if (!kind.HasValue || !IsMerchantKind(kind.Value) || order.Contains(kind.Value))
+            {
+                return;
+            }
+
+            order.Add(kind.Value);
         }
 
         private static bool IsMerchantKind(SocialRoomKind kind)

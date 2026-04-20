@@ -632,8 +632,11 @@ namespace HaCreator.MapSimulator.UI
                 return new IntPtr(originalResult.ToInt32() | GetClientOwnedAntiMacroDialogCode());
             }
 
-            bool controlHeld = IsControlKeyDown();
-            bool shiftHeld = IsShiftKeyDown();
+            int clientLParam = lParam.ToInt32();
+            (bool controlHeld, bool shiftHeld) = ResolveClientOwnedModifierState(
+                clientLParam,
+                IsControlKeyDown(),
+                IsShiftKeyDown());
             bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(
                 virtualKey,
                 controlHeld,
@@ -992,6 +995,15 @@ namespace HaCreator.MapSimulator.UI
             return clientLParam < 0;
         }
 
+        internal static bool IsClientEncodedOnKeyLParam(int clientLParam)
+        {
+            // `CCtrlEdit::OnKey` consumes only sign/ctrl/shift bits from the
+            // encoded lParam path. Win32 WM_KEY lParam carries scan/repeat
+            // fields, so keep those on the physical-keyboard fallback path.
+            const uint clientOnKeyMask = 0x80000011U;
+            return (((uint)clientLParam) & ~clientOnKeyMask) == 0;
+        }
+
         internal static bool IsClientEncodedControlHeld(int clientLParam)
         {
             return (((uint)clientLParam >> 4) & 1U) != 0;
@@ -1000,6 +1012,19 @@ namespace HaCreator.MapSimulator.UI
         internal static bool IsClientEncodedShiftHeld(int clientLParam)
         {
             return (clientLParam & 1) != 0;
+        }
+
+        internal static (bool ControlHeld, bool ShiftHeld) ResolveClientOwnedModifierState(
+            int clientLParam,
+            bool controlKeyDown,
+            bool shiftKeyDown)
+        {
+            if (IsClientEncodedOnKeyLParam(clientLParam))
+            {
+                return (IsClientEncodedControlHeld(clientLParam), IsClientEncodedShiftHeld(clientLParam));
+            }
+
+            return (controlKeyDown, shiftKeyDown);
         }
 
         internal static bool ShouldSuppressClientUnsupportedEditKey(uint msg, int virtualKey, bool controlHeld, bool shiftHeld)

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, PacketQuestTimerEntry> _questTimers = new();
         private readonly Dictionary<int, PacketQuestTimerOwnerState> _questTimerOwners = new();
         private readonly Dictionary<string, PacketQuestTimerVisualStyle> _questTimerStyles = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _packetObjectStateByTag = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D _pixelTexture;
         private Texture2D _helpDialogTexture;
         private Texture2D _questTimeBarBackgroundTexture;
@@ -80,6 +81,7 @@ namespace HaCreator.MapSimulator.Interaction
             _mapHelpMessages.AddRange(BuildHelpMessages(mapInfo));
             _questTimers.Clear();
             _questTimerOwners.Clear();
+            _packetObjectStateByTag.Clear();
             _activeHelpMessage = null;
             _lastFieldSpecificDataSummary = "No field-specific data payload received.";
             _statusMessage = _mapHelpMessages.Count > 0
@@ -91,6 +93,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _questTimers.Clear();
             _questTimerOwners.Clear();
+            _packetObjectStateByTag.Clear();
             _activeHelpMessage = null;
             _mapHelpMessages.Clear();
             _lastFieldSpecificDataSummary = "No field-specific data payload received.";
@@ -590,6 +593,18 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (stateValue == -1)
                 {
+                    if (_packetObjectStateByTag.TryGetValue(tag, out int packetStateValue))
+                    {
+                        bool packetEnabled = packetStateValue != 0;
+                        bool replayedPacketState =
+                            setDynamicObjectTagState?.Invoke(tag, packetEnabled, 0, currentTick) == true;
+                        message = replayedPacketState
+                            ? $"Replayed current object-state packet for '{tag}' (state=-1); reapplied packet-owned state {packetStateValue} ({(packetEnabled ? "on" : "off")} visibility bridge)."
+                            : $"Replayed current object-state packet for '{tag}' (state=-1); packet-owned state {packetStateValue} is cached but could not be republished.";
+                        _statusMessage = message;
+                        return replayedPacketState;
+                    }
+
                     bool? currentTagState = getDynamicObjectTagState?.Invoke(tag);
                     bool available = currentTagState.HasValue;
                     bool replayed = available &&
@@ -603,6 +618,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return replayed;
                 }
 
+                _packetObjectStateByTag[tag] = stateValue;
                 bool isEnabled = stateValue != 0;
                 bool applied = setDynamicObjectTagState?.Invoke(tag, isEnabled, 0, currentTick) == true;
                 message = applied

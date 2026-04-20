@@ -2256,6 +2256,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            IReadOnlyList<Buttons> detectedButtons = GetDetectedClientJoypadComboButtons(session);
+            if (detectedButtons.Count == 0)
+            {
+                return false;
+            }
+
             bool changed = false;
             foreach (InputAction action in JoypadClientCoreBindingActions)
             {

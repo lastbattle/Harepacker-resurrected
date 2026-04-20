@@ -432,6 +432,13 @@ namespace HaCreator.MapSimulator.Physics
         private int _lastPathFlushTime;
 
         /// <summary>
+        /// Client-side CMovePath random counters appended to encoded move elements
+        /// when the random-count suffix option is enabled.
+        /// </summary>
+        private ushort _movePathRandomCount;
+        private ushort _movePathActualRandomCount;
+
+        /// <summary>
         /// Path flush interval in milliseconds
         /// </summary>
         private const int PathFlushInterval = 100;
@@ -1584,6 +1591,7 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public MovePathElement MakeNewMovePathElem(int? timeStampMs = null)
         {
+            AdvanceMovePathRandomCounters(out ushort randomCount, out ushort actualRandomCount);
             return new MovePathElement
             {
                 X = (int)X,
@@ -1596,8 +1604,22 @@ namespace HaCreator.MapSimulator.Physics
                 Duration = 0,
                 FacingRight = FacingRight,
                 MovePathAttribute = CurrentMovePathAttribute,
+                RandomCount = randomCount,
+                ActualRandomCount = actualRandomCount,
                 StatChanged = false
             };
+        }
+
+        private void AdvanceMovePathRandomCounters(out ushort randomCount, out ushort actualRandomCount)
+        {
+            unchecked
+            {
+                _movePathRandomCount++;
+                _movePathActualRandomCount++;
+            }
+
+            randomCount = _movePathRandomCount;
+            actualRandomCount = _movePathActualRandomCount;
         }
 
         /// <summary>
@@ -1969,6 +1991,8 @@ namespace HaCreator.MapSimulator.Physics
             IsRecordingPath = false;
             _pathGatherDurationMs = 0;
             _lastPathFlushTime = 0;
+            _movePathRandomCount = 0;
+            _movePathActualRandomCount = 0;
         }
 
         #endregion
@@ -2073,6 +2097,12 @@ namespace HaCreator.MapSimulator.Physics
         /// Client-owned move-path attribute captured for this element.
         /// </summary>
         public int MovePathAttribute;
+
+        /// <summary>
+        /// Optional CMovePath random-count suffix values.
+        /// </summary>
+        public ushort RandomCount;
+        public ushort ActualRandomCount;
 
         /// <summary>
         /// Stat changed flag (for server validation)

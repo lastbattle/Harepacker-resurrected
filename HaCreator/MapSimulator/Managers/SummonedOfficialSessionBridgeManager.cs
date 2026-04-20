@@ -1724,125 +1724,12 @@ namespace HaCreator.MapSimulator.Managers
                     ? "none"
                     : BuildSg88SourceParitySummary(officialEntries);
 
-                var matrixGroups = entries
-                    .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
-                    .GroupBy(entry => new
-                    {
-                        entry.DecodedSg88FirstUseRequest.Value.SkillLevel,
-                        entry.DecodedSg88FirstUseRequest.Value.MoveActionLowBit,
-                        entry.DecodedSg88FirstUseRequest.Value.VecCtrlState,
-                        TemplateHex = string.IsNullOrWhiteSpace(entry.DecodedSg88FirstUseReplayTemplateHex)
-                            ? "template-unavailable"
-                            : entry.DecodedSg88FirstUseReplayTemplateHex
-                    })
-                    .OrderByDescending(group => group.Count())
-                    .ThenBy(group => group.Key.SkillLevel)
-                    .ThenBy(group => group.Key.MoveActionLowBit)
-                    .ThenBy(group => group.Key.VecCtrlState)
-                    .ThenBy(group => group.Key.TemplateHex, StringComparer.Ordinal)
-                    .ToArray();
-                string matrixText = matrixGroups.Length == 0
-                    ? "none"
-                    : string.Join(
-                        Environment.NewLine,
-                        matrixGroups.Select(group =>
-                        {
-                            int matched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == true);
-                            int mismatched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
-                            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group);
-                            string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group);
-                            string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group);
-                            string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group);
-                            string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group);
-                            string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group);
-                            return
-                                $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} rawMoves={rawMoveActionHistogram} vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}) template={group.Key.TemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
-                        }));
-                var equivalenceGroups = entries
-                    .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
-                    .Select(entry =>
-                    {
-                        PacketOwnedSg88FirstUseRequest decoded = entry.DecodedSg88FirstUseRequest.Value;
-                        string templateHex = string.IsNullOrWhiteSpace(entry.DecodedSg88FirstUseReplayTemplateHex)
-                            ? "template-unavailable"
-                            : entry.DecodedSg88FirstUseReplayTemplateHex;
-                        return new
-                        {
-                            Entry = entry,
-                            decoded.SkillLevel,
-                            decoded.MoveActionLowBit,
-                            decoded.VecCtrlState,
-                            StateTemplateHex = NormalizeSg88ReplayTemplateForStateEquivalence(templateHex)
-                        };
-                    })
-                    .GroupBy(entry => new
-                    {
-                        entry.SkillLevel,
-                        entry.MoveActionLowBit,
-                        entry.StateTemplateHex
-                    })
-                    .OrderByDescending(group => group.Count())
-                    .ThenBy(group => group.Key.SkillLevel)
-                    .ThenBy(group => group.Key.MoveActionLowBit)
-                    .ThenBy(group => group.Key.StateTemplateHex, StringComparer.Ordinal)
-                    .ToArray();
-                string equivalenceText = equivalenceGroups.Length == 0
-                    ? "none"
-                    : string.Join(
-                        Environment.NewLine,
-                        equivalenceGroups.Select(group =>
-                        {
-                            int matched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == true);
-                            int mismatched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == false);
-                            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group.Select(entry => entry.Entry));
-                            string vecCtrlHistogram = BuildSg88VecCtrlHistogram(group.Select(entry => entry.VecCtrlState));
-                            string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group.Select(entry => entry.Entry));
-                            string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group.Select(entry => entry.Entry));
-                            string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group.Select(entry => entry.Entry));
-                            string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group.Select(entry => entry.Entry));
-                            string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group.Select(entry => entry.Entry));
-                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} rawMoves={rawMoveActionHistogram} stateTemplate={group.Key.StateTemplateHex} vecCtrls={vecCtrlHistogram} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
-                        }));
-                var coreEquivalenceGroups = entries
-                    .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
-                    .Select(entry =>
-                    {
-                        PacketOwnedSg88FirstUseRequest decoded = entry.DecodedSg88FirstUseRequest.Value;
-                        string templateHex = string.IsNullOrWhiteSpace(entry.DecodedSg88FirstUseReplayTemplateHex)
-                            ? "template-unavailable"
-                            : entry.DecodedSg88FirstUseReplayTemplateHex;
-                        return new
-                        {
-                            Entry = entry,
-                            decoded.SkillLevel,
-                            CoreTemplateHex = NormalizeSg88ReplayTemplateForCoreEquivalence(templateHex)
-                        };
-                    })
-                    .GroupBy(entry => new
-                    {
-                        entry.SkillLevel,
-                        entry.CoreTemplateHex
-                    })
-                    .OrderByDescending(group => group.Count())
-                    .ThenBy(group => group.Key.SkillLevel)
-                    .ThenBy(group => group.Key.CoreTemplateHex, StringComparer.Ordinal)
-                    .ToArray();
-                string coreEquivalenceText = coreEquivalenceGroups.Length == 0
-                    ? "none"
-                    : string.Join(
-                        Environment.NewLine,
-                        coreEquivalenceGroups.Select(group =>
-                        {
-                            int matched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == true);
-                            int mismatched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == false);
-                            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group.Select(entry => entry.Entry));
-                            string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group.Select(entry => entry.Entry));
-                            string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group.Select(entry => entry.Entry));
-                            string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group.Select(entry => entry.Entry));
-                            string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group.Select(entry => entry.Entry));
-                            string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group.Select(entry => entry.Entry));
-                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} rawMoves={rawMoveActionHistogram} coreTemplate={group.Key.CoreTemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
-                        }));
+                string matrixText = BuildSg88StateRows(entries);
+                string equivalenceText = BuildSg88EquivalenceRows(entries);
+                string coreEquivalenceText = BuildSg88CoreEquivalenceRows(entries);
+                string officialMatrixText = BuildSg88StateRows(officialEntries);
+                string officialEquivalenceText = BuildSg88EquivalenceRows(officialEntries);
+                string officialCoreEquivalenceText = BuildSg88CoreEquivalenceRows(officialEntries);
 
                 return "Summoned official-session bridge SG-88 first-use replay matrix:"
                     + Environment.NewLine
@@ -1857,6 +1744,18 @@ namespace HaCreator.MapSimulator.Managers
                     + officialSourceText
                     + Environment.NewLine
                     + $"officialCaptureParity={officialCaptureParity}"
+                    + Environment.NewLine
+                    + "officialStateRows:"
+                    + Environment.NewLine
+                    + officialMatrixText
+                    + Environment.NewLine
+                    + "officialEquivalenceRows:"
+                    + Environment.NewLine
+                    + officialEquivalenceText
+                    + Environment.NewLine
+                    + "officialCoreEquivalenceRows:"
+                    + Environment.NewLine
+                    + officialCoreEquivalenceText
                     + Environment.NewLine
                     + "stateRows:"
                     + Environment.NewLine
@@ -1939,6 +1838,182 @@ namespace HaCreator.MapSimulator.Managers
             string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(decodedEntries);
             string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(decodedEntries);
             return $"observed={entries.Length} decoded={decodedEntries.Length} matched={matched} mismatched={mismatched} decodeFailed={decodeFailed} rawMoves={rawMoveActionHistogram} vecCtrls={vecCtrlHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
+        }
+
+        private static string BuildSg88StateRows(IEnumerable<OutboundPacketTrace> sourceEntries)
+        {
+            if (sourceEntries == null)
+            {
+                return "none";
+            }
+
+            OutboundPacketTrace[] entries = sourceEntries
+                .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
+                .ToArray();
+            if (entries.Length == 0)
+            {
+                return "none";
+            }
+
+            var matrixGroups = entries
+                .GroupBy(entry => new
+                {
+                    entry.DecodedSg88FirstUseRequest.Value.SkillLevel,
+                    entry.DecodedSg88FirstUseRequest.Value.MoveActionLowBit,
+                    entry.DecodedSg88FirstUseRequest.Value.VecCtrlState,
+                    TemplateHex = string.IsNullOrWhiteSpace(entry.DecodedSg88FirstUseReplayTemplateHex)
+                        ? "template-unavailable"
+                        : entry.DecodedSg88FirstUseReplayTemplateHex
+                })
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key.SkillLevel)
+                .ThenBy(group => group.Key.MoveActionLowBit)
+                .ThenBy(group => group.Key.VecCtrlState)
+                .ThenBy(group => group.Key.TemplateHex, StringComparer.Ordinal)
+                .ToArray();
+            if (matrixGroups.Length == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                Environment.NewLine,
+                matrixGroups.Select(group =>
+                {
+                    int matched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == true);
+                    int mismatched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
+                    string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group);
+                    string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group);
+                    string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group);
+                    string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group);
+                    string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group);
+                    string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group);
+                    return
+                        $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} rawMoves={rawMoveActionHistogram} vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}) template={group.Key.TemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
+                }));
+        }
+
+        private static string BuildSg88EquivalenceRows(IEnumerable<OutboundPacketTrace> sourceEntries)
+        {
+            if (sourceEntries == null)
+            {
+                return "none";
+            }
+
+            OutboundPacketTrace[] entries = sourceEntries
+                .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
+                .ToArray();
+            if (entries.Length == 0)
+            {
+                return "none";
+            }
+
+            var equivalenceGroups = entries
+                .Select(entry =>
+                {
+                    PacketOwnedSg88FirstUseRequest decoded = entry.DecodedSg88FirstUseRequest.Value;
+                    string templateHex = string.IsNullOrWhiteSpace(entry.DecodedSg88FirstUseReplayTemplateHex)
+                        ? "template-unavailable"
+                        : entry.DecodedSg88FirstUseReplayTemplateHex;
+                    return new
+                    {
+                        Entry = entry,
+                        decoded.SkillLevel,
+                        decoded.MoveActionLowBit,
+                        decoded.VecCtrlState,
+                        StateTemplateHex = NormalizeSg88ReplayTemplateForStateEquivalence(templateHex)
+                    };
+                })
+                .GroupBy(entry => new
+                {
+                    entry.SkillLevel,
+                    entry.MoveActionLowBit,
+                    entry.StateTemplateHex
+                })
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key.SkillLevel)
+                .ThenBy(group => group.Key.MoveActionLowBit)
+                .ThenBy(group => group.Key.StateTemplateHex, StringComparer.Ordinal)
+                .ToArray();
+            if (equivalenceGroups.Length == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                Environment.NewLine,
+                equivalenceGroups.Select(group =>
+                {
+                    int matched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == true);
+                    int mismatched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == false);
+                    string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group.Select(entry => entry.Entry));
+                    string vecCtrlHistogram = BuildSg88VecCtrlHistogram(group.Select(entry => entry.VecCtrlState));
+                    string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group.Select(entry => entry.Entry));
+                    string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group.Select(entry => entry.Entry));
+                    string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group.Select(entry => entry.Entry));
+                    string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group.Select(entry => entry.Entry));
+                    string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group.Select(entry => entry.Entry));
+                    return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} rawMoves={rawMoveActionHistogram} stateTemplate={group.Key.StateTemplateHex} vecCtrls={vecCtrlHistogram} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
+                }));
+        }
+
+        private static string BuildSg88CoreEquivalenceRows(IEnumerable<OutboundPacketTrace> sourceEntries)
+        {
+            if (sourceEntries == null)
+            {
+                return "none";
+            }
+
+            OutboundPacketTrace[] entries = sourceEntries
+                .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
+                .ToArray();
+            if (entries.Length == 0)
+            {
+                return "none";
+            }
+
+            var coreEquivalenceGroups = entries
+                .Select(entry =>
+                {
+                    PacketOwnedSg88FirstUseRequest decoded = entry.DecodedSg88FirstUseRequest.Value;
+                    string templateHex = string.IsNullOrWhiteSpace(entry.DecodedSg88FirstUseReplayTemplateHex)
+                        ? "template-unavailable"
+                        : entry.DecodedSg88FirstUseReplayTemplateHex;
+                    return new
+                    {
+                        Entry = entry,
+                        decoded.SkillLevel,
+                        CoreTemplateHex = NormalizeSg88ReplayTemplateForCoreEquivalence(templateHex)
+                    };
+                })
+                .GroupBy(entry => new
+                {
+                    entry.SkillLevel,
+                    entry.CoreTemplateHex
+                })
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key.SkillLevel)
+                .ThenBy(group => group.Key.CoreTemplateHex, StringComparer.Ordinal)
+                .ToArray();
+            if (coreEquivalenceGroups.Length == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                Environment.NewLine,
+                coreEquivalenceGroups.Select(group =>
+                {
+                    int matched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == true);
+                    int mismatched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == false);
+                    string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group.Select(entry => entry.Entry));
+                    string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group.Select(entry => entry.Entry));
+                    string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group.Select(entry => entry.Entry));
+                    string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group.Select(entry => entry.Entry));
+                    string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group.Select(entry => entry.Entry));
+                    string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group.Select(entry => entry.Entry));
+                    return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} rawMoves={rawMoveActionHistogram} coreTemplate={group.Key.CoreTemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
+                }));
         }
 
         private static string FormatObservedPacketList(IReadOnlyList<OutboundPacketTrace> observedPackets, OutboundPacketTrace? requestPacket)

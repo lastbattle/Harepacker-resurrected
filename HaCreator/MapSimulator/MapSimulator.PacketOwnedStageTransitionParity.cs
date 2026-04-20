@@ -30,11 +30,16 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedStageTransitionPacket(int packetType, byte[] payload, out string message)
         {
             _packetStageTransitionRuntime.BindMap(_mapBoard?.MapInfo?.id ?? 0);
+            if (ShouldConsumeSharedExclusiveRequestStateFromStageTransitionPacketType(packetType))
+            {
+                // Stage transition response owners clear CWvsContext shared
+                // transfer/portal exclusive-request sent state.
+                ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
+            }
+
             if (packetType == 141
                 && PacketStageTransitionRuntime.TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket setFieldPacket, out _))
             {
-                // `CStage::OnSetField` consumes the prior field interaction request lifecycle.
-                ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle();
                 UpdateRemoteDropPacketServerClockFromSetField(setFieldPacket);
                 UpdatePacketOwnedFollowRequestOptionFromSetField(setFieldPacket);
                 UpdatePacketOwnedAuthoritativeCharacterDataFromSetField(setFieldPacket);
@@ -48,6 +53,12 @@ namespace HaCreator.MapSimulator
                 currTickCount,
                 BuildPacketOwnedStageTransitionCallbacks(),
                 out message);
+        }
+
+        internal static bool ShouldConsumeSharedExclusiveRequestStateFromStageTransitionPacketType(int packetType)
+        {
+            // CStage transition response families that own transfer/session handoff.
+            return packetType is 141 or 142 or 143;
         }
 
         private bool TryRelayLoginOwnedStageTransitionPacket(LoginPacketType packetType, string[] args, out bool applied, out string message)

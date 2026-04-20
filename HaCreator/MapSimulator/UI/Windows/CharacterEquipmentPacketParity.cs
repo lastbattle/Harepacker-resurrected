@@ -154,6 +154,8 @@ namespace HaCreator.MapSimulator.UI
                             break;
                         case 0:
                         {
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailer(inventoryType, fromPosition);
                             if (!TryReadClientInventoryOperationAddEntry(
                                     request,
                                     inventoryType,
