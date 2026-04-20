@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DefaultItemId = 5370000;
         private const int DefaultFrameDelayMs = 100;
         private const int ClientLeaveCanvasFadeDurationMs = 1000;
+        private const int PendingConsumeRequestTimeoutMs = 15000;
+        private const int PendingConsumeRequestHostTolerance = 24;
         private const int ClientLeaveCanvasReinsertDelayMs = 0;
         private const int ClientLeaveGetCanvasIndex = 0;
         private const int ClientLeaveRemoveCanvasIndex = -2;
@@ -68,6 +70,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly Dictionary<int, FieldMessageBoxEntry> _entries = new();
         private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
+        private readonly List<PendingConsumeRequestEntry> _pendingConsumeRequests = new();
         private readonly Dictionary<int, MessageBoxVisual> _visualCache = new();
         private readonly Dictionary<int, string> _itemNameCache = new();
         private readonly ManagedOneTimeAnimationDisplayer _oneTimeAnimationDisplayer = new();
@@ -99,13 +102,14 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _entries.Clear();
             _leavingEntries.Clear();
+            _pendingConsumeRequests.Clear();
             _oneTimeAnimationDisplayer.Clear();
             _statusMessage = "Field message-box pool cleared.";
         }
 
         internal string DescribeStatus()
         {
-            if (_entries.Count == 0 && _leavingEntries.Count == 0)
+            if (_entries.Count == 0 && _leavingEntries.Count == 0 && _pendingConsumeRequests.Count == 0)
             {
                 return _statusMessage;
             }
@@ -113,10 +117,24 @@ namespace HaCreator.MapSimulator.Interaction
             int localActiveCount = _entries.Values.Count(entry => entry.Source != MessageBoxEntrySource.PacketEnterField);
             int packetActiveCount = _entries.Count - localActiveCount;
             int leavingCount = _leavingEntries.Count;
+            int pendingCount = _pendingConsumeRequests.Count;
             string activeSummary = $"{_entries.Count} active ({packetActiveCount} packet, {localActiveCount} local)";
-            return leavingCount > 0
-                ? $"{activeSummary}, {leavingCount} leaving. {_statusMessage}"
-                : $"{activeSummary}. {_statusMessage}";
+            if (leavingCount > 0 && pendingCount > 0)
+            {
+                return $"{activeSummary}, {leavingCount} leaving, {pendingCount} pending consume request(s). {_statusMessage}";
+            }
+
+            if (leavingCount > 0)
+            {
+                return $"{activeSummary}, {leavingCount} leaving. {_statusMessage}";
+            }
+
+            if (pendingCount > 0)
+            {
+                return $"{activeSummary}, {pendingCount} pending consume request(s). {_statusMessage}";
+            }
+
+            return $"{activeSummary}. {_statusMessage}";
         }
 
         internal string CreateLocalMessageBox(
@@ -190,8 +208,34 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyCreateFailed()
         {
+            if (TryResolvePendingConsumeRequestFailure(out PendingConsumeRequestEntry failedRequest))
+            {
+                _statusMessage = $"{ResolveCreateFailedNoticeText()} [client notice StringPool 0x{CreateFailedStringPoolId:X}]. Pending consume request for item {failedRequest.Request.ItemId} from slot {failedRequest.Request.InventoryPosition} failed at CMessageBoxPool::OnCreateFailed.";
+                return _statusMessage;
+            }
+
             _statusMessage = $"{ResolveCreateFailedNoticeText()} [client notice StringPool 0x{CreateFailedStringPoolId:X}]";
             return _statusMessage;
+        }
+
+        private bool TryResolvePendingConsumeRequestFailure(out PendingConsumeRequestEntry failedRequest)
+        {
+            failedRequest = null;
+            if (_pendingConsumeRequests.Count == 0)
+            {
+                return false;
+            }
+
+            int currentTick = Environment.TickCount;
+            _pendingConsumeRequests.RemoveAll(entry => currentTick - entry.RequestedAtTick >= PendingConsumeRequestTimeoutMs);
+            if (_pendingConsumeRequests.Count == 0)
+            {
+                return false;
+            }
+
+            failedRequest = _pendingConsumeRequests[0];
+            _pendingConsumeRequests.RemoveAt(0);
+            return true;
         }
 
         internal bool TryApplyPacket(int packetType, byte[] payload, int currentTick, out string message)
@@ -2850,6 +2894,11 @@ namespace HaCreator.MapSimulator.Interaction
         int InventoryPosition,
         int ItemId,
         string MessageText);
+
+    internal sealed record PendingConsumeRequestEntry(
+        MessageBoxConsumeCashItemUseRequest Request,
+        Point HostPosition,
+        int RequestedAtTick);
 
     internal static class GraphicsDeviceServiceForTests
     {

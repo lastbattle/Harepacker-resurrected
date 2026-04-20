@@ -18,6 +18,11 @@ namespace HaCreator.MapSimulator.UI
         {
             public string Label { get; init; } = string.Empty;
             public bool IsPrimary { get; init; }
+            public int ClientX { get; init; }
+            public int ClientY { get; init; }
+            public int ClientYFromBottom { get; init; }
+            public int ClientWidth { get; init; }
+            public int ClientHeight { get; init; }
         }
 
         internal sealed class CheckBoxState
@@ -43,6 +48,9 @@ namespace HaCreator.MapSimulator.UI
             public int ClientY { get; init; }
             public int ClientWidth { get; init; }
             public int ClientHeight { get; init; }
+            public Color BackColor { get; init; } = new(238, 238, 238);
+            public Color FocusedBackColor { get; init; } = new(165, 165, 152);
+            public Color BorderColor { get; init; } = new(153, 153, 153);
         }
 
         internal sealed class ComboBoxItemState
@@ -113,6 +121,9 @@ namespace HaCreator.MapSimulator.UI
         private int _comboBoxClientY;
         private int _comboBoxClientWidth;
         private int _comboBoxClientHeight;
+        private Color _comboBoxBackColor = new(238, 238, 238);
+        private Color _comboBoxFocusedBackColor = new(165, 165, 152);
+        private Color _comboBoxBorderColor = new(153, 153, 153);
         private int _inputClientX;
         private int _inputClientY;
         private int _inputClientWidth;
@@ -249,6 +260,9 @@ namespace HaCreator.MapSimulator.UI
             _comboBoxClientY = comboBox?.ClientY ?? 0;
             _comboBoxClientWidth = comboBox?.ClientWidth ?? 0;
             _comboBoxClientHeight = comboBox?.ClientHeight ?? 0;
+            _comboBoxBackColor = comboBox?.BackColor ?? new Color(238, 238, 238);
+            _comboBoxFocusedBackColor = comboBox?.FocusedBackColor ?? new Color(165, 165, 152);
+            _comboBoxBorderColor = comboBox?.BorderColor ?? new Color(153, 153, 153);
             _comboExpanded = false;
             UpdateLayout();
         }
@@ -725,11 +739,11 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                sprite.Draw(_pixelTexture, _comboBounds, new Color(238, 238, 238, 232));
-                DrawBorder(sprite, _comboBounds, new Color(153, 153, 153));
+                sprite.Draw(_pixelTexture, _comboBounds, _comboBoxBackColor);
+                DrawBorder(sprite, _comboBounds, _comboBoxBorderColor);
                 Rectangle arrowFallbackBounds = new(_comboBounds.Right - 18, _comboBounds.Y, 18, _comboBounds.Height);
-                sprite.Draw(_pixelTexture, arrowFallbackBounds, new Color(198, 198, 198, 232));
-                DrawBorder(sprite, arrowFallbackBounds, new Color(153, 153, 153));
+                sprite.Draw(_pixelTexture, arrowFallbackBounds, _comboBoxFocusedBackColor);
+                DrawBorder(sprite, arrowFallbackBounds, _comboBoxBorderColor);
                 SelectorWindowDrawing.DrawShadowedText(sprite, _font, "v", new Vector2(arrowFallbackBounds.X + 5, arrowFallbackBounds.Y + 1), Color.Black);
             }
 
@@ -751,8 +765,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 Rectangle optionBounds = new(_comboBounds.X, _comboBounds.Bottom + (i * ComboBoxOptionHeight), _comboBounds.Width, ComboBoxOptionHeight);
                 _comboOptionBounds[i] = optionBounds;
-                sprite.Draw(_pixelTexture, optionBounds, i == _selectedComboIndex ? new Color(255, 226, 158, 242) : new Color(238, 238, 238, 242));
-                DrawBorder(sprite, optionBounds, new Color(153, 153, 153));
+                sprite.Draw(_pixelTexture, optionBounds, i == _selectedComboIndex ? _comboBoxFocusedBackColor : _comboBoxBackColor);
+                DrawBorder(sprite, optionBounds, _comboBoxBorderColor);
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     _font,
@@ -803,14 +817,33 @@ namespace HaCreator.MapSimulator.UI
             int frameHeight = ResolveFrameHeight();
             _buttonBounds.Clear();
             int buttonCount = Buttons.Count;
-            int totalButtonWidth = buttonCount > 0
-                ? (buttonCount * ButtonWidth) + ((buttonCount - 1) * ButtonGap)
-                : 0;
-            int startX = Position.X + Math.Max(0, (frameWidth - totalButtonWidth) / 2);
-            int buttonY = Position.Y + frameHeight - FooterPadding - ButtonHeight;
-            for (int i = 0; i < buttonCount; i++)
+            if (Buttons.Any(button =>
+                button.ClientX > 0
+                && (button.ClientY > 0 || button.ClientYFromBottom > 0)))
             {
-                _buttonBounds[i] = new Rectangle(startX + (i * (ButtonWidth + ButtonGap)), buttonY, ButtonWidth, ButtonHeight);
+                for (int i = 0; i < buttonCount; i++)
+                {
+                    ActionButtonState button = Buttons[i];
+                    int width = button.ClientWidth > 0 ? button.ClientWidth : ButtonWidth;
+                    int height = button.ClientHeight > 0 ? button.ClientHeight : ButtonHeight;
+                    int x = Position.X + (button.ClientX > 0 ? button.ClientX : Math.Max(0, (frameWidth - width) / 2));
+                    int y = button.ClientYFromBottom > 0
+                        ? Position.Y + frameHeight - button.ClientYFromBottom
+                        : Position.Y + (button.ClientY > 0 ? button.ClientY : frameHeight - FooterPadding - ButtonHeight);
+                    _buttonBounds[i] = new Rectangle(x, y, width, height);
+                }
+            }
+            else
+            {
+                int totalButtonWidth = buttonCount > 0
+                    ? (buttonCount * ButtonWidth) + ((buttonCount - 1) * ButtonGap)
+                    : 0;
+                int startX = Position.X + Math.Max(0, (frameWidth - totalButtonWidth) / 2);
+                int buttonY = Position.Y + frameHeight - FooterPadding - ButtonHeight;
+                for (int i = 0; i < buttonCount; i++)
+                {
+                    _buttonBounds[i] = new Rectangle(startX + (i * (ButtonWidth + ButtonGap)), buttonY, ButtonWidth, ButtonHeight);
+                }
             }
 
             if (_inputClientWidth <= 0 || _inputClientHeight <= 0)

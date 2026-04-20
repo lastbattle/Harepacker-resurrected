@@ -585,11 +585,13 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int elapsed = unchecked(currentTime - message.StartTime);
-                if (elapsed >= 0 && elapsed < duration)
-                {
-                    return true;
-                }
+                // Client parity seam:
+                // CUIStatusBar::SetItemMsg blocks while itemMsg owner objects exist.
+                // Timer expiry is processed in CUIStatusBar::Update, so expired-yet-uncollected
+                // entries can still block admission before cleanup runs.
+                // Mirror that owner-identity gate by treating any valid StatusBarItemMsg owner
+                // row still present in the runtime list as blocking.
+                return true;
             }
 
             return false;

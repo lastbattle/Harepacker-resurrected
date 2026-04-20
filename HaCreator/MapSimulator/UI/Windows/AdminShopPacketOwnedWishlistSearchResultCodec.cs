@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.UI
         private const byte Version1 = 1;
         private const byte Version2 = 2;
         private const int HeaderSize = 4 + 1 + 4 + 4 + 1;
+        private const int LegacyHeaderSize = sizeof(int) + sizeof(int) + sizeof(ushort);
         private const byte FlagQuery = 1 << 0;
         private const byte FlagCategory = 1 << 1;
         private const byte FlagPriceRange = 1 << 2;
@@ -65,7 +66,7 @@ namespace HaCreator.MapSimulator.UI
         {
             snapshot = null;
             payload ??= Array.Empty<byte>();
-            if (payload.Length < HeaderSize)
+            if (payload.Length < LegacyHeaderSize)
             {
                 return false;
             }
@@ -73,7 +74,7 @@ namespace HaCreator.MapSimulator.UI
             ReadOnlySpan<byte> span = payload;
             if (!span[..Magic.Length].SequenceEqual(Magic))
             {
-                return false;
+                return TryDecodeLegacy(payload, out snapshot);
             }
 
             int offset = Magic.Length;
@@ -264,6 +265,65 @@ namespace HaCreator.MapSimulator.UI
 
             value = Encoding.UTF8.GetString(span.Slice(offset, byteLength));
             offset += byteLength;
+            return true;
+        }
+
+        // Some official-session captures only expose a compact wishlist row payload:
+        // [serviceSessionId:int32][searchSessionId:int32][itemCount:uint16][itemId:int32 * itemCount]
+        // Keep this path strict so unrelated subtype-4 tails are not decoded accidentally.
+        private static bool TryDecodeLegacy(
+            byte[] payload,
+            out AdminShopPacketOwnedWishlistSearchSnapshot snapshot)
+        {
+            snapshot = null;
+            payload ??= Array.Empty<byte>();
+            if (payload.Length < LegacyHeaderSize)
+            {
+                return false;
+            }
+
+            int serviceSessionId = BitConverter.ToInt32(payload, 0);
+            int searchSessionId = BitConverter.ToInt32(payload, sizeof(int));
+            int itemCount = BitConverter.ToUInt16(payload, sizeof(int) * 2);
+            if (itemCount < 0 || itemCount > 1024)
+            {
+                return false;
+            }
+
+            int expectedLength = LegacyHeaderSize + (itemCount * sizeof(int));
+            if (payload.Length != expectedLength)
+            {
+                return false;
+            }
+
+            List<AdminShopPacketOwnedWishlistSearchResultRow> rows = new(itemCount);
+            int offset = LegacyHeaderSize;
+            for (int i = 0; i < itemCount; i++)
+            {
+                int itemId = BitConverter.ToInt32(payload, offset);
+                offset += sizeof(int);
+                if (itemId <= 0)
+                {
+                    return false;
+                }
+
+                rows.Add(new AdminShopPacketOwnedWishlistSearchResultRow
+                {
+                    ItemId = itemId
+                });
+            }
+
+            snapshot = new AdminShopPacketOwnedWishlistSearchSnapshot
+            {
+                ServiceSessionId = serviceSessionId,
+                SearchSessionId = searchSessionId,
+                Query = string.Empty,
+                CategoryKey = string.Empty,
+                PriceRangeIndex = -1,
+                ItemIds = rows.Select(row => row.ItemId).ToList(),
+                ResultRows = rows,
+                TrailingByteCount = 0
+            };
             return true;
         }
     }

@@ -545,9 +545,18 @@ namespace HaCreator.MapSimulator.UI
                     {
                         if (leftPressedThisFrame)
                         {
-                            ResetJoypadCaptureState(session);
-                            _armedJoypadBindingAction = row.Action.Value;
-                            _statusMessage = $"{row.Label} selected on P{(int)session.GamepadIndex + 1}. Press one of the shared utility pad buttons to stage a new binding.";
+                            if (row.IsClientCombo
+                                && GetClientComboAllowedButtons(session, row.Action.Value).Count == 0)
+                            {
+                                _armedJoypadBindingAction = null;
+                                _statusMessage = $"{row.Label}: {GetClientJoypadDetectionFailedText()} CUIJoyPad combo capture only arms detected Button 1..N candidates on the selected port.";
+                            }
+                            else
+                            {
+                                ResetJoypadCaptureState(session);
+                                _armedJoypadBindingAction = row.Action.Value;
+                                _statusMessage = $"{row.Label} selected on P{(int)session.GamepadIndex + 1}. Press one of the shared utility pad buttons to stage a new binding.";
+                            }
                         }
                         else if (rightPressedThisFrame)
                         {
@@ -2039,6 +2048,14 @@ namespace HaCreator.MapSimulator.UI
 
                 if (allowBindingCapture)
                 {
+                    if (row.IsClientCombo
+                        && GetClientComboAllowedButtons(session, row.Action.Value).Count == 0)
+                    {
+                        _armedJoypadBindingAction = null;
+                        _statusMessage = $"{row.Label}: {GetClientJoypadDetectionFailedText()} CUIJoyPad combo capture only arms detected Button 1..N candidates on the selected port.";
+                        return;
+                    }
+
                     ResetJoypadCaptureState(session);
                     _armedJoypadBindingAction = row.Action.Value;
                     _statusMessage = $"{row.Label} selected on P{(int)session.GamepadIndex + 1}. Press one of the shared utility pad buttons to stage a new binding.";
@@ -2048,9 +2065,16 @@ namespace HaCreator.MapSimulator.UI
                 session.Bindings[row.Action.Value] = row.IsClientCombo
                     ? StepClientJoypadComboBinding(session, row.Action.Value, GetJoypadBinding(session, row.Action.Value), direction)
                     : StepJoypadBinding(row.Action.Value, GetJoypadBinding(session, row.Action.Value), direction);
-                _statusMessage = row.IsClientCombo
-                    ? $"{row.Label}: {FormatClientJoypadComboSelection(session, row.Action.Value)} ({FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}). Left or right cycles the staged client combo item; A arms live capture."
-                    : $"{row.Label}: {FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}. Left or right cycles the staged shared-button binding; A arms live capture.";
+                if (row.IsClientCombo && GetClientComboAllowedButtons(session, row.Action.Value).Count == 0)
+                {
+                    _statusMessage = $"{row.Label}: {GetClientJoypadDetectionFailedText()} No detected Button 1..N candidates are available on this port, so the staged combo slot remains unchanged.";
+                }
+                else
+                {
+                    _statusMessage = row.IsClientCombo
+                        ? $"{row.Label}: {FormatClientJoypadComboSelection(session, row.Action.Value)} ({FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}). Left or right cycles the staged client combo item; A arms live capture."
+                        : $"{row.Label}: {FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}. Left or right cycles the staged shared-button binding; A arms live capture.";
+                }
                 return;
             }
 
@@ -2152,6 +2176,11 @@ namespace HaCreator.MapSimulator.UI
         private static Buttons StepClientJoypadComboBinding(JoypadSessionSnapshot session, InputAction action, Buttons current, int direction)
         {
             IReadOnlyList<Buttons> allowedButtons = GetClientComboAllowedButtons(session, action);
+            if (allowedButtons.Count == 0)
+            {
+                return current;
+            }
+
             List<Buttons> orderedButtons = new(allowedButtons.Count + 1)
             {
                 0,

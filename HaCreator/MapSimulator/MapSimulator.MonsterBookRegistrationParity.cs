@@ -285,6 +285,17 @@ namespace HaCreator.MapSimulator
                 registeredMobId: sync.RegisteredMobId ?? 0,
                 replaceExisting: sync.ClearRequested || sync.ReplaceExisting);
 
+            if (_pendingMonsterBookOwnershipSaveRequest != null
+                && IsMonsterBookOwnershipSyncForPendingSaveRequest(
+                    _pendingMonsterBookOwnershipSaveRequest,
+                    sync.RequestId,
+                    resolvedCharacterId,
+                    resolvedCharacterName,
+                    snapshot))
+            {
+                _pendingMonsterBookOwnershipSaveRequest = null;
+            }
+
             if (_pendingMonsterBookRegistrationRequest != null
                 && IsMonsterBookOwnershipSyncForPendingRequest(
                     _pendingMonsterBookRegistrationRequest,
@@ -396,6 +407,20 @@ namespace HaCreator.MapSimulator
 
             int requestId = _nextMonsterBookRegistrationRequestId;
             _nextMonsterBookRegistrationRequestId = requestId == int.MaxValue
+                ? 1
+                : requestId + 1;
+            return requestId;
+        }
+
+        private int ReserveMonsterBookOwnershipSaveRequestId()
+        {
+            if (_nextMonsterBookOwnershipSaveRequestId <= 0)
+            {
+                _nextMonsterBookOwnershipSaveRequestId = 1;
+            }
+
+            int requestId = _nextMonsterBookOwnershipSaveRequestId;
+            _nextMonsterBookOwnershipSaveRequestId = requestId == int.MaxValue
                 ? 1
                 : requestId + 1;
             return requestId;
@@ -556,6 +581,7 @@ namespace HaCreator.MapSimulator
 
                 bool clearRequested = ReadBoolean(payloadRoot, false, "clear", "reset", "clearRequested");
                 bool replaceExisting = ReadBoolean(payloadRoot, true, "replaceExisting", "replace", "overwrite");
+                int? requestId = NormalizePositiveInt(ReadInt(payloadRoot, "requestId", "requestToken", "requestSeq", "sequence"));
                 int? characterId = NormalizePositiveInt(ReadInt(payloadRoot, "characterId", "charId", "id"));
                 string characterName = ReadString(payloadRoot, "characterName", "charName", "name", "ownerName");
                 int? registeredMobId = NormalizePositiveInt(ReadInt(payloadRoot, "registeredMobId", "registeredMob", "selectedMobId"));
@@ -563,6 +589,10 @@ namespace HaCreator.MapSimulator
                 if (string.IsNullOrWhiteSpace(statusText) && usedNestedRoot)
                 {
                     statusText = ReadString(root, "statusText", "message", "text", "notice");
+                }
+                if (!requestId.HasValue && usedNestedRoot)
+                {
+                    requestId = NormalizePositiveInt(ReadInt(root, "requestId", "requestToken", "requestSeq", "sequence"));
                 }
 
                 if (payloadRoot.TryGetProperty("owner", out JsonElement ownerElement)
@@ -605,7 +635,7 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
-                    null,
+                    requestId,
                     characterId,
                     characterName,
                     registeredMobId,
@@ -652,11 +682,15 @@ namespace HaCreator.MapSimulator
                 bool hasRegisteredMob = (flags & 0x08) != 0;
                 bool hasCharacterName = (flags & 0x10) != 0;
                 bool hasStatusText = (flags & 0x20) != 0;
+                bool hasRequestId = (flags & 0x40) != 0;
 
                 int? characterId = hasCharacterId
                     ? NormalizePositiveInt(reader.ReadInt32())
                     : null;
                 int? registeredMobId = hasRegisteredMob
+                    ? NormalizePositiveInt(reader.ReadInt32())
+                    : null;
+                int? requestId = hasRequestId
                     ? NormalizePositiveInt(reader.ReadInt32())
                     : null;
                 ushort entryCount = reader.ReadUInt16();
@@ -686,7 +720,7 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
-                    null,
+                    requestId,
                     characterId,
                     characterName,
                     registeredMobId,
@@ -726,6 +760,7 @@ namespace HaCreator.MapSimulator
                 bool hasCharacterName = (flags & 0x08) != 0;
                 bool hasRegisteredMobId = (flags & 0x10) != 0;
                 bool hasStatusText = (flags & 0x20) != 0;
+                bool hasRequestId = (flags & 0x40) != 0;
 
                 int? characterId = hasCharacterId
                     ? NormalizePositiveInt(reader.ReadInt32())
@@ -736,6 +771,9 @@ namespace HaCreator.MapSimulator
                     : string.Empty;
 
                 int? registeredMobId = hasRegisteredMobId
+                    ? NormalizePositiveInt(reader.ReadInt32())
+                    : null;
+                int? requestId = hasRequestId
                     ? NormalizePositiveInt(reader.ReadInt32())
                     : null;
 
@@ -774,7 +812,7 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
-                    null,
+                    requestId,
                     characterId,
                     characterName,
                     registeredMobId,
@@ -822,6 +860,70 @@ namespace HaCreator.MapSimulator
             return pendingRequest.Registered
                 ? syncedRegisteredMobId == pendingRequest.MobId
                 : syncedRegisteredMobId <= 0 || syncedRegisteredMobId != pendingRequest.MobId;
+        }
+
+        private static bool IsMonsterBookOwnershipSyncForPendingSaveRequest(
+            PendingMonsterBookOwnershipSaveRequest pendingRequest,
+            int? syncedRequestId,
+            int syncedCharacterId,
+            string syncedCharacterName,
+            MonsterBookSnapshot syncedSnapshot)
+        {
+            if (pendingRequest == null)
+            {
+                return false;
+            }
+
+            if (syncedRequestId.HasValue && syncedRequestId.Value > 0)
+            {
+                return syncedRequestId.Value == pendingRequest.RequestId;
+            }
+
+            bool sameCharacter = false;
+            if (syncedCharacterId > 0 && pendingRequest.CharacterId > 0)
+            {
+                sameCharacter = syncedCharacterId == pendingRequest.CharacterId;
+            }
+            else if (!string.IsNullOrWhiteSpace(syncedCharacterName)
+                && !string.IsNullOrWhiteSpace(pendingRequest.CharacterName))
+            {
+                sameCharacter = string.Equals(
+                    syncedCharacterName.Trim(),
+                    pendingRequest.CharacterName.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (!sameCharacter)
+            {
+                return false;
+            }
+
+            if (syncedSnapshot == null)
+            {
+                return false;
+            }
+
+            if (syncedSnapshot.RegisteredCardMobId != pendingRequest.RegisteredMobId)
+            {
+                return false;
+            }
+
+            Dictionary<int, int> syncedCounts = BuildMonsterBookOwnedCountsByMob(syncedSnapshot);
+            if (syncedCounts.Count != pendingRequest.CardCountsByMob.Count)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<int, int> entry in pendingRequest.CardCountsByMob)
+            {
+                if (!syncedCounts.TryGetValue(entry.Key, out int syncedCount)
+                    || syncedCount != entry.Value)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static string ReadLengthPrefixedUtf8(BinaryReader reader)
@@ -1054,22 +1156,69 @@ namespace HaCreator.MapSimulator
             }
 
             Dictionary<int, int> cardCountsByMob = BuildMonsterBookOwnedCountsByMob(snapshot);
+            int requestId = ReserveMonsterBookOwnershipSaveRequestId();
             byte[] savePayload = BuildMonsterBookOwnershipSaveSyncPayload(
+                requestId,
                 characterId,
                 characterName,
                 snapshot.RegisteredCardMobId,
                 cardCountsByMob,
                 source);
             string dispatchStatus = DispatchMonsterBookOwnershipSaveRequest(savePayload, source);
-            _localUtilityPacketInbox.EnqueueLocal(
-                LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType,
-                savePayload,
-                "monster-book-save");
+            _pendingMonsterBookOwnershipSaveRequest = new PendingMonsterBookOwnershipSaveRequest
+            {
+                Build = build,
+                CharacterId = characterId,
+                CharacterName = characterName ?? string.Empty,
+                RequestId = requestId,
+                RegisteredMobId = snapshot.RegisteredCardMobId,
+                CardCountsByMob = new Dictionary<int, int>(cardCountsByMob),
+                Payload = savePayload,
+                SentTick = Environment.TickCount64,
+                ResponseDelayMs = MonsterBookOwnershipSaveResponseDelayMs,
+                SourceSummary = source ?? string.Empty
+            };
 
             if (showFeedback)
             {
                 ShowUtilityFeedbackMessage(
-                    $"{dispatchStatus} Queued local ownership-save apply packet {LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType.ToString(CultureInfo.InvariantCulture)}.");
+                    $"{dispatchStatus} Queued packet-owned ownership-save request #{requestId.ToString(CultureInfo.InvariantCulture)}.");
+            }
+        }
+
+        private void ProcessPendingMonsterBookOwnershipSaveRequest()
+        {
+            PendingMonsterBookOwnershipSaveRequest request = _pendingMonsterBookOwnershipSaveRequest;
+            if (request == null)
+            {
+                return;
+            }
+
+            long elapsedMs = Environment.TickCount64 - request.SentTick;
+            if (elapsedMs < request.ResponseDelayMs)
+            {
+                return;
+            }
+
+            bool hasLiveOfficialSession = _localUtilityOfficialSessionBridge?.HasConnectedSession == true;
+            if (!request.SyntheticResultQueued && !hasLiveOfficialSession)
+            {
+                request.SyntheticResultQueued = true;
+                _localUtilityPacketInbox.EnqueueLocal(
+                    LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType,
+                    request.Payload,
+                    "monster-book-save");
+                return;
+            }
+
+            int timeoutMs = hasLiveOfficialSession
+                ? MonsterBookOwnershipSaveOfficialSessionTimeoutMs
+                : MonsterBookOwnershipSaveSyntheticResultTimeoutMs;
+            if (elapsedMs >= request.ResponseDelayMs + timeoutMs)
+            {
+                _pendingMonsterBookOwnershipSaveRequest = null;
+                ShowUtilityFeedbackMessage(
+                    $"Monster Book ownership-save request #{request.RequestId.ToString(CultureInfo.InvariantCulture)} timed out while waiting for local utility packet {LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType.ToString(CultureInfo.InvariantCulture)}.");
             }
         }
 
@@ -1109,6 +1258,7 @@ namespace HaCreator.MapSimulator
         }
 
         private static byte[] BuildMonsterBookOwnershipSaveSyncPayload(
+            int requestId,
             int characterId,
             string characterName,
             int registeredMobId,
@@ -1119,6 +1269,7 @@ namespace HaCreator.MapSimulator
             {
                 ownershipSync = new
                 {
+                    requestId = requestId > 0 ? requestId : (int?)null,
                     replaceExisting = true,
                     owner = new
                     {

@@ -225,18 +225,20 @@ namespace HaCreator.MapSimulator.Interaction
                     TryReadStageBackColor(periodNode),
                     ParseStageBackImages(periodNode),
                     ParseStringSet(
-                        periodNode["stageKeyword"],
-                        periodNode["keyword"],
-                        periodNode["aKeyword"]),
+                        GetChildProperty(periodNode, "stageKeyword"),
+                        GetChildProperty(periodNode, "keyword"),
+                        GetChildProperty(periodNode, "aKeyword")),
                     ParseIntSet(
-                        periodNode["enabledQuest"],
-                        periodNode["aEnabledQuest"],
-                        periodNode["questID"],
-                        periodNode["quest"]),
+                        GetChildProperty(periodNode, "enabledQuest"),
+                        GetChildProperty(periodNode, "aEnabledQuest"),
+                        GetChildProperty(periodNode, "questID"),
+                        GetChildProperty(periodNode, "questId"),
+                        GetChildProperty(periodNode, "quest")),
                     ParseIntSet(
-                        periodNode["affectedMap"],
-                        periodNode["fieldID"],
-                        periodNode["aAffectedMap"]));
+                        GetChildProperty(periodNode, "affectedMap"),
+                        GetChildProperty(periodNode, "fieldID"),
+                        GetChildProperty(periodNode, "fieldId"),
+                        GetChildProperty(periodNode, "aAffectedMap")));
             }
 
             return periods;
@@ -244,7 +246,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IEnumerable<(byte Mode, WzImageProperty Property)> EnumeratePeriodNodes(WzImageProperty themeProperty)
         {
-            if (themeProperty["stage"] is WzImageProperty stageProperty)
+            if (GetChildProperty(themeProperty, "stage") is WzImageProperty stageProperty)
             {
                 foreach ((byte mode, WzImageProperty property) in EnumerateIndexedPeriodNodes(stageProperty))
                 {
@@ -253,7 +255,7 @@ namespace HaCreator.MapSimulator.Interaction
                 yield break;
             }
 
-            if (themeProperty["stageList"] is WzImageProperty stageList)
+            if (GetChildProperty(themeProperty, "stageList") is WzImageProperty stageList)
             {
                 foreach ((byte mode, WzImageProperty property) in EnumerateIndexedPeriodNodes(stageList))
                 {
@@ -287,16 +289,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static uint? TryReadStageBackColor(WzImageProperty periodNode)
         {
-            return unchecked((uint)InfoTool.GetInt(periodNode["backColor"], -1));
+            return unchecked((uint)InfoTool.GetInt(GetChildProperty(periodNode, "backColor"), -1));
         }
 
         private static IReadOnlyList<ContextOwnedStageBackImageEntry> ParseStageBackImages(WzImageProperty periodNode)
         {
             List<ContextOwnedStageBackImageEntry> entries = new();
-            WzImageProperty container = periodNode["aStageBackImg"]
-                ?? periodNode["stageBackImg"]
-                ?? periodNode["backImg"]
-                ?? periodNode["back"];
+            WzImageProperty container = GetChildProperty(periodNode, "aStageBackImg")
+                ?? GetChildProperty(periodNode, "stageBackImg")
+                ?? GetChildProperty(periodNode, "backImg")
+                ?? GetChildProperty(periodNode, "back");
 
             if (container == null)
             {
@@ -809,9 +811,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return values;
             }
 
-            AppendStringValues(themeProperty["stageKeyword"], values);
-            AppendStringValues(themeProperty["keyword"], values);
-            AppendStringValues(themeProperty["aKeyword"], values);
+            AppendStringValues(GetChildProperty(themeProperty, "stageKeyword"), values);
+            AppendStringValues(GetChildProperty(themeProperty, "keyword"), values);
+            AppendStringValues(GetChildProperty(themeProperty, "aKeyword"), values);
 
             foreach (WzImageProperty child in themeProperty.WzProperties.OfType<WzImageProperty>())
             {
@@ -841,9 +843,9 @@ namespace HaCreator.MapSimulator.Interaction
             foreach ((byte mode, WzImageProperty periodProperty) in EnumeratePeriodNodes(themeProperty))
             {
                 HashSet<string> extraKeywords = ParseStringSet(
-                    periodProperty["stageKeyword"],
-                    periodProperty["keyword"],
-                    periodProperty["aKeyword"]);
+                    GetChildProperty(periodProperty, "stageKeyword"),
+                    GetChildProperty(periodProperty, "keyword"),
+                    GetChildProperty(periodProperty, "aKeyword"));
                 if (extraKeywords.Count > 0)
                 {
                     periodKeywords[mode] = extraKeywords;
@@ -978,6 +980,29 @@ namespace HaCreator.MapSimulator.Interaction
             category = parts[0];
             imageName = parts[^1];
             return !string.IsNullOrWhiteSpace(category) && !string.IsNullOrWhiteSpace(imageName);
+        }
+
+        private static WzImageProperty GetChildProperty(WzImageProperty parent, string name)
+        {
+            if (parent == null || string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            if (parent[name] is WzImageProperty exactMatch)
+            {
+                return exactMatch;
+            }
+
+            foreach (WzImageProperty child in parent.WzProperties.OfType<WzImageProperty>())
+            {
+                if (string.Equals(child.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return child;
+                }
+            }
+
+            return null;
         }
 
         private static void ApplyThemeScopedEnableState<TKey>(
@@ -1349,12 +1374,39 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string resolvedName = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackName);
-            if (!string.IsNullOrWhiteSpace(resolvedName) && parent[resolvedName] is WzImageProperty resolvedProperty)
+            if (!string.IsNullOrWhiteSpace(resolvedName))
             {
-                return resolvedProperty;
+                WzImageProperty resolvedProperty = GetChildProperty(parent, resolvedName);
+                if (resolvedProperty != null)
+                {
+                    return resolvedProperty;
+                }
             }
 
-            return parent[fallbackName];
+            return GetChildProperty(parent, fallbackName);
+        }
+
+        private static WzImageProperty GetChildProperty(WzImageProperty parent, string name)
+        {
+            if (parent == null || string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            if (parent[name] is WzImageProperty exactMatch)
+            {
+                return exactMatch;
+            }
+
+            foreach (WzImageProperty child in parent.WzProperties.OfType<WzImageProperty>())
+            {
+                if (string.Equals(child.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return child;
+                }
+            }
+
+            return null;
         }
 
         private static WzImageProperty ResolveFirstClientProperty(

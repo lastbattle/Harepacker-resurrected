@@ -88,7 +88,9 @@ namespace HaCreator.MapSimulator.Managers
         private enum DisassemblyTargetEntryEncoding
         {
             WideSlotInt32,
-            CompactSlotUInt16
+            CompactSlotUInt16,
+            WideSlotOnlyInt32,
+            CompactSlotOnlyUInt16
         }
 
         private enum HiddenRecipeEntryEncoding
@@ -419,22 +421,16 @@ namespace HaCreator.MapSimulator.Managers
                 deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ClearDisassemblyTargets;
             }
 
-            List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions = null;
-            if ((compactDeltaFlags & 0x08) != 0)
+            bool hasDisassemblyTargetAdditions = (compactDeltaFlags & 0x08) != 0;
+            bool hasDisassemblyTargetRemovals = (compactDeltaFlags & 0x10) != 0;
+            if (hasDisassemblyTargetAdditions)
             {
                 deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions;
-                disassemblyTargetAdditions = ReadDisassemblyTargetAdditions16(
-                    reader,
-                    "Maker-session compact delta disassembly target addition");
             }
 
-            List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals = null;
-            if ((compactDeltaFlags & 0x10) != 0)
+            if (hasDisassemblyTargetRemovals)
             {
                 deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetRemovals;
-                disassemblyTargetRemovals = ReadDisassemblyTargetRemovals16(
-                    reader,
-                    "Maker-session compact delta disassembly target removal");
             }
 
             if ((compactDeltaFlags & 0x20) != 0)
@@ -457,44 +453,36 @@ namespace HaCreator.MapSimulator.Managers
                 deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ClearAll;
             }
 
-            List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions = null;
-            List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals = null;
-            if (reader.BaseStream.Position < reader.BaseStream.Length)
-            {
-                // Some maker-session compact delta variants append hidden-list deltas without
-                // setting the hidden-list override bit. Keep this tail parser permissive and
-                // accept the observed add+remove lane plus one-list variants.
-                byte[] hiddenTailPayload = reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
-                if (!TryDecodeCompactHiddenTail(
-                    hiddenTailPayload,
-                    out hiddenRecipeAdditions,
-                    out hiddenRecipeRemovals,
+            byte[] listAndHiddenTailPayload = reader.BaseStream.Position < reader.BaseStream.Length
+                ? reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position))
+                : Array.Empty<byte>();
+            if (!TryDecodeCompactDeltaListAndHiddenTailPayload(
+                    listAndHiddenTailPayload,
+                    hasDisassemblyTargetAdditions,
+                    hasDisassemblyTargetRemovals,
+                    out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
+                    out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
+                    out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
+                    out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals,
                     out bool clearsHiddenRecipes,
                     out error))
-                {
-                    return false;
-                }
-
-                if (clearsHiddenRecipes)
-                {
-                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ClearHiddenRecipeEntries;
-                }
-
-                if (hiddenRecipeAdditions?.Count > 0)
-                {
-                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions;
-                }
-
-                if (hiddenRecipeRemovals?.Count > 0)
-                {
-                    deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals;
-                }
+            {
+                return false;
             }
 
-            if (reader.BaseStream.Position != reader.BaseStream.Length)
+            if (clearsHiddenRecipes)
             {
-                error = $"Maker-session compact delta payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
-                return false;
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.ClearHiddenRecipeEntries;
+            }
+
+            if (hiddenRecipeAdditions?.Count > 0)
+            {
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions;
+            }
+
+            if (hiddenRecipeRemovals?.Count > 0)
+            {
+                deltaFlags |= PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals;
             }
 
             result = new PacketOwnedItemMakerSession
@@ -507,6 +495,236 @@ namespace HaCreator.MapSimulator.Managers
                 HiddenRecipeRemovals = hiddenRecipeRemovals ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
             };
             return true;
+        }
+
+        private static bool TryDecodeCompactDeltaListAndHiddenTailPayload(
+            byte[] payload,
+            bool hasDisassemblyTargetAdditions,
+            bool hasDisassemblyTargetRemovals,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals,
+            out bool clearsHiddenRecipes,
+            out string error)
+        {
+            disassemblyTargetAdditions = null;
+            disassemblyTargetRemovals = null;
+            hiddenRecipeAdditions = null;
+            hiddenRecipeRemovals = null;
+            clearsHiddenRecipes = false;
+            error = null;
+
+            DisassemblyTargetEntryEncoding[] additionEncodings = hasDisassemblyTargetAdditions
+                ? new[]
+                {
+                    DisassemblyTargetEntryEncoding.WideSlotInt32,
+                    DisassemblyTargetEntryEncoding.CompactSlotUInt16,
+                    DisassemblyTargetEntryEncoding.WideSlotOnlyInt32,
+                    DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16
+                }
+                : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
+            DisassemblyTargetEntryEncoding[] removalEncodings = hasDisassemblyTargetRemovals
+                ? new[]
+                {
+                    DisassemblyTargetEntryEncoding.WideSlotInt32,
+                    DisassemblyTargetEntryEncoding.CompactSlotUInt16,
+                    DisassemblyTargetEntryEncoding.WideSlotOnlyInt32,
+                    DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16
+                }
+                : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
+
+            for (int additionEncodingIndex = 0; additionEncodingIndex < additionEncodings.Length; additionEncodingIndex++)
+            {
+                DisassemblyTargetEntryEncoding additionEncoding = additionEncodings[additionEncodingIndex];
+                for (int removalEncodingIndex = 0; removalEncodingIndex < removalEncodings.Length; removalEncodingIndex++)
+                {
+                    DisassemblyTargetEntryEncoding removalEncoding = removalEncodings[removalEncodingIndex];
+                    if (!TryDecodeCompactDeltaListsAndHiddenTailWithEncodings(
+                            payload,
+                            hasDisassemblyTargetAdditions,
+                            hasDisassemblyTargetRemovals,
+                            additionEncoding,
+                            removalEncoding,
+                            out disassemblyTargetAdditions,
+                            out disassemblyTargetRemovals,
+                            out hiddenRecipeAdditions,
+                            out hiddenRecipeRemovals,
+                            out clearsHiddenRecipes))
+                    {
+                        continue;
+                    }
+
+                    return true;
+                }
+            }
+
+            error = "Maker-session compact delta hidden tail could not be decoded.";
+            return false;
+        }
+
+        private static bool TryDecodeCompactDeltaListsAndHiddenTailWithEncodings(
+            byte[] payload,
+            bool hasDisassemblyTargetAdditions,
+            bool hasDisassemblyTargetRemovals,
+            DisassemblyTargetEntryEncoding additionEncoding,
+            DisassemblyTargetEntryEncoding removalEncoding,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals,
+            out bool clearsHiddenRecipes)
+        {
+            disassemblyTargetAdditions = null;
+            disassemblyTargetRemovals = null;
+            hiddenRecipeAdditions = null;
+            hiddenRecipeRemovals = null;
+            clearsHiddenRecipes = false;
+
+            try
+            {
+                using MemoryStream stream = new(payload ?? Array.Empty<byte>(), writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                if (hasDisassemblyTargetAdditions &&
+                    !TryReadDisassemblyTargetEntries16(
+                        reader,
+                        additionEncoding,
+                        requirePositiveItemId: false,
+                        "Maker-session compact delta disassembly target addition",
+                        out disassemblyTargetAdditions))
+                {
+                    return false;
+                }
+
+                if (hasDisassemblyTargetRemovals &&
+                    !TryReadDisassemblyTargetEntries16(
+                        reader,
+                        removalEncoding,
+                        requirePositiveItemId: false,
+                        "Maker-session compact delta disassembly target removal",
+                        out disassemblyTargetRemovals))
+                {
+                    return false;
+                }
+
+                byte[] hiddenTailPayload = reader.BaseStream.Position < reader.BaseStream.Length
+                    ? reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position))
+                    : Array.Empty<byte>();
+                return TryDecodeCompactHiddenTail(
+                    hiddenTailPayload,
+                    out hiddenRecipeAdditions,
+                    out hiddenRecipeRemovals,
+                    out clearsHiddenRecipes,
+                    out _);
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TryReadDisassemblyTargetEntries16(
+            BinaryReader reader,
+            DisassemblyTargetEntryEncoding encoding,
+            bool requirePositiveItemId,
+            string label,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> entries)
+        {
+            entries = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                int count = ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
+                if (count <= 0)
+                {
+                    return true;
+                }
+
+                int entryWidth = encoding switch
+                {
+                    DisassemblyTargetEntryEncoding.CompactSlotUInt16 => sizeof(ushort) + sizeof(int),
+                    DisassemblyTargetEntryEncoding.WideSlotOnlyInt32 => sizeof(int),
+                    DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16 => sizeof(ushort),
+                    _ => sizeof(int) * 2
+                };
+
+                long requiredBytes = (long)entryWidth * count;
+                if (reader.BaseStream.Length - reader.BaseStream.Position < requiredBytes)
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                entries = new List<PacketOwnedItemMakerDisassemblyTargetEntry>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    int slotIndex;
+                    int itemId;
+                    switch (encoding)
+                    {
+                        case DisassemblyTargetEntryEncoding.CompactSlotUInt16:
+                            slotIndex = reader.ReadUInt16();
+                            itemId = reader.ReadInt32();
+                            break;
+                        case DisassemblyTargetEntryEncoding.WideSlotOnlyInt32:
+                            slotIndex = reader.ReadInt32();
+                            itemId = 0;
+                            break;
+                        case DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16:
+                            slotIndex = reader.ReadUInt16();
+                            itemId = 0;
+                            break;
+                        default:
+                            slotIndex = reader.ReadInt32();
+                            itemId = reader.ReadInt32();
+                            break;
+                    }
+
+                    if (slotIndex < 0)
+                    {
+                        reader.BaseStream.Position = startPosition;
+                        return false;
+                    }
+
+                    if (requirePositiveItemId && itemId <= 0)
+                    {
+                        reader.BaseStream.Position = startPosition;
+                        return false;
+                    }
+
+                    entries.Add(new PacketOwnedItemMakerDisassemblyTargetEntry(slotIndex, itemId));
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (IOException)
+            {
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
         }
 
         private static bool TryDecodeDeltaPayload(

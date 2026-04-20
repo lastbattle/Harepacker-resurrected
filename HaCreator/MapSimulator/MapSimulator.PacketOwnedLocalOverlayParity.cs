@@ -4467,13 +4467,22 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!_pendingFieldHazardPetAutoConsumeRequest.HasValue)
+            FieldHazardPetAutoConsumeRequest request;
+            bool usesClosedOwner = false;
+            if (_pendingFieldHazardPetAutoConsumeRequest.HasValue)
+            {
+                request = _pendingFieldHazardPetAutoConsumeRequest.Value;
+            }
+            else if (TryGetRecentClosedFieldHazardPetAutoConsumeRequest(currTickCount, out request))
+            {
+                usesClosedOwner = true;
+            }
+            else
             {
                 message = "Pet-consume result payload arrived without a pending field-hazard request.";
                 return false;
             }
 
-            FieldHazardPetAutoConsumeRequest request = _pendingFieldHazardPetAutoConsumeRequest.Value;
             if (!MatchesFieldHazardPetConsumeInboundResult(
                     request.InventoryClientSlotIndex,
                     request.Candidate.ItemId,
@@ -4482,10 +4491,11 @@ namespace HaCreator.MapSimulator
             {
                 message = string.Format(
                     CultureInfo.InvariantCulture,
-                    "Pet-consume result targeted slot={0}, item={1}, requestIndex={2}, but the pending field-hazard request is slot={3}, item={4}, requestIndex={5}.",
+                    "Pet-consume result targeted slot={0}, item={1}, requestIndex={2}, but the {3} field-hazard request is slot={4}, item={5}, requestIndex={6}.",
                     result.Slot,
                     result.ItemId,
                     DescribeFieldHazardPetConsumeRequestIndexForDiagnostics(result.HasRequestIndex, result.RequestIndex),
+                    usesClosedOwner ? "recently closed" : "pending",
                     request.InventoryClientSlotIndex,
                     request.Candidate.ItemId,
                     request.RequestIndex);
@@ -4493,8 +4503,88 @@ namespace HaCreator.MapSimulator
             }
 
             StampPacketOwnedUtilityRequestState();
+            if (usesClosedOwner)
+            {
+                message = ApplyPacketOwnedPetConsumeResultForRecentlyClosedRequest(request, result, currTickCount);
+                return true;
+            }
+
             message = ApplyPacketOwnedPetConsumeResult(request, result, currTickCount);
             return true;
+        }
+
+        private string ApplyPacketOwnedPetConsumeResultForRecentlyClosedRequest(
+            FieldHazardPetAutoConsumeRequest request,
+            FieldHazardPetConsumeInboundResult result,
+            int currentTickCount)
+        {
+            string petLabel = DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName);
+            string requestMode = DescribeFieldHazardSharedPetConsumeMode(request.SharedSource);
+            string requestVariant = DescribeFieldHazardRequestVariant(request.ForceRequest, request.BuffSkillRequest);
+            string resultDetailSuffix = string.IsNullOrWhiteSpace(result.Detail)
+                ? string.Empty
+                : $" {result.Detail.Trim()}";
+
+            ClearFieldHazardPendingInventoryRequest();
+            _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
+
+            switch (result.Kind)
+            {
+                case FieldHazardPetConsumeInboundResultKind.Consumed:
+                    if (TryUseConsumableInventoryItemAtSlot(
+                            request.Candidate.ItemId,
+                            request.Candidate.InventoryType,
+                            request.InventoryRuntimeSlotIndex,
+                            currentTickCount))
+                    {
+                        string consumedDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} consumed {request.Candidate.ItemName} through a late packet-owned result after the request had already left the live observation window.{resultDetailSuffix}";
+                        _localOverlayRuntime.SetFieldHazardFollowUp(consumedDetail, FieldHazardFollowUpKind.Consumed, currentTickCount);
+                        return consumedDetail;
+                    }
+
+                    {
+                        string consumedDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} reported a late packet-owned remote consumption for {request.Candidate.ItemName}, but {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} no longer matched the original ownership.{resultDetailSuffix}";
+                        _localOverlayRuntime.SetFieldHazardFollowUp(consumedDetail, FieldHazardFollowUpKind.Consumed, currentTickCount);
+                        return consumedDetail;
+                    }
+
+                case FieldHazardPetConsumeInboundResultKind.NoHpPotion:
+                    TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
+                    _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
+                    {
+                        string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} failed through a late packet-owned result because the HP potion was unavailable after the request had already closed.{resultDetailSuffix}";
+                        _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                        return detail;
+                    }
+
+                case FieldHazardPetConsumeInboundResultKind.Acknowledged:
+                {
+                    string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged by a late packet-owned result after the request had already closed.{resultDetailSuffix}";
+                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                    return detail;
+                }
+
+                case FieldHazardPetConsumeInboundResultKind.Dispatched:
+                {
+                    string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} reported a late packet-owned dispatch state after the request had already closed.{resultDetailSuffix}";
+                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Dispatched, currentTickCount);
+                    return detail;
+                }
+
+                case FieldHazardPetConsumeInboundResultKind.Deferred:
+                {
+                    string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} reported a late packet-owned deferred state after the request had already closed.{resultDetailSuffix}";
+                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Deferred, currentTickCount);
+                    return detail;
+                }
+
+                default:
+                {
+                    string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} failed through a late packet-owned result after the request had already closed.{resultDetailSuffix}";
+                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                    return detail;
+                }
+            }
         }
 
         private static string ReadPacketOwnedMapleString(BinaryReader reader)
@@ -4588,56 +4678,29 @@ namespace HaCreator.MapSimulator
 
             if (payload.Length > offset)
             {
-                bool parsedTail = false;
-                string tailDecodeError = null;
-
-                // Primary shape: request-index encoded as a single byte.
-                if (payload.Length >= offset + sizeof(byte)
-                    && TryDecodeFieldHazardPetConsumeResultDetail(
-                        payload,
-                        offset + sizeof(byte),
-                        out string byteIndexedDetail,
-                        out tailDecodeError))
-                {
-                    requestIndex = payload[offset];
-                    hasRequestIndex = true;
-                    detail = byteIndexedDetail;
-                    parsedTail = true;
-                }
-
-                // Alternate observed shape in mixed simulator/live traces: Int32 request-index.
-                if (!parsedTail
-                    && payload.Length >= offset + sizeof(int)
-                    && TryDecodeFieldHazardPetConsumeResultDetail(
-                        payload,
-                        offset + sizeof(int),
-                        out string intIndexedDetail,
-                        out tailDecodeError))
-                {
-                    requestIndex = BitConverter.ToInt32(payload, offset);
-                    hasRequestIndex = true;
-                    detail = intIndexedDetail;
-                    parsedTail = true;
-                }
-
-                // Fallback shape: detail-only payload with no explicit request-index targeting.
-                if (!parsedTail
-                    && TryDecodeFieldHazardPetConsumeResultDetail(
+                string tailDecodeError;
+                if (!TryDecodeFieldHazardPetConsumeResultTail(
                         payload,
                         offset,
-                        out string detailOnlyText,
+                        out requestIndex,
+                        out hasRequestIndex,
+                        out detail,
                         out tailDecodeError))
                 {
-                    requestIndex = -1;
-                    hasRequestIndex = false;
-                    detail = detailOnlyText;
-                    parsedTail = true;
-                }
-
-                if (!parsedTail)
-                {
-                    error = tailDecodeError ?? "Pet-consume result payload has an unsupported tail shape.";
-                    return false;
+                    // Additional observed shape in mixed simulator/live traces:
+                    // [petSerial:8][requestIndex/detail tail]
+                    if (!(payload.Length >= offset + sizeof(ulong)
+                          && TryDecodeFieldHazardPetConsumeResultTail(
+                              payload,
+                              offset + sizeof(ulong),
+                              out requestIndex,
+                              out hasRequestIndex,
+                              out detail,
+                              out tailDecodeError)))
+                    {
+                        error = tailDecodeError ?? "Pet-consume result payload has an unsupported tail shape.";
+                        return false;
+                    }
                 }
             }
 
@@ -4649,6 +4712,63 @@ namespace HaCreator.MapSimulator
                 hasRequestIndex,
                 detail);
             return true;
+        }
+
+        private static bool TryDecodeFieldHazardPetConsumeResultTail(
+            byte[] payload,
+            int tailOffset,
+            out int requestIndex,
+            out bool hasRequestIndex,
+            out string detail,
+            out string error)
+        {
+            requestIndex = -1;
+            hasRequestIndex = false;
+            detail = string.Empty;
+            error = null;
+
+            // Primary shape: request-index encoded as a single byte.
+            if (payload.Length >= tailOffset + sizeof(byte)
+                && TryDecodeFieldHazardPetConsumeResultDetail(
+                    payload,
+                    tailOffset + sizeof(byte),
+                    out string byteIndexedDetail,
+                    out error))
+            {
+                requestIndex = payload[tailOffset];
+                hasRequestIndex = true;
+                detail = byteIndexedDetail;
+                return true;
+            }
+
+            // Alternate observed shape in mixed simulator/live traces: Int32 request-index.
+            if (payload.Length >= tailOffset + sizeof(int)
+                && TryDecodeFieldHazardPetConsumeResultDetail(
+                    payload,
+                    tailOffset + sizeof(int),
+                    out string intIndexedDetail,
+                    out error))
+            {
+                requestIndex = BitConverter.ToInt32(payload, tailOffset);
+                hasRequestIndex = true;
+                detail = intIndexedDetail;
+                return true;
+            }
+
+            // Fallback shape: detail-only payload with no explicit request-index targeting.
+            if (TryDecodeFieldHazardPetConsumeResultDetail(
+                    payload,
+                    tailOffset,
+                    out string detailOnlyText,
+                    out error))
+            {
+                requestIndex = -1;
+                hasRequestIndex = false;
+                detail = detailOnlyText;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryDecodeFieldHazardPetConsumeResultDetail(

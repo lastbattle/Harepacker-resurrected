@@ -333,6 +333,7 @@ namespace HaCreator.MapSimulator.Character
             public bool ObservedPlayerFacingRight { get; set; }
             public bool ObservedPlayerFloatingState { get; set; }
             public int ObservedPlayerActionTriggerTime { get; set; } = int.MinValue;
+            public int? ObservedPlayerRawActionCode { get; set; }
         }
 
         private sealed class MirrorImageState
@@ -4364,7 +4365,10 @@ namespace HaCreator.MapSimulator.Character
                 QueuedForceReplay = useSpawnAction && queuedForceReplay,
                 ObservedPlayerFacingRight = FacingRight,
                 ObservedPlayerFloatingState = State is PlayerState.Swimming or PlayerState.Flying,
-                ObservedPlayerActionTriggerTime = observedAttackTriggerTime
+                ObservedPlayerActionTriggerTime = observedAttackTriggerTime,
+                ObservedPlayerRawActionCode = TryGetCurrentClientRawActionCode(out int observedRawActionCode)
+                    ? observedRawActionCode
+                    : null
             };
 
             if (TryRestoreShadowPartnerActionOwnerCounter(
@@ -7356,7 +7360,18 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            _ = sourceLayer;
+            if (lastInsertCanvasSourceLayer.HasValue
+                && lastInsertCanvasSourceLayer.Value != sourceLayer)
+            {
+                return false;
+            }
+
+            if (lastInsertCanvasOverlayTargetLayer.HasValue
+                && lastInsertCanvasOverlayTargetLayer.Value != overlayTargetLayer)
+            {
+                return false;
+            }
+
             _ = sourcePartsObjectId;
             _ = lastInsertCanvasSourcePartsObjectId;
             _ = sourceSignature;
@@ -7984,15 +7999,26 @@ namespace HaCreator.MapSimulator.Character
             string playerActionName = GetShadowPartnerObservedPlayerActionName();
             bool isFloatingState = State is PlayerState.Swimming or PlayerState.Flying;
             int actionTriggerTime = GetShadowPartnerObservedActionTriggerTime();
-            if (!string.Equals(playerActionName, _activeShadowPartner.ObservedPlayerActionName, StringComparison.OrdinalIgnoreCase)
-                || isFloatingState != _activeShadowPartner.ObservedPlayerFloatingState
-                || FacingRight != _activeShadowPartner.ObservedPlayerFacingRight
-                || actionTriggerTime != _activeShadowPartner.ObservedPlayerActionTriggerTime)
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            if (ShouldRefreshShadowPartnerObservation(
+                    playerActionName,
+                    isFloatingState,
+                    FacingRight,
+                    actionTriggerTime,
+                    rawActionCode,
+                    _activeShadowPartner.ObservedPlayerActionName,
+                    _activeShadowPartner.ObservedPlayerFloatingState,
+                    _activeShadowPartner.ObservedPlayerFacingRight,
+                    _activeShadowPartner.ObservedPlayerActionTriggerTime,
+                    _activeShadowPartner.ObservedPlayerRawActionCode))
             {
                 _activeShadowPartner.ObservedPlayerActionName = playerActionName;
                 _activeShadowPartner.ObservedPlayerFloatingState = isFloatingState;
                 _activeShadowPartner.ObservedPlayerFacingRight = FacingRight;
                 _activeShadowPartner.ObservedPlayerActionTriggerTime = actionTriggerTime;
+                _activeShadowPartner.ObservedPlayerRawActionCode = rawActionCode;
                 RefreshShadowPartnerClientOffsetTarget(currentTime, FacingRight);
                 bool observedAttackAction = ShouldUseShadowPartnerAttackObservationGate(playerActionName, State);
                 if (observedAttackAction)
@@ -8974,6 +9000,25 @@ namespace HaCreator.MapSimulator.Character
             return ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(observedPlayerActionName, state);
         }
 
+        private static bool ShouldRefreshShadowPartnerObservation(
+            string observedPlayerActionName,
+            bool observedFloatingState,
+            bool observedFacingRight,
+            int observedActionTriggerTime,
+            int? observedRawActionCode,
+            string previousObservedPlayerActionName,
+            bool previousObservedFloatingState,
+            bool previousObservedFacingRight,
+            int previousObservedActionTriggerTime,
+            int? previousObservedRawActionCode)
+        {
+            return !string.Equals(observedPlayerActionName, previousObservedPlayerActionName, StringComparison.OrdinalIgnoreCase)
+                || observedFloatingState != previousObservedFloatingState
+                || observedFacingRight != previousObservedFacingRight
+                || observedActionTriggerTime != previousObservedActionTriggerTime
+                || observedRawActionCode != previousObservedRawActionCode;
+        }
+
         private void TryQueuePostCreateShadowPartnerAttackResolution(
             string observedPlayerActionName,
             int observedActionTriggerTime,
@@ -9775,6 +9820,31 @@ namespace HaCreator.MapSimulator.Character
                 currentActionBlockingHoldActive);
         }
 
+        internal static bool ShouldRefreshShadowPartnerObservationForTesting(
+            string observedPlayerActionName,
+            bool observedFloatingState,
+            bool observedFacingRight,
+            int observedActionTriggerTime,
+            int? observedRawActionCode,
+            string previousObservedPlayerActionName,
+            bool previousObservedFloatingState,
+            bool previousObservedFacingRight,
+            int previousObservedActionTriggerTime,
+            int? previousObservedRawActionCode)
+        {
+            return ShouldRefreshShadowPartnerObservation(
+                observedPlayerActionName,
+                observedFloatingState,
+                observedFacingRight,
+                observedActionTriggerTime,
+                observedRawActionCode,
+                previousObservedPlayerActionName,
+                previousObservedFloatingState,
+                previousObservedFacingRight,
+                previousObservedActionTriggerTime,
+                previousObservedRawActionCode);
+        }
+
         internal static string ResolveMirrorImageActionOwnerNameForTesting()
         {
             return MirrorImagePersistentActionOwnerName;
@@ -9992,14 +10062,24 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int animationTime = GetRenderAnimationTime(currentTime);
+            CharacterPart mountedStatePart = ResolveMountedStateTamingMobPart();
 
             CharacterPart mountedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(mountedVehicleId);
             if (mountedPart?.Slot == EquipSlot.TamingMob)
             {
+                if (TryResolveCurrentRenderedMountedClientBodyRelMoveY(
+                        currentTime,
+                        mountedVehicleId,
+                        mountedStatePart,
+                        out int mountedBodyRelMoveY))
+                {
+                    return mountedBodyRelMoveY;
+                }
+
                 bool activeMountedStateMatchesRequestedVehicle = mountedVehicleId <= 0
-                    || MatchesTamingMobItemId(ResolveMountedStateTamingMobPart(), mountedVehicleId);
+                    || MatchesTamingMobItemId(mountedStatePart, mountedVehicleId);
                 if (activeMountedStateMatchesRequestedVehicle
-                    && TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out int mountedBodyRelMoveY))
+                    && TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out mountedBodyRelMoveY))
                 {
                     return mountedBodyRelMoveY;
                 }
@@ -10035,6 +10115,33 @@ namespace HaCreator.MapSimulator.Character
 
             int frameIndex = Assembler.GetFrameIndexAtTime(actionName, animationTime);
             return ResolveClientBodyRelMoveY(frames, frameIndex);
+        }
+
+        internal bool TryResolveCurrentRenderedMountedClientBodyRelMoveY(
+            int currentTime,
+            int mountedVehicleId,
+            CharacterPart mountedStatePart,
+            out int bodyRelMoveY)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            return TryResolveRenderedMountedClientBodyRelMoveY(
+                frame,
+                mountedVehicleId,
+                mountedStatePart,
+                out bodyRelMoveY);
+        }
+
+        internal static bool TryResolveRenderedMountedClientBodyRelMoveY(
+            AssembledFrame frame,
+            int mountedVehicleId,
+            CharacterPart mountedStatePart,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            bool activeMountedStateMatchesRequestedVehicle = mountedVehicleId <= 0
+                || MatchesTamingMobItemId(mountedStatePart, mountedVehicleId);
+            return activeMountedStateMatchesRequestedVehicle
+                && TryResolveMountedClientBodyRelMoveY(frame, out bodyRelMoveY);
         }
 
         internal bool TryResolveCurrentMountedClientBodyRelMoveY(

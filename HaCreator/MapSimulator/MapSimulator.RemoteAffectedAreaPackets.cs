@@ -1331,7 +1331,8 @@ namespace HaCreator.MapSimulator
             // replay for areas with explicit hostile WZ metadata.
             return ShouldAssumeRemoteAffectedAreaOwnerIsEnemyFromHostileMetadata(
                 hasResolvedOwnerTeam: false,
-                hasExplicitHostileMetadata: HasExplicitHostileRemoteAffectedAreaMetadataForLocalPlayer(areaObjectId));
+                hasExplicitHostileMetadata: HasExplicitHostileRemoteAffectedAreaMetadataForLocalPlayer(areaObjectId),
+                ownerIsPartyMember: IsAffectedAreaOwnerPartyMember(areaObjectId, ownerId));
         }
 
         private bool HasExplicitHostileRemoteAffectedAreaMetadataForLocalPlayer(int areaObjectId)
@@ -1369,9 +1370,12 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldAssumeRemoteAffectedAreaOwnerIsEnemyFromHostileMetadata(
             bool hasResolvedOwnerTeam,
-            bool hasExplicitHostileMetadata)
+            bool hasExplicitHostileMetadata,
+            bool ownerIsPartyMember = false)
         {
-            return !hasResolvedOwnerTeam && hasExplicitHostileMetadata;
+            return !hasResolvedOwnerTeam
+                   && hasExplicitHostileMetadata
+                   && !ownerIsPartyMember;
         }
 
         private bool TryResolveBattlefieldAffectedAreaOwnerTeam(

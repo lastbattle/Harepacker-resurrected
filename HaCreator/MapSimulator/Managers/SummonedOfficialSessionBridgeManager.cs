@@ -1714,6 +1714,37 @@ namespace HaCreator.MapSimulator.Managers
                 int replayMatchedCount = entries.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == true);
                 int replayMismatchCount = entries.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
                 int decodeFailedCount = entries.Length - decodedCount;
+                var sourceGroups = entries
+                    .GroupBy(entry => NormalizeSg88ReplaySourceForMatrix(entry.Source), StringComparer.Ordinal)
+                    .OrderByDescending(group => group.Count())
+                    .ThenBy(group => group.Key, StringComparer.Ordinal)
+                    .ToArray();
+                string sourceText = sourceGroups.Length == 0
+                    ? "none"
+                    : string.Join(
+                        Environment.NewLine,
+                        sourceGroups.Select(group =>
+                        {
+                            OutboundPacketTrace[] decodedEntries = group
+                                .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
+                                .ToArray();
+                            int matched = decodedEntries.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == true);
+                            int mismatched = decodedEntries.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
+                            int decodeFailed = group.Count() - decodedEntries.Length;
+                            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(decodedEntries);
+                            string vecCtrlHistogram = BuildSg88VecCtrlHistogram(decodedEntries.Select(entry => entry.DecodedSg88FirstUseRequest!.Value.VecCtrlState));
+                            string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(decodedEntries);
+                            string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(decodedEntries);
+                            string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(decodedEntries);
+                            return $"source={group.Key} count={group.Count()} decoded={decodedEntries.Length} matched={matched} mismatched={mismatched} decodeFailed={decodeFailed} rawMoves={rawMoveActionHistogram} vecCtrls={vecCtrlHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
+                        }));
+
+                OutboundPacketTrace[] officialEntries = entries
+                    .Where(entry => IsOfficialSg88ReplaySource(entry.Source))
+                    .ToArray();
+                string officialCaptureParity = officialEntries.Length == 0
+                    ? "none"
+                    : BuildSg88SourceParitySummary(officialEntries);
 
                 var matrixGroups = entries
                     .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
@@ -1839,6 +1870,12 @@ namespace HaCreator.MapSimulator.Managers
                     + Environment.NewLine
                     + $"observed={entries.Length} decoded={decodedCount} replayMatched={replayMatchedCount} replayMismatch={replayMismatchCount} decodeFailed={decodeFailedCount}"
                     + Environment.NewLine
+                    + "sourceRows:"
+                    + Environment.NewLine
+                    + sourceText
+                    + Environment.NewLine
+                    + $"officialCaptureParity={officialCaptureParity}"
+                    + Environment.NewLine
                     + "stateRows:"
                     + Environment.NewLine
                     + matrixText
@@ -1851,6 +1888,33 @@ namespace HaCreator.MapSimulator.Managers
                     + Environment.NewLine
                     + coreEquivalenceText;
             }
+        }
+
+        private static string BuildSg88SourceParitySummary(IEnumerable<OutboundPacketTrace> sourceEntries)
+        {
+            if (sourceEntries == null)
+            {
+                return "none";
+            }
+
+            OutboundPacketTrace[] entries = sourceEntries.ToArray();
+            if (entries.Length == 0)
+            {
+                return "none";
+            }
+
+            OutboundPacketTrace[] decodedEntries = entries
+                .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
+                .ToArray();
+            int matched = decodedEntries.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == true);
+            int mismatched = decodedEntries.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
+            int decodeFailed = entries.Length - decodedEntries.Length;
+            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(decodedEntries);
+            string vecCtrlHistogram = BuildSg88VecCtrlHistogram(decodedEntries.Select(entry => entry.DecodedSg88FirstUseRequest!.Value.VecCtrlState));
+            string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(decodedEntries);
+            string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(decodedEntries);
+            string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(decodedEntries);
+            return $"observed={entries.Length} decoded={decodedEntries.Length} matched={matched} mismatched={mismatched} decodeFailed={decodeFailed} rawMoves={rawMoveActionHistogram} vecCtrls={vecCtrlHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
         }
 
         private static string FormatObservedPacketList(IReadOnlyList<OutboundPacketTrace> observedPackets, OutboundPacketTrace? requestPacket)
@@ -2081,6 +2145,42 @@ namespace HaCreator.MapSimulator.Managers
         private static string FormatByteHex(byte value)
         {
             return $"0x{value:X2}";
+        }
+
+        private static bool IsOfficialSg88ReplaySource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeSg88ReplaySourceForMatrix(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return "unknown";
+            }
+
+            if (source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return "official-session";
+            }
+
+            if (source.StartsWith(SimulatorSg88TemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return "simulator-sg88-template";
+            }
+
+            if (source.StartsWith(SimulatorTeslaTemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return "simulator-tesla-template";
+            }
+
+            if (source.StartsWith("simulator:", StringComparison.OrdinalIgnoreCase))
+            {
+                return "simulator-other";
+            }
+
+            return source.Trim();
         }
 
         private static string ResolveSg88MoveActionMismatchClass(OutboundPacketTrace entry)

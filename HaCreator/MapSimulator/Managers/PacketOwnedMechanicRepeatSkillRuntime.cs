@@ -39,7 +39,7 @@ namespace HaCreator.MapSimulator.Managers
 
     internal static class PacketOwnedMechanicRepeatSkillRuntime
     {
-        private static readonly char[] Sg88MismatchByteListSeparators = { ',', ';', '|', ' ' };
+        private static readonly char[] Sg88MismatchByteListSeparators = { ',', ';', '|', ' ', '/' };
         private static readonly Regex Sg88MismatchPairRegex = new(
             @"byte\s*(?<index>\d+)\s*:\s*0x(?<observed>[0-9A-Fa-f]{1,2})\s*->\s*0x(?<rebuilt>[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -525,20 +525,33 @@ namespace HaCreator.MapSimulator.Managers
             }
             else
             {
-                while (valueEnd < decodeDetail.Length)
+                if (valueStart < decodeDetail.Length
+                    && TryResolveSg88MismatchListClosingMarker(decodeDetail[valueStart], out char closingMarker))
                 {
-                    char token = decodeDetail[valueEnd];
-                    if (char.IsWhiteSpace(token) || token is ')' or ';')
+                    valueStart++;
+                    valueEnd = decodeDetail.IndexOf(closingMarker, valueStart);
+                    if (valueEnd <= valueStart)
                     {
-                        break;
+                        return false;
+                    }
+                }
+                else
+                {
+                    while (valueEnd < decodeDetail.Length)
+                    {
+                        char token = decodeDetail[valueEnd];
+                        if (char.IsWhiteSpace(token) || token is ')' or ';')
+                        {
+                            break;
+                        }
+
+                        valueEnd++;
                     }
 
-                    valueEnd++;
-                }
-
-                if (valueEnd <= valueStart)
-                {
-                    return false;
+                    if (valueEnd <= valueStart)
+                    {
+                        return false;
+                    }
                 }
             }
 
@@ -671,17 +684,19 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string normalized = token.Trim();
+            if (normalized.StartsWith("bytes", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring("bytes".Length);
+            }
             if (normalized.StartsWith("byte", StringComparison.OrdinalIgnoreCase))
             {
                 normalized = normalized.Substring("byte".Length);
             }
 
             normalized = normalized.Trim();
-            if (normalized.StartsWith("[", StringComparison.Ordinal) && normalized.EndsWith("]", StringComparison.Ordinal))
-            {
-                normalized = normalized.Substring(1, normalized.Length - 2).Trim();
-            }
-            else if (normalized.StartsWith("(", StringComparison.Ordinal) && normalized.EndsWith(")", StringComparison.Ordinal))
+            while (normalized.Length >= 2
+                   && TryResolveSg88MismatchTokenWrapper(normalized[0], out char closingWrapper)
+                   && normalized[^1] == closingWrapper)
             {
                 normalized = normalized.Substring(1, normalized.Length - 2).Trim();
             }
@@ -711,6 +726,33 @@ namespace HaCreator.MapSimulator.Managers
 
             byteIndex = parsedByteIndex;
             return true;
+        }
+
+        private static bool TryResolveSg88MismatchListClosingMarker(char openingMarker, out char closingMarker)
+        {
+            switch (openingMarker)
+            {
+                case '[':
+                    closingMarker = ']';
+                    return true;
+                case '{':
+                    closingMarker = '}';
+                    return true;
+                case '(':
+                    closingMarker = ')';
+                    return true;
+                case '<':
+                    closingMarker = '>';
+                    return true;
+                default:
+                    closingMarker = '\0';
+                    return false;
+            }
+        }
+
+        private static bool TryResolveSg88MismatchTokenWrapper(char openingWrapper, out char closingWrapper)
+        {
+            return TryResolveSg88MismatchListClosingMarker(openingWrapper, out closingWrapper);
         }
 
         public static bool TryExtractSg88ReplayParityMismatchPairs(string decodeDetail, out string[] mismatchPairs)

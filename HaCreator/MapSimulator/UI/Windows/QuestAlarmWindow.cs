@@ -732,7 +732,6 @@ namespace HaCreator.MapSimulator.UI
                     ClampScrollOffset(snapshot);
                     RefreshFrame(snapshot);
                     UpdateButtonStates();
-                    return;
                 }
 
                 QuestRequested?.Invoke(row.QuestId);

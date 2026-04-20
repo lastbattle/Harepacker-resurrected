@@ -1643,6 +1643,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            displayText = FitInitialQuizOwnerTextToBounds(displayText, bounds.Width, scale);
+            if (string.IsNullOrEmpty(displayText))
+            {
+                return;
+            }
+
             ClientTextDrawing.Draw(
                 _spriteBatch,
                 displayText,

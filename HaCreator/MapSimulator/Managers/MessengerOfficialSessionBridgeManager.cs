@@ -205,7 +205,7 @@ namespace HaCreator.MapSimulator.Managers
                 : string.Empty;
             string outboundText = DescribeOutboundOpcodeSet();
             string inboundText = DescribeInboundOpcodeSet();
-            return $"{_ownerName} official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode {inboundText}{outboundText}.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"{_ownerName} official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode {inboundText}{outboundText}; verify={DescribeRecoveredParityVerificationCompact()}.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public string DescribeRecentOutboundPackets(int maxCount = 10)
@@ -279,6 +279,44 @@ namespace HaCreator.MapSimulator.Managers
         public string DescribeRecoveredPacketTable()
         {
             return PacketOwnedSocialUtilityPacketTable.DescribeRecoveredPacketTable(_ownerName);
+        }
+
+        public string DescribeRecoveredParityVerification()
+        {
+            lock (_sync)
+            {
+                string observedInboundOpcodes = _observedInboundOpcodes.Count == 0
+                    ? "none"
+                    : string.Join("/", _observedInboundOpcodes.OrderBy(opcode => opcode));
+                string ownerBranchEvidence = string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase)
+                    ? (_observedMapleTvSendResultCodes.Count == 0
+                        ? "observed send-result codes=none"
+                        : $"observed send-result codes={string.Join("/", _observedMapleTvSendResultCodes.OrderBy(code => code))}")
+                    : (_observedMessengerInboundSubtypes.Count == 0
+                        ? "observed subtypes=none"
+                        : $"observed subtypes={string.Join("/", _observedMessengerInboundSubtypes.OrderBy(code => code))}");
+                return $"{_ownerName} recovered-table verification: observed inbound opcodes={observedInboundOpcodes}; {ownerBranchEvidence}; expected requests={_expectedResultRequestCount}; matched={_expectedResultMatchCount}; mismatched={_expectedResultMismatchCount}; unexpected={_expectedResultUnexpectedCount}; evicted={_expectedResultEvictedCount}; pending={_pendingResultExpectations.Count}; unknown branches={_unknownInboundBranchCount}.";
+            }
+        }
+
+        public string ClearRecoveredParityVerification()
+        {
+            lock (_sync)
+            {
+                _pendingResultExpectations.Clear();
+                _observedInboundOpcodes.Clear();
+                _observedMessengerInboundSubtypes.Clear();
+                _observedMapleTvSendResultCodes.Clear();
+                _expectedResultRequestCount = 0;
+                _expectedResultMatchCount = 0;
+                _expectedResultMismatchCount = 0;
+                _expectedResultUnexpectedCount = 0;
+                _expectedResultEvictedCount = 0;
+                _unknownInboundBranchCount = 0;
+            }
+
+            LastStatus = $"{_ownerName} official-session bridge recovered-table verification counters cleared.";
+            return LastStatus;
         }
 
         public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
@@ -748,6 +786,7 @@ namespace HaCreator.MapSimulator.Managers
                     source,
                     $"packetserverraw {Convert.ToHexString(rawPacket)}",
                     opcode));
+            RecordExpectedResultForOutbound(opcode, payload, source, summary);
             LastStatus = $"Forwarded live {_ownerName} outbound opcode {opcode} type {payload[0]} from {source}.";
         }
 
@@ -759,6 +798,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte resultType = payload.Length > 0 ? payload[0] : (byte)0;
+            RecordRecoveredInboundVerification(opcode, payload, source);
             string summary = TryDescribeOwnerClientResult(opcode, payload, out string described)
                 ? described
                 : $"{_ownerName} result opcode={opcode} type={resultType}";
@@ -795,6 +835,105 @@ namespace HaCreator.MapSimulator.Managers
                 ? Array.Empty<byte>()
                 : rawPacket[sizeof(ushort)..];
             return true;
+        }
+
+        private void RecordExpectedResultForOutbound(int opcode, byte[] payload, string source, string summary)
+        {
+            if (!PacketOwnedSocialUtilityPacketTable.TryBuildRecoveredResultExpectation(
+                    _ownerName,
+                    opcode,
+                    payload,
+                    out int[] expectedInboundOpcodes,
+                    out byte[] expectedInboundSubtypes,
+                    out string expectationSummary))
+            {
+                return;
+            }
+
+            byte requestSubtype = payload.Length > 0 ? payload[0] : byte.MaxValue;
+            lock (_sync)
+            {
+                while (_pendingResultExpectations.Count >= MaxPendingResultExpectations)
+                {
+                    _pendingResultExpectations.RemoveAt(0);
+                    _expectedResultEvictedCount++;
+                }
+
+                _pendingResultExpectations.Add(
+                    new PendingResultExpectation(
+                        opcode,
+                        requestSubtype,
+                        source,
+                        summary,
+                        expectedInboundOpcodes ?? Array.Empty<int>(),
+                        expectedInboundSubtypes ?? Array.Empty<byte>(),
+                        expectationSummary ?? string.Empty));
+                _expectedResultRequestCount++;
+            }
+        }
+
+        private void RecordRecoveredInboundVerification(int inboundOpcode, byte[] payload, string source)
+        {
+            byte inboundSubtype = byte.MaxValue;
+            byte resultCode = byte.MaxValue;
+            bool decodedKnownBranch = PacketOwnedSocialUtilityPacketTable.TryDecodeRecoveredInboundBranch(
+                _ownerName,
+                inboundOpcode,
+                payload,
+                out inboundSubtype,
+                out resultCode,
+                out _);
+            bool isRecoveredInboundOpcode = PacketOwnedSocialUtilityPacketTable.IsRecoveredInboundOpcode(
+                _ownerName,
+                unchecked((ushort)Math.Clamp(inboundOpcode, ushort.MinValue, ushort.MaxValue)));
+
+            lock (_sync)
+            {
+                if (isRecoveredInboundOpcode)
+                {
+                    _observedInboundOpcodes.Add((ushort)inboundOpcode);
+                }
+
+                if (decodedKnownBranch)
+                {
+                    if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (resultCode != byte.MaxValue)
+                        {
+                            _observedMapleTvSendResultCodes.Add(resultCode);
+                        }
+                    }
+                    else if (inboundSubtype != byte.MaxValue)
+                    {
+                        _observedMessengerInboundSubtypes.Add(inboundSubtype);
+                    }
+                }
+                else if (isRecoveredInboundOpcode)
+                {
+                    _unknownInboundBranchCount++;
+                }
+
+                int matchIndex = FindMatchingExpectationIndex(_pendingResultExpectations, inboundOpcode, inboundSubtype, decodedKnownBranch);
+                if (matchIndex >= 0)
+                {
+                    _pendingResultExpectations.RemoveAt(matchIndex);
+                    _expectedResultMatchCount++;
+                    return;
+                }
+
+                int mismatchedIndex = FindMismatchedExpectationIndex(_pendingResultExpectations, inboundOpcode);
+                if (mismatchedIndex >= 0)
+                {
+                    _pendingResultExpectations.RemoveAt(mismatchedIndex);
+                    _expectedResultMismatchCount++;
+                    return;
+                }
+
+                if (decodedKnownBranch || isRecoveredInboundOpcode)
+                {
+                    _expectedResultUnexpectedCount++;
+                }
+            }
         }
 
         private bool TryDescribeOwnerClientRequest(int opcode, byte[] payload, out string summary)
@@ -848,6 +987,14 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return MessengerPacketCodec.TryDescribeClientResult(opcode, payload, out summary);
+        }
+
+        private string DescribeRecoveredParityVerificationCompact()
+        {
+            lock (_sync)
+            {
+                return $"req={_expectedResultRequestCount},match={_expectedResultMatchCount},mismatch={_expectedResultMismatchCount},unexpected={_expectedResultUnexpectedCount},pending={_pendingResultExpectations.Count},unknown={_unknownInboundBranchCount}";
+            }
         }
 
         private void StopInternal(bool clearPending)
@@ -914,6 +1061,16 @@ namespace HaCreator.MapSimulator.Managers
             LastSentRawPacket = Array.Empty<byte>();
             LastQueuedOpcode = -1;
             LastQueuedRawPacket = Array.Empty<byte>();
+            _pendingResultExpectations.Clear();
+            _observedInboundOpcodes.Clear();
+            _observedMessengerInboundSubtypes.Clear();
+            _observedMapleTvSendResultCodes.Clear();
+            _expectedResultRequestCount = 0;
+            _expectedResultMatchCount = 0;
+            _expectedResultMismatchCount = 0;
+            _expectedResultUnexpectedCount = 0;
+            _expectedResultEvictedCount = 0;
+            _unknownInboundBranchCount = 0;
         }
 
         private int FlushPendingOutboundPackets(BridgePair pair)
@@ -986,6 +1143,50 @@ namespace HaCreator.MapSimulator.Managers
             return _defaultOutboundOpcode == 0 && _additionalOutboundOpcodes.Count == 0
                 || _defaultOutboundOpcode > 0 && opcode == _defaultOutboundOpcode
                 || _additionalOutboundOpcodes.Contains((ushort)opcode);
+        }
+
+        private static int FindMatchingExpectationIndex(
+            IReadOnlyList<PendingResultExpectation> expectations,
+            int inboundOpcode,
+            byte inboundSubtype,
+            bool hasKnownSubtype)
+        {
+            for (int i = 0; i < expectations.Count; i++)
+            {
+                PendingResultExpectation expectation = expectations[i];
+                if ((expectation.ExpectedInboundOpcodes?.Length ?? 0) > 0
+                    && !expectation.ExpectedInboundOpcodes.Contains(inboundOpcode))
+                {
+                    continue;
+                }
+
+                if ((expectation.ExpectedInboundSubtypes?.Length ?? 0) == 0)
+                {
+                    return i;
+                }
+
+                if (hasKnownSubtype && expectation.ExpectedInboundSubtypes.Contains(inboundSubtype))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static int FindMismatchedExpectationIndex(IReadOnlyList<PendingResultExpectation> expectations, int inboundOpcode)
+        {
+            for (int i = 0; i < expectations.Count; i++)
+            {
+                PendingResultExpectation expectation = expectations[i];
+                if ((expectation.ExpectedInboundOpcodes?.Length ?? 0) > 0
+                    && expectation.ExpectedInboundOpcodes.Contains(inboundOpcode))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private string DescribeInboundOpcodeSet(ushort primaryOpcode)

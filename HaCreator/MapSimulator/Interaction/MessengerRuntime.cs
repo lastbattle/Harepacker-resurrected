@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BlinkDurationMs = 3000;
         private const int BlinkPulseIntervalMs = 180;
         private const int DeleteRequestGraceDelayMs = 550;
+        private const int ClaimRequestStageLifetimeMs = 30000;
+        private const int SessionOwnedLeaveAckTimeoutMs = 4000;
         private const byte MessengerChatClaimType = 3;
         private const string MessengerChatClaimContext = "Messenger";
         private static readonly MessengerContactDefinition[] ContactDefinitions =
@@ -47,8 +49,10 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _deleteRequested;
         private bool _windowCloseReady;
         private bool _exitPromptActive;
+        private bool _sessionOwnedLeaveRequestInFlight;
         private int _deleteRequestedTick = int.MinValue;
         private int _deleteDestroyReadyTick = int.MinValue;
+        private int _sessionOwnedLeaveRequestTick = int.MinValue;
         private string _lastActionSummary = "Messenger opened.";
         private string _lastPacketSummary = "Messenger packet trace idle.";
 

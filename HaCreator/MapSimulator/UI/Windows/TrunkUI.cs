@@ -842,6 +842,24 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (PacketOwnedGetItemRequested != null)
+            {
+                PacketOwnedTrunkRequestResult packetOwnedResult = PacketOwnedGetItemRequested(
+                    inventoryType,
+                    _storageSelectedIndex,
+                    selected);
+                _statusMessage = string.IsNullOrWhiteSpace(packetOwnedResult.Message)
+                    ? packetOwnedResult.Accepted
+                        ? "CTrunkDlg::SendGetItemRequest was staged."
+                        : "CTrunkDlg::SendGetItemRequest was rejected."
+                    : packetOwnedResult.Message;
+                if (packetOwnedResult.Accepted)
+                {
+                    UpdateButtonStates();
+                    return;
+                }
+            }
+
             InventorySlotData removed = RemoveStorageSlot(inventoryType, _storageSelectedIndex);
             if (removed == null)
             {
@@ -883,6 +901,38 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (PacketOwnedPutItemRequested != null)
+            {
+                int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, selected.MaxStackSize);
+                bool isStackable = IsStackable(inventoryType, maxStackSize);
+                int availableQuantity = Math.Max(1, selected.Quantity);
+                if (isStackable && availableQuantity > 1)
+                {
+                    _pendingPutInventoryType = inventoryType;
+                    _pendingPutInventoryRowIndex = _inventorySelectedIndex;
+                    _pendingPutSlotData = selected.Clone();
+                    _statusMessage = $"CTrunkDlg::AskItemCount is staging SendPutItemRequest for {FormatItemLabel(selected)}.";
+                    BeginMesoEntry(MesoEntryMode.PutItemCount);
+                    return;
+                }
+
+                PacketOwnedTrunkRequestResult packetOwnedResult = PacketOwnedPutItemRequested(
+                    inventoryType,
+                    _inventorySelectedIndex,
+                    selected,
+                    1);
+                _statusMessage = string.IsNullOrWhiteSpace(packetOwnedResult.Message)
+                    ? packetOwnedResult.Accepted
+                        ? "CTrunkDlg::SendPutItemRequest was staged."
+                        : "CTrunkDlg::SendPutItemRequest was rejected."
+                    : packetOwnedResult.Message;
+                if (packetOwnedResult.Accepted)
+                {
+                    UpdateButtonStates();
+                    return;
+                }
+            }
+
             if (!_inventory.TryRemoveSlotAt(inventoryType, _inventorySelectedIndex, out InventorySlotData removed))
             {
                 _statusMessage = "Unable to deposit the selected item.";
@@ -922,6 +972,7 @@ namespace HaCreator.MapSimulator.UI
         private void BeginMesoEntry(MesoEntryMode mode)
         {
             bool isMesoTransfer = mode == MesoEntryMode.Withdraw || mode == MesoEntryMode.Deposit;
+            bool isPutItemCount = mode == MesoEntryMode.PutItemCount;
             if (isMesoTransfer && !EnsureStorageAccess())
             {
                 CancelMesoEntry();
@@ -933,12 +984,16 @@ namespace HaCreator.MapSimulator.UI
                 ? GetStorageMesoCount()
                 : mode == MesoEntryMode.Deposit
                     ? _inventory?.GetMesoCount() ?? 0
+                    : isPutItemCount
+                        ? Math.Max(1, _pendingPutSlotData?.Quantity ?? 0)
                     : 0;
-            if (isMesoTransfer && (_inventory == null || maxValue <= 0))
+            if ((isMesoTransfer || isPutItemCount) && (_inventory == null || maxValue <= 0))
             {
                 _statusMessage = mode == MesoEntryMode.Withdraw
                     ? "No meso is stored."
-                    : "No meso is available to deposit.";
+                    : mode == MesoEntryMode.Deposit
+                        ? "No meso is available to deposit."
+                        : "No stackable inventory quantity is available to stage SendPutItemRequest.";
                 CancelMesoEntry();
                 UpdateButtonStates();
                 return;
@@ -955,6 +1010,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 MesoEntryMode.Withdraw => "Withdraw meso amount",
                 MesoEntryMode.Deposit => "Deposit meso amount",
+                MesoEntryMode.PutItemCount => "Deposit item count",
                 MesoEntryMode.VerifyAccountPic => "Enter account PIC",
                 MesoEntryMode.VerifyAccountSecondaryPassword => "Enter account secondary password",
                 MesoEntryMode.SetupSecondaryPassword => "Create storage passcode",
@@ -984,8 +1040,16 @@ namespace HaCreator.MapSimulator.UI
 
             if (!TryParseMesoEntry(out long amount))
             {
-                _statusMessage = $"Enter a meso amount between 1 and {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}.";
+                _statusMessage = _mesoEntryMode == MesoEntryMode.PutItemCount
+                    ? $"Enter a quantity between 1 and {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}."
+                    : $"Enter a meso amount between 1 and {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}.";
                 UpdateButtonStates();
+                return;
+            }
+
+            if (_mesoEntryMode == MesoEntryMode.PutItemCount)
+            {
+                ConfirmPutItemCountEntry((int)Math.Clamp(amount, 1, int.MaxValue));
                 return;
             }
 
@@ -1778,6 +1842,9 @@ namespace HaCreator.MapSimulator.UI
             _mesoEntryPrompt = string.Empty;
             _mesoEntryReplaceOnDigit = false;
             _secondaryPasswordConfirmationText = string.Empty;
+            _pendingPutInventoryType = InventoryType.NONE;
+            _pendingPutInventoryRowIndex = -1;
+            _pendingPutSlotData = null;
             _softKeyboardActive = false;
             ClearCompositionText();
         }
@@ -2199,6 +2266,7 @@ namespace HaCreator.MapSimulator.UI
         {
             return mode is MesoEntryMode.Withdraw
                 or MesoEntryMode.Deposit
+                or MesoEntryMode.PutItemCount
                 or MesoEntryMode.VerifyAccountPic
                 or MesoEntryMode.SetupSecondaryPassword
                 or MesoEntryMode.ConfirmSecondaryPassword
@@ -2209,12 +2277,45 @@ namespace HaCreator.MapSimulator.UI
         {
             return mode switch
             {
-                MesoEntryMode.Withdraw or MesoEntryMode.Deposit => MaxMesoDigits,
+                MesoEntryMode.Withdraw or MesoEntryMode.Deposit or MesoEntryMode.PutItemCount => MaxMesoDigits,
                 MesoEntryMode.VerifyAccountPic => ClientPicEditMaxLength,
                 MesoEntryMode.SetupSecondaryPassword or MesoEntryMode.ConfirmSecondaryPassword or MesoEntryMode.VerifySecondaryPassword => MaxSecondaryPasswordDigits,
                 MesoEntryMode.VerifyAccountSecondaryPassword => MaxAccountSecurityLength,
                 _ => MaxMesoDigits
             };
+        }
+
+        private void ConfirmPutItemCountEntry(int requestedQuantity)
+        {
+            if (PacketOwnedPutItemRequested == null ||
+                _pendingPutSlotData == null ||
+                _pendingPutInventoryType == InventoryType.NONE ||
+                _pendingPutInventoryRowIndex < 0)
+            {
+                _statusMessage = "CTrunkDlg::SendPutItemRequest could not stage because the selected packet-owned row is unavailable.";
+                CancelMesoEntry();
+                UpdateButtonStates();
+                return;
+            }
+
+            int availableQuantity = Math.Max(1, _pendingPutSlotData.Quantity);
+            int normalizedQuantity = Math.Clamp(requestedQuantity, 1, availableQuantity);
+            PacketOwnedTrunkRequestResult packetOwnedResult = PacketOwnedPutItemRequested(
+                _pendingPutInventoryType,
+                _pendingPutInventoryRowIndex,
+                _pendingPutSlotData,
+                normalizedQuantity);
+            _statusMessage = string.IsNullOrWhiteSpace(packetOwnedResult.Message)
+                ? packetOwnedResult.Accepted
+                    ? "CTrunkDlg::SendPutItemRequest was staged."
+                    : "CTrunkDlg::SendPutItemRequest was rejected."
+                : packetOwnedResult.Message;
+            if (packetOwnedResult.Accepted)
+            {
+                CancelMesoEntry();
+            }
+
+            UpdateButtonStates();
         }
 
         private static char? KeyToDigit(Keys key)

@@ -211,7 +211,11 @@ namespace HaCreator.MapSimulator.Pools
             || HasBlessingArmor
             || ExtendedState.HasAnyKnownState;
 
-        public bool IsHiddenLikeClient => HasDarkSight || HasWindWalk || GhostId.HasValue;
+        public bool IsHiddenLikeClient =>
+            HasDarkSight
+            || HasWindWalk
+            || GhostId.HasValue
+            || ExtendedState.HasSneak;
 
         public int? ActiveAuraSkillId =>
             ResolveAuraSkillId(HasYellowAura, YellowAuraValue, YellowAuraSkillId, AdvancedYellowAuraSkillId)
@@ -3005,7 +3009,24 @@ namespace HaCreator.MapSimulator.Pools
                 candidate = candidate[..extensionSeparatorIndex];
             }
 
-            return candidate.Trim().ToLowerInvariant();
+            string lowered = candidate.Trim().ToLowerInvariant();
+            string collapsed = CollapseHelperMarkerToken(lowered);
+            return collapsed switch
+            {
+                "guildmaster" => "guildmaster",
+                "partymaster" => "partymaster",
+                "usertrader" => "usertrader",
+                "anothertrader" => "anothertrader",
+                "another" => "another",
+                "user" => "user",
+                "friend" => "friend",
+                "guild" => "guild",
+                "match" => "match",
+                "party" => "party",
+                "clear" => "clear",
+                "none" => "none",
+                _ => lowered
+            };
         }
 
         private static bool IsNumericHelperMarkerPathSegment(string segment)
@@ -3024,6 +3045,44 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return true;
+        }
+
+        private static string CollapseHelperMarkerToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = null;
+            for (int i = 0; i < value.Length; i++)
+            {
+                char ch = value[i];
+                if (char.IsLetterOrDigit(ch))
+                {
+                    if (builder != null)
+                    {
+                        builder.Append(ch);
+                    }
+                }
+                else
+                {
+                    builder ??= new StringBuilder(value.Length);
+                    if (builder.Length == 0 && i > 0)
+                    {
+                        for (int j = 0; j < i; j++)
+                        {
+                            char existing = value[j];
+                            if (char.IsLetterOrDigit(existing))
+                            {
+                                builder.Append(existing);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return builder == null ? value : builder.ToString();
         }
 
         private static bool TryParseNamedHelper(ReadOnlySpan<byte> payload, out RemoteUserHelperPacket packet, out string error)
@@ -3728,6 +3787,16 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     preferredSkillId: 0,
                     maxScanBytes: AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    payloadMaskBaseOffset,
+                    preferredSkillId: 0,
                     out chargeSkillId))
             {
                 return true;

@@ -43,13 +43,19 @@ namespace HaCreator.MapSimulator.Interaction
             if (activeMountedRenderOwner?.Slot == EquipSlot.TamingMob
                 && CharacterAssembler.SupportsTamingMobAction(activeMountedRenderOwner, actionName))
             {
-                return activeMountedRenderOwner.ItemId;
+                return ResolveMountedActionOwnerItemId(
+                    activeMountedRenderOwner.ItemId,
+                    explicitMountedVehicleId,
+                    actionName);
             }
 
             if (tamingMobPart?.Slot == EquipSlot.TamingMob
                 && CharacterAssembler.SupportsTamingMobAction(tamingMobPart, actionName))
             {
-                return tamingMobPart.ItemId;
+                return ResolveMountedActionOwnerItemId(
+                    tamingMobPart.ItemId,
+                    explicitMountedVehicleId,
+                    actionName);
             }
 
             if (explicitMountedVehicleId > 0
@@ -117,6 +123,23 @@ namespace HaCreator.MapSimulator.Interaction
             return ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleMountOwnerItemId(mountItemId)
                 ? mountItemId
                 : 0;
+        }
+
+        private static int ResolveMountedActionOwnerItemId(
+            int candidateMountedVehicleId,
+            int explicitMountedVehicleId,
+            string actionName)
+        {
+            if (explicitMountedVehicleId > 0
+                && NormalizeMountedVehicleOwnerItemId(candidateMountedVehicleId) <= 0
+                && ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                    explicitMountedVehicleId,
+                    actionName))
+            {
+                return explicitMountedVehicleId;
+            }
+
+            return candidateMountedVehicleId;
         }
     }
 }

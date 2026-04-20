@@ -279,8 +279,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return ResolvePacketSpecialBranch(
                     skill,
                     assistType,
-                    "subsummon")
-                       ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0);
+                    "subsummon");
             }
 
             if (normalizedAction == ClientSelfDestructAttackAction)

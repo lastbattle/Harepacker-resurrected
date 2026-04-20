@@ -153,7 +153,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 PacketOwnedItemMakerDisassemblyTargetEntry target = targets[i];
                 if (target.SlotIndex == pendingRequest.SourceSlotIndex
-                    && target.ItemId == pendingRequest.SourceItemId)
+                    && (target.ItemId <= 0 || target.ItemId == pendingRequest.SourceItemId))
                 {
                     return false;
                 }
@@ -180,7 +180,7 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = 0; i < entries.Count; i++)
             {
                 PacketOwnedItemMakerDisassemblyTargetEntry entry = entries[i];
-                if (entry.SlotIndex < 0 || entry.ItemId <= 0)
+                if (entry.SlotIndex < 0)
                 {
                     continue;
                 }
@@ -249,7 +249,7 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = 0; i < additions.Count; i++)
             {
                 PacketOwnedItemMakerDisassemblyTargetEntry addition = additions[i];
-                if (addition.SlotIndex < 0 || addition.ItemId <= 0)
+                if (addition.SlotIndex < 0)
                 {
                     continue;
                 }
@@ -257,7 +257,9 @@ namespace HaCreator.MapSimulator.Managers
                 int existingIndex = currentEntries.FindIndex(entry => entry.SlotIndex == addition.SlotIndex);
                 if (existingIndex >= 0)
                 {
-                    currentEntries[existingIndex] = addition;
+                    PacketOwnedItemMakerDisassemblyTargetEntry existing = currentEntries[existingIndex];
+                    int resolvedItemId = addition.ItemId > 0 ? addition.ItemId : existing.ItemId;
+                    currentEntries[existingIndex] = new PacketOwnedItemMakerDisassemblyTargetEntry(addition.SlotIndex, resolvedItemId);
                 }
                 else
                 {

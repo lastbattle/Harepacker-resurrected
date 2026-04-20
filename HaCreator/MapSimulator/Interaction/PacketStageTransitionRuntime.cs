@@ -1301,6 +1301,19 @@ namespace HaCreator.MapSimulator.Interaction
                 int totalCashItemSerialNumberCount = 0;
                 for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
                 {
+                    InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
+                    ulong inventoryFlag = CharacterDataInventorySectionFlags[inventoryIndex];
+                    inventoryItemsByType[inventoryType] = Array.Empty<PacketCharacterDataItemSlot>();
+                    inventorySectionByteCounts[inventoryType] = 0;
+                    inventoryItemRecordCounts[inventoryType] = 0;
+                    inventoryItemRecordByteCounts[inventoryType] = 0;
+                    inventoryTerminatorByteCounts[inventoryType] = 0;
+                    cashItemSerialNumberCountsByType[inventoryType] = 0;
+                    decodedSectionByteCounts[inventoryFlag] = 0;
+                }
+
+                for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
+                {
                     if ((characterDataFlags & CharacterDataInventorySectionFlags[inventoryIndex]) == 0)
                     {
                         continue;
@@ -1716,6 +1729,10 @@ namespace HaCreator.MapSimulator.Interaction
                 out Dictionary<InventoryType, int> positionSlotOverflowByteCountsByType,
                 out Dictionary<InventoryType, int> positionCollisionCountsByType,
                 out Dictionary<InventoryType, int> positionCollisionByteCountsByType,
+                out Dictionary<InventoryType, int> positionFallbackInsertedCountsByType,
+                out Dictionary<InventoryType, int> positionFallbackInsertedByteCountsByType,
+                out Dictionary<InventoryType, int> positionFallbackReplacementCountsByType,
+                out Dictionary<InventoryType, int> positionFallbackReplacementByteCountsByType,
                 out int positionValidatedCount,
                 out int positionFallbackCount,
                 out int positionValidatedByteCount,
@@ -1725,7 +1742,11 @@ namespace HaCreator.MapSimulator.Interaction
                 out int positionSlotOverflowCount,
                 out int positionSlotOverflowByteCount,
                 out int positionCollisionCount,
-                out int positionCollisionByteCount);
+                out int positionCollisionByteCount,
+                out int positionFallbackInsertedCount,
+                out int positionFallbackInsertedByteCount,
+                out int positionFallbackReplacementCount,
+                out int positionFallbackReplacementByteCount);
 
             return snapshot with
             {
@@ -1746,6 +1767,10 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePositionSlotOverflowCashItemByteCountsByType = positionSlotOverflowByteCountsByType,
                 BackwardUpdatePositionCollisionCashItemCountsByType = positionCollisionCountsByType,
                 BackwardUpdatePositionCollisionCashItemByteCountsByType = positionCollisionByteCountsByType,
+                BackwardUpdatePositionFallbackInsertedCashItemCountsByType = positionFallbackInsertedCountsByType,
+                BackwardUpdatePositionFallbackInsertedCashItemByteCountsByType = positionFallbackInsertedByteCountsByType,
+                BackwardUpdatePositionFallbackReplacementCashItemCountsByType = positionFallbackReplacementCountsByType,
+                BackwardUpdatePositionFallbackReplacementCashItemByteCountsByType = positionFallbackReplacementByteCountsByType,
                 BackwardUpdatePositionValidatedCashItemCount = positionValidatedCount,
                 BackwardUpdatePositionFallbackCashItemCount = positionFallbackCount,
                 BackwardUpdatePositionValidatedCashItemByteCount = positionValidatedByteCount,
@@ -1755,7 +1780,11 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePositionSlotOverflowCashItemCount = positionSlotOverflowCount,
                 BackwardUpdatePositionSlotOverflowCashItemByteCount = positionSlotOverflowByteCount,
                 BackwardUpdatePositionCollisionCashItemCount = positionCollisionCount,
-                BackwardUpdatePositionCollisionCashItemByteCount = positionCollisionByteCount
+                BackwardUpdatePositionCollisionCashItemByteCount = positionCollisionByteCount,
+                BackwardUpdatePositionFallbackInsertedCashItemCount = positionFallbackInsertedCount,
+                BackwardUpdatePositionFallbackInsertedCashItemByteCount = positionFallbackInsertedByteCount,
+                BackwardUpdatePositionFallbackReplacementCashItemCount = positionFallbackReplacementCount,
+                BackwardUpdatePositionFallbackReplacementCashItemByteCount = positionFallbackReplacementByteCount
             };
         }
 
@@ -1772,6 +1801,10 @@ namespace HaCreator.MapSimulator.Interaction
             out Dictionary<InventoryType, int> positionSlotOverflowByteCountsByType,
             out Dictionary<InventoryType, int> positionCollisionCountsByType,
             out Dictionary<InventoryType, int> positionCollisionByteCountsByType,
+            out Dictionary<InventoryType, int> positionFallbackInsertedCountsByType,
+            out Dictionary<InventoryType, int> positionFallbackInsertedByteCountsByType,
+            out Dictionary<InventoryType, int> positionFallbackReplacementCountsByType,
+            out Dictionary<InventoryType, int> positionFallbackReplacementByteCountsByType,
             out int positionValidatedCount,
             out int positionFallbackCount,
             out int positionValidatedByteCount,
@@ -1781,7 +1814,11 @@ namespace HaCreator.MapSimulator.Interaction
             out int positionSlotOverflowCount,
             out int positionSlotOverflowByteCount,
             out int positionCollisionCount,
-            out int positionCollisionByteCount)
+            out int positionCollisionByteCount,
+            out int positionFallbackInsertedCount,
+            out int positionFallbackInsertedByteCount,
+            out int positionFallbackReplacementCount,
+            out int positionFallbackReplacementByteCount)
         {
             positionValidatedCountsByType = new Dictionary<InventoryType, int>();
             positionFallbackCountsByType = new Dictionary<InventoryType, int>();
@@ -1793,6 +1830,10 @@ namespace HaCreator.MapSimulator.Interaction
             positionSlotOverflowByteCountsByType = new Dictionary<InventoryType, int>();
             positionCollisionCountsByType = new Dictionary<InventoryType, int>();
             positionCollisionByteCountsByType = new Dictionary<InventoryType, int>();
+            positionFallbackInsertedCountsByType = new Dictionary<InventoryType, int>();
+            positionFallbackInsertedByteCountsByType = new Dictionary<InventoryType, int>();
+            positionFallbackReplacementCountsByType = new Dictionary<InventoryType, int>();
+            positionFallbackReplacementByteCountsByType = new Dictionary<InventoryType, int>();
             positionValidatedCount = 0;
             positionFallbackCount = 0;
             positionValidatedByteCount = 0;
@@ -1803,6 +1844,10 @@ namespace HaCreator.MapSimulator.Interaction
             positionSlotOverflowByteCount = 0;
             positionCollisionCount = 0;
             positionCollisionByteCount = 0;
+            positionFallbackInsertedCount = 0;
+            positionFallbackInsertedByteCount = 0;
+            positionFallbackReplacementCount = 0;
+            positionFallbackReplacementByteCount = 0;
 
             if (inventoryItemsByType == null)
             {
@@ -1828,6 +1873,10 @@ namespace HaCreator.MapSimulator.Interaction
                 int slotOverflowBytesForType = 0;
                 int collisionForType = 0;
                 int collisionBytesForType = 0;
+                int fallbackInsertedForType = 0;
+                int fallbackInsertedBytesForType = 0;
+                int fallbackReplacementForType = 0;
+                int fallbackReplacementBytesForType = 0;
                 int slotCapacity = ResolveBackwardUpdateSlotCapacity(inventoryType, slots, inventorySlotLimits);
                 HashSet<short> reservedValidatedPositions = new();
                 for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
@@ -1856,6 +1905,17 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         fallbackForType++;
                         fallbackBytesForType = checked(fallbackBytesForType + slotByteCount);
+                        if (TryReserveBackwardUpdateFallbackPosition(slotCapacity, reservedValidatedPositions, out _))
+                        {
+                            fallbackInsertedForType++;
+                            fallbackInsertedBytesForType = checked(fallbackInsertedBytesForType + slotByteCount);
+                        }
+                        else
+                        {
+                            fallbackReplacementForType++;
+                            fallbackReplacementBytesForType = checked(fallbackReplacementBytesForType + slotByteCount);
+                        }
+
                         if (evaluation == BackwardUpdateCashItemPositionEvaluation.SlotOverflow)
                         {
                             slotOverflowForType++;
@@ -1913,7 +1973,46 @@ namespace HaCreator.MapSimulator.Interaction
                     positionCollisionCount = checked(positionCollisionCount + collisionForType);
                     positionCollisionByteCount = checked(positionCollisionByteCount + collisionBytesForType);
                 }
+
+                if (fallbackInsertedForType > 0)
+                {
+                    positionFallbackInsertedCountsByType[inventoryType] = fallbackInsertedForType;
+                    positionFallbackInsertedByteCountsByType[inventoryType] = fallbackInsertedBytesForType;
+                    positionFallbackInsertedCount = checked(positionFallbackInsertedCount + fallbackInsertedForType);
+                    positionFallbackInsertedByteCount = checked(positionFallbackInsertedByteCount + fallbackInsertedBytesForType);
+                }
+
+                if (fallbackReplacementForType > 0)
+                {
+                    positionFallbackReplacementCountsByType[inventoryType] = fallbackReplacementForType;
+                    positionFallbackReplacementByteCountsByType[inventoryType] = fallbackReplacementBytesForType;
+                    positionFallbackReplacementCount = checked(positionFallbackReplacementCount + fallbackReplacementForType);
+                    positionFallbackReplacementByteCount = checked(positionFallbackReplacementByteCount + fallbackReplacementBytesForType);
+                }
             }
+        }
+
+        private static bool TryReserveBackwardUpdateFallbackPosition(
+            int slotCapacity,
+            ISet<short> reservedPositions,
+            out short reservedPosition)
+        {
+            reservedPosition = 0;
+            if (slotCapacity <= 0 || reservedPositions == null)
+            {
+                return false;
+            }
+
+            for (short candidatePosition = 1; candidatePosition <= slotCapacity; candidatePosition++)
+            {
+                if (reservedPositions.Add(candidatePosition))
+                {
+                    reservedPosition = candidatePosition;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static BackwardUpdateCashItemPositionEvaluation EvaluateBackwardUpdateCashItemPosition(
@@ -3384,6 +3483,10 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionSlotOverflowCashItemByteCountsByType = null,
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionCollisionCashItemCountsByType = null,
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionCollisionCashItemByteCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionFallbackInsertedCashItemCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionFallbackInsertedCashItemByteCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionFallbackReplacementCashItemCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdatePositionFallbackReplacementCashItemByteCountsByType = null,
         int BackwardUpdatePositionValidatedCashItemCount = 0,
         int BackwardUpdatePositionFallbackCashItemCount = 0,
         int BackwardUpdatePositionValidatedCashItemByteCount = 0,
@@ -3394,6 +3497,10 @@ namespace HaCreator.MapSimulator.Interaction
         int BackwardUpdatePositionSlotOverflowCashItemByteCount = 0,
         int BackwardUpdatePositionCollisionCashItemCount = 0,
         int BackwardUpdatePositionCollisionCashItemByteCount = 0,
+        int BackwardUpdatePositionFallbackInsertedCashItemCount = 0,
+        int BackwardUpdatePositionFallbackInsertedCashItemByteCount = 0,
+        int BackwardUpdatePositionFallbackReplacementCashItemCount = 0,
+        int BackwardUpdatePositionFallbackReplacementCashItemByteCount = 0,
         LoginAvatarLook AvatarLook = null,
         int? PreInventoryHeaderValue1 = null,
         int? PreInventoryHeaderValue2 = null,

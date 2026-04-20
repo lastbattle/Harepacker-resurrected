@@ -388,6 +388,7 @@ namespace HaCreator.MapSimulator
         private bool _petHpAlertArmed = true;
         private int _petHpPotionFailureSpeechCount;
         private int _petMpPotionFailureSpeechCount;
+        private int _activeSetupExperienceChairItemId;
         private int _activeEnvironmentalDamageProtectionAmount;
         private int _activeEnvironmentalDamageProtectionExpiresAt = int.MinValue;
         private int _lastReactorCollisionCheckTick = -ReactorCollisionCheckIntervalMs;
@@ -2692,6 +2693,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+
             if (draftSnapshot.ActiveTab == ParcelDialogTab.QuickSend)
             {
                 if (draftSnapshot.AttachmentKind == MemoDraftAttachmentKind.Item)
@@ -3773,6 +3776,7 @@ namespace HaCreator.MapSimulator
                 keyConfigWindow.SetCommitHandler(SavePacketOwnedFuncKeyConfigFromLiveInput);
                 keyConfigWindow.SetClientOwnerStateProvider(ResolvePacketOwnedKeyConfigClientOwnerState);
                 keyConfigWindow.SetShortcutVisualStateProvider(ResolvePacketOwnedKeyConfigShortcutVisualState);
+                keyConfigWindow.SetPacketSlotVisualStateProvider(ResolvePacketOwnedKeyConfigPacketSlotVisualStates);
             }
 
             uiWindowManager.SyncKeyBindingsFromPlayerInput(_playerManager?.Input);
@@ -6832,12 +6836,26 @@ namespace HaCreator.MapSimulator
             CharacterBuild build = _playerManager?.Player?.Build;
             if (build != null)
             {
-                AppendRepairDurabilityEquippedEntries(entries, build);
+                LoginAvatarLook avatarLook = LoginAvatarLookCodec.CreateLook(build);
+                var equippedEntries = new List<RepairDurabilityWindow.RepairEntry>();
+                AppendRepairDurabilityEquippedEntries(
+                    equippedEntries,
+                    build,
+                    avatarLook?.VisibleEquipmentByBodyPart,
+                    avatarLook?.HiddenEquipmentByBodyPart);
+
+                IReadOnlyList<int> clientPositionOrder = RepairDurabilityClientParity.BuildClientEquippedPositionOrder(
+                    equippedEntries.Select(static entry => entry.EncodedSlotPosition));
+                foreach (int encodedPosition in clientPositionOrder)
+                {
+                    entries.AddRange(equippedEntries
+                        .Where(entry => entry.EncodedSlotPosition == encodedPosition)
+                        .OrderBy(entry => entry.Part?.ItemId ?? 0));
+                }
             }
 
             return entries
-                .OrderBy(entry => entry.IsInventorySlot ? 0 : 1)
-                .ThenBy(entry => entry.IsInventorySlot ? entry.EncodedSlotPosition : -entry.EncodedSlotPosition)
+                .OrderBy(entry => entry.EncodedSlotPosition)
                 .ThenBy(entry => entry.Part?.ItemId ?? entry.InventorySlot?.ItemId ?? 0)
                 .ToList();
         }
@@ -6880,7 +6898,9 @@ namespace HaCreator.MapSimulator
 
         private static void AppendRepairDurabilityEquippedEntries(
             ICollection<RepairDurabilityWindow.RepairEntry> entries,
-            CharacterBuild build)
+            CharacterBuild build,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart)
         {
             if (entries == null || build == null)
             {
@@ -6912,7 +6932,14 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                int encodedPosition = EncodeRepairDurabilityEquippedPosition(slot, part?.ItemId ?? 0);
+                bool preferHiddenLayer = build.HiddenEquipment?.TryGetValue(slot, out CharacterPart hiddenPart) == true
+                    && ReferenceEquals(part, hiddenPart);
+                int encodedPosition = EncodeRepairDurabilityEquippedPosition(
+                    slot,
+                    part?.ItemId ?? 0,
+                    preferHiddenLayer,
+                    visibleEquipmentByBodyPart,
+                    hiddenEquipmentByBodyPart);
                 if (encodedPosition == int.MinValue)
                 {
                     continue;
@@ -6925,8 +6952,7 @@ namespace HaCreator.MapSimulator
                     EncodedSlotPosition = encodedPosition,
                     Slot = slot,
                     IsInventorySlot = false,
-                    IsHiddenSlot = build.HiddenEquipment?.TryGetValue(slot, out CharacterPart hiddenPart) == true
-                        && ReferenceEquals(part, hiddenPart),
+                    IsHiddenSlot = preferHiddenLayer,
                     SlotLabel = BuildRepairDurabilitySlotLabel(slot),
                     ItemName = ResolveRepairDurabilityItemName(part, part.ItemId),
                     CurrentDurability = currentDurability,
@@ -7620,9 +7646,20 @@ namespace HaCreator.MapSimulator
             return entry?.Part ?? entry?.InventorySlot?.TooltipPart;
         }
 
-        private static int EncodeRepairDurabilityEquippedPosition(Character.EquipSlot slot, int itemId)
+        private static int EncodeRepairDurabilityEquippedPosition(
+            Character.EquipSlot slot,
+            int itemId,
+            bool preferHiddenLayer,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart)
         {
-            return RepairDurabilityClientParity.TryEncodeEquippedPosition(slot, itemId, out int encodedPosition)
+            return RepairDurabilityClientParity.TryEncodeEquippedPositionFromAvatarLook(
+                slot,
+                itemId,
+                preferHiddenLayer,
+                visibleEquipmentByBodyPart,
+                hiddenEquipmentByBodyPart,
+                out int encodedPosition)
                 ? encodedPosition
                 : int.MinValue;
         }
@@ -10273,6 +10310,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryUseSetupExperienceChairInventoryItem(itemId, currentTime))
+            {
+                return true;
+            }
+
             string itemName = ResolvePickupItemName(itemId);
             PushFieldRuleMessage(
                 string.IsNullOrWhiteSpace(itemName)
@@ -10281,6 +10323,109 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 false);
             return false;
+        }
+
+        private bool TryUseSetupExperienceChairInventoryItem(int itemId, int currentTime)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            if (_activeSetupExperienceChairItemId > 0 && !HasInventoryItem(_activeSetupExperienceChairItemId))
+            {
+                _activeSetupExperienceChairItemId = 0;
+            }
+
+            if (!TryResolveSetupExperienceChairUseMetadata(
+                    itemId,
+                    out int expRatePercent,
+                    out int maxAccumulatedExp,
+                    out bool partyExpEnabled))
+            {
+                return false;
+            }
+
+            string itemName = ResolvePickupItemName(itemId);
+            bool turningOn = _activeSetupExperienceChairItemId != itemId;
+            _activeSetupExperienceChairItemId = turningOn ? itemId : 0;
+            PushFieldRuleMessage(
+                BuildSetupExperienceChairUseMessage(
+                    itemName,
+                    turningOn,
+                    expRatePercent,
+                    maxAccumulatedExp,
+                    partyExpEnabled),
+                currentTime,
+                false);
+            return true;
+        }
+
+        private bool TryResolveSetupExperienceChairUseMetadata(
+            int itemId,
+            out int expRatePercent,
+            out int maxAccumulatedExp,
+            out bool partyExpEnabled)
+        {
+            expRatePercent = 0;
+            maxAccumulatedExp = 0;
+            partyExpEnabled = false;
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty infoProperty = LoadInventoryItemInfoProperty(itemId);
+            if (infoProperty == null)
+            {
+                return false;
+            }
+
+            expRatePercent = Math.Max(0, GetWzIntValue(infoProperty["expRate"]));
+            maxAccumulatedExp = Math.Max(0, GetWzIntValue(infoProperty["maxExp"]));
+            bool cashExpTicketEnabled = GetWzIntValue(infoProperty["cashExpTicketOn"]) == 1;
+            partyExpEnabled = GetWzIntValue(infoProperty["partyExpOn"]) == 1;
+            return IsSetupExperienceChairUseSupported(
+                expRatePercent,
+                maxAccumulatedExp,
+                cashExpTicketEnabled,
+                partyExpEnabled);
+        }
+
+        internal static bool IsSetupExperienceChairUseSupported(
+            int expRatePercent,
+            int maxAccumulatedExp,
+            bool cashExpTicketEnabled,
+            bool partyExpEnabled)
+        {
+            return expRatePercent > 0
+                   && maxAccumulatedExp > 0
+                   && (cashExpTicketEnabled || partyExpEnabled);
+        }
+
+        internal static string BuildSetupExperienceChairUseMessage(
+            string itemName,
+            bool turningOn,
+            int expRatePercent,
+            int maxAccumulatedExp,
+            bool partyExpEnabled)
+        {
+            string resolvedName = string.IsNullOrWhiteSpace(itemName)
+                ? "That setup EXP chair"
+                : itemName;
+            if (!turningOn)
+            {
+                return $"{resolvedName} is now OFF.";
+            }
+
+            string partyText = partyExpEnabled ? ", party EXP enabled" : string.Empty;
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0} is now ON ({1}% hunting EXP, cap {2:N0}{3}).",
+                resolvedName,
+                expRatePercent,
+                maxAccumulatedExp,
+                partyText);
         }
 
         private static string BuildPetFoodFailureMessage(PetController.PetFoodItemUseFailureReason failureReason)
@@ -22055,6 +22200,7 @@ namespace HaCreator.MapSimulator
         {
             runtime = null;
             kind = SocialRoomKind.PersonalShop;
+            SocialRoomKind? preferredKind = ResolveEmployeeBridgeHintPreferredKind(hint);
 
             SocialRoomEmployeeBridgeHintCandidate? bestCandidate = null;
             foreach (SocialRoomKind candidateKind in new[] { SocialRoomKind.EntrustedShop, SocialRoomKind.PersonalShop })
@@ -22072,7 +22218,7 @@ namespace HaCreator.MapSimulator
 
                 bool isVisible = uiWindowManager?.GetWindow(GetSocialRoomWindowName(candidateKind))?.IsVisible == true;
                 SocialRoomEmployeeBridgeHintCandidate candidate = new(candidateRuntime, candidateKind, score, isVisible);
-                if (!bestCandidate.HasValue || IsBetterSocialRoomEmployeeBridgeHintCandidate(candidate, bestCandidate.Value))
+                if (!bestCandidate.HasValue || IsBetterSocialRoomEmployeeBridgeHintCandidate(candidate, bestCandidate.Value, preferredKind))
                 {
                     bestCandidate = candidate;
                 }
@@ -22088,9 +22234,30 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private SocialRoomKind? ResolveEmployeeBridgeHintPreferredKind(SocialRoomEmployeePoolCodec.RoutingHint hint)
+        {
+            if (TryResolveSocialRoomKindFromMiniRoomType(hint.MiniRoomType, out SocialRoomKind packetHintKind))
+            {
+                return packetHintKind;
+            }
+
+            if (_packetOwnedEmployeePoolDispatcher.ActiveKind.HasValue)
+            {
+                return _packetOwnedEmployeePoolDispatcher.ActiveKind.Value;
+            }
+
+            if (_socialRoomEmployeeOfficialSessionBridge.PreferredKind.HasValue)
+            {
+                return _socialRoomEmployeeOfficialSessionBridge.PreferredKind.Value;
+            }
+
+            return null;
+        }
+
         internal static bool IsBetterSocialRoomEmployeeBridgeHintCandidate(
             SocialRoomEmployeeBridgeHintCandidate candidate,
-            SocialRoomEmployeeBridgeHintCandidate currentBest)
+            SocialRoomEmployeeBridgeHintCandidate currentBest,
+            SocialRoomKind? preferredKind)
         {
             if (candidate.Score != currentBest.Score)
             {
@@ -22100,6 +22267,13 @@ namespace HaCreator.MapSimulator
             if (candidate.IsVisible != currentBest.IsVisible)
             {
                 return candidate.IsVisible;
+            }
+
+            bool candidateMatchesPreferred = preferredKind.HasValue && candidate.Kind == preferredKind.Value;
+            bool currentMatchesPreferred = preferredKind.HasValue && currentBest.Kind == preferredKind.Value;
+            if (candidateMatchesPreferred != currentMatchesPreferred)
+            {
+                return candidateMatchesPreferred;
             }
 
             return candidate.Kind == SocialRoomKind.EntrustedShop
@@ -22167,6 +22341,47 @@ namespace HaCreator.MapSimulator
             out Vector2 position)
         {
             return TryResolveRemotePetPickupPosition(actorId, remoteUserPool, out position, null);
+        }
+
+        internal static bool TryResolveRemotePetPickupPosition(
+            int actorId,
+            RemoteUserActorPool remoteUserPool,
+            IReadOnlyDictionary<int, Vector2> predictedPetActorPositions,
+            out Vector2 position,
+            Func<int, int, Vector2?> observedOwnerSlotPositionResolver)
+        {
+            if (TryResolveRemotePetPickupPosition(
+                actorId,
+                remoteUserPool,
+                out position,
+                observedOwnerSlotPositionResolver))
+            {
+                return true;
+            }
+
+            if (predictedPetActorPositions == null || actorId == 0)
+            {
+                position = default;
+                return false;
+            }
+
+            if (predictedPetActorPositions.TryGetValue(actorId, out Vector2 exactPredictedPosition))
+            {
+                position = exactPredictedPosition;
+                return true;
+            }
+
+            Vector2? ownerScopedPredictedPosition = ResolveObservedRemotePetPickupPosition(
+                predictedPetActorPositions,
+                actorId);
+            if (ownerScopedPredictedPosition.HasValue)
+            {
+                position = ownerScopedPredictedPosition.Value;
+                return true;
+            }
+
+            position = default;
+            return false;
         }
 
         internal static bool TryResolveRemotePetPickupPosition(
@@ -27325,8 +27540,7 @@ namespace HaCreator.MapSimulator
                 return 1;
             }
 
-            if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack
-                || IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skill.SkillId))
+            if (IsLocalAttackAreaExplicitOwnerBranch(ownerLane, skill.SkillId))
             {
                 return 1;
             }
@@ -27378,36 +27592,54 @@ namespace HaCreator.MapSimulator
             }
 
             int resolvedMask = 0;
-            string token = skill.ElementAttributeToken ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(token))
+            string[] tokenSources =
+            {
+                skill.ElementAttributeToken ?? string.Empty,
+                skill.DotType ?? string.Empty,
+                skill.AffectedSkillEffect ?? string.Empty
+            };
+
+            bool hasAnyTokenSource = false;
+            for (int sourceIndex = 0; sourceIndex < tokenSources.Length; sourceIndex++)
+            {
+                if (string.IsNullOrWhiteSpace(tokenSources[sourceIndex]))
+                {
+                    continue;
+                }
+
+                hasAnyTokenSource = true;
+                string[] parts = tokenSources[sourceIndex].Split(
+                    new[] { ',', '|', '&', ' ', '/', '\\', ';', ':', '+', '(', ')', '[', ']', '{', '}', '-', '_' },
+                    StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0)
+                {
+                    parts = new[] { tokenSources[sourceIndex] };
+                }
+
+                for (int partIndex = 0; partIndex < parts.Length; partIndex++)
+                {
+                    string part = parts[partIndex]?.Trim();
+                    if (string.IsNullOrWhiteSpace(part))
+                    {
+                        continue;
+                    }
+
+                    if (TryResolveLocalOwnedElementToken(part, out int partMask))
+                    {
+                        resolvedMask |= partMask;
+                        continue;
+                    }
+
+                    if (TryResolveCompactLocalOwnedElementToken(part, out int compactMask))
+                    {
+                        resolvedMask |= compactMask;
+                    }
+                }
+            }
+
+            if (!hasAnyTokenSource)
             {
                 return 0;
-            }
-
-            string[] parts = token.Split(new[] { ',', '|', '&', ' ', '/', '\\', ';', ':', '+' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0)
-            {
-                parts = new[] { token };
-            }
-
-            for (int partIndex = 0; partIndex < parts.Length; partIndex++)
-            {
-                string part = parts[partIndex]?.Trim();
-                if (string.IsNullOrWhiteSpace(part))
-                {
-                    continue;
-                }
-
-                if (TryResolveLocalOwnedElementToken(part, out int partMask))
-                {
-                    resolvedMask |= partMask;
-                    continue;
-                }
-
-                if (TryResolveCompactLocalOwnedElementToken(part, out int compactMask))
-                {
-                    resolvedMask |= compactMask;
-                }
             }
 
             return NormalizeLocalOwnedElementMask(resolvedMask);
@@ -27607,7 +27839,6 @@ namespace HaCreator.MapSimulator
             // Local affected-area ownership branch table recovered from TryDoingMagicAttack area-owner path.
             return skillId == 12111003
                    || skillId == 12111005
-                   || skillId == 2121006
                    || skillId == 2121007
                    || skillId == 2221001
                    || skillId == 2221007
@@ -29591,7 +29822,9 @@ namespace HaCreator.MapSimulator
             ref bool exclusiveRequestSent,
             ref int exclusiveRequestSentTick,
             ref int exclusiveRequestPortalIndex,
-            ref int exclusiveRequestDelayMs)
+            ref int exclusiveRequestDelayMs,
+            bool stampResetTick = false,
+            int resetTick = int.MinValue)
         {
             exclusiveRequestSent = false;
             if (preserveCooldown)
@@ -29599,7 +29832,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            exclusiveRequestSentTick = int.MinValue;
+            exclusiveRequestSentTick = stampResetTick ? resetTick : int.MinValue;
             exclusiveRequestPortalIndex = -1;
             exclusiveRequestDelayMs = 0;
         }
@@ -30078,7 +30311,9 @@ namespace HaCreator.MapSimulator
         internal static void ApplyTransferFieldExclusiveRequestClear(
             bool preserveCooldown,
             ref bool exclusiveRequestSent,
-            ref int exclusiveRequestSentTick)
+            ref int exclusiveRequestSentTick,
+            bool stampResetTick = false,
+            int resetTick = int.MinValue)
         {
             exclusiveRequestSent = false;
             if (preserveCooldown)
@@ -30086,7 +30321,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            exclusiveRequestSentTick = int.MinValue;
+            exclusiveRequestSentTick = stampResetTick ? resetTick : int.MinValue;
         }
 
         private void ConsumeSharedExclusiveRequestStateFromTransferResponseLifecycle()
@@ -33738,6 +33973,18 @@ namespace HaCreator.MapSimulator
             int resolvedRuntimeSlotIndex = -1,
             int resolvedClientSlotIndex = 0)
         {
+            if (IsPacketOwnedDeliveryQuestBlocked(questId))
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[]
+                    {
+                        $"{sourceContext} is currently blocked by the packet-owned disallowed-delivery quest list for quest #{questId}."
+                    }
+                };
+            }
+
             QuestWindowDetailState state = GetQuestWindowDetailStateWithPacketState(questId);
             int targetItemId = 0;
             if (targetItemIdOverride > 0 &&

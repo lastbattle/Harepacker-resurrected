@@ -1067,6 +1067,7 @@ namespace HaCreator.MapSimulator
                 {
                     equipWindow.SetPetController(_playerManager.Pets);
                     equipWindow.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
+                    equipWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipmentWithClientCancelIngress;
                     equipWindow.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
@@ -1074,6 +1075,7 @@ namespace HaCreator.MapSimulator
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
                     equipBigBang.SetCharacterLoader(_playerManager.Loader);
+                    equipBigBang.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipmentWithClientCancelIngress;
                     equipBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipBigBang.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
@@ -1096,6 +1098,11 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.CharacterBuild = _playerManager.Player.Build;
                 inventoryWindow.SetFont(_fontChat);
                 inventoryWindow.SetCharacterLoader(_playerManager.Loader);
+                inventoryWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForConsumableWithClientCancelIngress;
+                inventoryWindow.ItemUseRequested = TryUseInventoryItem;
+                inventoryWindow.ItemUseRequestedAtSlot = TryUseInventoryItemAtSlot;
+                inventoryWindow.InventoryDropRequested = HandleLocalInventoryDropRequestWithClientCancelIngress;
+                inventoryWindow.MesoDropRequested = HandleLocalMesoDropRequestWithClientCancelIngress;
                 inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow)
@@ -1908,6 +1915,7 @@ namespace HaCreator.MapSimulator
                 {
                     equipWindow.SetPetController(_playerManager.Pets);
                     equipWindow.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
+                    equipWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipmentWithClientCancelIngress;
                     equipWindow.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
@@ -1915,6 +1923,7 @@ namespace HaCreator.MapSimulator
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
                     equipBigBang.SetCharacterLoader(_playerManager.Loader);
+                    equipBigBang.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipmentWithClientCancelIngress;
                     equipBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipBigBang.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;

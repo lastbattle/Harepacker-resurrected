@@ -319,6 +319,7 @@ namespace HaCreator.MapSimulator.Companions
                             if (!TryReadPassiveClientInventoryOperationAddEntry(
                                     inventoryType,
                                     fromPosition,
+                                    i == operationCount - 1,
                                     reader,
                                     out MechanicInventoryOperationMutation? passiveAddMutation,
                                     out rejectReason))
@@ -1427,6 +1428,7 @@ namespace HaCreator.MapSimulator.Companions
         private static bool TryReadPassiveClientInventoryOperationAddEntry(
             byte inventoryType,
             short targetPosition,
+            bool isLastOperation,
             BinaryReader reader,
             out MechanicInventoryOperationMutation? mutation,
             out string rejectReason)
@@ -1464,6 +1466,13 @@ namespace HaCreator.MapSimulator.Companions
                 && itemId > 0)
             {
                 mutation = new MechanicInventoryOperationMutation(mechanicSlot, itemId);
+                if (isLastOperation)
+                {
+                    // CWvsContext::OnInventoryOperation resolves mode-0 completion from the
+                    // operation header before consuming the full GW_ItemSlotBase tail. Mirror
+                    // that recovery for terminal passive mechanic entries.
+                    return true;
+                }
             }
 
             if (slotType is not 1 and not 2 and not 3)

@@ -366,6 +366,22 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool MatchesInboundOpcodeConfiguration(ushort configuredInboundTradingRoomOpcode)
+        {
+            if (configuredInboundTradingRoomOpcode == AutoDetectInboundTradingRoomOpcode)
+            {
+                return !_useRecoveredInboundOpcodeTable && InboundTradingRoomOpcode == 0;
+            }
+
+            if (configuredInboundTradingRoomOpcode == 0
+                || TradingRoomPacketTable.IsRecoveredInboundOpcode(configuredInboundTradingRoomOpcode))
+            {
+                return _useRecoveredInboundOpcodeTable && InboundTradingRoomOpcode == 0;
+            }
+
+            return !_useRecoveredInboundOpcodeTable && InboundTradingRoomOpcode == configuredInboundTradingRoomOpcode;
+        }
+
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
         {
             try

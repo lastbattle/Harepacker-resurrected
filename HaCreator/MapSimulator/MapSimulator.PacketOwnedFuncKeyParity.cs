@@ -838,6 +838,33 @@ namespace HaCreator.MapSimulator
                 : default;
         }
 
+        private IReadOnlyList<KeyConfigWindow.PacketSlotVisualState> ResolvePacketOwnedKeyConfigPacketSlotVisualStates()
+        {
+            if (_packetOwnedFuncKeyMapped == null || _packetOwnedFuncKeyMapped.Length == 0)
+            {
+                return Array.Empty<KeyConfigWindow.PacketSlotVisualState>();
+            }
+
+            KeyConfigWindow.PacketSlotVisualState[] states = new KeyConfigWindow.PacketSlotVisualState[_packetOwnedFuncKeyMapped.Length];
+            for (int scanCode = 0; scanCode < _packetOwnedFuncKeyMapped.Length; scanCode++)
+            {
+                PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
+                int packetPaletteSlotId = entry.Type != 0 && entry.Id > 0
+                    ? ResolvePacketOwnedKeyConfigPaletteSlotId(entry.Type, entry.Id)
+                    : -1;
+                KeyConfigWindow.ShortcutVisualState shortcutVisualState = BuildPacketOwnedKeyConfigShortcutVisualStateFromPacketEntry(entry);
+                states[scanCode] = new KeyConfigWindow.PacketSlotVisualState(
+                    scanCode,
+                    ResolvePacketOwnedScanCodeKey(scanCode),
+                    entry.Type,
+                    entry.Id,
+                    packetPaletteSlotId,
+                    shortcutVisualState);
+            }
+
+            return states;
+        }
+
         private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigShortcutVisualStateFromPacketEntry(PacketOwnedFuncKeyMappedEntry entry)
         {
             if (entry.Id <= 0)

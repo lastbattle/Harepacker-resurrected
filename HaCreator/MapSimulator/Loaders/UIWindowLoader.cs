@@ -8880,6 +8880,16 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty calendarBackgroundRoot = calendarProperty?["bg"] as WzSubProperty;
             WzSubProperty calendarBackgroundProperty0 = calendarBackgroundRoot?["0"] as WzSubProperty;
             WzSubProperty calendarBackgroundProperty1 = calendarBackgroundRoot?["1"] as WzSubProperty;
+            WzCanvasProperty mainContentCanvas = sourceProperty["backgrnd3"] as WzCanvasProperty;
+            WzCanvasProperty calendarOverlayCanvas = calendarBackgroundProperty0?["backgrnd2"] as WzCanvasProperty
+                ?? calendarBackgroundProperty1?["backgrnd2"] as WzCanvasProperty;
+            WzCanvasProperty calendarGridCanvas = calendarBackgroundProperty0?["backgrnd3"] as WzCanvasProperty
+                ?? calendarBackgroundProperty1?["backgrnd3"] as WzCanvasProperty;
+            Point contentLayerOffset = ResolveCanvasOffset(mainContentCanvas, new Point(11, 88));
+            Point calendarOverlayOffset = ResolveCanvasOffset(calendarOverlayCanvas, new Point(6, 23));
+            Point calendarGridOffset = ResolveCanvasOffset(calendarGridCanvas, new Point(12, 68));
+            // Client draw clip uses m_ctHeight - 2; EventList/main/backgrnd3 is 35px in v95.
+            int alarmStripClipHeight = 33;
             (Point statusLaneAnchorOffset, int statusLaneWidth) = ResolveEventStatusLaneLayout(eventListProperty);
             EventWindow window = new EventWindow(
                 new DXObject(0, 0, frameTexture, 0),
@@ -8907,12 +8917,12 @@ namespace HaCreator.MapSimulator.Loaders
                 },
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "normal", device).ToArray(),
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "select", device).ToArray(),
-                new Point(11, 88),
-                new Point(6, 23),
-                new Point(12, 68),
+                contentLayerOffset,
+                calendarOverlayOffset,
+                calendarGridOffset,
                 statusLaneAnchorOffset,
                 statusLaneWidth,
-                35)
+                alarmStripClipHeight)
             {
                 Position = position
             };
@@ -9273,7 +9283,15 @@ namespace HaCreator.MapSimulator.Loaders
                 AccountMoreInfoOwnerStringPoolText.RememberPreferredAccountMoreInfoDataSourceDirectory(frameSourceDirectory);
                 if (backgroundCandidate.MirrorsClientSetBackgrnd)
                 {
-                    return candidateFrame;
+                    Texture2D setBackgrndTexture = CreateAccountMoreInfoSetBackgrndComposedTexture(
+                        device,
+                        candidateTexture,
+                        expandWidth: 0,
+                        expandHeight: 0);
+                    if (setBackgrndTexture != null)
+                    {
+                        return new DXObject(0, 0, setBackgrndTexture, 0);
+                    }
                 }
 
                 int composedWidth = backgroundCandidate.RequiresSimulatorComposition
@@ -9360,9 +9378,9 @@ namespace HaCreator.MapSimulator.Loaders
                 return sourceTexture;
             }
 
-            // CWnd::SetBackgrnd creates a destination canvas and copies the source
-            // canvas into it at (0,0); OnCreate for account-more-info passes a zero
-            // draw offset, so we intentionally do not translate by source origin.
+            // Mounted UserInfo shells are best-fit fallbacks for the missing 0x16AE
+            // asset in this data source. Keep these candidates anchored to the
+            // recovered owner size so control bounds remain usable.
             (int expandedWidth, int expandedHeight) = ResolveAccountMoreInfoSetBackgrndExpandedSizeForTesting(
                 sourceTexture.Width,
                 sourceTexture.Height,
@@ -9387,6 +9405,64 @@ namespace HaCreator.MapSimulator.Loaders
             return clientSizedTexture;
         }
 
+        private static Texture2D CreateAccountMoreInfoSetBackgrndComposedTexture(
+            GraphicsDevice device,
+            Texture2D sourceTexture,
+            int expandWidth,
+            int expandHeight)
+        {
+            if (device == null || sourceTexture == null)
+            {
+                return null;
+            }
+
+            (int composedWidth, int composedHeight) = ResolveAccountMoreInfoSetBackgrndCreateSizeForTesting(
+                sourceTexture.Width,
+                sourceTexture.Height,
+                expandWidth,
+                expandHeight);
+            if (composedWidth <= 0 || composedHeight <= 0)
+            {
+                return null;
+            }
+
+            if (composedWidth == sourceTexture.Width
+                && composedHeight == sourceTexture.Height)
+            {
+                return sourceTexture;
+            }
+
+            Color[] sourceData = new Color[sourceTexture.Width * sourceTexture.Height];
+            sourceTexture.GetData(sourceData);
+            Color[] composedData = ComposeAccountMoreInfoBackgroundPixelsForTesting(
+                sourceData,
+                sourceTexture.Width,
+                sourceTexture.Height,
+                composedWidth,
+                composedHeight);
+            Texture2D composedTexture = new Texture2D(device, composedWidth, composedHeight);
+            composedTexture.SetData(composedData);
+            return composedTexture;
+        }
+
+        internal static (int Width, int Height) ResolveAccountMoreInfoSetBackgrndCreateSizeForTesting(
+            int sourceWidth,
+            int sourceHeight,
+            int expandWidth,
+            int expandHeight)
+        {
+            if (sourceWidth <= 0 || sourceHeight <= 0)
+            {
+                return (0, 0);
+            }
+
+            // CWnd::SetBackgrnd creates destination canvases as source-size plus
+            // expand deltas before copying the source at (0,0).
+            int width = Math.Max(1, sourceWidth + expandWidth);
+            int height = Math.Max(1, sourceHeight + expandHeight);
+            return (width, height);
+        }
+
         internal static (int Width, int Height) ResolveAccountMoreInfoSetBackgrndExpandedSizeForTesting(
             int sourceWidth,
             int sourceHeight,
@@ -9407,9 +9483,8 @@ namespace HaCreator.MapSimulator.Loaders
                 return (requestedWidth, requestedHeight);
             }
 
-            // CWnd::SetBackgrnd calls IWzCanvas::Create with source dimensions plus
-            // expansion deltas; those paths do not shrink below the loaded source.
-            // Keep simulator composition aligned with that create/copy contract.
+            // This branch composes mounted fallback shells to the recovered account-
+            // more-info owner extent when the exact 0x16AE canvas is missing.
             int width = Math.Max(sourceWidth, requestedWidth);
             int height = Math.Max(sourceHeight, requestedHeight);
             return (width, height);

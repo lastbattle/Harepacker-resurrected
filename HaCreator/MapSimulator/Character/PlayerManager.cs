@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Character
         private const int DragonFurySkillId = 22160000;
         private const string WeaponSfxAttackSoundName = "Attack";
         internal const int ClientPickupRepeatDelayMs = 30;
+        private const float DragonVecCtrlLayerSearchRange = int.MaxValue;
 
         private sealed class AffectedAreaAvatarEffectCacheEntry
         {
@@ -170,6 +171,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Skills?.SetFootholdLookup(findFoothold);
+            ConfigureDragonActionLayerOwnerZProvider();
         }
 
         /// <summary>
@@ -521,6 +523,7 @@ namespace HaCreator.MapSimulator.Character
 
             var postSkillSetupStopwatch = System.Diagnostics.Stopwatch.StartNew();
             Dragon.SetDragonFuryVisibleProvider(() => HasClientOwnedDragonFuryEffect(Skills));
+            ConfigureDragonActionLayerOwnerZProvider();
 
             _mobStatusController = new PlayerMobStatusController(Player, Skills, TeleportToSpawn);
             Skills?.SetExternalCastBlockedEvaluator(currentTime => _currentMobStatusState.SkillCastBlocked);
@@ -619,6 +622,37 @@ namespace HaCreator.MapSimulator.Character
             postSkillSetupStopwatch.Stop();
             System.Diagnostics.Debug.WriteLine($"[PlayerManager] Post-skill player wiring completed in {postSkillSetupStopwatch.ElapsedMilliseconds} ms");
 
+        }
+
+        private void ConfigureDragonActionLayerOwnerZProvider()
+        {
+            Dragon.SetActionLayerOwnerZProvider(ResolveDragonActionLayerOwnerZFromVecCtrlContext);
+        }
+
+        private int? ResolveDragonActionLayerOwnerZFromVecCtrlContext(Vector2 dragonAnchor)
+        {
+            if (_findFoothold == null)
+            {
+                return null;
+            }
+
+            FootholdLine foothold = _findFoothold(dragonAnchor.X, dragonAnchor.Y, DragonVecCtrlLayerSearchRange);
+            bool onLadderOrRope = Player?.Physics?.IsOnLadderOrRope == true
+                                  || Player?.State is PlayerState.Ladder or PlayerState.Rope;
+            return ResolveDragonOwnerLayerZFromFoothold(foothold, onLadderOrRope);
+        }
+
+        internal static int? ResolveDragonOwnerLayerZFromFoothold(FootholdLine foothold, bool onLadderOrRope)
+        {
+            if (foothold == null)
+            {
+                return null;
+            }
+
+            return DragonCompanionRuntime.ResolveClientOwnerLayerZFromVecCtrlContext(
+                foothold.LayerNumber,
+                foothold.PlatformNumber,
+                onLadderOrRope);
         }
 
         private void InitializePlayer(PlayerCharacter player)

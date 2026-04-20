@@ -2746,12 +2746,17 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 InventorySlotData slot = equipSlots[entry.SlotIndex];
-                if (slot == null || slot.IsDisabled || slot.ItemId <= 0 || slot.ItemId != entry.ItemId)
+                if (slot == null || slot.IsDisabled || slot.ItemId <= 0)
                 {
                     continue;
                 }
 
-                targets.Add((entry.SlotIndex, entry.ItemId));
+                if (entry.ItemId > 0 && slot.ItemId != entry.ItemId)
+                {
+                    continue;
+                }
+
+                targets.Add((entry.SlotIndex, slot.ItemId));
             }
 
             return targets;

@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int CurrentWrapperRelayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
         private const int PacketTypeIncGauge = 173;
         private const int PacketTypeResult = 174;
+        private const int MaxRecentInboundPackets = 32;
         private const string DiscoverCommandUsage = "/massacre session discover <remotePort> [processName|pid] [localPort]";
         private const string AttachCommandUsage = "/massacre session attach <remotePort> [processName|pid] [localPort]";
         private const string AttachProxyCommandUsage = "/massacre session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]";
@@ -35,6 +36,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly ConcurrentQueue<MassacrePacketInboxMessage> _pendingMessages = new();
         private readonly Dictionary<int, MassacrePacketInboxMessageKind> _mappedInboundOpcodes = new();
+        private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -48,6 +50,14 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+        public readonly record struct InboundPacketTrace(
+            int Opcode,
+            int PacketType,
+            MassacrePacketInboxMessageKind Kind,
+            int PayloadLength,
+            string PayloadHex,
+            string RawPacketHex,
+            string Source);
 
         private sealed class BridgePair
         {
@@ -384,6 +394,40 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public string DescribeRecentInboundPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentInboundPackets);
+            lock (_sync)
+            {
+                if (_recentInboundPackets.Count == 0)
+                {
+                    return "Massacre official-session bridge inbound history is empty.";
+                }
+
+                InboundPacketTrace[] entries = _recentInboundPackets
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return "Massacre official-session bridge inbound history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode=0x{entry.Opcode:X4} kind={entry.Kind} packetType={entry.PacketType} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+            }
+        }
+
+        public string ClearRecentInboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentInboundPackets.Clear();
+            }
+
+            LastStatus = "Massacre official-session bridge inbound history cleared.";
+            return LastStatus;
+        }
+
         public bool TryMapInboundOpcode(int opcode, MassacrePacketInboxMessageKind kind, out string status)
         {
             if (opcode < 0 || opcode > ushort.MaxValue)
@@ -620,6 +664,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 _pendingMessages.Enqueue(message);
+                RecordInboundPacket(raw, message, $"official-session:{pair.RemoteEndpoint}");
                 ReceivedCount++;
                 LastStatus = $"Queued {DescribeMessage(message)} from live session {pair.RemoteEndpoint}.";
             }
@@ -696,6 +741,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReceivedCount = 0;
+                _recentInboundPackets.Clear();
             }
         }
 
@@ -882,6 +928,37 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        private void RecordInboundPacket(byte[] rawPacket, MassacrePacketInboxMessage message, string source)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            int opcode = (rawPacket != null && rawPacket.Length >= sizeof(short))
+                ? BitConverter.ToUInt16(rawPacket, 0)
+                : 0;
+            byte[] payload = rawPacket != null && rawPacket.Length > sizeof(short)
+                ? rawPacket.Skip(sizeof(short)).ToArray()
+                : Array.Empty<byte>();
+
+            lock (_sync)
+            {
+                _recentInboundPackets.Enqueue(new InboundPacketTrace(
+                    opcode,
+                    message.PacketType,
+                    message.Kind,
+                    payload.Length,
+                    BuildPayloadPreview(payload),
+                    rawPacket == null ? string.Empty : Convert.ToHexString(rawPacket),
+                    string.IsNullOrWhiteSpace(source) ? "official-session" : source));
+                while (_recentInboundPackets.Count > MaxRecentInboundPackets)
+                {
+                    _recentInboundPackets.Dequeue();
+                }
+            }
+        }
+
         private static bool HasExpectedMappedPayloadLength(MassacrePacketInboxMessageKind kind, byte[] payload)
         {
             int length = payload?.Length ?? 0;
@@ -929,6 +1006,23 @@ namespace HaCreator.MapSimulator.Managers
                 MassacrePacketInboxMessageKind.Packet => $"Massacre opcode {message.PacketType}",
                 _ => $"Massacre {message.Kind}"
             };
+        }
+
+        private static string BuildPayloadPreview(byte[] payload)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return "<none>";
+            }
+
+            const int maxPreviewBytes = 24;
+            byte[] previewBytes = payload.Length <= maxPreviewBytes
+                ? payload
+                : payload.Take(maxPreviewBytes).ToArray();
+            string previewHex = Convert.ToHexString(previewBytes);
+            return payload.Length <= maxPreviewBytes
+                ? previewHex
+                : $"{previewHex}...";
         }
 
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()

@@ -194,12 +194,17 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleRemoteUserClearCommand()
         {
-            foreach (RemoteUserActor actor in _remoteUserPool.Actors.ToArray())
+            RemoteUserActor[] actors = _remoteUserPool.Actors.ToArray();
+            foreach (RemoteUserActor actor in actors)
             {
                 _summonedPool.RemoveOwnerSummons(actor.CharacterId, currTickCount);
             }
 
             _remoteUserPool.Clear();
+            for (int i = 0; i < actors.Length; i++)
+            {
+                ForgetObservedDropPacketActorState(actors[i].CharacterId);
+            }
             _packetOwnedRelationshipRecordRuntime.Clear();
             _packetOwnedPortableChairRecordRuntime.Clear();
             _animationEffects.ClearUserStates();
@@ -397,12 +402,12 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !int.TryParse(args[1], out int characterId))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser helper <characterId> <marker|clear> [dir=true|false]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser helper <characterId> <marker|clear|none|DefaultHelper/path> [dir=true|false]");
             }
 
             if (!TryParseRemoteUserHelperMarker(args[2], out MinimapUI.HelperMarkerType? markerType))
             {
-                return ChatCommandHandler.CommandResult.Error("Helper marker must be user, party, partymaster, guild, guildmaster, friend, another, match, usertrader, anothertrader, or clear.");
+                return ChatCommandHandler.CommandResult.Error("Helper marker must be user, party, partymaster, guild, guildmaster, friend, another, match, usertrader, anothertrader, clear/none, or a DefaultHelper path.");
             }
 
             bool showDirectionOverlay = true;
@@ -672,6 +677,7 @@ namespace HaCreator.MapSimulator
         private ChatCommandHandler.CommandResult HandleRemoteUserRemovalCommandResult(int characterId)
         {
             ClearAnimationDisplayerRemotePresentationOwners(characterId);
+            ForgetObservedDropPacketActorState(characterId);
             return ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} removed.");
         }
 
@@ -1601,6 +1607,7 @@ namespace HaCreator.MapSimulator
                     {
                         _summonedPool.RemoveOwnerSummons(leavePacket.CharacterId, currentTime);
                         ClearAnimationDisplayerRemotePresentationOwners(leavePacket.CharacterId);
+                        ForgetObservedDropPacketActorState(leavePacket.CharacterId);
 
                         if (leavePosition.HasValue)
                         {
@@ -2183,23 +2190,12 @@ namespace HaCreator.MapSimulator
 
         private static bool TryParseRemoteUserHelperMarker(string text, out MinimapUI.HelperMarkerType? markerType)
         {
-            markerType = text?.ToLowerInvariant() switch
-            {
-                "another" => MinimapUI.HelperMarkerType.Another,
-                "user" => MinimapUI.HelperMarkerType.User,
-                "friend" => MinimapUI.HelperMarkerType.Friend,
-                "guild" => MinimapUI.HelperMarkerType.Guild,
-                "guildmaster" => MinimapUI.HelperMarkerType.GuildMaster,
-                "match" => MinimapUI.HelperMarkerType.Match,
-                "party" => MinimapUI.HelperMarkerType.Party,
-                "partymaster" => MinimapUI.HelperMarkerType.PartyMaster,
-                "usertrader" => MinimapUI.HelperMarkerType.UserTrader,
-                "anothertrader" => MinimapUI.HelperMarkerType.AnotherTrader,
-                "clear" => null,
-                _ => null
-            };
+            return RemoteUserPacketCodec.TryResolveHelperMarkerName(text, out markerType);
+        }
 
-            return text != null && (markerType.HasValue || string.Equals(text, "clear", StringComparison.OrdinalIgnoreCase));
+        internal static bool TryParseRemoteUserHelperMarkerForTesting(string text, out MinimapUI.HelperMarkerType? markerType)
+        {
+            return TryParseRemoteUserHelperMarker(text, out markerType);
         }
 
         private static bool TryParseRemoteRelationshipOverlayType(string text, out RemoteRelationshipOverlayType relationshipType)

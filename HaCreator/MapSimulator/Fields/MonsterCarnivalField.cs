@@ -81,6 +81,16 @@ namespace HaCreator.MapSimulator.Fields
         ResultClosed = 6
     }
 
+    public enum MonsterCarnivalOwnedClockPhase
+    {
+        None = 0,
+        ActiveRound = 1,
+        ExtendedRound = 2,
+        ResultMessage = 3,
+        ExitGrace = 4,
+        Closed = 5
+    }
+
     internal readonly record struct MonsterCarnivalStringPoolMessage(int StringPoolId, string FallbackFormat);
 
     public sealed class MonsterCarnivalEntry
@@ -1174,6 +1184,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _lastRequestFailureChatRoute;
         private string _lastMemberOutChatRoute;
         private string _lastResultChatRoute;
+        private string _lastDeathChatRoute;
         private bool _isVisible;
         private bool _enteredField;
         private string _localCharacterName;
@@ -1192,6 +1203,12 @@ namespace HaCreator.MapSimulator.Fields
         private bool _season2SubDialogSelectionLocked;
         private string _season2SubDialogSummary;
         private MonsterCarnivalSeason2SubDialogPhase _season2SubDialogPhase;
+        private MonsterCarnivalOwnedClockPhase _ownedClockPhase;
+        private string _ownedClockSummary;
+        private int? _roundDeadlineTick;
+        private int? _extendDeadlineTick;
+        private int? _resultMessageDeadlineTick;
+        private int? _exitGraceDeadlineTick;
         private GraphicsDevice _graphicsDevice;
         private MonsterCarnivalHudAssets _hudAssets = new();
 
@@ -1221,6 +1238,9 @@ namespace HaCreator.MapSimulator.Fields
         public string LastRequestFailureChatRoute => _lastRequestFailureChatRoute;
         public string LastMemberOutChatRoute => _lastMemberOutChatRoute;
         public string LastResultChatRoute => _lastResultChatRoute;
+        public string LastDeathChatRoute => _lastDeathChatRoute;
+        public MonsterCarnivalOwnedClockPhase OwnedClockPhase => _ownedClockPhase;
+        public string OwnedClockSummary => _ownedClockSummary;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -1261,7 +1281,8 @@ namespace HaCreator.MapSimulator.Fields
             int myTeamCp,
             int myTeamTotalCp,
             int enemyTeamCp,
-            int enemyTeamTotalCp)
+            int enemyTeamTotalCp,
+            int? tickCountOverride = null)
         {
             if (!_isVisible)
             {
@@ -1292,7 +1313,9 @@ namespace HaCreator.MapSimulator.Fields
                 enemyTeam.TotalCp);
             UpdateSeason2SubDialogOnEnter();
 
-            ShowStatus(BuildEnterStatusMessage(localTeam), Environment.TickCount);
+            int resolvedTick = tickCountOverride ?? Environment.TickCount;
+            StartOwnedRoundClock(resolvedTick);
+            ShowStatus(BuildEnterStatusMessage(localTeam), resolvedTick);
             if (_definition?.IsWaitingRoom == true)
             {
                 SetVariantSessionPhase(
@@ -1325,6 +1348,7 @@ namespace HaCreator.MapSimulator.Fields
             _localTeam = localTeam;
             RegisterKnownCharacterTeam(_localCharacterName, _localTeam);
             _uiWindowState.ApplyEnter(localTeam, 0, 0, 0, 0, 0, 0);
+            StartOwnedRoundClock(tickCount);
             ResetSeason2SubDialogState(
                 "Season 2 sub dialog is not owned by the revive wrapper; revive OnEnter only updates team ownership.",
                 MonsterCarnivalSeason2SubDialogPhase.None);
@@ -1561,6 +1585,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             ShowStatus(status, tickCount);
+            StartOwnedResultClock(tickCount);
             if (_definition?.IsSeason2Mode == true)
             {
                 ResetSeason2SubDialogState(
@@ -1587,6 +1612,8 @@ namespace HaCreator.MapSimulator.Fields
                 MonsterCarnivalVariantSessionPhase.DeathState,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} routed ProcessForDeath for {FormatTeam(team)} through the packet-owned status-bar message seam.");
             UpdateSeason2SubDialogOnProcessForDeath(team, characterName, lostCp);
+            _lastDeathChatRoute =
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnProcessForDeath -> CUIStatusBar::ChatLogAdd(type=7,item=-1)";
             RecordRecoveredClientOwnerAction(
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnProcessForDeath decoded packet CP loss {Math.Max(0, lostCp)} for {FormatTeam(team)} without mutating CP counters.",
                 lostCp > 0
@@ -1894,7 +1921,7 @@ namespace HaCreator.MapSimulator.Fields
                         }
                         else
                         {
-                            OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+                            OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), currentTimeMs);
 
                             for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
                             {
@@ -2011,7 +2038,7 @@ namespace HaCreator.MapSimulator.Fields
                         }
                         else
                         {
-                            OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+                            OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), currentTimeMs);
 
                             for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
                             {
@@ -2100,6 +2127,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _statusMessage = null;
             }
+
+            UpdateOwnedClock(tickCount);
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -2146,24 +2175,31 @@ namespace HaCreator.MapSimulator.Fields
             DrawShadowedText(
                 spriteBatch,
                 font,
-                BuildClientOwnerHeaderSummary(),
+                $"clock={DescribeOwnedClockState(Environment.TickCount)}",
                 new Vector2(mainHeaderBounds.X + 12, timerY + 18),
+                Color.LightCyan,
+                0.72f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                BuildClientOwnerHeaderSummary(),
+                new Vector2(mainHeaderBounds.X + 12, timerY + 34),
                 Color.LightSteelBlue,
-                0.75f);
+                0.72f);
             DrawShadowedText(
                 spriteBatch,
                 font,
                 BuildVariantContractSummary(),
-                new Vector2(mainHeaderBounds.X + 12, timerY + 34),
+                new Vector2(mainHeaderBounds.X + 12, timerY + 50),
                 Color.LightGoldenrodYellow,
-                0.72f);
+                0.68f);
             if (_definition?.IsSeason2Mode == true)
             {
                 DrawShadowedText(
                     spriteBatch,
                     font,
                     TrimForDisplay($"Season2 sub={DescribeSeason2SubDialogState()}", 92),
-                    new Vector2(mainHeaderBounds.X + 12, timerY + 50),
+                    new Vector2(mainHeaderBounds.X + 12, timerY + 66),
                     Color.LightPink,
                     0.66f);
             }
@@ -2181,7 +2217,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "Monster Carnival runtime is inactive on this map.";
             }
 
-            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)} | pendingGuardianReconcile={_pendingGuardianPlacements.Count} | variantPhase={DescribeVariantSessionPhase()} | season2SubDialog={DescribeSeason2SubDialogState()} | seam={BuildClientOwnerStatusSummary()}{Environment.NewLine}{_uiWindowState.DescribeStatus()}";
+            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)} | pendingGuardianReconcile={_pendingGuardianPlacements.Count} | variantPhase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | season2SubDialog={DescribeSeason2SubDialogState()} | seam={BuildClientOwnerStatusSummary()}{Environment.NewLine}{_uiWindowState.DescribeStatus()}";
         }
 
         public void Reset()
@@ -2203,6 +2239,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastRequestFailureChatRoute = null;
             _lastMemberOutChatRoute = null;
             _lastResultChatRoute = null;
+            _lastDeathChatRoute = null;
             _lastClientOwnerAction = null;
             _lastClientOwnerStringPoolIds = Array.Empty<int>();
             _variantActionTrail.Clear();
@@ -2213,6 +2250,12 @@ namespace HaCreator.MapSimulator.Fields
             _lastVariantDelegatedRawPacket = false;
             _lastVariantDelegatedOwner = null;
             _lastVariantDelegatedSummary = null;
+            _ownedClockPhase = MonsterCarnivalOwnedClockPhase.None;
+            _ownedClockSummary = null;
+            _roundDeadlineTick = null;
+            _extendDeadlineTick = null;
+            _resultMessageDeadlineTick = null;
+            _exitGraceDeadlineTick = null;
             ResetSeason2SubDialogState(null, MonsterCarnivalSeason2SubDialogPhase.None);
         }
 
@@ -2233,6 +2276,13 @@ namespace HaCreator.MapSimulator.Fields
             _lastRequestFailureChatRoute = null;
             _lastMemberOutChatRoute = null;
             _lastResultChatRoute = null;
+            _lastDeathChatRoute = null;
+            _ownedClockPhase = MonsterCarnivalOwnedClockPhase.None;
+            _ownedClockSummary = null;
+            _roundDeadlineTick = null;
+            _extendDeadlineTick = null;
+            _resultMessageDeadlineTick = null;
+            _exitGraceDeadlineTick = null;
             ResetSeason2SubDialogState(null, MonsterCarnivalSeason2SubDialogPhase.None);
         }
 
@@ -2483,9 +2533,9 @@ namespace HaCreator.MapSimulator.Fields
             string mapLabel = FormatMapIdentity(_definition);
             return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | waiting-room wrapper panel only | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | UI/UIWindow2.img/MonsterCarnival/main+summonList+sub | subDialog={DescribeSeason2SubDialogState()} | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | revive owner packets raw 346/353 only | OnEnter team byte -> CUserLocal team slot + RedrawGuildNameTag | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | no CUIMonsterCarnival surface",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | waiting-room wrapper panel only | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | UI/UIWindow2.img/MonsterCarnival/main+summonList+sub | subDialog={DescribeSeason2SubDialogState()} | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | revive owner packets raw 346/353 only | OnEnter team byte -> CUserLocal team slot + RedrawGuildNameTag | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | no CUIMonsterCarnival surface",
                 _ => $"{mapLabel} | shared Carnival packet family 346-353 | UI 0x102B-0x1033"
             };
         }
@@ -2683,16 +2733,16 @@ namespace HaCreator.MapSimulator.Fields
             DrawShadowedText(
                 spriteBatch,
                 font,
-                TrimForDisplay(BuildClientOwnerHeaderSummary(), 78),
-                new Vector2(panelBounds.X + 10, panelBounds.Y + 74),
-                Color.LightGoldenrodYellow,
-                0.75f);
+                TrimForDisplay($"clock={DescribeOwnedClockState(Environment.TickCount)}", 78),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 72),
+                Color.LightCyan,
+                0.76f);
             DrawShadowedText(
                 spriteBatch,
                 font,
-                TrimForDisplay(_uiWindowState.DescribeStatus(), 78),
-                new Vector2(panelBounds.X + 10, panelBounds.Y + 94),
-                Color.Silver,
+                TrimForDisplay(BuildClientOwnerHeaderSummary(), 78),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 90),
+                Color.LightGoldenrodYellow,
                 0.75f);
         }
 
@@ -2721,16 +2771,16 @@ namespace HaCreator.MapSimulator.Fields
             DrawShadowedText(
                 spriteBatch,
                 font,
-                TrimForDisplay(BuildClientOwnerHeaderSummary(), 78),
-                new Vector2(panelBounds.X + 10, panelBounds.Y + 74),
-                Color.LightGoldenrodYellow,
-                0.75f);
+                TrimForDisplay($"clock={DescribeOwnedClockState(Environment.TickCount)}", 78),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 72),
+                Color.LightCyan,
+                0.76f);
             DrawShadowedText(
                 spriteBatch,
                 font,
-                TrimForDisplay(_uiWindowState.DescribeStatus(), 78),
-                new Vector2(panelBounds.X + 10, panelBounds.Y + 94),
-                Color.Silver,
+                TrimForDisplay(BuildClientOwnerHeaderSummary(), 78),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 90),
+                Color.LightGoldenrodYellow,
                 0.75f);
         }
 
@@ -2857,9 +2907,9 @@ namespace HaCreator.MapSimulator.Fields
 
             return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result route={_lastResultChatRoute ?? "none"} | ui={_uiWindowState.DescribeStatus()} | subDialog={DescribeSeason2SubDialogState()} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | result route={_lastResultChatRoute ?? "none"} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | death route={_lastDeathChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result route={_lastResultChatRoute ?? "none"} | ui={_uiWindowState.DescribeStatus()} | subDialog={DescribeSeason2SubDialogState()} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | death route={_lastDeathChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | result route={_lastResultChatRoute ?? "none"} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
         }
@@ -3253,14 +3303,13 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int expectedFacing = flip ? 1 : 0;
-            int bestScore = int.MaxValue;
+            int bestAvailableScore = int.MaxValue;
+            int bestOccupiedScore = int.MaxValue;
+            int occupiedSlotIndex = -1;
+            MonsterCarnivalGuardianSpawnPoint occupiedSpawnPoint = default;
+            MonsterCarnivalTeam occupiedResolvedTeam = _localTeam;
             foreach (MonsterCarnivalGuardianSpawnPoint candidate in positions)
             {
-                if (_occupiedGuardianSlots.Contains(candidate.Index))
-                {
-                    continue;
-                }
-
                 foreach (MonsterCarnivalTeam candidateTeam in candidateTeams)
                 {
                     if (candidate.Team.HasValue && candidate.Team.Value != candidateTeam)
@@ -3271,16 +3320,44 @@ namespace HaCreator.MapSimulator.Fields
                     int distance = Math.Abs(candidate.X - worldX) + Math.Abs(candidate.Y - worldY);
                     int facingPenalty = candidate.Facing == expectedFacing ? 0 : 8;
                     int score = distance + facingPenalty;
-                    if (score >= bestScore)
+
+                    if (_occupiedGuardianSlots.Contains(candidate.Index))
+                    {
+                        if (score >= bestOccupiedScore)
+                        {
+                            continue;
+                        }
+
+                        bestOccupiedScore = score;
+                        occupiedSlotIndex = candidate.Index;
+                        occupiedSpawnPoint = candidate;
+                        occupiedResolvedTeam = candidate.Team ?? candidateTeam;
+                        continue;
+                    }
+
+                    if (score >= bestAvailableScore)
                     {
                         continue;
                     }
 
-                    bestScore = score;
+                    bestAvailableScore = score;
                     slotIndex = candidate.Index;
                     spawnPoint = candidate;
                     resolvedTeam = candidate.Team ?? candidateTeam;
                 }
+            }
+
+            if (slotIndex >= 0)
+            {
+                return true;
+            }
+
+            if (occupiedSlotIndex >= 0)
+            {
+                slotIndex = occupiedSlotIndex;
+                spawnPoint = occupiedSpawnPoint;
+                resolvedTeam = occupiedResolvedTeam;
+                return true;
             }
 
             return slotIndex >= 0;
@@ -3991,6 +4068,146 @@ namespace HaCreator.MapSimulator.Fields
             return string.IsNullOrWhiteSpace(_variantSessionSummary)
                 ? label
                 : $"{label} ({_variantSessionSummary})";
+        }
+
+        private void StartOwnedRoundClock(int tickCount)
+        {
+            int baseSeconds = Math.Max(0, _definition?.DefaultTimeSeconds ?? 0);
+            int extendSeconds = Math.Max(0, _definition?.ExpandTimeSeconds ?? 0);
+
+            _roundDeadlineTick = baseSeconds > 0
+                ? unchecked(tickCount + (baseSeconds * 1000))
+                : null;
+            _extendDeadlineTick = extendSeconds > 0
+                ? unchecked((_roundDeadlineTick ?? tickCount) + (extendSeconds * 1000))
+                : null;
+            _resultMessageDeadlineTick = null;
+            _exitGraceDeadlineTick = null;
+
+            if (_roundDeadlineTick.HasValue)
+            {
+                _ownedClockPhase = MonsterCarnivalOwnedClockPhase.ActiveRound;
+                _ownedClockSummary =
+                    $"monsterCarnival/timeDefault={baseSeconds}s started the owned round clock{(extendSeconds > 0 ? $" with +timeExpand={extendSeconds}s extension queued." : ".")}";
+                return;
+            }
+
+            _ownedClockPhase = MonsterCarnivalOwnedClockPhase.None;
+            _ownedClockSummary = "No authored Carnival round timer found for this map.";
+        }
+
+        private void StartOwnedResultClock(int tickCount)
+        {
+            int messageSeconds = Math.Max(0, _definition?.MessageTimeSeconds ?? 0);
+            int finishSeconds = Math.Max(0, _definition?.FinishTimeSeconds ?? 0);
+
+            _roundDeadlineTick = null;
+            _extendDeadlineTick = null;
+            _resultMessageDeadlineTick = messageSeconds > 0
+                ? unchecked(tickCount + (messageSeconds * 1000))
+                : null;
+            _exitGraceDeadlineTick = finishSeconds > 0
+                ? unchecked((_resultMessageDeadlineTick ?? tickCount) + (finishSeconds * 1000))
+                : null;
+
+            if (_resultMessageDeadlineTick.HasValue)
+            {
+                _ownedClockPhase = MonsterCarnivalOwnedClockPhase.ResultMessage;
+                _ownedClockSummary =
+                    $"OnShowGameResult started message-time={messageSeconds}s then finish-time={finishSeconds}s from monsterCarnival/timeMessage,timeFinish.";
+                return;
+            }
+
+            if (_exitGraceDeadlineTick.HasValue)
+            {
+                _ownedClockPhase = MonsterCarnivalOwnedClockPhase.ExitGrace;
+                _ownedClockSummary =
+                    $"OnShowGameResult started finish-time={finishSeconds}s from monsterCarnival/timeFinish.";
+                return;
+            }
+
+            _ownedClockPhase = MonsterCarnivalOwnedClockPhase.Closed;
+            _ownedClockSummary = "OnShowGameResult closed the local round clock immediately.";
+        }
+
+        private void UpdateOwnedClock(int tickCount)
+        {
+            if (_ownedClockPhase == MonsterCarnivalOwnedClockPhase.ActiveRound
+                && _roundDeadlineTick.HasValue
+                && tickCount >= _roundDeadlineTick.Value)
+            {
+                if (_extendDeadlineTick.HasValue)
+                {
+                    _ownedClockPhase = MonsterCarnivalOwnedClockPhase.ExtendedRound;
+                    _ownedClockSummary = "Round default window elapsed; the local owner moved into the timeExpand extension window.";
+                }
+                else
+                {
+                    _ownedClockPhase = MonsterCarnivalOwnedClockPhase.Closed;
+                    _ownedClockSummary = "Round default window elapsed and no extension window remained.";
+                }
+            }
+
+            if (_ownedClockPhase == MonsterCarnivalOwnedClockPhase.ExtendedRound
+                && _extendDeadlineTick.HasValue
+                && tickCount >= _extendDeadlineTick.Value)
+            {
+                _ownedClockPhase = MonsterCarnivalOwnedClockPhase.Closed;
+                _ownedClockSummary = "Round extension window elapsed.";
+            }
+
+            if (_ownedClockPhase == MonsterCarnivalOwnedClockPhase.ResultMessage
+                && _resultMessageDeadlineTick.HasValue
+                && tickCount >= _resultMessageDeadlineTick.Value)
+            {
+                if (_exitGraceDeadlineTick.HasValue)
+                {
+                    _ownedClockPhase = MonsterCarnivalOwnedClockPhase.ExitGrace;
+                    _ownedClockSummary = "Result message window elapsed; finish grace window is now active.";
+                }
+                else
+                {
+                    _ownedClockPhase = MonsterCarnivalOwnedClockPhase.Closed;
+                    _ownedClockSummary = "Result message window elapsed.";
+                }
+            }
+
+            if (_ownedClockPhase == MonsterCarnivalOwnedClockPhase.ExitGrace
+                && _exitGraceDeadlineTick.HasValue
+                && tickCount >= _exitGraceDeadlineTick.Value)
+            {
+                _ownedClockPhase = MonsterCarnivalOwnedClockPhase.Closed;
+                _ownedClockSummary = "Finish grace window elapsed.";
+            }
+        }
+
+        private string DescribeOwnedClockState(int currentTick)
+        {
+            string phaseLabel = _ownedClockPhase switch
+            {
+                MonsterCarnivalOwnedClockPhase.ActiveRound => "round",
+                MonsterCarnivalOwnedClockPhase.ExtendedRound => "round-extend",
+                MonsterCarnivalOwnedClockPhase.ResultMessage => "result-message",
+                MonsterCarnivalOwnedClockPhase.ExitGrace => "result-finish",
+                MonsterCarnivalOwnedClockPhase.Closed => "closed",
+                _ => "none"
+            };
+
+            int? remainingMs = _ownedClockPhase switch
+            {
+                MonsterCarnivalOwnedClockPhase.ActiveRound => _roundDeadlineTick.HasValue ? _roundDeadlineTick.Value - currentTick : null,
+                MonsterCarnivalOwnedClockPhase.ExtendedRound => _extendDeadlineTick.HasValue ? _extendDeadlineTick.Value - currentTick : null,
+                MonsterCarnivalOwnedClockPhase.ResultMessage => _resultMessageDeadlineTick.HasValue ? _resultMessageDeadlineTick.Value - currentTick : null,
+                MonsterCarnivalOwnedClockPhase.ExitGrace => _exitGraceDeadlineTick.HasValue ? _exitGraceDeadlineTick.Value - currentTick : null,
+                _ => null
+            };
+
+            string countdown = remainingMs.HasValue
+                ? $" t={Math.Max(0, (int)Math.Ceiling(remainingMs.Value / 1000d))}s"
+                : string.Empty;
+            return string.IsNullOrWhiteSpace(_ownedClockSummary)
+                ? $"{phaseLabel}{countdown}"
+                : $"{phaseLabel}{countdown} ({_ownedClockSummary})";
         }
 
         private string BuildVariantActionTrailSummary()

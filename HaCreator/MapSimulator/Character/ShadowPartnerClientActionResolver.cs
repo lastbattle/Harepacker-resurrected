@@ -411,6 +411,201 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(7, "swingPF", 3, 120, move: new Point(35, 0)),
                     CreateIndexedPiece(8, "alert", 0, 0)
                 },
+                // Additional mounted Character/00002000 piece rows recovered from the
+                // same client-init helper table surface. Keep these in built-in fallback
+                // so unavailable mounted rows still preserve piece-order timing/move/flip.
+                ["doublefire"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot2", 0, 90),
+                    CreateIndexedPiece(1, "stabO1", 0, 360, move: new Point(2, 0)),
+                    CreateIndexedPiece(2, "shoot2", 0, 0)
+                },
+                ["triplefire"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot2", 0, 90),
+                    CreateIndexedPiece(1, "stabO1", 0, 720, move: new Point(2, 0)),
+                    CreateIndexedPiece(2, "shoot2", 0, 0)
+                },
+                ["doubleupper"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, -240),
+                    CreateIndexedPiece(1, "swingOF", 0, -90, move: new Point(5, 0)),
+                    CreateIndexedPiece(2, "swingP2", 1, 90, move: new Point(4, 0)),
+                    CreateIndexedPiece(3, "swingP2", 0, 90, move: new Point(-3, 0)),
+                    CreateIndexedPiece(4, "swingO3", 2, 90, move: new Point(17, 0)),
+                    CreateIndexedPiece(5, "stabO2", 0, 180, move: new Point(-4, 0)),
+                    CreateIndexedPiece(6, "shoot2", 3, 90, move: new Point(-4, 0))
+                },
+                ["eburster"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, 180),
+                    CreateIndexedPiece(1, "stabO1", 1, 90),
+                    CreateIndexedPiece(2, "stabO1", 1, 90, move: new Point(-2, 0)),
+                    CreateIndexedPiece(3, "stabO1", 1, 90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(4, "stabO1", 1, 90, move: new Point(-1, 0)),
+                    CreateIndexedPiece(5, "stabO1", 1, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(6, "swingO2", 1, 90),
+                    CreateIndexedPiece(7, "alert", 0, 0)
+                },
+                ["screw"] = CreateIndexedPieces(
+                    ("stabO2", 1, 600),
+                    ("swingP2", 1, 240)),
+                ["backspin"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingP2", 1, -120),
+                    CreateIndexedPiece(1, "swingO2", 1, -120),
+                    CreateIndexedPiece(2, "swingO2", 0, -120),
+                    CreateIndexedPiece(3, "swingO2", 1, -120, move: new Point(16, 0)),
+                    CreateIndexedPiece(4, "shoot2", 3, 480)
+                },
+                ["eorb"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingOF", 0, -630),
+                    CreateIndexedPiece(1, "swingOF", 1, -90, move: new Point(1, 6)),
+                    CreateIndexedPiece(2, "swingOF", 1, -90, move: new Point(1, 3)),
+                    CreateIndexedPiece(3, "swingOF", 2, 90, move: new Point(11, 4)),
+                    CreateIndexedPiece(4, "swingOF", 3, 180, move: new Point(28, 0)),
+                    CreateIndexedPiece(5, "stabT2", 0, 90, move: new Point(-7, 0)),
+                    CreateIndexedPiece(6, "alert", 1, 0)
+                },
+                ["dragonstrike"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingP2", 1, -90, move: new Point(6, -14)),
+                    CreateIndexedPiece(1, "swingP2", 0, -90, move: new Point(1, -20)),
+                    CreateIndexedPiece(2, "swingOF", 1, -90, move: new Point(6, -19)),
+                    CreateIndexedPiece(3, "swingT2", 0, -90, flip: true, move: new Point(-7, -35)),
+                    CreateIndexedPiece(4, "swingTF", 1, -90, move: new Point(8, -34)),
+                    CreateIndexedPiece(5, "swingTF", 1, -90, move: new Point(8, -35)),
+                    CreateIndexedPiece(6, "swingTF", 1, -90, move: new Point(8, -34)),
+                    CreateIndexedPiece(7, "swingTF", 1, -90, move: new Point(8, -28)),
+                    CreateIndexedPiece(8, "swingOF", 3, -90, move: new Point(43, 0)),
+                    CreateIndexedPiece(9, "swingOF", 3, -90, move: new Point(43, 1)),
+                    CreateIndexedPiece(10, "swingOF", 3, -90, move: new Point(43, 2)),
+                    CreateIndexedPiece(11, "swingOF", 3, 90, move: new Point(43, 3))
+                },
+                ["airstrike"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, -240),
+                    CreateIndexedPiece(1, "alert", 1, -240),
+                    CreateIndexedPiece(2, "alert", 2, -240),
+                    CreateIndexedPiece(3, "swingT2", 1, -120, move: new Point(9, -12)),
+                    CreateIndexedPiece(4, "swingT1", 0, -120, move: new Point(0, -15)),
+                    CreateIndexedPiece(5, "swingT1", 0, -120, move: new Point(0, -16)),
+                    CreateIndexedPiece(6, "swingT1", 0, -120, move: new Point(0, -15)),
+                    CreateIndexedPiece(7, "swingT1", 0, -120, move: new Point(0, -13)),
+                    CreateIndexedPiece(8, "swingT2", 2, -120, move: new Point(15, 1)),
+                    CreateIndexedPiece(9, "swingT2", 2, -120, move: new Point(15, 2)),
+                    CreateIndexedPiece(10, "swingT2", 2, -120, move: new Point(15, 3)),
+                    CreateIndexedPiece(11, "swingT3", 1, -120, move: new Point(2, 0)),
+                    CreateIndexedPiece(12, "alert", 0, -180),
+                    CreateIndexedPiece(13, "alert", 1, 450),
+                    CreateIndexedPiece(14, "alert", 2, 450)
+                },
+                ["edrain"] = CreateIndexedPieces(
+                    ("alert", 0, 600)),
+                ["shot"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot2", 0, -240),
+                    CreateIndexedPiece(1, "stabO1", 0, 540, move: new Point(2, 0)),
+                    CreateIndexedPiece(2, "shoot2", 0, 0)
+                },
+                ["fireburner"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot2", 0, -240),
+                    CreateIndexedPiece(1, "stabO1", 0, -270, move: new Point(2, 0)),
+                    CreateIndexedPiece(2, "stabO1", 0, 90, move: new Point(2, 0)),
+                    CreateIndexedPiece(3, "shoot2", 0, 0)
+                },
+                ["coolingeffect"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot2", 0, -240),
+                    CreateIndexedPiece(1, "stabO1", 0, -90, move: new Point(2, 0)),
+                    CreateIndexedPiece(2, "stabO1", 0, 270, move: new Point(2, 0)),
+                    CreateIndexedPiece(3, "shoot2", 0, 0)
+                },
+                ["rapidfire"] = new[]
+                {
+                    CreateIndexedPiece(0, "stabO1", 0, 60, move: new Point(7, 0))
+                },
+                ["cannon"] = CreateIndexedPieces(
+                    ("alert", 0, 780)),
+                ["torpedo"] = CreateIndexedPieces(
+                    ("alert", 0, 990)),
+                ["wave"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingTF", 1, -60, move: new Point(14, 0)),
+                    CreateIndexedPiece(1, "swingTF", 1, -420, move: new Point(15, 0)),
+                    CreateIndexedPiece(2, "stabO1", 1, -60, move: new Point(-29, 0)),
+                    CreateIndexedPiece(3, "stabO1", 1, 450, move: new Point(-30, 0)),
+                    CreateIndexedPiece(4, "alert", 0, 60)
+                },
+                ["blade"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingTF", 0, -90, move: new Point(-1, -4)),
+                    CreateIndexedPiece(1, "swingTF", 1, -90, move: new Point(6, -13)),
+                    CreateIndexedPiece(2, "swingTF", 2, -90, move: new Point(11, -27)),
+                    CreateIndexedPiece(3, "swingTF", 2, -90, move: new Point(11, -32)),
+                    CreateIndexedPiece(4, "swingTF", 2, -90, move: new Point(11, -33)),
+                    CreateIndexedPiece(5, "swingTF", 2, -120, move: new Point(11, -34)),
+                    CreateIndexedPiece(6, "swingTF", 2, 60, move: new Point(11, -34)),
+                    CreateIndexedPiece(7, "swingTF", 3, 360, move: new Point(16, 0))
+                },
+                ["souldriver"] = CreateIndexedPieces(
+                    ("alert", 0, -800),
+                    ("alert", 1, -800),
+                    ("alert", 2, 1)),
+                ["firestrike"] = new[]
+                {
+                    CreateIndexedPiece(0, "stabO1", 0, -60, move: new Point(6, 0)),
+                    CreateIndexedPiece(1, "stabO1", 0, -480, move: new Point(7, 0)),
+                    CreateIndexedPiece(2, "stabO1", 1, 60, move: new Point(-24, 0)),
+                    CreateIndexedPiece(3, "stabO1", 1, 60, move: new Point(-36, 0)),
+                    CreateIndexedPiece(4, "stabO1", 1, 60, move: new Point(-39, 0)),
+                    CreateIndexedPiece(5, "stabO1", 1, 120, move: new Point(-41, 0))
+                },
+                ["flamegear"] = CreateIndexedPieces(
+                    ("alert", 0, -630),
+                    ("alert", 1, -630),
+                    ("alert", 2, 180)),
+                ["stormbreak"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingT3", 0, -90, move: new Point(-9, 0)),
+                    CreateIndexedPiece(1, "swingT3", 1, -90, move: new Point(-20, 0)),
+                    CreateIndexedPiece(2, "swingT3", 2, 90, move: new Point(-15, 0)),
+                    CreateIndexedPiece(3, "swingT3", 2, 180, move: new Point(-15, 0))
+                },
+                ["shockwave"] = CreateIndexedPieces(
+                    ("alert", 0, -870),
+                    ("alert", 1, 360)),
+                ["demolition"] = CreateIndexedPieces(
+                    ("alert", 0, -450),
+                    ("alert", 1, 2670)),
+                ["snatch"] = CreateIndexedPieces(
+                    ("alert", 0, -630),
+                    ("alert", 1, 180)),
+                ["windspear"] = CreateIndexedPieces(
+                    ("alert", 0, -660),
+                    ("alert", 1, 540)),
+                ["windshot"] = CreateIndexedPieces(
+                    ("alert", 0, -600),
+                    ("alert", 1, 660)),
+                ["swingT2PoleArm"] = CreateIndexedPieces(
+                    ("swingT2", 0, -120),
+                    ("swingT2", 1, -60),
+                    ("swingT2", 2, 360)),
+                ["swingP1PoleArm"] = CreateIndexedPieces(
+                    ("swingP1", 0, -120),
+                    ("swingP1", 1, -60),
+                    ("swingP1", 2, 360)),
+                ["swingP2PoleArm"] = CreateIndexedPieces(
+                    ("swingP2", 0, -120),
+                    ("swingP2", 1, -60),
+                    ("swingP2", 2, 360)),
+                ["combatStep"] = CreateIndexedPieces(
+                    ("walk2", 0, 30),
+                    ("walk2", 1, 30),
+                    ("walk2", 2, 60),
+                    ("walk2", 3, 60)),
                 // `Character/00002000.img/alert8/0` is another mounted indexed-alert
                 // helper row; it reuses the authored jump helper frame with its own delay.
                 ["alert8"] = CreateIndexedPieces(

@@ -65,12 +65,14 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex QuestDetailStyleRegex = new(@"#(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MalformedQuestDetailStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailFontNameRegex = new(@"#fn(?<name>[^#]+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestDetailFontNameResetRegex = new(@"#fn#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailFontSizeRegex = new(@"#fs(?<size>[+-]?\d+(?:\.\d+)?)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestDetailFontSizeResetRegex = new(@"#fs#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])#?", RegexOptions.Compiled);
         private static readonly Regex FontNameTagRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex FontSizeTagRegex = new(@"#fs[+-]?\d+(?:\.\d+)?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontSizeTagRegex = new(@"#fs(?:[+-]?\d+(?:\.\d+)?)?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MalformedPunctuationTagRegex = new(@"#(?<punct>[!?,.;:)])#?", RegexOptions.Compiled);
         private static readonly Regex LiteralWordHashRegex = new(@"#(?=[A-Z][A-Za-z]+\b)", RegexOptions.Compiled);
@@ -156,9 +158,15 @@ namespace HaCreator.MapSimulator.Interaction
             string preservedMarkers = RewardCategoryRegex.Replace(
                 text,
                 match => BuildQuestSurfaceMarker(match.Value.TrimStart('#', 'W', 'w').TrimEnd('#')));
+            preservedMarkers = QuestDetailFontNameResetRegex.Replace(
+                preservedMarkers,
+                _ => BuildQuestFontResetMarker());
             preservedMarkers = QuestDetailFontNameRegex.Replace(
                 preservedMarkers,
                 match => BuildQuestFontMarker(match.Groups["name"].Value));
+            preservedMarkers = QuestDetailFontSizeResetRegex.Replace(
+                preservedMarkers,
+                _ => BuildQuestFontSizeResetMarker());
             preservedMarkers = QuestDetailFontSizeRegex.Replace(
                 preservedMarkers,
                 match => BuildQuestFontSizeMarker(match.Groups["size"].Value));
@@ -323,6 +331,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{{{{QUESTFONT:{normalizedName}}}}}";
         }
 
+        public static string BuildQuestFontResetMarker()
+        {
+            return "{{QUESTFONTRESET}}";
+        }
+
         public static string BuildQuestFontSizeMarker(string fontSize)
         {
             string normalizedSize = fontSize?.Trim();
@@ -334,6 +347,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"{{{{QUESTFONTSIZE:{parsedSize.ToString("0.###", CultureInfo.InvariantCulture)}}}}}";
+        }
+
+        public static string BuildQuestFontSizeResetMarker()
+        {
+            return "{{QUESTFONTSIZERESET}}";
         }
 
         public static string BuildQuestInlineReferenceMarker(string kind, int targetId, string label)
@@ -841,8 +859,20 @@ namespace HaCreator.MapSimulator.Interaction
                 "cmp" => "0",
                 "min" => "0",
                 "sec" => "0",
+                "hour" => "0",
                 "date" => "-",
                 "rank" => "-",
+                "try" => "0",
+                "vic" => "0",
+                "gvup" => "0",
+                "lose" => "0",
+                "draw" => "0",
+                "scnt" => "0",
+                "cmpcnt" => "0",
+                "popgap" => "0",
+                "popg" => "0",
+                "mon" => "0",
+                "mg" => "0",
                 "level" => ResolveCurrentLevelText(context),
                 "lv" => ResolveCurrentLevelText(context),
                 "pop" => ResolveCurrentFameText(context),

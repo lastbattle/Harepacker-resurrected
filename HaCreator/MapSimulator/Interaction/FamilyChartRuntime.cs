@@ -818,7 +818,11 @@ namespace HaCreator.MapSimulator.Interaction
                         localPlayerPosition,
                         !sameField);
                     return new FamilyEntitlementUseResult(
-                        $"Sent a packet-shaped family move request for {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` and server-owned transfer completion before moving.");
+                        $"Sent a packet-shaped family move request for {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` and server-owned transfer completion before moving.",
+                        DispatchClientPrivilegeRequest: true,
+                        PrivilegeRequestIndex: GetSelectedEntitlementIndex(),
+                        IncludePrivilegeTargetName: true,
+                        PrivilegeTargetName: selectedMember.Name);
                 }
                 case FamilyEntitlementType.SummonMember:
                 {
@@ -837,7 +841,11 @@ namespace HaCreator.MapSimulator.Interaction
                         localPlayerPosition,
                         !IsSameField(localLocation, selectedLocation));
                     return new FamilyEntitlementUseResult(
-                        $"Sent a packet-shaped family summon request for {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` before updating the roster.");
+                        $"Sent a packet-shaped family summon request for {selectedMember.Name}. Await `CWvsContext::OnFamilyResult` before updating the roster.",
+                        DispatchClientPrivilegeRequest: true,
+                        PrivilegeRequestIndex: GetSelectedEntitlementIndex(),
+                        IncludePrivilegeTargetName: true,
+                        PrivilegeTargetName: selectedMember.Name);
                 }
                 case FamilyEntitlementType.DropBuff:
                 case FamilyEntitlementType.ExpBuff:
@@ -846,7 +854,11 @@ namespace HaCreator.MapSimulator.Interaction
                     _activePrivilege = new FamilyPrivilegeState(_entitlementType, currentTick + EntitlementDurationMs);
                     string privilegeMessage = $"Applied {GetEntitlementLabel(_entitlementType)} for the current simulator family session.";
                     NotifySocialChatObserved(privilegeMessage);
-                    return new FamilyEntitlementUseResult(privilegeMessage, WasApplied: true);
+                    return new FamilyEntitlementUseResult(
+                        privilegeMessage,
+                        WasApplied: true,
+                        DispatchClientPrivilegeRequest: true,
+                        PrivilegeRequestIndex: GetSelectedEntitlementIndex());
                 default:
                     return new FamilyEntitlementUseResult("That family entitlement is not modeled yet.");
             }
@@ -2434,7 +2446,11 @@ namespace HaCreator.MapSimulator.Interaction
             string Message,
             bool WasApplied = false,
             bool RequestTeleport = false,
-            Vector2 TeleportPosition = default);
+            Vector2 TeleportPosition = default,
+            bool DispatchClientPrivilegeRequest = false,
+            int PrivilegeRequestIndex = -1,
+            bool IncludePrivilegeTargetName = false,
+            string PrivilegeTargetName = null);
 
     internal sealed class FamilyChartSnapshot
     {

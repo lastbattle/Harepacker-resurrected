@@ -1303,18 +1303,18 @@ namespace HaCreator.MapSimulator.UI
             out string rejectReason)
         {
             long entryStart = reader?.BaseStream?.Position ?? 0;
-            if (TryReadClientEquipAddEntryBody(reader, hasCashSerial, statFieldCount: 14, out rejectReason))
+            if (TryReadClientEquipAddEntryBody(reader, hasCashSerial, statFieldCount: 15, out rejectReason))
             {
                 return true;
             }
 
-            if (reader?.BaseStream is { CanSeek: true } stream)
+            if (reader?.BaseStream is not { CanSeek: true } stream)
             {
-                stream.Position = entryStart;
-                return TryReadClientEquipAddEntryBody(reader, hasCashSerial, statFieldCount: 15, out rejectReason);
+                return false;
             }
 
-            return false;
+            stream.Position = entryStart;
+            return TryReadClientEquipAddEntryBody(reader, hasCashSerial, statFieldCount: 14, out rejectReason);
         }
 
         private static bool TryReadClientEquipAddEntryBody(
@@ -1338,16 +1338,13 @@ namespace HaCreator.MapSimulator.UI
                 _ = reader.ReadInt16();
             }
 
-            if (!TryReadClientMapleString(reader, out string title, out rejectReason))
+            if (!TryReadClientMapleString(reader, out _, out rejectReason))
             {
                 return false;
             }
 
-            if (title.Length > 13)
-            {
-                rejectReason = "Inventory-operation equip add entry title is outside the expected client byte range.";
-                return false;
-            }
+            // Client v95 GW_ItemSlotEquip::RawDecode reads the full DecodeStr body and truncates to 13 chars
+            // via lstrcpynA, so long titles remain valid on the wire.
 
             const int equipTailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
             if (!TryEnsureRemaining(

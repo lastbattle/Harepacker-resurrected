@@ -35,10 +35,13 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int VisibleThreadCount = 10;
         private const int VisibleCommentCount = 4;
-        private const int VisibleCashEmoticonCount = 8;
+        private const int VisibleCashEmoticonCount = ClientVisibleCashEmoticonCount;
         private const int DefaultBasicEmoticonCount = 3;
         private const int DefaultCashEmoticonCount = ClientVisibleCashEmoticonCount;
-        internal const int ClientVisibleCashEmoticonCount = 8;
+        // IDA evidence:
+        // - CUIGuildBBS::OnCreate loads seven cash emoticon canvases (`for i < 7`).
+        // - CUIGuildBBS::OnWrite rebuilds owned cash emoticon ids from inventory 5290000..5290006 (=> 100..106).
+        internal const int ClientVisibleCashEmoticonCount = 7;
         internal const int ClientInventoryCashEmoticonItemCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int ClientCashEmoticonIdStart = 100;
@@ -158,7 +161,10 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
         {
             _basicEmoticonCount = Math.Max(1, basicEmoticonCount);
-            _cashEmoticonCount = Math.Max(1, cashEmoticonCount);
+            _cashEmoticonCount = Math.Clamp(
+                cashEmoticonCount,
+                1,
+                ClientInventoryCashEmoticonItemCount);
             NormalizeDraftState();
         }
 
@@ -1561,7 +1567,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            if (emoticonId >= ClientCashEmoticonIdStart)
+            if (emoticonId >= ClientCashEmoticonIdStart
+                && emoticonId < ClientCashEmoticonIdStart + ClientInventoryCashEmoticonItemCount)
             {
                 thread.EmoticonKind = GuildBbsEmoticonKind.Cash;
                 thread.EmoticonSlot = emoticonId - ClientCashEmoticonIdStart;

@@ -1196,16 +1196,18 @@ namespace HaCreator.MapSimulator.UI
             int styleIndex,
             Func<string, int, float> measureTextWidth = null)
         {
+            int analyzerInnerLeft = left + ClientCollectionTextAnalyzerMargin;
+            int analyzerInnerWidth = Math.Max(1, width - (ClientCollectionTextAnalyzerMargin * 2));
             if (alignment == CollectionBookTextAlignment.Left)
             {
-                return left + ClientCollectionTextAnalyzerMargin;
+                return analyzerInnerLeft;
             }
 
             int lineWidth = MeasureCollectionTextWidth(line, styleIndex, measureTextWidth);
-            int analyzerLaneWidth = Math.Max(0, width);
-            return alignment == CollectionBookTextAlignment.Center
-                ? left + ((analyzerLaneWidth - lineWidth) / 2)
-                : left + (analyzerLaneWidth - lineWidth);
+            int analyzerLineOffset = alignment == CollectionBookTextAlignment.Center
+                ? Math.Max(0, (analyzerInnerWidth - lineWidth) / 2)
+                : Math.Max(0, analyzerInnerWidth - lineWidth);
+            return analyzerInnerLeft + analyzerLineOffset;
         }
 
         private static int MeasureCollectionTextWidth(string text, int styleIndex, Func<string, int, float> measureTextWidth = null)

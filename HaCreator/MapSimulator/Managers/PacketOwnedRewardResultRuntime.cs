@@ -278,6 +278,13 @@ namespace HaCreator.MapSimulator.Managers
             return Math.Clamp(clientVolume, 0, 100) / 100f;
         }
 
+        internal static bool IsUtilDlgNoticeShellResourcePath(string resourcePath)
+        {
+            string normalizedPath = NormalizeAssetPath(resourcePath);
+            return !string.IsNullOrWhiteSpace(normalizedPath)
+                && normalizedPath.EndsWith("/utildlgex/notice", StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static int NormalizeRandomMesoBagClientRank(int rank)
         {
             return rank switch
@@ -410,6 +417,13 @@ namespace HaCreator.MapSimulator.Managers
                     || value.Contains("Sound\\", StringComparison.OrdinalIgnoreCase)
                     || value.Contains(".img/", StringComparison.OrdinalIgnoreCase)
                     || value.Contains(".img\\", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string NormalizeAssetPath(string value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? string.Empty
+                : value.Replace('\\', '/');
         }
     }
 }

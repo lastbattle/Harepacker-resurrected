@@ -1028,8 +1028,10 @@ namespace HaCreator.MapSimulator.Fields
             byte packetType = packetBytes[0];
             if (_pendingPrompt.IsActive && IsLocalRequestPacketSubtype(packetType))
             {
-                message = "Finish the current Match Cards confirmation prompt before sending another outbound request.";
-                return false;
+                if (!TryConsumePendingPromptForOutgoingPacket(packetBytes, out message))
+                {
+                    return false;
+                }
             }
 
             bool handled = packetType switch
@@ -3023,6 +3025,51 @@ namespace HaCreator.MapSimulator.Fields
         {
             _pendingPrompt = default;
             _statusMessageBeforePrompt = null;
+        }
+
+        private bool TryConsumePendingPromptForOutgoingPacket(byte[] packetBytes, out string message)
+        {
+            message = null;
+            if (!_pendingPrompt.IsActive)
+            {
+                return true;
+            }
+
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Memory Game client payload is empty.";
+                return false;
+            }
+
+            if (!IsPromptResponsePacket(_pendingPrompt.Type, packetBytes))
+            {
+                message = "Finish the current Match Cards confirmation prompt before sending another outbound request.";
+                return false;
+            }
+
+            ClearPendingPrompt();
+            return true;
+        }
+
+        private static bool IsPromptResponsePacket(MemoryGamePromptType promptType, byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return false;
+            }
+
+            byte packetType = packetBytes[0];
+            return promptType switch
+            {
+                MemoryGamePromptType.OutgoingTieRequest => packetType == MemoryGameTieRequestPacketType,
+                MemoryGamePromptType.IncomingTieRequest => packetType == MemoryGameTieResultPacketType,
+                MemoryGamePromptType.GiveUp => packetType == MemoryGameClientGiveUpPacketType,
+                MemoryGamePromptType.BanParticipant => packetType == MemoryGameClientBanOrTurnUpCardPacketType && packetBytes.Length <= 1,
+                MemoryGamePromptType.BookLeave => packetType == MemoryGameClientBookLeavePacketType,
+                MemoryGamePromptType.CancelBookedLeave => packetType == MemoryGameClientCancelLeavePacketType,
+                MemoryGamePromptType.CloseRoom => packetType == MiniRoomBaseLeavePacketType,
+                _ => false
+            };
         }
 
         private static bool AssignPromptMissing(out string message)

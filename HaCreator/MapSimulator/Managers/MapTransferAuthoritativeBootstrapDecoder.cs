@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Managers
             sizeof(int) + (PacketStageTransitionRuntime.LogoutGiftEntryCount * sizeof(int));
         private const int SetFieldServerFileTimeByteLength = sizeof(long);
         private const int MaximumOpaquePostMapTransferTailByteLength = 64;
+        private const int MaximumOpaqueBetweenLogoutGiftAndServerFileTimeByteLength = 256;
         private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int);
         private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);
         private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
@@ -1202,15 +1203,50 @@ namespace HaCreator.MapSimulator.Managers
 
             int leadingOpaqueLength = leadingOpaqueBytes?.Length ?? 0;
             int trailingOpaqueLength = trailingOpaqueBytes?.Length ?? 0;
+            bool hasTrailingServerFileTimeSuffix = TryMatchTrailingServerFileTimeSuffix(
+                trailingOpaqueBytes,
+                out int opaqueBeforeServerFileTimeLength);
             bool hasBoundedOpaqueSegments = leadingOpaqueLength <= MaximumOpaquePostMapTransferTailByteLength &&
-                                            trailingOpaqueLength <= MaximumOpaquePostMapTransferTailByteLength;
+                                            (trailingOpaqueLength <= MaximumOpaquePostMapTransferTailByteLength
+                                             || (hasTrailingServerFileTimeSuffix &&
+                                                 opaqueBeforeServerFileTimeLength <= MaximumOpaqueBetweenLogoutGiftAndServerFileTimeByteLength));
             if (!hasBoundedOpaqueSegments)
             {
                 return false;
             }
 
-            matchedKnownTail = trailingOpaqueLength == 0 || trailingOpaqueLength == SetFieldServerFileTimeByteLength;
+            matchedKnownTail = trailingOpaqueLength == 0 ||
+                               trailingOpaqueLength == SetFieldServerFileTimeByteLength ||
+                               hasTrailingServerFileTimeSuffix;
             return true;
+        }
+
+        private static bool TryMatchTrailingServerFileTimeSuffix(
+            byte[] trailingOpaqueBytes,
+            out int opaqueBeforeServerFileTimeLength)
+        {
+            opaqueBeforeServerFileTimeLength = 0;
+            if (trailingOpaqueBytes == null || trailingOpaqueBytes.Length < SetFieldServerFileTimeByteLength)
+            {
+                return false;
+            }
+
+            opaqueBeforeServerFileTimeLength = trailingOpaqueBytes.Length - SetFieldServerFileTimeByteLength;
+            long rawServerFileTime = BitConverter.ToInt64(trailingOpaqueBytes, opaqueBeforeServerFileTimeLength);
+            if (rawServerFileTime <= 0 || rawServerFileTime == long.MaxValue)
+            {
+                return false;
+            }
+
+            try
+            {
+                _ = DateTime.FromFileTimeUtc(rawServerFileTime);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
         }
     }
 }

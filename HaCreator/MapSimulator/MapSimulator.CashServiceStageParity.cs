@@ -926,6 +926,11 @@ namespace HaCreator.MapSimulator
                 foreach (CashServiceStageWindow.PacketCatalogEntry entry in stageWindow.CashPacketCatalogEntries.Take(2))
                 {
                     lines.Add(entry.Detail);
+                    if (string.Equals(entry.PacketSource, "GW_GiftList", StringComparison.Ordinal)
+                        && !string.IsNullOrWhiteSpace(entry.PacketFieldSummary))
+                    {
+                        lines.Add(entry.PacketFieldSummary);
+                    }
                 }
 
                 foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
@@ -1974,6 +1979,12 @@ namespace HaCreator.MapSimulator
                 && !string.Equals(entry.PacketMessageRaw.Trim(), entry.PacketMessage, StringComparison.Ordinal)
                 ? $"GW_GiftList sText raw: {entry.PacketMessageRaw}"
                 : string.Empty;
+            string senderShapeLine = entry.PacketSenderByteLength > 0 && !string.IsNullOrWhiteSpace(entry.PacketSenderRawHex)
+                ? $"GW_GiftList sFrom[{entry.PacketSenderByteLength.ToString(CultureInfo.InvariantCulture)}] raw hex: {entry.PacketSenderRawHex}"
+                : string.Empty;
+            string messageShapeLine = entry.PacketMessageByteLength > 0 && !string.IsNullOrWhiteSpace(entry.PacketMessageRawHex)
+                ? $"GW_GiftList sText[{entry.PacketMessageByteLength.ToString(CultureInfo.InvariantCulture)}] raw hex: {entry.PacketMessageRawHex}"
+                : string.Empty;
             modalWindow.Configure(
                 "CUIReceiveGift",
                 $"Review gift row {(giftIndex + 1).ToString(CultureInfo.InvariantCulture)} of {totalGiftCount.ToString(CultureInfo.InvariantCulture)} before the next CDialog::DoModal pass.",
@@ -1984,6 +1995,8 @@ namespace HaCreator.MapSimulator
                     entry.PacketFieldSummary,
                     rawSenderLine,
                     rawMessageLine,
+                    senderShapeLine,
+                    messageShapeLine,
                     string.IsNullOrWhiteSpace(entry.PriceLabel) ? string.Empty : entry.PriceLabel,
                     string.IsNullOrWhiteSpace(entry.StateLabel) ? string.Empty : entry.StateLabel,
                     "Client evidence: OnCashItemResLoadGiftDone allocates one CUIReceiveGift per decoded GW_GiftList row and advances after each modal closes."

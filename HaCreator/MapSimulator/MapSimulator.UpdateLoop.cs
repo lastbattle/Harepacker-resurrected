@@ -157,6 +157,7 @@ namespace HaCreator.MapSimulator
                 SyncFriendGroupPopupWindowState();
                 ProcessPendingRepairDurabilityRequest();
                 ProcessPendingMonsterBookRegistrationRequest();
+                ProcessPendingMonsterBookOwnershipSaveRequest();
             }
 
 

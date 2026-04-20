@@ -2999,7 +2999,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Rectangle destination = new Rectangle(x, y, size, size);
-            sprite.Draw(entry.IconTexture, destination, Color.White);
+            bool useNonSaleVisual = AdminShopPacketOwnedSellTemplateParity.ShouldUseNonSaleIconVisual(
+                entry.IsPacketOwnedSnapshotRow,
+                entry.CommoditySerialNumber,
+                entry.PacketSaleState,
+                entry.CommodityOnSale,
+                entry.State == AdminShopEntryState.PreviewOnly);
+            Color iconColor = useNonSaleVisual
+                ? new Color(164, 164, 164, 224)
+                : Color.White;
+            sprite.Draw(entry.IconTexture, destination, iconColor);
 
             int displayQuantity = ResolveDisplayQuantity(entry);
             if (displayQuantity <= 1)

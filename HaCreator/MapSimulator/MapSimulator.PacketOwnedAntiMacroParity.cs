@@ -453,7 +453,7 @@ namespace HaCreator.MapSimulator
             return $"Anti-macro mode={_lastPacketOwnedAntiMacroMode}, type={_lastPacketOwnedAntiMacroType}, comboHeld={_packetOwnedAntiMacroComboHeld}, {ownerState}, {noticeState}, {screenshotState}, {screenshotBaseFolderState}, {resultSourceState}. {_lastPacketOwnedAntiMacroSummary}";
         }
 
-        private string ClearPacketOwnedAntiMacro(bool releaseCombo)
+        private string ClearPacketOwnedAntiMacro(bool releaseCombo, bool preserveAuthoritativeSubmitAwaitingState = false)
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow normalWindow)
             {
@@ -475,20 +475,26 @@ namespace HaCreator.MapSimulator
                 SetPacketOwnedAntiMacroComboHold(false);
             }
 
-            _packetOwnedAntiMacroAwaitingResult = false;
-            _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
-            _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
-            _packetOwnedAntiMacroCurrentRemainingMs = 0;
-            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
-            _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
-            _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
-            _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+            if (!preserveAuthoritativeSubmitAwaitingState)
+            {
+                _packetOwnedAntiMacroAwaitingResult = false;
+                _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+                _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+                _packetOwnedAntiMacroCurrentRemainingMs = 0;
+                _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+                _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+                _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+                _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+            }
+
             _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
             _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
             _lastPacketOwnedAntiMacroResultTick = int.MinValue;
             _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
             _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
-            _lastPacketOwnedAntiMacroSummary = "Closed packet-owned anti-macro owner.";
+            _lastPacketOwnedAntiMacroSummary = preserveAuthoritativeSubmitAwaitingState
+                ? "Closed packet-owned anti-macro owner while keeping pending official-session submit tracking."
+                : "Closed packet-owned anti-macro owner.";
             return _lastPacketOwnedAntiMacroSummary;
         }
 
@@ -601,9 +607,11 @@ namespace HaCreator.MapSimulator
             return _lastPacketOwnedAntiMacroSummary;
         }
 
-        private string ApplyPacketOwnedAntiMacroCloseResult(int mode, int antiMacroType)
+        private string ApplyPacketOwnedAntiMacroCloseResult(int mode, int antiMacroType, bool preserveAuthoritativeSubmitAwaitingState = false)
         {
-            string clearSummary = ClearPacketOwnedAntiMacro(releaseCombo: true);
+            string clearSummary = ClearPacketOwnedAntiMacro(
+                releaseCombo: true,
+                preserveAuthoritativeSubmitAwaitingState: preserveAuthoritativeSubmitAwaitingState);
             string noticeSummary = ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType);
             _lastPacketOwnedAntiMacroSummary = $"{clearSummary} {noticeSummary}";
             return _lastPacketOwnedAntiMacroSummary;
@@ -688,6 +696,18 @@ namespace HaCreator.MapSimulator
                 PacketOwnedAntiMacroAnswerSubmitOpcode,
                 _lastPacketOwnedAntiMacroSubmittedRawPacket,
                 Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal));
+        }
+
+        private bool HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport()
+        {
+            if (_lastPacketOwnedAntiMacroSubmitTransportPath != PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
+                && _lastPacketOwnedAntiMacroSubmitTransportPath != PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge)
+            {
+                return false;
+            }
+
+            return _lastPacketOwnedAntiMacroSubmittedRawPacket != null
+                && _lastPacketOwnedAntiMacroSubmittedRawPacket.Length > 0;
         }
 
         internal static int ResolvePacketOwnedAntiMacroRoundTripLatencyMs(int submittedTick, int resultTick)
@@ -1193,14 +1213,18 @@ namespace HaCreator.MapSimulator
                         wasAwaitingResult,
                         resolvedSource,
                         hasAuthoritativeSubmitTransport);
+                    bool shouldKeepAwaitingAuthoritativeResult = wasAwaitingResult
+                        && !authoritativeRoundTrip
+                        && HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport();
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
-                        ApplyPacketOwnedAntiMacroCloseResult(mode, antiMacroType),
+                        ApplyPacketOwnedAntiMacroCloseResult(
+                            mode,
+                            antiMacroType,
+                            preserveAuthoritativeSubmitAwaitingState: shouldKeepAwaitingAuthoritativeResult),
                         payload,
                         resolvedSource,
                         authoritativeRoundTrip,
-                        awaitingTerminalResult: IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
-                            && wasAwaitingResult
-                            && !authoritativeRoundTrip);
+                        awaitingTerminalResult: shouldKeepAwaitingAuthoritativeResult);
                     return true;
                 }
 
@@ -1379,7 +1403,7 @@ namespace HaCreator.MapSimulator
             else
             {
                 sourceSummary = awaitingTerminalResult
-                    ? $" Result arrived from {source}; submit parity is still awaiting a terminal anti-macro result mode (7/9/11)."
+                    ? $" Result arrived from {source}; submit parity is still awaiting an authoritative anti-macro terminal result source/mode (7/9/11)."
                     : $" Result arrived from {source}.";
             }
 

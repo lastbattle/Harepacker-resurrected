@@ -266,7 +266,7 @@ namespace HaCreator.MapSimulator.UI
             IsActive = keepSessionActive && (IsActive || OpenCount > 0 || DecodedItemCount > 0 || NpcTemplateId > 0);
             OwnerVisibilityState = keepSessionActive
                 ? preservedVisibilityState
-                : AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
+                : AdminShopPacketOwnedOwnerVisibilityState.Hidden;
             LastOwnerState = ownerState ?? string.Empty;
             ClearPendingWishlistRegister();
             TouchWishlistSearchStateToken();

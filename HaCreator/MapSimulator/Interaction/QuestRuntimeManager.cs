@@ -848,7 +848,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            bool hasCompletionDemandOutstanding = EvaluateCompletionIssues(definition, build).Count > 0;
+            bool hasCompletionDemandOutstanding =
+                HasCompletionDemandOutstandingForAutoCompletionAlert(definition, build);
             bool shouldRegister = PacketOwnedQuestStartRequest.ResolveShouldRegisterAutoCompletionAlertQuest(
                 isCandidate,
                 hasCompletionDemandOutstanding);
@@ -862,6 +863,68 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return shouldRegister;
+        }
+
+        private bool HasCompletionDemandOutstandingForAutoCompletionAlert(
+            QuestDefinition definition,
+            CharacterBuild build)
+        {
+            if (definition == null)
+            {
+                return false;
+            }
+
+            // Keep auto-completion alert registration closer to the client
+            // CheckCompleteDemand owner by checking unmet completion demand only.
+            // Exclude simulator UI-only completion issues (reward-slot capacity and
+            // action metadata presentation) from this registration gate.
+            var issues = new List<string>();
+            AppendQuestStateIssues(definition.EndQuestRequirements, issues);
+
+            QuestProgress progress = GetOrCreateProgress(definition.QuestId);
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
+                if (currentCount < requirement.RequiredCount)
+                {
+                    issues.Add($"Defeat {GetMobName(requirement.MobId)} {requirement.RequiredCount - currentCount} more time(s).");
+                }
+            }
+
+            for (int i = 0; i < definition.EndItemRequirements.Count; i++)
+            {
+                QuestItemRequirement requirement = definition.EndItemRequirements[i];
+                int currentCount = GetResolvedItemCount(requirement.ItemId);
+                if (currentCount < requirement.RequiredCount)
+                {
+                    issues.Add(BuildItemRequirementIssueText(requirement, requirement.RequiredCount - currentCount));
+                }
+            }
+
+            AppendActionConsumeItemIssues(definition.EndActions.RewardItems, issues, "complete");
+            AppendPetIssues(
+                CreatePetRequirementContext(
+                    definition.EndPetRequirements,
+                    definition.EndPetRecallLimit,
+                    definition.EndPetTamenessMinimum,
+                    definition.EndPetTamenessMaximum),
+                issues);
+            AppendSkillIssues(definition.EndSkillRequirements, issues);
+            AppendAvailabilityIssues(
+                definition.EndAvailableFrom,
+                definition.EndAvailableUntil,
+                definition.EndAllowedDays,
+                issues,
+                "complete");
+            AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+
+            if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
+            {
+                issues.Add($"This quest is capped at level {definition.MaxLevel.Value}.");
+            }
+
+            return issues.Count > 0;
         }
 
         public void PrimeQuestAlarmAutoRegisterActivity(IEnumerable<int> questIds)
@@ -8126,10 +8189,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             switch (propertyName.Trim().ToLowerInvariant())
             {
+                case "eventq":
                 case "script":
                 case "scripts":
                 case "name":
                 case "info":
+                case "startscript":
+                case "endscript":
+                case "npcact":
+                case "onuserenter":
+                case "onfirstuserenter":
+                case "fieldscript":
                 case "delay":
                 case "wait":
                 case "time":

@@ -266,12 +266,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (!TryMapItemUpgradeResultCode(decodeState.ResultCode, out bool success))
-            {
-                message = $"Unsupported packet-owned item-upgrade result code {decodeState.ResultCode}.";
-                return false;
-            }
-
+            bool success;
             if (decodeState.HasOutcomeState)
             {
                 if (!TryMapItemUpgradeOutcomeStateResult(decodeState.OutcomeResultValue, out bool outcomeSuccess))
@@ -281,6 +276,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 success = outcomeSuccess;
+            }
+            else if (!TryMapItemUpgradeResultCode(decodeState.ResultCode, out success))
+            {
+                message = $"Unsupported packet-owned item-upgrade result code {decodeState.ResultCode}.";
+                return false;
             }
 
             _pendingItemUpgradeOwnerRequest.ForcedSuccess = success;

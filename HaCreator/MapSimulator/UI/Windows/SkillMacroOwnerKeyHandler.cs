@@ -96,11 +96,6 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (IsClientForwardedModifierPhysicalKey(key))
-            {
-                return false;
-            }
-
             return key switch
             {
                 Keys.Back => false,
@@ -116,8 +111,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldForwardClientOwnedNonFunctionKeyUpToParent(Keys key)
         {
-            return !TryGetClientForwardedFunctionKeyIndex(key, out _)
-                && !IsClientForwardedModifierPhysicalKey(key);
+            return !TryGetClientForwardedFunctionKeyIndex(key, out _);
         }
 
         internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)

@@ -96,9 +96,7 @@ namespace HaCreator.MapSimulator.Fields
                     return QueuedRetryDecision.Clear;
                 }
 
-                return state.HasCollidingTransferPortal
-                    ? QueuedRetryDecision.ReplayHandleUpKeyDown
-                    : QueuedRetryDecision.Clear;
+                return QueuedRetryDecision.ReplayHandleUpKeyDown;
             }
 
             return shouldKeepPending

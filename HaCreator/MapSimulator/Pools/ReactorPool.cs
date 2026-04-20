@@ -2884,6 +2884,16 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
                 }
 
+                if (TrySelectNarrowedWzAuthoredOrderCandidateForDisjointSignals(
+                        scope,
+                        initialState,
+                        unresolvedPacketName,
+                        out index))
+                {
+                    selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
+                    return true;
+                }
+
                 return false;
             }
 
@@ -3051,6 +3061,93 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             index = bestIndex;
+            return index >= 0;
+        }
+
+        private static bool TrySelectNarrowedWzAuthoredOrderCandidateForDisjointSignals(
+            IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
+            int initialState,
+            bool unresolvedPacketName,
+            out int index)
+        {
+            index = -1;
+            if (candidates == null
+                || candidates.Count <= 1
+                || unresolvedPacketName)
+            {
+                return false;
+            }
+
+            int highestSignalScore = int.MinValue;
+            bool hasSignalScoreTie = false;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                PacketEnterAuthoredReactorCandidate candidate = candidates[i];
+                int signalScore = 0;
+                if (candidate.IsLocallyTouched)
+                {
+                    signalScore++;
+                }
+
+                if (candidate.ContainsCurrentLocalUserPosition)
+                {
+                    signalScore++;
+                }
+
+                if (candidate.VisualState == initialState)
+                {
+                    signalScore++;
+                }
+
+                if (signalScore > highestSignalScore)
+                {
+                    highestSignalScore = signalScore;
+                    hasSignalScoreTie = false;
+                    continue;
+                }
+
+                if (signalScore == highestSignalScore)
+                {
+                    hasSignalScoreTie = true;
+                }
+            }
+
+            if (!hasSignalScoreTie || highestSignalScore <= 0)
+            {
+                return false;
+            }
+
+            List<PacketEnterAuthoredReactorCandidate> strongestCandidates = candidates
+                .Where(candidate =>
+                {
+                    int score = 0;
+                    if (candidate.IsLocallyTouched)
+                    {
+                        score++;
+                    }
+
+                    if (candidate.ContainsCurrentLocalUserPosition)
+                    {
+                        score++;
+                    }
+
+                    if (candidate.VisualState == initialState)
+                    {
+                        score++;
+                    }
+
+                    return score == highestSignalScore;
+                })
+                .ToList();
+            if (strongestCandidates.Count <= 1)
+            {
+                return false;
+            }
+
+            index = strongestCandidates
+                .OrderBy(static candidate => candidate.Index)
+                .Select(static candidate => candidate.Index)
+                .FirstOrDefault();
             return index >= 0;
         }
 

@@ -3320,6 +3320,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedBattleRecordRuntime
     {
+        private const long BattleRecordOverflowThreshold = 0xE8D4A50FFF;
+
         private readonly List<string> _recentNotes = new();
         private int _packetCount420;
         private int _packetCount421;
@@ -3341,6 +3343,34 @@ namespace HaCreator.MapSimulator.Interaction
         private int _timerSetMilliseconds;
         private int _timerStopRemainMilliseconds;
         private int _timerExpiryTick;
+        private long _damageTotalDamage;
+        private int _damageTotalAttackCount;
+        private long _damageTotalAttrRate;
+        private int _averageAttrRate;
+        private int _averageDamagePerHit;
+        private int _averageDamagePerSecond;
+        private double _averageHitPerSecond;
+        private double _totalAttackTimeSeconds;
+        private uint _lastAttackTick;
+        private long _recoveryTotalHpIncApply;
+        private long _recoveryTotalMpIncApply;
+        private long _recoveryTotalHpIncReq;
+        private long _recoveryTotalMpIncReq;
+        private int _recoveryMeritRateHp;
+        private int _recoveryMeritRateMp;
+        private int _recoveryAverageMeritRateHp;
+        private int _recoveryAverageMeritRateMp;
+        private int _recoveryTotalUseItem;
+        private int _recoveryTotalUseHpItem;
+        private int _recoveryTotalUseMpItem;
+        private int _recoveryTotalUseHpMpItem;
+        private int _recoveryAverageHpIncApply;
+        private int _recoveryAverageMpIncApply;
+        private int _recoveryAverageHpIncReq;
+        private int _recoveryAverageMpIncReq;
+        private uint _recoveryLastUseItemTick;
+        private int _recoveryForecastUsePerHour;
+        private double _recoveryTotalUseItemSeconds;
 
         internal bool IsOpen { get; private set; }
         internal int CurrentPageIndex => _pageIndex;
@@ -3366,6 +3396,15 @@ namespace HaCreator.MapSimulator.Interaction
         internal int DirectMinCriticalDamage => _directMinCriticalDamage;
         internal int RecoveryTotal => _recoveryTotal;
         internal int RecoveryCount => _recoveryCount;
+        internal int AverageAttrRate => _averageAttrRate;
+        internal int AverageDamagePerHit => _averageDamagePerHit;
+        internal int AverageDamagePerSecond => _averageDamagePerSecond;
+        internal double AverageHitPerSecond => _averageHitPerSecond;
+        internal long RecoveryTotalHpRequested => _recoveryTotalHpIncReq;
+        internal long RecoveryTotalHpApplied => _recoveryTotalHpIncApply;
+        internal long RecoveryTotalMpRequested => _recoveryTotalMpIncReq;
+        internal long RecoveryTotalMpApplied => _recoveryTotalMpIncApply;
+        internal int RecoveryForecastUsePerHour => _recoveryForecastUsePerHour;
         internal string StatusMessage { get; private set; } = "CBattleRecordMan::OnPacket idle.";
 
         internal void Close()

@@ -1012,6 +1012,14 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleReceiveAttachment()
         {
+            if (_openedMemoId <= 0
+                && _currentSnapshot != null
+                && _selectedMemoId > 0
+                && TryGetEntry(_currentSnapshot, _selectedMemoId, out _))
+            {
+                OpenSelectedMemo(_currentSnapshot);
+            }
+
             if (_openedMemoId <= 0)
             {
                 return;
@@ -1108,6 +1116,12 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_selectedMemoId > 0 && TryGetEntry(snapshot, _selectedMemoId, out _))
             {
+                if (snapshot.ActiveTab == ParcelDialogTab.Receive
+                    && _openedMemoId <= 0)
+                {
+                    OpenSelectedMemo(snapshot);
+                }
+
                 return;
             }
 
@@ -1115,6 +1129,14 @@ namespace HaCreator.MapSimulator.UI
             if (_openedMemoId > 0 && !TryGetEntry(snapshot, _openedMemoId, out _))
             {
                 _openedMemoId = -1;
+            }
+
+            if (snapshot.ActiveTab == ParcelDialogTab.Receive
+                && _openedMemoId <= 0
+                && _selectedMemoId > 0
+                && TryGetEntry(snapshot, _selectedMemoId, out _))
+            {
+                OpenSelectedMemo(snapshot);
             }
         }
 

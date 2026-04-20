@@ -358,7 +358,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                bool preservePendingForPassiveHandoff = _passiveEstablishedSession.HasValue && _pendingOutboundRequests.Count > 0;
+                bool preservePendingForPassiveHandoff = !HasAttachedClient && _pendingOutboundRequests.Count > 0;
                 StopInternal(clearPending: !preservePendingForPassiveHandoff);
                 _passiveEstablishedSession = candidate;
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
@@ -396,7 +396,8 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                StopInternal(clearPending: true);
+                bool preservePendingForReconnectHandoff = !HasAttachedClient && _pendingOutboundRequests.Count > 0;
+                StopInternal(clearPending: !preservePendingForReconnectHandoff);
                 _passiveEstablishedSession = candidate;
 
                 if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))

@@ -3119,11 +3119,12 @@ namespace HaCreator.MapSimulator.Character
                 // v95-era stat surface. Treat Shining Rods as magic-weapon families and Soul
                 // Shooters as dex-driven pirate weapons until their exact client coefficients are
                 // recovered. Modern WZ also carries 159xxxx Ancient Bows on this same stat seam,
-                // and they follow the bow-style DEX/STR profile.
+                // and `String/Eqp.img` still labels those rows as bow-equippable so they follow
+                // the bow-style DEX/STR profile here.
                 56 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 57 => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f),
                 58 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
-                59 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                59 => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
                 _ when UsesMagicFormulaByJob() => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 _ when UsesDexDrivenPirateWeapon() => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
                 _ => ResolveWeaponlessAttackFormulaProfile(thiefSecondaryStat)

@@ -238,15 +238,6 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            // Preserve string-pair owner routing before considering relay decoding.
-            if (PacketFieldSpecificDataCodec.TryDecodeStringPairs(
-                    payload,
-                    out _,
-                    out _))
-            {
-                return false;
-            }
-
             if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
                     payload,
                     out int packetType,
@@ -273,7 +264,7 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private static bool TryDecodeDojoFieldSpecificRelayPayload(
+        internal static bool TryDecodeDojoFieldSpecificRelayPayload(
             byte[] payload,
             out int packetType,
             out byte[] packetPayload,
@@ -285,6 +276,13 @@ namespace HaCreator.MapSimulator
             {
                 summary =
                     $"Dojo field-specific relay decoded packet {packetType} with {packetPayload.Length} payload byte(s).";
+                return true;
+            }
+
+            if (TryDecodeNestedDojoFieldSpecificRelayPayload(payload, out packetType, out packetPayload, out string nestedEvidence))
+            {
+                summary =
+                    $"Dojo field-specific relay decoded packet {packetType} with {packetPayload.Length} payload byte(s) from nested relay packet-id prefixes ({nestedEvidence}).";
                 return true;
             }
 
@@ -300,6 +298,57 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool TryDecodeNestedDojoFieldSpecificRelayPayload(
+            byte[] payload,
+            out int packetType,
+            out byte[] packetPayload,
+            out string evidence)
+        {
+            packetType = -1;
+            packetPayload = Array.Empty<byte>();
+            evidence = string.Empty;
+            payload ??= Array.Empty<byte>();
+
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int firstRelayPacketType,
+                    out byte[] firstRelayPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            if (firstRelayPacketType == 149
+                && DojoField.TryDecodeFieldSpecificPacketPayload(
+                    firstRelayPayload,
+                    out packetType,
+                    out packetPayload,
+                    out _))
+            {
+                evidence = "nested-relay:field-specific-prefix";
+                return true;
+            }
+
+            if (firstRelayPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
+                || !SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    firstRelayPayload,
+                    out int secondRelayPacketType,
+                    out byte[] secondRelayPayload,
+                    out _)
+                || secondRelayPacketType != 149
+                || !DojoField.TryDecodeFieldSpecificPacketPayload(
+                    secondRelayPayload,
+                    out packetType,
+                    out packetPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            evidence = "nested-relay:wrapper+field-specific-prefix";
+            return true;
         }
 
         private bool TryApplyStructuredFieldSpecificDataPayload(byte[] payload, int currentTick, out string message)
@@ -700,32 +749,18 @@ namespace HaCreator.MapSimulator
 
             if (packetType == 149)
             {
+                // Try wrapper relay first so field-specific payloads that coincidentally parse as string pairs
+                // still honor the active wrapper owner seam before generic pair fallback.
+                if (TryDecodeFieldSpecificRelayPacketPairs(payload, out pairs, out string relayMessage))
+                {
+                    error = relayMessage;
+                    return true;
+                }
+
                 if (!PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> decodedPairs, out int headerSize))
                 {
-                    if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                            payload,
-                            out int relayedPacketType,
-                            out byte[] relayedPayload,
-                            out string relayError))
-                    {
-                        error = "Portal session-value impact packet did not decode into Maple string pairs.";
-                        return false;
-                    }
-
-                    if (!TryDecodePortalSessionValueImpactPacketPairs(
-                            relayedPacketType,
-                            relayedPayload,
-                            out pairs,
-                            out string relayedError))
-                    {
-                        error =
-                            $"Portal session-value impact field-specific relay packet {relayedPacketType} did not decode into usable key/value pairs. {relayedError}";
-                        return false;
-                    }
-
-                    error =
-                        $"decoded field-specific relay packet {relayedPacketType} after Maple string-pair decode miss. {relayError}";
-                    return true;
+                    error = "Portal session-value impact packet did not decode into Maple string pairs.";
+                    return false;
                 }
 
                 if (!TryNormalizePortalSessionValueImpactPairs(packetType, decodedPairs, out pairs))
@@ -740,6 +775,37 @@ namespace HaCreator.MapSimulator
 
             error = $"Packet type {packetType} does not carry portal session-value impact pairs.";
             return false;
+        }
+
+        private static bool TryDecodeFieldSpecificRelayPacketPairs(
+            byte[] payload,
+            out IReadOnlyList<PortalSessionValueImpactIngress> pairs,
+            out string error)
+        {
+            pairs = Array.Empty<PortalSessionValueImpactIngress>();
+            error = null;
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int relayedPacketType,
+                    out byte[] relayedPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            if (!TryDecodePortalSessionValueImpactPacketPairs(
+                    relayedPacketType,
+                    relayedPayload,
+                    out pairs,
+                    out string relayedError))
+            {
+                error =
+                    $"Portal session-value impact field-specific relay packet {relayedPacketType} did not decode into usable key/value pairs. {relayedError}";
+                return false;
+            }
+
+            error = $"decoded field-specific relay packet {relayedPacketType}. {relayedError}";
+            return true;
         }
 
         private static bool TryNormalizePortalSessionValueImpactPairs(
@@ -886,6 +952,7 @@ namespace HaCreator.MapSimulator
             QuestWindowDetailState state = deliveryTypeOverride != QuestDetailDeliveryType.None
                 ? _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build, deliveryTypeOverride)
                 : _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build);
+            state = ApplyPacketOwnedDeliveryDisallowParity(state);
             if (state == null || !_packetFieldStateRuntime.TryGetQuestTimerText(questId, currTickCount, out string timerText))
             {
                 return state;

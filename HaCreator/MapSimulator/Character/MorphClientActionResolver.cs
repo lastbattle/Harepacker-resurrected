@@ -264,31 +264,43 @@ namespace HaCreator.MapSimulator.Character
                 // Client raw morph requests still surface the broader pirate gun-family
                 // names, while Morph/1000.img, 1001.img, 1100.img, and 1101.img only
                 // publish the authored gun branch as `doublefire`.
-                ["handgun"] = new[] { "doublefire" },
+                // Character/00002000.img keeps `handgun` on explicit body redirects
+                // (`shoot2`, then `stabO1`) before the morph-authored pirate gun root.
+                ["handgun"] = new[] { "shoot2", "stabO1", "doublefire" },
                 // The client raw action table includes `triplefire`, while pirate
                 // Morph/*.img publishes the same gun-family surface as `doublefire`.
-                ["triplefire"] = new[] { "doublefire" },
-                ["airstrike"] = new[] { "doublefire" },
-                ["shot"] = new[] { "doublefire", "windshot" },
+                // Character/00002000.img keeps `triplefire` and related gun roots on
+                // the same `shoot2 -> stabO1` redirect chain before authored roots.
+                ["triplefire"] = new[] { "shoot2", "stabO1", "doublefire" },
+                // Character/00002000.img keeps `airstrike` on an explicit chain:
+                // `alert`, `swingT2`, `swingT1`, `swingT3`.
+                ["airstrike"] = new[] { "alert", "swingT2", "swingT1", "swingT3", "doublefire" },
+                // Character/00002000.img keeps `shot` on `shoot2`, then `stabO1`
+                // before cross-family pirate/archer authored roots.
+                ["shot"] = new[] { "shoot2", "stabO1", "doublefire", "windshot" },
                 // Skill/520.img/skill/5201006 publishes raw `backstep`, while the
                 // pirate morph family only authors that spin-back surface as `backspin`.
-                ["backstep"] = new[] { "backspin" },
+                // Character/00002000.img keeps this body row on `stabO1` first.
+                ["backstep"] = new[] { "stabO1", "backspin" },
                 // The client raw morph action table still publishes `burster1` and
                 // `burster2`, while pirate Morph/*.img publishes that surface as
                 // the authored `eburster` branch instead of verbatim `burster*`.
-                ["burster1"] = new[] { "eburster" },
-                ["burster2"] = new[] { "eburster" },
+                // Character/00002000.img keeps explicit body redirects:
+                // `burster1 -> stabT1, stabTF` and
+                // `burster2 -> stabT1, stabTF, stabT2`.
+                ["burster1"] = new[] { "stabT1", "stabTF", "eburster" },
+                ["burster2"] = new[] { "stabT1", "stabTF", "stabT2", "eburster" },
                 // `fake` and `octopus` remain pirate gun-family requests in the client
                 // raw action table, but Morph/1001.img still only publishes the
                 // authored gun surface as `doublefire`.
-                ["fake"] = new[] { "doublefire" },
-                ["fireburner"] = new[] { "doublefire" },
-                ["coolingeffect"] = new[] { "doublefire" },
-                ["homing"] = new[] { "doublefire" },
-                ["rapidfire"] = new[] { "doublefire" },
-                ["cannon"] = new[] { "doublefire" },
-                ["torpedo"] = new[] { "doublefire" },
-                ["octopus"] = new[] { "doublefire" },
+                ["fake"] = new[] { "shoot2", "stabO1", "doublefire" },
+                ["fireburner"] = new[] { "shoot2", "stabO1", "doublefire" },
+                ["coolingeffect"] = new[] { "shoot2", "stabO1", "doublefire" },
+                ["homing"] = new[] { "swingO3", "doublefire" },
+                ["rapidfire"] = new[] { "stabO1", "doublefire" },
+                ["cannon"] = new[] { "alert", "doublefire" },
+                ["torpedo"] = new[] { "alert", "doublefire" },
+                ["octopus"] = new[] { "alert", "swingPF", "stabT2", "swingT2", "swingP2", "swingOF", "doublefire" },
                 // The current WZ export publishes cannon-family skill actions under
                 // Skill/501, 530, 531, and 532, but pirate Morph/*.img still exposes
                 // no verbatim cannon combat branches. Keep them on the same loader-
@@ -795,6 +807,11 @@ namespace HaCreator.MapSimulator.Character
                 // branches for either name.
                 ["alert8"] = new[] { "jump", "alert" },
                 ["giant"] = new[] { "sit" },
+                // Character/00002000.img keeps `recovery/0/action = alert`, while
+                // several checked Morph/*.img templates (1002/1003/1103/2000..2003)
+                // publish no verbatim `recovery` branch. Keep authored `recovery`
+                // exact when present, then follow the checked alert redirect surface.
+                ["recovery"] = new[] { "alert", "stand" },
                 // Post-s_sMorphAction client raw action code 302 remains `pvpko`.
                 // Character/00002000.img keeps `pvpko/0/action = alert`, and current
                 // Morph coverage only publishes a verbatim `pvpko` branch on 2002.img.

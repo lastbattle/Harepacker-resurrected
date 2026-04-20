@@ -350,23 +350,23 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     SetLifecyclePhase(
                         TournamentLifecyclePhase.EntryGate,
-                        $"Blocked entry code {noticeCode} fell outside the client's recovered 0/1 notice branches and was ignored.");
-                    RecordIgnoredPacket($"notice (374) ignored blocked-entry code={noticeCode}", currentTimeMs);
+                        $"Blocked entry branch={branch} code={noticeCode} fell outside the client's recovered 0/1 notice branches and was ignored.");
+                    RecordIgnoredPacket($"notice (374) branch={branch} ignored blocked-entry code={noticeCode}", currentTimeMs);
                     return;
                 }
 
                 SetLifecyclePhase(
                     TournamentLifecyclePhase.EntryGate,
-                    $"Blocked entry branch {noticeCode} stayed inside the Tournament lobby gate.");
+                    $"Blocked entry branch={branch} code={noticeCode} stayed inside the Tournament lobby gate.");
                 SetStatus(
                     FormatStringPoolMessage(blockedEntryNotice),
                     currentTimeMs,
                     new[] { blockedEntryNotice.StringPoolId },
-                    $"notice (374) blocked-entry code={noticeCode}",
+                    $"notice (374) branch={branch} blocked-entry code={noticeCode}",
                     "CUtilDlg::Notice");
                 SetSessionPhase(
                     TournamentSessionPhase.Notice,
-                    $"CField_Tournament::OnTournament handled blocked-entry code {noticeCode}.");
+                    $"CField_Tournament::OnTournament handled blocked-entry branch={branch} code={noticeCode}.");
                 return;
             }
 
@@ -381,8 +381,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 SetLifecyclePhase(
                     TournamentLifecyclePhase.RestPeriod,
-                    $"Round-result code {noticeCode} exceeded the client's recovered Tournament notice range and was ignored.");
-                RecordIgnoredPacket($"notice (374) ignored round-result code={noticeCode}", currentTimeMs);
+                    $"Round-result branch={branch} code={noticeCode} exceeded the client's recovered Tournament notice range and was ignored.");
+                RecordIgnoredPacket($"notice (374) branch={branch} ignored round-result code={noticeCode}", currentTimeMs);
                 return;
             }
 
@@ -395,7 +395,7 @@ namespace HaCreator.MapSimulator.Fields
 
             SetLifecyclePhase(
                 TournamentLifecyclePhase.RestPeriod,
-                "Round-result notice entered the resting-period seam described by String/Map.img/victoria/109070000/help0.");
+                $"Round-result branch={branch} notice entered the resting-period seam described by String/Map.img/victoria/109070000/help0.");
             SetStatus(
                 noticeCode switch
                 {
@@ -405,11 +405,11 @@ namespace HaCreator.MapSimulator.Fields
                 },
                 currentTimeMs,
                 new[] { message.StringPoolId },
-                $"notice (374) round-result code={noticeCode}",
+                $"notice (374) branch={branch} round-result code={noticeCode}",
                 "CUtilDlg::Notice");
             SetSessionPhase(
                 TournamentSessionPhase.Notice,
-                $"CField_Tournament::OnTournament handled round-result code {noticeCode}.");
+                $"CField_Tournament::OnTournament handled round-result branch={branch} code={noticeCode}.");
         }
 
         private void ApplyMatchTable(byte[] payload, int currentTimeMs)

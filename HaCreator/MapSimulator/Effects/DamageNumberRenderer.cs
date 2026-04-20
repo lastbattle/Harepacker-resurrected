@@ -684,7 +684,7 @@ namespace HaCreator.MapSimulator.Effects
                 int canvasWidth = 0;
                 int canvasHeight = ResolveCompositeCanvasHeight();
 
-                if (specialTextDigitSet.SpecialOrigins.TryGetValue(damageString, out Point missOrigin))
+                if (specialTextDigitSet?.SpecialOrigins.TryGetValue(damageString, out Point missOrigin) == true)
                 {
                     canvasWidth = ResolveSpecialTextWidth(specialTextDigitSet, damageString);
                     int canvasOffsetX = canvasWidth > 0

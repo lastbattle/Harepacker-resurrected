@@ -1752,8 +1752,6 @@ namespace HaCreator.MapSimulator.Interaction
                 if (isDbcsLeadByte(normalized[index])
                     && index + 1 < normalized.Length)
                 {
-                    normalized[index] = 0x20;
-                    normalized[index + 1] = 0x20;
                     index += 2;
                     continue;
                 }

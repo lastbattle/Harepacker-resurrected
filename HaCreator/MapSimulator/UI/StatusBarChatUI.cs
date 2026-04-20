@@ -389,6 +389,18 @@ namespace HaCreator.MapSimulator.UI
             return comboHovered || comboToggleHovered;
         }
 
+        internal static bool ShouldToggleWhisperPickerComboDropdownOnMouseDown(
+            bool comboHovered,
+            bool comboToggleHovered,
+            bool primaryButtonDownMessage,
+            bool secondaryButtonDownMessage)
+        {
+            // Client CCtrlComboBox::OnMouseButton routes both WM_LBUTTONDOWN (513)
+            // and WM_RBUTTONDOWN (515) through BtClicked while pointer is on combo chrome.
+            return (primaryButtonDownMessage || secondaryButtonDownMessage)
+                && ShouldToggleWhisperPickerComboDropdownOnPress(comboHovered, comboToggleHovered);
+        }
+
         internal static bool ShouldCommitHoveredWhisperPickerCandidateOnRelease(
             bool pressedWhisperPickerCandidate,
             string pressedWhisperTarget,
@@ -2452,6 +2464,18 @@ namespace HaCreator.MapSimulator.UI
 
             if (isRightPressStarted)
             {
+                if (ShouldToggleWhisperPickerComboDropdownOnMouseDown(
+                        comboHovered,
+                        comboToggleHovered,
+                        primaryButtonDownMessage: false,
+                        secondaryButtonDownMessage: true))
+                {
+                    WhisperTargetPickerModalComboFocusRequested?.Invoke();
+                    WhisperTargetPickerModalComboDropdownToggleRequested?.Invoke();
+                    _pressedRightWhisperPickerCandidateTarget = null;
+                    return true;
+                }
+
                 _pressedRightWhisperPickerCandidateTarget = dropdownHovered
                     ? hoveredPickerRegion?.WhisperTarget
                     : null;
@@ -2502,7 +2526,11 @@ namespace HaCreator.MapSimulator.UI
                 _pressedWhisperPickerButtonAction = hoveredButtonRegion?.Action;
                 _pressedWhisperPickerComboControl = comboHovered || comboToggleHovered;
                 _pressedWhisperPickerComboToggle = comboToggleHovered;
-                if (ShouldToggleWhisperPickerComboDropdownOnPress(comboHovered, comboToggleHovered))
+                if (ShouldToggleWhisperPickerComboDropdownOnMouseDown(
+                        comboHovered,
+                        comboToggleHovered,
+                        primaryButtonDownMessage: true,
+                        secondaryButtonDownMessage: false))
                 {
                     WhisperTargetPickerModalComboFocusRequested?.Invoke();
                     WhisperTargetPickerModalComboDropdownToggleRequested?.Invoke();

@@ -91,6 +91,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int DialogPadding = 20;
         private const int DialogLineSpacing = 4;
         private const int ParticipantLabelLineSpacing = 2;
+        private const int WeddingPhotoCardRevealStep = 1;
+        private const int WeddingPhotoCelebrationStep = 2;
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
         private const int PacketTypeWeddingProgress = 379;
@@ -613,11 +615,11 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_weddingPhotoScenePresentationPacketTrail.Count == 0)
             {
-                return $"wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets; active layer state is {layerState}.";
+                return $"wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets; active step {_currentStep}, layer state {layerState}.";
             }
 
             WeddingPhotoScenePresentationPacketRecord last = _weddingPhotoScenePresentationPacketTrail[^1];
-            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}; active layer state is {layerState}.";
+            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}; active step {_currentStep}, layer state {layerState}.";
         }
         public void SetParticipantPosition(int characterId, Vector2 worldPosition)
         {
@@ -2555,25 +2557,7 @@ namespace HaCreator.MapSimulator.Effects
             bool hasCeremonyNpc = npcId > 0;
 
 
-            // Step 0 keeps the declaration layer active; later steps transition into card/celebration.
-            if (step == 0)
-            {
-                SetBlessEffect(false, currentTimeMs);
-                SetCeremonyTextOverlay(true);
-                SetCeremonyCardOverlay(false);
-                SetCeremonyCelebration(active: false);
-                if (_isActive)
-                {
-                    _requestBgmOverride?.Invoke(WeddingCeremonyClientText.ResolveOpeningBgmPath(_mapId));
-                }
-            }
-            else
-            {
-                SetCeremonyTextOverlay(false);
-                bool pronounced = IsPronouncementOrBlessingStep(step);
-                SetCeremonyCardOverlay(pronounced);
-                SetCeremonyCelebration(pronounced);
-            }
+            ApplyWeddingProgressLayerState(step, currentTimeMs, hasCeremonyNpc);
 
 
             if (hasCeremonyNpc)
@@ -2606,6 +2590,38 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             SetBlessEffect(true, currentTimeMs);
+        }
+
+        private void ApplyWeddingProgressLayerState(int step, int currentTimeMs, bool hasCeremonyNpc)
+        {
+            // Step 0 always resets into the declaration text layer.
+            if (step == 0)
+            {
+                SetBlessEffect(false, currentTimeMs);
+                SetCeremonyTextOverlay(true);
+                SetCeremonyCardOverlay(false);
+                SetCeremonyCelebration(active: false);
+                if (_isActive)
+                {
+                    _requestBgmOverride?.Invoke(WeddingCeremonyClientText.ResolveOpeningBgmPath(_mapId));
+                }
+
+                return;
+            }
+
+            SetCeremonyTextOverlay(false);
+
+            // CField_WeddingPhoto owns packet-driven scene progression but has no altar NPC dialog contract.
+            if (IsWeddingPhotoSceneOwnerActive && !_isActive && !hasCeremonyNpc)
+            {
+                SetCeremonyCardOverlay(step >= WeddingPhotoCardRevealStep);
+                SetCeremonyCelebration(step >= WeddingPhotoCelebrationStep);
+                return;
+            }
+
+            bool pronounced = IsPronouncementOrBlessingStep(step);
+            SetCeremonyCardOverlay(pronounced);
+            SetCeremonyCelebration(pronounced);
         }
 
 

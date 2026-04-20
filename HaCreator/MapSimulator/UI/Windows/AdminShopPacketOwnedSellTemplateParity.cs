@@ -143,6 +143,32 @@ namespace HaCreator.MapSimulator.UI
                 && packetItemId <= 0;
         }
 
+        internal static bool ShouldUseNonSaleIconVisual(
+            bool isPacketOwnedSnapshotRow,
+            int commoditySerialNumber,
+            int packetSaleState,
+            bool commodityOnSale,
+            bool isPreviewOnly)
+        {
+            bool hasClientCommodityIdentity = isPacketOwnedSnapshotRow || commoditySerialNumber > 0;
+            if (!hasClientCommodityIdentity)
+            {
+                return false;
+            }
+
+            if (packetSaleState != 0)
+            {
+                return true;
+            }
+
+            if (!commodityOnSale)
+            {
+                return true;
+            }
+
+            return isPacketOwnedSnapshotRow && isPreviewOnly;
+        }
+
         private static bool IsPreferredCandidate(
             PacketOwnedCommodityMetadataCandidate candidate,
             PacketOwnedCommodityMetadataCandidate existing,

@@ -266,6 +266,28 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static bool ResolvePacketOwnedMiniMapVisibility(
+            long fieldLimit,
+            MapInfo mapInfo,
+            bool requestedVisible,
+            out string overrideMessage)
+        {
+            if (mapInfo?.hideMinimap == true)
+            {
+                overrideMessage = "Map metadata keeps the minimap hidden in this field.";
+                return false;
+            }
+
+            if (!requestedVisible && ShouldAutoExpandMinimap(fieldLimit))
+            {
+                overrideMessage = "Field rules keep the minimap expanded in this map.";
+                return true;
+            }
+
+            overrideMessage = null;
+            return requestedVisible;
+        }
+
         public static string GetPetRuntimeRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Use_Pet.Check(fieldLimit)

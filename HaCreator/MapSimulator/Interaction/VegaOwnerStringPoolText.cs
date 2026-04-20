@@ -11,7 +11,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int WhiteScrollProtectedFailureStringPoolId = 0x1162;
         private const int WhiteScrollSuccessStringPoolId = 0x1163;
         private const int UnknownResultStringPoolId = 5424;
-        private const int ResultLoopSoundStringPoolId = 0x1534;
+        private const int ResultLoopSoundAliasStringPoolId = 5428;
+        private const int ResultLoopSoundFallbackStringPoolId = 0x1534;
         private const int UnexpectedResultStringPoolId = 6764;
 
         public static string GetMissingSelectionNotice()
@@ -70,10 +71,28 @@ namespace HaCreator.MapSimulator.Interaction
                 "The item was successfully upgraded, and the White Scroll was used in the process.");
         }
 
-        public static string GetResultLoopSoundDescriptor()
+        public static string GetResultLoopSoundAliasDescriptor()
         {
             return MapleStoryStringPool.GetOrFallback(
-                ResultLoopSoundStringPoolId,
+                ResultLoopSoundAliasStringPoolId,
+                "VegaTwinkling");
+        }
+
+        public static string GetResultLoopSoundDescriptor()
+        {
+            string aliasDescriptor = GetResultLoopSoundAliasDescriptor();
+            if (!string.IsNullOrWhiteSpace(aliasDescriptor))
+            {
+                return aliasDescriptor;
+            }
+
+            return GetResultLoopSoundFallbackDescriptor();
+        }
+
+        public static string GetResultLoopSoundFallbackDescriptor()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ResultLoopSoundFallbackStringPoolId,
                 string.Empty);
         }
 

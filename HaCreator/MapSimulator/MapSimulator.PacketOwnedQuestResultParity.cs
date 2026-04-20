@@ -964,6 +964,28 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
         }
 
+        private bool TryConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(byte[] payload)
+        {
+            if (!_packetOwnedQuestResultStartQuestRequestSent ||
+                !ShouldConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(payload))
+            {
+                return false;
+            }
+
+            ClearPacketOwnedQuestResultStartQuestRequestLatch();
+            return true;
+        }
+
+        internal static bool ShouldConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(
+            byte[] payload)
+        {
+            return TryDecodeInventoryOperationExclusiveResetMarker(
+                       payload,
+                       out bool resetMarker,
+                       out _)
+                   && resetMarker;
+        }
+
         private IReadOnlyList<int> ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot()
         {
             if (!_hasPendingPacketOwnedQuestResultAvailabilityRefresh)

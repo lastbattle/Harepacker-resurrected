@@ -127,6 +127,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private const string ClientSummonedUolEmbeddedImagePathSuffix = ".img/";
         private const string ClientSummonedUolEmbeddedMountedSkillPathPrefix = "skill/";
+        private const int ClientSummonedUolHeuristicInfoTraversalDepth = 4;
 
         private static readonly string[] PersistentAvatarEffectBranches =
         {
@@ -5793,6 +5794,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            string normalizedNodeName = node.Name?.Trim() ?? string.Empty;
+            bool nodeIsInfoBranch = normalizedNodeName.Equals("info", StringComparison.OrdinalIgnoreCase);
+            if (nodeIsInfoBranch)
+            {
+                foreach ((WzImageProperty Property, string RelativePath) nestedInfoLeaf in EnumerateClientSummonedUolHeuristicInfoLeaves(
+                             node,
+                             relativePathPrefix: normalizedNodeName,
+                             depthRemaining: ClientSummonedUolHeuristicInfoTraversalDepth))
+                {
+                    yield return nestedInfoLeaf;
+                }
+            }
+
             foreach (WzImageProperty child in node.WzProperties)
             {
                 if (child == null)
@@ -5810,12 +5824,47 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                foreach (WzImageProperty leaf in child.WzProperties)
+                foreach ((WzImageProperty Property, string RelativePath) nestedInfoLeaf in EnumerateClientSummonedUolHeuristicInfoLeaves(
+                             child,
+                             relativePathPrefix: child.Name,
+                             depthRemaining: ClientSummonedUolHeuristicInfoTraversalDepth))
                 {
-                    if (leaf != null && IsClientSummonedUolCandidateValueProperty(leaf))
-                    {
-                        yield return (leaf, $"{child.Name}/{leaf.Name}");
-                    }
+                    yield return nestedInfoLeaf;
+                }
+            }
+        }
+
+        private static IEnumerable<(WzImageProperty Property, string RelativePath)> EnumerateClientSummonedUolHeuristicInfoLeaves(
+            WzImageProperty node,
+            string relativePathPrefix,
+            int depthRemaining)
+        {
+            if (node?.WzProperties == null || depthRemaining < 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string relativePath = string.IsNullOrWhiteSpace(relativePathPrefix)
+                    ? child.Name
+                    : $"{relativePathPrefix}/{child.Name}";
+                if (IsClientSummonedUolCandidateValueProperty(child))
+                {
+                    yield return (child, relativePath);
+                }
+
+                foreach ((WzImageProperty Property, string RelativePath) nestedLeaf in EnumerateClientSummonedUolHeuristicInfoLeaves(
+                             child,
+                             relativePath,
+                             depthRemaining - 1))
+                {
+                    yield return nestedLeaf;
                 }
             }
         }

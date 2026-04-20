@@ -606,6 +606,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int skillRoot = skillId / 10000;
+            if (skillRoot <= 0)
+            {
+                foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
+                {
+                    if (candidate == listedClass)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
             if (IsEvanSkillClassRoot(skillRoot))
             {
                 int evanClass = GetClientJobClassGrade(skillRoot);

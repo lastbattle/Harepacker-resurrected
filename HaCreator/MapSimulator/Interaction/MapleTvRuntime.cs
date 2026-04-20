@@ -646,6 +646,43 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryObserveConsumeCashItemUseRequestPayload(
+            byte[] payload,
+            int currentTick,
+            Func<int, (string ItemName, string ItemDescription)> itemMetadataResolver,
+            out string message,
+            string source = null)
+        {
+            message = string.Empty;
+            if (!TryDecodeConsumeCashItemUseRequestPayload(payload, out MapleTvConsumeCashItemUseRequest request, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            (string itemName, string itemDescription) = itemMetadataResolver?.Invoke(request.ItemId) ?? (null, null);
+            MapleTvClientRequestStage stage =
+                !string.IsNullOrWhiteSpace(source)
+                && source.IndexOf("queue", StringComparison.OrdinalIgnoreCase) >= 0
+                    ? MapleTvClientRequestStage.Queued
+                    : MapleTvClientRequestStage.Dispatched;
+            string requestSource = string.IsNullOrWhiteSpace(source)
+                ? "MapleTV official-session outbound observe"
+                : source.Trim();
+            RecordClientRequest(request, currentTick, requestSource, stage);
+            SetItem(request.ItemId, itemName, itemDescription);
+            SetReceiver(request.ReceiverName);
+            for (int i = 0; i < DisplayLineCount; i++)
+            {
+                _draftLines[i] = i < request.Lines.Count ? request.Lines[i] ?? string.Empty : string.Empty;
+            }
+
+            _statusMessage =
+                $"Observed CUserLocal::ConsumeCashItem MapleTV request for item {request.ItemId} from slot {request.InventoryPosition}; awaiting CMapleTVMan::OnPacket set/result.";
+            message = _statusMessage;
+            return true;
+        }
+
         internal static bool TryDecodeConsumeCashItemUseRequestPayload(
             byte[] payload,
             out MapleTvConsumeCashItemUseRequest request,
