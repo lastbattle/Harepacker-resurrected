@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator.UI
             int packetSerialNumber,
             int packetItemId,
             long packetPrice,
+            int packetMaxPerSlot,
             bool? expectedOnSale,
             IReadOnlyList<PacketOwnedCommodityMetadataCandidate> candidates)
         {
@@ -86,7 +87,13 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (!hasBest || IsPreferredCandidate(candidate, best, packetSerialNumber, normalizedPacketPrice, expectedOnSale))
+                if (!hasBest || IsPreferredCandidate(
+                        candidate,
+                        best,
+                        packetSerialNumber,
+                        normalizedPacketPrice,
+                        packetMaxPerSlot,
+                        expectedOnSale))
                 {
                     best = candidate;
                     hasBest = true;
@@ -141,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
             PacketOwnedCommodityMetadataCandidate existing,
             int packetSerialNumber,
             long normalizedPacketPrice,
+            int packetMaxPerSlot,
             bool? expectedOnSale)
         {
             bool candidateExactSerial = packetSerialNumber > 0 && candidate.SerialNumber == packetSerialNumber;
@@ -155,6 +163,18 @@ namespace HaCreator.MapSimulator.UI
             if (candidateExactPrice != existingExactPrice)
             {
                 return candidateExactPrice;
+            }
+
+            int normalizedPacketCount = Math.Max(1, packetMaxPerSlot);
+            bool preferCountMatch = packetMaxPerSlot > 0;
+            if (preferCountMatch)
+            {
+                bool candidateCountMatch = candidate.Count == normalizedPacketCount;
+                bool existingCountMatch = existing.Count == normalizedPacketCount;
+                if (candidateCountMatch != existingCountMatch)
+                {
+                    return candidateCountMatch;
+                }
             }
 
             if (expectedOnSale.HasValue)

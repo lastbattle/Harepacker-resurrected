@@ -1413,15 +1413,15 @@ namespace HaCreator.MapSimulator.Pools
                 return prefixedMapleString;
             }
 
-            string utf8 = TryDecodePrintableUtf8(payload);
-            if (!string.IsNullOrWhiteSpace(utf8))
+            string plainText = TryDecodePrintableText(payload);
+            if (!string.IsNullOrWhiteSpace(plainText))
             {
-                return utf8;
+                return plainText;
             }
 
             if (payload.Length > 1 && payload[0] <= 2)
             {
-                return TryDecodePrintableUtf8(payload[1..]);
+                return TryDecodePrintableText(payload[1..]);
             }
 
             return null;
@@ -1454,28 +1454,42 @@ namespace HaCreator.MapSimulator.Pools
             return false;
         }
 
-        private static string TryDecodePrintableUtf8(ReadOnlySpan<byte> payload)
+        private static string TryDecodePrintableText(ReadOnlySpan<byte> payload)
         {
             if (payload.Length == 0)
             {
                 return null;
             }
 
-            string utf8 = Encoding.UTF8.GetString(payload).TrimEnd('\0').Trim();
-            if (string.IsNullOrWhiteSpace(utf8))
+            // Packet-owned CInPacket::DecodeStr payloads are ANSI in v95. Keep a UTF-8
+            // fallback for non-client inbox injectors that still send printable UTF-8.
+            string decoded = TryDecodePrintableTextWithEncoding(payload, Encoding.Default)
+                ?? TryDecodePrintableTextWithEncoding(payload, Encoding.UTF8);
+            if (string.IsNullOrWhiteSpace(decoded))
             {
                 return null;
             }
 
-            for (int i = 0; i < utf8.Length; i++)
+            return decoded;
+        }
+
+        private static string TryDecodePrintableTextWithEncoding(ReadOnlySpan<byte> payload, Encoding encoding)
+        {
+            string decoded = encoding.GetString(payload).TrimEnd('\0').Trim();
+            if (string.IsNullOrWhiteSpace(decoded))
             {
-                if (char.IsControl(utf8[i]))
+                return null;
+            }
+
+            for (int i = 0; i < decoded.Length; i++)
+            {
+                if (char.IsControl(decoded[i]))
                 {
                     return null;
                 }
             }
 
-            return utf8;
+            return decoded;
         }
 
         private static bool IsAllZeroBytes(ReadOnlySpan<byte> payload)
@@ -1700,10 +1714,10 @@ namespace HaCreator.MapSimulator.Pools
                 // Fall back to plain-text parse below.
             }
 
-            string utf8 = TryDecodePrintableUtf8(payload);
-            if (!string.IsNullOrWhiteSpace(utf8))
+            string plainText = TryDecodePrintableText(payload);
+            if (!string.IsNullOrWhiteSpace(plainText))
             {
-                stringValue = utf8;
+                stringValue = plainText;
                 return true;
             }
 
@@ -3708,9 +3722,20 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            int payloadMaskBaseOffset = sizeof(int) * 4;
+            if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    preferredSkillId: 0,
+                    maxScanBytes: AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
             return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                 rawPayload,
-                sizeof(int) * 4,
+                payloadMaskBaseOffset,
                 out chargeSkillId);
         }
 

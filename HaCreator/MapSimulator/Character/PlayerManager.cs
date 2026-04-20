@@ -416,6 +416,11 @@ namespace HaCreator.MapSimulator.Character
             Dragon.SetCurrentMapInfoProvider(currentMapInfoProvider);
         }
 
+        public void SetDragonWrapperOwnedNoDragonSuppression(bool? suppressDragonPresentation)
+        {
+            Dragon.SetWrapperOwnedNoDragonSuppression(suppressDragonPresentation);
+        }
+
         public void SetDragonQuestInfoStateProvider(Func<int?> questInfoStateProvider)
         {
             Dragon.SetQuestInfoStateProvider(questInfoStateProvider);

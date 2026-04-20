@@ -96,6 +96,11 @@ namespace HaCreator.MapSimulator
                     packet.Phase);
             if (appliedPlayerOrMob)
             {
+                // Packet create for an object id starts a fresh per-area ownership/tick lifetime.
+                _remoteAffectedAreaOwnerNamesByAreaObjectId.Remove(packet.ObjectId);
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Remove(packet.ObjectId);
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Remove(packet.ObjectId);
+                _remoteAffectedAreaLocalPlayerTickTimes.Remove(packet.ObjectId);
                 CacheRemoteAffectedAreaOwnerRuntimeState(ownerId);
                 CacheRemoteAffectedAreaOwnerRuntimeState(packet.ObjectId, ownerId);
             }
@@ -346,51 +351,54 @@ namespace HaCreator.MapSimulator
 
             CacheRemoteAffectedAreaOwnerRuntimeState(ownerId);
 
-            string ownerName = ResolveRemoteAffectedAreaOwnerName(ownerId);
-            if (!string.IsNullOrWhiteSpace(ownerName))
+            string liveOwnerName = ResolveLiveRemoteAffectedAreaOwnerName(ownerId)?.Trim();
+            bool hasAreaOwnerNameSnapshot =
+                _remoteAffectedAreaOwnerNamesByAreaObjectId.TryGetValue(areaObjectId, out string existingAreaOwnerName)
+                && !string.IsNullOrWhiteSpace(existingAreaOwnerName);
+
+            if (!string.IsNullOrWhiteSpace(liveOwnerName))
             {
-                _remoteAffectedAreaOwnerNamesByAreaObjectId[areaObjectId] = ownerName;
+                _remoteAffectedAreaOwnerNamesByAreaObjectId[areaObjectId] = liveOwnerName;
+                _remoteAffectedAreaOwnerNames[ownerId] = liveOwnerName;
             }
-            else
+            else if (!hasAreaOwnerNameSnapshot
+                     && _remoteAffectedAreaOwnerNames.TryGetValue(ownerId, out string cachedOwnerName)
+                     && !string.IsNullOrWhiteSpace(cachedOwnerName))
             {
-                _remoteAffectedAreaOwnerNamesByAreaObjectId.Remove(areaObjectId);
+                _remoteAffectedAreaOwnerNamesByAreaObjectId[areaObjectId] = cachedOwnerName.Trim();
             }
 
-            int? ownerBattlefieldTeamId = ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId(ownerId);
-            if (!ownerBattlefieldTeamId.HasValue
-                && _remoteAffectedAreaBattlefieldOwnerTeams.TryGetValue(ownerId, out int cachedBattlefieldOwnerTeamId))
+            int? liveOwnerBattlefieldTeamId = ResolveRuntimeBattlefieldAffectedAreaOwnerTeamId(ownerId);
+            bool hasAreaBattlefieldTeamSnapshot =
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.TryGetValue(areaObjectId, out _);
+            if (liveOwnerBattlefieldTeamId.HasValue && liveOwnerBattlefieldTeamId.Value >= 0)
             {
-                ownerBattlefieldTeamId = cachedBattlefieldOwnerTeamId;
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId[areaObjectId] = liveOwnerBattlefieldTeamId.Value;
+                _remoteAffectedAreaBattlefieldOwnerTeams[ownerId] = liveOwnerBattlefieldTeamId.Value;
+            }
+            else if (!hasAreaBattlefieldTeamSnapshot
+                     && _remoteAffectedAreaBattlefieldOwnerTeams.TryGetValue(ownerId, out int cachedBattlefieldOwnerTeamId))
+            {
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId[areaObjectId] = cachedBattlefieldOwnerTeamId;
             }
 
-            if (ownerBattlefieldTeamId.HasValue && ownerBattlefieldTeamId.Value >= 0)
+            Fields.MonsterCarnivalTeam? liveOwnerCarnivalTeam = null;
+            if (!string.IsNullOrWhiteSpace(liveOwnerName))
             {
-                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId[areaObjectId] = ownerBattlefieldTeamId.Value;
-            }
-            else
-            {
-                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Remove(areaObjectId);
+                liveOwnerCarnivalTeam = ResolveMonsterCarnivalAffectedAreaOwnerTeamByName(liveOwnerName);
             }
 
-            Fields.MonsterCarnivalTeam? ownerCarnivalTeam = null;
-            if (!string.IsNullOrWhiteSpace(ownerName))
+            bool hasAreaCarnivalTeamSnapshot =
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.TryGetValue(areaObjectId, out _);
+            if (liveOwnerCarnivalTeam.HasValue)
             {
-                ownerCarnivalTeam = ResolveMonsterCarnivalAffectedAreaOwnerTeamByName(ownerName);
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId[areaObjectId] = liveOwnerCarnivalTeam.Value;
+                _remoteAffectedAreaMonsterCarnivalOwnerTeams[ownerId] = liveOwnerCarnivalTeam.Value;
             }
-
-            if (!ownerCarnivalTeam.HasValue
-                && _remoteAffectedAreaMonsterCarnivalOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedCarnivalOwnerTeam))
+            else if (!hasAreaCarnivalTeamSnapshot
+                     && _remoteAffectedAreaMonsterCarnivalOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedCarnivalOwnerTeam))
             {
-                ownerCarnivalTeam = cachedCarnivalOwnerTeam;
-            }
-
-            if (ownerCarnivalTeam.HasValue)
-            {
-                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId[areaObjectId] = ownerCarnivalTeam.Value;
-            }
-            else
-            {
-                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Remove(areaObjectId);
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId[areaObjectId] = cachedCarnivalOwnerTeam;
             }
         }
 

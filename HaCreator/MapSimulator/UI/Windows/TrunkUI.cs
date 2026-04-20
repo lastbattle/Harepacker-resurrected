@@ -137,6 +137,9 @@ namespace HaCreator.MapSimulator.UI
         private string _mesoEntryPrompt = string.Empty;
         private bool _mesoEntryReplaceOnDigit;
         private string _secondaryPasswordConfirmationText = string.Empty;
+        private InventoryType _pendingPutInventoryType = InventoryType.NONE;
+        private int _pendingPutInventoryRowIndex = -1;
+        private InventorySlotData _pendingPutSlotData;
         private bool _softKeyboardActive;
         private string _compositionText = string.Empty;
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
@@ -150,6 +153,23 @@ namespace HaCreator.MapSimulator.UI
         internal Func<TrunkAccountSecurityPromptKind, bool> AccountSecurityPromptRequested { get; set; }
         internal Func<bool> CloseRequested { get; set; }
         internal Action<TrunkUI> WindowHidden { get; set; }
+        internal Func<InventoryType, int, InventorySlotData, PacketOwnedTrunkRequestResult> PacketOwnedGetItemRequested { get; set; }
+        internal Func<InventoryType, int, InventorySlotData, int, PacketOwnedTrunkRequestResult> PacketOwnedPutItemRequested { get; set; }
+
+        internal readonly struct PacketOwnedTrunkRequestResult
+        {
+            internal PacketOwnedTrunkRequestResult(bool accepted, string message)
+            {
+                Accepted = accepted;
+                Message = message ?? string.Empty;
+            }
+
+            internal bool Accepted { get; }
+            internal string Message { get; }
+
+            internal static PacketOwnedTrunkRequestResult Success(string message) => new(true, message);
+            internal static PacketOwnedTrunkRequestResult Failure(string message) => new(false, message);
+        }
 
         private readonly struct TooltipSection
         {
@@ -214,7 +234,8 @@ namespace HaCreator.MapSimulator.UI
             VerifyAccountSecondaryPassword,
             SetupSecondaryPassword,
             ConfirmSecondaryPassword,
-            VerifySecondaryPassword
+            VerifySecondaryPassword,
+            PutItemCount
         }
 
         private enum ScrollbarPane

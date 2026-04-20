@@ -227,6 +227,29 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static byte[] BuildUsePrivilegeRequestPayload(int privilegeIndex, bool includeTargetName, string targetName)
+        {
+            List<byte> payload = new(sizeof(int) + sizeof(ushort) + Math.Max(0, targetName?.Length ?? 0));
+            payload.AddRange(BitConverter.GetBytes(privilegeIndex));
+            if (!includeTargetName)
+            {
+                return payload.ToArray();
+            }
+
+            string normalizedTargetName = string.IsNullOrWhiteSpace(targetName)
+                ? string.Empty
+                : targetName.Trim();
+            byte[] targetNameBytes = Encoding.ASCII.GetBytes(normalizedTargetName);
+            ushort byteLength = (ushort)Math.Min(targetNameBytes.Length, ushort.MaxValue);
+            payload.AddRange(BitConverter.GetBytes(byteLength));
+            if (byteLength > 0)
+            {
+                payload.AddRange(targetNameBytes.AsSpan(0, byteLength).ToArray());
+            }
+
+            return payload.ToArray();
+        }
+
         internal static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int opcode, out byte[] payload, out string error)
         {
             opcode = -1;

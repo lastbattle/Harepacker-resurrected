@@ -3169,7 +3169,11 @@ namespace HaCreator.MapSimulator
 
             using var stream = new MemoryStream();
             using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
-            writer.Write(PacketOwnedTeleportSyntheticFieldKey);
+            byte fieldKey = ResolvePacketOwnedTeleportPortalFieldKey(
+                _packetStageTransitionRuntime,
+                currentMapId,
+                out bool usedAuthoritativeFieldKey);
+            writer.Write(fieldKey);
             WritePacketOwnedMapleString(writer, sourcePortalName);
             writer.Write((short)Math.Clamp((int)MathF.Round(sourceX), short.MinValue, short.MaxValue));
             writer.Write((short)Math.Clamp((int)MathF.Round(sourceY), short.MinValue, short.MaxValue));
@@ -3179,8 +3183,29 @@ namespace HaCreator.MapSimulator
 
             payload = stream.ToArray();
             string targetNameToken = string.IsNullOrWhiteSpace(targetPortalName) ? "?" : targetPortalName;
-            summary = $"Recorded synthetic opcode {PacketOwnedTeleportPortalRequestOpcode} portal request for {sourcePortalName}->{targetNameToken} with field key {PacketOwnedTeleportSyntheticFieldKey} using {targetResolutionSummary}.";
+            string fieldKeySource = usedAuthoritativeFieldKey
+                ? "authoritative stage-transition"
+                : "synthetic fallback";
+            summary = $"Recorded opcode {PacketOwnedTeleportPortalRequestOpcode} portal request for {sourcePortalName}->{targetNameToken} with field key {fieldKey} ({fieldKeySource}) using {targetResolutionSummary}.";
             return true;
+        }
+
+        internal static byte ResolvePacketOwnedTeleportPortalFieldKey(
+            PacketStageTransitionRuntime stageTransitionRuntime,
+            int currentMapId,
+            out bool usedAuthoritativeFieldKey)
+        {
+            usedAuthoritativeFieldKey = false;
+            byte authoritativeFieldKey = PacketOwnedTeleportSyntheticFieldKey;
+            if (currentMapId > 0
+                && stageTransitionRuntime != null
+                && stageTransitionRuntime.TryGetAuthoritativeFieldKey(currentMapId, out authoritativeFieldKey))
+            {
+                usedAuthoritativeFieldKey = true;
+                return authoritativeFieldKey;
+            }
+
+            return PacketOwnedTeleportSyntheticFieldKey;
         }
 
         private readonly struct PacketOwnedTeleportPortalRequestTarget

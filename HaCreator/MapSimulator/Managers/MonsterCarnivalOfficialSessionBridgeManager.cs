@@ -744,7 +744,8 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryMapInboundPacket(raw, $"official-session:{pair.RemoteEndpoint}", out MonsterCarnivalPacketInboxMessage message))
+                if (!TryMapInboundPacket(raw, $"official-session:{pair.RemoteEndpoint}", out MonsterCarnivalPacketInboxMessage message)
+                    || message == null)
                 {
                     return;
                 }
@@ -814,7 +815,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 RecordRecentPacket(opcode, rawPacket, mappedPacketType: null, "unsupported-relay");
                 LastStatus = $"Ignored CField::OnPacket relay {opcode}; relayed packet is not in the recovered Monster Carnival 346-353 handler family, including nested current-wrapper prefixes.";
-                return true;
+                return false;
             }
 
             if (opcode >= FirstCarnivalOpcode && opcode <= LastCarnivalOpcode)

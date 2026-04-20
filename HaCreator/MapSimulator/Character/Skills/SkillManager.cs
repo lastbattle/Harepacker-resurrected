@@ -21,6 +21,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Globalization;
 using MapleLib.WzLib;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -326,9 +327,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private sealed class SwallowState
         {
-            public SwallowFollowUpRequestKind PendingFollowUpKind { get; set; }
-            public int PendingFollowUpSkillId { get; set; }
-            public int PendingFollowUpLevel { get; set; }
+            public Queue<QueuedSwallowFollowUpRequest> PendingFollowUps { get; } = new();
             public int SkillId { get; init; }
             public int ParentSkillId { get; init; }
             public int Level { get; init; }
@@ -347,6 +346,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             Digest,
             Attack
         }
+
+        private readonly record struct QueuedSwallowFollowUpRequest(
+            SwallowFollowUpRequestKind Kind,
+            int SkillId,
+            int Level);
 
         public readonly record struct SwallowAbsorbRequest(int VisibleSkillId, int TargetMobId, int SkillLevel, int RequestedAt);
         public readonly record struct AnimationDisplayerCatchRegistrationRequest(
@@ -453,6 +457,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int WildHunterSwallowSkillId = 33101005;
         private const int WildHunterSwallowBuffSkillId = 33101006;
         private const int WildHunterSwallowAttackSkillId = 33101007;
+        private const int WildHunterSwallowMaxQueuedFollowUpRequests = 8;
         private const int WindWalkSkillId = 11101005;
         private const int NightLordFlashJumpSkillId = 4111006;
         private const int ShadowerFlashJumpSkillId = 4211009;
@@ -605,6 +610,18 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int EnergyChargePointsPerSuccessfulHit = 10;
         private const int GenericBuffSortOrder = 999;
         private const int GenericBuffPrimaryPriority = 999;
+        private const int AnimationDisplayerUserStateFamilyOrderSoulArrow = 0;
+        private const int AnimationDisplayerUserStateFamilyOrderWeaponCharge = 1;
+        private const int AnimationDisplayerUserStateFamilyOrderAura = 2;
+        private const int AnimationDisplayerUserStateFamilyOrderMoreWild = 3;
+        private const int AnimationDisplayerUserStateFamilyOrderBarrier = 4;
+        private const int AnimationDisplayerUserStateFamilyOrderBlessingArmor = 5;
+        private const int AnimationDisplayerUserStateFamilyOrderRepeat = 6;
+        private const int AnimationDisplayerUserStateFamilyOrderMagicShield = 7;
+        private const int AnimationDisplayerUserStateFamilyOrderFinalCut = 8;
+        private const int AnimationDisplayerUserStateFamilyOrderFallback = 100;
+        private const int MoreWildClientInfoType = 33;
+        private const int FinalCutSkillId = 4341002;
         private static readonly BuffTemporaryStatPresentation GenericAvatarEffectTemporaryStatPresentation =
             CreateTemporaryStatPresentation("AvatarEffect", "Buff", GenericBuffIconKey, GenericBuffSortOrder, GenericBuffPrimaryPriority);
         private const int ClientSecondaryStatSortOrderBase = 100;
@@ -945,6 +962,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private Func<SkillData, string> _fieldSkillRestrictionMessageProvider;
         private Func<int, CharacterPart> _tamingMobLoader;
         private Func<MapInfo> _currentMapInfoProvider;
+        private Func<bool> _townPortalPortalOverlapEvaluator;
         private Func<SkillData, string> _skillCancelRestrictionMessageProvider;
         private Func<IReadOnlyList<ActiveSummon>> _externalFriendlySupportSummonsProvider;
         private Func<int, bool> _externalCastBlockedEvaluator;
@@ -1088,6 +1106,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void SetSkillCancelRestrictionMessageProvider(Func<SkillData, string> provider) => _skillCancelRestrictionMessageProvider = provider;
         public void SetTamingMobLoader(Func<int, CharacterPart> loader) => _tamingMobLoader = loader;
         public void SetCurrentMapInfoProvider(Func<MapInfo> provider) => _currentMapInfoProvider = provider;
+        public void SetTownPortalPortalOverlapEvaluator(Func<bool> evaluator) => _townPortalPortalOverlapEvaluator = evaluator;
         public void SetExternalFriendlySupportSummonsProvider(Func<IReadOnlyList<ActiveSummon>> provider) => _externalFriendlySupportSummonsProvider = provider;
         public void SetMacroResolver(Func<int, SkillMacro> macroResolver) => _macroResolver = macroResolver;
         public void SetExternalCastBlockedEvaluator(Func<int, bool> evaluator) => _externalCastBlockedEvaluator = evaluator;
@@ -2212,6 +2231,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int CLIENT_VEHICLE_OWNERSHIP_GRACE_WINDOW_MS = 1000;
         private const int CYCLONE_SKILL_ID = 32121003;
         private const int MINE_SKILL_ID = 33101008;
+        private const int MINE_VISIBLE_SKILL_ID = 33101004;
         private const int SG88_SKILL_ID = 35121003;
         private const int TESLA_COIL_SKILL_ID = 35111002;
         private const int TESLA_COIL_MASTERY_SKILL_ID = 35120001;
@@ -2256,6 +2276,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private static readonly HashSet<int> ClientShowSkillEffectPlacementOwnedPointOffsetSkillIds = new()
         {
+            MINE_VISIBLE_SKILL_ID,
             MINE_SKILL_ID
         };
         private static readonly HashSet<int> ClientDoActiveSkillPrepareFamilySkillIds = new()
@@ -2307,6 +2328,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private static readonly Dictionary<int, int> ClientShowSkillEffectPointOffsetXBySkillId = new()
         {
+            // `CUserLocal::DoActiveSkill_Summon` keeps a mine-family placement distance table
+            // with explicit caller-owned offsets for the visible and hidden mine ids.
+            [MINE_VISIBLE_SKILL_ID] = -50,
             [MINE_SKILL_ID] = -30
         };
         private const int SIEGE_REPEAT_ATTACK_DELAY_MS = 180;
@@ -2645,6 +2669,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (ShouldRejectClientDoActiveSummonFamilyStateWithoutMessage(skill))
+            {
+                return false;
+            }
+
             if (_fieldSkillRestrictionEvaluator != null && !_fieldSkillRestrictionEvaluator(skill))
             {
                 string message = _fieldSkillRestrictionMessageProvider?.Invoke(skill);
@@ -2740,12 +2769,36 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
+            bool townPortalFieldLimitBlocked = false;
+            bool townPortalPortalOverlapBlocked = false;
+            if (IsTownPortalDoActiveSkillFamily(skill))
+            {
+                long fieldLimit = _currentMapInfoProvider?.Invoke()?.fieldLimit ?? 0;
+                townPortalFieldLimitBlocked = FieldLimitType.Unable_To_Use_Mystic_Door.Check(fieldLimit);
+                townPortalPortalOverlapBlocked = _townPortalPortalOverlapEvaluator?.Invoke() == true;
+            }
+
             return ResolveClientDoActiveSkillFamilyStateRestrictionMessageCore(
                 skill,
                 _player.Physics.IsOnLadderOrRope,
                 _player.Physics.IsOnFoothold(),
                 _player.Physics.IsSwimming(),
-                _player.Physics.IsUserFlying());
+                _player.Physics.IsUserFlying(),
+                townPortalFieldLimitBlocked,
+                townPortalPortalOverlapBlocked);
+        }
+
+        private bool ShouldRejectClientDoActiveSummonFamilyStateWithoutMessage(SkillData skill)
+        {
+            if (ResolveDoActiveSkillExecutionLane(skill) != ClientDoActiveSkillExecutionLane.Summon
+                || _player?.TryGetCurrentClientRawActionCode(out int rawActionCode) != true)
+            {
+                return false;
+            }
+
+            // `CUserLocal::DoActiveSkill_Summon@0x93c0f0` rejects when `(m_nMoveAction & ~1) == 18`
+            // before request send. This branch does not emit a chat/status message.
+            return (rawActionCode & ~1) == 18;
         }
 
         /// <summary>
@@ -3053,6 +3106,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
 
             if (!string.IsNullOrWhiteSpace(ResolveClientDoActiveSkillFamilyStateRestrictionMessage(skill)))
+                return false;
+
+            if (ShouldRejectClientDoActiveSummonFamilyStateWithoutMessage(skill))
                 return false;
 
             if (_externalCastBlockedEvaluator?.Invoke(currentTime) == true)
@@ -3467,7 +3523,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? previousState.UpdateSequence + 1
                 : 1;
             int resolvedMaxValue = continuesSameObject
-                ? Math.Max(normalizedCurrentValue, previousState.MaxValue)
+                ? Math.Max(
+                    normalizedCurrentValue,
+                    Math.Max(previousState.MaxValue, Math.Max(0, maxValue)))
                 : Math.Max(normalizedCurrentValue, maxValue);
             int alertThresholdValue = ResolvePassiveVehicleDurabilityAlertThresholdForParity(resolvedMaxValue);
             bool isAlerting = IsPassiveVehicleDurabilityAlertActiveForParity(
@@ -5223,7 +5281,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static int NormalizeClientOwnedVehicleCurrentActionMountItemId(int mountItemId)
         {
-            return mountItemId == BATTLESHIP_TAMING_MOB_ID || mountItemId == MECHANIC_TAMING_MOB_ID
+            return ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleMountOwnerItemId(mountItemId)
                 ? mountItemId
                 : 0;
         }
@@ -10440,7 +10498,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ActionTextContains(actionName, "icedoublejump")
                    || ActionTextContains(actionName, "spiritjump")
                    || ActionTextContains(actionName, "swiftphantom")
-                   || ActionTextContains(actionName, "demonjump");
+                   || ActionTextContains(actionName, "demonjump")
+                   || ActionTextContains(actionName, "demonfly");
         }
 
         private static bool IsConstrainedType40BoundJumpSkillId(int skillId)
@@ -10454,6 +10513,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                        or 24001002
                        or 30010183
                        or 30010184
+                       or 30010186
                        or 5081003
                        or 51001003;
         }
@@ -10753,7 +10813,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool isOnLadderOrRope,
             bool isOnFoothold,
             bool isSwimming,
-            bool isUserFlying)
+            bool isUserFlying,
+            bool townPortalFieldLimitBlocked = false,
+            bool townPortalPortalOverlapBlocked = false)
         {
             if (skill == null)
             {
@@ -10766,9 +10828,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return "This heal skill cannot be used while on a ladder or rope.";
             }
 
-            if (lane == ClientDoActiveSkillExecutionLane.TownPortal && !isOnFoothold)
+            if (lane == ClientDoActiveSkillExecutionLane.TownPortal)
             {
-                return "This town-portal skill requires foothold support.";
+                if (townPortalFieldLimitBlocked)
+                {
+                    return MapleStoryStringPool.GetOrFallback(
+                        0x0389,
+                        "Mystic Door cannot be used in this field.");
+                }
+
+                if (townPortalPortalOverlapBlocked)
+                {
+                    return MapleStoryStringPool.GetOrFallback(
+                        0x0C9B,
+                        "This location is too close to a portal.");
+                }
+
+                if (!isOnFoothold)
+                {
+                    return "This town-portal skill requires foothold support.";
+                }
             }
 
             if (IsSmokeShellDoActiveSkillFamily(skill))
@@ -10824,14 +10903,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool isOnLadderOrRope,
             bool isOnFoothold,
             bool isSwimming,
-            bool isUserFlying)
+            bool isUserFlying,
+            bool townPortalFieldLimitBlocked = false,
+            bool townPortalPortalOverlapBlocked = false)
         {
             return ResolveClientDoActiveSkillFamilyStateRestrictionMessageCore(
                 skill,
                 isOnLadderOrRope,
                 isOnFoothold,
                 isSwimming,
-                isUserFlying);
+                isUserFlying,
+                townPortalFieldLimitBlocked,
+                townPortalPortalOverlapBlocked);
         }
 
         internal static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
@@ -14756,6 +14839,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Id = _nextBulletAnimationOwnerId++,
                 ProjectileId = projectile.Id,
                 IsDetachedFromProjectile = false,
+                MainLayerObjectId = 0,
                 Presentation = projectile.BulletAnimation,
                 CurrentPosition = ResolveBulletAnimationOwnerInitialPosition(
                     projectile.BulletAnimation,
@@ -14765,6 +14849,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     new Vector2(projectile.PreviousX, projectile.PreviousY)),
                 FacingRight = ResolveQueuedProjectilePresentationFacing(projectile)
             };
+            owner.MainLayerObjectId = ResolveBulletAnimationOwnerMainLayerObjectId(owner.Id);
 
             projectile.BulletAnimationOwnerId = owner.Id;
             _bulletAnimationOwners.Add(owner);
@@ -16825,10 +16910,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 previousLayer,
                 fallbackAlphaVectorStart,
                 currentTime);
+            int repeatLayerObjectId = ResolveBulletAfterimageRepeatLayerObjectId(owner);
+            int parentRepeatLayerObjectId = ResolveBulletAfterimageParentRepeatLayerObjectId(owner, previousLayer);
+            int repeatAnimationEndTime = ResolveBulletAfterimageRepeatAnimationEndTime(currentTime, updateInterval);
             owner.AfterimageLayers.Add(new ProjectileAfterimageLayer
             {
-                RepeatLayerObjectId = owner.NextAfterimageRepeatLayerId++,
-                ParentRepeatLayerObjectId = previousLayer?.RepeatLayerObjectId ?? 0,
+                RepeatLayerObjectId = repeatLayerObjectId,
+                ParentRepeatLayerObjectId = parentRepeatLayerObjectId,
+                SourceLayerObjectId = owner.MainLayerObjectId,
                 Frame = frameSnapshot,
                 Position = owner.CurrentPosition,
                 WorldBounds = worldBounds,
@@ -16840,7 +16929,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ClockwiseBounds = clockwiseBounds,
                 Flip = afterimageFlip,
                 StartTime = currentTime,
-                Duration = updateInterval,
+                Duration = ResolveBulletAfterimageRepeatDuration(currentTime, repeatAnimationEndTime),
+                RegisteredAnimationStartTime = currentTime,
+                RegisteredAnimationEndTime = repeatAnimationEndTime,
                 AlphaStart = alphaStart,
                 AlphaEnd = 0,
                 AlphaVectorStart = alphaVectorStart,
@@ -16849,6 +16940,47 @@ namespace HaCreator.MapSimulator.Character.Skills
                 HasAlphaVectorEnd = true,
                 FrameAlphaMultiplier = ResolveBulletAfterimageFrameAlphaMultiplier(frame, frameElapsedMs)
             });
+        }
+
+        internal static int ResolveBulletAnimationOwnerMainLayerObjectId(int ownerId)
+        {
+            return ownerId > 0
+                ? ownerId
+                : 0;
+        }
+
+        internal static int ResolveBulletAfterimageRepeatLayerObjectId(ActiveBulletAnimationOwner owner)
+        {
+            if (owner == null)
+            {
+                return 0;
+            }
+
+            return owner.NextAfterimageRepeatLayerId++;
+        }
+
+        internal static int ResolveBulletAfterimageParentRepeatLayerObjectId(
+            ActiveBulletAnimationOwner owner,
+            ProjectileAfterimageLayer previousLayer)
+        {
+            if (previousLayer?.RepeatLayerObjectId > 0)
+            {
+                return previousLayer.RepeatLayerObjectId;
+            }
+
+            return owner?.MainLayerObjectId > 0
+                ? owner.MainLayerObjectId
+                : 0;
+        }
+
+        internal static int ResolveBulletAfterimageRepeatAnimationEndTime(int currentTime, int updateInterval)
+        {
+            return currentTime + Math.Max(1, updateInterval);
+        }
+
+        internal static int ResolveBulletAfterimageRepeatDuration(int startTime, int endTime)
+        {
+            return Math.Max(1, endTime - startTime);
         }
 
         internal static SkillFrame CloneBulletAfterimageFrameSnapshot(SkillFrame frame)
@@ -17883,10 +18015,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (UsesClientFirstTargetHitAnimationSplit(skill.SkillId))
             {
-                int splitIndex = targetOrder == 0 ? 0 : 1;
+                int? splitIndex = TryResolveClientFirstTargetHitAnimationSplitIndex(targetOrder);
+                if (!splitIndex.HasValue)
+                {
+                    return null;
+                }
+
                 return ResolveIndexedTargetHitAnimation(
                     skill.TargetHitEffects,
-                    splitIndex,
+                    splitIndex.Value,
                     preserveFirstAuthoredFallback: false,
                     clampToLastIndex: false);
             }
@@ -17922,6 +18059,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == 5101004
                    || skillId == 5211002
                    || skillId == 15101003;
+        }
+
+        internal static int? TryResolveClientFirstTargetHitAnimationSplitIndex(int targetOrder)
+        {
+            // `CreateFirst` pre-fills `m_absHitAni[v3]` with `asHitUOL[v3 != 0]` for
+            // `v3 < nMobCount`, and `operator()(nOrder)` then reads raw `nOrder`.
+            // Keep client-owned raw-order sign/bounds explicit instead of normalizing
+            // negative or far out-of-range orders into the first/last authored branch.
+            return targetOrder switch
+            {
+                < 0 => null,
+                0 => 0,
+                < 15 => 1,
+                _ => null
+            };
         }
 
         internal static bool UsesClientMultipleLayerHitAnimation(int skillId)
@@ -18827,36 +18979,38 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            SwallowFollowUpRequestKind followUpKind = _swallowState.PendingFollowUpKind;
-            if (followUpKind == SwallowFollowUpRequestKind.None)
+            while (_swallowState.PendingFollowUps.Count > 0)
             {
-                return false;
-            }
+                QueuedSwallowFollowUpRequest followUp = _swallowState.PendingFollowUps.Dequeue();
+                if (followUp.Kind == SwallowFollowUpRequestKind.Digest)
+                {
+                    ActivateWildHunterSwallowDigestState(currentTime);
+                    return true;
+                }
 
-            int followUpSkillId = _swallowState.PendingFollowUpSkillId;
-            int followUpLevel = _swallowState.PendingFollowUpLevel;
-            _swallowState.PendingFollowUpKind = SwallowFollowUpRequestKind.None;
-            _swallowState.PendingFollowUpSkillId = 0;
-            _swallowState.PendingFollowUpLevel = 0;
+                if (followUp.Kind != SwallowFollowUpRequestKind.Attack)
+                {
+                    continue;
+                }
 
-            if (followUpKind == SwallowFollowUpRequestKind.Digest)
-            {
-                ActivateWildHunterSwallowDigestState(currentTime);
+                int followUpSkillId = followUp.SkillId > 0
+                    ? followUp.SkillId
+                    : WildHunterSwallowAttackSkillId;
+                SkillData attackSkill = GetSkillData(followUpSkillId);
+                int resolvedLevel = followUp.Level > 0
+                    ? followUp.Level
+                    : GetSkillLevel(attackSkill?.SkillId ?? WildHunterSwallowAttackSkillId);
+                SkillLevelData attackLevelData = attackSkill?.GetLevel(resolvedLevel);
+                if (attackSkill == null || attackLevelData == null || resolvedLevel <= 0)
+                {
+                    continue;
+                }
+
+                TryExecuteWildHunterSwallowAttack(attackSkill, resolvedLevel, attackLevelData, currentTime);
                 return true;
             }
 
-            SkillData attackSkill = GetSkillData(followUpSkillId > 0 ? followUpSkillId : WildHunterSwallowAttackSkillId);
-            int resolvedLevel = followUpLevel > 0
-                ? followUpLevel
-                : GetSkillLevel(attackSkill?.SkillId ?? WildHunterSwallowAttackSkillId);
-            SkillLevelData attackLevelData = attackSkill?.GetLevel(resolvedLevel);
-            if (attackSkill == null || attackLevelData == null || resolvedLevel <= 0)
-            {
-                return false;
-            }
-
-            TryExecuteWildHunterSwallowAttack(attackSkill, resolvedLevel, attackLevelData, currentTime);
-            return true;
+            return false;
         }
 
         private bool IsWildHunterSwallowWriggleActionActive()
@@ -23962,7 +24116,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState>();
             }
 
-            var orderedStates = new List<(RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState State, int PrimaryPriority, int SortOrder, int Index)>();
+            var orderedStates = new List<(RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState State, int FamilyOrder, int PrimaryPriority, int SortOrder, int Index)>();
             int index = 0;
             foreach (ActiveBuff activeBuff in activeBuffs)
             {
@@ -23970,17 +24124,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                         activeBuff,
                         activeDeferredAvatarEffectSkillId,
                         out RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
+                        out int familyOrder,
                         out int primaryPriority,
                         out int sortOrder))
                 {
-                    orderedStates.Add((state, primaryPriority, sortOrder, index));
+                    orderedStates.Add((state, familyOrder, primaryPriority, sortOrder, index));
                 }
 
                 index++;
             }
 
             return orderedStates
-                .OrderBy(candidate => candidate.PrimaryPriority)
+                .OrderBy(candidate => candidate.FamilyOrder)
+                .ThenBy(candidate => candidate.PrimaryPriority)
                 .ThenBy(candidate => candidate.SortOrder)
                 .ThenBy(candidate => candidate.Index)
                 .Select(candidate => candidate.State)
@@ -23991,10 +24147,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             ActiveBuff activeBuff,
             int? activeDeferredAvatarEffectSkillId,
             out RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
+            out int familyOrder,
             out int primaryPriority,
             out int sortOrder)
         {
             state = null;
+            familyOrder = AnimationDisplayerUserStateFamilyOrderFallback;
             primaryPriority = int.MaxValue;
             sortOrder = int.MaxValue;
 
@@ -24065,6 +24223,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(activeBuff);
             BuffTemporaryStatPresentation familyOwnerTemporaryStat =
                 ResolveFamilyOwnerTemporaryStat(temporaryStats) ?? GenericAvatarEffectTemporaryStatPresentation;
+            familyOrder = ResolveAnimationDisplayerUserStateFamilyOrder(
+                sourceSkill,
+                paritySkill,
+                temporaryStats);
 
             primaryPriority = familyOwnerTemporaryStat.PrimaryPriority > 0
                 ? familyOwnerTemporaryStat.PrimaryPriority
@@ -24083,6 +24245,184 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AnimationStartTime = activeBuff.StartTime
             };
             return true;
+        }
+
+        private static int ResolveAnimationDisplayerUserStateFamilyOrder(
+            SkillData sourceSkill,
+            SkillData paritySkill,
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats)
+        {
+            if (HasAnimationDisplayerTemporaryStatLabel(temporaryStats, SoulArrowBuffLabel))
+            {
+                return AnimationDisplayerUserStateFamilyOrderSoulArrow;
+            }
+
+            if (HasAnimationDisplayerTemporaryStatLabel(temporaryStats, ChargeBuffLabel))
+            {
+                return AnimationDisplayerUserStateFamilyOrderWeaponCharge;
+            }
+
+            int resolvedSkillId = paritySkill?.SkillId ?? sourceSkill?.SkillId ?? 0;
+            if (IsBattleMageAuraSkill(resolvedSkillId)
+                || HasAnimationDisplayerTemporaryStatLabel(temporaryStats, AuraBuffLabel))
+            {
+                return AnimationDisplayerUserStateFamilyOrderAura;
+            }
+
+            if ((paritySkill?.ClientInfoType ?? sourceSkill?.ClientInfoType ?? 0) == MoreWildClientInfoType)
+            {
+                return AnimationDisplayerUserStateFamilyOrderMoreWild;
+            }
+
+            if (paritySkill?.HasBlessingArmorMetadata == true
+                || sourceSkill?.HasBlessingArmorMetadata == true)
+            {
+                return AnimationDisplayerUserStateFamilyOrderBlessingArmor;
+            }
+
+            if (HasAnimationDisplayerTemporaryStatLabel(
+                    temporaryStats,
+                    DamageReductionBuffLabel,
+                    DamRBuffLabel,
+                    PowerGuardBuffLabel,
+                    MesoGuardBuffLabel,
+                    ComboBarrierBuffLabel))
+            {
+                return AnimationDisplayerUserStateFamilyOrderBarrier;
+            }
+
+            if (UsesAnimationDisplayerRepeatFamilyOrder(sourceSkill, paritySkill, temporaryStats))
+            {
+                return AnimationDisplayerUserStateFamilyOrderRepeat;
+            }
+
+            if (HasAnimationDisplayerTemporaryStatLabel(temporaryStats, MagicGuardBuffLabel))
+            {
+                return AnimationDisplayerUserStateFamilyOrderMagicShield;
+            }
+
+            if (resolvedSkillId == FinalCutSkillId)
+            {
+                return AnimationDisplayerUserStateFamilyOrderFinalCut;
+            }
+
+            return AnimationDisplayerUserStateFamilyOrderFallback;
+        }
+
+        private static bool UsesAnimationDisplayerRepeatFamilyOrder(
+            SkillData sourceSkill,
+            SkillData paritySkill,
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats)
+        {
+            if (HasAnimationDisplayerTemporaryStatLabel(
+                    temporaryStats,
+                    SoulArrowBuffLabel,
+                    ChargeBuffLabel,
+                    AuraBuffLabel,
+                    MagicGuardBuffLabel,
+                    DamageReductionBuffLabel,
+                    DamRBuffLabel,
+                    PowerGuardBuffLabel,
+                    MesoGuardBuffLabel,
+                    ComboBarrierBuffLabel))
+            {
+                return false;
+            }
+
+            if (sourceSkill?.HasBlessingArmorMetadata == true
+                || paritySkill?.HasBlessingArmorMetadata == true)
+            {
+                return false;
+            }
+
+            SkillData resolvedSkill = paritySkill ?? sourceSkill;
+            return resolvedSkill?.RepeatEffect != null
+                || resolvedSkill?.RepeatSecondaryEffect != null;
+        }
+
+        private static bool HasAnimationDisplayerTemporaryStatLabel(
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats,
+            params string[] labels)
+        {
+            if (temporaryStats == null
+                || temporaryStats.Count == 0
+                || labels == null
+                || labels.Length == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < temporaryStats.Count; i++)
+            {
+                string candidateLabel = temporaryStats[i]?.Label;
+                if (string.IsNullOrWhiteSpace(candidateLabel))
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < labels.Length; j++)
+                {
+                    string expectedLabel = labels[j];
+                    if (!string.IsNullOrWhiteSpace(expectedLabel)
+                        && string.Equals(candidateLabel, expectedLabel, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        internal static int ResolveAnimationDisplayerUserStateFamilyOrderForTesting(
+            int sourceSkillId,
+            int sourceClientInfoType,
+            bool sourceHasBlessingArmorMetadata,
+            bool sourceHasRepeatEffect,
+            string[] temporaryStatLabels)
+        {
+            SkillData sourceSkill = sourceSkillId > 0
+                ? new SkillData
+                {
+                    SkillId = sourceSkillId,
+                    ClientInfoType = sourceClientInfoType,
+                    HasBlessingArmorMetadata = sourceHasBlessingArmorMetadata,
+                    RepeatEffect = sourceHasRepeatEffect ? new SkillAnimation() : null
+                }
+                : null;
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats =
+                ResolveAnimationDisplayerUserStateTemporaryStatsForTesting(temporaryStatLabels);
+            return ResolveAnimationDisplayerUserStateFamilyOrder(sourceSkill, sourceSkill, temporaryStats);
+        }
+
+        private static IReadOnlyList<BuffTemporaryStatPresentation> ResolveAnimationDisplayerUserStateTemporaryStatsForTesting(
+            IReadOnlyList<string> temporaryStatLabels)
+        {
+            if (temporaryStatLabels == null || temporaryStatLabels.Count == 0)
+            {
+                return Array.Empty<BuffTemporaryStatPresentation>();
+            }
+
+            var temporaryStats = new List<BuffTemporaryStatPresentation>(temporaryStatLabels.Count);
+            for (int i = 0; i < temporaryStatLabels.Count; i++)
+            {
+                string label = temporaryStatLabels[i];
+                if (string.IsNullOrWhiteSpace(label))
+                {
+                    continue;
+                }
+
+                if (ResolvedTemporaryStatPresentationCatalog.TryGetValue(label, out BuffTemporaryStatPresentation presentation))
+                {
+                    temporaryStats.Add(presentation);
+                }
+                else
+                {
+                    temporaryStats.Add(CreateTemporaryStatPresentation(label, label, null, GenericBuffSortOrder, GenericBuffPrimaryPriority));
+                }
+            }
+
+            return temporaryStats;
         }
 
         internal static bool ShouldPresentAnimationDisplayerTemporaryStatAvatarEffectForParity(
@@ -24646,6 +24986,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (ShouldResolveTransformContextPropertyToTransformTemporaryStat(propertyName)
+                && IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel))
+            {
+                labels = new[] { TransformBuffLabel };
+                return true;
+            }
+
             if (AuthoredPropertyTemporaryStatLabels.TryGetValue(propertyName, out labels) && labels != null && labels.Length > 0)
             {
                 return true;
@@ -24707,7 +25054,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (string.Equals(propertyName, "prop", StringComparison.OrdinalIgnoreCase)
+            if (ShouldResolveTransformContextPropertyToTransformTemporaryStat(propertyName)
                 && IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel))
             {
                 labels = new[] { TransformBuffLabel };
@@ -26284,7 +26631,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(propertyName, "indieMhp", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "indieMmp", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "indieMhpR", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(propertyName, "indieMmpR", StringComparison.OrdinalIgnoreCase);
+                 || string.Equals(propertyName, "indieMmpR", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool ShouldResolveTransformContextPropertyToTransformTemporaryStat(string propertyName)
+        {
+            return !string.IsNullOrWhiteSpace(propertyName)
+                && !IsDirectBuffIconFamilyProperty(propertyName)
+                && IsVehicleTransformContextProperty(propertyName);
         }
 
         private static int GetAuthoredTemporaryStatOrder(
@@ -27701,14 +28055,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (!ShouldQueueWildHunterSwallowFollowUp(_swallowState.PendingFollowUpKind, followUpKind))
+            if (!ShouldQueueWildHunterSwallowFollowUp(_swallowState.PendingFollowUps.Count, followUpKind))
             {
                 return;
             }
 
-            _swallowState.PendingFollowUpKind = followUpKind;
-            _swallowState.PendingFollowUpSkillId = requestedSkillId;
-            _swallowState.PendingFollowUpLevel = Math.Max(0, requestedLevel);
+            _swallowState.PendingFollowUps.Enqueue(new QueuedSwallowFollowUpRequest(
+                followUpKind,
+                requestedSkillId,
+                Math.Max(0, requestedLevel)));
+        }
+
+        internal static bool ShouldQueueWildHunterSwallowFollowUp(
+            int pendingFollowUpCount,
+            SwallowFollowUpRequestKind incomingKind)
+        {
+            return incomingKind != SwallowFollowUpRequestKind.None
+                   && pendingFollowUpCount >= 0
+                   && pendingFollowUpCount < WildHunterSwallowMaxQueuedFollowUpRequests;
         }
 
         internal static bool ShouldQueueWildHunterSwallowFollowUp(

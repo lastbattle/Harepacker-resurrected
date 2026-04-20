@@ -213,6 +213,13 @@ namespace HaCreator.MapSimulator
                 IsUnderCover = static () => false,
                 QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer,
                 UpdateWhisperUserListLocation = UpdatePacketOwnedWhisperUserListLocation,
+                ShowBlowWeatherMessage = text => _fieldEffects?.OnBlowWeather(
+                    Effects.WeatherEffectType.None,
+                    itemId: null,
+                    text,
+                    intensity: 1f,
+                    duration: 10000,
+                    currTickCount),
                 ResolveSwindleWarnings = GetPacketOwnedSwindleWarningEntries,
                 ShowBossTimerClock = ShowPacketOwnedBossTimerClock,
                 ClearBossTimerClock = ClearPacketOwnedBossTimerClock,
@@ -2631,6 +2638,7 @@ namespace HaCreator.MapSimulator
             {
                 "group" => HandlePacketOwnedFieldFeedbackGroupCommand(args),
                 "whisperin" => HandlePacketOwnedFieldFeedbackWhisperIncomingCommand(args),
+                "whisperweather" => HandlePacketOwnedFieldFeedbackWhisperWeatherCommand(args),
                 "whisperresult" => HandlePacketOwnedFieldFeedbackWhisperResultCommand(args),
                 "whisperavailability" => HandlePacketOwnedFieldFeedbackWhisperAvailabilityCommand(args),
                 "whisperfind" => HandlePacketOwnedFieldFeedbackWhisperFindCommand(args),
@@ -2654,7 +2662,7 @@ namespace HaCreator.MapSimulator
                 "chaoszakumtimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.ChaosZakumTimer),
                 "hontaletimer" => HandlePacketOwnedFieldFeedbackBossTimerCommand(args, PacketFieldFeedbackPacketKind.HontaleTimer),
                 "fadeoutforce" => HandlePacketOwnedFieldFeedbackFadeOutForceCommand(args),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperresult <target> <ok|fail>|whisperavailability <target> <0|1>|whisperfind <find|findreply> <target> <result> <value> [x y]|couplechat <sender> <text>|couplenotice [text]|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|jukebox <itemId> <owner>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|clock <realtime|countdown|event|cakepie> ...|destroyclock|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback [status|clear|group <family> <sender> <text>|whisperin <sender> <channel> <text>|whisperweather <sender> <blowType> <text>|whisperresult <target> <ok|fail>|whisperavailability <target> <0|1>|whisperfind <find|findreply> <target> <result> <value> [x y]|couplechat <sender> <text>|couplenotice [text]|warn <text>|obstacle <tag> <state>|obstaclereset|bosshp <mobId> <currentHp> <maxHp> [color] [phase]|tremble <force> <durationMs>|fieldsound <descriptor>|fieldbgm <descriptor>|jukebox <itemId> <owner>|transferfieldignored <reason>|transferchannelignored <reason>|summonunavailable [0|1]|clock <realtime|countdown|event|cakepie> ...|destroyclock|zakumtimer <mode> <value>|hontailtimer <mode> <value>|chaoszakumtimer <mode> <value>|hontaletimer <mode> <value>|fadeoutforce [key]|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
             };
         }
 
@@ -2706,6 +2714,18 @@ namespace HaCreator.MapSimulator
             return ApplyPacketOwnedFieldFeedbackHelper(
                 PacketFieldFeedbackPacketKind.Whisper,
                 PacketFieldFeedbackRuntime.BuildIncomingWhisperPayload(args[1], channelId, fromAdmin: false, string.Join(" ", args.Skip(3))));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackWhisperWeatherCommand(string[] args)
+        {
+            if (args.Length < 4 || !byte.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte blowType))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /fieldfeedback whisperweather <sender> <blowType> <text>");
+            }
+
+            return ApplyPacketOwnedFieldFeedbackHelper(
+                PacketFieldFeedbackPacketKind.Whisper,
+                PacketFieldFeedbackRuntime.BuildWhisperBlowWeatherPayload(args[1], blowType, string.Join(" ", args.Skip(3))));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackWhisperResultCommand(string[] args)

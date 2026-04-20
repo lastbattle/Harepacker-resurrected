@@ -49,6 +49,8 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _allianceEditorEditing;
         private string _allianceEditorDraft = string.Empty;
         private string _allianceNoticeText = "Union training routes rotate nightly. Whisper for regroup.";
+        private PacketOwnedSocialMutation? _pendingPacketOwnedGuildMutation;
+        private PacketOwnedSocialMutation? _pendingPacketOwnedAllianceMutation;
 
         internal void OpenGuildManageWindow(GuildManageTab initialTab)
         {
@@ -173,11 +175,41 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_guildManageCurrentTab == GuildManageTab.Position)
             {
+                if (TryStagePacketOwnedManageMutation(
+                        SocialListTab.Guild,
+                        "Guild rank-title edit",
+                        new PacketOwnedSocialMutation(
+                            PacketOwnedSocialMutationKind.GuildRankTitle,
+                            _guildManageSelectedRankIndex,
+                            committedValue,
+                            null),
+                        out string requestMessage))
+                {
+                    _guildManageEditing = false;
+                    _guildManageDraft = string.Empty;
+                    return requestMessage;
+                }
+
                 _guildRankTitles[_guildManageSelectedRankIndex] = committedValue;
                 NotifySocialTextEditCommitted(committedValue);
             }
             else if (_guildManageCurrentTab == GuildManageTab.Change)
             {
+                if (TryStagePacketOwnedManageMutation(
+                        SocialListTab.Guild,
+                        "Guild notice edit",
+                        new PacketOwnedSocialMutation(
+                            PacketOwnedSocialMutationKind.GuildNotice,
+                            null,
+                            committedValue,
+                            null),
+                        out string requestMessage))
+                {
+                    _guildManageEditing = false;
+                    _guildManageDraft = string.Empty;
+                    return requestMessage;
+                }
+
                 _guildNoticeText = committedValue;
                 NotifySocialTextEditCommitted(committedValue);
             }
@@ -207,6 +239,19 @@ namespace HaCreator.MapSimulator.Interaction
             if (!CanToggleGuildAdmission())
             {
                 return NotifySocialEditorPrompt($"Guild admission is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.");
+            }
+
+            if (TryStagePacketOwnedManageMutation(
+                    SocialListTab.Guild,
+                    "Guild admission toggle",
+                    new PacketOwnedSocialMutation(
+                        PacketOwnedSocialMutationKind.GuildAdmission,
+                        null,
+                        null,
+                        requiresApproval),
+                    out string requestMessage))
+            {
+                return requestMessage;
             }
 
             _guildManageRequiresApproval = requiresApproval;
@@ -306,11 +351,41 @@ namespace HaCreator.MapSimulator.Interaction
                 : _allianceEditorDraft.Trim();
             if (_allianceEditorFocus == AllianceEditorFocus.Notice)
             {
+                if (TryStagePacketOwnedManageMutation(
+                        SocialListTab.Alliance,
+                        "Alliance notice edit",
+                        new PacketOwnedSocialMutation(
+                            PacketOwnedSocialMutationKind.AllianceNotice,
+                            null,
+                            committedValue,
+                            null),
+                        out string requestMessage))
+                {
+                    _allianceEditorEditing = false;
+                    _allianceEditorDraft = string.Empty;
+                    return requestMessage;
+                }
+
                 _allianceNoticeText = committedValue;
                 NotifySocialTextEditCommitted(committedValue);
             }
             else
             {
+                if (TryStagePacketOwnedManageMutation(
+                        SocialListTab.Alliance,
+                        "Alliance rank-title edit",
+                        new PacketOwnedSocialMutation(
+                            PacketOwnedSocialMutationKind.AllianceRankTitle,
+                            _allianceSelectedRankIndex,
+                            committedValue,
+                            null),
+                        out string requestMessage))
+                {
+                    _allianceEditorEditing = false;
+                    _allianceEditorDraft = string.Empty;
+                    return requestMessage;
+                }
+
                 _allianceRankTitles[_allianceSelectedRankIndex] = committedValue;
                 NotifySocialTextEditCommitted(committedValue);
             }
@@ -450,6 +525,149 @@ namespace HaCreator.MapSimulator.Interaction
 
             return message;
         }
+
+        private bool TryStagePacketOwnedManageMutation(
+            SocialListTab tab,
+            string requestLabel,
+            PacketOwnedSocialMutation mutation,
+            out string requestMessage)
+        {
+            if (!IsPacketOwned(tab))
+            {
+                requestMessage = null;
+                return false;
+            }
+
+            if (_lastPendingRequestByTab.TryGetValue(tab, out string pendingRequest)
+                && !string.IsNullOrWhiteSpace(pendingRequest))
+            {
+                requestMessage = NotifySocialEditorPrompt(
+                    $"{pendingRequest} is already pending packet-owned {GetHeaderTitle(tab).ToLowerInvariant()} approval.");
+                return true;
+            }
+
+            _lastPendingRequestByTab[tab] = requestLabel;
+            _lastPacketSyncSummaryByTab[tab] =
+                $"{requestLabel} was sent through packet-owned {GetHeaderTitle(tab).ToLowerInvariant()} authority and is awaiting approval.";
+
+            if (tab == SocialListTab.Guild)
+            {
+                _pendingPacketOwnedGuildMutation = mutation;
+            }
+            else if (tab == SocialListTab.Alliance)
+            {
+                _pendingPacketOwnedAllianceMutation = mutation;
+            }
+
+            requestMessage = NotifySocialEditorPrompt(
+                $"{requestLabel} is pending packet-owned {GetHeaderTitle(tab).ToLowerInvariant()} approval.");
+            return true;
+        }
+
+        private bool TryGetPendingPacketOwnedManageMutation(SocialListTab tab, out PacketOwnedSocialMutation mutation)
+        {
+            switch (tab)
+            {
+                case SocialListTab.Guild when _pendingPacketOwnedGuildMutation.HasValue:
+                    mutation = _pendingPacketOwnedGuildMutation.Value;
+                    return true;
+                case SocialListTab.Alliance when _pendingPacketOwnedAllianceMutation.HasValue:
+                    mutation = _pendingPacketOwnedAllianceMutation.Value;
+                    return true;
+                default:
+                    mutation = default;
+                    return false;
+            }
+        }
+
+        private void ClearPendingPacketOwnedManageMutation(SocialListTab tab)
+        {
+            if (tab == SocialListTab.Guild)
+            {
+                _pendingPacketOwnedGuildMutation = null;
+            }
+            else if (tab == SocialListTab.Alliance)
+            {
+                _pendingPacketOwnedAllianceMutation = null;
+            }
+        }
+
+        private string ApplyPendingPacketOwnedManageMutation(SocialListTab tab, PacketOwnedSocialMutation mutation)
+        {
+            switch (mutation.Kind)
+            {
+                case PacketOwnedSocialMutationKind.GuildRankTitle:
+                    if (mutation.Index.HasValue && !string.IsNullOrWhiteSpace(mutation.TextValue))
+                    {
+                        int rankIndex = Math.Clamp(mutation.Index.Value, 0, Math.Max(0, _guildRankTitles.Count - 1));
+                        _guildRankTitles[rankIndex] = mutation.TextValue.Trim();
+                        NotifySocialTextEditCommitted(_guildRankTitles[rankIndex]);
+                        return $"Guild rank title {rankIndex + 1} applied from packet-owned approval.";
+                    }
+
+                    break;
+
+                case PacketOwnedSocialMutationKind.GuildNotice:
+                    if (!string.IsNullOrWhiteSpace(mutation.TextValue))
+                    {
+                        _guildNoticeText = mutation.TextValue.Trim();
+                        NotifySocialTextEditCommitted(_guildNoticeText);
+                        return "Guild notice text applied from packet-owned approval.";
+                    }
+
+                    break;
+
+                case PacketOwnedSocialMutationKind.GuildAdmission:
+                    if (mutation.BoolValue.HasValue)
+                    {
+                        _guildManageRequiresApproval = mutation.BoolValue.Value;
+                        NotifySocialTextEditCommitted(_guildManageRequiresApproval ? "Approval required." : "Open enrollment.");
+                        return _guildManageRequiresApproval
+                            ? "Guild admission toggle applied from packet-owned approval: approval required."
+                            : "Guild admission toggle applied from packet-owned approval: open enrollment.";
+                    }
+
+                    break;
+
+                case PacketOwnedSocialMutationKind.AllianceRankTitle:
+                    if (mutation.Index.HasValue && !string.IsNullOrWhiteSpace(mutation.TextValue))
+                    {
+                        int rankIndex = Math.Clamp(mutation.Index.Value, 0, Math.Max(0, _allianceRankTitles.Count - 1));
+                        _allianceRankTitles[rankIndex] = mutation.TextValue.Trim();
+                        NotifySocialTextEditCommitted(_allianceRankTitles[rankIndex]);
+                        return $"Alliance rank title {rankIndex + 1} applied from packet-owned approval.";
+                    }
+
+                    break;
+
+                case PacketOwnedSocialMutationKind.AllianceNotice:
+                    if (!string.IsNullOrWhiteSpace(mutation.TextValue))
+                    {
+                        _allianceNoticeText = mutation.TextValue.Trim();
+                        NotifySocialTextEditCommitted(_allianceNoticeText);
+                        return "Alliance notice text applied from packet-owned approval.";
+                    }
+
+                    break;
+            }
+
+            return $"Packet-owned {GetHeaderTitle(tab).ToLowerInvariant()} approval did not include an applicable local mutation.";
+        }
+
+        private enum PacketOwnedSocialMutationKind
+        {
+            GuildRankTitle,
+            GuildNotice,
+            GuildAdmission,
+            AllianceRankTitle,
+            AllianceNotice
+        }
+
+        private readonly record struct PacketOwnedSocialMutation(
+            PacketOwnedSocialMutationKind Kind,
+            int? Index,
+            string TextValue,
+            bool? BoolValue);
 
         private void NotifyGuildManageTabObserved()
         {

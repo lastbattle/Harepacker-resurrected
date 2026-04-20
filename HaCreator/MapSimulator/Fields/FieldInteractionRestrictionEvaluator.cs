@@ -143,7 +143,13 @@ namespace HaCreator.MapSimulator.Fields
 
         public static string GetPartyBossRestrictionMessage(long fieldLimit)
         {
+            return GetPartyBossRestrictionMessage(fieldLimit, mapInfo: null);
+        }
+
+        public static string GetPartyBossRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
             return FieldLimitType.Unable_To_Change_Party_Boss.Check(fieldLimit)
+                || mapInfo?.blockPBossChange == true
                 ? "Party leader changes are disabled in this map."
                 : null;
         }
@@ -152,8 +158,16 @@ namespace HaCreator.MapSimulator.Fields
             long fieldLimit,
             ExpeditionIntermediaryOutboundRequestKind requestKind)
         {
+            return GetExpeditionPartyBossChangeRestrictionMessage(fieldLimit, mapInfo: null, requestKind);
+        }
+
+        internal static string GetExpeditionPartyBossChangeRestrictionMessage(
+            long fieldLimit,
+            MapInfo mapInfo,
+            ExpeditionIntermediaryOutboundRequestKind requestKind)
+        {
             return requestKind == ExpeditionIntermediaryOutboundRequestKind.ChangePartyBoss
-                ? GetPartyBossRestrictionMessage(fieldLimit)
+                ? GetPartyBossRestrictionMessage(fieldLimit, mapInfo)
                 : null;
         }
 
@@ -286,7 +300,12 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanChangePartyLeader(long fieldLimit)
         {
-            return GetPartyBossRestrictionMessage(fieldLimit) == null;
+            return CanChangePartyLeader(fieldLimit, mapInfo: null);
+        }
+
+        public static bool CanChangePartyLeader(long fieldLimit, MapInfo mapInfo)
+        {
+            return GetPartyBossRestrictionMessage(fieldLimit, mapInfo) == null;
         }
 
         public static string GetItemUseRestrictionMessage(
@@ -431,12 +450,17 @@ namespace HaCreator.MapSimulator.Fields
 
         public static IReadOnlyList<string> GetFieldEntryInteractionRestrictionMessages(long fieldLimit)
         {
+            return GetFieldEntryInteractionRestrictionMessages(fieldLimit, mapInfo: null);
+        }
+
+        public static IReadOnlyList<string> GetFieldEntryInteractionRestrictionMessages(long fieldLimit, MapInfo mapInfo)
+        {
             List<string> messages = new();
             AddFieldEntryMessage(messages, GetParcelOpenRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetQuestAlertRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetAndroidRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetTamingMobRestrictionMessage(fieldLimit));
-            AddFieldEntryMessage(messages, GetPartyBossRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetPartyBossRestrictionMessage(fieldLimit, mapInfo));
             AddFieldEntryMessage(messages, GetDropRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetMonsterCapacityLimitMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetExpDecreaseRestrictionMessage(fieldLimit));

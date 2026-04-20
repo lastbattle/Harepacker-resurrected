@@ -342,11 +342,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (normalizedAction == PacketSkillActionHealingRobotHeal
-                || normalizedAction == PacketSkillActionBeholderHeal
-                || (normalizedAction >= PacketSkillActionBeholderBuffBase
-                    && normalizedAction <= PacketSkillActionBeholderBuffMax))
+                && HasSupportOwnedMinionAbilityCue(skill))
             {
                 return SummonAssistType.Support;
+            }
+
+            if (IsBeholderSupportPacketSkillAction(normalizedAction))
+            {
+                return skill.SkillId == BeholderSummonSkillId
+                    ? SummonAssistType.Support
+                    : currentAssistType;
             }
 
             if (normalizedAction >= PacketSkillActionSkillBranchMin
@@ -397,11 +402,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
             else if (assistType == SummonAssistType.Support)
             {
-                if (normalizedAction == PacketSkillActionHealingRobotHeal
-                    || normalizedAction == PacketSkillActionBeholderHeal
-                    || (normalizedAction >= PacketSkillActionBeholderBuffBase
-                        && normalizedAction <= PacketSkillActionBeholderBuffMax))
+                if (normalizedAction == PacketSkillActionHealingRobotHeal)
                 {
+                    if (!HasSupportOwnedMinionAbilityCue(skill))
+                    {
+                        return false;
+                    }
+
+                    return !string.IsNullOrWhiteSpace(
+                        ResolvePacketSkillBranch(skill, normalizedAction, SummonAssistType.Support));
+                }
+
+                if (IsBeholderSupportPacketSkillAction(normalizedAction))
+                {
+                    if (skill.SkillId != BeholderSummonSkillId)
+                    {
+                        return false;
+                    }
+
                     return !string.IsNullOrWhiteSpace(
                         ResolvePacketSkillBranch(skill, normalizedAction, SummonAssistType.Support));
                 }
@@ -409,9 +427,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (normalizedAction >= PacketSkillActionSkillBranchMin
                     && normalizedAction <= PacketSkillActionSkillBranchMax)
                 {
-                    bool hasSupportMinionCue = HasMinionAbilityToken(skill.MinionAbility, "heal")
-                                               || HasMinionAbilityToken(skill.MinionAbility, "mes")
-                                               || HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage");
+                    bool hasSupportMinionCue = HasSupportOwnedMinionAbilityCue(skill);
                     if (!hasSupportMinionCue && skill.SkillId != BeholderSummonSkillId)
                     {
                         return false;
@@ -1549,6 +1565,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return new[] { indexedBranch };
+        }
+
+        private static bool IsBeholderSupportPacketSkillAction(byte normalizedAction)
+        {
+            return normalizedAction == PacketSkillActionBeholderHeal
+                   || (normalizedAction >= PacketSkillActionBeholderBuffBase
+                       && normalizedAction <= PacketSkillActionBeholderBuffMax);
+        }
+
+        private static bool HasSupportOwnedMinionAbilityCue(SkillData skill)
+        {
+            return HasMinionAbilityToken(skill?.MinionAbility, "heal")
+                   || HasMinionAbilityToken(skill?.MinionAbility, "mes")
+                   || HasMinionAbilityToken(skill?.MinionAbility, "amplifyDamage");
         }
 
         private static bool UsesNamedSummonAnimationBranch(SkillData skill, string branchName)

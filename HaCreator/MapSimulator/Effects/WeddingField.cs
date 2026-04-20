@@ -1818,7 +1818,6 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
-            RefreshParticipantNameTag(participant);
         }
 
         private static void SetParticipantTemporaryStats(
@@ -1830,9 +1829,15 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
+            WeddingParticipantNameTagSignature previousNameTagSignature = CreateNameTagSignature(participant);
             participant.TemporaryStats = temporaryStats;
             participant.TemporaryStatRevision++;
             ApplyParticipantTemporaryStatPresentation(participant);
+            if (participant.NameTagRevision == 0
+                || !previousNameTagSignature.Equals(CreateNameTagSignature(participant)))
+            {
+                RefreshParticipantNameTag(participant);
+            }
         }
 
         private static void ApplyParticipantGuildNameChanged(WeddingRemoteParticipant participant, string guildName)
@@ -2034,7 +2039,8 @@ namespace HaCreator.MapSimulator.Effects
                 build?.GuildMarkBackgroundId,
                 build?.GuildMarkBackgroundColor,
                 build?.GuildMarkId,
-                build?.GuildMarkColor);
+                build?.GuildMarkColor,
+                ShouldDrawParticipantLikeClient(participant));
         }
 
         private static string NormalizeNameTagText(string value)
@@ -2048,7 +2054,8 @@ namespace HaCreator.MapSimulator.Effects
             int? GuildMarkBackgroundId,
             int? GuildMarkBackgroundColor,
             int? GuildMarkId,
-            int? GuildMarkColor);
+            int? GuildMarkColor,
+            bool IsVisibleLikeClient);
 
         private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
         {

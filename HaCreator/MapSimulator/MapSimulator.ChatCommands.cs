@@ -8705,6 +8705,33 @@ namespace HaCreator.MapSimulator
                         return true;
                     }
 
+                    bool TrySendPersonalShopCloseRequest(out string packetMessage)
+                    {
+                        return TrySendMerchantSessionRequest(
+                            requestSubtype: 10,
+                            out packetMessage,
+                            idaOwner: "CPersonalShopDlg::SetRet(nRet=2)");
+                    }
+
+                    bool TrySendEntrustedShopCloseRequest(out string packetMessage)
+                    {
+                        bool ownerSeat = runtime.MiniRoomLocalSeatIndex <= 0;
+                        return TrySendMerchantSessionRequest(
+                            requestSubtype: ownerSeat ? (byte)39 : (byte)10,
+                            out packetMessage,
+                            idaOwner: ownerSeat
+                                ? "CEntrustedShopDlg::OnGoOut"
+                                : "CPersonalShopDlg::SetRet(nRet=2) fallback from CEntrustedShopDlg::SetRet");
+                    }
+
+                    bool TrySendEntrustedShopWithdrawAllRequest(out string packetMessage)
+                    {
+                        return TrySendMerchantSessionRequest(
+                            requestSubtype: 41,
+                            out packetMessage,
+                            idaOwner: "CEntrustedShopDlg::SetRet(nRet=8)");
+                    }
+
                     bool TrySendMerchantBuyRequest(int requestedIndex, out string packetMessage)
                     {
                         packetMessage = null;
@@ -8886,6 +8913,13 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(claimMessage)
                                         : ChatCommandHandler.CommandResult.Error(claimMessage);
                                 case "close":
+                                    if (packetMode)
+                                    {
+                                        return TrySendPersonalShopCloseRequest(out string packetOwnedCloseMessage)
+                                            ? ChatCommandHandler.CommandResult.Ok(packetOwnedCloseMessage)
+                                            : ChatCommandHandler.CommandResult.Error(packetOwnedCloseMessage);
+                                    }
+
                                     return Dispatch(SocialRoomPacketType.CloseRoom, out string closeMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(closeMessage)
                                         : ChatCommandHandler.CommandResult.Error(closeMessage);
@@ -8950,10 +8984,16 @@ namespace HaCreator.MapSimulator
                                 case "claim":
                                     if (packetMode)
                                     {
-                                        return TrySendMerchantSessionRequest(
-                                                requestSubtype: 43,
-                                                out string entrustedClaimPacketMessage,
-                                                idaOwner: "CEntrustedShopDlg::OnWithdrawMoney")
+                                        string claimMode = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "meso";
+                                        bool withdrawAll = string.Equals(claimMode, "all", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(claimMode, "items", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(claimMode, "withdrawall", StringComparison.OrdinalIgnoreCase);
+                                        return (withdrawAll
+                                                ? TrySendEntrustedShopWithdrawAllRequest(out string entrustedClaimPacketMessage)
+                                                : TrySendMerchantSessionRequest(
+                                                    requestSubtype: 43,
+                                                    out entrustedClaimPacketMessage,
+                                                    idaOwner: "CEntrustedShopDlg::OnWithdrawMoney"))
                                             ? ChatCommandHandler.CommandResult.Ok(entrustedClaimPacketMessage)
                                             : ChatCommandHandler.CommandResult.Error(entrustedClaimPacketMessage);
                                     }
@@ -8961,16 +9001,22 @@ namespace HaCreator.MapSimulator
                                     return Dispatch(SocialRoomPacketType.ClaimMesos, out string entrustedClaimMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(entrustedClaimMessage)
                                         : ChatCommandHandler.CommandResult.Error(entrustedClaimMessage);
+                                case "withdrawall":
+                                    if (!packetMode)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Entrusted-shop withdraw-all is packet-owned. Use /socialroom entrustedshop packet withdrawall.");
+                                    }
+
+                                    return TrySendEntrustedShopWithdrawAllRequest(out string entrustedWithdrawAllPacketMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(entrustedWithdrawAllPacketMessage)
+                                        : ChatCommandHandler.CommandResult.Error(entrustedWithdrawAllPacketMessage);
                                 case "close":
                                     if (!packetMode)
                                     {
                                         return ChatCommandHandler.CommandResult.Error("Entrusted-shop close is packet-owned. Use /socialroom entrustedshop packet close.");
                                     }
 
-                                    return TrySendMerchantSessionRequest(
-                                            requestSubtype: 39,
-                                            out string entrustedClosePacketMessage,
-                                            idaOwner: "CEntrustedShopDlg::OnGoOut")
+                                    return TrySendEntrustedShopCloseRequest(out string entrustedClosePacketMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(entrustedClosePacketMessage)
                                         : ChatCommandHandler.CommandResult.Error(entrustedClosePacketMessage);
                                 case "permit":
@@ -8991,7 +9037,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|mode|list <itemId> [qty] [price]|autolist|arrange|claim|close|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|mode|list <itemId> [qty] [price]|autolist|arrange|claim [meso|all]|withdrawall|close|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 

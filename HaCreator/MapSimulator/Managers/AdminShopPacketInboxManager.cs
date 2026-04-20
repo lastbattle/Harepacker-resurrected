@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -24,6 +25,11 @@ namespace HaCreator.MapSimulator.Managers
         public string Source { get; }
         public string RawText { get; }
     }
+
+    public readonly record struct AdminShopOpcodeFramedPacket(
+        int PacketType,
+        byte[] Payload,
+        byte[] RawPacket);
 
     /// <summary>
     /// Loopback inbox for CField::OnPacket admin-shop packets before they reach
@@ -377,6 +383,59 @@ namespace HaCreator.MapSimulator.Managers
             payload = rawPacket.Length == sizeof(ushort)
                 ? Array.Empty<byte>()
                 : rawPacket[sizeof(ushort)..];
+            return true;
+        }
+
+        public static bool TryDecodeOpcodeFramedPacketSequence(
+            string sequenceText,
+            out IReadOnlyList<AdminShopOpcodeFramedPacket> packets,
+            out string error)
+        {
+            packets = Array.Empty<AdminShopOpcodeFramedPacket>();
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(sequenceText))
+            {
+                error = "Admin-shop opcode-framed packet sequence is empty.";
+                return false;
+            }
+
+            string[] rawSegments = sequenceText.Split(';');
+            List<AdminShopOpcodeFramedPacket> decodedPackets = new(rawSegments.Length);
+            for (int i = 0; i < rawSegments.Length; i++)
+            {
+                string segment = rawSegments[i]?.Trim() ?? string.Empty;
+                if (segment.Length <= 0)
+                {
+                    error = $"Admin-shop packet sequence segment {i + 1} is empty.";
+                    return false;
+                }
+
+                if (!TryParsePayload(segment, out byte[] rawPacket, out string rawPacketError))
+                {
+                    error = $"Admin-shop packet sequence segment {i + 1} is invalid: {rawPacketError}";
+                    return false;
+                }
+
+                if (!TryDecodeOpcodeFramedPacket(rawPacket, out int packetType, out byte[] payload, out string decodeError))
+                {
+                    error = $"Admin-shop packet sequence segment {i + 1} decode failed: {decodeError}";
+                    return false;
+                }
+
+                decodedPackets.Add(new AdminShopOpcodeFramedPacket(
+                    packetType,
+                    payload,
+                    rawPacket));
+            }
+
+            if (decodedPackets.Count <= 0)
+            {
+                error = "Admin-shop opcode-framed packet sequence did not contain any packets.";
+                return false;
+            }
+
+            packets = decodedPackets;
             return true;
         }
 

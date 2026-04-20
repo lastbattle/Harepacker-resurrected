@@ -2764,24 +2764,29 @@ namespace HaCreator.MapSimulator.Interaction
             List<string> fields = new List<string>();
             int offset = 0;
             int stringFieldCount = 0;
-            while (TryReadResidualTradePacketMapleString(leftover, ref offset, out string tailString) && stringFieldCount < 2)
+            while (TryReadResidualTradePacketMapleString(leftover, ref offset, out string tailString) && stringFieldCount < 3)
             {
                 fields.Add(stringFieldCount == 0 ? $"sTailName {tailString}" : $"sTailName{stringFieldCount + 1} {tailString}");
                 stringFieldCount++;
             }
 
-            if (leftover.Length - offset >= sizeof(long))
+            int longFieldCount = 0;
+            while (leftover.Length - offset >= sizeof(long) && longFieldCount < 2)
             {
                 long serialCandidate = BinaryPrimitives.ReadInt64LittleEndian(leftover.Slice(offset, sizeof(long)));
                 if (serialCandidate > 0)
                 {
-                    fields.Add($"liTailSN {serialCandidate}");
+                    fields.Add(longFieldCount == 0 ? $"liTailSN {serialCandidate}" : $"liTailSN{longFieldCount + 1} {serialCandidate}");
                     offset += sizeof(long);
+                    longFieldCount++;
+                    continue;
                 }
+
+                break;
             }
 
             int intFieldCount = 0;
-            while (leftover.Length - offset >= sizeof(int) && intFieldCount < 6)
+            while (leftover.Length - offset >= sizeof(int) && intFieldCount < 8)
             {
                 int intValue = BinaryPrimitives.ReadInt32LittleEndian(leftover.Slice(offset, sizeof(int)));
                 if (intValue != 0)
@@ -2794,7 +2799,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int shortFieldCount = 0;
-            while (leftover.Length - offset >= sizeof(short) && shortFieldCount < 4)
+            while (leftover.Length - offset >= sizeof(short) && shortFieldCount < 8)
             {
                 short shortValue = BinaryPrimitives.ReadInt16LittleEndian(leftover.Slice(offset, sizeof(short)));
                 if (shortValue != 0)
@@ -2807,7 +2812,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int byteFieldCount = 0;
-            while (leftover.Length - offset > 0 && byteFieldCount < 4)
+            while (leftover.Length - offset > 0 && byteFieldCount < 8)
             {
                 byte byteValue = leftover[offset];
                 if (byteValue != 0)
@@ -2834,31 +2839,48 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            if (!TryExtractTradePacketNamedField(tailMetadataSummary, "sTailName ", out string tailName))
+            string[] tailNameFields = { "sTailName ", "sTailName2 ", "sTailName3 " };
+            List<string> tailNameCandidates = new List<string>();
+            for (int i = 0; i < tailNameFields.Length; i++)
             {
-                return string.Empty;
+                if (!TryExtractTradePacketNamedField(tailMetadataSummary, tailNameFields[i], out string tailName))
+                {
+                    continue;
+                }
+
+                string normalizedCandidate = NormalizeTradePacketFixedString(tailName, maxClientBytesIncludingTerminator: 33);
+                if (!string.IsNullOrWhiteSpace(normalizedCandidate))
+                {
+                    tailNameCandidates.Add(normalizedCandidate);
+                }
             }
 
-            string normalizedTailName = NormalizeTradePacketFixedString(tailName, maxClientBytesIncludingTerminator: 33);
-            if (string.IsNullOrWhiteSpace(normalizedTailName))
+            if (tailNameCandidates.Count == 0)
             {
                 return string.Empty;
             }
 
             string baseLabel = ResolveItemLabel(itemId);
-            if (!string.IsNullOrWhiteSpace(baseLabel) &&
-                string.Equals(normalizedTailName, baseLabel, StringComparison.OrdinalIgnoreCase))
+            string normalizedTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title.Trim();
+            for (int i = 0; i < tailNameCandidates.Count; i++)
             {
-                return string.Empty;
+                string candidate = tailNameCandidates[i];
+                if (!string.IsNullOrWhiteSpace(baseLabel) &&
+                    string.Equals(candidate, baseLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(normalizedTitle) &&
+                    string.Equals(candidate, normalizedTitle, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return candidate;
             }
 
-            if (!string.IsNullOrWhiteSpace(title) &&
-                string.Equals(normalizedTailName, title.Trim(), StringComparison.OrdinalIgnoreCase))
-            {
-                return string.Empty;
-            }
-
-            return normalizedTailName;
+            return string.Empty;
         }
 
         private static bool TryExtractTradePacketNamedField(string summary, string fieldPrefix, out string value)
@@ -4096,6 +4118,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (TryDispatchMiniRoomSubtype6RoomTypeOpcodeEnvelopePayload(nestedPayload, tickCount, out result))
+            {
+                return true;
+            }
+
             if (TryDispatchMiniRoomSubtype6OffsetEnvelopePayload(nestedPayload, tickCount, out result))
             {
                 return true;
@@ -4245,6 +4272,121 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6RoomTypeOpcodeEnvelopePayload(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 4)
+            {
+                return false;
+            }
+
+            if (TryDispatchMiniRoomSubtype6RoomTypeOpcodeForwardedCandidate(
+                nestedPayload,
+                prefixLength: 3,
+                envelopeSummary: $"room-type+opcode envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
+                tickCount,
+                out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6RoomTypeOpcodeForwardedCandidate(
+                nestedPayload,
+                prefixLength: 3,
+                envelopeSummary: $"opcode+room-type envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
+                tickCount,
+                out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: nestedPayload[3],
+                    envelopeSummary: $"room-type+opcode+len8 envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 5 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: nestedPayload[3],
+                    envelopeSummary: $"opcode+room-type+len8 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 7 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 5,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(3, sizeof(ushort))),
+                    envelopeSummary: $"room-type+opcode+len16 envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 7 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 5,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(3, sizeof(ushort))),
+                    envelopeSummary: $"opcode+room-type+len16 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6RoomTypeOpcodeForwardedCandidate(
+            byte[] nestedPayload,
+            int prefixLength,
+            string envelopeSummary,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length <= prefixLength)
+            {
+                return false;
+            }
+
+            byte packetType = nestedPayload[prefixLength];
+            if (!IsMiniRoomSubtype6ForwardablePacket(packetType))
+            {
+                return false;
+            }
+
+            byte[] forwardedPayload = nestedPayload.Skip(prefixLength).ToArray();
+            if (!TryDispatchMiniRoomSubtype6ForwardedPayload(forwardedPayload, tickCount, out result))
+            {
+                return false;
+            }
+
+            result = result with
+            {
+                EnvelopeSummary = envelopeSummary,
+                ForwardedPayload = forwardedPayload
+            };
+            return true;
         }
 
         private bool TryDispatchMiniRoomSubtype6ForwardedPayload(

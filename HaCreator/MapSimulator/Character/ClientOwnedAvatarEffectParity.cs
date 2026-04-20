@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Character
@@ -48,6 +49,12 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 if (RotateSensitiveActionNames.Contains(actionName))
+                {
+                    return true;
+                }
+
+                if (TryParseSyntheticRawActionCode(actionName, out int syntheticRawActionCode)
+                    && RotateSensitiveRawActionCodes.Contains(syntheticRawActionCode))
                 {
                     return true;
                 }
@@ -152,6 +159,30 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return actionNames;
+        }
+
+        private static bool TryParseSyntheticRawActionCode(string actionName, out int rawActionCode)
+        {
+            rawActionCode = 0;
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            ReadOnlySpan<char> actionSpan = actionName.AsSpan().Trim();
+            int markerIndex = actionSpan.LastIndexOf('*');
+            if (markerIndex < 0 || markerIndex >= actionSpan.Length - 1)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<char> rawActionSpan = actionSpan[(markerIndex + 1)..];
+            return int.TryParse(
+                       rawActionSpan,
+                       NumberStyles.Integer,
+                       CultureInfo.InvariantCulture,
+                       out rawActionCode)
+                   && rawActionCode > 0;
         }
     }
 }

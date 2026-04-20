@@ -383,8 +383,9 @@ namespace HaCreator.MapSimulator
                     {
                         if (IsWhisperTargetPickerModalDropdownNavigating())
                         {
-                            // When the select window is open, CCtrlComboBoxSelect::OnKey handles
-                            // only VK_UP/VK_DOWN/VK_RETURN and forwards other keys.
+                            // CCtrlComboBoxSelect::OnKey forwards non-UP/DOWN/RETURN keys to the
+                            // editable combo owner path; Tab still swaps owner focus lanes.
+                            ToggleWhisperTargetPickerModalFocusTarget();
                             return true;
                         }
 

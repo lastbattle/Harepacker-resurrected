@@ -632,9 +632,24 @@ namespace HaCreator.MapSimulator.Character
                 // Character/00002000.img keeps that body row on explicit redirects:
                 // `jump`, then `swingOF`, then `swingPF`.
                 ["spiritJump"] = new[] { "jump", "swingOF", "swingPF" },
+                // WZ skill rows also keep non-table flash-jump roots
+                // (`demonJump`, `demonJumpUpward`, `demonJumpFoward`,
+                // and `HTswiftPhantom`/`swiftPhantom`) while checked Morph/*.img and
+                // Character/00002000.img publish no verbatim branches for those names.
+                // Keep them on the same jump-first fallback surface as `spiritJump`.
+                ["demonJump"] = new[] { "jump", "swingOF", "swingPF" },
+                ["demonJumpUpward"] = new[] { "jump", "swingOF", "swingPF" },
+                ["demonJumpFoward"] = new[] { "jump", "swingOF", "swingPF" },
+                ["HTswiftPhantom"] = new[] { "jump", "swingOF", "swingPF" },
+                ["swiftPhantom"] = new[] { "jump", "swingOF", "swingPF" },
                 // Character/00002000.img keeps `slayerDoubleJump` on `jump`, while
                 // Morph/*.img still has no verbatim slayer branch.
                 ["slayerDoubleJump"] = new[] { "jump" },
+                // Client raw action code 242 remains `doubleJump`, and
+                // Character/00002000.img keeps `doubleJump/0/action = sit`.
+                // Keep that checked posture redirect first while preserving `jump`
+                // as the nearby movement backstop for templates without `sit`.
+                ["doubleJump"] = new[] { "sit", "jump" },
                 // Post-s_sMorphAction raw action codes still include these late
                 // double-jump names. Character/00002000.img keeps
                 // `archerDoubleJump/0/action = jump` and keeps all checked
@@ -947,7 +962,9 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase)
-                   || actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0;
+                   || actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("demonjump", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("swiftphantom", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static IEnumerable<string> EnumerateClientPublishedJumpAliases(CharacterPart morphPart, string actionName)

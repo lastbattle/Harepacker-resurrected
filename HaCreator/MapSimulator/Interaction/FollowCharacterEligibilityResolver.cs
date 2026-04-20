@@ -114,7 +114,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int NormalizeMountedVehicleOwnerItemId(int mountItemId)
         {
-            return mountItemId == BattleshipTamingMobItemId || mountItemId == MechanicTamingMobItemId
+            return ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleMountOwnerItemId(mountItemId)
                 ? mountItemId
                 : 0;
         }

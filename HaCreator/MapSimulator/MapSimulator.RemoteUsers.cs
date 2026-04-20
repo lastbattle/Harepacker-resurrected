@@ -2043,9 +2043,29 @@ namespace HaCreator.MapSimulator
                 DropPickupActorKind.Mob when actorId > 0 && mobNameResolver != null
                     => mobNameResolver(actorId),
                 DropPickupActorKind.Other
-                    => FormatOtherPickupActorLabel(actorId),
+                    => ResolveRemoteOtherPickupActorName(actorId, fallbackOwnerId, remoteUserPool, itemNameResolver),
                 _ => null
             };
+        }
+
+        internal static string ResolveRemoteOtherPickupActorName(
+            int actorId,
+            int fallbackOwnerId,
+            RemoteUserActorPool remoteUserPool,
+            Func<int, string> itemNameResolver)
+        {
+            if (actorId > 0 && remoteUserPool?.TryGetActor(actorId, out RemoteUserActor actor) == true)
+            {
+                return actor.Name;
+            }
+
+            string petActorName = ResolveRemotePetPickupActorName(actorId, fallbackOwnerId, remoteUserPool, itemNameResolver);
+            if (!string.IsNullOrWhiteSpace(petActorName))
+            {
+                return petActorName;
+            }
+
+            return FormatOtherPickupActorLabel(actorId);
         }
 
         internal static string ResolveRemoteUserDropPickupActorName(

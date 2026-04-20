@@ -78,7 +78,8 @@ namespace HaCreator.MapSimulator.Effects
                     continue;
                 }
 
-                _entries[index] = entry.WithForcedFadeOut(currentTickCount, resolvedFadeOutMs);
+                float currentAlpha = GetAlpha(entry, currentTickCount);
+                _entries[index] = entry.WithForcedFadeOut(currentTickCount, resolvedFadeOutMs, currentAlpha);
                 forcedCount++;
             }
 
@@ -145,6 +146,12 @@ namespace HaCreator.MapSimulator.Effects
 
         private static float GetAlpha(in FadeEntry entry, int currentTickCount)
         {
+            if (entry.HasForcedFadeOut()
+                && unchecked(currentTickCount - entry.ForcedFadeOutStartsAt) >= 0)
+            {
+                return GetForcedFadeOutAlpha(entry, currentTickCount);
+            }
+
             int elapsed = Math.Max(0, unchecked(currentTickCount - entry.StartedAt));
             float startingAlpha = entry.StartingAlpha / (float)byte.MaxValue;
             if (entry.FadeInMs > 0 && elapsed < entry.FadeInMs)
@@ -172,6 +179,19 @@ namespace HaCreator.MapSimulator.Effects
             return 0f;
         }
 
+        private static float GetForcedFadeOutAlpha(in FadeEntry entry, int currentTickCount)
+        {
+            int elapsed = Math.Max(0, unchecked(currentTickCount - entry.ForcedFadeOutStartsAt));
+            if (entry.ForcedFadeOutMs <= 0)
+            {
+                return 0f;
+            }
+
+            float fadeProgress = MathHelper.Clamp((float)elapsed / entry.ForcedFadeOutMs, 0f, 1f);
+            float forcedStartAlpha = MathHelper.Clamp(entry.ForcedStartAlpha, 0f, 1f);
+            return MathHelper.Lerp(forcedStartAlpha, 0f, fadeProgress);
+        }
+
         private readonly record struct FadeEntry(
             int FadeInMs,
             int HoldMs,
@@ -180,8 +200,13 @@ namespace HaCreator.MapSimulator.Effects
             int LayerZ,
             int StartedAt,
             int ForcedFadeOutStartsAt = int.MinValue,
-            int ForcedFadeOutMs = -1)
+            int ForcedFadeOutMs = -1,
+            float ForcedStartAlpha = 1f)
         {
+            public bool HasForcedFadeOut() =>
+                ForcedFadeOutStartsAt != int.MinValue
+                && ForcedFadeOutMs >= 0;
+
             public int GetFadeOutStartsAt() =>
                 ForcedFadeOutStartsAt != int.MinValue
                     ? ForcedFadeOutStartsAt
@@ -197,11 +222,12 @@ namespace HaCreator.MapSimulator.Effects
             public bool HasFadeOutStarted(int currentTickCount) =>
                 unchecked(currentTickCount - GetFadeOutStartsAt()) >= 0;
 
-            public FadeEntry WithForcedFadeOut(int forceStartTickCount, int forceFadeOutMs) =>
+            public FadeEntry WithForcedFadeOut(int forceStartTickCount, int forceFadeOutMs, float forcedStartAlpha) =>
                 this with
                 {
                     ForcedFadeOutStartsAt = forceStartTickCount,
-                    ForcedFadeOutMs = Math.Max(0, forceFadeOutMs)
+                    ForcedFadeOutMs = Math.Max(0, forceFadeOutMs),
+                    ForcedStartAlpha = MathHelper.Clamp(forcedStartAlpha, 0f, 1f)
                 };
         }
     }

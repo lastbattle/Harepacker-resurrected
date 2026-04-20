@@ -612,7 +612,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ActionTextContains(actionName, "icedoublejump")
                    || ActionTextContains(actionName, "spiritjump")
                    || ActionTextContains(actionName, "swiftphantom")
-                   || ActionTextContains(actionName, "demonjump");
+                   || ActionTextContains(actionName, "demonjump")
+                   || ActionTextContains(actionName, "demonfly");
         }
 
         private static bool ActionTextContains(string actionName, string value)
@@ -662,6 +663,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                        or 24001002
                        or 30010183
                        or 30010184
+                       or 30010186
                        or 5081003
                        or 51001003;
         }

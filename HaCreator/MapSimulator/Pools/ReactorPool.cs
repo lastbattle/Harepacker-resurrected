@@ -2903,17 +2903,18 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (unresolvedPacketName)
-            {
-                // Keep unresolved packet-name ownership conservative when multiple
-                // authored candidates remain ambiguous after recovered client signals.
-                return false;
-            }
-
             if (TrySelectFullyAmbiguousWzAuthoredOrderCandidate(scope, initialState, out index))
             {
                 selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
                 return true;
+            }
+
+            if (unresolvedPacketName)
+            {
+                // Keep unresolved packet-name ownership conservative when multiple
+                // authored candidates remain ambiguous after recovered client signals.
+                // Only the fully-ambiguous authored-order fallback above is admitted.
+                return false;
             }
 
             return false;
@@ -4018,6 +4019,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             reactor?.ClearTransientAnimation();
+            data.PacketHitAnimationState = -1;
             data.PacketPendingVisualState = -1;
             data.PacketAnimationEndTime = 0;
             data.PacketAnimationPhase = PacketReactorAnimationPhase.AwaitingAutoHitLayerCompletion;

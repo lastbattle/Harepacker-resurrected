@@ -1594,7 +1594,7 @@ namespace HaCreator.MapSimulator.Managers
                 ? $",mismatchPairs={string.Join(",", trace.DecodedSg88FirstUseReplayMismatchPairs)}"
                 : string.Empty;
             return
-                $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},vecCtrl={decoded.VecCtrlState}({FormatByteHex(decoded.VecCtrlState)}),replayParity={replayParity}{detailSuffix}{templateSuffix}{mismatchSuffix}{mismatchBytesSuffix}{mismatchPairsSuffix})";
+                $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},rawMoveAction={decoded.RawMoveActionByte}({FormatByteHex(decoded.RawMoveActionByte)}),vecCtrl={decoded.VecCtrlState}({FormatByteHex(decoded.VecCtrlState)}),replayParity={replayParity}{detailSuffix}{templateSuffix}{mismatchSuffix}{mismatchBytesSuffix}{mismatchPairsSuffix})";
         }
 
         public string DescribeRecentSg88FirstUsePackets(int maxCount = 10)
@@ -1665,7 +1665,10 @@ namespace HaCreator.MapSimulator.Managers
                     : string.Join(
                         "; ",
                         decodedGroups.Select(group =>
-                            $"count={group.Count()},level={group.Key.SkillLevel},moveLowBit={group.Key.MoveActionLowBit},vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}),replayParity={group.Key.ReplayParity}"));
+                        {
+                            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group);
+                            return $"count={group.Count()},level={group.Key.SkillLevel},moveLowBit={group.Key.MoveActionLowBit},rawMoves={rawMoveActionHistogram},vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}),replayParity={group.Key.ReplayParity}";
+                        }));
 
                 var decodeFailureGroups = entries
                     .Where(entry => !entry.DecodedSg88FirstUseRequest.HasValue)
@@ -1737,12 +1740,14 @@ namespace HaCreator.MapSimulator.Managers
                         {
                             int matched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == true);
                             int mismatched = group.Count(entry => entry.DecodedSg88FirstUseReplayParityMatched == false);
+                            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group);
                             string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group);
                             string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group);
                             string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group);
+                            string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group);
                             string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group);
                             return
-                                $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}) template={group.Key.TemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} parityClasses={replayParityClassHistogram}";
+                                $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} rawMoves={rawMoveActionHistogram} vecCtrl={group.Key.VecCtrlState}({FormatByteHex((byte)group.Key.VecCtrlState)}) template={group.Key.TemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
                         }));
                 var equivalenceGroups = entries
                     .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
@@ -1780,12 +1785,14 @@ namespace HaCreator.MapSimulator.Managers
                         {
                             int matched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == true);
                             int mismatched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == false);
+                            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group.Select(entry => entry.Entry));
                             string vecCtrlHistogram = BuildSg88VecCtrlHistogram(group.Select(entry => entry.VecCtrlState));
                             string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group.Select(entry => entry.Entry));
                             string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group.Select(entry => entry.Entry));
                             string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group.Select(entry => entry.Entry));
+                            string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group.Select(entry => entry.Entry));
                             string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group.Select(entry => entry.Entry));
-                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} stateTemplate={group.Key.StateTemplateHex} vecCtrls={vecCtrlHistogram} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} parityClasses={replayParityClassHistogram}";
+                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} moveLowBit={group.Key.MoveActionLowBit} rawMoves={rawMoveActionHistogram} stateTemplate={group.Key.StateTemplateHex} vecCtrls={vecCtrlHistogram} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
                         }));
                 var coreEquivalenceGroups = entries
                     .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
@@ -1819,11 +1826,13 @@ namespace HaCreator.MapSimulator.Managers
                         {
                             int matched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == true);
                             int mismatched = group.Count(entry => entry.Entry.DecodedSg88FirstUseReplayParityMatched == false);
+                            string rawMoveActionHistogram = BuildSg88RawMoveActionHistogram(group.Select(entry => entry.Entry));
                             string mismatchByteHistogram = BuildSg88MismatchByteHistogram(group.Select(entry => entry.Entry));
                             string mismatchPairHistogram = BuildSg88MismatchPairHistogram(group.Select(entry => entry.Entry));
                             string mismatchFieldHistogram = BuildSg88MismatchFieldHistogram(group.Select(entry => entry.Entry));
+                            string moveActionMismatchHistogram = BuildSg88MoveActionMismatchHistogram(group.Select(entry => entry.Entry));
                             string replayParityClassHistogram = BuildSg88ReplayParityClassHistogram(group.Select(entry => entry.Entry));
-                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} coreTemplate={group.Key.CoreTemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} parityClasses={replayParityClassHistogram}";
+                            return $"count={group.Count()} matched={matched} mismatched={mismatched} level={group.Key.SkillLevel} rawMoves={rawMoveActionHistogram} coreTemplate={group.Key.CoreTemplateHex} mismatchBytes={mismatchByteHistogram} mismatchPairs={mismatchPairHistogram} mismatchFields={mismatchFieldHistogram} moveActionMismatch={moveActionMismatchHistogram} parityClasses={replayParityClassHistogram}";
                         }));
 
                 return "Summoned official-session bridge SG-88 first-use replay matrix:"
@@ -1965,9 +1974,45 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string[] histogram = group
-                .Select(entry => ClassifySg88FirstUseReplayParity(
-                    entry.DecodedSg88FirstUseReplayParityMatched,
-                    ResolveSg88ReplayMismatchByteIndices(entry)))
+                .Select(ClassifySg88FirstUseReplayParity)
+                .GroupBy(label => label, StringComparer.Ordinal)
+                .OrderBy(grouping => grouping.Key, StringComparer.Ordinal)
+                .Select(grouping => $"{grouping.Key}x{grouping.Count()}")
+                .ToArray();
+            return histogram.Length == 0
+                ? "none"
+                : string.Join(",", histogram);
+        }
+
+        private static string BuildSg88RawMoveActionHistogram(IEnumerable<OutboundPacketTrace> group)
+        {
+            if (group == null)
+            {
+                return "none";
+            }
+
+            string[] histogram = group
+                .Where(entry => entry.DecodedSg88FirstUseRequest.HasValue)
+                .Select(entry => entry.DecodedSg88FirstUseRequest.Value.RawMoveActionByte)
+                .GroupBy(value => value)
+                .OrderBy(grouping => grouping.Key)
+                .Select(grouping => $"{grouping.Key}({FormatByteHex(grouping.Key)})x{grouping.Count()}")
+                .ToArray();
+            return histogram.Length == 0
+                ? "none"
+                : string.Join(",", histogram);
+        }
+
+        private static string BuildSg88MoveActionMismatchHistogram(IEnumerable<OutboundPacketTrace> group)
+        {
+            if (group == null)
+            {
+                return "none";
+            }
+
+            string[] histogram = group
+                .Select(ResolveSg88MoveActionMismatchClass)
+                .Where(label => !string.Equals(label, "none", StringComparison.Ordinal))
                 .GroupBy(label => label, StringComparer.Ordinal)
                 .OrderBy(grouping => grouping.Key, StringComparer.Ordinal)
                 .Select(grouping => $"{grouping.Key}x{grouping.Count()}")
@@ -2038,9 +2083,116 @@ namespace HaCreator.MapSimulator.Managers
             return $"0x{value:X2}";
         }
 
+        private static string ResolveSg88MoveActionMismatchClass(OutboundPacketTrace entry)
+        {
+            if (entry.DecodedSg88FirstUseReplayParityMatched != false)
+            {
+                return "none";
+            }
+
+            int[] mismatchByteIndices = ResolveSg88ReplayMismatchByteIndices(entry);
+            if (!mismatchByteIndices.Contains(PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseMoveActionByteIndex))
+            {
+                return "none";
+            }
+
+            if (!TryResolveSg88MismatchPairForByte(
+                    entry.DecodedSg88FirstUseReplayMismatchPairs,
+                    PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseMoveActionByteIndex,
+                    out byte observed,
+                    out byte rebuilt))
+            {
+                return "unknown";
+            }
+
+            if ((observed & 1) == (rebuilt & 1))
+            {
+                return "highBitsOnly";
+            }
+
+            return "lowBitChanged";
+        }
+
+        private static bool TryResolveSg88MismatchPairForByte(
+            IReadOnlyList<string> mismatchPairs,
+            int byteIndex,
+            out byte observed,
+            out byte rebuilt)
+        {
+            observed = 0;
+            rebuilt = 0;
+            if (mismatchPairs == null)
+            {
+                return false;
+            }
+
+            foreach (string mismatchPair in mismatchPairs)
+            {
+                if (!PacketOwnedMechanicRepeatSkillRuntime.TryParseSg88ReplayParityMismatchPair(
+                        mismatchPair,
+                        out int parsedByteIndex,
+                        out string normalizedPair)
+                    || parsedByteIndex != byteIndex)
+                {
+                    continue;
+                }
+
+                int arrowIndex = normalizedPair.IndexOf("->", StringComparison.Ordinal);
+                int colonIndex = normalizedPair.IndexOf(':');
+                if (arrowIndex <= colonIndex
+                    || colonIndex < 0
+                    || arrowIndex + 2 >= normalizedPair.Length)
+                {
+                    continue;
+                }
+
+                string observedToken = normalizedPair.Substring(colonIndex + 1, arrowIndex - colonIndex - 1).Trim();
+                string rebuiltToken = normalizedPair.Substring(arrowIndex + 2).Trim();
+                if (!TryParseHexByteToken(observedToken, out observed)
+                    || !TryParseHexByteToken(rebuiltToken, out rebuilt))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParseHexByteToken(string token, out byte value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalized = token.Trim();
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring(2);
+            }
+
+            return byte.TryParse(
+                normalized,
+                System.Globalization.NumberStyles.HexNumber,
+                null,
+                out value);
+        }
+
+        internal static string ClassifySg88FirstUseReplayParity(OutboundPacketTrace entry)
+        {
+            return ClassifySg88FirstUseReplayParity(
+                entry.DecodedSg88FirstUseReplayParityMatched,
+                ResolveSg88ReplayMismatchByteIndices(entry),
+                entry.DecodedSg88FirstUseReplayMismatchPairs);
+        }
+
         internal static string ClassifySg88FirstUseReplayParity(
             bool? replayParityMatched,
-            IReadOnlyCollection<int> mismatchByteIndices)
+            IReadOnlyCollection<int> mismatchByteIndices,
+            IReadOnlyList<string> mismatchPairs = null)
         {
             if (!replayParityMatched.HasValue)
             {
@@ -2075,6 +2227,17 @@ namespace HaCreator.MapSimulator.Managers
 
             if (includesMoveActionByte)
             {
+                if (mismatchByteIndices.Count == 1
+                    && TryResolveSg88MismatchPairForByte(
+                        mismatchPairs,
+                        PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseMoveActionByteIndex,
+                        out byte observedMoveAction,
+                        out byte rebuiltMoveAction)
+                    && (observedMoveAction & 1) == (rebuiltMoveAction & 1))
+                {
+                    return "mismatch:moveActionHighBitsOnly";
+                }
+
                 return mismatchByteIndices.Count == 1
                     ? "mismatch:moveActionOnly"
                     : "mismatch:moveActionPlusOther";

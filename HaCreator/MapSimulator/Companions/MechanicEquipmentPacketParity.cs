@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator.Companions
             bool SawExpectedPositiveEquipRemove,
             bool SawNegativeEquipRemove,
             bool SawExpectedNegativeEquipRemove);
+        internal readonly record struct MechanicInventoryOperationMutation(MechanicEquipSlot Slot, int ItemId);
 
         internal static bool TryEncodeClientChangeSlotPositionRequest(
             EquipmentChangeRequest request,
@@ -270,6 +271,152 @@ namespace HaCreator.MapSimulator.Companions
 
             rejectReason = "Inventory-operation payload did not include a mechanic add-or-swap entry matching the active request.";
             return false;
+        }
+
+        internal static bool TryDecodePassiveClientInventoryOperationMutations(
+            IReadOnlyList<byte> payload,
+            IReadOnlyList<InventorySlotData> equipInventorySlots,
+            out IReadOnlyList<MechanicInventoryOperationMutation> mutations,
+            out string rejectReason)
+        {
+            mutations = Array.Empty<MechanicInventoryOperationMutation>();
+            rejectReason = null;
+            if (payload == null || payload.Count < sizeof(byte) * 2)
+            {
+                rejectReason = "Inventory-operation payload is missing the exclusive-reset and operation-count bytes.";
+                return false;
+            }
+
+            try
+            {
+                byte[] buffer = payload as byte[] ?? new List<byte>(payload).ToArray();
+                using MemoryStream stream = new(buffer, writable: false);
+                using BinaryReader reader = new(stream);
+                _ = reader.ReadByte();
+                int operationCount = reader.ReadByte();
+                if (operationCount <= 0)
+                {
+                    rejectReason = "Inventory-operation payload did not include any operation entry.";
+                    return false;
+                }
+
+                Dictionary<MechanicEquipSlot, int> recoveredMutations = new();
+                for (int i = 0; i < operationCount; i++)
+                {
+                    if (stream.Length - stream.Position < sizeof(byte) * 2 + sizeof(short))
+                    {
+                        rejectReason = "Inventory-operation payload ended before a full operation header could be decoded.";
+                        return false;
+                    }
+
+                    byte operationMode = reader.ReadByte();
+                    byte inventoryType = reader.ReadByte();
+                    short fromPosition = reader.ReadInt16();
+                    switch (operationMode)
+                    {
+                        case 0:
+                        {
+                            if (!TryReadPassiveClientInventoryOperationAddEntry(
+                                    inventoryType,
+                                    fromPosition,
+                                    reader,
+                                    out MechanicInventoryOperationMutation? passiveAddMutation,
+                                    out rejectReason))
+                            {
+                                return false;
+                            }
+
+                            if (passiveAddMutation.HasValue)
+                            {
+                                recoveredMutations[passiveAddMutation.Value.Slot] = passiveAddMutation.Value.ItemId;
+                            }
+
+                            break;
+                        }
+                        case 1:
+                            if (stream.Length - stream.Position < sizeof(short))
+                            {
+                                rejectReason = "Inventory-operation quantity update entry is truncated.";
+                                return false;
+                            }
+
+                            _ = reader.ReadInt16();
+                            break;
+                        case 2:
+                        {
+                            if (stream.Length - stream.Position < sizeof(short))
+                            {
+                                rejectReason = "Inventory-operation swap entry is truncated.";
+                                return false;
+                            }
+
+                            short toPosition = reader.ReadInt16();
+                            if (inventoryType != ClientEquipInventoryType)
+                            {
+                                break;
+                            }
+
+                            bool sourceIsMechanic = TryResolveMechanicSlotFromClientPosition(fromPosition, out MechanicEquipSlot sourceMechanicSlot);
+                            bool targetIsMechanic = TryResolveMechanicSlotFromClientPosition(toPosition, out MechanicEquipSlot targetMechanicSlot);
+                            if (sourceIsMechanic && !targetIsMechanic)
+                            {
+                                recoveredMutations[sourceMechanicSlot] = 0;
+                                break;
+                            }
+
+                            if (!sourceIsMechanic && targetIsMechanic)
+                            {
+                                if (!TryResolvePassiveEquipInventoryItemId(equipInventorySlots, fromPosition, out int sourceItemId))
+                                {
+                                    rejectReason = "Inventory-operation swap entry referenced an unavailable equip source slot.";
+                                    return false;
+                                }
+
+                                recoveredMutations[targetMechanicSlot] = sourceItemId;
+                            }
+
+                            break;
+                        }
+                        case 3:
+                            if (inventoryType == ClientEquipInventoryType
+                                && TryResolveMechanicSlotFromClientPosition(fromPosition, out MechanicEquipSlot removedSlot))
+                            {
+                                recoveredMutations[removedSlot] = 0;
+                            }
+
+                            break;
+                        case 4:
+                            if (stream.Length - stream.Position < sizeof(int))
+                            {
+                                rejectReason = "Inventory-operation consume-item entry is truncated.";
+                                return false;
+                            }
+
+                            _ = reader.ReadInt32();
+                            break;
+                    }
+                }
+
+                if (recoveredMutations.Count == 0)
+                {
+                    rejectReason = "Inventory-operation payload did not include a mechanic mutation that can be recovered passively.";
+                    return false;
+                }
+
+                List<MechanicInventoryOperationMutation> mutationList = new(recoveredMutations.Count);
+                foreach ((MechanicEquipSlot slot, int itemId) in recoveredMutations)
+                {
+                    mutationList.Add(new MechanicInventoryOperationMutation(slot, itemId));
+                }
+
+                mutations = mutationList;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                rejectReason = $"Inventory-operation payload could not be decoded: {ex.Message}";
+                return false;
+            }
         }
 
         internal static bool TryRecognizeObservedLiveBridgeEquipInCompletion(
@@ -1275,6 +1422,96 @@ namespace HaCreator.MapSimulator.Companions
                 3 => TryReadClientInventoryOperationPetBody(reader, out rejectReason),
                 _ => FailUnsupportedItemSlotType(slotType, out rejectReason)
             };
+        }
+
+        private static bool TryReadPassiveClientInventoryOperationAddEntry(
+            byte inventoryType,
+            short targetPosition,
+            BinaryReader reader,
+            out MechanicInventoryOperationMutation? mutation,
+            out string rejectReason)
+        {
+            mutation = null;
+            rejectReason = null;
+            if (reader == null)
+            {
+                rejectReason = "Inventory-operation add entry reader is unavailable.";
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            if (!TryEnsureRemaining(stream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
+            byte slotType = reader.ReadByte();
+            int itemId = reader.ReadInt32();
+            bool hasCashSerial = reader.ReadByte() != 0;
+            if (hasCashSerial)
+            {
+                if (!TryEnsureRemaining(stream, sizeof(long), out rejectReason))
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt64(); // liCashItemSN
+            }
+
+            _ = reader.ReadInt64(); // dateExpire
+            if (inventoryType == ClientEquipInventoryType
+                && TryResolveMechanicSlotFromClientPosition(targetPosition, out MechanicEquipSlot mechanicSlot)
+                && itemId > 0)
+            {
+                mutation = new MechanicInventoryOperationMutation(mechanicSlot, itemId);
+            }
+
+            if (slotType is not 1 and not 2 and not 3)
+            {
+                rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
+                return false;
+            }
+
+            return slotType switch
+            {
+                1 => TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, out rejectReason),
+                2 => TryReadClientInventoryOperationBundleBody(reader, itemId, out rejectReason),
+                3 => TryReadClientInventoryOperationPetBody(reader, out rejectReason),
+                _ => FailUnsupportedItemSlotType(slotType, out rejectReason)
+            };
+        }
+
+        private static bool TryResolveMechanicSlotFromClientPosition(short position, out MechanicEquipSlot slot)
+        {
+            slot = default;
+            if (position >= 0)
+            {
+                return false;
+            }
+
+            int bodyPart = -position;
+            return MechanicEquipmentSlotMap.TryResolveBodyPart(bodyPart, out slot);
+        }
+
+        private static bool TryResolvePassiveEquipInventoryItemId(
+            IReadOnlyList<InventorySlotData> equipInventorySlots,
+            short sourcePosition,
+            out int itemId)
+        {
+            itemId = 0;
+            if (sourcePosition <= 0 || equipInventorySlots == null)
+            {
+                return false;
+            }
+
+            int sourceIndex = sourcePosition - 1;
+            if (sourceIndex < 0 || sourceIndex >= equipInventorySlots.Count)
+            {
+                return false;
+            }
+
+            itemId = equipInventorySlots[sourceIndex]?.ItemId ?? 0;
+            return itemId > 0;
         }
 
         private static bool TryReadClientInventoryOperationEquipBody(

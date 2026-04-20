@@ -7334,33 +7334,36 @@ namespace HaCreator.MapSimulator.Character
             AvatarRenderLayer? lastInsertCanvasOverlayTargetLayer,
             int lastInsertCanvasTime)
         {
+            if (preparedLayerObjectId <= 0)
+            {
+                return false;
+            }
+
             if (lastInsertCanvasLayerObjectId <= 0)
             {
                 return true;
             }
 
-            if (preparedLayerObjectId <= 0
-                || preparedLayerObjectId != lastInsertCanvasLayerObjectId)
+            if (preparedLayerObjectId != lastInsertCanvasLayerObjectId)
             {
-                return false;
-            }
-
-            if (lastInsertCanvasSourceLayer.HasValue
-                && lastInsertCanvasSourceLayer.Value != sourceLayer)
-            {
-                return false;
-            }
-
-            if (lastInsertCanvasOverlayTargetLayer.HasValue
-                && lastInsertCanvasOverlayTargetLayer.Value != overlayTargetLayer)
-            {
-                return false;
+                // Recreated helper layers should re-enter live insert admission as soon as
+                // the insert time metadata is explicitly reset.
+                return lastInsertCanvasTime == int.MinValue;
             }
 
             if (lastInsertCanvasTime == int.MinValue)
             {
                 return true;
             }
+
+            _ = sourceLayer;
+            _ = sourcePartsObjectId;
+            _ = lastInsertCanvasSourcePartsObjectId;
+            _ = sourceSignature;
+            _ = lastInsertedSourceSignature;
+            _ = lastInsertCanvasSourceLayer;
+            _ = overlayTargetLayer;
+            _ = lastInsertCanvasOverlayTargetLayer;
 
             return true;
         }
@@ -8048,6 +8051,11 @@ namespace HaCreator.MapSimulator.Character
                     _activeShadowPartner.PendingForceReplay = false;
                 }
             }
+
+            TryQueuePostCreateShadowPartnerAttackResolution(
+                playerActionName,
+                actionTriggerTime,
+                currentTime);
 
             if (!string.IsNullOrWhiteSpace(_activeShadowPartner.PendingActionName)
                 && currentTime >= _activeShadowPartner.PendingActionReadyTime)
@@ -8966,6 +8974,39 @@ namespace HaCreator.MapSimulator.Character
             return ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(observedPlayerActionName, state);
         }
 
+        private void TryQueuePostCreateShadowPartnerAttackResolution(
+            string observedPlayerActionName,
+            int observedActionTriggerTime,
+            int currentTime)
+        {
+            if (_activeShadowPartner == null
+                || !ShouldUseShadowPartnerAttackObservationGate(observedPlayerActionName, State)
+                || !ShadowPartnerClientActionResolver.ShouldRetryAttackResolutionAfterCreate(
+                    _activeShadowPartner.CurrentActionName,
+                    _activeShadowPartner.PendingActionName,
+                    _activeShadowPartner.QueuedActionName,
+                    ShouldHoldShadowPartnerCurrentAction(currentTime)))
+            {
+                return;
+            }
+
+            if (!TryResolveShadowPartnerAttackAction(
+                    observedPlayerActionName,
+                    out string resolvedAttackAction,
+                    out SkillAnimation resolvedAttackPlayback))
+            {
+                return;
+            }
+
+            _activeShadowPartner.PendingActionName = resolvedAttackAction;
+            _activeShadowPartner.PendingPlaybackAnimation = resolvedAttackPlayback;
+            _activeShadowPartner.PendingActionReadyTime = currentTime + ResolveShadowPartnerAttackDelayMs(
+                resolvedAttackAction,
+                resolvedAttackPlayback);
+            _activeShadowPartner.PendingFacingRight = FacingRight;
+            _activeShadowPartner.PendingForceReplay = observedActionTriggerTime != int.MinValue;
+        }
+
         private bool IsShadowPartnerAttackAction(string actionName)
         {
             int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
@@ -9719,6 +9760,19 @@ namespace HaCreator.MapSimulator.Character
             PlayerState state)
         {
             return ShouldUseShadowPartnerAttackObservationGate(observedPlayerActionName, state);
+        }
+
+        internal static bool ShouldRetryShadowPartnerAttackResolutionAfterCreateForTesting(
+            string currentActionName,
+            string pendingActionName,
+            string queuedActionName,
+            bool currentActionBlockingHoldActive)
+        {
+            return ShadowPartnerClientActionResolver.ShouldRetryAttackResolutionAfterCreate(
+                currentActionName,
+                pendingActionName,
+                queuedActionName,
+                currentActionBlockingHoldActive);
         }
 
         internal static string ResolveMirrorImageActionOwnerNameForTesting()

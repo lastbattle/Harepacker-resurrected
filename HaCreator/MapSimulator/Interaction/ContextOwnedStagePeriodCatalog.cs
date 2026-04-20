@@ -26,6 +26,26 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MapBackTypeStringPoolId = 0x0618;
         private const int StageBackAbsRxStringPoolId = 0x17F1;
         private const int StageBackAbsRyStringPoolId = 0x17F2;
+        private static readonly HashSet<string> KeywordStructuralAliasNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "stageKeyword",
+            "keyword",
+            "aKeyword",
+            "enabledQuest",
+            "aEnabledQuest",
+            "questID",
+            "questId",
+            "quest",
+            "questState",
+            "priority",
+            "randTime",
+            "affectedMap",
+            "fieldID",
+            "fieldId",
+            "aAffectedMap",
+            "stage",
+            "stageList"
+        };
 
         private readonly Dictionary<string, ContextOwnedStageThemeCatalogEntry> _themes;
         private readonly Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> _affectedMapsByFieldId;
@@ -608,7 +628,8 @@ namespace HaCreator.MapSimulator.Interaction
                 bool childHasValue = CollectStringValues(child, values);
                 if (!childHasValue
                     && !string.IsNullOrWhiteSpace(child.Name)
-                    && !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                    && !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                    && !KeywordStructuralAliasNames.Contains(child.Name))
                 {
                     values.Add(child.Name.Trim());
                     hasValue = true;

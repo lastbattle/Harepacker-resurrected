@@ -3802,6 +3802,9 @@ namespace HaCreator.MapSimulator
                 || inventoryType == InventoryType.NONE
                 || inventoryWindow == null
                 || player == null
+                || IsFieldHazardAutoConsumeCandidateBlockedByPickupOnlyMetadata(
+                    inventoryType,
+                    InventoryItemMetadataResolver.IsOnlyPickup(itemId))
                 || inventoryWindow.GetItemCount(inventoryType, itemId) <= 0
                 || !string.IsNullOrWhiteSpace(GetFieldItemUseRestrictionMessage(inventoryType, itemId, 1)))
             {
@@ -3820,6 +3823,13 @@ namespace HaCreator.MapSimulator
                 : $"Item {itemId}";
             candidate = new FieldHazardHpPotionCandidate(itemId, inventoryType, itemName);
             return true;
+        }
+
+        internal static bool IsFieldHazardAutoConsumeCandidateBlockedByPickupOnlyMetadata(
+            InventoryType inventoryType,
+            bool isOnlyPickupItem)
+        {
+            return ShouldRejectOnlyPickupUseOutsidePickupRuntime(inventoryType, isOnlyPickupItem);
         }
 
         private string DescribePacketOwnedFieldFadeAndBalloonStatus(int currentTickCount)

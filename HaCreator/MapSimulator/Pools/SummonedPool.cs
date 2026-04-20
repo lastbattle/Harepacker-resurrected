@@ -6377,29 +6377,29 @@ namespace HaCreator.MapSimulator.Pools
 
             string normalizedAliasToken = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(aliasToken);
             normalizedAliasToken = string.Concat(normalizedAliasToken.Where(static ch => !char.IsWhiteSpace(ch)));
-            int openBracketIndex = normalizedAliasToken.IndexOf('[');
-            if (openBracketIndex > 0
-                && openBracketIndex < normalizedAliasToken.Length - 2
-                && normalizedAliasToken[^1] == ']'
-                && IsPacketMobAttackSourcePropertySegment(normalizedAliasToken.Substring(0, openBracketIndex).Trim())
-                && int.TryParse(
-                    normalizedAliasToken.Substring(
-                        openBracketIndex + 1,
-                        normalizedAliasToken.Length - openBracketIndex - 2),
+            if (TryParsePacketMobAttackGeneralEffectSourceAliasWrappedFrameIndex(
+                    normalizedAliasToken,
+                    '[',
+                    ']',
                     out frameIndex))
             {
                 return true;
             }
 
-            int openParenthesisIndex = normalizedAliasToken.IndexOf('(');
-            if (openParenthesisIndex > 0
-                && openParenthesisIndex < normalizedAliasToken.Length - 2
-                && normalizedAliasToken[^1] == ')'
-                && IsPacketMobAttackSourcePropertySegment(normalizedAliasToken.Substring(0, openParenthesisIndex).Trim())
-                && int.TryParse(
-                    normalizedAliasToken.Substring(
-                        openParenthesisIndex + 1,
-                        normalizedAliasToken.Length - openParenthesisIndex - 2),
+            if (TryParsePacketMobAttackGeneralEffectSourceAliasWrappedFrameIndex(
+                    normalizedAliasToken,
+                    '(',
+                    ')',
+                    out frameIndex)
+                || TryParsePacketMobAttackGeneralEffectSourceAliasWrappedFrameIndex(
+                    normalizedAliasToken,
+                    '{',
+                    '}',
+                    out frameIndex)
+                || TryParsePacketMobAttackGeneralEffectSourceAliasWrappedFrameIndex(
+                    normalizedAliasToken,
+                    '<',
+                    '>',
                     out frameIndex))
             {
                 return true;
@@ -6408,7 +6408,8 @@ namespace HaCreator.MapSimulator.Pools
             if (TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalizedAliasToken, '_', out frameIndex)
                 || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalizedAliasToken, '-', out frameIndex)
                 || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalizedAliasToken, '+', out frameIndex)
-                || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalizedAliasToken, '.', out frameIndex))
+                || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalizedAliasToken, '.', out frameIndex)
+                || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalizedAliasToken, ':', out frameIndex))
             {
                 return true;
             }
@@ -6423,6 +6424,31 @@ namespace HaCreator.MapSimulator.Pools
                    && suffixStart < normalizedAliasToken.Length
                    && IsPacketMobAttackSourcePropertySegment(normalizedAliasToken.Substring(0, suffixStart))
                    && int.TryParse(normalizedAliasToken.Substring(suffixStart), out frameIndex);
+        }
+
+        private static bool TryParsePacketMobAttackGeneralEffectSourceAliasWrappedFrameIndex(
+            string normalizedAliasToken,
+            char openDelimiter,
+            char closeDelimiter,
+            out int frameIndex)
+        {
+            frameIndex = 0;
+            if (string.IsNullOrWhiteSpace(normalizedAliasToken))
+            {
+                return false;
+            }
+
+            int openDelimiterIndex = normalizedAliasToken.IndexOf(openDelimiter);
+            return openDelimiterIndex > 0
+                   && openDelimiterIndex < normalizedAliasToken.Length - 2
+                   && normalizedAliasToken[^1] == closeDelimiter
+                   && IsPacketMobAttackSourcePropertySegment(
+                       normalizedAliasToken.Substring(0, openDelimiterIndex).Trim())
+                   && int.TryParse(
+                       normalizedAliasToken.Substring(
+                           openDelimiterIndex + 1,
+                           normalizedAliasToken.Length - openDelimiterIndex - 2),
+                       out frameIndex);
         }
 
         private static string NormalizePacketMobAttackGeneralEffectRelativeFrameAliasToken(
@@ -7137,7 +7163,8 @@ namespace HaCreator.MapSimulator.Pools
             if (TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalized, '_', out _)
                 || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalized, '-', out _)
                 || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalized, '+', out _)
-                || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalized, '.', out _))
+                || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalized, '.', out _)
+                || TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndexByDelimiter(normalized, ':', out _))
             {
                 return true;
             }
@@ -7452,10 +7479,42 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                if (TryNormalizePacketMobAttackGeneralEffectSourceAliasPropertySegment(
+                        trimmedSegment,
+                        out string[] normalizedAliasSegments))
+                {
+                    normalizedSegments.AddRange(normalizedAliasSegments);
+                    continue;
+                }
+
                 normalizedSegments.Add(trimmedSegment);
             }
 
             return normalizedSegments.Count >= 3;
+        }
+
+        private static bool TryNormalizePacketMobAttackGeneralEffectSourceAliasPropertySegment(
+            string segment,
+            out string[] normalizedSegments)
+        {
+            normalizedSegments = null;
+            if (string.IsNullOrWhiteSpace(segment))
+            {
+                return false;
+            }
+
+            string normalizedSegment = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(segment);
+            if (!TryParsePacketMobAttackGeneralEffectSourceAliasFrameIndex(normalizedSegment, out int frameIndex))
+            {
+                return false;
+            }
+
+            normalizedSegments = new[]
+            {
+                frameIndex.ToString(),
+                "source"
+            };
+            return true;
         }
 
         private static string NormalizePacketMobAttackGeneralEffectColonPathSeparators(string effectPath)

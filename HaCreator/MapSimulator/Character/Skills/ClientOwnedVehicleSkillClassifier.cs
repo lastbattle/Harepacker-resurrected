@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal static class ClientOwnedVehicleSkillClassifier
     {
         private const int BattleshipSkillId = 5221006;
+        private const int BattleshipTamingMobItemId = 1932000;
         private static readonly int[] BattleshipMountedActionSkillIds =
         {
             5211004,
@@ -46,6 +47,54 @@ namespace HaCreator.MapSimulator.Character.Skills
             35121010,
             35121013
         };
+        private static readonly IReadOnlySet<int> EventVehicleType1ItemIds =
+            new HashSet<int>
+            {
+                1932001,
+                1932002
+            };
+        private static readonly IReadOnlySet<int> EventVehicleType2ItemIds =
+            new HashSet<int>
+            {
+                1932004,
+                1932006,
+                1932007,
+                1932008,
+                1932009,
+                1932010,
+                1932011,
+                1932012,
+                1932013,
+                1932014,
+                1932017,
+                1932018,
+                1932019,
+                1932020,
+                1932021,
+                1932022,
+                1932023,
+                1932025,
+                1932026,
+                1932027,
+                1932028,
+                1932029,
+                1932034,
+                1932035,
+                1932037,
+                1932038,
+                1932039,
+                1932040
+            };
+        private static readonly IReadOnlySet<int> WildHunterJaguarTamingMobItemIds =
+            new HashSet<int>
+            {
+                1932015,
+                1932030,
+                1932031,
+                1932032,
+                1932033,
+                1932036
+            };
 
         private static readonly string[] RideDescriptionMarkers =
         {
@@ -122,6 +171,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // 193-family event/jaguar/1932016 gate and does not admit 1932000 here.
                 45, // shoot6
                 46  // arrowRain
+            );
+        private static readonly string[] ClientConfirmedEventVehicleType1OnlyActionNames =
+            ResolveClientRawActionNames(
+                // IDA `CActionMan::LoadTamingMobAction` keeps raw 144 gated behind
+                // is_event_vehicle_type1(v6) before generic IsAbleTamingMob* checks.
+                144 // comboJudgement
+            );
+        private static readonly string[] ClientConfirmedWildHunterJaguarOneTimeActionNames =
+            ResolveClientRawActionNames(
+                // IDA `IsAbleTamingMobOneTimeAction` has a dedicated wild-hunter jaguar
+                // gate for these raw actions before the 1932016-only one-time branch.
+                57,  // burster2
+                142, // rollingSpin
+                207, // finishAttack_link2
+                208, // swingRes
+                212, // finishBlow
+                214, // cyclone_pre
+                229, // tank_siegepre
+                247, // swallow_attack
+                248, // drillrush
+                249, // giant
+                250, // mbooster
+                251, // crossRoad
+                253, // wildbeast
+                255, // earthslug
+                256  // rpunch
             );
 
         private static readonly string[] MechanicClientOwnedVehicleMountedMoveActions =
@@ -516,14 +591,58 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsKnownClientOwnedVehicleCurrentActionName(int mountItemId, string actionName)
         {
-            return mountItemId switch
+            if (mountItemId == 1932000)
             {
-                1932000 => IsBattleshipVehicleOwnedCurrentActionName(
+                return IsBattleshipVehicleOwnedCurrentActionName(
                     actionName,
-                    includeSupportActions: true),
-                1932016 => IsKnownMechanicVehicleCurrentActionName(actionName),
-                _ => false
-            };
+                    includeSupportActions: true);
+            }
+
+            if (mountItemId == 1932016)
+            {
+                return IsKnownMechanicVehicleCurrentActionName(actionName);
+            }
+
+            if (IsEventVehicleType1TamingMobItemId(mountItemId))
+            {
+                return IsKnownEventVehicleType1CurrentActionName(actionName);
+            }
+
+            if (IsEventVehicleType2TamingMobItemId(mountItemId))
+            {
+                return IsKnownEventVehicleType2CurrentActionName(actionName);
+            }
+
+            if (IsWildHunterJaguarTamingMobItemId(mountItemId))
+            {
+                return IsKnownWildHunterJaguarCurrentActionName(actionName);
+            }
+
+            return false;
+        }
+
+        internal static bool IsClientOwnedVehicleMountOwnerItemId(int mountItemId)
+        {
+            return mountItemId == BattleshipTamingMobItemId
+                   || mountItemId == 1932016
+                   || IsEventVehicleType1TamingMobItemId(mountItemId)
+                   || IsEventVehicleType2TamingMobItemId(mountItemId)
+                   || IsWildHunterJaguarTamingMobItemId(mountItemId);
+        }
+
+        internal static bool IsEventVehicleType1TamingMobItemId(int mountItemId)
+        {
+            return EventVehicleType1ItemIds.Contains(mountItemId);
+        }
+
+        internal static bool IsEventVehicleType2TamingMobItemId(int mountItemId)
+        {
+            return EventVehicleType2ItemIds.Contains(mountItemId);
+        }
+
+        internal static bool IsWildHunterJaguarTamingMobItemId(int mountItemId)
+        {
+            return WildHunterJaguarTamingMobItemIds.Contains(mountItemId);
         }
 
         internal static bool IsDistinctMechanicVehicleActionName(string actionName, bool includeTransformStates = false)
@@ -561,6 +680,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ContainsActionName(ClientConfirmedMechanicVehicleCurrentActionNames, actionName)
                    || ContainsActionName(ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames, actionName)
                    || IsClientAdmittedMechanicVehicleOneTimeActionName(actionName);
+        }
+
+        private static bool IsKnownEventVehicleType1CurrentActionName(string actionName)
+        {
+            return IsMountedMoveActionName(actionName)
+                   || ContainsActionName(SharedClientOwnedVehicleVehicleIdOnlyActionNames, actionName)
+                   || ContainsActionName(ClientConfirmedVehicle193FamilyOnlyActionNames, actionName)
+                   || ContainsActionName(ClientConfirmedEventVehicleType1OnlyActionNames, actionName);
+        }
+
+        private static bool IsKnownEventVehicleType2CurrentActionName(string actionName)
+        {
+            return IsMountedMoveActionName(actionName)
+                   || ContainsActionName(SharedClientOwnedVehicleVehicleIdOnlyActionNames, actionName)
+                   || ContainsActionName(ClientConfirmedVehicle193FamilyOnlyActionNames, actionName)
+                   || ContainsActionName(ClientConfirmedMechanicAndEventVehicleType2OnlyActionNames, actionName);
+        }
+
+        private static bool IsKnownWildHunterJaguarCurrentActionName(string actionName)
+        {
+            return IsKnownEventVehicleType2CurrentActionName(actionName)
+                   || ContainsActionName(ClientConfirmedWildHunterJaguarOneTimeActionNames, actionName);
         }
 
         private static bool ContainsActionName(string[] candidates, string actionName)

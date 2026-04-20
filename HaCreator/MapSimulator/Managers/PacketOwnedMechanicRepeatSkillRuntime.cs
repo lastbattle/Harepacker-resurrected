@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Managers
         short X,
         short Y,
         byte MoveActionLowBit,
+        byte RawMoveActionByte,
         byte VecCtrlState,
         byte[] Payload,
         byte[] RawPacket);
@@ -174,6 +175,7 @@ namespace HaCreator.MapSimulator.Managers
                 requestTime,
                 x,
                 y,
+                (byte)(moveActionLowBit & 1),
                 (byte)(moveActionLowBit & 1),
                 vecCtrlState,
                 payload,
@@ -355,6 +357,7 @@ namespace HaCreator.MapSimulator.Managers
                     x,
                     y,
                     moveActionLowBit,
+                    rawMoveActionByte,
                     vecCtrlState,
                     (byte[])payload.Clone(),
                     rawPacket);
@@ -428,7 +431,17 @@ namespace HaCreator.MapSimulator.Managers
                     decodeDetail,
                     "mismatchBytes=[",
                     requireClosingBracket: true,
-                    out int[] bracketByteIndices))
+                    out int[] bracketByteIndices)
+                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
+                    "mismatchByteIndices=[",
+                    requireClosingBracket: true,
+                    out bracketByteIndices)
+                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
+                    "byteIndices=[",
+                    requireClosingBracket: true,
+                    out bracketByteIndices))
             {
                 byteIndices = bracketByteIndices;
                 return true;
@@ -438,13 +451,24 @@ namespace HaCreator.MapSimulator.Managers
                     decodeDetail,
                     "mismatchBytes=",
                     requireClosingBracket: false,
-                    out int[] compactByteIndices))
+                    out int[] compactByteIndices)
+                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
+                    "mismatchByteIndices=",
+                    requireClosingBracket: false,
+                    out compactByteIndices)
+                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
+                    "byteIndices=",
+                    requireClosingBracket: false,
+                    out compactByteIndices))
             {
                 byteIndices = compactByteIndices;
                 return true;
             }
 
-            if (TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByte=", out int mismatchByteIndex))
+            if (TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByte=", out int mismatchByteIndex)
+                || TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByteIndex=", out mismatchByteIndex))
             {
                 byteIndices = new[] { mismatchByteIndex };
                 return true;
@@ -657,6 +681,12 @@ namespace HaCreator.MapSimulator.Managers
             {
                 normalized = normalized.Substring(1, normalized.Length - 2).Trim();
             }
+            else if (normalized.StartsWith("(", StringComparison.Ordinal) && normalized.EndsWith(")", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(1, normalized.Length - 2).Trim();
+            }
+
+            normalized = normalized.TrimStart(':', '=').Trim();
 
             if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {

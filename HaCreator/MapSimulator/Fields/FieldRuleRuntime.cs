@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<int> _protectItems;
         private readonly int? _moveLimit;
         private readonly int _consumeItemCoolTimeSeconds;
+        private readonly MapInfo _mapInfo;
         private readonly List<string> _entryScripts;
         private readonly Func<int, bool> _hasItem;
         private readonly Func<int, int> _resolveEnvironmentalDamageProtectionAmount;
@@ -58,6 +59,7 @@ namespace HaCreator.MapSimulator.Fields
             _protectItems = mapInfo?.protectItem != null ? new List<int>(mapInfo.protectItem) : new List<int>();
             _moveLimit = NormalizeMoveLimit(mapInfo?.moveLimit);
             _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? 0);
+            _mapInfo = mapInfo;
             _entryScripts = CollectEntryScripts(mapInfo, includeFirstUserEnterScript);
             _hasItem = hasItem;
             _resolveEnvironmentalDamageProtectionAmount = resolveEnvironmentalDamageProtectionAmount;
@@ -70,7 +72,7 @@ namespace HaCreator.MapSimulator.Fields
             _ambientWeather != WeatherType.None ||
             _allowedItems.Count > 0 ||
             FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit).Count > 0 ||
-            FieldInteractionRestrictionEvaluator.GetFieldEntryInteractionRestrictionMessages(_fieldLimit).Count > 0 ||
+            FieldInteractionRestrictionEvaluator.GetFieldEntryInteractionRestrictionMessages(_fieldLimit, _mapInfo).Count > 0 ||
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
@@ -313,7 +315,7 @@ namespace HaCreator.MapSimulator.Fields
                 messages.Add(itemRestrictionNotices[i]);
             }
 
-            IReadOnlyList<string> interactionRestrictionNotices = FieldInteractionRestrictionEvaluator.GetFieldEntryInteractionRestrictionMessages(_fieldLimit);
+            IReadOnlyList<string> interactionRestrictionNotices = FieldInteractionRestrictionEvaluator.GetFieldEntryInteractionRestrictionMessages(_fieldLimit, _mapInfo);
             for (int i = 0; i < interactionRestrictionNotices.Count; i++)
             {
                 messages.Add(interactionRestrictionNotices[i]);

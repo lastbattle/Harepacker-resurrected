@@ -200,6 +200,11 @@ namespace HaCreator.MapSimulator
                 return observedRemotePetPosition;
             }
 
+            if (ResolveObservedRemotePetPickupPosition(sourceId) is Vector2 observedOwnerScopedRemotePetPosition)
+            {
+                return observedOwnerScopedRemotePetPosition;
+            }
+
             return TryResolveRemotePetPickupPosition(
                 sourceId,
                 _remoteUserPool,

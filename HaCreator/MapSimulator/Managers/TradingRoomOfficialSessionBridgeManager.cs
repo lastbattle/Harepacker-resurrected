@@ -1,5 +1,6 @@
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -19,6 +20,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18492;
         public const ushort OutboundTradingRoomOpcode = 144;
+        public const ushort AutoDetectInboundTradingRoomOpcode = ushort.MaxValue;
         private const int MaxRecentOutboundPackets = 32;
 
         private readonly ConcurrentQueue<TradingRoomPacketInboxMessage> _pendingMessages = new();
@@ -29,6 +31,7 @@ namespace HaCreator.MapSimulator.Managers
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+        private bool _useRecoveredInboundOpcodeTable;
 
         public readonly record struct OutboundPacketTrace(
             int Opcode,
@@ -84,6 +87,7 @@ namespace HaCreator.MapSimulator.Managers
         public int RemotePort { get; private set; }
         public ushort InboundTradingRoomOpcode { get; private set; }
         public ushort AutoDetectedInboundTradingRoomOpcode { get; private set; }
+        public bool UsesRecoveredInboundOpcodeTable => _useRecoveredInboundOpcodeTable;
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
@@ -104,6 +108,8 @@ namespace HaCreator.MapSimulator.Managers
                 : "no active Maple session";
             string inboundOpcode = InboundTradingRoomOpcode > 0
                 ? $"inbound opcode={InboundTradingRoomOpcode}"
+                : _useRecoveredInboundOpcodeTable
+                    ? $"recovered inbound opcode set={string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())}"
                 : AutoDetectedInboundTradingRoomOpcode > 0
                     ? $"auto-detected inbound opcode={AutoDetectedInboundTradingRoomOpcode}"
                 : "inbound opcode unset";
@@ -137,11 +143,13 @@ namespace HaCreator.MapSimulator.Managers
         {
             string inbound = InboundTradingRoomOpcode > 0
                 ? $"inbound opcode {InboundTradingRoomOpcode} is configured"
+                : _useRecoveredInboundOpcodeTable
+                    ? $"recovered inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())} is active from targeted IDA packet-table recovery"
                 : AutoDetectedInboundTradingRoomOpcode > 0
                     ? $"inbound opcode {AutoDetectedInboundTradingRoomOpcode} was auto-detected from modeled CTradingRoomDlg::OnPacket payloads"
-                    : "inbound opcode is not mapped yet; auto-detection shape-checks modeled CTradingRoomDlg::OnPacket payloads";
+                : "inbound opcode is not mapped yet; auto-detection shape-checks modeled CTradingRoomDlg::OnPacket payloads";
             return
-                $"Trading-room opcode map: outbound CTradingRoomDlg client requests use opcode {OutboundTradingRoomOpcode}; subtype 17 is the Trade request and subtype 20 is the CRC reply emitted by CTradingRoomDlg::OnTrade. Server-owned CTradingRoomDlg::OnPacket payloads currently model subtypes 15 put-item, 16 put-money, 17 trade handoff, 20 CRC follow-up, and 21 exceed-limit; {inbound}.";
+                $"Trading-room opcode map: outbound CTradingRoomDlg client requests use opcode {OutboundTradingRoomOpcode}; subtype 17 is the Trade request and subtype 20 is the CRC reply emitted by CTradingRoomDlg::OnTrade. Server-owned CTradingRoomDlg::OnPacket payloads currently model subtypes 15 put-item, 16 put-money, 17 trade handoff, 20 CRC follow-up, and 21 exceed-limit; {inbound}. {TradingRoomPacketTable.DescribeRecoveredPacketTable()}";
         }
 
         public string ClearRecentOutboundPackets()
@@ -217,13 +225,23 @@ namespace HaCreator.MapSimulator.Managers
                     ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
                     RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
                     RemotePort = remotePort;
-                    InboundTradingRoomOpcode = inboundTradingRoomOpcode;
+                    _useRecoveredInboundOpcodeTable =
+                        inboundTradingRoomOpcode == 0
+                        || (inboundTradingRoomOpcode != AutoDetectInboundTradingRoomOpcode
+                            && TradingRoomPacketTable.IsRecoveredInboundOpcode(inboundTradingRoomOpcode));
+                    InboundTradingRoomOpcode = inboundTradingRoomOpcode == AutoDetectInboundTradingRoomOpcode
+                        ? (ushort)0
+                        : _useRecoveredInboundOpcodeTable
+                            ? (ushort)0
+                            : inboundTradingRoomOpcode;
                     _listenerCancellation = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = InboundTradingRoomOpcode > 0
                         ? $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering inbound opcode {InboundTradingRoomOpcode}."
+                        : _useRecoveredInboundOpcodeTable
+                            ? $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering the recovered CTradingRoomDlg::OnPacket inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())}."
                         : $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}; inbound opcode is unset so server packets are shape-checked for CTradingRoomDlg::OnPacket subtypes 15, 16, 17, 20, and 21.";
                 }
                 catch (Exception ex)
@@ -572,6 +590,7 @@ namespace HaCreator.MapSimulator.Managers
             SentCount = 0;
             LastSentOpcode = -1;
             AutoDetectedInboundTradingRoomOpcode = 0;
+            _useRecoveredInboundOpcodeTable = false;
             lock (_sync)
             {
                 _recentOutboundPackets.Clear();
@@ -670,6 +689,17 @@ namespace HaCreator.MapSimulator.Managers
             if (payload == null || payload.Length == 0)
             {
                 return false;
+            }
+
+            if (_useRecoveredInboundOpcodeTable)
+            {
+                if (!TradingRoomPacketTable.IsRecoveredInboundOpcode((ushort)opcode) || !IsTradingRoomInboundSubtype(payload[0]))
+                {
+                    return false;
+                }
+
+                detail = $"Recovered inbound opcode set {string.Join("/", TradingRoomPacketTable.GetRecoveredInboundOpcodes())} matched the CTradingRoomDlg::OnPacket subtype table.";
+                return true;
             }
 
             if (InboundTradingRoomOpcode > 0)

@@ -4821,7 +4821,7 @@ namespace HaCreator.MapSimulator.Loaders
             window.BindButton(LoadButton(tradeProperty, "BtReset", clickSound, overSound, device), window.ResetTrade);
             window.BindButton(LoadButton(tradeProperty, "BtCoin", clickSound, overSound, device), window.IncreaseTradeOffer);
             window.BindButton(LoadButton(tradeProperty, "BtClame", clickSound, overSound, device), window.ToggleTradeAcceptance);
-            window.BindButton(LoadButton(tradeProperty, "BtEnter", clickSound, overSound, device), window.SubmitChatEntry);
+            window.BindButton(LoadButton(tradeProperty, "BtEnter", clickSound, overSound, device), () => window.SubmitChatEntry());
 
             return window;
         }
@@ -8911,7 +8911,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(6, 23),
                 new Point(12, 68),
                 statusLaneAnchorOffset,
-                statusLaneWidth)
+                statusLaneWidth,
+                35)
             {
                 Position = position
             };
@@ -9275,11 +9276,18 @@ namespace HaCreator.MapSimulator.Loaders
                     return candidateFrame;
                 }
 
+                int composedWidth = backgroundCandidate.RequiresSimulatorComposition
+                    ? backgroundCandidate.ComposedWidth
+                    : clientOwnerWidth;
+                int composedHeight = backgroundCandidate.RequiresSimulatorComposition
+                    ? backgroundCandidate.ComposedHeight
+                    : clientOwnerHeight;
                 Texture2D clientSizedTexture = CreateAccountMoreInfoClientSizedBackgroundTexture(
                     device,
                     candidateTexture,
-                    clientOwnerWidth,
-                    clientOwnerHeight);
+                    composedWidth,
+                    composedHeight,
+                    enforceRequestedSize: backgroundCandidate.RequiresSimulatorComposition);
                 if (clientSizedTexture != null)
                 {
                     return new DXObject(0, 0, clientSizedTexture, 0);
@@ -9338,7 +9346,8 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Texture2D sourceTexture,
             int clientOwnerWidth,
-            int clientOwnerHeight)
+            int clientOwnerHeight,
+            bool enforceRequestedSize = false)
         {
             if (device == null || sourceTexture == null || clientOwnerWidth <= 0 || clientOwnerHeight <= 0)
             {
@@ -9358,7 +9367,8 @@ namespace HaCreator.MapSimulator.Loaders
                 sourceTexture.Width,
                 sourceTexture.Height,
                 clientOwnerWidth,
-                clientOwnerHeight);
+                clientOwnerHeight,
+                enforceRequestedSize);
             if (expandedWidth <= 0 || expandedHeight <= 0)
             {
                 return null;
@@ -9381,11 +9391,20 @@ namespace HaCreator.MapSimulator.Loaders
             int sourceWidth,
             int sourceHeight,
             int requestedWidth,
-            int requestedHeight)
+            int requestedHeight,
+            bool enforceRequestedSize = false)
         {
             if (sourceWidth <= 0 || sourceHeight <= 0)
             {
                 return (0, 0);
+            }
+
+            if (enforceRequestedSize && requestedWidth > 0 && requestedHeight > 0)
+            {
+                // Mounted UserInfo shells are best-fit fallbacks for StringPool
+                // 0x16AE. Keep the simulator owner extent anchored to recovered
+                // control bounds so those shells do not expand the owner frame.
+                return (requestedWidth, requestedHeight);
             }
 
             // CWnd::SetBackgrnd calls IWzCanvas::Create with source dimensions plus

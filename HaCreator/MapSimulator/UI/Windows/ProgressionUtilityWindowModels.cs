@@ -824,28 +824,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (TryResolveCompactDetailPair(detail, out string leftClause, out string rightClause))
+            IReadOnlyList<string> compactClauses = ResolveCompactDetailClauses(detail);
+            if (compactClauses.Count >= 2)
             {
-                AddWrappedTextRecords(
-                    records,
-                    leftClause,
-                    ClientCollectionTextLaneLeft,
-                    top,
-                    ClientCollectionDetailPairLaneWidth,
-                    leftStyleIndex,
-                    CollectionBookTextAlignment.Left,
-                    CollectionBookRecordRole.Detail,
-                    measureTextWidth);
-                AddWrappedTextRecords(
-                    records,
-                    rightClause,
-                    ClientCollectionDetailPairRightLaneLeft,
-                    top,
-                    ClientCollectionDetailPairLaneWidth,
-                    rightStyleIndex,
-                    CollectionBookTextAlignment.Right,
-                    CollectionBookRecordRole.Detail,
-                    measureTextWidth);
+                AddCompactDetailClauseRecords(records, compactClauses, leftStyleIndex, rightStyleIndex, top, measureTextWidth);
                 return;
             }
 
@@ -885,14 +867,108 @@ namespace HaCreator.MapSimulator.UI
                 return fallbackBottom;
             }
 
-            if (TryResolveCompactDetailPair(detail, out string leftClause, out string rightClause))
+            IReadOnlyList<string> compactClauses = ResolveCompactDetailClauses(detail);
+            if (compactClauses.Count >= 2)
             {
-                int leftBottom = GetWrappedRecordBottom(leftClause, top, ClientCollectionDetailPairLaneWidth, leftStyleIndex, measureTextWidth);
-                int rightBottom = GetWrappedRecordBottom(rightClause, top, ClientCollectionDetailPairLaneWidth, rightStyleIndex, measureTextWidth);
-                return Math.Max(leftBottom, rightBottom);
+                return GetCompactDetailClauseBottom(compactClauses, leftStyleIndex, rightStyleIndex, top, fallbackBottom, measureTextWidth);
             }
 
             return GetWrappedRecordBottom(detail, top, ClientCollectionTextLaneWidthInt, leftStyleIndex, measureTextWidth);
+        }
+
+        private static void AddCompactDetailClauseRecords(
+            List<CollectionBookRecordSnapshot> records,
+            IReadOnlyList<string> compactClauses,
+            int leftStyleIndex,
+            int rightStyleIndex,
+            int top,
+            Func<string, int, float> measureTextWidth = null)
+        {
+            if (records == null || compactClauses == null || compactClauses.Count < 2)
+            {
+                return;
+            }
+
+            int clauseIndex = 0;
+            int rowTop = top;
+            while (clauseIndex + 1 < compactClauses.Count)
+            {
+                AddWrappedTextRecords(
+                    records,
+                    compactClauses[clauseIndex],
+                    ClientCollectionTextLaneLeft,
+                    rowTop,
+                    ClientCollectionDetailPairLaneWidth,
+                    leftStyleIndex,
+                    CollectionBookTextAlignment.Left,
+                    CollectionBookRecordRole.Detail,
+                    measureTextWidth);
+                AddWrappedTextRecords(
+                    records,
+                    compactClauses[clauseIndex + 1],
+                    ClientCollectionDetailPairRightLaneLeft,
+                    rowTop,
+                    ClientCollectionDetailPairLaneWidth,
+                    rightStyleIndex,
+                    CollectionBookTextAlignment.Right,
+                    CollectionBookRecordRole.Detail,
+                    measureTextWidth);
+
+                int leftBottom = GetWrappedRecordBottom(compactClauses[clauseIndex], rowTop, ClientCollectionDetailPairLaneWidth, leftStyleIndex, measureTextWidth);
+                int rightBottom = GetWrappedRecordBottom(compactClauses[clauseIndex + 1], rowTop, ClientCollectionDetailPairLaneWidth, rightStyleIndex, measureTextWidth);
+                rowTop = Math.Max(leftBottom, rightBottom);
+                clauseIndex += 2;
+            }
+
+            if (clauseIndex < compactClauses.Count)
+            {
+                int spillTop = GetFollowingAnalyzedTextTop(top, rowTop);
+                AddWrappedTextRecords(
+                    records,
+                    compactClauses[clauseIndex],
+                    ClientCollectionTextLaneLeft,
+                    spillTop,
+                    ClientCollectionTextLaneWidthInt,
+                    leftStyleIndex,
+                    CollectionBookTextAlignment.Left,
+                    CollectionBookRecordRole.Detail,
+                    measureTextWidth);
+            }
+        }
+
+        private static int GetCompactDetailClauseBottom(
+            IReadOnlyList<string> compactClauses,
+            int leftStyleIndex,
+            int rightStyleIndex,
+            int top,
+            int fallbackBottom,
+            Func<string, int, float> measureTextWidth = null)
+        {
+            if (compactClauses == null || compactClauses.Count < 2)
+            {
+                return fallbackBottom;
+            }
+
+            int clauseIndex = 0;
+            int rowTop = top;
+            int bottom = fallbackBottom;
+            while (clauseIndex + 1 < compactClauses.Count)
+            {
+                int leftBottom = GetWrappedRecordBottom(compactClauses[clauseIndex], rowTop, ClientCollectionDetailPairLaneWidth, leftStyleIndex, measureTextWidth);
+                int rightBottom = GetWrappedRecordBottom(compactClauses[clauseIndex + 1], rowTop, ClientCollectionDetailPairLaneWidth, rightStyleIndex, measureTextWidth);
+                bottom = Math.Max(bottom, Math.Max(leftBottom, rightBottom));
+                rowTop = Math.Max(leftBottom, rightBottom);
+                clauseIndex += 2;
+            }
+
+            if (clauseIndex < compactClauses.Count)
+            {
+                int spillTop = GetFollowingAnalyzedTextTop(top, rowTop);
+                int spillBottom = GetWrappedRecordBottom(compactClauses[clauseIndex], spillTop, ClientCollectionTextLaneWidthInt, leftStyleIndex, measureTextWidth);
+                bottom = Math.Max(bottom, spillBottom);
+            }
+
+            return bottom;
         }
 
         private static void AddWrappedTextRecords(
@@ -1301,14 +1377,11 @@ namespace HaCreator.MapSimulator.UI
                 : ResolveEntryValueStyleIndex(entry);
         }
 
-        private static bool TryResolveCompactDetailPair(string detail, out string leftClause, out string rightClause)
+        private static IReadOnlyList<string> ResolveCompactDetailClauses(string detail)
         {
-            leftClause = string.Empty;
-            rightClause = string.Empty;
-
             if (string.IsNullOrWhiteSpace(detail))
             {
-                return false;
+                return Array.Empty<string>();
             }
 
             string[] clauses = detail
@@ -1316,14 +1389,9 @@ namespace HaCreator.MapSimulator.UI
                 .Select(clause => clause.Trim())
                 .Where(clause => !string.IsNullOrWhiteSpace(clause))
                 .ToArray();
-            if (clauses.Length != 2)
-            {
-                return false;
-            }
-
-            leftClause = clauses[0];
-            rightClause = clauses[1];
-            return true;
+            return clauses.Length >= 2
+                ? clauses
+                : Array.Empty<string>();
         }
 
         private static CollectionBookOwnerContextSnapshot CreateDefaultOwnerContext(CharacterBuild build)

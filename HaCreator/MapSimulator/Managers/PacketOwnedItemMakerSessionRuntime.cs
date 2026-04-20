@@ -85,6 +85,12 @@ namespace HaCreator.MapSimulator.Managers
         private const byte CompactHiddenTailHasAdditions = 0x01;
         private const byte CompactHiddenTailHasRemovals = 0x02;
         private const byte CompactHiddenTailClearHidden = 0x04;
+        private enum DisassemblyTargetEntryEncoding
+        {
+            WideSlotInt32,
+            CompactSlotUInt16
+        }
+
         private enum HiddenRecipeEntryEncoding
         {
             Pair,
@@ -262,75 +268,118 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 PacketOwnedItemMakerSessionFlags flags = (PacketOwnedItemMakerSessionFlags)(compactFlags & 0x7F);
-                List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargets = null;
-                List<PacketOwnedItemMakerSessionHiddenEntry> hiddenEntries = null;
+                long payloadStart = reader.BaseStream.Position;
+                string firstDecodeError = null;
+                DisassemblyTargetEntryEncoding[] disassemblyEncodings = flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeDisassemblyTargets)
+                    ? new[] { DisassemblyTargetEntryEncoding.WideSlotInt32, DisassemblyTargetEntryEncoding.CompactSlotUInt16 }
+                    : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
+                HiddenRecipeEntryEncoding[] hiddenEncodings = flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList)
+                    ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                    : new[] { HiddenRecipeEntryEncoding.Pair };
 
-                if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeDisassemblyTargets))
+                for (int disassemblyEncodingIndex = 0; disassemblyEncodingIndex < disassemblyEncodings.Length; disassemblyEncodingIndex++)
                 {
-                    int count = ReadNonNegativeCount16(reader, "Maker-session compact disassembly target count is missing or negative.");
-                    if (count > 0)
+                    DisassemblyTargetEntryEncoding disassemblyEncoding = disassemblyEncodings[disassemblyEncodingIndex];
+                    for (int hiddenEncodingIndex = 0; hiddenEncodingIndex < hiddenEncodings.Length; hiddenEncodingIndex++)
                     {
-                        disassemblyTargets = new List<PacketOwnedItemMakerDisassemblyTargetEntry>(count);
-                        for (int i = 0; i < count; i++)
+                        HiddenRecipeEntryEncoding hiddenEncoding = hiddenEncodings[hiddenEncodingIndex];
+                        reader.BaseStream.Position = payloadStart;
+                        if (TryDecodeCompactAuthoritativePayload(
+                                reader,
+                                flags,
+                                disassemblyEncoding,
+                                hiddenEncoding,
+                                out result,
+                                out error))
                         {
-                            EnsureReadable(reader, sizeof(int) * 2, "Maker-session compact disassembly target entry is truncated.");
-                            int slotIndex = reader.ReadInt32();
-                            int itemId = reader.ReadInt32();
-                            if (slotIndex < 0)
-                            {
-                                throw new InvalidDataException("Maker-session compact disassembly target slots must be zero-based and non-negative.");
-                            }
-
-                            if (itemId <= 0)
-                            {
-                                throw new InvalidDataException("Maker-session compact disassembly target entries must include a positive item id.");
-                            }
-
-                            disassemblyTargets.Add(new PacketOwnedItemMakerDisassemblyTargetEntry(slotIndex, itemId));
+                            return true;
                         }
+
+                        firstDecodeError ??= error;
                     }
                 }
 
-                if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList))
-                {
-                    int count = ReadNonNegativeCount16(reader, "Maker-session compact hidden recipe count is missing or negative.");
-                    if (count > 0)
-                    {
-                        hiddenEntries = new List<PacketOwnedItemMakerSessionHiddenEntry>(count);
-                        for (int i = 0; i < count; i++)
-                        {
-                            EnsureReadable(reader, sizeof(int) * 2, "Maker-session compact hidden recipe entry is truncated.");
-                            int bucketKey = reader.ReadInt32();
-                            int outputItemId = reader.ReadInt32();
-                            if (outputItemId <= 0)
-                            {
-                                throw new InvalidDataException("Maker-session compact hidden recipe entries must include a positive output item id.");
-                            }
-
-                            hiddenEntries.Add(new PacketOwnedItemMakerSessionHiddenEntry(bucketKey, outputItemId));
-                        }
-                    }
-                }
-
-                if (reader.BaseStream.Position != reader.BaseStream.Length)
-                {
-                    error = $"Maker-session compact payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
-                    return false;
-                }
-
-                result = new PacketOwnedItemMakerSession
-                {
-                    Flags = flags,
-                    DisassemblyTargets = disassemblyTargets ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
-                    HiddenRecipeEntries = hiddenEntries ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
-                };
-                return true;
+                error = firstDecodeError ?? "Maker-session compact payload could not be decoded.";
+                return false;
             }
             catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException)
             {
                 error = $"Maker-session compact payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        private static bool TryDecodeCompactAuthoritativePayload(
+            BinaryReader reader,
+            PacketOwnedItemMakerSessionFlags flags,
+            DisassemblyTargetEntryEncoding disassemblyEncoding,
+            HiddenRecipeEntryEncoding hiddenEncoding,
+            out PacketOwnedItemMakerSession result,
+            out string error)
+        {
+            result = null;
+            error = null;
+
+            List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargets = null;
+            List<PacketOwnedItemMakerSessionHiddenEntry> hiddenEntries = null;
+            if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeDisassemblyTargets))
+            {
+                int count = ReadNonNegativeCount16(reader, "Maker-session compact disassembly target count is missing or negative.");
+                if (count > 0)
+                {
+                    disassemblyTargets = new List<PacketOwnedItemMakerDisassemblyTargetEntry>(count);
+                    int disassemblyEntryWidth = disassemblyEncoding == DisassemblyTargetEntryEncoding.CompactSlotUInt16
+                        ? sizeof(ushort) + sizeof(int)
+                        : sizeof(int) * 2;
+                    for (int i = 0; i < count; i++)
+                    {
+                        EnsureReadable(reader, disassemblyEntryWidth, "Maker-session compact disassembly target entry is truncated.");
+                        int slotIndex = disassemblyEncoding == DisassemblyTargetEntryEncoding.CompactSlotUInt16
+                            ? reader.ReadUInt16()
+                            : reader.ReadInt32();
+                        int itemId = reader.ReadInt32();
+                        if (slotIndex < 0)
+                        {
+                            throw new InvalidDataException("Maker-session compact disassembly target slots must be zero-based and non-negative.");
+                        }
+
+                        if (itemId <= 0)
+                        {
+                            throw new InvalidDataException("Maker-session compact disassembly target entries must include a positive item id.");
+                        }
+
+                        disassemblyTargets.Add(new PacketOwnedItemMakerDisassemblyTargetEntry(slotIndex, itemId));
+                    }
+                }
+            }
+
+            if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList))
+            {
+                if (!TryReadHiddenRecipeEntries16(
+                        reader,
+                        hiddenEncoding,
+                        requirePositiveOutputItemId: true,
+                        "Maker-session compact hidden recipe",
+                        out hiddenEntries))
+                {
+                    error = "Maker-session compact hidden recipe entries are truncated or invalid.";
+                    return false;
+                }
+            }
+
+            if (reader.BaseStream.Position != reader.BaseStream.Length)
+            {
+                error = $"Maker-session compact payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
+                return false;
+            }
+
+            result = new PacketOwnedItemMakerSession
+            {
+                Flags = flags,
+                DisassemblyTargets = disassemblyTargets ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                HiddenRecipeEntries = hiddenEntries ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
+            };
+            return true;
         }
 
         private static bool TryDecodeCompactDeltaPayload(

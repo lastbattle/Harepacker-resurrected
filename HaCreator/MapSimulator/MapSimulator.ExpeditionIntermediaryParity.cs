@@ -195,6 +195,7 @@ namespace HaCreator.MapSimulator
 
             string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetExpeditionPartyBossChangeRestrictionMessage(
                 _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                _mapBoard?.MapInfo,
                 request.Kind);
             if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
             {

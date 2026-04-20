@@ -153,6 +153,67 @@ namespace HaCreator.MapSimulator.Loaders
             return ResolveRootClientActionSetIndex(actionSets);
         }
 
+        internal static int ResolveClientActionSetIndexForPreferredActions(
+            WzImage source,
+            IEnumerable<string> preferredActionNames,
+            CharacterGender? localPlayerGender = null,
+            bool hasQuestCheckContext = false,
+            Func<int, QuestStateType> questStateProvider = null,
+            Func<int, string> questRecordValueProvider = null,
+            int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
+        {
+            List<NpcClientActionSetDefinition> actionSets = GetClientActionSets(source);
+            if (actionSets.Count <= 0)
+            {
+                return RootClientActionSetIndex;
+            }
+
+            int selectedIndex = ResolveClientActionSetIndex(
+                actionSets,
+                localPlayerGender,
+                hasQuestCheckContext,
+                questStateProvider,
+                questRecordValueProvider,
+                requestedClientActionSetIndex);
+
+            HashSet<string> preferredActions = preferredActionNames?
+                .Where(static action => !string.IsNullOrWhiteSpace(action))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (preferredActions == null || preferredActions.Count <= 0)
+            {
+                return selectedIndex;
+            }
+
+            if (TryGetClientActionSetDefinition(actionSets, selectedIndex, out NpcClientActionSetDefinition selectedActionSet)
+                && ActionSetContainsPreferredAction(selectedActionSet, preferredActions))
+            {
+                return selectedIndex;
+            }
+
+            int rootActionSetIndex = ResolveRootClientActionSetIndex(actionSets);
+            if (TryGetClientActionSetDefinition(actionSets, rootActionSetIndex, out NpcClientActionSetDefinition rootActionSet)
+                && ActionSetContainsPreferredAction(rootActionSet, preferredActions))
+            {
+                return rootActionSetIndex;
+            }
+
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                NpcClientActionSetDefinition actionSet = actionSets[i];
+                if (actionSet.Index == selectedIndex || actionSet.Index == rootActionSetIndex)
+                {
+                    continue;
+                }
+
+                if (ActionSetContainsPreferredAction(actionSet, preferredActions))
+                {
+                    return actionSet.Index;
+                }
+            }
+
+            return selectedIndex;
+        }
+
         private static bool MatchesAutomaticClientActionSet(
             NpcClientActionSetDefinition actionSet,
             CharacterGender? localPlayerGender,
@@ -166,6 +227,27 @@ namespace HaCreator.MapSimulator.Loaders
 
             return !actionSet.HasQuestConditions
                    || MatchesQuestConditions(actionSet, questStateProvider, questRecordValueProvider);
+        }
+
+        private static bool ActionSetContainsPreferredAction(
+            NpcClientActionSetDefinition actionSet,
+            IReadOnlySet<string> preferredActions)
+        {
+            if (actionSet.Actions == null || actionSet.Actions.Count <= 0 || preferredActions == null || preferredActions.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actionSet.Actions.Count; i++)
+            {
+                string actionName = actionSet.Actions[i]?.Name;
+                if (!string.IsNullOrWhiteSpace(actionName) && preferredActions.Contains(actionName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static void AppendReversedInteriorFrames(List<IDXObject> frames)

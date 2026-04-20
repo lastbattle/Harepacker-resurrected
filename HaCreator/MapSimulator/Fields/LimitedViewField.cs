@@ -518,10 +518,16 @@ namespace HaCreator.MapSimulator.Fields
                     if (_clientOwnedUpdateParityMode && _clientOwnedViewrangeTexture != null)
                     {
                         IReadOnlyList<Vector2> maskTopLefts = GetClientOwnedUpdateParityMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY);
+                        int viewrangeWidth = Math.Max(1, _clientOwnedViewrangeTexture.Width);
+                        int viewrangeHeight = Math.Max(1, _clientOwnedViewrangeTexture.Height);
                         ExecuteClientOwnedDrawViewrangeOperationPlan(
                             spriteBatch,
                             fogColorWithAlpha,
-                            BuildClientOwnedDrawViewrangeOperationPlan(_clientOwnedPreviousMaskTopLefts.ToArray(), maskTopLefts));
+                            BuildClientOwnedDrawViewrangeOperationPlan(
+                                _clientOwnedPreviousMaskTopLefts.ToArray(),
+                                maskTopLefts,
+                                viewrangeWidth,
+                                viewrangeHeight));
                         break;
                     }
 
@@ -1004,7 +1010,7 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     operations.Add(new ClientOwnedDrawViewrangeOperation(
                         ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch,
-                        previousMaskTopLefts[i],
+                        NormalizeClientOwnedMaskTopLeft(previousMaskTopLefts[i]),
                         i));
                 }
             }
@@ -1026,18 +1032,25 @@ namespace HaCreator.MapSimulator.Fields
                     : ClientOwnedDrawViewrangeOperationKind.CopyRemoteViewrange;
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     copyKind,
-                    currentMaskTopLefts[i],
+                    NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[i]),
                     i,
                     sourceWidth: sourceWidth,
                     sourceHeight: sourceHeight,
                     usesRemoveAlphaCopy: true));
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory,
-                    currentMaskTopLefts[i],
+                    NormalizeClientOwnedMaskTopLeft(currentMaskTopLefts[i]),
                     i));
             }
 
             return operations;
+        }
+
+        internal static Vector2 NormalizeClientOwnedMaskTopLeft(Vector2 topLeft)
+        {
+            return new Vector2(
+                MathF.Round(topLeft.X),
+                MathF.Round(topLeft.Y));
         }
 
         internal static IReadOnlyList<ClientOwnedInitOperation> BuildClientOwnedInitOperationPlan(
@@ -1088,7 +1101,7 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach (Vector2 topLeft in maskTopLefts)
             {
-                _clientOwnedPreviousMaskTopLefts.Add(topLeft);
+                _clientOwnedPreviousMaskTopLefts.Add(NormalizeClientOwnedMaskTopLeft(topLeft));
             }
         }
 
@@ -1099,7 +1112,7 @@ namespace HaCreator.MapSimulator.Fields
 
         internal void TrackClientOwnedCurrentMaskTopLeft(Vector2 topLeft)
         {
-            _clientOwnedPreviousMaskTopLefts.Add(topLeft);
+            _clientOwnedPreviousMaskTopLefts.Add(NormalizeClientOwnedMaskTopLeft(topLeft));
         }
 
         internal static bool TryResolveClientOwnedViewrangeCopyRectangles(

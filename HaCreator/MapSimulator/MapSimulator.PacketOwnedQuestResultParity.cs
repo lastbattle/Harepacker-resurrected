@@ -764,7 +764,7 @@ namespace HaCreator.MapSimulator
                 short.MaxValue);
             int deliveryItemPosition = ResolvePacketOwnedQuestStartDeliveryItemPosition();
             bool includeUserPosition = PacketOwnedQuestStartRequest.ResolveIncludeUserPosition(
-                _questRuntime.IsPacketOwnedAutoAlertQuest(followUpQuestId));
+                _questRuntime.IsPacketOwnedAutoAlertQuest(followUpQuestId, _playerManager?.Player?.Build));
             HaCreator.MapSimulator.Interaction.PacketOwnedQuestStartRequest request =
                 HaCreator.MapSimulator.Interaction.PacketOwnedQuestStartRequest.Create(
                 followUpQuestId,
@@ -918,22 +918,36 @@ namespace HaCreator.MapSimulator
 
         private bool IsPacketOwnedQuestResultStartQuestRequestBlocked(int currentTick)
         {
-            if (_packetOwnedQuestResultStartQuestRequestSent &&
-                _pendingPacketOwnedStartQuestResponseQuestId > 0 &&
-                _packetOwnedQuestResultStartQuestRequestTick != int.MinValue &&
-                unchecked(currentTick - _packetOwnedQuestResultStartQuestRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs)
+            return IsPacketOwnedQuestResultStartQuestRequestBlocked(
+                _packetOwnedQuestResultStartQuestRequestSent,
+                _packetOwnedQuestResultStartQuestRequestTick,
+                _packetOwnedUtilityRequestTick,
+                currentTick,
+                PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs);
+        }
+
+        internal static bool IsPacketOwnedQuestResultStartQuestRequestBlocked(
+            bool requestSent,
+            int requestSentTick,
+            int sharedUtilityRequestTick,
+            int currentTick,
+            int cooldownMs)
+        {
+            // CWvsContext::CanSendExclRequest denies send while bExclRequestSent is true,
+            // independent of elapsed cooldown ticks.
+            if (requestSent)
             {
                 return true;
             }
 
-            if (_packetOwnedQuestResultStartQuestRequestTick != int.MinValue &&
-                unchecked(currentTick - _packetOwnedQuestResultStartQuestRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs)
+            if (requestSentTick != int.MinValue &&
+                unchecked(currentTick - requestSentTick) < Math.Max(0, cooldownMs))
             {
                 return true;
             }
 
-            return _packetOwnedUtilityRequestTick != int.MinValue &&
-                unchecked(currentTick - _packetOwnedUtilityRequestTick) < PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs;
+            return sharedUtilityRequestTick != int.MinValue &&
+                   unchecked(currentTick - sharedUtilityRequestTick) < Math.Max(0, cooldownMs);
         }
 
         private void MarkPacketOwnedQuestResultStartQuestRequestSent()

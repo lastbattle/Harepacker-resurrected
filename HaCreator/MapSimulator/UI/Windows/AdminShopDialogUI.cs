@@ -1640,7 +1640,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_packetOwnedWishlistSearchResultsByEntryKey.TryGetValue(entryKey, out WishlistSearchResult packetResult))
             {
-                result = packetResult;
+                result = ResolvePacketOwnedWishlistResultRuntimeState(packetResult);
                 return result != null;
             }
 
@@ -1676,13 +1676,21 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            _packetOwnedWishlistSearchResultsByEntryKey.TryGetValue(entryKey, out WishlistSearchResult packetResult);
+            if (packetResult?.IsPacketAuthored == true
+                && !TryValidatePacketOwnedWishlistResultSession(packetResult, out message))
+            {
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return false;
+            }
+
             AdminShopEntry matchedEntry = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
                 .FirstOrDefault(entry => string.Equals(GetEntryKey(entry), entryKey, StringComparison.Ordinal));
             if (matchedEntry == null)
             {
-                if (_packetOwnedWishlistSearchResultsByEntryKey.TryGetValue(entryKey, out WishlistSearchResult packetResult)
-                    && packetResult?.IsPacketAuthored == true
+                if (packetResult?.IsPacketAuthored == true
                     && !packetResult.HasLiveCatalogBinding)
                 {
                     message = "The selected packet-authored wish-list row has no live NPC catalog binding yet; BtRegist stays disabled until the next packet 367 catalog refresh resolves it.";
@@ -1706,6 +1714,120 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return TryFocusWishlistEntry(matchedEntry, ResolveWishlistCategory(categoryKey), out message);
+        }
+
+        private WishlistSearchResult ResolvePacketOwnedWishlistResultRuntimeState(WishlistSearchResult packetResult)
+        {
+            if (packetResult == null || !packetResult.IsPacketAuthored)
+            {
+                return packetResult;
+            }
+
+            bool sessionCurrent = IsPacketOwnedWishlistResultSessionCurrent(packetResult);
+            bool hasLiveCatalogBinding = packetResult.HasLiveCatalogBinding && sessionCurrent;
+            bool canRegister = packetResult.CanRegister && sessionCurrent;
+            if (hasLiveCatalogBinding == packetResult.HasLiveCatalogBinding
+                && canRegister == packetResult.CanRegister)
+            {
+                return packetResult;
+            }
+
+            return new WishlistSearchResult
+            {
+                EntryKey = packetResult.EntryKey,
+                Title = packetResult.Title,
+                Seller = packetResult.Seller,
+                PriceLabel = packetResult.PriceLabel,
+                Detail = packetResult.Detail,
+                CategoryLabel = packetResult.CategoryLabel,
+                RewardItemId = packetResult.RewardItemId,
+                IconTexture = packetResult.IconTexture,
+                AlreadyWishlisted = packetResult.AlreadyWishlisted,
+                Score = packetResult.Score,
+                IsClientItemNameResult = packetResult.IsClientItemNameResult,
+                CanRegister = canRegister,
+                IsPacketAuthored = true,
+                HasLiveCatalogBinding = hasLiveCatalogBinding,
+                PacketServiceSessionId = packetResult.PacketServiceSessionId,
+                PacketSearchSessionId = packetResult.PacketSearchSessionId
+            };
+        }
+
+        private bool IsPacketOwnedWishlistResultSessionCurrent(WishlistSearchResult packetResult)
+        {
+            if (packetResult == null || !packetResult.IsPacketAuthored)
+            {
+                return true;
+            }
+
+            if (!_packetOwnedAdminShopSession.IsActive)
+            {
+                return false;
+            }
+
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
+            if (snapshot == null)
+            {
+                return false;
+            }
+
+            if (packetResult.PacketServiceSessionId >= 0
+                && snapshot.ServiceSessionId >= 0
+                && packetResult.PacketServiceSessionId != snapshot.ServiceSessionId)
+            {
+                return false;
+            }
+
+            if (packetResult.PacketSearchSessionId >= 0
+                && snapshot.SearchSessionId >= 0
+                && packetResult.PacketSearchSessionId != snapshot.SearchSessionId)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryValidatePacketOwnedWishlistResultSession(WishlistSearchResult packetResult, out string message)
+        {
+            message = string.Empty;
+            if (packetResult == null || !packetResult.IsPacketAuthored)
+            {
+                return true;
+            }
+
+            string rowSessionLabel = BuildPacketOwnedWishlistSessionLabel(
+                packetResult.PacketServiceSessionId,
+                packetResult.PacketSearchSessionId);
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
+            string liveSessionLabel = BuildPacketOwnedWishlistSessionLabel(
+                snapshot?.ServiceSessionId ?? -1,
+                snapshot?.SearchSessionId ?? -1);
+
+            if (!_packetOwnedAdminShopSession.IsActive)
+            {
+                message = $"The selected packet-authored wish-list row belongs to session {rowSessionLabel}, but the packet-owned admin-shop session is no longer active.";
+                return false;
+            }
+
+            if (snapshot == null)
+            {
+                message = $"The selected packet-authored wish-list row belongs to session {rowSessionLabel}, but there is no active packet-authored SearchItemName snapshot. Wait for the next packet 366 subtype 4 search response.";
+                return false;
+            }
+
+            if (!IsPacketOwnedWishlistResultSessionCurrent(packetResult))
+            {
+                message = $"The selected packet-authored wish-list row belongs to session {rowSessionLabel}, but the live packet-authored search session is {liveSessionLabel}. Run SearchItemName again after the next packet-owned search response.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string BuildPacketOwnedWishlistSessionLabel(int serviceSessionId, int searchSessionId)
+        {
+            return $"{Math.Max(-1, serviceSessionId).ToString(CultureInfo.InvariantCulture)}/{Math.Max(-1, searchSessionId).ToString(CultureInfo.InvariantCulture)}";
         }
 
         public string GetWishlistSearchCatalogSessionSignature()
@@ -7903,6 +8025,7 @@ namespace HaCreator.MapSimulator.UI
                 commodity.SerialNumber,
                 commodity.ItemId,
                 commodity.Price,
+                commodity.MaxPerSlot,
                 commodity.SaleState == 0,
                 metadataCandidates);
             return resolvedSerialNumber > 0

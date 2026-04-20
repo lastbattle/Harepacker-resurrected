@@ -139,12 +139,27 @@ namespace HaCreator.MapSimulator.Animation
             float fallbackY,
             bool fallbackFlip,
             int currentTimeMs,
-            int zOrder = 0)
+            int zOrder = 0,
+            int initialElapsedMs = 0)
         {
             if (frames == null || frames.Count == 0) return;
 
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
-            anim.Initialize(frames, fallbackX, fallbackY, fallbackFlip, currentTimeMs, zOrder, getPosition, getFlip);
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip,
+                AnimationOneTimeOwner.Generic,
+                AnimationOneTimePlaybackMode.Default,
+                sourceUol: null,
+                usesOverlayParent: false,
+                recoveredRegistrationTrace: null,
+                initialElapsedMs: initialElapsedMs);
             InsertOneTimeAnimation(anim);
         }
 
@@ -3240,7 +3255,8 @@ namespace HaCreator.MapSimulator.Animation
             AnimationOneTimePlaybackMode playbackMode,
             string sourceUol,
             bool usesOverlayParent,
-            OneTimeAnimationRecoveredRegistrationTrace? recoveredRegistrationTrace = null)
+            OneTimeAnimationRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
+            int initialElapsedMs = 0)
         {
             _frames = frames;
             _x = x;
@@ -3264,6 +3280,11 @@ namespace HaCreator.MapSimulator.Animation
                 ?? (usesOverlayParent ? AnimationOneTimeOverlayParentKind.MobActionLayer : AnimationOneTimeOverlayParentKind.None);
             RecoveredRegistrationTrace = recoveredRegistrationTrace;
             RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(recoveredRegistrationTrace);
+
+            if (initialElapsedMs > 0)
+            {
+                SeekToElapsed(initialElapsedMs, currentTimeMs);
+            }
         }
 
         public bool Update(int currentTimeMs)
@@ -3322,6 +3343,35 @@ namespace HaCreator.MapSimulator.Animation
             _finished = true;
             _currentFrame = _frames.Count;
             return false;
+        }
+
+        private void SeekToElapsed(int initialElapsedMs, int currentTimeMs)
+        {
+            if (_frames == null || _frames.Count == 0)
+            {
+                _finished = true;
+                return;
+            }
+
+            int elapsed = Math.Max(0, initialElapsedMs);
+            _startTime = unchecked(currentTimeMs - elapsed);
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+
+            while (_currentFrame < _frames.Count)
+            {
+                int frameDelay = Math.Max(0, _frames[_currentFrame]?.Delay ?? 0);
+                if (elapsed <= frameDelay)
+                {
+                    _lastFrameTime = unchecked(currentTimeMs - elapsed);
+                    return;
+                }
+
+                elapsed -= frameDelay + 1;
+                _currentFrame++;
+            }
+
+            _finished = true;
         }
 
         private static int ResolveFrameDelay(IDXObject frame)

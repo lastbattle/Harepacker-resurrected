@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _calendarGridOffset;
         private readonly Point _statusLaneAnchorOffset;
         private readonly int _statusLaneMaxWidth;
+        private readonly int _alarmStripClipHeight;
         private UIObject _allButton;
         private UIObject _startButton;
         private UIObject _inProgressButton;
@@ -81,7 +82,7 @@ namespace HaCreator.MapSimulator.UI
             string windowName,
             Texture2D normalRowTexture,
             Texture2D selectedRowTexture)
-            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(11, 88), new Point(6, 23), new Point(12, 68), new Point(226, 5), 57)
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(11, 88), new Point(6, 23), new Point(12, 68), new Point(226, 5), 57, 35)
         {
         }
 
@@ -103,7 +104,8 @@ namespace HaCreator.MapSimulator.UI
             Point calendarOverlayOffset,
             Point calendarGridOffset,
             Point statusLaneAnchorOffset,
-            int statusLaneMaxWidth)
+            int statusLaneMaxWidth,
+            int alarmStripClipHeight)
             : base(frame)
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
@@ -123,6 +125,7 @@ namespace HaCreator.MapSimulator.UI
             _calendarGridOffset = new Point(Math.Max(0, calendarGridOffset.X), Math.Max(0, calendarGridOffset.Y));
             _statusLaneAnchorOffset = statusLaneAnchorOffset;
             _statusLaneMaxWidth = Math.Max(40, statusLaneMaxWidth);
+            _alarmStripClipHeight = Math.Max(1, alarmStripClipHeight);
         }
 
         public override string WindowName => _windowName;
@@ -1450,10 +1453,9 @@ namespace HaCreator.MapSimulator.UI
             int x = Position.X + Math.Max(0, _contentLayerOffset.X + 7);
             int stripTop = Position.Y + Math.Max(0, _contentLayerOffset.Y - 4);
             int stripWidth = 198; // Client evidence: CUIEventAlarm::Draw clips m_aCT lines to width 198.
+            int stripHeight = Math.Max(_font.LineSpacing, _alarmStripClipHeight);
 
-            int visibleLines = Math.Min(3, snapshot.AlarmLines.Count);
-            int maxLineBottom = stripTop;
-            for (int i = 0; i < visibleLines; i++)
+            for (int i = 0; i < snapshot.AlarmLines.Count; i++)
             {
                 EventAlarmLineSnapshot lineSnapshot = snapshot.AlarmLines[i];
                 string line = lineSnapshot?.Text;
@@ -1464,6 +1466,11 @@ namespace HaCreator.MapSimulator.UI
 
                 int lineLeft = Math.Max(0, lineSnapshot.Left);
                 int lineTop = Math.Max(0, lineSnapshot.Top);
+                if (lineTop >= stripHeight)
+                {
+                    continue;
+                }
+
                 float maxWidth = Math.Max(40f, stripWidth - lineLeft);
                 string clippedLine = TrimTextToWidth(line, maxWidth);
                 int drawX = x + lineLeft;
@@ -1473,10 +1480,9 @@ namespace HaCreator.MapSimulator.UI
                     clippedLine,
                     new Vector2(drawX, drawY),
                     ResolveAlarmLineColor(lineSnapshot));
-                maxLineBottom = Math.Max(maxLineBottom, drawY + _font.LineSpacing);
             }
 
-            return (maxLineBottom - Position.Y) + 8;
+            return GetContentTop(snapshot);
         }
 
         private static Color ResolveAlarmLineColor(EventAlarmLineSnapshot lineSnapshot)
@@ -1503,15 +1509,16 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetContentTop(EventWindowSnapshot snapshot)
         {
+            int baselineTop = Math.Max(0, _contentLayerOffset.Y + 6);
             if (_font == null || snapshot?.AlarmLines == null || snapshot.AlarmLines.Count == 0)
             {
-                return Math.Max(0, _contentLayerOffset.Y + 6);
+                return baselineTop;
             }
 
-            int visibleLines = Math.Min(3, snapshot.AlarmLines.Count);
             int stripTop = Math.Max(0, _contentLayerOffset.Y - 4);
-            int maxLineTop = 0;
-            for (int i = 0; i < visibleLines; i++)
+            int stripHeight = Math.Max(_font.LineSpacing, _alarmStripClipHeight);
+            int maxLineBottom = stripTop;
+            for (int i = 0; i < snapshot.AlarmLines.Count; i++)
             {
                 EventAlarmLineSnapshot line = snapshot.AlarmLines[i];
                 if (line == null || string.IsNullOrWhiteSpace(line.Text))
@@ -1519,10 +1526,18 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                maxLineTop = Math.Max(maxLineTop, Math.Max(0, line.Top));
+                int lineTop = Math.Max(0, line.Top);
+                if (lineTop >= stripHeight)
+                {
+                    continue;
+                }
+
+                int lineBottom = Math.Min(stripHeight, lineTop + _font.LineSpacing);
+                maxLineBottom = Math.Max(maxLineBottom, stripTop + lineBottom);
             }
 
-            return stripTop + maxLineTop + _font.LineSpacing + 8;
+            int clippedTop = (maxLineBottom - Position.Y) + 8;
+            return Math.Max(baselineTop, clippedTop);
         }
 
         private string TrimTextToWidth(string text, float maxWidth)

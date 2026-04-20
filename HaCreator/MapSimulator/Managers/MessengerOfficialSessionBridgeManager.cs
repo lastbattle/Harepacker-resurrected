@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.Managers
         public const ushort DefaultInboundResultOpcode = PacketOwnedSocialUtilityPacketTable.MessengerInboundOpcode;
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxRecentInboundPackets = 32;
+        private const int MaxPendingResultExpectations = 32;
         private const string DefaultProcessName = "MapleStory";
 
         private readonly string _ownerName;
@@ -43,10 +44,15 @@ namespace HaCreator.MapSimulator.Managers
         private readonly HashSet<ushort> _additionalInboundOpcodes;
         private readonly HashSet<ushort> _additionalOutboundOpcodes;
         private readonly ConcurrentQueue<MessengerOfficialSessionBridgeMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<MessengerOfficialSessionBridgeMessage> _pendingObservedOutboundMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
+        private readonly List<PendingResultExpectation> _pendingResultExpectations = new();
+        private readonly HashSet<ushort> _observedInboundOpcodes = new();
+        private readonly HashSet<byte> _observedMessengerInboundSubtypes = new();
+        private readonly HashSet<byte> _observedMapleTvSendResultCodes = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -54,6 +60,14 @@ namespace HaCreator.MapSimulator.Managers
         private BridgePair _activePair;
 
         private readonly record struct PendingOutboundPacket(int Opcode, byte[] RawPacket);
+        private readonly record struct PendingResultExpectation(
+            int RequestOpcode,
+            byte RequestSubtype,
+            string Source,
+            string Summary,
+            int[] ExpectedInboundOpcodes,
+            byte[] ExpectedInboundSubtypes,
+            string ExpectationSummary);
 
         public readonly record struct OutboundPacketTrace(
             int Opcode,
@@ -72,6 +86,13 @@ namespace HaCreator.MapSimulator.Managers
             string RawPacketHex,
             string Source,
             string Summary);
+
+        private int _expectedResultRequestCount;
+        private int _expectedResultMatchCount;
+        private int _expectedResultMismatchCount;
+        private int _expectedResultUnexpectedCount;
+        private int _expectedResultEvictedCount;
+        private int _unknownInboundBranchCount;
 
         private sealed class BridgePair
         {
@@ -406,6 +427,11 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public bool TryDequeueObservedOutbound(out MessengerOfficialSessionBridgeMessage message)
+        {
+            return _pendingObservedOutboundMessages.TryDequeue(out message);
+        }
+
         public bool TrySendOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
         {
             BridgePair pair;
@@ -716,6 +742,12 @@ namespace HaCreator.MapSimulator.Managers
                     summary));
             }
 
+            _pendingObservedOutboundMessages.Enqueue(
+                new MessengerOfficialSessionBridgeMessage(
+                    payload,
+                    source,
+                    $"packetserverraw {Convert.ToHexString(rawPacket)}",
+                    opcode));
             LastStatus = $"Forwarded live {_ownerName} outbound opcode {opcode} type {payload[0]} from {source}.";
         }
 
@@ -871,6 +903,9 @@ namespace HaCreator.MapSimulator.Managers
             while (_pendingMessages.TryDequeue(out _))
             {
             }
+            while (_pendingObservedOutboundMessages.TryDequeue(out _))
+            {
+            }
 
             ReceivedCount = 0;
             SentCount = 0;
@@ -890,6 +925,7 @@ namespace HaCreator.MapSimulator.Managers
                 SentCount++;
                 LastSentOpcode = pending.Opcode;
                 LastSentRawPacket = pending.RawPacket;
+                RecordObservedOutboundPacket(pending.RawPacket, $"official-session-flush:{pair.ClientEndpoint}");
                 flushed++;
             }
 

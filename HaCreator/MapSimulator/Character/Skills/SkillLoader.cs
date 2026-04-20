@@ -5640,28 +5640,124 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            foreach (WzImageProperty node in EnumerateClientSummonedUolCandidateNodes(skillNode, infoNode))
+            {
+                foreach (ClientSummonedUolCandidateValue candidate in EnumerateClientSummonedUolCandidateValuesForNode(
+                             node,
+                             skillNode,
+                             propertyNames))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolCandidateNodes(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode)
+        {
+            var yieldedNodePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (WzImageProperty node in new[] { infoNode, skillNode })
             {
-                if (node == null)
+                if (TryAddClientSummonedUolCandidateNode(yieldedNodePaths, node))
+                {
+                    yield return node;
+                }
+            }
+
+            foreach (WzImageProperty node in EnumerateClientSummonedUolSupplementalCandidateNodes(skillNode))
+            {
+                if (TryAddClientSummonedUolCandidateNode(yieldedNodePaths, node))
+                {
+                    yield return node;
+                }
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateClientSummonedUolSupplementalCandidateNodes(WzImageProperty skillNode)
+        {
+            if (skillNode == null)
+            {
+                yield break;
+            }
+
+            foreach (string branchName in new[] { "level", "CharLevel" })
+            {
+                WzImageProperty branchNode = skillNode[branchName];
+                if (branchNode == null)
                 {
                     continue;
                 }
 
-                foreach (string propertyName in propertyNames)
+                yield return branchNode;
+                if (branchNode.WzProperties == null)
                 {
-                    string value = GetClientSummonedUolCandidateValue(node, propertyName);
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        yield return new ClientSummonedUolCandidateValue(
-                            value,
-                            BuildClientSummonedUolCandidateContextPathParts(node, propertyName, skillNode));
-                    }
+                    continue;
                 }
 
-                foreach (ClientSummonedUolCandidateValue heuristicCandidate in EnumerateClientSummonedUolHeuristicCandidateValues(node, skillNode))
+                foreach (WzImageProperty child in branchNode.WzProperties)
                 {
-                    yield return heuristicCandidate;
+                    if (child == null)
+                    {
+                        continue;
+                    }
+
+                    yield return child;
+                    WzImageProperty infoNode = child["info"];
+                    if (infoNode != null)
+                    {
+                        yield return infoNode;
+                    }
                 }
+            }
+        }
+
+        private static bool TryAddClientSummonedUolCandidateNode(HashSet<string> yieldedNodePaths, WzImageProperty node)
+        {
+            if (node == null)
+            {
+                return false;
+            }
+
+            string normalizedPath = NormalizeClientSummonedUolFullPath(node.FullPath)
+                                    ?? node.FullPath?.Trim().Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                normalizedPath = node.Name?.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return true;
+            }
+
+            return yieldedNodePaths == null || yieldedNodePaths.Add(normalizedPath);
+        }
+
+        private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolCandidateValuesForNode(
+            WzImageProperty node,
+            WzImageProperty skillNode,
+            IReadOnlyList<string> propertyNames)
+        {
+            if (node == null)
+            {
+                yield break;
+            }
+
+            foreach (string propertyName in propertyNames)
+            {
+                string value = GetClientSummonedUolCandidateValue(node, propertyName);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    yield return new ClientSummonedUolCandidateValue(
+                        value,
+                        BuildClientSummonedUolCandidateContextPathParts(node, propertyName, skillNode));
+                }
+            }
+
+            foreach (ClientSummonedUolCandidateValue heuristicCandidate in EnumerateClientSummonedUolHeuristicCandidateValues(node, skillNode))
+            {
+                yield return heuristicCandidate;
             }
         }
 
@@ -8432,10 +8528,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.IgnoreDefenseRate = PreferPrimaryStat(
                 GetInt(node, "ignoreMobpdpR", 0, level),
                 GetInt(node, "ignoreMobDamR", 0, level));
-            levelData.DefensePercent = GetInt(node, "pddR", 0, level);
-            levelData.MagicDefensePercent = GetInt(node, "mddR", 0, level);
-            levelData.AccuracyPercent = GetInt(node, "accR", 0, level);
-            levelData.AvoidabilityPercent = GetInt(node, "evaR", 0, level);
+            // Keep previously resolved description-backed aliases (for example `ar`/`er`)
+            // when the skill node omits explicit `accR`/`evaR` percent fields.
+            levelData.DefensePercent = PreferPrimaryStat(levelData.DefensePercent, GetInt(node, "pddR", 0, level));
+            levelData.MagicDefensePercent = PreferPrimaryStat(levelData.MagicDefensePercent, GetInt(node, "mddR", 0, level));
+            levelData.AccuracyPercent = PreferPrimaryStat(levelData.AccuracyPercent, GetInt(node, "accR", 0, level));
+            levelData.AvoidabilityPercent = PreferPrimaryStat(levelData.AvoidabilityPercent, GetInt(node, "evaR", 0, level));
 
             levelData.RequiredLevel = GetInt(node, "reqLevel", 0, level);
             NormalizePassiveStatAliases(skill, node, level, levelData);

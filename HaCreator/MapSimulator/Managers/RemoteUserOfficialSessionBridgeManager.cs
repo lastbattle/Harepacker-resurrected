@@ -229,34 +229,48 @@ namespace HaCreator.MapSimulator.Managers
 
         private sealed class PendingTutorInferenceEvidence
         {
-            public PendingTutorInferenceEvidence(int packetType, string reason, string source)
+            public PendingTutorInferenceEvidence(int packetType, string reason, string source, string payloadSignature)
             {
                 PacketType = packetType;
                 Reason = reason ?? string.Empty;
                 LastSource = string.IsNullOrWhiteSpace(source) ? "unknown-source" : source;
+                LastPayloadSignature = string.IsNullOrWhiteSpace(payloadSignature) ? "none" : payloadSignature;
                 ObservationCount = 1;
-                OfficialSessionObservationCount = IsOfficialSessionSource(source) ? 1 : 0;
-                RememberOfficialSessionBuildObservation(source);
+                UniqueObservationCount = 1;
+                OfficialSessionObservationCount = 0;
+                OfficialSessionUniqueObservationCount = 0;
+                RememberOfficialSessionBuildObservation(source, LastPayloadSignature);
             }
 
             public int PacketType { get; private set; }
             public string Reason { get; private set; }
             public string LastSource { get; private set; }
+            public string LastPayloadSignature { get; private set; }
             public int ObservationCount { get; private set; }
+            public int UniqueObservationCount { get; private set; }
             public int OfficialSessionObservationCount { get; private set; }
+            public int OfficialSessionUniqueObservationCount { get; private set; }
             public string OfficialSessionBuildObservationSummary => DescribeOfficialSessionBuildObservations();
+            public string OfficialSessionBuildUniqueObservationSummary => DescribeOfficialSessionBuildUniqueObservations();
             private readonly Dictionary<string, int> _officialSessionObservationCountByBuild = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, HashSet<string>> _officialSessionPayloadSignaturesByBuild = new(StringComparer.OrdinalIgnoreCase);
+            private readonly HashSet<string> _uniqueObservationSignatures = new(StringComparer.Ordinal);
 
-            public void Update(int packetType, string reason, string source)
+            public void Update(int packetType, string reason, string source, string payloadSignature)
             {
                 PacketType = packetType;
                 Reason = reason ?? string.Empty;
                 LastSource = string.IsNullOrWhiteSpace(source) ? LastSource : source;
+                LastPayloadSignature = string.IsNullOrWhiteSpace(payloadSignature) ? LastPayloadSignature : payloadSignature;
                 ObservationCount++;
+                if (_uniqueObservationSignatures.Add(LastPayloadSignature))
+                {
+                    UniqueObservationCount++;
+                }
                 if (IsOfficialSessionSource(source))
                 {
                     OfficialSessionObservationCount++;
-                    RememberOfficialSessionBuildObservation(source);
+                    RememberOfficialSessionBuildObservation(source, LastPayloadSignature);
                 }
             }
 
@@ -288,6 +302,45 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            public int ResolveOfficialSessionBuildUniqueObservationCount(string buildTag)
+            {
+                string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+                if (_officialSessionPayloadSignaturesByBuild.TryGetValue(normalizedBuildTag, out HashSet<string> payloadSignatures))
+                {
+                    return payloadSignatures.Count;
+                }
+
+                return 0;
+            }
+
+            private void RememberOfficialSessionBuildObservation(string source, string payloadSignature)
+            {
+                if (!TryResolveOfficialSessionBuildTag(source, out string buildTag))
+                {
+                    return;
+                }
+
+                if (_officialSessionObservationCountByBuild.TryGetValue(buildTag, out int existingCount))
+                {
+                    _officialSessionObservationCountByBuild[buildTag] = existingCount + 1;
+                }
+                else
+                {
+                    _officialSessionObservationCountByBuild[buildTag] = 1;
+                }
+
+                if (!_officialSessionPayloadSignaturesByBuild.TryGetValue(buildTag, out HashSet<string> signatures))
+                {
+                    signatures = new HashSet<string>(StringComparer.Ordinal);
+                    _officialSessionPayloadSignaturesByBuild[buildTag] = signatures;
+                }
+
+                if (signatures.Add(string.IsNullOrWhiteSpace(payloadSignature) ? "none" : payloadSignature))
+                {
+                    OfficialSessionUniqueObservationCount++;
+                }
+            }
+
             private string DescribeOfficialSessionBuildObservations()
             {
                 if (_officialSessionObservationCountByBuild.Count == 0)
@@ -300,6 +353,20 @@ namespace HaCreator.MapSimulator.Managers
                     _officialSessionObservationCountByBuild
                         .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
                         .Select(entry => $"{entry.Key}:{entry.Value}"));
+            }
+
+            private string DescribeOfficialSessionBuildUniqueObservations()
+            {
+                if (_officialSessionPayloadSignaturesByBuild.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    "|",
+                    _officialSessionPayloadSignaturesByBuild
+                        .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(entry => $"{entry.Key}:{entry.Value.Count}"));
             }
         }
 
@@ -631,10 +698,16 @@ namespace HaCreator.MapSimulator.Managers
                     byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
                     if (TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(opcode, out packetType, out string knownOwnerReason))
                     {
+                        if (!TryValidateKnownTutorOwnerPayloadNoLock(opcode, inferencePayload, packetType, out string knownPayloadReason))
+                        {
+                            LastStatus = $"Ignored CUserPool local-user opcode {opcode}: known tutor owner payload did not match exact remote wrapper ({knownPayloadReason}). {OfficialRemoteOwnerEvidence}";
+                            return false;
+                        }
+
                         _packetMap[opcode] = packetType;
-                        string learnedEvidence = $"auto:{knownOwnerReason}; {OfficialRemoteOwnerEvidence}";
+                        string learnedEvidence = $"auto:{knownOwnerReason}; payloadProof={knownPayloadReason}; {OfficialRemoteOwnerEvidence}";
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
-                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from recovered CUserLocal owner table ({knownOwnerReason}); {OfficialRemoteOwnerEvidence}";
+                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from recovered CUserLocal owner table ({knownOwnerReason}) with exact remote wrapper proof ({knownPayloadReason}); {OfficialRemoteOwnerEvidence}";
                     }
                     else if (TryResolveKnownNonTutorLocalOwnerFromV95LocalOwnerTable(opcode, out string knownNonTutorReason))
                     {
@@ -648,7 +721,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
                     else
                     {
-                        if (!TryObserveTutorInferenceNoLock(opcode, packetType, inferenceReason, source, out PendingTutorInferenceEvidence pendingEvidence, out bool inferenceConfirmed))
+                        if (!TryObserveTutorInferenceNoLock(opcode, packetType, inferenceReason, source, inferencePayload, out PendingTutorInferenceEvidence pendingEvidence, out bool inferenceConfirmed))
                         {
                             LastStatus = $"Ignored CUserPool local-user opcode {opcode}: tutor payload inference conflict while collecting evidence for {RemoteUserPacketInboxManager.DescribePacketType(packetType)}.";
                             return false;
@@ -657,18 +730,18 @@ namespace HaCreator.MapSimulator.Managers
                         if (!inferenceConfirmed)
                         {
                             string buildTag = ResolveOfficialSessionBuildTag(source);
-                            int buildProof = pendingEvidence.ResolveOfficialSessionBuildObservationCount(buildTag);
-                            LastStatus = $"Observed potential tutor-owner mapping for opcode {opcode} -> {RemoteUserPacketInboxManager.DescribePacketType(packetType)} ({pendingEvidence.Reason}); awaiting official-session proof {buildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {buildTag} ({pendingEvidence.OfficialSessionBuildObservationSummary}). {OfficialRemoteOwnerEvidence}";
+                            int buildProof = pendingEvidence.ResolveOfficialSessionBuildUniqueObservationCount(buildTag);
+                            LastStatus = $"Observed potential tutor-owner mapping for opcode {opcode} -> {RemoteUserPacketInboxManager.DescribePacketType(packetType)} ({pendingEvidence.Reason}); awaiting official-session distinct wrapper proof {buildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {buildTag} ({pendingEvidence.OfficialSessionBuildUniqueObservationSummary}). {OfficialRemoteOwnerEvidence}";
                             return false;
                         }
 
                         _pendingTutorInferenceMap.Remove(opcode);
                         _packetMap[opcode] = packetType;
                         string inferenceBuildTag = ResolveOfficialSessionBuildTag(source);
-                        int inferenceBuildProof = pendingEvidence.ResolveOfficialSessionBuildObservationCount(inferenceBuildTag);
-                        string learnedEvidence = $"auto:{inferenceReason}; inferenceProof={inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount}@{inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
+                        int inferenceBuildProof = pendingEvidence.ResolveOfficialSessionBuildUniqueObservationCount(inferenceBuildTag);
+                        string learnedEvidence = $"auto:{inferenceReason}; inferenceDistinctWrapperProof={inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount}@{inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
-                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
+                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session distinct wrapper proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
                     }
                 }
             }
@@ -820,26 +893,28 @@ namespace HaCreator.MapSimulator.Managers
             int packetType,
             string reason,
             string source,
+            byte[] payload,
             out PendingTutorInferenceEvidence evidence,
             out bool inferenceConfirmed)
         {
             evidence = null;
             inferenceConfirmed = false;
+            string payloadSignature = BuildTutorInferencePayloadSignature(packetType, payload);
 
             if (_pendingTutorInferenceMap.TryGetValue(opcode, out PendingTutorInferenceEvidence existing))
             {
                 if (existing.PacketType != packetType)
                 {
-                    _pendingTutorInferenceMap[opcode] = new PendingTutorInferenceEvidence(packetType, reason, source);
+                    _pendingTutorInferenceMap[opcode] = new PendingTutorInferenceEvidence(packetType, reason, source, payloadSignature);
                 }
                 else
                 {
-                    existing.Update(packetType, reason, source);
+                    existing.Update(packetType, reason, source, payloadSignature);
                 }
             }
             else
             {
-                _pendingTutorInferenceMap[opcode] = new PendingTutorInferenceEvidence(packetType, reason, source);
+                _pendingTutorInferenceMap[opcode] = new PendingTutorInferenceEvidence(packetType, reason, source, payloadSignature);
             }
 
             evidence = _pendingTutorInferenceMap[opcode];
@@ -850,8 +925,106 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string buildTag = ResolveOfficialSessionBuildTag(source);
-            inferenceConfirmed = evidence.ResolveOfficialSessionBuildObservationCount(buildTag) >= MinOfficialSessionTutorInferenceProofCount;
+            inferenceConfirmed = evidence.ResolveOfficialSessionBuildUniqueObservationCount(buildTag) >= MinOfficialSessionTutorInferenceProofCount;
             return true;
+        }
+
+        private static bool TryValidateKnownTutorOwnerPayloadNoLock(
+            ushort opcode,
+            byte[] payload,
+            int expectedPacketType,
+            out string reason)
+        {
+            reason = string.Empty;
+            if (expectedPacketType == (int)Pools.RemoteUserPacketType.UserTutorHire)
+            {
+                bool decoded = HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorHirePayload(
+                    payload,
+                    out int characterId,
+                    out bool enabled,
+                    out string decodeMessage);
+                if (!decoded)
+                {
+                    reason = decodeMessage;
+                    return false;
+                }
+
+                reason = $"opcode {opcode} remote hire wrapper for character {characterId}, enabled={enabled}";
+                return true;
+            }
+
+            if (expectedPacketType == (int)Pools.RemoteUserPacketType.UserTutorMessage)
+            {
+                bool decoded = HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorMessagePayload(
+                    payload,
+                    out int characterId,
+                    out bool indexedPayload,
+                    out int messageIndex,
+                    out int durationMs,
+                    out string text,
+                    out int width,
+                    out string decodeMessage);
+                if (!decoded)
+                {
+                    reason = decodeMessage;
+                    return false;
+                }
+
+                reason = indexedPayload
+                    ? $"opcode {opcode} remote indexed-message wrapper for character {characterId}, index={messageIndex}, duration={durationMs}"
+                    : $"opcode {opcode} remote text-message wrapper for character {characterId}, width={width}, duration={durationMs}, textLength={text?.Length ?? 0}";
+                return true;
+            }
+
+            reason = $"unsupported expected tutor packet type {expectedPacketType}";
+            return false;
+        }
+
+        private static string BuildTutorInferencePayloadSignature(int packetType, byte[] payload)
+        {
+            if (packetType == (int)Pools.RemoteUserPacketType.UserTutorHire)
+            {
+                bool decoded = HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorHirePayload(
+                    payload,
+                    out int characterId,
+                    out bool enabled,
+                    out _);
+                if (!decoded)
+                {
+                    return $"invalid-hire:{payload?.Length ?? 0}";
+                }
+
+                return $"hire:{characterId}:{(enabled ? 1 : 0)}";
+            }
+
+            if (packetType == (int)Pools.RemoteUserPacketType.UserTutorMessage)
+            {
+                bool decoded = HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorMessagePayload(
+                    payload,
+                    out int characterId,
+                    out bool indexedPayload,
+                    out int messageIndex,
+                    out int durationMs,
+                    out string text,
+                    out int width,
+                    out _);
+                if (!decoded)
+                {
+                    return $"invalid-message:{payload?.Length ?? 0}";
+                }
+
+                if (indexedPayload)
+                {
+                    return $"msg-indexed:{characterId}:{messageIndex}:{durationMs}";
+                }
+
+                int textHash = string.IsNullOrEmpty(text)
+                    ? 0
+                    : StringComparer.Ordinal.GetHashCode(text);
+                return $"msg-text:{characterId}:{width}:{durationMs}:{text?.Length ?? 0}:{textHash}";
+            }
+
+            return $"packet:{packetType}:{payload?.Length ?? 0}";
         }
 
         private bool ShouldRevalidateTutorOpcodeMappingForSourceNoLock(

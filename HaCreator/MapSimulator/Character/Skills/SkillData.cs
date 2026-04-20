@@ -2137,6 +2137,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Id { get; set; }
         public int ProjectileId { get; set; }
         public bool IsDetachedFromProjectile { get; set; }
+        public int MainLayerObjectId { get; set; }
         public BulletAnimationPresentation Presentation { get; init; }
         public Vector2 CurrentPosition { get; set; }
         public Vector2 PreviousPosition { get; set; }
@@ -2159,6 +2160,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public int RepeatLayerObjectId { get; init; }
         public int ParentRepeatLayerObjectId { get; init; }
+        public int SourceLayerObjectId { get; init; }
         public SkillFrame Frame { get; init; }
         public Vector2 Position { get; init; }
         public Rectangle WorldBounds { get; init; }
@@ -2171,6 +2173,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool Flip { get; init; }
         public int StartTime { get; init; }
         public int Duration { get; init; }
+        public int RegisteredAnimationStartTime { get; init; }
+        public int RegisteredAnimationEndTime { get; init; }
         public int AlphaStart { get; init; }
         public int AlphaEnd { get; init; }
         public int AlphaVectorStart { get; init; }
@@ -2181,7 +2185,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool IsExpired(int currentTime)
         {
-            return currentTime - StartTime > Duration;
+            if (RegisteredAnimationEndTime > RegisteredAnimationStartTime)
+            {
+                return currentTime >= RegisteredAnimationEndTime;
+            }
+
+            return currentTime - StartTime >= Duration;
         }
 
         public float ResolveAlpha(int currentTime)
@@ -2221,10 +2230,21 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private float ResolveProgress(int currentTime)
         {
+            int lifetime = ResolveLifetimeMs();
             return MathHelper.Clamp(
-                (currentTime - StartTime) / (float)Math.Max(1, Duration),
+                (currentTime - StartTime) / (float)lifetime,
                 0f,
                 1f);
+        }
+
+        private int ResolveLifetimeMs()
+        {
+            if (RegisteredAnimationEndTime > RegisteredAnimationStartTime)
+            {
+                return Math.Max(1, RegisteredAnimationEndTime - RegisteredAnimationStartTime);
+            }
+
+            return Math.Max(1, Duration);
         }
 
         private int ResolveAlphaVectorStart()

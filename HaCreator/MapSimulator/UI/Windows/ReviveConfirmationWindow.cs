@@ -30,6 +30,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _progressBar;
         private readonly Texture2D _inactiveDot;
         private readonly Texture2D _activeDot;
+        private readonly Texture2D _defaultBranchBackground;
+        private readonly Texture2D _premiumSafetyCharmBackground;
+        private readonly Texture2D _upgradeTombBackground;
+        private readonly Texture2D _soulStoneBackground;
         private UIObject _premiumButton;
         private UIObject _declineButton;
         private UIObject _defaultButton;
@@ -51,7 +55,11 @@ namespace HaCreator.MapSimulator.UI
             Texture2D separatorLine,
             Texture2D progressBar,
             Texture2D inactiveDot,
-            Texture2D activeDot)
+            Texture2D activeDot,
+            Texture2D defaultBranchBackground = null,
+            Texture2D premiumSafetyCharmBackground = null,
+            Texture2D upgradeTombBackground = null,
+            Texture2D soulStoneBackground = null)
             : base(frame)
         {
             _shellTop = shellTop;
@@ -62,6 +70,10 @@ namespace HaCreator.MapSimulator.UI
             _progressBar = progressBar;
             _inactiveDot = inactiveDot;
             _activeDot = activeDot;
+            _defaultBranchBackground = defaultBranchBackground;
+            _premiumSafetyCharmBackground = premiumSafetyCharmBackground;
+            _upgradeTombBackground = upgradeTombBackground;
+            _soulStoneBackground = soulStoneBackground;
             SupportsDragging = false;
         }
 
@@ -253,6 +265,12 @@ namespace HaCreator.MapSimulator.UI
             DrawShellLayer(sprite, _shellBottom, bounds.X, bounds.Bottom - ShellBottomHeight, bounds.Width, ShellBottomHeight);
 
             Rectangle noticeBounds = new Rectangle(bounds.X + 10, bounds.Y + 10, bounds.Width - 20, 132);
+            Texture2D nativeBranchBackground = ResolveNativeBranchBackground();
+            if (nativeBranchBackground != null)
+            {
+                sprite.Draw(nativeBranchBackground, noticeBounds, Color.White);
+            }
+
             if (_noticeFrame != null)
             {
                 sprite.Draw(_noticeFrame, noticeBounds, Color.White);
@@ -263,6 +281,17 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(_separatorLine, separatorBounds, Color.White);
             }
+        }
+
+        private Texture2D ResolveNativeBranchBackground()
+        {
+            return _snapshot.Variant switch
+            {
+                ReviveOwnerVariant.SoulStoneChoice => _soulStoneBackground,
+                ReviveOwnerVariant.UpgradeTombChoice => _upgradeTombBackground,
+                ReviveOwnerVariant.PremiumSafetyCharmChoice => _premiumSafetyCharmBackground,
+                _ => _defaultBranchBackground,
+            };
         }
 
         private void DrawProgressBar(SpriteBatch sprite)

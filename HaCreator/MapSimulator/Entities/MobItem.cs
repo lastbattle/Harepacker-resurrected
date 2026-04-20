@@ -1866,9 +1866,9 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            _angerGaugeBurstNextAllowedTick = tickCount + repeatIntervalMs;
             if (_animationEffects != null)
             {
+                _angerGaugeBurstNextAllowedTick = tickCount + repeatIntervalMs;
                 AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
                 Vector2 anchor = GetAngerGaugeBurstAnchor();
                 _animationEffects.AddFullChargedAngerGauge(

@@ -1170,6 +1170,11 @@ namespace HaCreator.MapSimulator
                 return itemToken;
             }
 
+            if (itemId > 0)
+            {
+                return itemId;
+            }
+
             return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition);
         }
 
@@ -1220,6 +1225,11 @@ namespace HaCreator.MapSimulator
             if (TryResolveClientAuthoredVegaInventoryItemToken(slot, out int itemToken))
             {
                 return itemToken;
+            }
+
+            if (itemId > 0)
+            {
+                return itemId;
             }
 
             return BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);

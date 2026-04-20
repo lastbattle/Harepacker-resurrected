@@ -458,9 +458,9 @@ namespace HaCreator.MapSimulator.Pools
         private const string RemoteTemporaryStatAuraActionOwnerName = "aux.remote.temporaryStat.aura.persistent";
         private const int RemoteTemporaryStatAffectedLayerTransitionDurationMs = 180;
         private const int RemoteTemporaryStatAffectedLayerShiftCadenceUpdates = 0x21;
-        private const int RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMs = 16;
-        private const int RemoteTemporaryStatAffectedLayerShiftCadenceDurationMs =
-            RemoteTemporaryStatAffectedLayerShiftCadenceUpdates * RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMs;
+        private const int RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationFallbackMs = 16;
+        private const int RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMinimumMs = 8;
+        private const int RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMaximumMs = 50;
         private const string RemoteTemporaryStatMoreWildActionOwnerName = "aux.remote.temporaryStat.moreWild.persistent";
         private const string RemoteTemporaryStatBarrierActionOwnerName = "aux.remote.temporaryStat.barrier.persistent";
         private const string RemoteTemporaryStatBlessingArmorActionOwnerName = "aux.remote.temporaryStat.blessingArmor.persistent";
@@ -1573,7 +1573,8 @@ namespace HaCreator.MapSimulator.Pools
             int characterId,
             int? chairItemId,
             out string message,
-            int? pairCharacterId = null)
+            int? pairCharacterId = null,
+            bool allowPairRecordCreateFromSeatState = true)
         {
             message = null;
             if (_loader == null)
@@ -1609,7 +1610,11 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.Build.ActivePortableChair = chair;
             actor.PreferredPortableChairPairCharacterId = pairCharacterId;
-            SyncPortableChairPairRecordFromSeatState(characterId, chair.ItemId, pairCharacterId);
+            SyncPortableChairPairRecordFromSeatState(
+                characterId,
+                chair.ItemId,
+                pairCharacterId,
+                allowPairRecordCreateFromSeatState);
 
             ApplyPortableChairMount(actor, chair);
             SetActorAction(actor, "sit", allowSitFallback: true, Environment.TickCount);
@@ -5518,7 +5523,9 @@ namespace HaCreator.MapSimulator.Pools
                 marker.WorldX = actor.Position.X;
                 marker.WorldY = actor.Position.Y;
                 marker.MarkerType = markerType;
-                marker.ShowDirectionOverlay = actor.ShowDirectionOverlay;
+                marker.ShowDirectionOverlay = ResolvePacketAuthoredMinimapShowDirectionOverlay(
+                    actor.ShowDirectionOverlay,
+                    actor.BattlefieldTeamId);
                 marker.TooltipText = actor.Name;
             }
 
@@ -5561,6 +5568,18 @@ namespace HaCreator.MapSimulator.Pools
             return hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay || hasNewYearCardOverlay
                 ? MinimapUI.HelperMarkerType.Friend
                 : MinimapUI.HelperMarkerType.Another;
+        }
+
+        internal static bool ResolvePacketAuthoredMinimapShowDirectionOverlay(
+            bool explicitHelperShowDirectionOverlay,
+            int? battlefieldTeamId)
+        {
+            if (battlefieldTeamId.HasValue)
+            {
+                return true;
+            }
+
+            return explicitHelperShowDirectionOverlay;
         }
 
         public void Draw(
@@ -8491,15 +8510,63 @@ namespace HaCreator.MapSimulator.Pools
                 preferredPairCharacterId);
         }
 
-        private void SyncPortableChairPairRecordFromSeatState(int characterId, int chairItemId, int? preferredPairCharacterId)
+        private void SyncPortableChairPairRecordFromSeatState(
+            int characterId,
+            int chairItemId,
+            int? preferredPairCharacterId,
+            bool allowCreateRecordFromSeatState = true)
         {
-            if (IsCoupleChairRecordItemIdForClientParity(chairItemId))
+            _portableChairPairRecordsByCharacterId.TryGetValue(characterId, out PortableChairPairRecord existingRecord);
+            PortableChairPairRecord? resolvedRecord = ResolvePortableChairPairRecordFromSeatStateForParity(
+                _portableChairPairRecordsByCharacterId.ContainsKey(characterId)
+                    ? existingRecord
+                    : null,
+                characterId,
+                chairItemId,
+                preferredPairCharacterId,
+                allowCreateRecordFromSeatState);
+            if (resolvedRecord.HasValue)
             {
-                SyncPortableChairPairRecord(characterId, chairItemId, preferredPairCharacterId);
+                _portableChairPairRecordsByCharacterId[characterId] = resolvedRecord.Value;
                 return;
             }
 
             ClearPortableChairPairRecord(characterId);
+        }
+
+        internal static PortableChairPairRecord? ResolvePortableChairPairRecordFromSeatStateForParity(
+            PortableChairPairRecord? existingRecord,
+            int characterId,
+            int chairItemId,
+            int? preferredPairCharacterId,
+            bool allowCreateRecordFromSeatState)
+        {
+            if (characterId <= 0 || !IsCoupleChairRecordItemIdForClientParity(chairItemId))
+            {
+                return null;
+            }
+
+            if (existingRecord.HasValue)
+            {
+                PortableChairPairRecord record = existingRecord.Value;
+                if (!allowCreateRecordFromSeatState)
+                {
+                    return record with
+                    {
+                        PreferredPairCharacterId = preferredPairCharacterId
+                    };
+                }
+            }
+
+            if (!allowCreateRecordFromSeatState)
+            {
+                return null;
+            }
+
+            return new PortableChairPairRecord(
+                characterId,
+                chairItemId,
+                preferredPairCharacterId);
         }
 
         internal static bool IsCoupleChairRecordItemIdForClientParity(int chairItemId)
@@ -8889,6 +8956,7 @@ namespace HaCreator.MapSimulator.Pools
 
             RemoteUserTemporaryStatKnownState knownState = actor.TemporaryStats.KnownState;
             int currentTime = Environment.TickCount;
+            UpdateRemoteTemporaryStatAffectedLayerShiftCadenceFrameDuration(actor, currentTime);
             int temporaryStatAnimationStartTime = ResolveRemoteTemporaryStatAnimationStartTime(
                 currentTime,
                 actor.TemporaryStatDelay);
@@ -8963,6 +9031,7 @@ namespace HaCreator.MapSimulator.Pools
                     previousAuraState,
                     actor.TemporaryStatAuraEffect,
                     currentTime,
+                    actor.TemporaryStatAffectedLayerShiftCadenceFrameDurationMs,
                     out RemoteTemporaryStatAvatarEffectState auraTailState))
             {
                 actor.TemporaryStatAuraEffectTails.Add(auraTailState);
@@ -9033,6 +9102,43 @@ namespace HaCreator.MapSimulator.Pools
             return delayMs == 0
                 ? currentTime
                 : unchecked(currentTime - delayMs);
+        }
+
+        private static void UpdateRemoteTemporaryStatAffectedLayerShiftCadenceFrameDuration(RemoteUserActor actor, int currentTime)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            int previousSyncTime = actor.TemporaryStatAffectedLayerLastSyncTime;
+            actor.TemporaryStatAffectedLayerLastSyncTime = currentTime;
+            if (previousSyncTime == int.MinValue)
+            {
+                return;
+            }
+
+            int observedDeltaMs = unchecked(currentTime - previousSyncTime);
+            if (observedDeltaMs <= 0 || observedDeltaMs > 1000)
+            {
+                return;
+            }
+
+            actor.TemporaryStatAffectedLayerShiftCadenceFrameDurationMs =
+                ResolveRemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMs(observedDeltaMs);
+        }
+
+        private static int ResolveRemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMs(int observedDeltaMs)
+        {
+            if (observedDeltaMs <= 0)
+            {
+                return RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationFallbackMs;
+            }
+
+            return Math.Clamp(
+                observedDeltaMs,
+                RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMinimumMs,
+                RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMaximumMs);
         }
 
         internal static int ResolveRemoteTemporaryStatAnimationStartTimeForTesting(int currentTime, ushort delayMs)
@@ -10347,6 +10453,7 @@ namespace HaCreator.MapSimulator.Pools
             RemoteTemporaryStatAvatarEffectState previousState,
             RemoteTemporaryStatAvatarEffectState currentState,
             int currentTime,
+            int shiftCadenceFrameDurationMs,
             out RemoteTemporaryStatAvatarEffectState tailState)
         {
             tailState = null;
@@ -10372,7 +10479,10 @@ namespace HaCreator.MapSimulator.Pools
             ConfigureRemoteTemporaryStatAvatarEffectTransition(
                 tailState,
                 currentTime,
-                ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(previousState, currentState),
+                ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(
+                    previousState,
+                    currentState,
+                    shiftCadenceFrameDurationMs),
                 startAlpha: tailStartAlpha,
                 endAlpha: 0f);
             return true;
@@ -10380,7 +10490,8 @@ namespace HaCreator.MapSimulator.Pools
 
         private static int ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(
             RemoteTemporaryStatAvatarEffectState previousState,
-            RemoteTemporaryStatAvatarEffectState currentState)
+            RemoteTemporaryStatAvatarEffectState currentState,
+            int shiftCadenceFrameDurationMs)
         {
             int leadFrameDelayMs = ResolveRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(currentState);
             if (leadFrameDelayMs <= 0)
@@ -10391,11 +10502,23 @@ namespace HaCreator.MapSimulator.Pools
             int authoredBlendWindowMs = leadFrameDelayMs > 0
                 ? Math.Max(1, leadFrameDelayMs) * 2
                 : 0;
+            int shiftCadenceDurationMs = RemoteTemporaryStatAffectedLayerShiftCadenceUpdates
+                                         * Math.Max(1, shiftCadenceFrameDurationMs);
             return Math.Max(
                 RemoteTemporaryStatAffectedLayerTransitionDurationMs,
                 Math.Max(
                     authoredBlendWindowMs,
-                    RemoteTemporaryStatAffectedLayerShiftCadenceDurationMs));
+                    shiftCadenceDurationMs));
+        }
+
+        private static int ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState)
+        {
+            return ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(
+                previousState,
+                currentState,
+                RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationFallbackMs);
         }
 
         private static int ResolveRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(
@@ -10463,6 +10586,22 @@ namespace HaCreator.MapSimulator.Pools
                 previousState,
                 currentState,
                 currentTime,
+                RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationFallbackMs,
+                out tailState);
+        }
+
+        internal static bool TryCreateRemoteTemporaryStatAvatarEffectTailStateForTesting(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState,
+            int currentTime,
+            int shiftCadenceFrameDurationMs,
+            out RemoteTemporaryStatAvatarEffectState tailState)
+        {
+            return TryCreateRemoteTemporaryStatAvatarEffectTailState(
+                previousState,
+                currentState,
+                currentTime,
+                shiftCadenceFrameDurationMs,
                 out tailState);
         }
 
@@ -10471,6 +10610,22 @@ namespace HaCreator.MapSimulator.Pools
             RemoteTemporaryStatAvatarEffectState currentState)
         {
             return ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(previousState, currentState);
+        }
+
+        internal static int ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationForTesting(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState,
+            int shiftCadenceFrameDurationMs)
+        {
+            return ResolveRemoteTemporaryStatAffectedLayerTailTransitionDurationMs(
+                previousState,
+                currentState,
+                shiftCadenceFrameDurationMs);
+        }
+
+        internal static int ResolveRemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationForTesting(int observedDeltaMs)
+        {
+            return ResolveRemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMs(observedDeltaMs);
         }
 
         internal static float ResolveRemoteTemporaryStatAvatarEffectTransitionAlphaForTesting(
@@ -10726,6 +10881,19 @@ namespace HaCreator.MapSimulator.Pools
             PlayerState state)
         {
             return ShouldUseRemoteShadowPartnerAttackObservationGate(observedPlayerActionName, state);
+        }
+
+        internal static bool ShouldRetryRemoteShadowPartnerAttackResolutionAfterCreateForTesting(
+            string currentActionName,
+            string pendingActionName,
+            string queuedActionName,
+            bool currentActionBlockingHoldActive)
+        {
+            return ShadowPartnerClientActionResolver.ShouldRetryAttackResolutionAfterCreate(
+                currentActionName,
+                pendingActionName,
+                queuedActionName,
+                currentActionBlockingHoldActive);
         }
 
         private static bool ShouldDrawRemoteShadowPartner(RemoteUserActor actor, int? rawActionCode = null)
@@ -11560,6 +11728,14 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
+            TryQueuePostCreateRemoteShadowPartnerAttackResolution(
+                actor,
+                observedPlayerActionName,
+                state,
+                rawActionCode,
+                actionTriggerTime,
+                currentTime);
+
             if (!string.IsNullOrWhiteSpace(presentation.PendingActionName)
                 && currentTime >= presentation.PendingActionReadyTime)
             {
@@ -12038,6 +12214,49 @@ namespace HaCreator.MapSimulator.Pools
             return ShadowPartnerClientActionResolver.ShouldUseAttackIdentityForObservation(observedPlayerActionName, state);
         }
 
+        private static void TryQueuePostCreateRemoteShadowPartnerAttackResolution(
+            RemoteUserActor actor,
+            string observedPlayerActionName,
+            PlayerState state,
+            int? rawActionCode,
+            int observedActionTriggerTime,
+            int currentTime)
+        {
+            RemoteShadowPartnerPresentationState presentation = actor?.ShadowPartnerPresentation;
+            if (presentation == null
+                || !ShouldUseRemoteShadowPartnerAttackObservationGate(observedPlayerActionName, state)
+                || !ShadowPartnerClientActionResolver.ShouldRetryAttackResolutionAfterCreate(
+                    presentation.CurrentActionName,
+                    presentation.PendingActionName,
+                    presentation.QueuedActionName,
+                    ShouldHoldRemoteShadowPartnerCurrentAction(actor, currentTime)))
+            {
+                return;
+            }
+
+            if (!TryResolveRemoteShadowPartnerAttackAction(
+                    actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
+                    observedPlayerActionName,
+                    state,
+                    actor.Build?.GetWeapon()?.WeaponType,
+                    rawActionCode,
+                    actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames,
+                    out string resolvedAttackAction,
+                    out SkillAnimation resolvedAttackPlayback))
+            {
+                return;
+            }
+
+            presentation.PendingActionName = resolvedAttackAction;
+            presentation.PendingPlaybackAnimation = resolvedAttackPlayback;
+            presentation.PendingActionReadyTime = currentTime + ResolveRemoteShadowPartnerAttackDelayMs(
+                actor,
+                resolvedAttackAction,
+                resolvedAttackPlayback);
+            presentation.PendingFacingRight = actor.FacingRight;
+            presentation.PendingForceReplay = observedActionTriggerTime != int.MinValue;
+        }
+
         private static float ResolveRemoteShadowPartnerFrameAlpha(SkillFrame frame, int frameElapsedMs)
         {
             return ShadowPartnerClientActionResolver.ResolveFrameAlpha(frame, frameElapsedMs);
@@ -12452,9 +12671,20 @@ namespace HaCreator.MapSimulator.Pools
                 return nearestMetadataChargeSkillId;
             }
 
+            int payloadMaskBaseOffset = sizeof(int) * 4;
+            if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    preferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out int scopedMaskBaseChargeSkillId))
+            {
+                return scopedMaskBaseChargeSkillId;
+            }
+
             return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                 snapshot.RawPayload,
-                sizeof(int) * 4,
+                payloadMaskBaseOffset,
                 preferredSkillId,
                 out int payloadChargeSkillId)
                 ? payloadChargeSkillId
@@ -12521,9 +12751,20 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            int payloadMaskBaseOffset = sizeof(int) * 4;
+            if (AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    preferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out chargeElement))
+            {
+                return true;
+            }
+
             return AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
                 snapshot.RawPayload,
-                sizeof(int) * 4,
+                payloadMaskBaseOffset,
                 preferredSkillId,
                 out chargeElement);
         }
@@ -12971,6 +13212,8 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemoteShadowPartnerPresentationState ShadowPartnerPresentation { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatAuraEffect { get; set; }
         public List<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> TemporaryStatAuraEffectTails { get; } = new();
+        public int TemporaryStatAffectedLayerLastSyncTime { get; set; } = int.MinValue;
+        public int TemporaryStatAffectedLayerShiftCadenceFrameDurationMs { get; set; } = 16;
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatAuraEffectTail
         {
             get => TemporaryStatAuraEffectTails.Count > 0 ? TemporaryStatAuraEffectTails[0] : null;

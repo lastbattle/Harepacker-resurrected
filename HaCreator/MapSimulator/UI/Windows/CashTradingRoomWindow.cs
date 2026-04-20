@@ -425,14 +425,24 @@ namespace HaCreator.MapSimulator.UI
             RefreshOwnerRuntimeState();
         }
 
-        public void SubmitChatEntry()
+        public void SubmitChatEntry(bool allowDraftFallback = false)
         {
-            string chatLine = string.IsNullOrWhiteSpace(_chatEditControl.Text)
-                ? _chatDrafts[_chatDraftIndex]
-                : _chatEditControl.Text.Trim();
+            string chatLine = _chatEditControl.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(chatLine))
+            {
+                if (!allowDraftFallback)
+                {
+                    _statusMessage = "CCashTradingRoomDlg::OnKey ignored Enter because the dedicated chat-entry control is empty.";
+                    RefreshOwnerRuntimeState();
+                    return;
+                }
+
+                chatLine = _chatDrafts[_chatDraftIndex];
+            }
+
             AppendChatLine(_localTraderName, chatLine);
             AppendChatLine(_remoteTraderName, ResolveRemoteChatReply(chatLine));
-            if (string.IsNullOrWhiteSpace(_chatEditControl.Text))
+            if (allowDraftFallback && string.IsNullOrWhiteSpace(_chatEditControl.Text))
             {
                 _chatDraftIndex = (_chatDraftIndex + 1) % _chatDrafts.Length;
             }
@@ -519,7 +529,9 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            if (wheelDelta != 0 && GetChatLogBounds(ownerBounds).Contains(mouseState.Position))
+            if (wheelDelta != 0
+                && (GetChatLogBounds(ownerBounds).Contains(mouseState.Position)
+                    || chatScrollBounds.Contains(mouseState.Position)))
             {
                 ScrollChat(wheelDelta > 0 ? -1 : 1);
                 _focusedControl = TradeOwnerFocusTarget.ChatLog;

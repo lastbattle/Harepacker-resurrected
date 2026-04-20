@@ -547,19 +547,20 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalState? existingState = _remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState existingStateValue)
                 ? existingStateValue
                 : null;
-            int? preferredSourceMapId = ResolveRemoteTownPortalPreferredSourceMapId(packet.OwnerCharacterId, currentMapId, existingState);
+            RemoteTownPortalState? townScopedExistingState = FilterRemoteTownPortalStateByTownMap(existingState, currentMapId);
+            int? preferredSourceMapId = ResolveRemoteTownPortalPreferredSourceMapId(packet.OwnerCharacterId, currentMapId, townScopedExistingState);
             if (destination.HasValue)
             {
                 RememberRemoteTownPortalFieldMetadata(packet.OwnerCharacterId, currentMapId, packet.X, packet.Y, destination.Value, currentTime);
                 AdoptPendingRemoteTownPortalOwnerFieldObservations(packet.OwnerCharacterId, destination.Value.MapId);
-                preferredSourceMapId = ResolveRemoteTownPortalPreferredSourceMapId(packet.OwnerCharacterId, currentMapId, existingState);
+                preferredSourceMapId = ResolveRemoteTownPortalPreferredSourceMapId(packet.OwnerCharacterId, currentMapId, townScopedExistingState);
             }
 
             RemoteTownPortalResolvedDestination? resolvedDestination = ResolveRemoteTownPortalDestination(
                 packet.OwnerCharacterId,
                 currentMapId,
                 destination,
-                existingState);
+                townScopedExistingState);
             bool resolvedFromWzFallback = false;
             if (!resolvedDestination.HasValue
                 && TryResolveRemoteTownPortalWzFallbackDestination(currentMapId, preferredSourceMapId, out RemoteTownPortalResolvedDestination fallbackDestination))
@@ -579,7 +580,7 @@ namespace HaCreator.MapSimulator.Fields
                 RemoteTownPortalObservationSource observationSource = ResolveRemoteTownPortalResolvedDestinationObservationSource(
                     packet.OwnerCharacterId,
                     currentMapId,
-                    existingState,
+                    townScopedExistingState,
                     resolvedDestination.Value);
                 RememberRemoteTownPortalObservedFieldMetadata(
                     packet.OwnerCharacterId,
@@ -589,8 +590,8 @@ namespace HaCreator.MapSimulator.Fields
                     observationSource);
             }
 
-            RemoteTownPortalVisualPhase phase = ResolveRemoteTownPortalCreatePhase(packet.State, existingState);
-            byte resolvedState = ResolveRemoteTownPortalCreateState(packet.State, existingState);
+            RemoteTownPortalVisualPhase phase = ResolveRemoteTownPortalCreatePhase(packet.State, townScopedExistingState);
+            byte resolvedState = ResolveRemoteTownPortalCreateState(packet.State, townScopedExistingState);
             _remoteTownPortals[packet.OwnerCharacterId] = new RemoteTownPortalState(
                 packet.OwnerCharacterId,
                 resolvedState,
@@ -863,7 +864,7 @@ namespace HaCreator.MapSimulator.Fields
                 activeKeys.Add(key);
                 _remoteOpenGateRuntimes.TryGetValue(key, out RemoteOpenGateRuntime runtime);
                 bool hasPartner = _remoteOpenGates.TryGetValue(new RemoteOpenGateKey(state.OwnerCharacterId, !state.IsFirstSlot), out RemoteOpenGateState partner)
-                                  && partner.Phase != RemoteOpenGateVisualPhase.Removing;
+                                  && HasRemoteOpenGateSameMapPartner(state.MapId, partner.MapId, partner.Phase);
                 bool hasStablePartner = hasPartner && partner.Phase == RemoteOpenGateVisualPhase.Stable;
                 _remoteOpenGateRuntimes[key] = UpsertRemoteOpenGateRuntime(
                     runtime,
@@ -887,10 +888,23 @@ namespace HaCreator.MapSimulator.Fields
                 bool hasTargetState = _remoteOpenGates.TryGetValue(targetKey, out RemoteOpenGateState targetState);
                 runtime.Portal.LinkedPortalId = _remoteOpenGates.TryGetValue(key, out RemoteOpenGateState state)
                     && ShouldLinkRemoteOpenGatePortal(state.Phase, hasTargetState, targetState.Phase)
+                    && HasRemoteOpenGateSameMapPartner(state.MapId, targetState.MapId, targetState.Phase)
                     && _remoteOpenGateRuntimes.TryGetValue(targetKey, out RemoteOpenGateRuntime target)
                     ? target.Portal.Id
                     : null;
             }
+        }
+
+        private static RemoteTownPortalState? FilterRemoteTownPortalStateByTownMap(
+            RemoteTownPortalState? existingState,
+            int townMapId)
+        {
+            if (!existingState.HasValue || existingState.Value.MapId != townMapId)
+            {
+                return null;
+            }
+
+            return existingState;
         }
 
         private RemoteTownPortalRemovalSnapshot CaptureRemoteTownPortalRemovalSnapshot(RemoteTownPortalState state, int currentTime)
@@ -2482,6 +2496,15 @@ namespace HaCreator.MapSimulator.Fields
                    && partnerPhase == RemoteOpenGateVisualPhase.Stable;
         }
 
+        private static bool HasRemoteOpenGateSameMapPartner(
+            int mapId,
+            int partnerMapId,
+            RemoteOpenGateVisualPhase partnerPhase)
+        {
+            return mapId == partnerMapId
+                   && partnerPhase != RemoteOpenGateVisualPhase.Removing;
+        }
+
         private static BaseDXDrawableItem CreateRemoteOpenGateDrawable(
             RemoteOpenGateState state,
             bool hasStablePartner,
@@ -3492,6 +3515,61 @@ namespace HaCreator.MapSimulator.Fields
                 observationGroups);
         }
 
+        internal static int? ResolvePreferredRemoteTownPortalSourceMapIdForTesting(
+            int currentMapId,
+            bool hasExistingDestination,
+            int existingStateMapId,
+            int existingDestinationMapId,
+            float existingDestinationX,
+            float existingDestinationY,
+            bool hasMetadata,
+            int metadataSourceMapId,
+            float metadataSourceX,
+            float metadataSourceY,
+            int metadataTownMapId,
+            RemoteTownPortalObservationSource metadataObservationSource,
+            int metadataRecordedAt,
+            params (int SourceMapId, float SourceX, float SourceY, int TownMapId, RemoteTownPortalObservationSource ObservationSource, int RecordedAt)[] observations)
+        {
+            RemoteTownPortalState? existingState = hasExistingDestination
+                ? new RemoteTownPortalState(
+                    OwnerCharacterId: 1,
+                    State: 1,
+                    MapId: existingStateMapId,
+                    X: 0,
+                    Y: 0,
+                    Destination: new RemoteTownPortalResolvedDestination(existingDestinationMapId, existingDestinationX, existingDestinationY),
+                    Phase: RemoteTownPortalVisualPhase.Stable,
+                    PhaseStartedAt: 0,
+                    RemovalState: null,
+                    RemovalSnapshot: null)
+                : null;
+            RemoteTownPortalFieldMetadata? metadata = hasMetadata
+                ? new RemoteTownPortalFieldMetadata(
+                    metadataSourceMapId,
+                    metadataSourceX,
+                    metadataSourceY,
+                    metadataTownMapId,
+                    metadataObservationSource,
+                    metadataRecordedAt)
+                : null;
+            List<RemoteTownPortalOwnerFieldObservation[]> observationGroups = observations
+                .Select(observation => new RemoteTownPortalOwnerFieldObservation(
+                    observation.SourceMapId,
+                    observation.SourceX,
+                    observation.SourceY,
+                    observation.TownMapId,
+                    observation.ObservationSource,
+                    observation.RecordedAt))
+                .GroupBy(observation => observation.SourceMapId)
+                .Select(group => group.ToArray())
+                .ToList();
+            return SelectPreferredRemoteTownPortalSourceMapId(
+                FilterRemoteTownPortalStateByTownMap(existingState, currentMapId),
+                metadata,
+                observationGroups);
+        }
+
         internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestinationFromPendingObservedCandidatesForTesting(
             int currentMapId,
             bool hasIncomingDestination,
@@ -3797,6 +3875,14 @@ namespace HaCreator.MapSimulator.Fields
             RemoteOpenGateVisualPhase partnerPhase)
         {
             return ShouldLinkRemoteOpenGatePortal(phase, hasPartner, partnerPhase);
+        }
+
+        internal static bool HasRemoteOpenGateSameMapPartnerForTesting(
+            int mapId,
+            int partnerMapId,
+            RemoteOpenGateVisualPhase partnerPhase)
+        {
+            return HasRemoteOpenGateSameMapPartner(mapId, partnerMapId, partnerPhase);
         }
 
         internal static RemoteOpenGateVisualPhase ResolveRemoteOpenGatePartnerLossPhaseForTesting(

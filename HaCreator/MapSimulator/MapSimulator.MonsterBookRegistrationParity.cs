@@ -16,11 +16,16 @@ namespace HaCreator.MapSimulator
         private const int MonsterBookRegistrationResponseDelayMs = 120;
         private const int MonsterBookRegistrationSyntheticResultTimeoutMs = 2000;
         private const int MonsterBookRegistrationOfficialSessionTimeoutMs = 5000;
+        private const int MonsterBookOwnershipSaveResponseDelayMs = 120;
+        private const int MonsterBookOwnershipSaveSyntheticResultTimeoutMs = 2000;
+        private const int MonsterBookOwnershipSaveOfficialSessionTimeoutMs = 5000;
         // No recovered dedicated Monster Book save opcode is wired yet in this local utility seam,
         // so save requests currently ride the ownership-sync channel contract.
         private const int MonsterBookOwnershipSaveRequestOpcode = LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType;
         private PendingMonsterBookRegistrationRequest _pendingMonsterBookRegistrationRequest;
+        private PendingMonsterBookOwnershipSaveRequest _pendingMonsterBookOwnershipSaveRequest;
         private int _nextMonsterBookRegistrationRequestId = 1;
+        private int _nextMonsterBookOwnershipSaveRequestId = 1;
 
         internal readonly struct MonsterBookRegistrationResultPayload
         {
@@ -53,6 +58,7 @@ namespace HaCreator.MapSimulator
             public MonsterBookOwnershipSyncPayload(
                 bool clearRequested,
                 bool replaceExisting,
+                int? requestId,
                 int? characterId,
                 string characterName,
                 int? registeredMobId,
@@ -61,6 +67,7 @@ namespace HaCreator.MapSimulator
             {
                 ClearRequested = clearRequested;
                 ReplaceExisting = replaceExisting;
+                RequestId = requestId;
                 CharacterId = characterId;
                 CharacterName = characterName ?? string.Empty;
                 RegisteredMobId = registeredMobId;
@@ -70,6 +77,7 @@ namespace HaCreator.MapSimulator
 
             public bool ClearRequested { get; }
             public bool ReplaceExisting { get; }
+            public int? RequestId { get; }
             public int? CharacterId { get; }
             public string CharacterName { get; }
             public int? RegisteredMobId { get; }
@@ -88,6 +96,21 @@ namespace HaCreator.MapSimulator
             public long SentTick { get; init; }
             public int ResponseDelayMs { get; init; } = MonsterBookRegistrationResponseDelayMs;
             public string RequestSummary { get; init; } = string.Empty;
+            public bool SyntheticResultQueued { get; set; }
+        }
+
+        private sealed class PendingMonsterBookOwnershipSaveRequest
+        {
+            public CharacterBuild Build { get; init; }
+            public int CharacterId { get; init; }
+            public string CharacterName { get; init; } = string.Empty;
+            public int RequestId { get; init; }
+            public int RegisteredMobId { get; init; }
+            public IReadOnlyDictionary<int, int> CardCountsByMob { get; init; } = new Dictionary<int, int>();
+            public byte[] Payload { get; init; } = Array.Empty<byte>();
+            public long SentTick { get; init; }
+            public int ResponseDelayMs { get; init; } = MonsterBookOwnershipSaveResponseDelayMs;
+            public string SourceSummary { get; init; } = string.Empty;
             public bool SyntheticResultQueued { get; set; }
         }
 
@@ -461,6 +484,7 @@ namespace HaCreator.MapSimulator
             result = new MonsterBookOwnershipSyncPayload(
                 clearRequested: false,
                 replaceExisting: true,
+                requestId: null,
                 characterId: null,
                 characterName: string.Empty,
                 registeredMobId: null,
@@ -581,6 +605,7 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
+                    null,
                     characterId,
                     characterName,
                     registeredMobId,
@@ -661,6 +686,7 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
+                    null,
                     characterId,
                     characterName,
                     registeredMobId,
@@ -748,6 +774,7 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
+                    null,
                     characterId,
                     characterName,
                     registeredMobId,

@@ -163,7 +163,13 @@ namespace HaCreator.MapSimulator.Fields
                 || propertyName.Equals("script", StringComparison.OrdinalIgnoreCase)
                 || propertyName.Equals("scripts", StringComparison.OrdinalIgnoreCase)
                 || propertyName.Equals("name", StringComparison.OrdinalIgnoreCase)
-                || propertyName.Equals("info", StringComparison.OrdinalIgnoreCase))
+                || propertyName.Equals("info", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("startscript", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("endscript", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("npcAct", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("onUserEnter", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("onFirstUserEnter", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("fieldScript", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }

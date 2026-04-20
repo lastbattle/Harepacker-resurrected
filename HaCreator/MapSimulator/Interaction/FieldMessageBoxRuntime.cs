@@ -1895,6 +1895,27 @@ namespace HaCreator.MapSimulator.Interaction
             return (registrationId, activeAfterRegister, activeAfterHalfFade, activeAfterFadeEnd);
         }
 
+        internal static (bool ShouldRemoveBeforeOwnerRetire, bool ShouldRemoveAfterOwnerRetire) SimulateClientLeaveRetireGateForTest(int currentTick)
+        {
+            ManagedOneTimeAnimationDisplayer oneTimeAnimationDisplayer = new();
+            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(Point.Zero, currentTick, oneTimeAnimationDisplayer);
+            layer.BeginLeave(
+                Point.Zero,
+                currentTick,
+                new FrozenMessageBoxRenderState(
+                    DisplayTexture: new Texture2D(GraphicsDeviceServiceForTests.Instance, 1, 1),
+                    DisplayOrigin: Point.Zero,
+                    TextLayout: MessageBoxTextLayout.Default,
+                    DrawTextOverTexture: false));
+
+            int fadeEndTick = currentTick + ClientLeaveCanvasFadeDurationMs;
+            bool shouldRemoveBeforeOwnerRetire = layer.ShouldRemoveAfterLeave(fadeEndTick);
+            oneTimeAnimationDisplayer.Update(fadeEndTick);
+            layer.UpdateLeave(fadeEndTick);
+            bool shouldRemoveAfterOwnerRetire = layer.ShouldRemoveAfterLeave(fadeEndTick);
+            return (shouldRemoveBeforeOwnerRetire, shouldRemoveAfterOwnerRetire);
+        }
+
         private FrozenMessageBoxRenderState CaptureLeaveRenderState(FieldMessageBoxEntry entry)
         {
             Texture2D displayTexture = entry.GetDisplayTexture();
@@ -2503,7 +2524,7 @@ namespace HaCreator.MapSimulator.Interaction
                 InsertedCapturedCanvas = canvas != null;
                 if (canvas != null)
                 {
-                    _layerObject.Canvas = canvas;
+                    _layerObject.SetCanvas(canvas);
                 }
 
                 LeaveState = LeaveCanvasState.ReinsertedFade;
@@ -2530,7 +2551,7 @@ namespace HaCreator.MapSimulator.Interaction
                 LoadedAnimationLayer = true;
                 LoadedCanvasIndex = ClientLeaveGetCanvasIndex;
                 LoadedCanvasObject = true;
-                _layerObject.Canvas = new ManagedMessageBoxCanvas(LoadedCanvasIndex.Value, null);
+                _layerObject.SetCanvas(new ManagedMessageBoxCanvas(LoadedCanvasIndex.Value, null));
             }
 
             private void SetLayerColor(int colorValue)
@@ -2593,7 +2614,18 @@ namespace HaCreator.MapSimulator.Interaction
 
             public bool ShouldRemoveAfterLeave(int currentTick)
             {
-                return GetLeaveFadeElapsed(currentTick) >= ClientLeaveCanvasFadeDurationMs;
+                if (GetLeaveFadeElapsed(currentTick) < ClientLeaveCanvasFadeDurationMs)
+                {
+                    return false;
+                }
+
+                if (!RegisteredOneTimeAnimationLayerObject)
+                {
+                    return true;
+                }
+
+                return !OneTimeAnimationRegistrationActive
+                       && _layerObject.LeaveSurfaceRetired;
             }
         }
 
@@ -2664,10 +2696,18 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class ManagedMessageBoxLayerObject
         {
             public ManagedMessageBoxCanvas Canvas { get; set; }
+            public bool LeaveSurfaceRetired { get; private set; }
+
+            public void SetCanvas(ManagedMessageBoxCanvas canvas)
+            {
+                Canvas = canvas;
+                LeaveSurfaceRetired = false;
+            }
 
             public void RetireLeaveSurface()
             {
                 Canvas = null;
+                LeaveSurfaceRetired = true;
             }
         }
 

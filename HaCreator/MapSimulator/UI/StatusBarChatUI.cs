@@ -392,20 +392,26 @@ namespace HaCreator.MapSimulator.UI
         internal static bool ShouldCommitHoveredWhisperPickerCandidateOnRelease(
             bool pressedWhisperPickerCandidate,
             string pressedWhisperTarget,
-            string hoveredWhisperTarget)
+            string hoveredWhisperTarget,
+            bool dropdownHovered,
+            int hoveredPickerClientRowIndex)
         {
             // Client CCtrlComboBoxSelect::OnMouseButton commits on left-release row hit
             // (msg 514) without requiring a prior pressed-row capture.
-            return !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
+            return (dropdownHovered && hoveredPickerClientRowIndex >= 0)
+                || !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
         }
 
         internal static bool ShouldDeleteHoveredWhisperPickerCandidateOnRightRelease(
             string pressedWhisperTarget,
-            string hoveredWhisperTarget)
+            string hoveredWhisperTarget,
+            bool dropdownHovered,
+            int hoveredPickerClientRowIndex)
         {
             // Client CCtrlComboBoxSelect::OnMouseButton deletes on right-release row hit
             // (msg 517) using the release row index directly.
-            return !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
+            return (dropdownHovered && hoveredPickerClientRowIndex >= 0)
+                || !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
         }
 
         internal static bool ShouldConsumeWhisperPickerPointerCapture(
@@ -2432,13 +2438,13 @@ namespace HaCreator.MapSimulator.UI
                 || comboToggleHovered
                 || dropdownHovered;
 
-            if (dropdownHovered && hoveredPickerRegion != null)
+            if (dropdownHovered)
             {
-                if (hoveredPickerRegion.ClientComboDeleteIndex >= 0)
+                if (hoveredPickerClientRowIndex >= 0)
                 {
-                    WhisperTargetPickerModalComboDropdownHoverIndexRequested?.Invoke(hoveredPickerRegion.ClientComboDeleteIndex);
+                    WhisperTargetPickerModalComboDropdownHoverIndexRequested?.Invoke(hoveredPickerClientRowIndex);
                 }
-                else
+                else if (hoveredPickerRegion != null)
                 {
                     WhisperTargetPickerModalComboDropdownHoverRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
                 }
@@ -2457,7 +2463,9 @@ namespace HaCreator.MapSimulator.UI
                 && hoveredPickerClientRowIndex >= 0
                 && ShouldDeleteHoveredWhisperPickerCandidateOnRightRelease(
                     _pressedRightWhisperPickerCandidateTarget,
-                    hoveredPickerRegion?.WhisperTarget))
+                    hoveredPickerRegion?.WhisperTarget,
+                    dropdownHovered,
+                    hoveredPickerClientRowIndex))
             {
                 ResetWhisperPickerPointerCaptureState();
                 _pressedRightWhisperPickerCandidateTarget = null;
@@ -2561,7 +2569,9 @@ namespace HaCreator.MapSimulator.UI
             if (ShouldCommitHoveredWhisperPickerCandidateOnRelease(
                     _pressedWhisperPickerCandidate,
                     _pressedWhisperPickerCandidateTarget,
-                    hoveredPickerRegion?.WhisperTarget))
+                    hoveredPickerRegion?.WhisperTarget,
+                    dropdownHovered,
+                    hoveredPickerClientRowIndex))
             {
                 ResetWhisperPickerPointerCaptureState();
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();

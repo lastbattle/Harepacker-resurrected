@@ -200,7 +200,7 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerFocusTarget);
 
             InitialQuizOwnerTimeoutBehavior timeoutBehavior = ResolveInitialQuizOwnerTimeoutBehavior(
-                snapshot.RemainingMs,
+                snapshot.RemainingSeconds,
                 _initialQuizOwnerResultSent,
                 _initialQuizOwnerTimeoutCloseArmed);
             if (timeoutBehavior == InitialQuizOwnerTimeoutBehavior.Wait)
@@ -234,7 +234,7 @@ namespace HaCreator.MapSimulator
             Rectangle okButtonBounds = ResolveInitialQuizOwnerOkButtonBounds(ownerBounds);
             Rectangle inputBounds = ResolveInitialQuizOwnerInputBounds(ownerBounds);
             Point cursor = new(mouseState.X, mouseState.Y);
-            bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingMs);
+            bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingSeconds);
             bool cursorInInput = inputBounds.Contains(cursor);
             _initialQuizOwnerHoveringOkButton = showInput && okButtonBounds.Contains(cursor);
             AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
@@ -317,7 +317,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (snapshot.RemainingMs <= 0)
+            if (snapshot.RemainingSeconds <= 0)
             {
                 return true;
             }
@@ -559,7 +559,7 @@ namespace HaCreator.MapSimulator
                     InitialQuizOwnerSecondaryTextScale);
             }
 
-            bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingMs);
+            bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingSeconds);
             DrawInitialQuizOwnerAnswerLabel(inputBounds);
             if (showInput)
             {
@@ -796,17 +796,17 @@ namespace HaCreator.MapSimulator
             return _initialQuizOwnerInput.ToString();
         }
 
-        internal static bool ShouldCaptureInitialQuizOwnerTextInput(bool ownerActive, int remainingMs, InitialQuizOwnerFocusTarget focusTarget)
+        internal static bool ShouldCaptureInitialQuizOwnerTextInput(bool ownerActive, int remainingSeconds, InitialQuizOwnerFocusTarget focusTarget)
         {
             return ownerActive
-                && remainingMs > 0
+                && remainingSeconds > 0
                 && focusTarget == InitialQuizOwnerFocusTarget.Input;
         }
 
         private bool ShouldCaptureInitialQuizOwnerTextInput()
         {
             return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out InitialQuizOwnerSnapshot snapshot)
-                && ShouldCaptureInitialQuizOwnerTextInput(true, snapshot.RemainingMs, _initialQuizOwnerFocusTarget);
+                && ShouldCaptureInitialQuizOwnerTextInput(true, snapshot.RemainingSeconds, _initialQuizOwnerFocusTarget);
         }
 
         private bool DoesInitialQuizOwnerCaptureWindowInput()
@@ -1337,9 +1337,9 @@ namespace HaCreator.MapSimulator
             return !string.IsNullOrWhiteSpace(hintText);
         }
 
-        internal static bool ShouldShowInitialQuizOwnerInput(int remainingMs)
+        internal static bool ShouldShowInitialQuizOwnerInput(int remainingSeconds)
         {
-            return remainingMs > 0;
+            return remainingSeconds > 0;
         }
 
         internal static InitialQuizOwnerFocusTarget ResolveInitialQuizOwnerMousePressFocusTarget(
@@ -1398,11 +1398,11 @@ namespace HaCreator.MapSimulator
         }
 
         internal static InitialQuizOwnerTimeoutBehavior ResolveInitialQuizOwnerTimeoutBehavior(
-            int remainingMs,
+            int remainingSeconds,
             bool resultSent,
             bool timeoutCloseArmed)
         {
-            if (resultSent || remainingMs > 0)
+            if (resultSent || remainingSeconds > 0)
             {
                 return InitialQuizOwnerTimeoutBehavior.Wait;
             }

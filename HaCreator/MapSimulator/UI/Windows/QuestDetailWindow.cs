@@ -1008,7 +1008,7 @@ namespace HaCreator.MapSimulator.UI
                 maxWidth,
                 scale,
                 lane,
-                (token, drawPosition, drawStyle) =>
+                (token, drawPosition, _, drawStyle) =>
                 {
                     if (token.Texture != null)
                     {
@@ -1093,7 +1093,7 @@ namespace HaCreator.MapSimulator.UI
             float maxWidth,
             float scale,
             QuestDetailTextLane lane,
-            Action<RichTextToken, Vector2, RichTextStyleState> drawToken,
+            Action<RichTextToken, Vector2, Vector2, RichTextStyleState> drawToken,
             Color defaultColor)
         {
             float baselineHeight = Math.Max(1f, GetLineHeight(scale, lane));
@@ -1163,7 +1163,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                drawToken?.Invoke(token, new Vector2(currentX, currentY), currentStyle);
+                drawToken?.Invoke(token, new Vector2(currentX, currentY), measuredToken, currentStyle);
                 currentX += measuredToken.X;
                 lineHeight = Math.Max(lineHeight, measuredToken.Y > 0f ? measuredToken.Y : baselineHeight);
                 if (token.Kind != RichTextTokenKind.Space)
@@ -1183,10 +1183,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (token.Kind == RichTextTokenKind.Icon ||
-                token.Kind == RichTextTokenKind.Surface ||
-                token.Kind == RichTextTokenKind.Reference)
+                token.Kind == RichTextTokenKind.Surface)
             {
                 return new Vector2(token.Width, token.AdvanceHeight);
+            }
+
+            if (token.Kind == RichTextTokenKind.Reference)
+            {
+                if (!string.IsNullOrEmpty(token.Text))
+                {
+                    return MeasureText(token.Text, scale, style.Emphasized, lane, style.FontFamily, style.FontPixelSize);
+                }
+
+                return new Vector2(token.Width, token.Height);
             }
 
             return new Vector2(token.Width, token.Height);
@@ -1772,7 +1781,7 @@ namespace HaCreator.MapSimulator.UI
                 maxWidth,
                 scale,
                 lane,
-                (token, drawPosition, _) =>
+                (token, drawPosition, _, _) =>
                 {
                     if (hoveredItem != null || token.Kind != RichTextTokenKind.Icon || !token.ItemId.HasValue)
                     {
@@ -1780,8 +1789,8 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     Rectangle bounds = new(
-                        (int)Math.Round(drawPosition.X),
-                        (int)Math.Round(drawPosition.Y),
+                        (int)Math.Round(drawPosition.X + token.DrawOffsetX),
+                        (int)Math.Round(drawPosition.Y + token.DrawOffsetY),
                         Math.Max(1, token.Width),
                         Math.Max(1, token.Height));
                     if (bounds.Contains(mouseX, mouseY) && bounds.Intersects(clipRect))
@@ -1816,7 +1825,7 @@ namespace HaCreator.MapSimulator.UI
                 maxWidth,
                 scale,
                 lane,
-                (token, drawPosition, _) =>
+                (token, drawPosition, measuredToken, _) =>
                 {
                     if (hoveredReference.HasValue ||
                         token.Kind != RichTextTokenKind.Reference ||
@@ -1828,8 +1837,8 @@ namespace HaCreator.MapSimulator.UI
                     Rectangle bounds = new(
                         (int)Math.Round(drawPosition.X),
                         (int)Math.Round(drawPosition.Y),
-                        Math.Max(1, token.Width),
-                        Math.Max(1, token.Height));
+                        Math.Max(1, (int)Math.Ceiling(measuredToken.X)),
+                        Math.Max(1, (int)Math.Ceiling(measuredToken.Y)));
                     if (bounds.Contains(mouseX, mouseY) && bounds.Intersects(clipRect))
                     {
                         hoveredReference = token.InlineReference.Value;
@@ -3277,7 +3286,7 @@ namespace HaCreator.MapSimulator.UI
             public float FontSize { get; }
             public int DrawOffsetX { get; }
             public int DrawOffsetY { get; }
-            public int AdvanceHeight => Math.Max(0, Height + Math.Max(0, DrawOffsetY));
+            public int AdvanceHeight => Math.Max(0, Height + Math.Abs(DrawOffsetY));
 
             public static RichTextToken StyleToken(string styleTag)
             {

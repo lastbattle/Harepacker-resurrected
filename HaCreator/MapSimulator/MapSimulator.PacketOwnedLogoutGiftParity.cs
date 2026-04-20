@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Util;
@@ -902,7 +903,7 @@ namespace HaCreator.MapSimulator
         private string ShowPacketOwnedLogoutGiftCompletionDialog()
         {
             string completionMessage = BuildPacketOwnedLogoutGiftCompletionMessage();
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow)
+            if (TryEnsurePacketOwnedLogoutGiftCompletionDialogOwner())
             {
                 ShowLoginUtilityDialog(
                     "Logout Gift",
@@ -919,6 +920,34 @@ namespace HaCreator.MapSimulator
             DestroyPacketOwnedLogoutGiftOwnerSingleton();
             return
                 $"Client follow-up util dialog owner was unavailable, so the simulator kept StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)} local: {completionMessage}{continuationSuffix}";
+        }
+
+        private bool TryEnsurePacketOwnedLogoutGiftCompletionDialogOwner()
+        {
+            if (uiWindowManager == null || GraphicsDevice == null)
+            {
+                return false;
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow)
+            {
+                return true;
+            }
+
+            WzImage uiWindow2Image = global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
+            WzImage loginImage = global::HaCreator.Program.FindImage("UI", "Login.img");
+            WzImage basicImage = global::HaCreator.Program.FindImage("UI", "Basic.img");
+            WzImage soundUIImage = global::HaCreator.Program.FindImage("Sound", "UI.img");
+            UIWindowLoader.RegisterLoginUtilityDialogWindow(
+                uiWindowManager,
+                uiWindow2Image,
+                loginImage,
+                basicImage,
+                soundUIImage,
+                GraphicsDevice,
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight);
+            return uiWindowManager.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow;
         }
 
         private void HandlePacketOwnedLogoutGiftCompletionDialogDismissed()

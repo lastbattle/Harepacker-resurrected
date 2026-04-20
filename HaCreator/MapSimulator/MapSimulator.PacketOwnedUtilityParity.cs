@@ -4011,6 +4011,18 @@ namespace HaCreator.MapSimulator
             Func<Vector2> getPosition = () => player.Position;
             Func<bool> getFlip = () => player.FacingRight;
             Vector2 fallbackPosition = getPosition();
+            Func<int, Vector2?> snapshotPositionFactory = sampleTime =>
+            {
+                PacketOwnedActiveEffectMotionBlurOwnerSample ownerSample =
+                    ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(player, sampleTime);
+                return ownerSample.Position;
+            };
+            Func<int, bool?> snapshotFlipFactory = sampleTime =>
+            {
+                PacketOwnedActiveEffectMotionBlurOwnerSample ownerSample =
+                    ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(player, sampleTime);
+                return ownerSample.FacingRight;
+            };
             var state = new Animation.AnimationEffects.SecondaryMotionBlurAnimationState
             {
                 SimulatedAnimationStateId = NextPacketOwnedActiveEffectMotionBlurStateId(),
@@ -4043,6 +4055,8 @@ namespace HaCreator.MapSimulator
                 snapshotRetentionMs: definition.DelayMs,
                 ownsFrameTextures: true,
                 snapshotFrameFactory: snapshotFrameFactory,
+                snapshotPositionFactory: snapshotPositionFactory,
+                snapshotFlipFactory: snapshotFlipFactory,
                 animationState: state);
             if (_packetOwnedActiveEffectMotionBlurId < 0)
             {
@@ -4122,6 +4136,74 @@ namespace HaCreator.MapSimulator
                 out frames,
                 out _,
                 out _);
+        }
+
+        private readonly struct PacketOwnedActiveEffectMotionBlurOwnerSample
+        {
+            public PacketOwnedActiveEffectMotionBlurOwnerSample(Vector2 position, bool facingRight)
+            {
+                Position = position;
+                FacingRight = facingRight;
+            }
+
+            public Vector2 Position { get; }
+            public bool FacingRight { get; }
+        }
+
+        private PacketOwnedActiveEffectMotionBlurOwnerSample ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(
+            PlayerCharacter player,
+            int sampleTime)
+        {
+            Vector2 fallbackPosition = player?.Position ?? Vector2.Zero;
+            bool fallbackFacingRight = player?.FacingRight ?? true;
+            PlayerMovementSyncSnapshot movementSnapshot = ResolvePacketOwnedActiveEffectMotionBlurSnapshotSource(player, sampleTime);
+            return ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(
+                movementSnapshot,
+                fallbackPosition,
+                fallbackFacingRight,
+                sampleTime);
+        }
+
+        private PlayerMovementSyncSnapshot ResolvePacketOwnedActiveEffectMotionBlurSnapshotSource(
+            PlayerCharacter player,
+            int sampleTime)
+        {
+            if (_lastPacketOwnedPassiveMoveSnapshot != null
+                && sampleTime <= _lastPacketOwnedPassiveMoveSnapshot.PassivePosition.TimeStamp)
+            {
+                return _lastPacketOwnedPassiveMoveSnapshot;
+            }
+
+            if (player == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return player.GetMovementSyncSnapshot(sampleTime, flushPath: false);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static PacketOwnedActiveEffectMotionBlurOwnerSample ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(
+            PlayerMovementSyncSnapshot movementSnapshot,
+            Vector2 fallbackPosition,
+            bool fallbackFacingRight,
+            int sampleTime)
+        {
+            if (movementSnapshot != null)
+            {
+                PassivePositionSnapshot sample = movementSnapshot.SampleAtTime(sampleTime);
+                return new PacketOwnedActiveEffectMotionBlurOwnerSample(
+                    new Vector2(sample.X, sample.Y),
+                    sample.FacingRight);
+            }
+
+            return new PacketOwnedActiveEffectMotionBlurOwnerSample(fallbackPosition, fallbackFacingRight);
         }
 
         private bool TryCreatePacketOwnedActiveEffectMotionBlurLayerStack(
@@ -4388,6 +4470,21 @@ namespace HaCreator.MapSimulator
         internal static int NextPacketOwnedActiveEffectMotionBlurStateIdForTesting()
         {
             return NextPacketOwnedActiveEffectMotionBlurStateId();
+        }
+
+        internal static (Vector2 Position, bool FacingRight) ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerStateForTesting(
+            PlayerMovementSyncSnapshot movementSnapshot,
+            Vector2 fallbackPosition,
+            bool fallbackFacingRight,
+            int sampleTime)
+        {
+            PacketOwnedActiveEffectMotionBlurOwnerSample sample =
+                ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(
+                    movementSnapshot,
+                    fallbackPosition,
+                    fallbackFacingRight,
+                    sampleTime);
+            return (sample.Position, sample.FacingRight);
         }
 
         private static void DisposePacketOwnedActiveEffectMotionBlurFrames(IEnumerable<IDXObject> frames)
@@ -6706,6 +6803,7 @@ namespace HaCreator.MapSimulator
         {
             StampPacketOwnedUtilityRequestState();
             SyncPacketOwnedRadioCreateLayerContextLifecycle();
+            SyncPacketOwnedRadioScheduleContextLifecycle();
             string scheduleSource = string.IsNullOrWhiteSpace(packetSource)
                 ? ResolvePacketOwnedRadioScheduleSourceLabel(packetType, null)
                 : packetSource.Trim();
@@ -6977,6 +7075,7 @@ namespace HaCreator.MapSimulator
         private void UpdatePacketOwnedRadioSchedule(int currentTickCount)
         {
             SyncPacketOwnedRadioCreateLayerContextLifecycle();
+            SyncPacketOwnedRadioScheduleContextLifecycle();
             if (!IsPacketOwnedRadioPlaying())
             {
                 return;
@@ -7095,6 +7194,7 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<string> BuildPacketOwnedRadioWindowLines()
         {
             List<string> lines = new();
+            SyncPacketOwnedRadioScheduleContextLifecycle();
             if (!IsPacketOwnedRadioPlaying())
             {
                 lines.Add("Packet-authored radio playback is idle.");
@@ -8977,6 +9077,41 @@ namespace HaCreator.MapSimulator
                 allowAfterRuntimeCharacterReset: resetForRuntimeCharacterChange);
         }
 
+        private void SyncPacketOwnedRadioScheduleContextLifecycle()
+        {
+            int runtimeCharacterId = ResolvePacketOwnedRadioRuntimeCharacterId();
+            _packetOwnedLocalUtilityContext.ObserveRadioScheduleRuntimeCharacterId(runtimeCharacterId);
+            if (runtimeCharacterId <= 0)
+            {
+                return;
+            }
+
+            int previousBoundCharacterId = _packetOwnedLocalUtilityContext.RadioScheduleBoundCharacterId;
+            bool resetForRuntimeCharacterChange = false;
+            if (_packetOwnedLocalUtilityContext.RequiresRadioScheduleCharacterReset(runtimeCharacterId))
+            {
+                resetForRuntimeCharacterChange = true;
+                if (ShouldResetPacketOwnedRadioForRuntimeCharacterChange(
+                        IsPacketOwnedRadioPlaying(),
+                        previousBoundCharacterId,
+                        runtimeCharacterId))
+                {
+                    string trackName = GetPacketOwnedRadioTrackName();
+                    StopPacketOwnedRadioSchedule(completed: false, emitChatNotice: false);
+                    _lastPacketOwnedRadioStatusMessage =
+                        $"Reset packet-owned radio playback for {FormatPacketOwnedRadioQuotedValue(trackName)} after runtime character changed from {previousBoundCharacterId} to {runtimeCharacterId}.";
+                }
+
+                _packetOwnedLocalUtilityContext.ResetRadioScheduleForCharacter(runtimeCharacterId);
+                PersistPacketOwnedRadioScheduleContextState(runtimeCharacterId);
+            }
+
+            _packetOwnedLocalUtilityContext.EnsureRadioScheduleInitializedFromRuntime(runtimeCharacterId);
+            RestorePersistedPacketOwnedRadioScheduleContextIfNeeded(
+                runtimeCharacterId,
+                allowAfterRuntimeCharacterReset: resetForRuntimeCharacterChange);
+        }
+
         private void CapturePacketOwnedRadioCreateLayerSessionState()
         {
             SyncPacketOwnedRadioCreateLayerContextLifecycle();
@@ -9192,6 +9327,7 @@ namespace HaCreator.MapSimulator
                 source,
                 Environment.TickCount,
                 runtimeCharacterId);
+            PersistPacketOwnedRadioScheduleContextState(runtimeCharacterId);
             return "Set packet-owned local utility radio schedule context.";
         }
 
@@ -9202,6 +9338,7 @@ namespace HaCreator.MapSimulator
                 source,
                 Environment.TickCount,
                 runtimeCharacterId);
+            PersistPacketOwnedRadioScheduleContextState(runtimeCharacterId);
             return "Cleared packet-owned local utility radio schedule context.";
         }
 
@@ -9239,6 +9376,41 @@ namespace HaCreator.MapSimulator
                 runtimeCharacterId);
         }
 
+        private void RestorePersistedPacketOwnedRadioScheduleContextIfNeeded(
+            int runtimeCharacterId,
+            bool allowAfterRuntimeCharacterReset)
+        {
+            if (!ShouldRestorePersistedPacketOwnedRadioScheduleContext(
+                    runtimeCharacterId,
+                    _packetOwnedLocalUtilityContext.RadioScheduleBoundCharacterId,
+                    _packetOwnedLocalUtilityContext.HasRadioScheduleContextValue,
+                    _packetOwnedLocalUtilityContext.RadioScheduleMutationSequence,
+                    _packetOwnedLocalUtilityContext.RadioScheduleLastMutationSource,
+                    allowAfterRuntimeCharacterReset))
+            {
+                return;
+            }
+
+            LoginCharacterAccountStore.LoginCharacterAccountEntryState storedEntry =
+                ResolveStoredPacketOwnedRadioScheduleEntry(runtimeCharacterId);
+            if (storedEntry == null || !HasPersistedPacketOwnedRadioScheduleContext(storedEntry))
+            {
+                return;
+            }
+
+            _packetOwnedLocalUtilityContext.RestoreRadioScheduleState(
+                runtimeCharacterId,
+                storedEntry.HasPacketOwnedRadioScheduleContextValue,
+                storedEntry.PacketOwnedRadioScheduleTrackDescriptor,
+                storedEntry.PacketOwnedRadioScheduleTimeValue,
+                storedEntry.PacketOwnedRadioScheduleMutationSequence,
+                string.IsNullOrWhiteSpace(storedEntry.PacketOwnedRadioScheduleLastMutationSource)
+                    ? "persisted-radioschedule"
+                    : storedEntry.PacketOwnedRadioScheduleLastMutationSource,
+                int.MinValue,
+                runtimeCharacterId);
+        }
+
         internal static bool ShouldRestorePersistedPacketOwnedRadioCreateLayerContext(
             int runtimeCharacterId,
             int boundCharacterId,
@@ -9250,6 +9422,33 @@ namespace HaCreator.MapSimulator
             if (runtimeCharacterId <= 0
                 || boundCharacterId != runtimeCharacterId
                 || hasOverride)
+            {
+                return false;
+            }
+
+            string normalizedMutationSource = mutationSource ?? string.Empty;
+            if (mutationSequence <= 0
+                && string.Equals(normalizedMutationSource, "fallback", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return allowAfterRuntimeCharacterReset
+                && mutationSequence == 1
+                && string.Equals(normalizedMutationSource, "runtime-character-reset", StringComparison.Ordinal);
+        }
+
+        internal static bool ShouldRestorePersistedPacketOwnedRadioScheduleContext(
+            int runtimeCharacterId,
+            int boundCharacterId,
+            bool hasContextValue,
+            int mutationSequence,
+            string mutationSource,
+            bool allowAfterRuntimeCharacterReset)
+        {
+            if (runtimeCharacterId <= 0
+                || boundCharacterId != runtimeCharacterId
+                || hasContextValue)
             {
                 return false;
             }
@@ -9286,6 +9485,11 @@ namespace HaCreator.MapSimulator
             return storedState?.Entries?.FirstOrDefault(entry => entry?.CharacterId == runtimeCharacterId);
         }
 
+        private LoginCharacterAccountStore.LoginCharacterAccountEntryState ResolveStoredPacketOwnedRadioScheduleEntry(int runtimeCharacterId)
+        {
+            return ResolveStoredPacketOwnedRadioCreateLayerEntry(runtimeCharacterId);
+        }
+
         private bool PersistPacketOwnedRadioCreateLayerContextState(int runtimeCharacterId)
         {
             int persistedCharacterId = runtimeCharacterId > 0
@@ -9307,12 +9511,42 @@ namespace HaCreator.MapSimulator
                 ResolveLoginRosterAccountId());
         }
 
+        private bool PersistPacketOwnedRadioScheduleContextState(int runtimeCharacterId)
+        {
+            int persistedCharacterId = runtimeCharacterId > 0
+                ? runtimeCharacterId
+                : _packetOwnedLocalUtilityContext.RadioScheduleBoundCharacterId;
+            if (persistedCharacterId <= 0)
+            {
+                return false;
+            }
+
+            return _loginCharacterAccountStore.UpdatePacketOwnedRadioScheduleState(
+                ResolveLoginRosterAccountName(),
+                ResolveLoginRosterWorldId(),
+                persistedCharacterId,
+                _packetOwnedLocalUtilityContext.HasRadioScheduleContextValue,
+                _packetOwnedLocalUtilityContext.RadioScheduleTrackDescriptor,
+                _packetOwnedLocalUtilityContext.RadioScheduleTimeValue,
+                _packetOwnedLocalUtilityContext.RadioScheduleMutationSequence,
+                _packetOwnedLocalUtilityContext.RadioScheduleLastMutationSource,
+                ResolveLoginRosterAccountId());
+        }
+
         private static bool HasPersistedPacketOwnedRadioCreateLayerContext(LoginCharacterAccountStore.LoginCharacterAccountEntryState entry)
         {
             return entry != null &&
                    (entry.HasPacketOwnedRadioCreateLayerLeftContextValue ||
                     entry.PacketOwnedRadioCreateLayerMutationSequence > 0 ||
                     !string.IsNullOrWhiteSpace(entry.PacketOwnedRadioCreateLayerLastMutationSource));
+        }
+
+        private static bool HasPersistedPacketOwnedRadioScheduleContext(LoginCharacterAccountStore.LoginCharacterAccountEntryState entry)
+        {
+            return entry != null &&
+                   (entry.HasPacketOwnedRadioScheduleContextValue ||
+                    entry.PacketOwnedRadioScheduleMutationSequence > 0 ||
+                    !string.IsNullOrWhiteSpace(entry.PacketOwnedRadioScheduleLastMutationSource));
         }
 
         private string OverridePacketOwnedApspReceiveContextToken(int receiveContextToken)

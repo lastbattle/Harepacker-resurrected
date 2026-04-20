@@ -2145,6 +2145,7 @@ namespace HaCreator.MapSimulator
                 if (!TryConsumeAuthorityInventoryStateCandidate(
                         candidatePools,
                         snapshot,
+                        state.InventoryType,
                         state.ItemId,
                         out InventorySlotData resolvedSlot))
                 {
@@ -2332,6 +2333,7 @@ namespace HaCreator.MapSimulator
         private static bool TryConsumeAuthorityInventoryStateCandidate(
             Dictionary<int, Queue<AuthorityInventoryStateCandidate>> candidatePools,
             List<InventorySlotData> targetSnapshot,
+            InventoryType targetInventoryType,
             int itemId,
             out InventorySlotData resolvedSlot)
         {
@@ -2343,11 +2345,19 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            Queue<AuthorityInventoryStateCandidate> deferredCandidates = null;
             while (candidates.Count > 0)
             {
                 AuthorityInventoryStateCandidate candidate = candidates.Dequeue();
                 if (candidate.Slot == null || candidate.Slot.ItemId != itemId)
                 {
+                    continue;
+                }
+
+                if (!IsAuthorityInventoryStateCandidateCompatibleWithTarget(candidate, targetInventoryType))
+                {
+                    deferredCandidates ??= new Queue<AuthorityInventoryStateCandidate>();
+                    deferredCandidates.Enqueue(candidate);
                     continue;
                 }
 
@@ -2360,10 +2370,43 @@ namespace HaCreator.MapSimulator
                 }
 
                 resolvedSlot = candidate.Slot.Clone();
+                while (deferredCandidates?.Count > 0)
+                {
+                    candidates.Enqueue(deferredCandidates.Dequeue());
+                }
+
                 return true;
             }
 
+            while (deferredCandidates?.Count > 0)
+            {
+                candidates.Enqueue(deferredCandidates.Dequeue());
+            }
+
             return false;
+        }
+
+        private static bool IsAuthorityInventoryStateCandidateCompatibleWithTarget(
+            AuthorityInventoryStateCandidate candidate,
+            InventoryType targetInventoryType)
+        {
+            if (!EquipmentChangeClientParity.IsSupportedCharacterEquipmentSourceInventory(targetInventoryType))
+            {
+                return false;
+            }
+
+            if (candidate.InventoryType != targetInventoryType)
+            {
+                return false;
+            }
+
+            InventoryType? preferredInventoryType = candidate.Slot?.PreferredInventoryType;
+            if (!preferredInventoryType.HasValue)
+            {
+                return true;
+            }
+
+            return preferredInventoryType.Value == targetInventoryType;
         }
 
         private static List<InventorySlotData> CloneInventorySnapshot(IReadOnlyList<InventorySlotData> snapshot)

@@ -3336,6 +3336,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _directMissCount;
         private int _directMaxCriticalDamage;
         private int _directMinCriticalDamage;
+        private int _recoveryTotal;
+        private int _recoveryCount;
         private int _timerSetMilliseconds;
         private int _timerStopRemainMilliseconds;
         private int _timerExpiryTick;
@@ -3362,6 +3364,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal int DirectMissCount => _directMissCount;
         internal int DirectMaxCriticalDamage => _directMaxCriticalDamage;
         internal int DirectMinCriticalDamage => _directMinCriticalDamage;
+        internal int RecoveryTotal => _recoveryTotal;
+        internal int RecoveryCount => _recoveryCount;
         internal string StatusMessage { get; private set; } = "CBattleRecordMan::OnPacket idle.";
 
         internal void Close()
@@ -3382,12 +3386,20 @@ namespace HaCreator.MapSimulator.Interaction
                     LastDotDamage = 0;
                     LastDotHitCount = 0;
                     LastAttrRate = null;
+                    _directDamageTotal = 0;
+                    _directAttackCount = 0;
+                    _directCriticalCount = 0;
+                    _directMissCount = 0;
+                    _directMaxCriticalDamage = 0;
+                    _directMinCriticalDamage = 0;
                     StatusMessage = "CBattleRecordMan cleared damage and DOT summary counters.";
                     break;
                 case 1:
                     LastDotDamage = 0;
                     LastDotHitCount = 0;
                     LastAttrRate = null;
+                    _recoveryTotal = 0;
+                    _recoveryCount = 0;
                     StatusMessage = "CBattleRecordMan cleared recovery and DOT-only summary counters.";
                     break;
                 case 2:
@@ -3563,20 +3575,28 @@ namespace HaCreator.MapSimulator.Interaction
                 return StatusMessage;
             }
 
-            _directAttackCount++;
-            _directDamageTotal += damage;
-            if (damage == 0)
+            if (damage < 0)
             {
-                _directMissCount++;
+                _recoveryCount++;
+                _recoveryTotal += Math.Abs(damage);
             }
-
-            MaxDamage = Math.Max(MaxDamage, damage);
-            MinDamage = MinDamage == 0 ? damage : Math.Min(MinDamage, damage);
-            if (isCritical)
+            else
             {
-                _directCriticalCount++;
-                _directMaxCriticalDamage = Math.Max(_directMaxCriticalDamage, damage);
-                _directMinCriticalDamage = _directMinCriticalDamage == 0 ? damage : Math.Min(_directMinCriticalDamage, damage);
+                _directAttackCount++;
+                _directDamageTotal += damage;
+                if (damage == 0)
+                {
+                    _directMissCount++;
+                }
+
+                MaxDamage = Math.Max(MaxDamage, damage);
+                MinDamage = MinDamage == 0 ? damage : Math.Min(MinDamage, damage);
+                if (isCritical)
+                {
+                    _directCriticalCount++;
+                    _directMaxCriticalDamage = Math.Max(_directMaxCriticalDamage, damage);
+                    _directMinCriticalDamage = _directMinCriticalDamage == 0 ? damage : Math.Min(_directMinCriticalDamage, damage);
+                }
             }
 
             if (attrRate.HasValue)
@@ -3585,7 +3605,9 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastDecodedAttrRate = attrRate.Value;
             }
 
-            StatusMessage = $"CBattleRecordMan::SetBattleDamageInfo applied nDamage={damage.ToString(CultureInfo.InvariantCulture)}, critical={isCritical}, summon={isSummon}, attrRate={(attrRate.HasValue ? attrRate.Value.ToString(CultureInfo.InvariantCulture) : "none")} under the recovered manager gate.";
+            StatusMessage = damage < 0
+                ? $"CBattleRecordMan::SetBattleDamageInfo applied recovery={Math.Abs(damage).ToString(CultureInfo.InvariantCulture)} (summon={isSummon}) under the recovered manager gate."
+                : $"CBattleRecordMan::SetBattleDamageInfo applied nDamage={damage.ToString(CultureInfo.InvariantCulture)}, critical={isCritical}, summon={isSummon}, attrRate={(attrRate.HasValue ? attrRate.Value.ToString(CultureInfo.InvariantCulture) : "none")} under the recovered manager gate.";
             AppendNote(StatusMessage);
             return StatusMessage;
         }
@@ -3704,6 +3726,9 @@ namespace HaCreator.MapSimulator.Interaction
                     lines.Add(LastAttrRate.HasValue
                         ? $"Last attr rate: {LastAttrRate.Value.ToString(CultureInfo.InvariantCulture)}"
                         : "Last attr rate: none");
+                    lines.Add(_lastDecodedAttrRate.HasValue
+                        ? $"Last decoded 421 attr rate: {_lastDecodedAttrRate.Value.ToString(CultureInfo.InvariantCulture)}"
+                        : "Last decoded 421 attr rate: none");
                     lines.Add(_lastDecodedDotHitCount > 0 || _lastDecodedDotDamage > 0
                         ? $"Last decoded 421: {_lastDecodedDotDamage.ToString(CultureInfo.InvariantCulture)} x {_lastDecodedDotHitCount.ToString(CultureInfo.InvariantCulture)}"
                         : "Last decoded 421: none");
@@ -3719,6 +3744,7 @@ namespace HaCreator.MapSimulator.Interaction
                     lines.Add($"Total damage: {TotalDamage.ToString(CultureInfo.InvariantCulture)} across {TotalHits.ToString(CultureInfo.InvariantCulture)} DOT hit(s)");
                     lines.Add($"Damage bounds: min={FormatDamage(MinDamage)}, max={FormatDamage(MaxDamage)}, avg={FormatAverageDamage()}");
                     lines.Add($"Direct manager totals: attacks={_directAttackCount.ToString(CultureInfo.InvariantCulture)}, damage={_directDamageTotal.ToString(CultureInfo.InvariantCulture)}, critical={_directCriticalCount.ToString(CultureInfo.InvariantCulture)}, miss={_directMissCount.ToString(CultureInfo.InvariantCulture)}");
+                    lines.Add($"Recovery totals: count={_recoveryCount.ToString(CultureInfo.InvariantCulture)}, amount={_recoveryTotal.ToString(CultureInfo.InvariantCulture)}");
                     if (_directCriticalCount > 0)
                     {
                         lines.Add($"Direct critical bounds: min={FormatDamage(_directMinCriticalDamage)}, max={FormatDamage(_directMaxCriticalDamage)}");
@@ -3816,6 +3842,8 @@ namespace HaCreator.MapSimulator.Interaction
             _directMissCount = 0;
             _directMaxCriticalDamage = 0;
             _directMinCriticalDamage = 0;
+            _recoveryTotal = 0;
+            _recoveryCount = 0;
             _timerSetMilliseconds = 0;
             _timerStopRemainMilliseconds = 0;
             _timerExpiryTick = 0;
@@ -3863,7 +3891,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_timerSetMilliseconds > 0)
             {
-                return $"armed {FormatMillisecondsAsSeconds(_timerSetMilliseconds)}s";
+                int remainingMilliseconds = _timerExpiryTick > 0
+                    ? Math.Max(0, unchecked(_timerExpiryTick - Environment.TickCount))
+                    : _timerSetMilliseconds;
+                return $"armed {FormatMillisecondsAsSeconds(remainingMilliseconds)}s";
             }
 
             return "idle";

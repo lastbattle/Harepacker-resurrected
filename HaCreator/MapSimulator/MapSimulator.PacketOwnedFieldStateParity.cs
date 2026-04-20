@@ -163,6 +163,11 @@ namespace HaCreator.MapSimulator
                 return dojoMessage;
             }
 
+            if (TryHandleTutorialFieldSpecificDataPacket(payload, out string tutorialMessage))
+            {
+                return tutorialMessage;
+            }
+
             if (TryHandleCurrentWrapperFieldSpecificRelayPacket(payload, currentTick, out string relayMessage))
             {
                 return relayMessage;
@@ -202,6 +207,27 @@ namespace HaCreator.MapSimulator
             }
 
             return applied || !string.IsNullOrWhiteSpace(wrapperMessage);
+        }
+
+        private bool TryHandleTutorialFieldSpecificDataPacket(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryBuildTutorialWrapperContract(_mapBoard?.MapInfo, out TutorialWrapperContract contract) ||
+                contract.Kind != TutorialWrapperKind.Tutorial)
+            {
+                return false;
+            }
+
+            if (!TryApplyTutorialFieldSpecificAppearanceOwner(payload, out string tutorialMessage))
+            {
+                return false;
+            }
+
+            string ownerSummary = "CField_Tutorial::DecodeFieldSpecificData accepted packet-owned field-specific appearance payload.";
+            message = string.IsNullOrWhiteSpace(tutorialMessage)
+                ? ownerSummary
+                : $"{ownerSummary} {tutorialMessage}";
+            return true;
         }
 
         private bool TryHandleCurrentWrapperFieldSpecificRelayPacket(byte[] payload, int currentTick, out string message)

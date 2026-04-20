@@ -2163,22 +2163,57 @@ namespace HaCreator.MapSimulator.UI
         private static IReadOnlyList<Buttons> GetClientComboAllowedButtons(JoypadSessionSnapshot session, InputAction action)
         {
             IReadOnlyList<Buttons> allowedButtons = PlayerInput.GetConfigurableGamepadButtons(action);
-            int detectedButtonCount = ResolveClientJoypadButtonCount(session);
-            int maxCount = Math.Clamp(detectedButtonCount, 0, allowedButtons.Count);
-            if (maxCount <= 0)
+            IReadOnlyList<Buttons> detectedButtons = GetDetectedClientJoypadComboButtons(session);
+            if (allowedButtons == null || allowedButtons.Count == 0 || detectedButtons.Count == 0)
             {
                 return Array.Empty<Buttons>();
             }
 
-            if (maxCount == allowedButtons.Count)
+            List<Buttons> intersection = new(Math.Min(allowedButtons.Count, detectedButtons.Count));
+            for (int i = 0; i < detectedButtons.Count; i++)
             {
-                return allowedButtons;
+                Buttons detectedButton = detectedButtons[i];
+                for (int candidateIndex = 0; candidateIndex < allowedButtons.Count; candidateIndex++)
+                {
+                    if (allowedButtons[candidateIndex] == detectedButton)
+                    {
+                        intersection.Add(detectedButton);
+                        break;
+                    }
+                }
             }
 
-            Buttons[] subset = new Buttons[maxCount];
-            for (int i = 0; i < maxCount; i++)
+            if (intersection.Count == 0)
             {
-                subset[i] = allowedButtons[i];
+                return Array.Empty<Buttons>();
+            }
+
+            return intersection;
+        }
+
+        private static IReadOnlyList<Buttons> GetDetectedClientJoypadComboButtons(JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return Array.Empty<Buttons>();
+            }
+
+            IReadOnlyList<Buttons> detectedButtons = PlayerInput.GetDetectedClientJoypadSelectableButtons(session.GamepadIndex);
+            if (detectedButtons == null || detectedButtons.Count == 0)
+            {
+                return Array.Empty<Buttons>();
+            }
+
+            int cappedCount = Math.Min(JoypadClientSelectableButtonCount, detectedButtons.Count);
+            if (cappedCount == detectedButtons.Count)
+            {
+                return detectedButtons;
+            }
+
+            Buttons[] subset = new Buttons[cappedCount];
+            for (int i = 0; i < cappedCount; i++)
+            {
+                subset[i] = detectedButtons[i];
             }
 
             return subset;
@@ -2317,13 +2352,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             // CUIJoyPad::SetDefault selects Button 1..N across the recovered combo controls.
-            int detectedButtonCount = ResolveClientJoypadButtonCount(session);
+            IReadOnlyList<Buttons> detectedButtons = GetDetectedClientJoypadComboButtons(session);
             for (int i = 0; i < JoypadClientCoreBindingActions.Length; i++)
             {
                 InputAction action = JoypadClientCoreBindingActions[i];
-                IReadOnlyList<Buttons> allowedButtons = PlayerInput.GetConfigurableGamepadButtons(action);
-                session.Bindings[action] = i < detectedButtonCount && i < allowedButtons.Count
-                    ? allowedButtons[i]
+                session.Bindings[action] = i < detectedButtons.Count
+                    ? detectedButtons[i]
                     : (Buttons)0;
             }
 
@@ -2345,7 +2379,7 @@ namespace HaCreator.MapSimulator.UI
 
             // Client evidence: CUIJoyPad::OnCreate and CUIJoyPad::SetDefault both cap combo entries to
             // zmin(12, m_nJoyBtnNum), where m_nJoyBtnNum is detected per connected pad.
-            int detectedButtonCount = PlayerInput.GetDetectedConfigurableGamepadButtonCount(session.GamepadIndex, InputAction.Jump);
+            int detectedButtonCount = PlayerInput.GetDetectedClientJoypadSelectableButtonCount(session.GamepadIndex);
             return Math.Min(
                 JoypadClientSelectableButtonCount,
                 detectedButtonCount);

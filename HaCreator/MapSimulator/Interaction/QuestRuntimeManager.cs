@@ -233,6 +233,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int ActionRepeatIntervalMinutes { get; set; }
             public bool FieldEnterAction { get; set; }
             public string NpcActionName { get; set; } = string.Empty;
+            public IReadOnlyList<FieldObjectScriptPublication> NpcActionPublications { get; set; } =
+                Array.Empty<FieldObjectScriptPublication>();
             public IReadOnlyList<int> AllowedJobs { get; set; } = Array.Empty<int>();
             public List<int> FieldEnterMapIds { get; } = new();
             public List<int> BuffItemMapIds { get; } = new();
@@ -419,6 +421,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolveQuestStateText = questId => FormatQuestStateForDialogue(GetQuestState(questId)),
                 ResolveJobNameText = () => ResolveCurrentJobNameForDialogue(build),
                 ResolveCurrentMapNameText = ResolveCurrentMapNameForDialogue,
+                ResolveCurrentLevelText = () => ResolveCurrentLevelForDialogue(build),
+                ResolveCurrentFameText = () => ResolveCurrentFameForDialogue(build),
+                ResolveCurrentMesoText = ResolveCurrentMesoForDialogue,
                 ResolveQuestRecordText = ResolveQuestRecordTextForDialogue,
                 ResolveQuestDetailRecordText = token => ResolveQuestDetailRecordTextForDialogue(questId, token)
             };
@@ -466,6 +471,21 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(resolvedMapName)
                 ? $"Map {currentMapId}"
                 : resolvedMapName;
+        }
+
+        private static string ResolveCurrentLevelForDialogue(CharacterBuild build)
+        {
+            return Math.Max(0, build?.Level ?? 0).ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static string ResolveCurrentFameForDialogue(CharacterBuild build)
+        {
+            return (build?.Fame ?? 0).ToString(CultureInfo.InvariantCulture);
+        }
+
+        private string ResolveCurrentMesoForDialogue()
+        {
+            return Math.Max(0L, GetCurrentMesoCount()).ToString(CultureInfo.InvariantCulture);
         }
 
         private string ResolveQuestRecordTextForDialogue(int questId)
@@ -768,7 +788,7 @@ namespace HaCreator.MapSimulator.Interaction
             return questId > 0 && _packetOwnedAutoStartQuestRegistrations.Contains(questId);
         }
 
-        public bool IsPacketOwnedAutoAlertQuest(int questId)
+        public bool IsPacketOwnedAutoAlertQuest(int questId, CharacterBuild build = null)
         {
             if (questId <= 0)
             {
@@ -790,10 +810,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             bool isAutoStartQuest = definition.HasNormalAutoStart
-                                    || definition.HasFieldEnterAutoStart
-                                    || definition.HasEquipOnAutoStart;
+                                     || definition.HasFieldEnterAutoStart
+                                     || definition.HasEquipOnAutoStart;
             bool isAutoCompletionAlertQuestRegistered =
-                RefreshPacketOwnedAutoCompletionAlertQuestRegistration(questId, definition);
+                RefreshPacketOwnedAutoCompletionAlertQuestRegistration(questId, definition, build);
             bool isAutoCompletionAlertQuest = PacketOwnedQuestStartRequest.ResolveIsAutoCompletionAlertQuest(
                 definition.HasAutoCompleteAlert,
                 definition.HasAutoPreCompleteAlert,
@@ -808,7 +828,10 @@ namespace HaCreator.MapSimulator.Interaction
             return questId > 0 && _packetOwnedAutoCompletionAlertQuestRegistrations.Contains(questId);
         }
 
-        private bool RefreshPacketOwnedAutoCompletionAlertQuestRegistration(int questId, QuestDefinition definition)
+        private bool RefreshPacketOwnedAutoCompletionAlertQuestRegistration(
+            int questId,
+            QuestDefinition definition,
+            CharacterBuild build)
         {
             if (questId <= 0 || definition == null)
             {
@@ -825,7 +848,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            bool hasCompletionDemandOutstanding = EvaluateCompletionIssues(definition, build: null).Count > 0;
+            bool hasCompletionDemandOutstanding = EvaluateCompletionIssues(definition, build).Count > 0;
             bool shouldRegister = PacketOwnedQuestStartRequest.ResolveShouldRegisterAutoCompletionAlertQuest(
                 isCandidate,
                 hasCompletionDemandOutstanding);
@@ -2214,7 +2237,9 @@ namespace HaCreator.MapSimulator.Interaction
                 PublishedScriptPublications = publishQuestWindowScripts
                     ? BuildQuestWindowPublishedScriptPublications(
                         QuestWindowActionKind.Accept,
-                        definition.StartScriptPublications,
+                        (definition.StartScriptPublications ?? Array.Empty<FieldObjectScriptPublication>())
+                            .Concat(definition.StartActions?.NpcActionPublications
+                                    ?? Array.Empty<FieldObjectScriptPublication>()),
                         definition.StartActions?.NpcActionName)
                     : Array.Empty<FieldObjectScriptPublication>()
             };
@@ -2261,7 +2286,9 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndActions?.NpcActionName),
                 PublishedScriptPublications = BuildQuestWindowPublishedScriptPublications(
                     QuestWindowActionKind.GiveUp,
-                    definition.EndScriptPublications,
+                    (definition.EndScriptPublications ?? Array.Empty<FieldObjectScriptPublication>())
+                        .Concat(definition.EndActions?.NpcActionPublications
+                                ?? Array.Empty<FieldObjectScriptPublication>()),
                     definition.EndActions?.NpcActionName)
             };
         }
@@ -2391,7 +2418,9 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndActions?.NpcActionName),
                 PublishedScriptPublications = BuildQuestWindowPublishedScriptPublications(
                     QuestWindowActionKind.Complete,
-                    definition.EndScriptPublications,
+                    (definition.EndScriptPublications ?? Array.Empty<FieldObjectScriptPublication>())
+                        .Concat(definition.EndActions?.NpcActionPublications
+                                ?? Array.Empty<FieldObjectScriptPublication>()),
                     definition.EndActions?.NpcActionName)
             };
         }
@@ -3143,7 +3172,9 @@ namespace HaCreator.MapSimulator.Interaction
                         definition.StartScriptNames,
                         definition.StartActions?.NpcActionName),
                     PublishedScriptPublications = BuildPublishedScriptPublications(
-                        definition.StartScriptPublications,
+                        (definition.StartScriptPublications ?? Array.Empty<FieldObjectScriptPublication>())
+                            .Concat(definition.StartActions?.NpcActionPublications
+                                    ?? Array.Empty<FieldObjectScriptPublication>()),
                         definition.StartActions?.NpcActionName)
                 };
             }
@@ -3247,7 +3278,9 @@ namespace HaCreator.MapSimulator.Interaction
                         definition.EndScriptNames,
                         definition.EndActions?.NpcActionName),
                     PublishedScriptPublications = BuildPublishedScriptPublications(
-                        definition.EndScriptPublications,
+                        (definition.EndScriptPublications ?? Array.Empty<FieldObjectScriptPublication>())
+                            .Concat(definition.EndActions?.NpcActionPublications
+                                    ?? Array.Empty<FieldObjectScriptPublication>()),
                         definition.EndActions?.NpcActionName)
                 };
             }
@@ -8793,6 +8826,12 @@ namespace HaCreator.MapSimulator.Interaction
                         break;
                     case "npcAct":
                         actions.NpcActionName = ParseString(child)?.Trim() ?? string.Empty;
+                        actions.NpcActionPublications = FieldObjectScriptPublicationParser.Parse(child);
+                        if (string.IsNullOrWhiteSpace(actions.NpcActionName)
+                            && actions.NpcActionPublications.Count > 0)
+                        {
+                            actions.NpcActionName = actions.NpcActionPublications[0].ScriptName?.Trim() ?? string.Empty;
+                        }
                         break;
                     case "quest":
                         if (child.WzProperties != null)

@@ -300,6 +300,26 @@ namespace HaCreator.MapSimulator.Character
                 ["rush2"] = CreateIndexedPieces(
                     ("stabOF", 0, 100),
                     ("stabOF", 2, 500)),
+                ["magic1"] = CreateIndexedPieces(
+                    ("shootF", 1, -900),
+                    ("swingO3", 1, 200),
+                    ("swingO3", 2, 200)),
+                ["magic2"] = CreateIndexedPieces(
+                    ("alert", 0, -350),
+                    ("alert", 1, 350),
+                    ("alert", 2, 350)),
+                ["magic3"] = CreateIndexedPieces(
+                    ("stand1", 0, -300),
+                    ("stand1", 1, 300),
+                    ("stand1", 2, 300)),
+                ["magic4"] = CreateIndexedPieces(
+                    ("swingO3", 0, -800),
+                    ("swingO3", 1, 300),
+                    ("swingO3", 2, 300)),
+                ["magic5"] = CreateIndexedPieces(
+                    ("alert", 0, -720),
+                    ("alert", 1, 240),
+                    ("alert", 2, 240)),
                 ["magic6"] = CreateIndexedPieces(
                     ("alert", 0, -300),
                     ("alert", 1, 420)),
@@ -321,6 +341,21 @@ namespace HaCreator.MapSimulator.Character
                     ("stabT1", 2, 150),
                     ("stabTF", 1, 150),
                     ("stabT2", 2, 150)),
+                ["sanctuary"] = new[]
+                {
+                    CreateIndexedPiece(0, "stand2", 1, -480),
+                    CreateIndexedPiece(1, "alert", 0, -60),
+                    CreateIndexedPiece(2, "swingPF", 2, -120, move: new Point(0, -14)),
+                    CreateIndexedPiece(3, "swingPF", 2, -120, move: new Point(0, -58)),
+                    CreateIndexedPiece(4, "swingPF", 2, -120, move: new Point(0, -60)),
+                    CreateIndexedPiece(5, "swingPF", 2, -120, move: new Point(0, -61)),
+                    CreateIndexedPiece(6, "swingPF", 2, -120, move: new Point(0, -62)),
+                    CreateIndexedPiece(7, "swingPF", 2, -120, move: new Point(0, -63)),
+                    CreateIndexedPiece(8, "swingPF", 2, -240, move: new Point(0, -64)),
+                    CreateIndexedPiece(9, "swingP1", 2, 840, move: new Point(-7, 0)),
+                    CreateIndexedPiece(10, "alert", 0, 120),
+                    CreateIndexedPiece(11, "stand2", 1, 60)
+                },
                 ["meteor"] = CreateIndexedPieces(
                     ("alert", 0, -360),
                     ("alert", 1, -1800),
@@ -333,12 +368,49 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 0, -900),
                     ("alert", 1, -900),
                     ("alert", 2, 900)),
+                ["brandish1"] = CreateIndexedPieces(
+                    ("swingOF", 0, -120),
+                    ("swingOF", 1, -120),
+                    ("swingOF", 2, -120),
+                    ("swingOF", 3, 120),
+                    ("stabOF", 0, 120),
+                    ("stabOF", 1, 120),
+                    ("stabOF", 2, 120)),
+                ["brandish2"] = CreateIndexedPieces(
+                    ("swingT3", 0, -120),
+                    ("swingT3", 1, -120),
+                    ("swingT3", 2, 120),
+                    ("swingTF", 0, 120),
+                    ("swingTF", 1, 120),
+                    ("swingTF", 2, 120),
+                    ("swingTF", 3, 120)),
                 ["chainlightning"] = CreateIndexedPieces(
                     ("swingO3", 0, -540),
                     ("stabO2", 1, 240)),
                 ["blast"] = CreateIndexedPieces(
                     ("stabO2", 0, -540),
                     ("stabO2", 1, 300)),
+                ["straight"] = CreateIndexedPieces(
+                    ("stabO1", 0, -240),
+                    ("stabO1", 1, 360)),
+                ["handgun"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot2", 0, -240),
+                    CreateIndexedPiece(1, "stabO1", 0, 540, move: new Point(2, 0)),
+                    CreateIndexedPiece(2, "shoot2", 0, 0)
+                },
+                ["somersault"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, 0),
+                    CreateIndexedPiece(1, "swingPF", 3, 120, move: new Point(35, 0)),
+                    CreateIndexedPiece(2, "swingT2", 0, 120, move: new Point(-10, -8)),
+                    CreateIndexedPiece(3, "swingP2", 1, 120, move: new Point(-30, -112), rotationDegrees: 180),
+                    CreateIndexedPiece(4, "swingP2", 0, 120, move: new Point(-13, -115), rotationDegrees: 180),
+                    CreateIndexedPiece(5, "swingP2", 0, 120, move: new Point(-7, -111), rotationDegrees: 180),
+                    CreateIndexedPiece(6, "stabT2", 1, 120, move: new Point(35, -84), rotationDegrees: 270),
+                    CreateIndexedPiece(7, "swingPF", 3, 120, move: new Point(35, 0)),
+                    CreateIndexedPiece(8, "alert", 0, 0)
+                },
                 // `Character/00002000.img/alert8/0` is another mounted indexed-alert
                 // helper row; it reuses the authored jump helper frame with its own delay.
                 ["alert8"] = CreateIndexedPieces(
@@ -2005,6 +2077,31 @@ namespace HaCreator.MapSimulator.Character
         public static bool ShouldUseAttackIdentityForObservation(string observedPlayerActionName, PlayerState state)
         {
             return state == PlayerState.Attacking || IsAttackAction(observedPlayerActionName);
+        }
+
+        public static bool ShouldRetryAttackResolutionAfterCreate(
+            string currentActionName,
+            string pendingActionName,
+            string queuedActionName,
+            bool currentActionBlockingHoldActive)
+        {
+            if (string.IsNullOrWhiteSpace(currentActionName)
+                || !currentActionName.StartsWith("create", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (currentActionBlockingHoldActive)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(pendingActionName))
+            {
+                return false;
+            }
+
+            return string.IsNullOrWhiteSpace(queuedActionName);
         }
 
         private static bool IsAuthoredAttackAction(string actionName)

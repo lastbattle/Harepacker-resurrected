@@ -17,6 +17,7 @@ using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator
 {
@@ -121,6 +122,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<(int ItemId, EquipSlot Slot), AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
         private readonly Dictionary<int, List<AnimationDisplayerFollowRegistrationEntry>> _animationDisplayerFollowAnimationIds = new();
         private readonly Dictionary<int, int> _animationDisplayerFollowRegistrationSignatures = new();
+        private readonly Dictionary<int, AnimationDisplayerRemotePacketOwnedStringEffectOwnerState> _animationDisplayerRemotePacketOwnedStringEffectOwnerStates = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
@@ -162,6 +164,16 @@ namespace HaCreator.MapSimulator
 
             public bool IsExploding(int currentTime) => ExplosionAnimation != null && currentTime >= ExplosionTime;
             public bool IsExpired(int currentTime) => currentTime >= ExpireTime;
+        }
+
+        private sealed class AnimationDisplayerRemotePacketOwnedStringEffectOwnerState
+        {
+            public byte EffectType { get; init; }
+            public string EffectUol { get; init; }
+            public string OwnerActionName { get; init; }
+            public bool OwnerFacingRight { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
         }
 
         private sealed class AnimationDisplayerFollowEquipmentDefinition
@@ -629,6 +641,7 @@ namespace HaCreator.MapSimulator
             _animationEffects.ClearAreaAnimations();
             _animationEffects.ClearSecondarySkillAnimationOwners();
             ClearAnimationDisplayerFollowAnimations();
+            _animationDisplayerRemotePacketOwnedStringEffectOwnerStates.Clear();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
             _animationDisplayerRemoteGrenadeActors.Clear();
             _animationDisplayerLocalQuestDeliveryItemId = 0;
@@ -1530,6 +1543,13 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldConsumeAnimationDisplayerReservedTypeWithoutVisualFallback(int type)
         {
             return type >= 2 && type <= 6;
+        }
+
+        internal static bool ShouldApplyAnimationDisplayerReservedTransferFieldRequest(int targetFieldId, int currentMapId)
+        {
+            return targetFieldId > 0
+                && targetFieldId != MapConstants.MaxMap
+                && targetFieldId != currentMapId;
         }
 
         private bool TryRegisterAnimationDisplayerLocalCooldownReady(int currentTime)
@@ -2839,6 +2859,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            string ownerActionName = ResolveAnimationDisplayerRemotePacketOwnedActionName(actor);
+            bool ownerFacingRight = actor.FacingRight;
+            int oneTimeDurationMs = ResolveAnimationDisplayerOneTimeFrameDurationMs(frames);
+            int initialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsed(
+                presentation.CharacterId,
+                presentation.EffectType,
+                effectUol,
+                ownerActionName,
+                ownerFacingRight,
+                presentation.CurrentTime,
+                oneTimeDurationMs);
             Vector2 fallbackPosition = actor.Position;
             bool fallbackFacingRight = presentation.UseOwnerFacing && actor.FacingRight;
             _animationEffects.AddOneTimeAttached(
@@ -2871,7 +2902,8 @@ namespace HaCreator.MapSimulator
                 fallbackPosition.X,
                 fallbackPosition.Y,
                 fallbackFacingRight,
-                presentation.CurrentTime);
+                presentation.CurrentTime,
+                initialElapsedMs: initialElapsedMs);
         }
 
         private bool TryRegisterAnimationDisplayerRemoteUtilityOwnerEffect(
@@ -2961,6 +2993,7 @@ namespace HaCreator.MapSimulator
             if (metadata.Type == 2)
             {
                 consumed = true;
+                _ = TryApplyAnimationDisplayerReservedTransferFieldOwnerEffect(metadata.FieldId, registerTime);
             }
 
             if (metadata.Type == 6)
@@ -3003,6 +3036,12 @@ namespace HaCreator.MapSimulator
             }
 
             if (consumeWithoutVisualFallback)
+            {
+                return consumed;
+            }
+
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            if (!ShouldApplyAnimationDisplayerReservedFieldScopedVisual(metadata.FieldId, currentMapId))
             {
                 return consumed;
             }
@@ -3114,6 +3153,24 @@ namespace HaCreator.MapSimulator
             }
 
             return _remoteUserPool?.TrySetAction(characterId, actionName, null, out _) == true;
+        }
+
+        private bool TryApplyAnimationDisplayerReservedTransferFieldOwnerEffect(int targetFieldId, int currentTime)
+        {
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            if (!ShouldApplyAnimationDisplayerReservedTransferFieldRequest(targetFieldId, currentMapId))
+            {
+                return false;
+            }
+
+            if (!CanSendTransferFieldRequest(currentTime)
+                || !CanQueueKnownCrossMapTransfer(targetFieldId, showFailureMessage: false))
+            {
+                return false;
+            }
+
+            SetTransferFieldExclusiveRequestSent(currentTime);
+            return QueueMapTransfer(targetFieldId, null);
         }
 
         private bool TryApplyAnimationDisplayerReservedBgmOwnerEffect(string descriptor)
@@ -3296,7 +3353,6 @@ namespace HaCreator.MapSimulator
         {
             if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor actor) != true
                 || actor == null
-                || !actor.IsVisibleInWorld
                 || _playerManager?.SkillLoader == null)
             {
                 return;
@@ -3366,12 +3422,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            // CGrenade lifetime is packet-owned once spawned. Keep it alive until
+            // its own animation/expiry window ends instead of owner visibility state.
             _animationDisplayerRemoteGrenadeActors.RemoveAll(actor =>
                 actor == null
-                || actor.IsExpired(currentTime)
-                || _remoteUserPool?.TryGetActor(actor.CharacterId, out RemoteUserActor ownerActor) != true
-                || ownerActor == null
-                || !ownerActor.IsVisibleInWorld);
+                || actor.IsExpired(currentTime));
         }
 
         private void DrawAnimationDisplayerRemoteGrenades(
@@ -3551,8 +3606,143 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            _animationDisplayerRemotePacketOwnedStringEffectOwnerStates.Remove(characterId);
             _animationEffects.RemoveUserState(characterId, currTickCount);
             ClearAnimationDisplayerRemoteQuestDeliveryOwner(characterId);
+        }
+
+        private static string ResolveAnimationDisplayerRemotePacketOwnedActionName(RemoteUserActor actor)
+        {
+            if (!string.IsNullOrWhiteSpace(actor?.ActionName))
+            {
+                return actor.ActionName;
+            }
+
+            return CharacterPart.GetActionString(CharacterAction.Stand1);
+        }
+
+        private int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsed(
+            int characterId,
+            byte effectType,
+            string effectUol,
+            string ownerActionName,
+            bool ownerFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (characterId <= 0
+                || string.IsNullOrWhiteSpace(effectUol)
+                || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            int initialElapsedMs = 0;
+            if (_animationDisplayerRemotePacketOwnedStringEffectOwnerStates.TryGetValue(
+                    characterId,
+                    out AnimationDisplayerRemotePacketOwnedStringEffectOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsedCore(
+                    existingState.EffectType,
+                    existingState.EffectUol,
+                    existingState.OwnerActionName,
+                    existingState.OwnerFacingRight,
+                    existingState.AnimationStartTime,
+                    effectType,
+                    effectUol,
+                    ownerActionName,
+                    ownerFacingRight,
+                    currentTime,
+                    durationMs);
+            }
+
+            _animationDisplayerRemotePacketOwnedStringEffectOwnerStates[characterId] =
+                new AnimationDisplayerRemotePacketOwnedStringEffectOwnerState
+                {
+                    EffectType = effectType,
+                    EffectUol = effectUol,
+                    OwnerActionName = ownerActionName,
+                    OwnerFacingRight = ownerFacingRight,
+                    AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                    DurationMs = durationMs
+                };
+            return initialElapsedMs;
+        }
+
+        private static int ResolveAnimationDisplayerOneTimeFrameDurationMs(IReadOnlyList<IDXObject> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int durationMs = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                durationMs += Math.Max(1, frames[i]?.Delay ?? 0);
+            }
+
+            return Math.Max(0, durationMs);
+        }
+
+        private static int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsedCore(
+            byte previousEffectType,
+            string previousEffectUol,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            byte currentEffectType,
+            string currentEffectUol,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousEffectType != currentEffectType
+                || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(previousActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
+                || previousFacingRight != currentFacingRight)
+            {
+                return 0;
+            }
+
+            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
+        internal static int ResolveAnimationDisplayerOneTimeFrameDurationMsForTesting(IReadOnlyList<IDXObject> frames)
+        {
+            return ResolveAnimationDisplayerOneTimeFrameDurationMs(frames);
+        }
+
+        internal static int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsedForTesting(
+            byte previousEffectType,
+            string previousEffectUol,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            byte currentEffectType,
+            string currentEffectUol,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsedCore(
+                previousEffectType,
+                previousEffectUol,
+                previousActionName,
+                previousFacingRight,
+                previousAnimationStartTime,
+                currentEffectType,
+                currentEffectUol,
+                currentActionName,
+                currentFacingRight,
+                currentTime,
+                durationMs);
         }
 
         private bool TryGetAnimationDisplayerFrames(string cacheKey, string effectUol, out List<IDXObject> frames)

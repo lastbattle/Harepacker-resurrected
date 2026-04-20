@@ -482,7 +482,7 @@ namespace HaCreator.MapSimulator.Effects
                     color);
             }
             else if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
-                && ResolveSpecialTextDigitSet(smallDigitSet)?.SpecialTextures.TryGetValue(
+                && ResolveSpecialTextDigitSet()?.SpecialTextures.TryGetValue(
                     missSprite.SpriteName,
                     out var missTexture) == true)
             {
@@ -679,7 +679,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (isMiss)
             {
-                DamageNumberDigitSet specialTextDigitSet = ResolveSpecialTextDigitSet(smallDigitSet);
+                DamageNumberDigitSet specialTextDigitSet = ResolveSpecialTextDigitSet();
                 PreparedSpriteDrawInfo? missSprite = null;
                 int canvasWidth = 0;
                 int canvasHeight = ResolveCompositeCanvasHeight();
@@ -959,7 +959,7 @@ namespace HaCreator.MapSimulator.Effects
             return DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX;
         }
 
-        private static DamageNumberDigitSet ResolveSpecialTextDigitSet(DamageNumberDigitSet currentSmallDigitSet)
+        private static DamageNumberDigitSet ResolveSpecialTextDigitSet()
         {
             DamageNumberDigitSet authoredSpecialTextSet = DamageNumberLoader.GetDigitSetByName(DamageNumberSpecialTextOwnerSetName);
             if (authoredSpecialTextSet?.IsLoaded == true)
@@ -967,7 +967,7 @@ namespace HaCreator.MapSimulator.Effects
                 return authoredSpecialTextSet;
             }
 
-            return currentSmallDigitSet;
+            return null;
         }
 
         internal static DamageNumberAnimationTimeline ResolveAnimationTimeline()
@@ -1208,7 +1208,7 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberDigitSet smallDigitSet = ResolveSmallDigitSet(colorType, isCritical);
             if (largeDigitSet == null || smallDigitSet == null)
                 return null;
-            DamageNumberDigitSet specialTextDigitSet = ResolveSpecialTextDigitSet(smallDigitSet);
+            DamageNumberDigitSet specialTextDigitSet = ResolveSpecialTextDigitSet();
 
             int canvasWidth = visual.CanvasWidth;
             int canvasHeight = visual.CanvasHeight;

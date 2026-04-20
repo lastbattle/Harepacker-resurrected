@@ -27,8 +27,6 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientNoticeOkButtonX = 197;
         private const int ButtonBottomMargin = 15;
         private const int SeparatorTopFromBottom = 64;
-        private const int ClientNoticeActionCloseRightMargin = 16;
-        private const int DialogCloseButtonMinimumWidth = 32;
         private const int CloseButtonRightMargin = 8;
         private const int CloseButtonTopMargin = 8;
 
@@ -99,19 +97,9 @@ namespace HaCreator.MapSimulator.UI
             int closeButtonHeight)
         {
             int normalizedFrameWidth = Math.Max(0, frameWidth);
-            int normalizedFrameHeight = Math.Max(0, frameHeight);
             int normalizedCloseButtonWidth = Math.Max(0, closeButtonWidth);
-            int normalizedCloseButtonHeight = Math.Max(0, closeButtonHeight);
 
-            // CUtilDlg::OnCreate places dialog-sized BtClose controls on the same bottom row as BtOK.
-            if (normalizedCloseButtonWidth >= DialogCloseButtonMinimumWidth)
-            {
-                int x = Math.Max(0, normalizedFrameWidth - normalizedCloseButtonWidth - ClientNoticeActionCloseRightMargin);
-                int y = ResolveOkButtonY(normalizedFrameHeight, normalizedCloseButtonHeight);
-                return new Point(x, y);
-            }
-
-            int topRightX = Math.Max(CloseButtonTopMargin, normalizedFrameWidth - normalizedCloseButtonWidth - CloseButtonRightMargin);
+            int topRightX = Math.Max(0, normalizedFrameWidth - normalizedCloseButtonWidth - CloseButtonRightMargin);
             return new Point(topRightX, CloseButtonTopMargin);
         }
 

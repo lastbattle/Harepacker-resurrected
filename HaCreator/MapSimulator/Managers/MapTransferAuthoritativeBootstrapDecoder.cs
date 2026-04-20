@@ -1129,6 +1129,13 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
+                ReadOnlySpan<byte> trailingTail = payload[(int)stream.Position..];
+                if (TryValidateKnownTrailingLogoutGiftTail(trailingTail, out bool matchedKnownLogoutGiftTail))
+                {
+                    matchedKnownTail = matchedKnownLogoutGiftTail;
+                    return true;
+                }
+
                 // Keep map-transfer bootstrap recovery resilient when additional
                 // CharacterData tail bytes follow known sections.
                 return trailingByteCount > 0 && trailingByteCount <= MaximumOpaquePostMapTransferTailByteLength;
@@ -1167,6 +1174,43 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return Encoding.Unicode.GetString(unicodeBytes);
+        }
+
+        private static bool TryValidateKnownTrailingLogoutGiftTail(
+            ReadOnlySpan<byte> trailingTail,
+            out bool matchedKnownTail)
+        {
+            matchedKnownTail = false;
+            if (trailingTail.Length <= 0 || trailingTail.Length < LogoutGiftConfigByteLength)
+            {
+                return false;
+            }
+
+            if (!PacketStageTransitionRuntime.TryDecodeTrailingLogoutGiftConfigPayload(
+                    trailingTail.ToArray(),
+                    out _,
+                    out _,
+                    out byte[] leadingOpaqueBytes,
+                    out _,
+                    out byte[] trailingOpaqueBytes,
+                    out _,
+                    out _,
+                    out _))
+            {
+                return false;
+            }
+
+            int leadingOpaqueLength = leadingOpaqueBytes?.Length ?? 0;
+            int trailingOpaqueLength = trailingOpaqueBytes?.Length ?? 0;
+            bool hasBoundedOpaqueSegments = leadingOpaqueLength <= MaximumOpaquePostMapTransferTailByteLength &&
+                                            trailingOpaqueLength <= MaximumOpaquePostMapTransferTailByteLength;
+            if (!hasBoundedOpaqueSegments)
+            {
+                return false;
+            }
+
+            matchedKnownTail = trailingOpaqueLength == 0 || trailingOpaqueLength == SetFieldServerFileTimeByteLength;
+            return true;
         }
     }
 }

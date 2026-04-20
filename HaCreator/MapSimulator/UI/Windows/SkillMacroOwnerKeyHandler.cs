@@ -74,6 +74,16 @@ namespace HaCreator.MapSimulator.UI
             return TryGetClientForwardedPrimarySlotIndex(key, out _);
         }
 
+        internal static bool IsClientForwardedModifierPhysicalKey(Keys key)
+        {
+            return key == Keys.LeftControl
+                || key == Keys.RightControl
+                || key == Keys.LeftShift
+                || key == Keys.RightShift
+                || key == Keys.LeftAlt
+                || key == Keys.RightAlt;
+        }
+
         internal static bool ShouldForwardClientOwnedNonFunctionKeyDownToParent(
             Keys key,
             bool controlHeld,
@@ -82,6 +92,11 @@ namespace HaCreator.MapSimulator.UI
             bool imeCandidateWindowActive)
         {
             if (TryGetClientForwardedFunctionKeyIndex(key, out _))
+            {
+                return false;
+            }
+
+            if (IsClientForwardedModifierPhysicalKey(key))
             {
                 return false;
             }
@@ -101,7 +116,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldForwardClientOwnedNonFunctionKeyUpToParent(Keys key)
         {
-            return !TryGetClientForwardedFunctionKeyIndex(key, out _);
+            return !TryGetClientForwardedFunctionKeyIndex(key, out _)
+                && !IsClientForwardedModifierPhysicalKey(key);
         }
 
         internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)

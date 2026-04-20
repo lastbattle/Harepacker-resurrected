@@ -161,7 +161,7 @@ namespace HaCreator.MapSimulator.Effects
                     message,
                     weatherType,
                     currentTimeMs,
-                    WeatherMessageOwnerKind.StatusBarItemMsg);
+                    WeatherMessageOwnerKind.WeatherOverlay);
             }
         }
 

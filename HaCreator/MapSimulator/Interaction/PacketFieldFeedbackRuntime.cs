@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<bool> IsUnderCover { get; init; }
         internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
         internal Action<string, string, byte, int> UpdateWhisperUserListLocation { get; init; }
+        internal Action<string> ShowBlowWeatherMessage { get; init; }
         internal Func<IReadOnlyList<PacketFieldSwindleWarningEntry>> ResolveSwindleWarnings { get; init; }
         internal Action<PacketFieldBossTimerVisualState> ShowBossTimerClock { get; init; }
         internal Action ClearBossTimerClock { get; init; }
@@ -570,6 +571,18 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
+        internal static byte[] BuildWhisperBlowWeatherPayload(string sender, byte blowType, string message)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)146);
+            WriteMapleString(writer, sender);
+            writer.Write(blowType);
+            WriteMapleString(writer, message);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
         internal static byte[] BuildWarnMessagePayload(string text)
         {
             return BuildMapleStringPayload(text);
@@ -909,6 +922,22 @@ namespace HaCreator.MapSimulator.Interaction
                                 target);
                         callbacks?.AddClientChatMessage?.Invoke(text, disabled ? 12 : 14, disabled ? null : target);
                         _statusMessage = $"Applied packet-owned whisper availability notice for {target}.";
+                        message = _statusMessage;
+                        return true;
+                    }
+                case 146:
+                    {
+                        ReadMapleString(reader);
+                        reader.ReadByte();
+                        string text = NormalizeFieldChatText(ReadMapleString(reader));
+                        if (!string.IsNullOrWhiteSpace(text))
+                        {
+                            callbacks?.ShowBlowWeatherMessage?.Invoke(text);
+                        }
+
+                        _statusMessage = string.IsNullOrWhiteSpace(text)
+                            ? "Applied packet-owned whisper blow-weather update without message text."
+                            : "Applied packet-owned whisper blow-weather update.";
                         message = _statusMessage;
                         return true;
                     }

@@ -1072,14 +1072,39 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            activeRaise.ManagerSessionId = Math.Max(0, decodedPayload.ManagerSessionId);
-            activeRaise.RequestId = Math.Max(0, decodedPayload.OwnerRequestId);
-            activeRaise.OwnerItemId = Math.Max(0, decodedPayload.OwnerItemId);
+            activeRaise.ManagerSessionId = ResolvePositiveQuestRewardRaiseIdentityValue(
+                decodedPayload.ManagerSessionId,
+                activeRaise.ManagerSessionId);
+            activeRaise.RequestId = ResolvePositiveQuestRewardRaiseIdentityValue(
+                decodedPayload.OwnerRequestId,
+                activeRaise.RequestId);
+            activeRaise.OwnerItemId = ResolvePositiveQuestRewardRaiseIdentityValue(
+                decodedPayload.OwnerItemId,
+                activeRaise.OwnerItemId,
+                Math.Max(0, activeRaise.Prompt?.OwnerContext?.OwnerItemId ?? 0));
             activeRaise.QrData = decodedPayload.QrData;
             activeRaise.MaxDropCount = ResolveQuestRewardRaiseInboundMaxDropCount(activeRaise, decodedPayload);
             activeRaise.WindowMode = decodedPayload.WindowMode;
             activeRaise.DisplayMode = decodedPayload.DisplayMode;
             activeRaise.SyncSelectionProgressFromPayload(decodedPayload);
+        }
+
+        private static int ResolvePositiveQuestRewardRaiseIdentityValue(int primaryValue, params int[] fallbackValues)
+        {
+            if (primaryValue > 0)
+            {
+                return primaryValue;
+            }
+
+            for (int i = 0; i < fallbackValues.Length; i++)
+            {
+                if (fallbackValues[i] > 0)
+                {
+                    return fallbackValues[i];
+                }
+            }
+
+            return 0;
         }
 
         private static int ResolveQuestRewardRaiseInboundMaxDropCount(

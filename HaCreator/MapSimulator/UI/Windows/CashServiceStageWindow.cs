@@ -69,6 +69,10 @@ namespace HaCreator.MapSimulator.UI
             public string PacketFieldSummary { get; set; } = string.Empty;
             public string PacketSenderRaw { get; set; } = string.Empty;
             public string PacketMessageRaw { get; set; } = string.Empty;
+            public int PacketSenderByteLength { get; set; }
+            public int PacketMessageByteLength { get; set; }
+            public string PacketSenderRawHex { get; set; } = string.Empty;
+            public string PacketMessageRawHex { get; set; } = string.Empty;
         }
 
         private sealed class CashItemInfoPacketSnapshot
@@ -147,6 +151,7 @@ namespace HaCreator.MapSimulator.UI
             public int RequestId { get; init; }
             public byte StatusCode { get; init; }
             public uint BirthDate { get; init; }
+            public int DecodedByteLength { get; init; }
             public bool OpensLicenseDialog => StatusCode == 0;
         }
 
@@ -157,6 +162,7 @@ namespace HaCreator.MapSimulator.UI
             public int BirthDate { get; init; }
             public bool HasWorldList { get; init; }
             public IReadOnlyList<string> WorldNames { get; init; } = Array.Empty<string>();
+            public int DecodedByteLength { get; init; }
             public bool OpensLicenseDialog => StatusCode == 0;
         }
 
@@ -276,6 +282,8 @@ namespace HaCreator.MapSimulator.UI
         private string _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
         private bool _cashPurchaseRecordGlobalState;
         private string _cashPurchaseDialogSelectionSummary = "CConfirmPurchaseDlg has not staged a selector snapshot yet.";
+        private int _cashPurchaseDialogSelectedPaymentControlId;
+        private int _cashPurchaseDialogSelectedVariantSerialNumber;
         private string _cashCouponLastSummary = "No packet-authored coupon result routed yet.";
         private string _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
         private string _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
@@ -347,6 +355,8 @@ namespace HaCreator.MapSimulator.UI
         public string CashItemLastSummary => _cashItemLastSummary;
         public string CashGiftLastSummary => _cashGiftLastSummary;
         public string CashPurchaseRecordSummary => _cashPurchaseRecordSummary;
+        public int CashPurchaseDialogSelectedPaymentControlId => _cashPurchaseDialogSelectedPaymentControlId;
+        public int CashPurchaseDialogSelectedVariantSerialNumber => _cashPurchaseDialogSelectedVariantSerialNumber;
         public string CashCouponLastSummary => _cashCouponLastSummary;
         public string CashNameChangeLastSummary => _cashNameChangeLastSummary;
         public string CashTransferWorldLastSummary => _cashTransferWorldLastSummary;
@@ -486,6 +496,8 @@ namespace HaCreator.MapSimulator.UI
             _cashGiftLastSummary = "No packet-authored gift result routed yet.";
             _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
             _cashPurchaseDialogSelectionSummary = "CConfirmPurchaseDlg has not staged a selector snapshot yet.";
+            _cashPurchaseDialogSelectedPaymentControlId = 0;
+            _cashPurchaseDialogSelectedVariantSerialNumber = 0;
             _cashCouponLastSummary = "No packet-authored coupon result routed yet.";
             _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
             _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
@@ -2590,6 +2602,12 @@ namespace HaCreator.MapSimulator.UI
             int selectedVariantSerialNumber,
             string selectedVariantLabel)
         {
+            _cashPurchaseDialogSelectedPaymentControlId = selectedPaymentControlId switch
+            {
+                1000 or 1001 or 1002 => selectedPaymentControlId,
+                _ => 0
+            };
+            _cashPurchaseDialogSelectedVariantSerialNumber = Math.Max(0, selectedVariantSerialNumber);
             string paymentLabel = string.IsNullOrWhiteSpace(selectedPaymentLabel)
                 ? "Unavailable payment selector"
                 : selectedPaymentLabel.Trim();

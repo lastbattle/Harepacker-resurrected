@@ -509,6 +509,11 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (!CanLocalHostSendStartRequest(out message))
+            {
+                return false;
+            }
+
             return TryDispatchOfficialClientSubtype(MemoryGameStartPacketType, tickCount, out message);
         }
 
@@ -1938,6 +1943,11 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (!CanLocalHostSendStartRequest(out message))
+            {
+                return false;
+            }
+
             if (!HasClientStartTarget())
             {
                 message = "Start request ignored because no opponent is seated in the Match Cards room yet.";
@@ -2822,6 +2832,13 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            int remotePlayerIndex = ResolveRemotePlayerIndex();
+            if (!_readyStates[remotePlayerIndex])
+            {
+                message = $"{ResolveParticipantName(remotePlayerIndex)} must be ready before Start becomes available.";
+                return false;
+            }
+
             return true;
         }
 
@@ -2885,6 +2902,36 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             targetName = resolvedName;
+            return true;
+        }
+
+        private int ResolveRemotePlayerIndex()
+        {
+            return _localPlayerIndex == 0 ? 1 : 0;
+        }
+
+        private bool CanLocalHostSendStartRequest(out string message)
+        {
+            if (_localPlayerIndex != 0)
+            {
+                message = "Only the Match Cards room owner can send start packet (61).";
+                return false;
+            }
+
+            if (!HasClientStartTarget())
+            {
+                message = "Start request ignored because no opponent is seated in the Match Cards room yet.";
+                return false;
+            }
+
+            int remotePlayerIndex = ResolveRemotePlayerIndex();
+            if (!_readyStates[remotePlayerIndex])
+            {
+                message = $"Start request blocked until {ResolveParticipantName(remotePlayerIndex)} sends ready packet (58).";
+                return false;
+            }
+
+            message = null;
             return true;
         }
 

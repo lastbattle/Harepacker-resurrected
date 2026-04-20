@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using MapleLib.WzLib;
@@ -15,6 +16,9 @@ namespace HaCreator.MapSimulator.Interaction
         public Func<int, string> ResolveQuestStateText { get; init; }
         public Func<string> ResolveJobNameText { get; init; }
         public Func<string> ResolveCurrentMapNameText { get; init; }
+        public Func<string> ResolveCurrentLevelText { get; init; }
+        public Func<string> ResolveCurrentFameText { get; init; }
+        public Func<string> ResolveCurrentMesoText { get; init; }
         public Func<int, string> ResolveQuestRecordText { get; init; }
         public Func<string, string> ResolveQuestDetailRecordText { get; init; }
     }
@@ -321,9 +325,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string BuildQuestFontSizeMarker(string fontSize)
         {
-            return int.TryParse(fontSize?.Trim(), out int parsedSize)
-                ? $"{{{{QUESTFONTSIZE:{parsedSize}}}}}"
-                : string.Empty;
+            string normalizedSize = fontSize?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedSize) ||
+                !float.TryParse(normalizedSize, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedSize) ||
+                parsedSize <= 0f)
+            {
+                return string.Empty;
+            }
+
+            return $"{{{{QUESTFONTSIZE:{parsedSize.ToString("0.###", CultureInfo.InvariantCulture)}}}}}";
         }
 
         public static string BuildQuestInlineReferenceMarker(string kind, int targetId, string label)
@@ -833,12 +843,60 @@ namespace HaCreator.MapSimulator.Interaction
                 "sec" => "0",
                 "date" => "-",
                 "rank" => "-",
+                "level" => ResolveCurrentLevelText(context),
+                "lv" => ResolveCurrentLevelText(context),
+                "pop" => ResolveCurrentFameText(context),
+                "fame" => ResolveCurrentFameText(context),
+                "money" => ResolveCurrentMesoText(context),
+                "meso" => ResolveCurrentMesoText(context),
                 _ when normalizedToken.EndsWith("limit", StringComparison.OrdinalIgnoreCase) => "0",
                 _ when normalizedToken.StartsWith("gauge", StringComparison.OrdinalIgnoreCase) => "0",
                 _ when normalizedToken.StartsWith("per", StringComparison.OrdinalIgnoreCase) => "0",
                 _ when normalizedToken.StartsWith("have", StringComparison.OrdinalIgnoreCase) => "0",
                 _ => string.Empty
             };
+        }
+
+        private static string ResolveCurrentLevelText(NpcDialogueFormattingContext context)
+        {
+            if (context?.ResolveCurrentLevelText != null)
+            {
+                string resolvedText = context.ResolveCurrentLevelText();
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "0";
+        }
+
+        private static string ResolveCurrentFameText(NpcDialogueFormattingContext context)
+        {
+            if (context?.ResolveCurrentFameText != null)
+            {
+                string resolvedText = context.ResolveCurrentFameText();
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "0";
+        }
+
+        private static string ResolveCurrentMesoText(NpcDialogueFormattingContext context)
+        {
+            if (context?.ResolveCurrentMesoText != null)
+            {
+                string resolvedText = context.ResolveCurrentMesoText();
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "0";
         }
 
         private static bool HasSelectedMobFlag(string questIdText)

@@ -3136,7 +3136,9 @@ namespace HaCreator.MapSimulator
 
                     if (string.Equals(actionKey, "Party.ChangeBoss", StringComparison.Ordinal))
                     {
-                        string restrictionMessage = FieldInteractionRestrictionEvaluator.GetPartyBossRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+                        string restrictionMessage = FieldInteractionRestrictionEvaluator.GetPartyBossRestrictionMessage(
+                            _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                            _mapBoard?.MapInfo);
                         if (!string.IsNullOrWhiteSpace(restrictionMessage))
                         {
                             return restrictionMessage;
@@ -4159,7 +4161,9 @@ namespace HaCreator.MapSimulator
             }
 
             WireSocialSearchWindowData();
-            int? launchOption = context.IsRemoteTarget ? (int)SocialSearchTab.PartyMember : null;
+            int? launchOption = _socialListRuntime.ResolveCharacterInfoSearchLaunchOption(
+                context.CharacterName,
+                context.IsRemoteTarget);
             _socialListRuntime.OpenSearchWindowFromCharacterInfo(
                 context.CharacterName,
                 context.Build,
@@ -5797,11 +5801,11 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.InventoryWindow is InventoryUI inventoryWindow)
             {
-                inventoryWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForConsumable;
+                inventoryWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForConsumableWithClientCancelIngress;
                 inventoryWindow.ItemUseRequested = TryUseInventoryItem;
                 inventoryWindow.ItemUseRequestedAtSlot = TryUseInventoryItemAtSlot;
-                inventoryWindow.InventoryDropRequested = HandleLocalInventoryDropRequest;
-                inventoryWindow.MesoDropRequested = requestedAmount => HandleLocalMesoDropRequest(requestedAmount, out _);
+                inventoryWindow.InventoryDropRequested = HandleLocalInventoryDropRequestWithClientCancelIngress;
+                inventoryWindow.MesoDropRequested = HandleLocalMesoDropRequestWithClientCancelIngress;
                 inventoryWindow.CashShopRequested = ShowCashShopWindow;
                 inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
             }
@@ -5810,7 +5814,7 @@ namespace HaCreator.MapSimulator
             switch (uiWindowManager.EquipWindow)
             {
                 case EquipUI equipWindow:
-                    equipWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipment;
+                    equipWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipmentWithClientCancelIngress;
                     equipWindow.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipWindow.EquipmentEquipGuard = GetBattlefieldEquipRestrictionMessage;
@@ -5818,7 +5822,7 @@ namespace HaCreator.MapSimulator
                     equipWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
                     break;
                 case EquipUIBigBang equipWindowBigBang:
-                    equipWindowBigBang.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipment;
+                    equipWindowBigBang.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipmentWithClientCancelIngress;
                     equipWindowBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipWindowBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipWindowBigBang.EquipmentEquipGuard = GetBattlefieldEquipRestrictionMessage;
@@ -5828,6 +5832,15 @@ namespace HaCreator.MapSimulator
             }
         }
 
+
+        private void OpenItemUpgradeWindowForConsumableWithClientCancelIngress(
+            int itemId,
+            InventoryType inventoryType,
+            int slotIndex)
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+            OpenItemUpgradeWindowForConsumable(itemId, inventoryType, slotIndex);
+        }
 
         private void OpenItemUpgradeWindowForConsumable(int itemId, InventoryType inventoryType, int slotIndex)
         {
@@ -6703,6 +6716,12 @@ namespace HaCreator.MapSimulator
         private void ShowCashShopWindow()
         {
             OpenCashServiceOwnerFamily(UI.CashServiceStageKind.CashShop, resetStageSession: true);
+        }
+
+        private void OpenItemUpgradeWindowForEquipmentWithClientCancelIngress(Character.EquipSlot slot)
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+            OpenItemUpgradeWindowForEquipment(slot);
         }
 
 
@@ -22109,6 +22128,8 @@ namespace HaCreator.MapSimulator
                     return false;
             }
         }
+        private const int RemotePetPickupPredictedSlotCount = 3;
+
         internal static int BuildRemotePetPickupActorId(int ownerCharacterId, int slotIndex)
         {
             return -((ownerCharacterId * 10) + slotIndex + 1);
@@ -22159,8 +22180,7 @@ namespace HaCreator.MapSimulator
             if (remoteUserPool == null
                 || !TryDecodeRemotePetPickupActorId(actorId, out int ownerCharacterId, out int slotIndex)
                 || !remoteUserPool.TryGetActor(ownerCharacterId, out RemoteUserActor ownerActor)
-                || ownerActor == null
-                || !CanResolveRemotePetPickupSlot(ownerActor, slotIndex))
+                || ownerActor == null)
             {
                 return false;
             }
@@ -22171,8 +22191,18 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            position = ResolveRemotePetPickupPosition(ownerActor, slotIndex);
-            return true;
+            if (CanResolveRemotePetPickupSlot(ownerActor, slotIndex))
+            {
+                position = ResolveRemotePetPickupPosition(ownerActor, slotIndex);
+                return true;
+            }
+
+            return TryResolveRemotePetPickupPositionFromOwnerState(
+                ownerActor.Position,
+                ownerActor.FacingRight,
+                ownerActor.Build?.RemotePetItemIds,
+                slotIndex,
+                out position);
         }
 
         internal static bool CanResolveRemotePetPickupSlot(RemoteUserActor ownerActor, int slotIndex)
@@ -22181,6 +22211,42 @@ namespace HaCreator.MapSimulator
                 && slotIndex >= 0
                 && slotIndex < ownerActor.Build.RemotePetItemIds.Count
                 && ownerActor.Build.RemotePetItemIds[slotIndex] > 0;
+        }
+
+        internal static bool CanResolveRemotePetPickupSlotForPacketParity(
+            IReadOnlyList<int> remotePetItemIds,
+            int slotIndex)
+        {
+            if (slotIndex < 0)
+            {
+                return false;
+            }
+
+            if (remotePetItemIds == null || remotePetItemIds.Count == 0)
+            {
+                return slotIndex < RemotePetPickupPredictedSlotCount;
+            }
+
+            return slotIndex < remotePetItemIds.Count;
+        }
+
+        internal static bool TryResolveRemotePetPickupPositionFromOwnerState(
+            Vector2 ownerPosition,
+            bool ownerFacingRight,
+            IReadOnlyList<int> remotePetItemIds,
+            int slotIndex,
+            out Vector2 position)
+        {
+            position = default;
+            if (!CanResolveRemotePetPickupSlotForPacketParity(remotePetItemIds, slotIndex))
+            {
+                return false;
+            }
+
+            float direction = ownerFacingRight ? -1f : 1f;
+            float offsetX = direction * (28f + slotIndex * 18f);
+            position = new Vector2(ownerPosition.X + offsetX, ownerPosition.Y);
+            return true;
         }
 
         internal static Vector2 ResolveRemotePetPickupPosition(RemoteUserActor actor, int slotIndex)
@@ -27541,6 +27607,22 @@ namespace HaCreator.MapSimulator
             // Local affected-area ownership branch table recovered from TryDoingMagicAttack area-owner path.
             return skillId == 12111003
                    || skillId == 12111005
+                   || skillId == 2121006
+                   || skillId == 2121007
+                   || skillId == 2221001
+                   || skillId == 2221007
+                   || skillId == 2321008
+                   || skillId == 22161001
+                   || skillId == 22181002
+                   || skillId == 32121004;
+        }
+
+        private static bool IsClientMagicLaneExplicitAreaDurationFallbackSkillId(int skillId)
+        {
+            // IDA: explicit TryDoingMagicAttack local area-owner branch keeps a fixed 3-second fallback
+            // on this narrowed family when authored duration resolves to zero.
+            return skillId == 12111003
+                   || skillId == 12111005
                    || skillId == 2121007
                    || skillId == 2221001
                    || skillId == 2221007
@@ -27707,7 +27789,7 @@ namespace HaCreator.MapSimulator
             return ownerLane switch
             {
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack when skillId == 3111003 => 1,
-                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when IsClientMagicLaneExplicitAreaSkillId(skillId) => 3,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when IsClientMagicLaneExplicitAreaDurationFallbackSkillId(skillId) => 3,
                 _ => 0
             };
         }
@@ -28866,12 +28948,36 @@ namespace HaCreator.MapSimulator
 
         private bool HasPendingExclusiveTransferRequest(int currentTime)
         {
-            return _collisionScriptExclusiveRequestSent
-                   || PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
-                       _transferFieldExclusiveRequestSent,
-                       _transferFieldExclusiveRequestSentTick,
+            RefreshCollisionScriptExclusiveRequestState(currentTime);
+            return HasPendingPassiveTransferFieldExclusiveRequest(
+                _collisionScriptExclusiveRequestSent,
+                _collisionScriptExclusiveRequestSentTick,
+                _collisionScriptExclusiveRequestDelayMs,
+                _transferFieldExclusiveRequestSent,
+                _transferFieldExclusiveRequestSentTick,
+                currentTime,
+                TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS);
+        }
+
+        internal static bool HasPendingPassiveTransferFieldExclusiveRequest(
+            bool collisionScriptExclusiveRequestSent,
+            int collisionScriptExclusiveRequestSentTick,
+            int collisionScriptExclusiveRequestCooldownMs,
+            bool transferFieldExclusiveRequestSent,
+            int transferFieldExclusiveRequestSentTick,
+            int currentTime,
+            int transferFieldExclusiveRequestCooldownMs)
+        {
+            return PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
+                       collisionScriptExclusiveRequestSent,
+                       collisionScriptExclusiveRequestSentTick,
                        currentTime,
-                       TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS);
+                       collisionScriptExclusiveRequestCooldownMs)
+                   || PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
+                       transferFieldExclusiveRequestSent,
+                       transferFieldExclusiveRequestSentTick,
+                       currentTime,
+                       transferFieldExclusiveRequestCooldownMs);
         }
 
         private bool HasPassiveTransferFieldInterface()
@@ -30023,6 +30129,7 @@ namespace HaCreator.MapSimulator
 
             if (!allowLocalPreview && guildBoss.TryConsumePulleyPacketRequest(out GuildBossField.PulleyPacketRequest request))
             {
+                string transportStatus = "Guild Boss pulley transport is unavailable.";
                 if (officialSessionBridgeHoldsOwnership)
                 {
                     if (_guildBossOfficialSessionBridge.TrySendOrQueuePulleyRequest(request, out bool queued, out string sessionStatus))
@@ -30031,18 +30138,15 @@ namespace HaCreator.MapSimulator
                             ? $"{message} Queued for live session."
                             : $"{message} Waiting for live session reply.";
                     }
-                    else if (_guildBossTransport.HasConnectedClients
-                        && _guildBossTransport.TrySendPulleyRequest(request, out string transportStatus))
-                    {
-                        message = $"{message} Waiting for transport reply.";
-                    }
                     else
                     {
                         message = sessionStatus;
                     }
                 }
-                else if (_guildBossTransport.TrySendPulleyRequest(request, out string transportStatus))
+                else if (ShouldFallbackGuildBossPulleyTransport(officialSessionBridgeHoldsOwnership)
+                    && _guildBossTransport.TrySendPulleyRequest(request, out string sendTransportStatus))
                 {
+                    transportStatus = sendTransportStatus;
                     message = $"{message} Waiting for transport reply.";
                 }
                 else
@@ -32057,6 +32161,7 @@ namespace HaCreator.MapSimulator
 
             _playerManager.Skills.SetAdditionalStateRestrictionMessageProvider(GetPlayerSkillStateRestrictionMessage);
             _playerManager.Skills.SetCurrentMapInfoProvider(() => _mapBoard?.MapInfo);
+            _playerManager.Skills.SetTownPortalPortalOverlapEvaluator(IsLocalPlayerNearTownPortalBlockedPortal);
             _playerManager.Skills.SetExternalFriendlySupportSummonsProvider(
                 () => _summonedPool.GetSupportSummonsAffectingLocalPlayer(ownerId => IsAffectedAreaOwnerPartyMember(0, ownerId)));
 
@@ -32092,6 +32197,48 @@ namespace HaCreator.MapSimulator
                 ShowFieldRestrictionMessage);
             _playerManager.SetLandingHandler(HandlePlayerLanding);
 
+        }
+
+        private bool IsLocalPlayerNearTownPortalBlockedPortal()
+        {
+            if (_portalPool?.Portals == null || _playerManager?.Player == null)
+            {
+                return false;
+            }
+
+            float playerX = _playerManager.Player.X;
+            float playerY = _playerManager.Player.Y;
+            foreach (PortalItem portal in _portalPool.Portals)
+            {
+                if (IsTownPortalBlockedPortalOverlap(portal, playerX, playerY))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsTownPortalBlockedPortalOverlap(PortalItem portal, float playerX, float playerY)
+        {
+            PortalInstance instance = portal?.PortalInstance;
+            if (instance == null)
+            {
+                return false;
+            }
+
+            // `CUserLocal::DoActiveSkill_TownPortal@0x93be00` probes `CPortalList::FindPortal`
+            // against the player position and a caller-owned 50px scan radius.
+            const float overlapRange = 50f;
+            if (Math.Abs(playerX - instance.X) > overlapRange || Math.Abs(playerY - instance.Y) > overlapRange)
+            {
+                return false;
+            }
+
+            return instance.pt is not PortalType.StartPoint
+                and not PortalType.TownPortalPoint
+                and not PortalType.Invisible
+                and not PortalType.ScriptInvisible;
         }
 
         private string GetMassacreSkillUsageRestrictionMessage()
@@ -33483,9 +33630,28 @@ namespace HaCreator.MapSimulator
                         QuestDetailDeliveryType detailDeliveryType =
                             GetQuestWindowDetailStateWithPacketState(questId)?.DeliveryType
                             ?? QuestDetailDeliveryType.None;
+
+                        int itemTargetId = target.EntityId.GetValueOrDefault();
+                        if (detailDeliveryType is QuestDetailDeliveryType.Accept or QuestDetailDeliveryType.Complete &&
+                            itemTargetId > 0 &&
+                            _questRuntime.IsQuestDeliveryRequirementItem(questId, itemTargetId, detailDeliveryType))
+                        {
+                            bool completionPhase = detailDeliveryType == QuestDetailDeliveryType.Complete;
+                            return HandleQuestDeliveryLocalHandoff(
+                                questId,
+                                completionPhase,
+                                sourceContext: $"quest-detail guide item {(completionPhase ? "completion" : "accept")} handoff",
+                                localHandoff: () => ApplyDeliveryQuestLaunch(
+                                    questId,
+                                    itemTargetId,
+                                    Array.Empty<int>(),
+                                    detailDeliveryType),
+                                targetItemIdOverride: itemTargetId);
+                        }
+
                         string deliveryMessage = ApplyDeliveryQuestLaunch(
                             questId,
-                            target.EntityId ?? 0,
+                            itemTargetId,
                             Array.Empty<int>(),
                             detailDeliveryType);
                         return new QuestWindowActionResult
@@ -34879,6 +35045,20 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private bool HandleLocalInventoryDropRequestWithClientCancelIngress(
+            InventoryType sourceInventoryType,
+            int sourceSlotIndex,
+            InventorySlotData draggedSlotData,
+            int requestedQuantity)
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+            return HandleLocalInventoryDropRequest(
+                sourceInventoryType,
+                sourceSlotIndex,
+                draggedSlotData,
+                requestedQuantity);
+        }
+
         private bool HandleLocalInventoryDropRequest(
             InventoryType sourceInventoryType,
             int sourceSlotIndex,
@@ -34908,6 +35088,12 @@ namespace HaCreator.MapSimulator
             }
 
             return TryQueuePendingLocalItemDropRequest(request, draggedSlotData);
+        }
+
+        private bool HandleLocalMesoDropRequestWithClientCancelIngress(long requestedAmount)
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+            return HandleLocalMesoDropRequest(requestedAmount, out _);
         }
 
         private bool HandleLocalMesoDropRequest(long requestedAmount, out string message)
