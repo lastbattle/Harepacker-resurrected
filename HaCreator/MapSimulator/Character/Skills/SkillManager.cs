@@ -30,10 +30,14 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillManager
     {
-        internal enum CooldownMaskSurface
+        public enum CooldownMaskSurface
         {
-            SkillBook,
-            QuickSlot
+            SkillBookClassic = 0,
+            SkillBookBigBang = 1,
+            QuickSlot = 2,
+            StatusBarShortcutTray = 3,
+            StatusBarOffBarTray = 4,
+            SkillBook = SkillBookClassic
         }
 
         internal enum CooldownUiPresentationKind
@@ -868,6 +872,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ["criticalDamageMax"] = new[] { CriticalDamageBuffLabel },
                 ["damR"] = new[] { DamRBuffLabel },
                 ["indieDamR"] = new[] { DamRBuffLabel },
+                ["PVPdamage"] = new[] { DamRBuffLabel },
                 ["indieAllStat"] = new[] { AllStatsBuffLabel },
                 ["asrR"] = new[] { DebuffResistanceBuffLabel },
                 ["indieAsrR"] = new[] { DebuffResistanceBuffLabel },
@@ -918,6 +923,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ["criticalDamageMax"] = "Critical Damage",
                 ["damR"] = "Damage Reduction",
                 ["indieDamR"] = "Independent Damage Reduction",
+                ["PVPdamage"] = "Damage Reduction",
                 ["expR"] = "Bonus EXP",
                 ["dropR"] = "Drop Rate",
                 ["mesoR"] = "Meso Rate",
@@ -2352,6 +2358,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             5201002,
             14111006
         };
+        private static readonly HashSet<int> ClientDoActiveSkillPrepareSilentCooldownSkillIds = new()
+        {
+            // `CUserLocal::DoActiveSkill_Prepare@0x941710` checks a dedicated
+            // cool-end map (silent reject) for this recovered subset before send.
+            4341003,
+            5201002,
+            14111006,
+            35001001,
+            35101009
+        };
         private static readonly HashSet<int> ClientDoActiveSkillSummonFamilySkillIds = new()
         {
             // Representative summon-owner callers recovered from `CUserLocal::DoActiveSkill_Summon`.
@@ -2720,7 +2736,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (ShouldRejectClientDoActiveSkillFamilyStateWithoutMessage(skill))
+            if (ShouldRejectClientDoActiveSkillFamilyStateWithoutMessage(skill, currentTime))
             {
                 return false;
             }
@@ -2869,12 +2885,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             return IsClientTownPortalBlockedMapCategory(mapId);
         }
 
-        private bool ShouldRejectClientDoActivePrepareFamilyStateWithoutMessage(SkillData skill)
+        private bool ShouldRejectClientDoActivePrepareFamilyStateWithoutMessage(SkillData skill, int currentTime)
         {
             if (ResolveDoActiveSkillExecutionLane(skill) != ClientDoActiveSkillExecutionLane.Prepare
                 || skill?.SkillId <= 0)
             {
                 return false;
+            }
+
+            if (IsClientPrepareSkillBlockedByJobTier(skill.SkillId))
+            {
+                return true;
+            }
+
+            if (IsClientPrepareFlameLauncherBlockedByRocketBoosterState(skill.SkillId))
+            {
+                return true;
+            }
+
+            if (ShouldRejectClientDoActivePrepareFamilyCooldownStateWithoutMessage(skill, currentTime))
+            {
+                return true;
             }
 
             // `CUserLocal::DoActiveSkill_Prepare@0x941710` rejects 35101009 when
@@ -2883,11 +2914,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && GetSkillLevel(35001001) <= 0;
         }
 
-        private bool ShouldRejectClientDoActiveSkillFamilyStateWithoutMessage(SkillData skill)
+        private bool ShouldRejectClientDoActiveSkillFamilyStateWithoutMessage(SkillData skill, int currentTime)
         {
             return ShouldRejectClientDoActiveSummonFamilyStateWithoutMessage(skill)
                    || ShouldRejectClientDoActiveTownPortalFamilyStateWithoutMessage(skill)
-                   || ShouldRejectClientDoActivePrepareFamilyStateWithoutMessage(skill);
+                   || ShouldRejectClientDoActivePrepareFamilyStateWithoutMessage(skill, currentTime);
         }
 
         private string ResolveClientDoActivePrepareFamilyRestrictionMessage(SkillData skill)
@@ -2900,7 +2931,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int weaponCode = GetEquippedWeaponCode();
-            if (skill.SkillId == WildHunterSwallowSkillId && weaponCode <= 0)
+            if ((skill.SkillId == WildHunterSwallowSkillId || skill.SkillId == 33101005) && weaponCode <= 0)
             {
                 return MapleStoryStringPool.GetOrFallback(
                     ClientPrepareNoWeaponStringPoolId,
@@ -2951,6 +2982,41 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int category = Math.Abs(mapId / 1_000_000) % 100;
             return category == ClientTownPortalBlockedMapCategory;
+        }
+
+        private bool ShouldRejectClientDoActivePrepareFamilyCooldownStateWithoutMessage(SkillData skill, int currentTime)
+        {
+            if (skill?.SkillId <= 0
+                || !ClientDoActiveSkillPrepareSilentCooldownSkillIds.Contains(skill.SkillId))
+            {
+                return false;
+            }
+
+            return GetCooldownRemaining(skill.SkillId, currentTime) > 0;
+        }
+
+        private static bool IsClientPrepareSkillBlockedByJobTier(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            int jobTier = Math.Abs(skillId / 1000) % 10;
+            return jobTier is 0 or 9;
+        }
+
+        private bool IsClientPrepareFlameLauncherBlockedByRocketBoosterState(int skillId)
+        {
+            if (skillId is not 35001001 and not 35101009)
+            {
+                return false;
+            }
+
+            // `DoActiveSkill_Prepare` checks rocket-booster start/loop state for this
+            // mechanic pair before prepare admission; landing recovery is excluded.
+            return _rocketBoosterState != null
+                   && _rocketBoosterState.LandingAttackTime == int.MinValue;
         }
 
         /// <summary>
@@ -3260,7 +3326,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (!string.IsNullOrWhiteSpace(ResolveClientDoActiveSkillFamilyStateRestrictionMessage(skill)))
                 return false;
 
-            if (ShouldRejectClientDoActiveSkillFamilyStateWithoutMessage(skill))
+            if (ShouldRejectClientDoActiveSkillFamilyStateWithoutMessage(skill, currentTime))
                 return false;
 
             if (_externalCastBlockedEvaluator?.Invoke(currentTime) == true)
@@ -3534,7 +3600,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 15;
             }
 
-            if (maskSurface == CooldownMaskSurface.QuickSlot)
+            if (UsesClientDiscreteSecondCooldownMask(maskSurface))
             {
                 // Client evidence (CUIStatusBar::CQuickSlot::DrawSkillCooltime):
                 // frame = 14 * (cooltimeSec - remainingMs/1000) / cooltimeSec.
@@ -3552,7 +3618,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int frameIndex,
             CooldownMaskSurface maskSurface = CooldownMaskSurface.SkillBook)
         {
-            if (maskSurface == CooldownMaskSurface.QuickSlot)
+            if (UsesClientDiscreteSecondCooldownMask(maskSurface))
             {
                 int clampedQuickSlotFrame = Math.Clamp(frameIndex, 0, 14);
                 return Math.Clamp((15 - clampedQuickSlotFrame) / 15f, 0f, 1f);
@@ -3561,6 +3627,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             int clampedFrameIndex = Math.Clamp(frameIndex, 0, 15);
 
             return Math.Clamp((16 - clampedFrameIndex) / 16f, 0f, 1f);
+        }
+
+        private static bool UsesClientDiscreteSecondCooldownMask(CooldownMaskSurface maskSurface)
+        {
+            // Client evidence: CUIStatusBar::Update drives CQuickSlot::DrawSkillCooltime
+            // on the status bar shortcut tray; both quickslot surfaces share the same
+            // whole-second quantized 14-step mask progression path.
+            return maskSurface == CooldownMaskSurface.QuickSlot
+                || maskSurface == CooldownMaskSurface.StatusBarShortcutTray;
         }
 
         public void SetAuthoritativeVehicleDurabilityPresentation(
@@ -10684,6 +10759,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Keep constrained type-40 ownership on the rechecked non-direct
             // bound-jump profiles even when action rows are missing at runtime.
             return IsConstrainedType40IceDoubleJumpSkillId(skillId)
+                   || skillId == 13101004
                    || skillId is 3101003
                        or 3201003
                    || skillId is 23001002
@@ -15675,6 +15751,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2 projectilePosition,
             int currentTime)
         {
+            if (ShouldUseRegisteredBulletAnimationTimelinePosition(presentation, projectile))
+            {
+                return ResolveBulletAnimationInterpolatedPosition(presentation, currentTime);
+            }
+
             if (TryResolveBulletAnimationOwnerLiveProjectilePosition(projectile, out Vector2 liveProjectilePosition))
             {
                 projectilePosition = liveProjectilePosition;
@@ -17027,7 +17108,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && projectile != null
                    && !projectile.IsExpired
                    && !projectile.IsExploding
-                   && (ShouldUseQueuedFollowUpBulletPresentationPath(projectile)
+                   && (ShouldUseRegisteredBulletAnimationTimelinePosition(owner.Presentation, projectile)
                        || TryResolveBulletAnimationOwnerLiveProjectilePosition(projectile, out _));
         }
 
@@ -17043,7 +17124,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (projectile != null)
             {
-                if (ShouldUseQueuedFollowUpBulletPresentationPath(projectile))
+                if (ShouldUseRegisteredBulletAnimationTimelinePosition(owner.Presentation, projectile))
                 {
                     return ResolveBulletAnimationInterpolatedPosition(owner.Presentation, currentTime);
                 }
@@ -17056,7 +17137,33 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return owner.PreviousPosition;
             }
 
-            return owner.PreviousPosition;
+            return ShouldUseRegisteredBulletAnimationTimelinePosition(owner.Presentation, projectile: null)
+                ? ResolveBulletAnimationInterpolatedPosition(owner.Presentation, currentTime)
+                : owner.PreviousPosition;
+        }
+
+        internal static bool ShouldUseRegisteredBulletAnimationTimelinePosition(
+            BulletAnimationPresentation presentation,
+            ActiveProjectile projectile)
+        {
+            if (!HasFiniteBulletAnimationTimelineAnchors(presentation))
+            {
+                return false;
+            }
+
+            return projectile == null
+                || ShouldUseQueuedFollowUpBulletPresentationPath(projectile)
+                || presentation.Kind == BulletAnimationOwnerKind.Normal
+                || presentation.Kind == BulletAnimationOwnerKind.Magic;
+        }
+
+        internal static bool HasFiniteBulletAnimationTimelineAnchors(BulletAnimationPresentation presentation)
+        {
+            return presentation != null
+                   && float.IsFinite(presentation.SourcePoint.X)
+                   && float.IsFinite(presentation.SourcePoint.Y)
+                   && float.IsFinite(presentation.DestinationPoint.X)
+                   && float.IsFinite(presentation.DestinationPoint.Y);
         }
 
         private void UpdateBulletAnimationOwnerAfterimages(ActiveBulletAnimationOwner owner, int currentTime)
@@ -18306,7 +18413,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             // `CSkill_HitAni::operator()` is invoked with the live target loop index before
             // `CMob::AddDamageInfo`, and these checked Wild Hunter skills publish authored
             // multi-branch `hit/*` data in WZ instead of a single shared hit animation.
-            return skillId == 33121009;
+            return skillId == 33121009
+                   || skillId == 33111006;
         }
 
         internal static bool UsesClientFinalDamageLineSubHitAnimation(int skillId)
@@ -19073,9 +19181,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool TryResolveSwallowAbsorbRequest(int skillId, int targetMobId, bool success, int currentTime)
         {
-            if (_swallowState == null || !_swallowState.PendingAbsorbOutcome)
+            if (_swallowState == null)
             {
-                if (ShouldBufferWildHunterSwallowAbsorbOutcome(skillId))
+                bool swallowFamilyOutcome = ShouldBufferWildHunterSwallowAbsorbOutcome(skillId);
+                if (ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(hasSwallowState: false, swallowFamilyOutcome))
                 {
                     _swallowAbsorbOutcomeBuffer.Store(
                         skillId,
@@ -19085,6 +19194,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                         WildHunterSwallowParity.ResolveBufferedAbsorbOutcomeLifetimeMs());
                 }
 
+                return false;
+            }
+
+            if (!_swallowState.PendingAbsorbOutcome)
+            {
                 return false;
             }
 
@@ -24236,7 +24350,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     CriticalDamageBuffLabel);
                 TrackIfMissing(
                     temporaryStats,
-                    levelData.DamageReductionRate > 0 && HasAuthoredTemporaryStatProperty(levelData, "damR", "indieDamR"),
+                    levelData.DamageReductionRate > 0 && HasAuthoredTemporaryStatProperty(levelData, "damR", "indieDamR", "PVPdamage"),
                     DamRBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.DamageReductionRate > 0, DamageReductionBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.AllStat > 0 || HasAllPrimaryStatBonus(levelData), AllStatsBuffLabel);
@@ -24652,7 +24766,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return levelData != null
                 && levelData.DamageReductionRate > 0
-                && HasAuthoredTemporaryStatProperty(levelData, "damR", "indieDamR");
+                && HasAuthoredTemporaryStatProperty(levelData, "damR", "indieDamR", "PVPdamage");
         }
 
         private static bool ShouldPresentEnhancedMddAsMagicAttack(SkillData skill)
@@ -25861,6 +25975,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(label, "EVA", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, "Speed", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, "Jump", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, DamRBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, DamageReductionBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, BoosterBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MasteryBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, StanceBuffLabel, StringComparison.OrdinalIgnoreCase)
@@ -26833,6 +26949,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             return string.Equals(propertyName, "emhp", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "emmp", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "PVPdamage", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "damR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "indieDamR", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "mastery", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "prop", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "mhpX", StringComparison.OrdinalIgnoreCase)
@@ -27198,6 +27316,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 45 => mentions("bow mastery")
                       || mentions("bow expert")
                       || mentionsFamilyWithGenericWeaponMastery("bow", "bows"),
+                // Ancient Bow (59) is bow-equippable on the same stat-window family seam.
+                59 => mentions("ancient bow mastery")
+                      || mentions("ancient bow expert")
+                      || mentions("bow mastery")
+                      || mentions("bow expert")
+                      || mentionsFamilyWithGenericWeaponMastery("ancient bow", "ancient bows", "bow", "bows"),
                 46 => mentions("crossbow mastery")
                       || mentions("crossbow expert")
                       || mentions("cross bow mastery")
@@ -28251,6 +28375,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SkillData swallowSkill = GetSkillData(WildHunterSwallowSkillId);
             return IsVisibleSwallowFamilyRequest(skillId, swallowSkill, GetSkillData);
+        }
+
+        internal static bool ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
+            bool hasSwallowState,
+            bool swallowFamilyOutcome)
+        {
+            return !hasSwallowState && swallowFamilyOutcome;
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

@@ -606,7 +606,7 @@ namespace HaCreator.MapSimulator
         private float _tombVelocityY; // Current fall velocity
         private float _tombTargetY; // Ground Y position (death position)
         private bool _tombHasLanded; // Whether tombstone has hit ground
-        private const float TOMB_GRAVITY = 1200f; // Gravity acceleration (px/s鬯ｯ・ｩ陝ｷ・｢繝ｻ・ｽ繝ｻ・｢鬮ｫ・ｴ髮懶ｽ｣繝ｻ・ｽ繝ｻ・｢驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｽ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｻ鬯ｯ・ｩ陝ｷ・｢繝ｻ・ｽ繝ｻ・｢驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｧ鬯ｮ・ｫ繝ｻ・ｰ驛｢譎｢・ｽ・ｻ驕ｶ荵暦ｽｧ・ｭ郢晢ｽｻ郢晢ｽｻ繝ｻ・ｽ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｽ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｻ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｽ鬯ｩ蟷｢・ｽ・｢髫ｴ雜｣・ｽ・｢郢晢ｽｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｻ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｻ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｲ)
+        private const float TOMB_GRAVITY = 1200f; // Gravity acceleration (px/s^2)
         private const float TOMB_START_HEIGHT = 300f; // Height above death position to start falling
 
 
@@ -6144,9 +6144,12 @@ namespace HaCreator.MapSimulator
 
         internal static string BuildOnlyPickupInventoryUseRejectedMessage(string itemName)
         {
-            return string.IsNullOrWhiteSpace(itemName)
+            string normalizedItemName = string.IsNullOrWhiteSpace(itemName)
+                ? string.Empty
+                : itemName.Trim();
+            return string.IsNullOrWhiteSpace(normalizedItemName)
                 ? "That item can only be used when picked up."
-                : $"{itemName} can only be used when picked up.";
+                : $"{normalizedItemName} can only be used when picked up.";
         }
 
 
@@ -20073,8 +20076,14 @@ namespace HaCreator.MapSimulator
                 }
 
                 return MobSkillSelectionParity.ShouldAutoSelectPlayerTargetSkill(
-                    CreateMobSkillArea(sourceMob, runtimeData),
-                    player.GetHitbox());
+                           CreateMobSkillArea(sourceMob, runtimeData),
+                           player.GetHitbox())
+                       && (_playerManager?.CanAutoSelectMobSkillStatus(
+                               skill.SkillId,
+                               runtimeData,
+                               currentTick,
+                               sourceMob.CurrentX)
+                           ?? false);
             }
 
             return true;
@@ -20084,7 +20093,7 @@ namespace HaCreator.MapSimulator
         {
             return skillId switch
             {
-                120 or 121 or 122 or 123 or 124 or 125 or 126 or 127 or 128 or 129 or 131 or 132 or 133 or 134 or 135 or 136 or 137 or 172 or 173 => true,
+                120 or 121 or 122 or 123 or 124 or 125 or 126 or 127 or 128 or 129 or 131 or 132 or 133 or 134 or 135 or 136 or 137 or 138 or 172 or 173 => true,
                 _ => false
             };
         }
@@ -22935,6 +22944,15 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!IsRecentPickupActorAdmissibleForOwnershipWindow(
+                    recentPickup,
+                    localCharacterId,
+                    localPetRuntimeIdEvaluator,
+                    partyMembershipEvaluator))
+            {
+                return false;
+            }
+
             return recentPickup.ActorKind switch
             {
                 Pools.DropPickupActorKind.Player => localCharacterId <= 0 || recentPickup.PickerId != localCharacterId,
@@ -22944,6 +22962,100 @@ namespace HaCreator.MapSimulator
                 Pools.DropPickupActorKind.Other => true,
                 _ => true
             };
+        }
+
+        internal static bool IsRecentPickupActorAdmissibleForOwnershipWindow(
+            Pools.RecentPickupRecord recentPickup,
+            int localCharacterId,
+            Func<int, bool> localPetRuntimeIdEvaluator,
+            Func<int, int, bool> partyMembershipEvaluator)
+        {
+            if (recentPickup == null || !recentPickup.OwnershipWindowActive || recentPickup.OwnerId <= 0)
+            {
+                return true;
+            }
+
+            return recentPickup.ActorKind switch
+            {
+                Pools.DropPickupActorKind.Player => IsPlayerOwnershipWindowPickupAdmissible(
+                    recentPickup.OwnerId,
+                    recentPickup.OwnershipType,
+                    recentPickup.PickerId,
+                    partyMembershipEvaluator),
+                Pools.DropPickupActorKind.Pet => IsPetOwnershipWindowPickupAdmissible(
+                    recentPickup,
+                    localCharacterId,
+                    localPetRuntimeIdEvaluator,
+                    partyMembershipEvaluator),
+                _ => true
+            };
+        }
+
+        private static bool IsPlayerOwnershipWindowPickupAdmissible(
+            int ownerId,
+            Pools.DropOwnershipType ownershipType,
+            int pickerId,
+            Func<int, int, bool> partyMembershipEvaluator)
+        {
+            if (pickerId <= 0)
+            {
+                return true;
+            }
+
+            return ownershipType switch
+            {
+                Pools.DropOwnershipType.Character => pickerId == ownerId,
+                Pools.DropOwnershipType.Party => pickerId == ownerId
+                    || partyMembershipEvaluator?.Invoke(ownerId, pickerId) == true,
+                _ => true
+            };
+        }
+
+        private static bool IsPetOwnershipWindowPickupAdmissible(
+            Pools.RecentPickupRecord recentPickup,
+            int localCharacterId,
+            Func<int, bool> localPetRuntimeIdEvaluator,
+            Func<int, int, bool> partyMembershipEvaluator)
+        {
+            int petOwnerId = ResolveRecentPetPickupOwnerCharacterId(
+                recentPickup,
+                localCharacterId,
+                localPetRuntimeIdEvaluator);
+            if (petOwnerId <= 0)
+            {
+                return true;
+            }
+
+            return recentPickup.OwnershipType switch
+            {
+                Pools.DropOwnershipType.Character => petOwnerId == recentPickup.OwnerId,
+                Pools.DropOwnershipType.Party => petOwnerId == recentPickup.OwnerId
+                    || partyMembershipEvaluator?.Invoke(recentPickup.OwnerId, petOwnerId) == true,
+                _ => true
+            };
+        }
+
+        private static int ResolveRecentPetPickupOwnerCharacterId(
+            Pools.RecentPickupRecord recentPickup,
+            int localCharacterId,
+            Func<int, bool> localPetRuntimeIdEvaluator)
+        {
+            if (recentPickup == null || recentPickup.PickerId <= 0)
+            {
+                return 0;
+            }
+
+            if (localPetRuntimeIdEvaluator?.Invoke(recentPickup.PickerId) == true)
+            {
+                return localCharacterId > 0 ? localCharacterId : 0;
+            }
+
+            if (TryDecodeRemotePetPickupActorId(recentPickup.PickerId, out int ownerCharacterId, out _))
+            {
+                return ownerCharacterId;
+            }
+
+            return recentPickup.PickedByPet ? recentPickup.PickerId : 0;
         }
 
 
@@ -23178,6 +23290,15 @@ namespace HaCreator.MapSimulator
             if (!ShouldSurfaceRecentPickupNotice(
                     recentPickup,
                     _playerManager?.Player?.Build?.Id ?? 0,
+                    AreDropActorsInSameParty))
+            {
+                return true;
+            }
+
+            if (!ShouldTreatRecentPickupAsRemotePreemption(
+                    recentPickup,
+                    _playerManager?.Player?.Build?.Id ?? 0,
+                    IsLocalPetRuntimeId,
                     AreDropActorsInSameParty))
             {
                 return true;
@@ -27837,33 +27958,69 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int resolvedMask = 0;
-            string[] tokenSources = !string.IsNullOrWhiteSpace(skill.ElementAttributeToken)
-                ? new[]
-                {
-                    skill.ElementAttributeToken
-                }
-                : new[]
-                {
-                    skill.DotType ?? string.Empty,
-                    skill.AffectedSkillEffect ?? string.Empty
-                };
-
-            bool hasAnyTokenSource = false;
-            for (int sourceIndex = 0; sourceIndex < tokenSources.Length; sourceIndex++)
+            int resolvedMask = ResolveLocalOwnedElementMaskFromSources(
+                new[] { skill.ElementAttributeToken },
+                out bool hasElementAttributeTokens);
+            if (resolvedMask <= 0 && hasElementAttributeTokens)
             {
-                if (string.IsNullOrWhiteSpace(tokenSources[sourceIndex]))
+                resolvedMask = ResolveLocalOwnedElementMaskFromSources(
+                    new[]
+                    {
+                        skill.DotType,
+                        skill.AffectedSkillEffect
+                    },
+                    out _);
+            }
+
+            if (resolvedMask <= 0 && !hasElementAttributeTokens)
+            {
+                resolvedMask = ResolveLocalOwnedElementMaskFromSources(
+                    new[]
+                    {
+                        skill.DotType,
+                        skill.AffectedSkillEffect
+                    },
+                    out bool hasFallbackTokens);
+                if (!hasFallbackTokens)
+                {
+                    return 0;
+                }
+            }
+
+            if (resolvedMask <= 0)
+            {
+                return 0;
+            }
+
+            return NormalizeLocalOwnedElementMask(resolvedMask);
+        }
+
+        private static int ResolveLocalOwnedElementMaskFromSources(
+            IEnumerable<string> tokenSources,
+            out bool hasAnyTokenSource)
+        {
+            hasAnyTokenSource = false;
+            int resolvedMask = 0;
+
+            if (tokenSources == null)
+            {
+                return 0;
+            }
+
+            foreach (string source in tokenSources)
+            {
+                if (string.IsNullOrWhiteSpace(source))
                 {
                     continue;
                 }
 
                 hasAnyTokenSource = true;
-                string[] parts = tokenSources[sourceIndex].Split(
+                string[] parts = source.Split(
                     new[] { ',', '|', '&', ' ', '/', '\\', ';', ':', '+', '(', ')', '[', ']', '{', '}', '-', '_' },
                     StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0)
                 {
-                    parts = new[] { tokenSources[sourceIndex] };
+                    parts = new[] { source };
                 }
 
                 for (int partIndex = 0; partIndex < parts.Length; partIndex++)
@@ -27887,12 +28044,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (!hasAnyTokenSource)
-            {
-                return 0;
-            }
-
-            return NormalizeLocalOwnedElementMask(resolvedMask);
+            return resolvedMask;
         }
 
         private const int LocalOwnedAffectedAreaSupportedElementMask = 1 | 2 | 4 | 8 | 16 | 32;
@@ -28061,7 +28213,7 @@ namespace HaCreator.MapSimulator
 
             return skill.UsesAffectedSkillBodyAttack
                    || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
-                   || (skill.AreaAttack && (IsClientBodyInfoType(skill.ClientInfoType) || !string.IsNullOrWhiteSpace(skill.AffectedSkillEffect)));
+                   || (skill.AreaAttack && IsClientBodyInfoType(skill.ClientInfoType));
         }
 
         private static bool IsLocalAttackAreaExplicitOwnerBranch(
@@ -28674,7 +28826,13 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void HandleSkillMacroClientForwardedNonFunctionPhysicalKeyStateChanged(Keys key, bool keyDown, bool controlHeld, bool shiftHeld)
+        private void HandleSkillMacroClientForwardedNonFunctionPhysicalKeyStateChanged(
+            Keys key,
+            bool keyDown,
+            bool controlHeld,
+            bool shiftHeld,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
         {
             Func<InputAction, KeyBinding> bindingResolver = _playerManager?.Input != null
                 ? _playerManager.Input.GetBinding
@@ -30599,11 +30757,7 @@ namespace HaCreator.MapSimulator
             // CWvsContext transfer/portal handoff responses consume both shared exclusive-request owners.
             ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
             ClearTransferFieldExclusiveRequestSent(preserveCooldown: false);
-            if (ShouldClearPacketOwnedQuestResultStartQuestRequestLatchFromSharedExclusiveReset(
-                    _packetOwnedQuestResultStartQuestRequestSent))
-            {
-                ClearPacketOwnedQuestResultStartQuestRequestLatch();
-            }
+            TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
         }
 
         private void RegisterPortalCollisionRequestSource(int portalIndex)
@@ -34500,11 +34654,7 @@ namespace HaCreator.MapSimulator
         private void HandlePlayerSkillCast(SkillCastInfo castInfo)
 
         {
-            if (ShouldRegisterLocalSkillCastThroughClientShowSkillEffectDirectPathForTesting(castInfo))
-            {
-                TryRegisterAnimationDisplayerSkillUse(castInfo);
-            }
-            else if (!TryRouteLocalShowSkillEffectCastThroughRequestSeam(castInfo))
+            if (!TryRegisterLocalSkillCastThroughClientShowSkillEffectDirectPath(castInfo))
             {
                 TryRegisterAnimationDisplayerSkillUse(castInfo);
             }
@@ -34532,34 +34682,14 @@ namespace HaCreator.MapSimulator
 
         }
 
-        private bool TryRouteLocalShowSkillEffectCastThroughRequestSeam(SkillCastInfo castInfo)
+        private bool TryRegisterLocalSkillCastThroughClientShowSkillEffectDirectPath(SkillCastInfo castInfo)
         {
-            if (!ShouldRouteLocalSkillCastThroughClientSkillEffectRequestSeamForTesting(castInfo))
+            if (!ShouldRegisterLocalSkillCastThroughClientShowSkillEffectDirectPathForTesting(castInfo))
             {
                 return false;
             }
 
-            var request = new SkillUseEffectRequest
-            {
-                EffectSkillId = castInfo.SkillId,
-                SourceSkillId = castInfo.SkillId,
-                RequestTime = castInfo.CastTime > 0 ? castInfo.CastTime : currTickCount,
-                BranchNames = ResolveAnimationDisplayerRequestedBranchNames(
-                    castInfo.RequestedBranchNames,
-                    castInfo.EffectAnimation,
-                    castInfo.SecondaryEffectAnimation),
-                EffectBranchLastIndex = castInfo.EffectBranchLastIndex
-                                        ?? SkillManager.ResolveClientLocalShowSkillEffectEffectBranchLastIndexOverride(
-                                            castInfo.SkillData),
-                WorldOrigin = new Microsoft.Xna.Framework.Vector2(castInfo.CasterX, castInfo.CasterY),
-                OriginOffset = castInfo.OriginOffset,
-                FollowOwnerPosition = castInfo.FollowOwnerPosition,
-                FollowOwnerFacing = castInfo.FollowOwnerFacing,
-                FacingRightOverride = castInfo.FacingRightOverride,
-                DelayRateOverride = castInfo.DelayRateOverride
-            };
-
-            return TryRegisterAnimationDisplayerLocalSkillUseRequest(request);
+            return TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
 
@@ -34667,6 +34797,7 @@ namespace HaCreator.MapSimulator
             _remoteAffectedAreaOwnerNamesByAreaObjectId.Remove(objectId);
             _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Remove(objectId);
             _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Remove(objectId);
+            _remoteAffectedAreaEnemyOwnersByAreaObjectId.Remove(objectId);
             _remoteAffectedAreaLocalPlayerTickTimes.Remove(objectId);
 
             if (removedOwnerId > 0
@@ -34699,6 +34830,7 @@ namespace HaCreator.MapSimulator
             _remoteAffectedAreaOwnerNamesByAreaObjectId.Clear();
             _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Clear();
             _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Clear();
+            _remoteAffectedAreaEnemyOwnersByAreaObjectId.Clear();
             _remoteAffectedAreaLocalPlayerTickTimes.Clear();
         }
 
@@ -36256,20 +36388,7 @@ namespace HaCreator.MapSimulator
                 StatusBarBuffRenderData renderData = i < _statusBarBuffRenderCache.Count
                     ? _statusBarBuffRenderCache[i]
                     : CreateAndAppendStatusBarBuffRenderData(_statusBarBuffRenderCache);
-                renderData.SkillId = buffEntry.SkillId;
-                renderData.SkillName = buffEntry.SkillName;
-                renderData.Description = buffEntry.Description;
-                renderData.IconKey = buffEntry.IconKey;
-                renderData.IconTexture = buffEntry.IconTexture;
-                renderData.RemainingMs = buffEntry.RemainingMs;
-                renderData.CounterText = buffEntry.CounterText;
-                renderData.TooltipStateText = buffEntry.TooltipStateText;
-                renderData.DurationMs = buffEntry.DurationMs;
-                renderData.SortOrder = buffEntry.SortOrder;
-                renderData.FamilyDisplayName = buffEntry.FamilyDisplayName;
-                renderData.TemporaryStatLabels = buffEntry.TemporaryStatLabels;
-                renderData.TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames;
-                renderData.IsAlerting = buffEntry.IsAlerting;
+                ApplyStatusBarBuffRenderData(renderData, buffEntry);
             }
 
 
@@ -36372,8 +36491,9 @@ namespace HaCreator.MapSimulator
                     out int maskFrameIndex,
                     out string counterText,
                     includeCounterText: true,
-                    maskSurface: SkillManager.CooldownMaskSurface.QuickSlot);
+                    maskSurface: SkillManager.CooldownMaskSurface.StatusBarShortcutTray);
                 renderData.MaskFrameIndex = maskFrameIndex;
+                renderData.MaskSurface = SkillManager.CooldownMaskSurface.StatusBarShortcutTray;
                 renderData.UseQuickSlotMaskSurface = true;
                 renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
@@ -36470,8 +36590,9 @@ namespace HaCreator.MapSimulator
                     out int maskFrameIndex,
                     out string counterText,
                     includeCounterText: true,
-                    maskSurface: SkillManager.CooldownMaskSurface.SkillBook);
+                    maskSurface: SkillManager.CooldownMaskSurface.StatusBarOffBarTray);
                 renderData.MaskFrameIndex = maskFrameIndex;
+                renderData.MaskSurface = SkillManager.CooldownMaskSurface.StatusBarOffBarTray;
                 renderData.UseQuickSlotMaskSurface = false;
                 renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
@@ -38596,6 +38717,32 @@ namespace HaCreator.MapSimulator
                 _snowBallPacketInbox.Stop();
                 _snowBallOfficialSessionBridge.Stop();
             }
+        }
+
+        internal static void ApplyStatusBarBuffRenderData(StatusBarBuffRenderData renderData, StatusBarBuffEntry buffEntry)
+        {
+            if (renderData == null || buffEntry == null)
+            {
+                return;
+            }
+
+            renderData.SkillId = buffEntry.SkillId;
+            renderData.SkillName = buffEntry.SkillName;
+            renderData.Description = buffEntry.Description;
+            renderData.IconKey = buffEntry.IconKey;
+            renderData.IconTexture = buffEntry.IconTexture;
+            renderData.RemainingMs = buffEntry.RemainingMs;
+            renderData.CounterText = buffEntry.CounterText;
+            renderData.TooltipStateText = buffEntry.TooltipStateText;
+            renderData.DurationMs = buffEntry.DurationMs;
+            renderData.SortOrder = buffEntry.SortOrder;
+            renderData.FamilyDisplayName = buffEntry.FamilyDisplayName;
+            renderData.TemporaryStatLabels = buffEntry.TemporaryStatLabels;
+            renderData.TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames;
+            renderData.IsAlerting = buffEntry.IsAlerting;
+            renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
+            renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
+            renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;
         }
 
 
@@ -41292,3 +41439,4 @@ namespace HaCreator.MapSimulator
 
 
 }
+

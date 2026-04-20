@@ -2614,7 +2614,9 @@ namespace HaCreator.MapSimulator.Character
         {
             return GetWeaponCode(GetWeapon()?.ItemId ?? 0) switch
             {
-                45 => AutoAssignStrategy.BowmanBow,
+                // Later weapon code `59` (Ancient Bow family) still uses bow-style STR targeting
+                // on the stat-window auto-assign seam when that weapon is currently equipped.
+                45 or 59 => AutoAssignStrategy.BowmanBow,
                 46 or 52 => AutoAssignStrategy.BowmanCrossbowLike,
                 _ => absoluteJobId switch
                 {

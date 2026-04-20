@@ -204,6 +204,8 @@ namespace HaCreator.MapSimulator.Effects
         private Func<LoginAvatarLook, string, CharacterBuild> _remoteBuildFactory;
         private int? _lastPacketType;
         private readonly List<WeddingPhotoScenePresentationPacketRecord> _weddingPhotoScenePresentationPacketTrail = new();
+        private int _weddingPhotoSceneUnhandledPacketCount;
+        private int? _lastWeddingPhotoSceneUnhandledPacketType;
         #endregion
 
 
@@ -249,6 +251,8 @@ namespace HaCreator.MapSimulator.Effects
                 : _weddingPhotoScenePresentationPacketTrail[^1].OwnerName;
         public IReadOnlyList<WeddingPhotoScenePresentationPacketRecord> WeddingPhotoScenePresentationPacketTrail =>
             _weddingPhotoScenePresentationPacketTrail;
+        public int WeddingPhotoSceneUnhandledPacketCount => _weddingPhotoSceneUnhandledPacketCount;
+        public int? LastWeddingPhotoSceneUnhandledPacketType => _lastWeddingPhotoSceneUnhandledPacketType;
         #endregion
 
 
@@ -320,6 +324,8 @@ namespace HaCreator.MapSimulator.Effects
             _dialogQueue.Clear();
             LocalParticipantRole = WeddingParticipantRole.Guest;
             _weddingPhotoScenePresentationPacketTrail.Clear();
+            _weddingPhotoSceneUnhandledPacketCount = 0;
+            _lastWeddingPhotoSceneUnhandledPacketType = null;
 
 
             System.Diagnostics.Debug.WriteLine($"[WeddingField] Enabled for map {mapId}, NPC {_npcId}");
@@ -374,6 +380,8 @@ namespace HaCreator.MapSimulator.Effects
             _externalRemoteActorLoadCooltimeEndTimeMs = 0;
             LocalParticipantRole = WeddingParticipantRole.Guest;
             _weddingPhotoScenePresentationPacketTrail.Clear();
+            _weddingPhotoSceneUnhandledPacketCount = 0;
+            _lastWeddingPhotoSceneUnhandledPacketType = null;
 
             if (!string.IsNullOrWhiteSpace(WeddingPhotoSceneBackgroundMusicPath))
             {
@@ -397,6 +405,8 @@ namespace HaCreator.MapSimulator.Effects
             WeddingPhotoSceneViewport = null;
             WeddingPhotoSceneBackgroundMusicPath = null;
             _weddingPhotoScenePresentationPacketTrail.Clear();
+            _weddingPhotoSceneUnhandledPacketCount = 0;
+            _lastWeddingPhotoSceneUnhandledPacketType = null;
         }
 
 
@@ -487,6 +497,13 @@ namespace HaCreator.MapSimulator.Effects
                     case PacketTypeNewYearCardRecordRemove:
                         return TryApplyRemoteRelationshipRecordRemovePacket(packetType, payload, out errorMessage);
                     default:
+                        if (IsWeddingPhotoSceneOwnerActive && !_isActive)
+                        {
+                            RecordWeddingPhotoSceneUnhandledPacket(packetType, payload?.Length ?? 0, currentTimeMs);
+                            errorMessage = $"CField_WeddingPhoto delegated packet {packetType} to base CField owner surface; simulator keeps packet trail only.";
+                            return true;
+                        }
+
                         errorMessage = photoScenePresentationPacket
                             ? $"Unsupported wedding-photo scene presentation packet type: {packetType}"
                             : $"Unsupported wedding packet type: {packetType}";
@@ -568,6 +585,13 @@ namespace HaCreator.MapSimulator.Effects
                 currentTimeMs));
         }
 
+        private void RecordWeddingPhotoSceneUnhandledPacket(int packetType, int payloadLength, int currentTimeMs)
+        {
+            _weddingPhotoSceneUnhandledPacketCount++;
+            _lastWeddingPhotoSceneUnhandledPacketType = packetType;
+            RecordWeddingPhotoScenePresentationPacket(packetType, payloadLength, currentTimeMs);
+        }
+
         private static string ResolveWeddingPhotoScenePresentationOwnerName(int packetType)
         {
             return packetType switch
@@ -615,11 +639,14 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_weddingPhotoScenePresentationPacketTrail.Count == 0)
             {
-                return $"wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets; active step {_currentStep}, layer state {layerState}.";
+                return $"wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets; active step {_currentStep}, layer state {layerState}, passthrough packets {_weddingPhotoSceneUnhandledPacketCount}.";
             }
 
             WeddingPhotoScenePresentationPacketRecord last = _weddingPhotoScenePresentationPacketTrail[^1];
-            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}; active step {_currentStep}, layer state {layerState}.";
+            string passthroughSummary = _weddingPhotoSceneUnhandledPacketCount > 0
+                ? $", passthrough packets {_weddingPhotoSceneUnhandledPacketCount} (last type {_lastWeddingPhotoSceneUnhandledPacketType?.ToString(CultureInfo.InvariantCulture) ?? "none"})"
+                : ", passthrough packets 0";
+            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}; active step {_currentStep}, layer state {layerState}{passthroughSummary}.";
         }
         public void SetParticipantPosition(int characterId, Vector2 worldPosition)
         {
@@ -1906,7 +1933,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (packet.Fame.HasValue)
             {
-                build.Fame = Math.Max(0, packet.Fame.Value);
+                build.Fame = packet.Fame.Value;
                 build.HasAuthoritativeProfileFame = true;
                 metadataUpdated = true;
             }
@@ -2176,7 +2203,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (source.HasAuthoritativeProfileFame)
             {
-                destination.Fame = Math.Max(0, source.Fame);
+                destination.Fame = source.Fame;
                 destination.HasAuthoritativeProfileFame = true;
             }
 

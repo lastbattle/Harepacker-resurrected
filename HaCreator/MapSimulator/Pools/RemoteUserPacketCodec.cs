@@ -1428,7 +1428,7 @@ namespace HaCreator.MapSimulator.Pools
             // CUserRemote::OnHit packets can include one-byte branch markers before the
             // optional string tail. Preserve the authored hit node path when present.
             if (payload.Length > sizeof(ushort) + 1
-                && payload[0] <= 2
+                && IsOptionalStringBranchMarker(payload[0])
                 && TryDecodeMapleStringPayload(payload[1..], out string prefixedMapleString))
             {
                 return prefixedMapleString;
@@ -1440,12 +1440,19 @@ namespace HaCreator.MapSimulator.Pools
                 return plainText;
             }
 
-            if (payload.Length > 1 && payload[0] <= 2)
+            if (payload.Length > 1 && IsOptionalStringBranchMarker(payload[0]))
             {
                 return TryDecodePrintableText(payload[1..]);
             }
 
             return null;
+        }
+
+        private static bool IsOptionalStringBranchMarker(byte value)
+        {
+            // CUserRemote::OnHit and CUser::OnEffect can prepend a tiny branch byte
+            // before packet-owned string payloads on some paths.
+            return value <= 2;
         }
 
         private static bool TryDecodeMapleStringPayload(ReadOnlySpan<byte> payload, out string value)
@@ -1712,6 +1719,74 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            if (TryParseMapleOrPlainStringPayload(
+                    payload,
+                    allowSecondaryInt32,
+                    out stringValue,
+                    out secondaryInt32Value))
+            {
+                return true;
+            }
+
+            // CUser::OnEffect branch families can carry a single-byte prefix before DecodeStr.
+            if (payload.Length > 1
+                && IsOptionalStringBranchMarker(payload[0])
+                && TryParseMapleOrPlainStringPayload(
+                    payload[1..],
+                    allowSecondaryInt32,
+                    out stringValue,
+                    out secondaryInt32Value))
+            {
+                return true;
+            }
+
+            error = $"Remote user effect subtype {effectType} has an unsupported string payload shape ({payload.Length} byte(s)).";
+            return false;
+        }
+
+        private static bool TryParseMapleOrPlainStringPayload(
+            ReadOnlySpan<byte> payload,
+            bool allowSecondaryInt32,
+            out string stringValue,
+            out int? secondaryInt32Value)
+        {
+            stringValue = null;
+            secondaryInt32Value = null;
+
+            if (TryParseMapleStringPayloadWithOptionalSecondaryInt32(
+                    payload,
+                    allowSecondaryInt32,
+                    out stringValue,
+                    out secondaryInt32Value))
+            {
+                return true;
+            }
+
+            if (TryParsePlainTextPayloadWithOptionalSecondaryInt32(
+                    payload,
+                    allowSecondaryInt32,
+                    out stringValue,
+                    out secondaryInt32Value))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParseMapleStringPayloadWithOptionalSecondaryInt32(
+            ReadOnlySpan<byte> payload,
+            bool allowSecondaryInt32,
+            out string stringValue,
+            out int? secondaryInt32Value)
+        {
+            stringValue = null;
+            secondaryInt32Value = null;
+            if (payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
             try
             {
                 var payloadReader = new PacketReader(payload);
@@ -1723,7 +1798,9 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
                 }
 
-                if (allowSecondaryInt32 && remaining.Length == sizeof(int))
+                if (allowSecondaryInt32
+                    && remaining.Length >= sizeof(int)
+                    && (remaining.Length == sizeof(int) || IsAllZeroBytes(remaining[sizeof(int)..])))
                 {
                     secondaryInt32Value = payloadReader.ReadInt32();
                     stringValue = string.IsNullOrWhiteSpace(parsed) ? null : parsed.Trim();
@@ -1732,8 +1809,20 @@ namespace HaCreator.MapSimulator.Pools
             }
             catch (InvalidOperationException)
             {
-                // Fall back to plain-text parse below.
+                return false;
             }
+
+            return false;
+        }
+
+        private static bool TryParsePlainTextPayloadWithOptionalSecondaryInt32(
+            ReadOnlySpan<byte> payload,
+            bool allowSecondaryInt32,
+            out string stringValue,
+            out int? secondaryInt32Value)
+        {
+            stringValue = null;
+            secondaryInt32Value = null;
 
             string plainText = TryDecodePrintableText(payload);
             if (!string.IsNullOrWhiteSpace(plainText))
@@ -1742,8 +1831,21 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            error = $"Remote user effect subtype {effectType} has an unsupported string payload shape ({payload.Length} byte(s)).";
-            return false;
+            if (!allowSecondaryInt32 || payload.Length <= sizeof(int))
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> textPayload = payload[..^sizeof(int)];
+            string textWithTrailingInt = TryDecodePrintableText(textPayload);
+            if (string.IsNullOrWhiteSpace(textWithTrailingInt))
+            {
+                return false;
+            }
+
+            secondaryInt32Value = BinaryPrimitives.ReadInt32LittleEndian(payload[^sizeof(int)..]);
+            stringValue = textWithTrailingInt;
+            return true;
         }
 
         public static bool TryParseUpgradeTombEffect(ReadOnlySpan<byte> payload, out RemoteUserUpgradeTombPacket packet, out string error)
@@ -3199,9 +3301,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             // CUIMiniMap helper packets can still carry DefaultHelper family names
-            // outside tracked-user icons; keep packet ownership active via the
-            // neutral remote marker instead of rejecting the entire packet.
-            markerType = MinimapUI.HelperMarkerType.Another;
+            // outside tracked-user icons. Accept those payloads to preserve
+            // packet-authored helper ownership while avoiding a synthetic
+            // tracked-user marker promotion for non-user helper families.
+            markerType = null;
             return true;
         }
 
@@ -3863,6 +3966,20 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
                     maxScanBytes: AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (AfterImageChargeSkillResolver.TryResolveChargeElementValueFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    maxScanBytes: AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out int scopedMaskBaseChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    scopedMaskBaseChargeElement,
                     out chargeSkillId))
             {
                 return true;

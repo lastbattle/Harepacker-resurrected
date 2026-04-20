@@ -92,6 +92,33 @@ namespace HaCreator.MapSimulator.Character.Skills
             return chargeSkillId > 0;
         }
 
+        internal static bool IsKnownChargeElement(int chargeElement)
+        {
+            return chargeElement is 1 or 2 or 3 or 5;
+        }
+
+        internal static bool TryResolvePreferredChargeSkillIdForElement(
+            int preferredSkillId,
+            int chargeElement,
+            out int chargeSkillId)
+        {
+            chargeSkillId = 0;
+            if (!IsKnownChargeElement(chargeElement))
+            {
+                return false;
+            }
+
+            if (TryGetChargeElement(preferredSkillId, out int preferredElement)
+                && preferredElement == chargeElement
+                && IsKnownChargeSkillId(preferredSkillId))
+            {
+                chargeSkillId = preferredSkillId;
+                return true;
+            }
+
+            return TryGetRepresentativeChargeSkillIdForElement(chargeElement, out chargeSkillId);
+        }
+
         internal static int ResolvePreferredChargeSkillIdFromWeaponChargeValue(
             int preferredSkillId,
             int? weaponChargeValue)
@@ -175,6 +202,92 @@ namespace HaCreator.MapSimulator.Character.Skills
                 preferredSkillId,
                 maxScanBytes,
                 out chargeElement);
+        }
+
+        internal static bool TryResolveChargeElementValueFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int maxScanBytes,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int)
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            int scanEndExclusive = payload.Length;
+            if (maxScanBytes > 0)
+            {
+                long boundedEnd = (long)startOffset + maxScanBytes;
+                if (boundedEnd < scanEndExclusive)
+                {
+                    scanEndExclusive = (int)Math.Max(0, boundedEnd);
+                }
+            }
+
+            if (alignedStartOffset > scanEndExclusive - sizeof(int))
+            {
+                return false;
+            }
+
+            int preferredElement = 0;
+            if (preferredSkillId > 0)
+            {
+                TryGetChargeElement(preferredSkillId, out preferredElement);
+            }
+
+            int matchedChargeElement = 0;
+            for (int offset = alignedStartOffset; offset <= scanEndExclusive - sizeof(int); offset += sizeof(int))
+            {
+                int candidateElement = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                if (!IsKnownChargeElement(candidateElement))
+                {
+                    continue;
+                }
+
+                if (matchedChargeElement == 0)
+                {
+                    matchedChargeElement = candidateElement;
+                    continue;
+                }
+
+                if (matchedChargeElement == candidateElement)
+                {
+                    continue;
+                }
+
+                if (preferredElement > 0
+                    && (matchedChargeElement == preferredElement || candidateElement == preferredElement))
+                {
+                    matchedChargeElement = preferredElement;
+                    continue;
+                }
+
+                if (maxScanBytes > 0)
+                {
+                    // Preserve deterministic scoped recovery when mixed element values exist in
+                    // a bounded local window and no explicit preference can disambiguate.
+                    continue;
+                }
+
+                return false;
+            }
+
+            chargeElement = matchedChargeElement;
+            return chargeElement > 0;
         }
 
         internal static bool TryResolveChargeElementFromTemporaryStatMetadata(

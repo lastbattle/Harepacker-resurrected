@@ -1240,15 +1240,40 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (normalizedEffectUol.IndexOf("/Catch/Success", StringComparison.OrdinalIgnoreCase) >= 0)
+            int catchIndex = normalizedEffectUol.IndexOf("/Catch", StringComparison.OrdinalIgnoreCase);
+            if (catchIndex < 0)
+            {
+                return false;
+            }
+
+            // WZ-backed shape:
+            // - Effect/BasicEff.img/Catch/Success/<0..N> animated branch
+            // - Effect/BasicEff.img/Catch/Fail single canvas branch
+            // Treat bare Catch and numeric Catch children as success-family paths.
+            string catchSuffix = normalizedEffectUol[(catchIndex + "/Catch".Length)..].Trim('/');
+            if (string.IsNullOrWhiteSpace(catchSuffix))
             {
                 success = true;
                 return true;
             }
 
-            if (normalizedEffectUol.IndexOf("/Catch/Fail", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (catchSuffix.StartsWith("Success", StringComparison.OrdinalIgnoreCase))
+            {
+                success = true;
+                return true;
+            }
+
+            if (catchSuffix.StartsWith("Fail", StringComparison.OrdinalIgnoreCase))
             {
                 success = false;
+                return true;
+            }
+
+            string[] segments = catchSuffix.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length > 0
+                && int.TryParse(segments[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                success = true;
                 return true;
             }
 
@@ -1798,9 +1823,11 @@ namespace HaCreator.MapSimulator
             bool isMobBulletOwner = MobAttackSystem.ShouldRegisterAnimationDisplayerMobBullet(
                 request.HasClientMobActionFrames,
                 resolvedEffectUol);
+            bool hasResolvedDisplayerProjectileFrames = Animation.AnimationEffects.HasFrames(frames);
             bool isMobSwallowOwner = !isMobBulletOwner
                 && MobAttackSystem.ShouldRegisterAnimationDisplayerMobSwallowBullet(
                     request.HasCanvasFrames,
+                    hasResolvedDisplayerProjectileFrames,
                     request.HasClientMobActionFrames,
                     request.AttackType,
                     request.IsRangedAttack);
@@ -3012,19 +3039,24 @@ namespace HaCreator.MapSimulator
             }
 
             int initialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(ownerContext, frames);
-            Vector2 fallbackPosition = actor.Position;
+            Vector2 packetAnchorPosition = actor.Position;
             bool fallbackFacingRight = presentation.UseOwnerFacing && actor.FacingRight;
             _animationEffects.AddOneTimeAttached(
                 frames,
                 () =>
                 {
+                    if (!presentation.AttachToOwner)
+                    {
+                        return packetAnchorPosition;
+                    }
+
                     if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
                         && liveActor != null)
                     {
                         return liveActor.Position;
                     }
 
-                    return fallbackPosition;
+                    return packetAnchorPosition;
                 },
                 () =>
                 {
@@ -3041,8 +3073,8 @@ namespace HaCreator.MapSimulator
 
                     return fallbackFacingRight;
                 },
-                fallbackPosition.X,
-                fallbackPosition.Y,
+                packetAnchorPosition.X,
+                packetAnchorPosition.Y,
                 fallbackFacingRight,
                 presentation.CurrentTime,
                 initialElapsedMs: initialElapsedMs);
@@ -3054,16 +3086,21 @@ namespace HaCreator.MapSimulator
             string effectUol,
             AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext ownerContext)
         {
-            Vector2 fallbackPosition = actor.Position;
+            Vector2 packetAnchorPosition = actor.Position;
             Func<Vector2> getPosition = () =>
             {
+                if (!presentation.AttachToOwner)
+                {
+                    return packetAnchorPosition;
+                }
+
                 if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
                     && liveActor != null)
                 {
                     return liveActor.Position;
                 }
 
-                return fallbackPosition;
+                return packetAnchorPosition;
             };
 
             IReadOnlyList<AnimationDisplayerReservedEffectMetadata> reservedMetadataEntries =
@@ -4369,7 +4406,15 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldRouteLocalSkillCastThroughClientSkillEffectRequestSeamForTesting(
             SkillCastInfo castInfo)
         {
-            return ShouldRegisterLocalSkillCastThroughClientShowSkillEffectDirectPathForTesting(castInfo);
+            if (!ShouldRegisterLocalSkillCastThroughClientShowSkillEffectDirectPathForTesting(castInfo))
+            {
+                return false;
+            }
+
+            // Local non-melee cast visuals now stay on the direct owner path in
+            // `HandlePlayerSkillCast` while explicit caller-owned requests
+            // (`OnClientSkillEffectRequested`) remain on the request seam.
+            return false;
         }
 
         internal static bool HasClientSkillEffectRequestShapingForTesting(
@@ -6137,46 +6182,79 @@ namespace HaCreator.MapSimulator
         {
             string normalizedEffectPath = NormalizeAnimationDisplayerPath(effectPath);
             WzImageProperty resolvedRoot = WzInfoTools.GetRealProperty(effectRootProperty);
-            if (string.IsNullOrWhiteSpace(normalizedEffectPath) || resolvedRoot is not WzSubProperty rootSubProperty)
+            if (string.IsNullOrWhiteSpace(normalizedEffectPath))
             {
                 return Array.Empty<string>();
             }
 
-            var variantIndexes = new List<int>();
-            var seenIndexes = new HashSet<int>();
-            int childCount = rootSubProperty.WzProperties?.Count ?? 0;
+            WzPropertyCollection rootChildren = resolvedRoot?.WzProperties;
+            int childCount = rootChildren?.Count ?? 0;
+            if (childCount <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var variantBranches = new List<(int Index, string Segment)>();
+            var seenSegments = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < childCount; i++)
             {
-                string childName = rootSubProperty.WzProperties[i]?.Name;
-                if (!int.TryParse(childName, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
-                    || index < 0
-                    || !seenIndexes.Add(index))
+                WzImageProperty childProperty = rootChildren[i];
+                string childName = childProperty?.Name;
+                if (!TryParseAnimationDisplayerNonNegativeIndexSegment(childName, out int index)
+                    || !seenSegments.Add(childName))
                 {
                     continue;
                 }
 
-                WzImageProperty variantProperty = WzInfoTools.GetRealProperty(rootSubProperty[childName]);
+                WzImageProperty variantProperty = WzInfoTools.GetRealProperty(childProperty);
                 if (variantProperty == null)
                 {
                     continue;
                 }
 
-                variantIndexes.Add(index);
+                variantBranches.Add((index, childName));
             }
 
-            if (variantIndexes.Count == 0)
+            if (variantBranches.Count == 0)
             {
                 return Array.Empty<string>();
             }
 
-            variantIndexes.Sort();
-            var variantUols = new List<string>(variantIndexes.Count);
-            for (int i = 0; i < variantIndexes.Count; i++)
+            variantBranches.Sort(static (left, right) =>
             {
-                variantUols.Add($"{normalizedEffectPath}/{variantIndexes[i].ToString(CultureInfo.InvariantCulture)}");
+                int indexComparison = left.Index.CompareTo(right.Index);
+                return indexComparison != 0
+                    ? indexComparison
+                    : StringComparer.Ordinal.Compare(left.Segment, right.Segment);
+            });
+
+            var variantUols = new List<string>(variantBranches.Count);
+            for (int i = 0; i < variantBranches.Count; i++)
+            {
+                variantUols.Add($"{normalizedEffectPath}/{variantBranches[i].Segment}");
             }
 
             return variantUols.ToArray();
+        }
+
+        private static bool TryParseAnimationDisplayerNonNegativeIndexSegment(string segment, out int index)
+        {
+            index = 0;
+            if (string.IsNullOrEmpty(segment))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < segment.Length; i++)
+            {
+                char character = segment[i];
+                if (character < '0' || character > '9')
+                {
+                    return false;
+                }
+            }
+
+            return int.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out index);
         }
 
         internal static int? GetAnimationDisplayerNumericValue(WzImageProperty parentProperty, string propertyName)

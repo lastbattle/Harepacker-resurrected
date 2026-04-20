@@ -891,6 +891,7 @@ namespace HaCreator.MapSimulator.UI
 
             int clauseIndex = 0;
             int rowTop = top;
+            int rowBottom = top;
             while (clauseIndex + 1 < compactClauses.Count)
             {
                 string leftClause = compactClauses[clauseIndex];
@@ -933,7 +934,8 @@ namespace HaCreator.MapSimulator.UI
                     : rowTop;
                 if (hasLeftClause || hasRightClause)
                 {
-                    rowTop = Math.Max(leftBottom, rightBottom);
+                    rowBottom = Math.Max(leftBottom, rightBottom);
+                    rowTop = GetFollowingAnalyzedTextTop(top, rowBottom);
                 }
 
                 clauseIndex += 2;
@@ -944,7 +946,7 @@ namespace HaCreator.MapSimulator.UI
                 string spillClause = compactClauses[clauseIndex];
                 if (!string.IsNullOrWhiteSpace(spillClause))
                 {
-                    int spillTop = GetFollowingAnalyzedTextTop(top, rowTop);
+                    int spillTop = rowTop;
                     bool rightLaneSpill = (clauseIndex & 1) == 1;
                     AddWrappedTextRecords(
                         records,
@@ -990,8 +992,9 @@ namespace HaCreator.MapSimulator.UI
                     : rowTop;
                 if (hasLeftClause || hasRightClause)
                 {
-                    bottom = Math.Max(bottom, Math.Max(leftBottom, rightBottom));
-                    rowTop = Math.Max(leftBottom, rightBottom);
+                    int rowBottom = Math.Max(leftBottom, rightBottom);
+                    bottom = Math.Max(bottom, rowBottom);
+                    rowTop = GetFollowingAnalyzedTextTop(top, rowBottom);
                 }
 
                 clauseIndex += 2;
@@ -1002,7 +1005,7 @@ namespace HaCreator.MapSimulator.UI
                 string spillClause = compactClauses[clauseIndex];
                 if (!string.IsNullOrWhiteSpace(spillClause))
                 {
-                    int spillTop = GetFollowingAnalyzedTextTop(top, rowTop);
+                    int spillTop = rowTop;
                     bool rightLaneSpill = (clauseIndex & 1) == 1;
                     int spillBottom = GetWrappedRecordBottom(
                         spillClause,

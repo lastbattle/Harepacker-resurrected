@@ -772,7 +772,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            EmployeeActionCacheEntry entry = new(actionEntry.ActionName, frames, ++_employeeActionCacheAccessStamp);
+            EmployeeActionCacheEntry entry = new(templateId, actionEntry.ActionName, frames, ++_employeeActionCacheAccessStamp);
             _cashActionCache[cacheKey] = entry;
             _cashActionKeyByName[actionCacheAlias] = cacheKey;
             TrimEmployeeActionCacheIfNeeded();
@@ -792,13 +792,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static uint BuildEmployeeActionCacheKey(int templateId, int actionIndex)
         {
             uint normalizedTemplateId = (uint)Math.Max(0, templateId);
-            uint normalizedAction = (uint)Math.Clamp(actionIndex, 0, byte.MaxValue);
+            uint normalizedAction = (uint)Math.Max(0, actionIndex);
             return (normalizedTemplateId << 8) | normalizedAction;
-        }
-
-        private static int ExtractTemplateIdFromActionCacheKey(uint cacheKey)
-        {
-            return (int)(cacheKey >> 8);
         }
 
         private static string BuildEmployeeActionCacheAlias(int templateId, string actionName)
@@ -841,7 +836,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _cashActionCache.Remove(pair.Key);
 
                 string alias = BuildEmployeeActionCacheAlias(
-                    ExtractTemplateIdFromActionCacheKey(pair.Key),
+                    pair.Value?.TemplateId ?? 0,
                     pair.Value?.ActionName);
                 if (_cashActionKeyByName.TryGetValue(alias, out uint aliasKey)
                     && aliasKey == pair.Key)
@@ -2037,13 +2032,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed class EmployeeActionCacheEntry
         {
-            internal EmployeeActionCacheEntry(string actionName, List<IDXObject> frames, int lastAccessStamp)
+            internal EmployeeActionCacheEntry(int templateId, string actionName, List<IDXObject> frames, int lastAccessStamp)
             {
+                TemplateId = Math.Max(0, templateId);
                 ActionName = NormalizeActionName(actionName);
                 Frames = frames ?? new List<IDXObject>();
                 LastAccessStamp = lastAccessStamp;
             }
 
+            internal int TemplateId { get; }
             internal string ActionName { get; }
             internal List<IDXObject> Frames { get; }
             internal int LastAccessStamp { get; set; }

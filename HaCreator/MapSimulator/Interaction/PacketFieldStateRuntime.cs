@@ -591,39 +591,47 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
+                string normalizedTag = tag.Trim();
+                if (stateValue < -1)
+                {
+                    message = $"Object-state packet for '{normalizedTag}' was ignored because state {stateValue} is outside the client-owned `CMapLoadable::SetObjectState` range (`-1` replay or non-negative state index).";
+                    _statusMessage = message;
+                    return false;
+                }
+
                 if (stateValue == -1)
                 {
-                    if (_packetObjectStateByTag.TryGetValue(tag, out int packetStateValue))
+                    if (_packetObjectStateByTag.TryGetValue(normalizedTag, out int packetStateValue))
                     {
                         bool packetEnabled = packetStateValue != 0;
                         bool replayedPacketState =
-                            setDynamicObjectTagState?.Invoke(tag, packetEnabled, 0, currentTick) == true;
+                            setDynamicObjectTagState?.Invoke(normalizedTag, packetEnabled, 0, currentTick) == true;
                         message = replayedPacketState
-                            ? $"Replayed current object-state packet for '{tag}' (state=-1); reapplied packet-owned state {packetStateValue} ({(packetEnabled ? "on" : "off")} visibility bridge)."
-                            : $"Replayed current object-state packet for '{tag}' (state=-1); packet-owned state {packetStateValue} is cached but could not be republished.";
+                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); reapplied packet-owned state {packetStateValue} ({(packetEnabled ? "on" : "off")} visibility bridge)."
+                            : $"Replayed current object-state packet for '{normalizedTag}' (state=-1); packet-owned state {packetStateValue} is cached but could not be republished.";
                         _statusMessage = message;
                         return replayedPacketState;
                     }
 
-                    bool? currentTagState = getDynamicObjectTagState?.Invoke(tag);
+                    bool? currentTagState = getDynamicObjectTagState?.Invoke(normalizedTag);
                     bool available = currentTagState.HasValue;
                     bool replayed = available &&
-                        setDynamicObjectTagState?.Invoke(tag, currentTagState.Value, 0, currentTick) == true;
+                        setDynamicObjectTagState?.Invoke(normalizedTag, currentTagState.Value, 0, currentTick) == true;
                     message = available
                         ? (replayed
-                            ? $"Replayed current object-state packet for '{tag}' (state=-1); republished current {(currentTagState.Value ? "on" : "off")} visibility bridge."
-                            : $"Replayed current object-state packet for '{tag}' (state=-1); current tag state exists but could not be republished.")
-                        : $"Object-state replay packet for '{tag}' was ignored because no matching tagged object state is available.";
+                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); republished current {(currentTagState.Value ? "on" : "off")} visibility bridge."
+                            : $"Replayed current object-state packet for '{normalizedTag}' (state=-1); current tag state exists but could not be republished.")
+                        : $"Object-state replay packet for '{normalizedTag}' was ignored because no matching tagged object state is available.";
                     _statusMessage = message;
                     return replayed;
                 }
 
-                _packetObjectStateByTag[tag] = stateValue;
+                _packetObjectStateByTag[normalizedTag] = stateValue;
                 bool isEnabled = stateValue != 0;
-                bool applied = setDynamicObjectTagState?.Invoke(tag, isEnabled, 0, currentTick) == true;
+                bool applied = setDynamicObjectTagState?.Invoke(normalizedTag, isEnabled, 0, currentTick) == true;
                 message = applied
-                    ? $"Applied object-state packet for '{tag}' => state {stateValue} ({(isEnabled ? "on" : "off")} visibility bridge)."
-                    : $"Object-state packet for '{tag}' was ignored because no matching tagged object state is available.";
+                    ? $"Applied object-state packet for '{normalizedTag}' => state {stateValue} ({(isEnabled ? "on" : "off")} visibility bridge)."
+                    : $"Object-state packet for '{normalizedTag}' was ignored because no matching tagged object state is available.";
                 _statusMessage = message;
                 return applied;
             }

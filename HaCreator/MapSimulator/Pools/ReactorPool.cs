@@ -2883,10 +2883,10 @@ namespace HaCreator.MapSimulator.Pools
 
             if (unresolvedPacketName)
             {
-                // Keep unresolved packet-name ownership conservative when template/position/flip
-                // resolution still leaves multiple authored candidates. This path only admits
-                // single-candidate unresolved packet-name adoption above.
-                return false;
+                // Packet enters always carry a name field, but authored map reactors can leave
+                // name empty. When template/position/flip has already narrowed to this scope and
+                // no conflicting authored name survived candidate filtering, keep using the same
+                // client-signal and authored-order discriminators instead of hard-refusing.
             }
 
             static bool TrySelectUniqueCandidate(
@@ -2960,7 +2960,6 @@ namespace HaCreator.MapSimulator.Pools
                 if (TrySelectNarrowedWzAuthoredOrderCandidateForDisjointSignals(
                         scope,
                         initialState,
-                        unresolvedPacketName,
                         out index))
                 {
                     selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
@@ -3132,13 +3131,11 @@ namespace HaCreator.MapSimulator.Pools
         private static bool TrySelectNarrowedWzAuthoredOrderCandidateForDisjointSignals(
             IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
             int initialState,
-            bool unresolvedPacketName,
             out int index)
         {
             index = -1;
             if (candidates == null
-                || candidates.Count <= 1
-                || unresolvedPacketName)
+                || candidates.Count <= 1)
             {
                 return false;
             }

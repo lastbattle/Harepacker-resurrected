@@ -1,12 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Fields
 {
     internal static class FieldObjectScriptTagAliasResolver
     {
+        private static readonly Regex LocalAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<rhs>[^;,\r\n\)\}]+)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         internal readonly record struct PublishedTagMutation(
             IReadOnlyList<string> TagsToEnable,
             IReadOnlyList<string> TagsToDisable);
@@ -134,12 +139,16 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
+            IReadOnlyDictionary<string, string> localAliasMap = BuildLocalAliasMap(scriptName);
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string candidate in EnumerateScriptAliasCandidatesCore(scriptName.Trim()))
             {
-                if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                foreach (string canonicalCandidate in EnumerateCanonicalAliasCandidates(candidate, localAliasMap))
                 {
-                    yield return candidate;
+                    if (!string.IsNullOrWhiteSpace(canonicalCandidate) && seen.Add(canonicalCandidate))
+                    {
+                        yield return canonicalCandidate;
+                    }
                 }
             }
 
@@ -147,9 +156,12 @@ namespace HaCreator.MapSimulator.Fields
             {
                 foreach (string candidate in EnumerateScriptAliasCandidatesCore(quotedArgument.Trim()))
                 {
-                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    foreach (string canonicalCandidate in EnumerateCanonicalAliasCandidates(candidate, localAliasMap))
                     {
-                        yield return candidate;
+                        if (!string.IsNullOrWhiteSpace(canonicalCandidate) && seen.Add(canonicalCandidate))
+                        {
+                            yield return canonicalCandidate;
+                        }
                     }
                 }
             }
@@ -158,9 +170,12 @@ namespace HaCreator.MapSimulator.Fields
             {
                 foreach (string candidate in EnumerateScriptAliasCandidatesCore(argument.Trim()))
                 {
-                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    foreach (string canonicalCandidate in EnumerateCanonicalAliasCandidates(candidate, localAliasMap))
                     {
-                        yield return candidate;
+                        if (!string.IsNullOrWhiteSpace(canonicalCandidate) && seen.Add(canonicalCandidate))
+                        {
+                            yield return canonicalCandidate;
+                        }
                     }
                 }
             }
@@ -169,11 +184,105 @@ namespace HaCreator.MapSimulator.Fields
             {
                 foreach (string candidate in EnumerateScriptAliasCandidatesCore(functionAliasName.Trim()))
                 {
-                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    foreach (string canonicalCandidate in EnumerateCanonicalAliasCandidates(candidate, localAliasMap))
                     {
-                        yield return candidate;
+                        if (!string.IsNullOrWhiteSpace(canonicalCandidate) && seen.Add(canonicalCandidate))
+                        {
+                            yield return canonicalCandidate;
+                        }
                     }
                 }
+            }
+        }
+
+        private static IReadOnlyDictionary<string, string> BuildLocalAliasMap(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            var localAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Match match in LocalAliasAssignmentPattern.Matches(scriptName))
+            {
+                string leftName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value);
+                string rightValue = NormalizeFunctionAliasArgument(match.Groups["rhs"]?.Value);
+                if (!IsPotentialFunctionAliasName(leftName))
+                {
+                    continue;
+                }
+
+                string resolvedAlias = ResolveAssignmentAliasCandidate(rightValue);
+                if (string.IsNullOrWhiteSpace(resolvedAlias))
+                {
+                    continue;
+                }
+
+                localAliasMap[leftName] = resolvedAlias;
+            }
+
+            return localAliasMap;
+        }
+
+        private static string ResolveAssignmentAliasCandidate(string value)
+        {
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedValue)
+                || normalizedValue.StartsWith("function", StringComparison.OrdinalIgnoreCase)
+                || !IsPotentialAliasArgument(normalizedValue, argumentIndex: 0))
+            {
+                return string.Empty;
+            }
+
+            IReadOnlyList<string> parsedScriptNames = QuestRuntimeManager.ParseScriptNames(normalizedValue);
+            if (parsedScriptNames.Count == 0)
+            {
+                return IsPotentialFunctionAliasName(normalizedValue) ? normalizedValue : string.Empty;
+            }
+
+            for (int i = 0; i < parsedScriptNames.Count; i++)
+            {
+                string parsedName = NormalizeFunctionAliasArgument(parsedScriptNames[i]).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(parsedName))
+                {
+                    return parsedName;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static IEnumerable<string> EnumerateCanonicalAliasCandidates(
+            string candidate,
+            IReadOnlyDictionary<string, string> localAliasMap)
+        {
+            string normalizedCandidate = NormalizeFunctionAliasArgument(candidate).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedCandidate))
+            {
+                yield break;
+            }
+
+            yield return normalizedCandidate;
+
+            if (localAliasMap == null || localAliasMap.Count == 0)
+            {
+                yield break;
+            }
+
+            string current = normalizedCandidate;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { normalizedCandidate };
+            while (localAliasMap.TryGetValue(current, out string mappedAlias))
+            {
+                string normalizedMappedAlias = NormalizeFunctionAliasArgument(mappedAlias).TrimEnd(';');
+                if (string.IsNullOrWhiteSpace(normalizedMappedAlias)
+                    || !IsPotentialFunctionAliasName(normalizedMappedAlias)
+                    || !seen.Add(normalizedMappedAlias))
+                {
+                    break;
+                }
+
+                yield return normalizedMappedAlias;
+                current = normalizedMappedAlias;
             }
         }
 
@@ -854,6 +963,17 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 return false;
+            }
+
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "function":
+                case "true":
+                case "false":
+                case "null":
+                case "undefined":
+                case "this":
+                    return false;
             }
 
             return hasAliasCharacter || (argumentIndex == 0 && hasDigit && value.Trim().Length > 1);

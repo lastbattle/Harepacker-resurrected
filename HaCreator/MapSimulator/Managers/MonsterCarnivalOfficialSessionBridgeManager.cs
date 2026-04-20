@@ -579,9 +579,17 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            bool passiveOnlyObserve = HasPassiveEstablishedSocketPair && !IsRunning;
+            if (HasPassiveEstablishedSocketPair && !IsRunning)
+            {
+                status =
+                    $"Monster Carnival official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. " +
+                    $"It cannot inject opcode {OutboundRequestOpcode} into an already-established Maple socket pair after the handshake; " +
+                    "run /mcarnival session attachproxy <listenPort|0> <remotePort> ... to arm reconnect before queueing requests.";
+                LastStatus = status;
+                return false;
+            }
 
-            if (!IsRunning && !HasAttachedClient && !passiveOnlyObserve)
+            if (!IsRunning && !HasAttachedClient)
             {
                 status = "Monster Carnival official-session bridge is not armed for deferred live-session injection.";
                 LastStatus = status;
@@ -592,9 +600,7 @@ namespace HaCreator.MapSimulator.Managers
             _pendingOutboundRequests.Enqueue(new PendingRequest(tab, entryIndex, rawPacket));
             QueuedCount++;
             RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"queue-request tab={(int)tab} index={entryIndex}");
-            status = passiveOnlyObserve
-                ? $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) while passively observing an established socket pair. Run /mcarnival session attachproxy <listenPort|0> <remotePort> ... to arm reconnect and flush this queue after handshake init."
-                : HasPassiveEstablishedSocketPair
+            status = HasPassiveEstablishedSocketPair
                 ? $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) for the proxied reconnect handshake."
                 : $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) for deferred live-session injection.";
             LastStatus = status;

@@ -61,6 +61,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private static readonly HashSet<int> ClientMeleeAirborneNoFootholdForbiddenSkillIds = new()
         {
+            // Client evidence: CUserLocal::TryDoingMeleeAttack@0x91e780
+            // compares this concrete deny-table before dispatch when the local
+            // player is airborne without foothold support and not in flying state.
             1009,
             1020,
             1121001,
@@ -69,6 +72,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             1311006,
             1321001,
             1321003,
+            3120010,
+            4221001,
+            4311003,
+            4321000,
+            4321001,
+            4331000,
+            4341004,
+            5101002,
+            5111005,
+            5121001,
+            5121004,
+            5121005,
+            5121007,
+            5221003,
+            10001009,
+            10001020,
             15111003,
             15111004,
             20000014,
@@ -93,28 +112,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             32001011,
             33111002,
             35001003,
-            35121004,
-            4211002,
-            4221001,
-            4311003,
-            4321000,
-            4321001,
-            4331000,
-            4331004,
-            4331005,
-            4341002,
-            4341004,
-            5101002,
-            5101004,
-            5111006,
-            5121001,
-            5121004,
-            5121005,
-            5121007,
-            5221003,
-            3120010,
-            10001009,
-            10001020
+            35121004
         };
 
         public static bool CanUseSkill(PlayerCharacter player, SkillData skill)

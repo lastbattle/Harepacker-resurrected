@@ -1845,6 +1845,7 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
+                    int resolvedPickupActorId = ResolveRemoteUserDropPickupActorId(dropPickupPacket);
                     DropItem drop = _dropPool.GetDrop(dropPickupPacket.DropId);
                     if (drop == null)
                     {
@@ -1854,12 +1855,12 @@ namespace HaCreator.MapSimulator
                             ResolveMobPickupSourceName,
                             ResolvePickupItemName);
                         if (TrySurfaceRecentRemoteDropPickupNotice(
-                                dropPickupPacket.DropId,
-                                currentTime,
-                                dropPickupPacket.ActorKind,
-                                dropPickupPacket.ActorId,
-                                latePickupActorName,
-                                dropPickupPacket.FallbackOwnerId))
+                            dropPickupPacket.DropId,
+                            currentTime,
+                            dropPickupPacket.ActorKind,
+                            resolvedPickupActorId,
+                            latePickupActorName,
+                            dropPickupPacket.FallbackOwnerId))
                         {
                             result = $"Applied {DescribeRemoteUserPacketType(packetType)} for recently picked drop {dropPickupPacket.DropId}.";
                             return true;
@@ -1879,11 +1880,16 @@ namespace HaCreator.MapSimulator
                         && pickupTargetPosition.HasValue)
                     {
                         RememberObservedRemotePetPickupActorPosition(dropPickupPacket.ActorId, pickupTargetPosition.Value);
+                        if (resolvedPickupActorId != dropPickupPacket.ActorId)
+                        {
+                            RememberObservedRemotePetPickupActorPosition(resolvedPickupActorId, pickupTargetPosition.Value);
+                        }
                     }
 
+                    ObserveRemoteUserDropPickupPartyLink(drop, dropPickupPacket, resolvedPickupActorId);
                     bool pickupApplied = _dropPool.ResolveRemotePickup(
                         drop,
-                        dropPickupPacket.ActorId,
+                        resolvedPickupActorId,
                         currentTime,
                         dropPickupPacket.ActorKind,
                         pickupActorName,
@@ -2102,6 +2108,98 @@ namespace HaCreator.MapSimulator
             return packet.TargetX.HasValue && packet.TargetY.HasValue
                 ? new Vector2(packet.TargetX.Value, packet.TargetY.Value)
                 : null;
+        }
+
+        private int ResolveRemoteUserDropPickupActorId(RemoteUserDropPickupPacket packet)
+        {
+            IReadOnlyList<int> remotePetItemIds = null;
+            if (packet.ActorKind == DropPickupActorKind.Pet)
+            {
+                int ownerCharacterId = ResolveRemoteUserDropPickupOwnerCharacterId(packet);
+                if (ownerCharacterId > 0
+                    && _remoteUserPool.TryGetActor(ownerCharacterId, out RemoteUserActor ownerActor))
+                {
+                    remotePetItemIds = ownerActor?.Build?.RemotePetItemIds;
+                }
+            }
+
+            return ResolveRemoteUserDropPickupActorId(packet, remotePetItemIds);
+        }
+
+        private void ObserveRemoteUserDropPickupPartyLink(
+            DropItem drop,
+            RemoteUserDropPickupPacket packet,
+            int resolvedActorId)
+        {
+            if (drop?.IsPacketControlled != true
+                || drop.OwnershipType != DropOwnershipType.Party
+                || drop.OwnerId <= 0
+                || packet.ActorId == 0)
+            {
+                return;
+            }
+
+            RegisterObservedDropPartyActorLink(drop.OwnerId, packet.ActorId);
+            if (resolvedActorId != 0 && resolvedActorId != packet.ActorId)
+            {
+                RegisterObservedDropPartyActorLink(drop.OwnerId, resolvedActorId);
+            }
+        }
+
+        internal static int ResolveRemoteUserDropPickupOwnerCharacterId(RemoteUserDropPickupPacket packet)
+        {
+            if (packet.ActorKind != DropPickupActorKind.Pet)
+            {
+                return packet.FallbackOwnerId > 0 ? packet.FallbackOwnerId : packet.ActorId;
+            }
+
+            if (TryDecodeRemotePetPickupActorId(packet.ActorId, out int decodedOwnerCharacterId, out _))
+            {
+                return decodedOwnerCharacterId;
+            }
+
+            if (packet.FallbackOwnerId > 0)
+            {
+                return packet.FallbackOwnerId;
+            }
+
+            return packet.ActorId > 0 ? packet.ActorId : 0;
+        }
+
+        internal static int ResolveRemoteUserDropPickupActorId(
+            RemoteUserDropPickupPacket packet,
+            IReadOnlyList<int> remotePetItemIds)
+        {
+            if (packet.ActorKind != DropPickupActorKind.Pet)
+            {
+                return packet.ActorId;
+            }
+
+            if (TryDecodeRemotePetPickupActorId(packet.ActorId, out _, out _))
+            {
+                return packet.ActorId;
+            }
+
+            int ownerCharacterId = ResolveRemoteUserDropPickupOwnerCharacterId(packet);
+            if (ownerCharacterId <= 0)
+            {
+                return packet.ActorId;
+            }
+
+            if (packet.ActorId > 0
+                && packet.FallbackOwnerId > 0
+                && packet.ActorId != packet.FallbackOwnerId)
+            {
+                // Preserve explicit non-owner actor IDs from packet payloads.
+                return packet.ActorId;
+            }
+
+            if (!TryResolveRemotePetPickupSlotIndexForPacketParity(remotePetItemIds, 0, out int resolvedSlotIndex))
+            {
+                return packet.ActorId;
+            }
+
+            return BuildRemotePetPickupActorId(ownerCharacterId, resolvedSlotIndex);
         }
 
         internal static string FormatPlayerPickupActorLabel(int actorId)

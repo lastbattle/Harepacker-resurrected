@@ -287,6 +287,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             LogoutGiftEntrySnapshot entry = _snapshot.Entries[_hoveredEntryIndex];
+            if (entry.CommoditySerialNumber <= 0)
+            {
+                return;
+            }
+
             string itemLine = !string.IsNullOrWhiteSpace(entry.ItemName)
                 ? entry.ItemName
                 : entry.ItemId > 0

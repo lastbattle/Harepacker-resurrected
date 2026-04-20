@@ -66,6 +66,12 @@ namespace HaCreator.MapSimulator.UI
                     : $"Charging {Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
             }
 
+            if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.ReleaseArmed
+                && preparedSkill.RemainingMs <= 0)
+            {
+                return "Release";
+            }
+
             if (preparedSkill.RemainingMs > 0)
             {
                 return $"Charging {Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";

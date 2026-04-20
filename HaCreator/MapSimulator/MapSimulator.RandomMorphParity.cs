@@ -193,9 +193,15 @@ namespace HaCreator.MapSimulator
             RandomMorphInboundResultResolutionForTesting resolution =
                 ResolveRandomMorphInboundResultForTesting(Environment.TickCount, payload);
             ClearRandomMorphRequestLatch(resolution.RequestSentTick);
+            bool consumedQuestStartLatch = TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
 
             string summary =
                 $"CWvsContext::OnRandomMorphRes(123) cleared the recovered exclusive-request latch and refreshed the throttle timestamp from inbound result code {resolution.ResultCode}.";
+            if (consumedQuestStartLatch)
+            {
+                summary = $"{summary} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch.";
+            }
+
             message = string.IsNullOrWhiteSpace(resolution.ClientNotice)
                 ? summary
                 : $"{summary} {resolution.ClientNotice}";
@@ -206,9 +212,15 @@ namespace HaCreator.MapSimulator
         {
             int currentTick = Environment.TickCount;
             ClearRandomMorphRequestLatch(currentTick);
+            bool consumedQuestStartLatch = TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
             message = payload == null || payload.Length == 0
                 ? "Random morph request ack cleared the recovered exclusive-request latch and refreshed the 500 ms throttle timestamp through the simulator packet seam."
                 : $"Random morph request ack cleared the recovered exclusive-request latch and refreshed the 500 ms throttle timestamp with {payload.Length} byte(s) of simulator-local result context.";
+            if (consumedQuestStartLatch)
+            {
+                message = $"{message} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch.";
+            }
+
             return true;
         }
 

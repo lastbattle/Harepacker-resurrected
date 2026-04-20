@@ -927,29 +927,27 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (_pendingRequestEntry == null)
-            {
-                if (_pendingPacketOwnedWishlistRegisterEntry != null)
-                {
-                    return TryApplyPacketOwnedWishlistRegisterResult(subtype, resultCode, out message, out noticeText, out reopenRequested);
-                }
-
-                _packetOwnedAdminShopSession.MarkDisconnectHazard();
-                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived after the admin-shop owner had already cleared m_bShopRequestSent.");
-                message = "Packet 366 arrived without a pending admin-shop request. The v95 client throws CDisconnectException when m_bShopRequestSent is clear.";
-                _footerMessage = message;
-                UpdateActionButtonStates();
-                return true;
-            }
-
             _pendingPacketOwnedAdminShopResult = false;
             AdminShopEntry entry = _pendingRequestEntry;
-
-            if (!AdminShopDialogClientParityText.HandlesResultSubtype(subtype))
+            AdminShopPacketOwnedResultGateAction gateAction = AdminShopPacketOwnedResultGateParity.ResolveGateAction(
+                subtype,
+                hasResultCode,
+                hasPendingTradeRequest: entry != null,
+                hasPendingWishlistRegister: _pendingPacketOwnedWishlistRegisterEntry != null);
+            if (gateAction == AdminShopPacketOwnedResultGateAction.IgnoreUnsupportedSubtype)
             {
-                RestorePendingRequestState(entry);
+                if (entry != null)
+                {
+                    RestorePendingRequestState(entry);
+                }
+
                 message = AdminShopDialogClientParityText.BuildUnsupportedResultMessage(subtype, resultCode);
-                ResetPendingRequestState();
+                if (entry != null)
+                {
+                    ResetPendingRequestState();
+                    ClearPendingPacketOwnedUserSellSnapshot();
+                }
+
                 ClearPendingPacketOwnedUserSellSnapshot();
                 _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 subtype was ignored by the admin-shop owner.");
                 _footerMessage = message;
@@ -957,13 +955,36 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (!hasResultCode)
+            if (gateAction == AdminShopPacketOwnedResultGateAction.StageMalformedSubtypePayload)
             {
-                RestorePendingRequestState(entry);
+                if (entry != null)
+                {
+                    RestorePendingRequestState(entry);
+                }
+
                 _pendingPacketOwnedAdminShopResult = true;
                 _packetOwnedAdminShopSession.SetWaitingForResult(true);
-                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 subtype 4 arrived without a result code byte, so CAdminShopDlg ignored the malformed packet and kept the request staged.");
-                message = "Packet 366 subtype 4 arrived without a result code byte. CAdminShopDlg expects the subtype-4 result code field before applying request state.";
+                _packetOwnedAdminShopSession.SetLastOwnerState(entry == null
+                    ? "Packet 366 subtype 4 arrived without a result code byte, so CAdminShopDlg ignored the malformed packet before request-sent validation."
+                    : "Packet 366 subtype 4 arrived without a result code byte, so CAdminShopDlg ignored the malformed packet and kept the request staged.");
+                message = entry == null
+                    ? "Packet 366 subtype 4 arrived without a result code byte. CAdminShopDlg ignored the malformed packet before request-sent validation."
+                    : "Packet 366 subtype 4 arrived without a result code byte. CAdminShopDlg expects the subtype-4 result code field before applying request state.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
+            }
+
+            if (gateAction == AdminShopPacketOwnedResultGateAction.ApplyWishlistRegisterResult)
+            {
+                return TryApplyPacketOwnedWishlistRegisterResult(subtype, resultCode, out message, out noticeText, out reopenRequested);
+            }
+
+            if (gateAction == AdminShopPacketOwnedResultGateAction.DisconnectNoPendingRequest || entry == null)
+            {
+                _packetOwnedAdminShopSession.MarkDisconnectHazard();
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived after the admin-shop owner had already cleared m_bShopRequestSent.");
+                message = "Packet 366 arrived without a pending admin-shop request. The v95 client throws CDisconnectException when m_bShopRequestSent is clear.";
                 _footerMessage = message;
                 UpdateActionButtonStates();
                 return true;
@@ -1396,6 +1417,12 @@ namespace HaCreator.MapSimulator.UI
 
         public string GetWishlistSuggestedQuery()
         {
+            if (_packetOwnedAdminShopSession.IsActive
+                && !string.IsNullOrWhiteSpace(_packetOwnedWishlistSearchSnapshot?.Query))
+            {
+                return _packetOwnedWishlistSearchSnapshot.Query;
+            }
+
             AdminShopEntry entry = GetSelectedEntry();
             return entry?.SupportsWishlist == true ? entry.Title : string.Empty;
         }
@@ -1415,6 +1442,13 @@ namespace HaCreator.MapSimulator.UI
 
         public int GetWishlistSuggestedPriceRangeIndex()
         {
+            if (_packetOwnedAdminShopSession.IsActive
+                && _packetOwnedWishlistSearchSnapshot?.PriceRangeIndex >= 0
+                && _packetOwnedWishlistSearchSnapshot.PriceRangeIndex < _wishlistPriceRanges.Count)
+            {
+                return _packetOwnedWishlistSearchSnapshot.PriceRangeIndex;
+            }
+
             AdminShopEntry entry = GetSelectedEntry();
             if (entry == null)
             {
@@ -1449,6 +1483,14 @@ namespace HaCreator.MapSimulator.UI
 
         public string GetWishlistSuggestedCategoryKey()
         {
+            string packetCategoryKey = _packetOwnedWishlistSearchSnapshot?.CategoryKey;
+            if (_packetOwnedAdminShopSession.IsActive
+                && !string.IsNullOrWhiteSpace(packetCategoryKey)
+                && s_wishlistCategoryNodesByKey.ContainsKey(packetCategoryKey))
+            {
+                return packetCategoryKey;
+            }
+
             return GetWishlistCategoryKey(GetWishlistSuggestedCategoryIndex());
         }
 
@@ -4789,8 +4831,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string normalizedCategoryKey = string.IsNullOrWhiteSpace(categoryKey) ? "all" : categoryKey.Trim();
-            string normalizedSnapshotCategoryKey = string.IsNullOrWhiteSpace(snapshot.CategoryKey) ? "all" : snapshot.CategoryKey.Trim();
-            if (!string.Equals(normalizedSnapshotCategoryKey, normalizedCategoryKey, StringComparison.OrdinalIgnoreCase))
+            string normalizedSnapshotCategoryKey = snapshot.CategoryKey?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(normalizedSnapshotCategoryKey)
+                && !string.Equals(normalizedSnapshotCategoryKey, normalizedCategoryKey, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }

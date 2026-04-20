@@ -51,6 +51,16 @@ namespace HaCreator.MapSimulator.Entities
         Attack1
     }
 
+    public readonly record struct MobPacketMoveInterruptSnapshot(
+        float X,
+        float Y,
+        float VelocityX,
+        float VelocityY,
+        MobMoveType MoveType,
+        MobJumpState JumpState,
+        MobAction CurrentAction,
+        bool FacingRight);
+
     /// <summary>
     /// Stores movement state and physics for a mob in the MapSimulator.
     /// Based on MapleNecrocer's Mob.cs implementation.
@@ -629,21 +639,35 @@ namespace HaCreator.MapSimulator.Entities
         /// Mirrors the packet-owned CMovePath::DiscardByInterrupt landing branch used by CMob::OnMove.
         /// The simulator does not replay remote mob move paths yet, but attack move headers still need
         /// to clear pending steering and optionally snap airborne ground mobs back onto a foothold.
+        /// The client also refreshes CMovePath::m_elemLast from live CVecCtrl state while truncating
+        /// buffered path entries, so this seam stores an equivalent runtime snapshot.
         /// </summary>
+        public MobPacketMoveInterruptSnapshot? LastPacketMoveInterruptSnapshot { get; private set; }
+
         public void ApplyPacketMoveInterrupt(bool notForceLandingWhenDiscard)
         {
+            LastPacketMoveInterruptSnapshot = new MobPacketMoveInterruptSnapshot(
+                X,
+                Y,
+                VelocityX,
+                VelocityY,
+                MoveType,
+                JumpState,
+                CurrentAction,
+                FlipX);
+
             _pendingDirection = MobMoveDirection.None;
             _framesSinceDirectionChange = 0;
+            _directionChangeCooldown = 0;
 
             if (notForceLandingWhenDiscard || MoveType == MobMoveType.Fly)
             {
                 return;
             }
 
-            VelocityX = 0f;
-
             if (JumpState == MobJumpState.None && CurrentFoothold != null)
             {
+                VelocityX = 0f;
                 Y = CalculateYOnFoothold(CurrentFoothold, X);
                 VelocityY = 0f;
                 CurrentAction = MobAction.Stand;
@@ -664,6 +688,7 @@ namespace HaCreator.MapSimulator.Entities
             Y = CalculateYOnFoothold(belowFoothold, X);
             CurrentFoothold = belowFoothold;
             JumpState = MobJumpState.None;
+            VelocityX = 0f;
             VelocityY = 0f;
             CurrentAction = MobAction.Stand;
         }

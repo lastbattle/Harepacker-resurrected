@@ -7,6 +7,8 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class UserInfoPopularityPreviewService
     {
+        private const int MinFame = -30000;
+        private const int MaxFame = 30000;
         private const int PendingResolveDelayMs = 900;
         private PendingPopularityRequest? _pendingRequest;
 
@@ -17,7 +19,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (direction == UserInfoUI.PopularityChangeDirection.Down && context.Build.Fame <= 0)
+            if (direction == UserInfoUI.PopularityChangeDirection.Up && context.Build.Fame >= MaxFame)
+            {
+                return false;
+            }
+
+            if (direction == UserInfoUI.PopularityChangeDirection.Down && context.Build.Fame <= MinFame)
             {
                 return false;
             }
@@ -38,9 +45,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Popularity request target is unavailable.";
             }
 
-            if (direction == UserInfoUI.PopularityChangeDirection.Down && targetBuild.Fame <= 0)
+            if (direction == UserInfoUI.PopularityChangeDirection.Up && targetBuild.Fame >= MaxFame)
             {
-                return $"{context.CharacterName} is already at 0 Fame.";
+                return $"{context.CharacterName} is already at +{MaxFame} Fame.";
+            }
+
+            if (direction == UserInfoUI.PopularityChangeDirection.Down && targetBuild.Fame <= MinFame)
+            {
+                return $"{context.CharacterName} is already at {MinFame} Fame.";
             }
 
             if (TryGetPendingGateMessage(context.CharacterName, out string pendingMessage))
@@ -80,13 +92,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Popularity request for {pending.TargetName} expired before the target build could be resolved.";
             }
 
-            if (pending.Direction == UserInfoUI.PopularityChangeDirection.Down && targetBuild.Fame <= 0)
+            if (pending.Direction == UserInfoUI.PopularityChangeDirection.Up && targetBuild.Fame >= MaxFame)
             {
-                return $"{pending.TargetName} is already at 0 Fame.";
+                return $"{pending.TargetName} is already at +{MaxFame} Fame.";
+            }
+
+            if (pending.Direction == UserInfoUI.PopularityChangeDirection.Down && targetBuild.Fame <= MinFame)
+            {
+                return $"{pending.TargetName} is already at {MinFame} Fame.";
             }
 
             int delta = pending.Direction == UserInfoUI.PopularityChangeDirection.Up ? 1 : -1;
-            int updatedFame = Math.Max(0, targetBuild.Fame + delta);
+            int updatedFame = Math.Clamp(targetBuild.Fame + delta, MinFame, MaxFame);
             targetBuild.Fame = updatedFame;
 
             if (remoteUserPool != null &&

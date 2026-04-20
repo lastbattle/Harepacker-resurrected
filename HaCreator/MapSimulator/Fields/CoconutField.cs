@@ -273,6 +273,11 @@ namespace HaCreator.MapSimulator.Fields
         public LocalTeamSelectionSource TeamSelectionSource => _localTeamSelectionSource;
         public bool HasResolvedLocalTeamSelection => _localTeamSelectionSource != LocalTeamSelectionSource.Default;
         #endregion
+
+        internal static Point GetBoardScoreTeam0AnchorForParity() => new Point(Team0ScoreX, ScoreY);
+        internal static Point GetBoardScoreTeam1AnchorForParity() => new Point(Team1ScoreX, ScoreY);
+        internal static Point GetBoardTimerAnchorForParity() => new Point(TimerX, TimerY);
+
         #region Initialization
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
         {
@@ -442,6 +447,7 @@ namespace HaCreator.MapSimulator.Fields
                 _lastScorePacketTick = null;
                 _hitQueue.Clear();
                 _pendingAttackPacketRequests.Clear();
+                _localBasicActionOwnerUntilTick = int.MinValue;
                 ClearRoundResult();
             }
             else if (_gameActive || _awaitingFinalScore)

@@ -1052,14 +1052,14 @@ namespace HaCreator.MapSimulator
                 return authoredPacketOwnedSnapshotName.Trim();
             }
 
-            if (allowPacketCacheNameFallback && !string.IsNullOrWhiteSpace(packetCacheName))
-            {
-                return packetCacheName.Trim();
-            }
-
             if (!string.IsNullOrWhiteSpace(authoredFallbackName))
             {
                 return authoredFallbackName.Trim();
+            }
+
+            if (allowPacketCacheNameFallback && !string.IsNullOrWhiteSpace(packetCacheName))
+            {
+                return packetCacheName.Trim();
             }
 
             return $"platform-{platformId}";

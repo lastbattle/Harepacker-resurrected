@@ -1274,8 +1274,18 @@ namespace HaCreator.MapSimulator.UI
                     ? searchMessage
                     : BuildPacketDecodeFailure("CITC::OnGetSearchITCListDone", packetPayload),
                 24 => BuildItcFailureMessage(packetPayload, "CITC::OnGetSearchITCListFailed"),
-                29 => BuildItcSimpleResult("CITC::OnNormalItemResRegisterSaleEntryDone", "Inventory owner reset after sale-entry registration.", packetPayload),
-                30 => BuildItcFailureMessage(packetPayload, "CITC::OnNormalItemResRegisterSaleEntryFailed"),
+                29 => TryApplyItcRegisterSaleEntryDone(packetPayload, out string registerSaleEntryDoneMessage)
+                    ? registerSaleEntryDoneMessage
+                    : BuildPacketDecodeFailure("CITC::OnNormalItemResRegisterSaleEntryDone", packetPayload),
+                30 => TryApplyItcRegisterSaleEntryFailed(packetPayload, out string registerSaleEntryFailedMessage)
+                    ? registerSaleEntryFailedMessage
+                    : BuildPacketDecodeFailure("CITC::OnNormalItemResRegisterSaleEntryFailed", packetPayload),
+                31 => TryApplyItcSaleCurrentItemToWishDone(packetPayload, out string saleCurrentItemToWishDoneMessage)
+                    ? saleCurrentItemToWishDoneMessage
+                    : BuildPacketDecodeFailure("CITC::OnSaleCurrentItemToWishDone", packetPayload),
+                32 => TryApplyItcSaleCurrentItemToWishFailed(packetPayload, out string saleCurrentItemToWishFailedMessage)
+                    ? saleCurrentItemToWishFailedMessage
+                    : BuildPacketDecodeFailure("CITC::OnSaleCurrentItemToWishFailed", packetPayload),
                 33 => TryApplyItcUserItemList(packetPayload, isPurchaseList: true, out string purchaseMessage)
                     ? purchaseMessage
                     : BuildPacketDecodeFailure("CITC::OnGetUserPurchaseItemDone", packetPayload),
@@ -1324,11 +1334,15 @@ namespace HaCreator.MapSimulator.UI
                     ? registerWishMessage
                     : BuildPacketDecodeFailure("CITC::OnRegisterWishItemDone", packetPayload),
                 56 => BuildItcFailureMessage(packetPayload, "CITC::OnRegisterWishItemFailed"),
-                60 => BuildItcFailureMessage(packetPayload, "CITC::OnBidAuctionFailed"),
+                60 => TryApplyItcBidAuctionFailed(packetPayload, out string bidAuctionFailedMessage)
+                    ? bidAuctionFailedMessage
+                    : BuildPacketDecodeFailure("CITC::OnBidAuctionFailed", packetPayload),
                 61 => TryApplyItcCancelWishNotification(packetPayload, out string cancelWishNoticeMessage)
                     ? cancelWishNoticeMessage
                     : BuildPacketDecodeFailure("CITC::OnNotifyCancelWishResult", packetPayload),
-                62 => BuildItcSimpleResult("CITC::OnSuccessBidInfoResult", "A packet-owned bid-success notice reached CITC.", packetPayload),
+                62 => TryApplyItcSuccessBidInfoResult(packetPayload, out string successBidInfoMessage)
+                    ? successBidInfoMessage
+                    : BuildPacketDecodeFailure("CITC::OnSuccessBidInfoResult", packetPayload),
                 _ => $"{GetItcNormalItemSubtypeLabel(_itcNormalItemSubtype)} reached CITC with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state."
             };
             return _itcNormalItemLastSummary;
@@ -3743,6 +3757,111 @@ namespace HaCreator.MapSimulator.UI
                 : $"Purchased the focused {(fromWishList ? "wish-sale" : "main-list")} row.";
             message = $"{ownerName} completed for {(removedEntry != null ? $"listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)}" : "the focused row")} and refreshed the packet-owned {(fromWishList ? "wish-sale" : "catalog")} owner.";
             UpdateItcSelectionFromPrimaryList(fromWishList ? _itcWishPacketEntries : _itcPacketCatalogEntries);
+            return true;
+        }
+
+        private bool TryApplyItcRegisterSaleEntryDone(byte[] payload, out string message)
+        {
+            PacketCatalogEntry focusedEntry = ResolveFocusedItcEntry(_itcPacketCatalogEntries);
+            if (focusedEntry != null)
+            {
+                PacketCatalogEntry saleEntry = ClonePacketCatalogEntry(focusedEntry, "Sale");
+                UpsertWishEntry(_itcSalePacketEntries, saleEntry);
+                RemoveEntryByListingId(_itcPacketCatalogEntries, saleEntry.ListingId);
+                _itcCurrentCategoryItemCount = Math.Max(0, _itcPacketCatalogEntries.Count);
+                _itcNormalItemEntryCount = _itcCurrentCategoryItemCount;
+                _itcSaleItemCount = _itcSalePacketEntries.Count;
+                _noticeState = $"Registered listing {saleEntry.ListingId.ToString(CultureInfo.InvariantCulture)} for sale.";
+                message = $"CITC::OnNormalItemResRegisterSaleEntryDone registered listing {saleEntry.ListingId.ToString(CultureInfo.InvariantCulture)}.";
+                UpdateItcSelectionFromPrimaryList(_itcPacketCatalogEntries);
+                return true;
+            }
+
+            _noticeState = "Register-sale done was received without a focused listing.";
+            message = "CITC::OnNormalItemResRegisterSaleEntryDone completed, but no focused listing could be resolved.";
+            return true;
+        }
+
+        private bool TryApplyItcRegisterSaleEntryFailed(byte[] payload, out string message)
+        {
+            int reason = 0;
+            if (payload?.Length >= 1 + sizeof(int))
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                _ = reader.ReadByte();
+                reason = reader.ReadInt32();
+            }
+
+            _noticeState = $"Register-sale failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
+            message = $"CITC::OnNormalItemResRegisterSaleEntryFailed rejected the focused listing (reason {reason.ToString(CultureInfo.InvariantCulture)}).";
+            return true;
+        }
+
+        private bool TryApplyItcSaleCurrentItemToWishDone(byte[] payload, out string message)
+        {
+            bool applied = TryApplyItcWishMutation(
+                "CITC::OnSaleCurrentItemToWishDone",
+                addSelectedCatalogEntry: true,
+                removeCurrentWishEntry: false,
+                out message);
+            if (applied)
+            {
+                _noticeState = $"Added listing {_itcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} to the wish owner.";
+            }
+
+            return applied;
+        }
+
+        private bool TryApplyItcSaleCurrentItemToWishFailed(byte[] payload, out string message)
+        {
+            int reason = 0;
+            if (payload?.Length >= 1 + sizeof(int))
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                _ = reader.ReadByte();
+                reason = reader.ReadInt32();
+            }
+
+            _noticeState = $"Sale-to-wish failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
+            message = $"CITC::OnSaleCurrentItemToWishFailed rejected the focused listing (reason {reason.ToString(CultureInfo.InvariantCulture)}).";
+            return true;
+        }
+
+        private bool TryApplyItcBidAuctionFailed(byte[] payload, out string message)
+        {
+            int reason = 0;
+            if (payload?.Length >= 1 + sizeof(int))
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                _ = reader.ReadByte();
+                reason = reader.ReadInt32();
+            }
+
+            _noticeState = $"Bid auction failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
+            message = $"CITC::OnBidAuctionFailed reported reason {reason.ToString(CultureInfo.InvariantCulture)}.";
+            return true;
+        }
+
+        private bool TryApplyItcSuccessBidInfoResult(byte[] payload, out string message)
+        {
+            int winningPrice = 0;
+            int itemCount = 0;
+            if (payload?.Length >= 1 + (sizeof(int) * 2))
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                _ = reader.ReadByte();
+                winningPrice = Math.Max(0, reader.ReadInt32());
+                itemCount = Math.Max(0, reader.ReadInt32());
+            }
+
+            _noticeState = winningPrice > 0
+                ? $"Success-bid info resolved at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s)."
+                : "Success-bid info arrived without an explicit winning price.";
+            message = $"CITC::OnSuccessBidInfoResult applied bid info for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos.";
             return true;
         }
 

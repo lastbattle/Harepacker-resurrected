@@ -912,9 +912,21 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             PreparePacketOwnedSkillActionOwner(state);
-            state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
-            ArmPacketOwnedOneTimeAction(state, currentTime, state.LastSkillAction, isSkillAction: true);
+            bool allowOneTimeFallback = ShouldAllowPacketOwnedSkillOneTimeFallback(
+                state.LastSkillAction,
+                state.Summon.CurrentAnimationBranchName);
+            if (allowOneTimeFallback)
+            {
+                state.Summon.LastAttackAnimationStartTime = currentTime;
+                ArmPacketOwnedOneTimeAction(state, currentTime, state.LastSkillAction, isSkillAction: true);
+            }
+            else
+            {
+                state.Summon.LastAttackAnimationStartTime = int.MinValue;
+                ClearPacketOwnedOneTimeAction(state);
+            }
+
             if (ShouldArmPacketOwnedSupportSuspendForSkillAction(state.Summon, state.LastSkillAction))
             {
                 ArmPacketOwnedSupportSuspend(state, currentTime);
@@ -926,9 +938,14 @@ namespace HaCreator.MapSimulator.Pools
             bool hasPrepareAnimation = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
                 state.Summon.SkillData,
                 state.Summon.CurrentAnimationBranchName) > 0;
-            state.Summon.ActorState = hasPrepareAnimation
-                ? SummonActorState.Prepare
-                : SummonActorState.Attack;
+            state.Summon.ActorState = !allowOneTimeFallback
+                ? PacketOwnedSummonUpdateRules.ResolveIdleActorState(
+                    state.Summon,
+                    currentTime,
+                    TeslaCoilSkillId)
+                : hasPrepareAnimation
+                    ? SummonActorState.Prepare
+                    : SummonActorState.Attack;
             state.Summon.LastStateChangeTime = currentTime;
 
             if (state.Summon.SkillId != TeslaCoilSkillId)
@@ -1222,6 +1239,11 @@ namespace HaCreator.MapSimulator.Pools
             string branchName = isSkillAction
                 ? SummonRuntimeRules.ResolvePacketSkillBranch(skill, normalizedAction, state.Summon.AssistType)
                 : SummonRuntimeRules.ResolvePacketAttackBranch(skill, normalizedAction);
+            if (isSkillAction && !ShouldAllowPacketOwnedSkillOneTimeFallback(normalizedAction, branchName))
+            {
+                return null;
+            }
+
             if (string.IsNullOrWhiteSpace(branchName))
             {
                 branchName = state.Summon.CurrentAnimationBranchName;
@@ -1255,6 +1277,12 @@ namespace HaCreator.MapSimulator.Pools
             return isSkillAction
                 ? ResolvePacketPendingRemovalActionAnimation(state.Summon)
                 : ResolveAttackAnimation(state.Summon);
+        }
+
+        internal static bool ShouldAllowPacketOwnedSkillOneTimeFallback(byte rawAction, string resolvedBranchName)
+        {
+            return !SummonRuntimeRules.IsStrictPacketSkillBranchAction(rawAction)
+                   || !string.IsNullOrWhiteSpace(resolvedBranchName);
         }
 
         private static SkillAnimation ResolveEmptyActionRetryAnimation(ActiveSummon summon)
@@ -6233,15 +6261,45 @@ namespace HaCreator.MapSimulator.Pools
             if (!TryParsePacketMobAttackGeneralEffectSignedSiblingFrameOffsetRelativeSegments(
                     relativeToken,
                     out int frameOffset,
+                    out int parentHopCount,
                     out string[] relativePropertySegments))
             {
                 return false;
             }
 
+            string[] rawPreviousSegments = previousNormalizedSourcePath
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            bool previousPathEndsWithSourceLeaf = rawPreviousSegments.Length > 0
+                                                  && IsPacketMobAttackSourcePropertySegment(rawPreviousSegments[^1]);
+
             string[] previousSegments = previousNormalizedSourcePath
                 .Replace('\\', '/')
                 .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
             previousSegments = TrimPacketMobAttackGeneralEffectSourceLeafSuffixSegments(previousSegments);
+            if (previousSegments.Length < 4)
+            {
+                return false;
+            }
+
+            int remainingParentHops = Math.Max(0, parentHopCount);
+            if (previousPathEndsWithSourceLeaf && remainingParentHops > 0)
+            {
+                // Relative tokens that begin with "../" are often authored from a source-leaf node.
+                // That first parent step is already reflected by source-leaf trimming above.
+                remainingParentHops--;
+            }
+
+            if (remainingParentHops > 0)
+            {
+                if (remainingParentHops >= previousSegments.Length - 2)
+                {
+                    return false;
+                }
+
+                previousSegments = previousSegments.Take(previousSegments.Length - remainingParentHops).ToArray();
+            }
+
             if (previousSegments.Length < 4
                 || !int.TryParse(previousSegments[^1], out int previousFrameIndex))
             {
@@ -6376,9 +6434,11 @@ namespace HaCreator.MapSimulator.Pools
         private static bool TryParsePacketMobAttackGeneralEffectSignedSiblingFrameOffsetRelativeSegments(
             string relativeToken,
             out int frameOffset,
+            out int parentHopCount,
             out string[] normalizedPropertySegments)
         {
             frameOffset = 0;
+            parentHopCount = 0;
             normalizedPropertySegments = null;
             if (string.IsNullOrWhiteSpace(relativeToken))
             {
@@ -6400,8 +6460,14 @@ namespace HaCreator.MapSimulator.Pools
                 segmentIndex++;
             }
 
-            if (segmentIndex >= rawRelativeSegments.Length
-                || string.Equals(rawRelativeSegments[segmentIndex], "..", StringComparison.Ordinal))
+            while (segmentIndex < rawRelativeSegments.Length
+                   && string.Equals(rawRelativeSegments[segmentIndex], "..", StringComparison.Ordinal))
+            {
+                parentHopCount++;
+                segmentIndex++;
+            }
+
+            if (segmentIndex >= rawRelativeSegments.Length)
             {
                 return false;
             }
@@ -7202,9 +7268,64 @@ namespace HaCreator.MapSimulator.Pools
 
             string normalizedPrefixToken = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(
                 rawTokens[startIndex]);
-            if (!IsPacketMobAttackGeneralEffectAliasPrefixToken(normalizedPrefixToken))
+            string aliasPrefixToken = normalizedPrefixToken;
+            bool hasTrailingAssignmentDelimiter = false;
+            string trailingAssignmentDelimiter = null;
+            bool hasTrailingOpenWrapper = false;
+            char trailingOpenWrapperDelimiter = '\0';
+            if (!IsPacketMobAttackGeneralEffectAliasPrefixToken(aliasPrefixToken))
             {
-                return false;
+                if (TrySplitPacketMobAttackGeneralEffectAliasPrefixTrailingAssignmentToken(
+                        normalizedPrefixToken,
+                        out aliasPrefixToken,
+                        out trailingAssignmentDelimiter)
+                    && IsPacketMobAttackGeneralEffectAliasPrefixToken(aliasPrefixToken))
+                {
+                    hasTrailingAssignmentDelimiter = true;
+                }
+                else if (TrySplitPacketMobAttackGeneralEffectAliasPrefixTrailingWrapperToken(
+                             normalizedPrefixToken,
+                             out aliasPrefixToken,
+                             out trailingOpenWrapperDelimiter)
+                         && IsPacketMobAttackGeneralEffectAliasPrefixToken(aliasPrefixToken))
+                {
+                    hasTrailingOpenWrapper = true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            if (hasTrailingAssignmentDelimiter && startIndex < rawTokens.Count - 1)
+            {
+                string normalizedValueToken = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(
+                    rawTokens[startIndex + 1]);
+                if (IsPacketMobAttackGeneralEffectAliasFrameToken(normalizedValueToken))
+                {
+                    coalescedToken = $"{aliasPrefixToken}{trailingAssignmentDelimiter}{normalizedValueToken}";
+                    consumedTokenCount = 2;
+                    return true;
+                }
+            }
+
+            if (hasTrailingOpenWrapper && startIndex < rawTokens.Count - 2)
+            {
+                string wrappedValueToken = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(
+                    rawTokens[startIndex + 1]);
+                string closeWrapperToken = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(
+                    rawTokens[startIndex + 2]);
+                if (TryResolvePacketMobAttackGeneralEffectAliasWrapperPair(
+                        trailingOpenWrapperDelimiter.ToString(),
+                        closeWrapperToken,
+                        out _,
+                        out char closeWrapperDelimiter)
+                    && IsPacketMobAttackGeneralEffectAliasFrameToken(wrappedValueToken))
+                {
+                    coalescedToken = $"{aliasPrefixToken}{trailingOpenWrapperDelimiter}{wrappedValueToken}{closeWrapperDelimiter}";
+                    consumedTokenCount = 3;
+                    return true;
+                }
             }
 
             if (startIndex < rawTokens.Count - 2)
@@ -7216,7 +7337,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (IsPacketMobAttackGeneralEffectAliasAssignmentDelimiter(normalizedDelimiterToken)
                     && IsPacketMobAttackGeneralEffectAliasFrameToken(normalizedValueToken))
                 {
-                    coalescedToken = $"{normalizedPrefixToken}{normalizedDelimiterToken}{normalizedValueToken}";
+                    coalescedToken = $"{aliasPrefixToken}{normalizedDelimiterToken}{normalizedValueToken}";
                     consumedTokenCount = 3;
                     return true;
                 }
@@ -7224,7 +7345,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (string.Equals(normalizedDelimiterToken, "/", StringComparison.Ordinal)
                     && IsPacketMobAttackGeneralEffectAliasFrameToken(normalizedValueToken))
                 {
-                    coalescedToken = $"{normalizedPrefixToken}/{normalizedValueToken}";
+                    coalescedToken = $"{aliasPrefixToken}/{normalizedValueToken}";
                     consumedTokenCount = 3;
                     return true;
                 }
@@ -7245,13 +7366,80 @@ namespace HaCreator.MapSimulator.Pools
                         out char closeWrapperDelimiter)
                     && IsPacketMobAttackGeneralEffectAliasFrameToken(wrappedValueToken))
                 {
-                    coalescedToken = $"{normalizedPrefixToken}{openWrapperDelimiter}{wrappedValueToken}{closeWrapperDelimiter}";
+                    coalescedToken = $"{aliasPrefixToken}{openWrapperDelimiter}{wrappedValueToken}{closeWrapperDelimiter}";
                     consumedTokenCount = 4;
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private static bool TrySplitPacketMobAttackGeneralEffectAliasPrefixTrailingAssignmentToken(
+            string token,
+            out string aliasPrefixToken,
+            out string assignmentDelimiter)
+        {
+            aliasPrefixToken = null;
+            assignmentDelimiter = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string[] delimiters = { "=>", "->", "=", ":", "/" };
+            for (int i = 0; i < delimiters.Length; i++)
+            {
+                string delimiter = delimiters[i];
+                if (!token.EndsWith(delimiter, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string prefix = token.Substring(0, token.Length - delimiter.Length);
+                if (string.IsNullOrWhiteSpace(prefix))
+                {
+                    return false;
+                }
+
+                aliasPrefixToken = prefix;
+                assignmentDelimiter = delimiter;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TrySplitPacketMobAttackGeneralEffectAliasPrefixTrailingWrapperToken(
+            string token,
+            out string aliasPrefixToken,
+            out char openWrapperDelimiter)
+        {
+            aliasPrefixToken = null;
+            openWrapperDelimiter = '\0';
+            if (string.IsNullOrWhiteSpace(token) || token.Length < 2)
+            {
+                return false;
+            }
+
+            char trailingCharacter = token[^1];
+            if (trailingCharacter != '['
+                && trailingCharacter != '('
+                && trailingCharacter != '{'
+                && trailingCharacter != '<')
+            {
+                return false;
+            }
+
+            string prefix = token.Substring(0, token.Length - 1);
+            if (string.IsNullOrWhiteSpace(prefix))
+            {
+                return false;
+            }
+
+            aliasPrefixToken = prefix;
+            openWrapperDelimiter = trailingCharacter;
+            return true;
         }
 
         private static string NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(string token)

@@ -2908,13 +2908,6 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            int remotePlayerIndex = ResolveRemotePlayerIndex();
-            if (!_readyStates[remotePlayerIndex])
-            {
-                message = $"{ResolveParticipantName(remotePlayerIndex)} must be ready before Start becomes available.";
-                return false;
-            }
-
             return true;
         }
 
@@ -2997,13 +2990,6 @@ namespace HaCreator.MapSimulator.Fields
             if (!HasClientStartTarget())
             {
                 message = "Start request ignored because no opponent is seated in the Match Cards room yet.";
-                return false;
-            }
-
-            int remotePlayerIndex = ResolveRemotePlayerIndex();
-            if (!_readyStates[remotePlayerIndex])
-            {
-                message = $"Start request blocked until {ResolveParticipantName(remotePlayerIndex)} sends ready packet (58).";
                 return false;
             }
 

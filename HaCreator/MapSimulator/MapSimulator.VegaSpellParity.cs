@@ -360,10 +360,7 @@ namespace HaCreator.MapSimulator
                     ? vegaWindow.GetResultPreludeDurationMs()
                     : 0);
 
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
-            {
-                vegaSpellWindow.ApplyPacketOwnedResultPrelude(result);
-            }
+            ApplyVegaResultPrelude(result, allowSoundWithoutWindow: false);
         }
 
         private bool HandleVegaSpellCastRequested(VegaSpellUI.VegaOwnerRequest request)
@@ -495,6 +492,8 @@ namespace HaCreator.MapSimulator
                 vegaSpellWindow.SetOwnerStatusMessage(contextFailure);
                 return;
             }
+
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
 
             _pendingVegaPromptState = null;
             int requestTick = currTickCount;
@@ -793,12 +792,7 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.ResolvedSuccess = success;
                 _pendingVegaCastState.Result = result;
                 _pendingVegaCastState.ResultReadyAtTick = currTickCount + VegaOwnerExternalResultFallbackDelayMs;
-                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
-                {
-                    vegaSpellWindow.ApplyPacketOwnedResultPrelude(result);
-                }
-
-                EnsureVegaResultLoopSoundPlaying();
+                ApplyVegaResultPrelude(result, allowSoundWithoutWindow: true);
                 message = $"Observed packet-owned Vega prelude result code {resultCode} through CUIVega::OnVegaResult ownership and deferred equipment mutation until the terminal result packet.";
                 return true;
             }
@@ -823,10 +817,7 @@ namespace HaCreator.MapSimulator
                     _pendingVegaCastState.OutcomeResolved = true;
                     _pendingVegaCastState.ResolvedSuccess = terminalSuccess;
                     _pendingVegaCastState.Result = result;
-                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
-                    {
-                        vegaSpellWindow.ApplyPacketOwnedResultPrelude(result);
-                    }
+                    ApplyVegaResultPrelude(result, allowSoundWithoutWindow: true);
                 }
 
                 _pendingVegaCastState.PacketOwnedTerminalCode = resultCode;
@@ -1593,6 +1584,23 @@ namespace HaCreator.MapSimulator
                 statusMessage,
                 request.ScrollItemId,
                 request.ModifierItemId);
+        }
+
+        private void ApplyVegaResultPrelude(
+            ItemUpgradeUI.ItemUpgradeAttemptResult result,
+            bool allowSoundWithoutWindow)
+        {
+            bool appliedToWindow = false;
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
+            {
+                vegaSpellWindow.ApplyPacketOwnedResultPrelude(result);
+                appliedToWindow = true;
+            }
+
+            if (appliedToWindow || allowSoundWithoutWindow)
+            {
+                EnsureVegaResultLoopSoundPlaying();
+            }
         }
 
         internal static string BuildPacketOwnedVegaPreludeResultMessageForTests(

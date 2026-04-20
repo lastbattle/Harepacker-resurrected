@@ -22,7 +22,8 @@ namespace HaCreator.MapSimulator.Fields
         bool HasLiveFieldInterface,
         bool HasPendingMapChange,
         bool HasBoundPlayer,
-        bool IsPlayerActive);
+        bool IsPlayerActive,
+        bool HasReadyFieldInterface);
 
     public readonly record struct PassiveTransferFieldQueuedRetryDecisionState(
         bool HasPendingRequest,
@@ -69,11 +70,12 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool ShouldKeepQueuedRetryPending(PassiveTransferFieldQueuedRetryState state)
         {
-            // `TryPassiveTransferField` keeps its pending flag while the interface gate is unavailable.
-            // Keep pending ownership independent from momentary interface loss, even if
-            // local runtime owner bindings are temporarily unresolved during that drop.
+            // `TryPassiveTransferField` clears pending ownership only after it can admit the
+            // interface gate again. Keep pending while readiness is unresolved, even if local
+            // owner bindings (player bound/active) are transiently unavailable in that window.
             return !state.HasPendingMapChange
-                   && ((state.HasBoundPlayer && state.IsPlayerActive)
+                   && (!state.HasReadyFieldInterface
+                       || (state.HasBoundPlayer && state.IsPlayerActive)
                        || !state.HasLiveFieldInterface);
         }
 
@@ -89,7 +91,8 @@ namespace HaCreator.MapSimulator.Fields
                     state.HasLiveFieldInterface,
                     state.HasPendingMapChange,
                     state.HasBoundPlayer,
-                    state.IsPlayerActive));
+                    state.IsPlayerActive,
+                    state.HasReadyFieldInterface));
 
             if (state.HasOneTimeActionCompleted && state.HasReadyFieldInterface)
             {

@@ -317,6 +317,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (ShouldDismissInitialQuizOwnerWithCancelKey(newKeyboardState, oldKeyboardState))
+            {
+                // `CUIInitialQuiz::SetRet` special-cases ret=2 (cancel) and skips SendResult.
+                CloseInitialQuizOwnerWithoutSubmission();
+                return true;
+            }
+
             if (snapshot.RemainingSeconds <= 0)
             {
                 return true;
@@ -366,6 +373,13 @@ namespace HaCreator.MapSimulator
             SyncInitialQuizOwnerLegacyInputStateFromEditControl();
             ResetInitialQuizOwnerHeldEditKey();
             return true;
+        }
+
+        private void CloseInitialQuizOwnerWithoutSubmission()
+        {
+            _initialQuizTimerRuntime.Clear();
+            ClearInitialQuizOwnerInputState();
+            SyncUtilityChannelSelectorAvailability();
         }
 
         private static bool TryResolveInitialQuizOwnerNewEditKey(KeyboardState newKeyboardState, KeyboardState oldKeyboardState, out Keys editKey)
@@ -1437,6 +1451,12 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldSubmitInitialQuizOwnerOkButtonRelease(bool pressedOkButton, bool hoveringOkButton, bool enabled)
         {
             return enabled && pressedOkButton && hoveringOkButton;
+        }
+
+        internal static bool ShouldDismissInitialQuizOwnerWithCancelKey(KeyboardState newKeyboardState, KeyboardState oldKeyboardState)
+        {
+            return newKeyboardState.IsKeyDown(Keys.Escape)
+                && oldKeyboardState.IsKeyUp(Keys.Escape);
         }
 
         internal static InitialQuizOwnerCaptureState ResolveInitialQuizOwnerCaptureState(

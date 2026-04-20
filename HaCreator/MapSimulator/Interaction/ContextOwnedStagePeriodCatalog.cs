@@ -772,9 +772,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ContextOwnedStageAffectedMapRow row = inherited.Merge(property);
-            bool isFieldIdAliasBranch = allowNumericFieldIdFallback
-                || ContextOwnedStageAffectedMapRow.IsFieldIdAliasName(property.Name);
-            int fieldId = row.ResolveFieldId(property, allowNumericFallback: isFieldIdAliasBranch);
+            bool isFieldIdAliasBranch = ContextOwnedStageAffectedMapRow.IsFieldIdAliasName(property.Name);
+            bool allowNumericFieldIdFallbackForCurrentProperty = isFieldIdAliasBranch
+                || allowNumericFieldIdFallback
+                && !ContextOwnedStageAffectedMapRow.IsNonFieldMetadataAliasName(property.Name);
+            int fieldId = row.ResolveFieldId(property, allowNumericFallback: allowNumericFieldIdFallbackForCurrentProperty);
             if (fieldId <= 0)
             {
                 fieldId = inheritedFieldId;
@@ -799,7 +801,8 @@ namespace HaCreator.MapSimulator.Interaction
                     child,
                     row,
                     fieldId,
-                    isFieldIdAliasBranch || fieldId <= 0,
+                    isFieldIdAliasBranch
+                    || allowNumericFieldIdFallbackForCurrentProperty && fieldId <= 0,
                     byFieldId);
             }
         }
@@ -1278,6 +1281,24 @@ namespace HaCreator.MapSimulator.Interaction
                 || IsAliasNameMatch(propertyName, StageAffectedMapFieldIdStringPoolId, "fieldId")
                 || IsAliasNameMatch(propertyName, StageAffectedMapFieldIdStringPoolId, "affectedMap")
                 || IsAliasNameMatch(propertyName, StageAffectedMapFieldIdStringPoolId, "aAffectedMap");
+        }
+
+        internal static bool IsNonFieldMetadataAliasName(string propertyName)
+        {
+            return IsAliasNameMatch(propertyName, StageAffectedMapStageKeywordStringPoolId, "stageKeyword")
+                || IsAliasNameMatch(propertyName, StageAffectedMapStageKeywordStringPoolId, "keyword")
+                || IsAliasNameMatch(propertyName, StageAffectedMapStageKeywordStringPoolId, "aKeyword")
+                || IsAliasNameMatch(propertyName, StageAffectedMapQuestIdStringPoolId, "questID")
+                || IsAliasNameMatch(propertyName, StageAffectedMapQuestIdAliasStringPoolId, "questId")
+                || IsAliasNameMatch(propertyName, StageAffectedMapQuestIdStringPoolId, "enabledQuest")
+                || IsAliasNameMatch(propertyName, StageAffectedMapQuestIdStringPoolId, "aEnabledQuest")
+                || IsAliasNameMatch(propertyName, StageAffectedMapQuestIdStringPoolId, "quest")
+                || IsAliasNameMatch(propertyName, StageAffectedMapQuestStateStringPoolId, "questState")
+                || IsAliasNameMatch(propertyName, StageAffectedMapPriorityStringPoolId, "priority")
+                || IsAliasNameMatch(propertyName, StageAffectedMapPriorityAliasStringPoolId, "Priority")
+                || IsAliasNameMatch(propertyName, StageAffectedMapRandomTimeStringPoolId, "randTime")
+                || string.Equals(propertyName, "stage", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "stageList", StringComparison.OrdinalIgnoreCase);
         }
 
         internal ContextOwnedStageAffectedMapEntry CreateEntry(int fieldId)

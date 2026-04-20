@@ -242,7 +242,7 @@ namespace HaCreator.MapSimulator
                 build.HasAuthoritativeProfileJob ? Math.Max(0, build.Job) : null,
                 build.HasAuthoritativeProfileGuild ? (build.GuildName ?? string.Empty) : null,
                 build.HasAuthoritativeProfileAlliance ? (build.AllianceName ?? string.Empty) : null,
-                build.HasAuthoritativeProfileFame ? Math.Max(0, build.Fame) : null,
+                build.HasAuthoritativeProfileFame ? build.Fame : null,
                 build.HasAuthoritativeProfileWorldRank ? Math.Max(0, build.WorldRank) : null,
                 build.HasAuthoritativeProfileJobRank ? Math.Max(0, build.JobRank) : null,
                 build.HasAuthoritativeProfileRide ? build.HasMonsterRiding : null,

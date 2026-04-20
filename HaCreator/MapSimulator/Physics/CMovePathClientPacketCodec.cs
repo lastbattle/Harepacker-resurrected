@@ -124,8 +124,9 @@ namespace HaCreator.MapSimulator.Physics
             writer.Write(element.Duration);
             if (includeClientRandomCounts)
             {
-                writer.Write((short)0);
-                writer.Write((short)0);
+                // Keep the packet-owned suffix shape aligned with client CMovePath payloads.
+                writer.Write(element.RandomCount);
+                writer.Write(element.ActualRandomCount);
             }
         }
 

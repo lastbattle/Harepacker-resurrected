@@ -4237,6 +4237,30 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (nestedPayload.Length >= 8 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 5,
+                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(1, sizeof(uint)))),
+                    envelopeSummary: $"room-type+len32 envelope roomType={nestedPayload[0]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 9 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 6,
+                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(2, sizeof(uint)))),
+                    envelopeSummary: $"opcode+len32 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
             return false;
         }
 
@@ -4395,6 +4419,30 @@ namespace HaCreator.MapSimulator.Interaction
                     prefixLength: 5,
                     payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(3, sizeof(ushort))),
                     envelopeSummary: $"opcode+room-type+len16 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 9 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 7,
+                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(3, sizeof(uint)))),
+                    envelopeSummary: $"room-type+opcode+len32 envelope roomType={nestedPayload[0]}, opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(1, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 9 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 7,
+                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(3, sizeof(uint)))),
+                    envelopeSummary: $"opcode+room-type+len32 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}, roomType={nestedPayload[2]}",
                     tickCount,
                     out result))
             {

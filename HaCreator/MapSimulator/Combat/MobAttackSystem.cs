@@ -1655,6 +1655,7 @@ namespace HaCreator.MapSimulator.Combat
 
         internal static bool ShouldRegisterAnimationDisplayerMobSwallowBullet(
             bool hasCanvasFrames,
+            bool hasResolvedAnimationDisplayerFrames,
             bool hasClientMobActionFrames,
             int attackType,
             bool isRangedAttack)
@@ -1664,7 +1665,8 @@ namespace HaCreator.MapSimulator.Combat
             // resolve as info/attack/<slot>/type=2. Keep swallow-owner fallback
             // narrow: only for ranged-like ball attacks that still have no client
             // action frames in the simulator.
-            return hasCanvasFrames
+            bool hasAnyProjectileFrames = hasCanvasFrames || hasResolvedAnimationDisplayerFrames;
+            return hasAnyProjectileFrames
                 && !hasClientMobActionFrames
                 && (isRangedAttack || attackType == 2);
         }

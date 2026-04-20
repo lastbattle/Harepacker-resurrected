@@ -458,10 +458,35 @@ namespace HaCreator.MapSimulator
         private string ApplyClientGuildResultPayload(byte[] payload)
         {
             string detail = _socialListRuntime.ApplyClientGuildResultPayload(payload);
-            if (payload == null ||
-                !SocialListPacketCodec.TryParseClientGuildResult(payload, out SocialListClientGuildResultPacket packet, out _) ||
-                packet.Kind != SocialListClientGuildResultKind.SkillRecord ||
-                !packet.GuildSkillRecord.HasValue)
+            SocialListClientGuildResultPacket packet = default;
+            bool parsedGuildResult = payload != null &&
+                                     SocialListPacketCodec.TryParseClientGuildResult(payload, out packet, out _);
+            if (!parsedGuildResult)
+            {
+                RefreshGuildSkillUiContext();
+                WireGuildSkillWindowData();
+                return detail;
+            }
+
+            if (packet.Kind == SocialListClientGuildResultKind.ResultNotice)
+            {
+                string pendingResolutionDetail = _guildSkillRuntime.TryResolvePendingFromClientResultNotice(
+                    packet.HasExplicitNotice,
+                    packet.ResultNotice);
+                if (!string.IsNullOrWhiteSpace(pendingResolutionDetail))
+                {
+                    TryTriggerSpecialistPetSocialFeedback(pendingResolutionDetail, Environment.TickCount);
+                    detail = string.IsNullOrWhiteSpace(detail)
+                        ? pendingResolutionDetail
+                        : $"{detail} {pendingResolutionDetail}";
+                }
+
+                RefreshGuildSkillUiContext();
+                WireGuildSkillWindowData();
+                return detail;
+            }
+
+            if (packet.Kind != SocialListClientGuildResultKind.SkillRecord || !packet.GuildSkillRecord.HasValue)
             {
                 RefreshGuildSkillUiContext();
                 WireGuildSkillWindowData();

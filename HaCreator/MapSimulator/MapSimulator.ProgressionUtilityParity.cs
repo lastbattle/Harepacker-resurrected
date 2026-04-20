@@ -198,13 +198,17 @@ namespace HaCreator.MapSimulator
                 string.Empty,
                 onConfirm: AcceptMessengerIncomingInvitePrompt,
                 onCancel: RejectMessengerIncomingInvitePrompt,
-                presentation: confirmDialogWindow.CreateMessengerInvitePresentation());
-            if (!_messengerInvitePromptOwnedDialogActive)
+                presentation: confirmDialogWindow.CreateMessengerInvitePresentation(state.StackIndex));
+
+            bool alarmCounterAdvanced = state.AlarmCounter > 0
+                && state.AlarmCounter != _lastMessengerInvitePromptAlarmCounter;
+            if (alarmCounterAdvanced)
             {
                 TryPlayPacketOwnedWzSound(MapleStoryStringPool.GetOrFallback(1275, "Invite"), "UI.img", out _, out _);
             }
 
             _messengerInvitePromptOwnedDialogActive = true;
+            _lastMessengerInvitePromptAlarmCounter = state.AlarmCounter;
             ShowWindow(
                 MapSimulatorWindowNames.InGameConfirmDialog,
                 confirmDialogWindow,
@@ -241,10 +245,12 @@ namespace HaCreator.MapSimulator
         {
             if (!_messengerInvitePromptOwnedDialogActive)
             {
+                _lastMessengerInvitePromptAlarmCounter = -1;
                 return;
             }
 
             _messengerInvitePromptOwnedDialogActive = false;
+            _lastMessengerInvitePromptAlarmCounter = -1;
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow confirmDialogWindow)
             {
                 confirmDialogWindow.Hide();

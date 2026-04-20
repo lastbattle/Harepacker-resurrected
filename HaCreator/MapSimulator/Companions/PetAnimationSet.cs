@@ -142,11 +142,6 @@ namespace HaCreator.MapSimulator.Companions
             "burp"
         };
 
-        private static readonly string[] KnownActions = ClientBaseActionNames
-            .Concat(SupplementalKnownActions)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
         private static readonly IReadOnlyDictionary<string, string[]> LookupCandidates =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -273,6 +268,8 @@ namespace HaCreator.MapSimulator.Companions
                 ["warp"] = new[] { "warp", "transform", "transformaction", "change" }
             };
 
+        private static readonly string[] KnownActions = BuildKnownActions();
+
         private static readonly IReadOnlyDictionary<string, string> CanonicalLookupKeys = LookupCandidates.Keys
             .Select(static key => new KeyValuePair<string, string>(NormalizeActionName(key), key))
             .Where(static pair => !string.IsNullOrWhiteSpace(pair.Key))
@@ -283,6 +280,17 @@ namespace HaCreator.MapSimulator.Companions
                 StringComparer.Ordinal);
 
         private static readonly IReadOnlyDictionary<string, string[]> ReverseLookupCandidates = BuildReverseLookupCandidates();
+
+        private static string[] BuildKnownActions()
+        {
+            return ClientBaseActionNames
+                .Concat(SupplementalKnownActions)
+                .Concat(LookupCandidates.Keys)
+                .Concat(LookupCandidates.Values.SelectMany(static candidates => candidates ?? Array.Empty<string>()))
+                .Where(static actionName => !string.IsNullOrWhiteSpace(actionName))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
 
         internal static IEnumerable<string> EnumerateCandidates(string actionName)
         {

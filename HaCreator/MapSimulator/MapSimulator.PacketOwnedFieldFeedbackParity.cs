@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator
         private readonly Texture2D[] _packetFieldBossTimerDigits = new Texture2D[10];
         private PacketFieldBossTimerVisualState _packetFieldBossTimerClockState;
         private PacketFieldClockVisualState _packetFieldClockState;
+        private bool _packetOwnedWhisperChaseTransferArmed;
         private Texture2D _packetFieldClockWindowPixelTexture;
         private Texture2D _packetFieldBossTimerBackgroundTexture;
         private Texture2D _packetFieldBossTimerHourBackgroundTexture;
@@ -212,6 +213,7 @@ namespace HaCreator.MapSimulator
                 IsBlockedFriendName = name => _socialListRuntime.IsBlockedFriend(name),
                 IsUnderCover = static () => false,
                 QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer,
+                ConsumeWhisperChaseTransferRequest = ConsumePacketOwnedWhisperChaseTransferRequest,
                 UpdateWhisperUserListLocation = UpdatePacketOwnedWhisperUserListLocation,
                 ShowBlowWeatherMessage = text => _fieldEffects?.OnBlowWeather(
                     Effects.WeatherEffectType.None,
@@ -228,6 +230,13 @@ namespace HaCreator.MapSimulator
                 RestoreFieldPropertyClock = RestorePacketOwnedFieldPropertyClock,
                 InvalidateWhisperUserListWindow = InvalidatePacketOwnedWhisperUserListWindow
             };
+        }
+
+        private bool ConsumePacketOwnedWhisperChaseTransferRequest()
+        {
+            bool armed = _packetOwnedWhisperChaseTransferArmed;
+            _packetOwnedWhisperChaseTransferArmed = false;
+            return armed;
         }
 
         private void UpdatePacketOwnedWhisperUserListLocation(string target, string locationText, byte result, int value)
@@ -2643,6 +2652,7 @@ namespace HaCreator.MapSimulator
             if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
             {
                 _packetFieldFeedbackRuntime.Clear();
+                _packetOwnedWhisperChaseTransferArmed = false;
                 _packetFieldFeedbackUiAnimations.Clear();
                 return ChatCommandHandler.CommandResult.Ok(_packetFieldFeedbackRuntime.DescribeStatus(currTickCount));
             }
@@ -2797,6 +2807,7 @@ namespace HaCreator.MapSimulator
                 && int.TryParse(args[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out int transferY))
             {
                 payload = payload.Concat(BitConverter.GetBytes(transferX)).Concat(BitConverter.GetBytes(transferY)).ToArray();
+                _packetOwnedWhisperChaseTransferArmed = true;
             }
 
             return ApplyPacketOwnedFieldFeedbackHelper(

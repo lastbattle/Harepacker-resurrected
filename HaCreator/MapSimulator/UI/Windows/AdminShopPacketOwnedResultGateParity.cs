@@ -5,6 +5,7 @@ namespace HaCreator.MapSimulator.UI
     internal enum AdminShopPacketOwnedResultGateAction
     {
         IgnoreUnsupportedSubtype,
+        StageMalformedSubtypePayload,
         ApplyTradeRequestResult,
         ApplyWishlistRegisterResult,
         DisconnectNoPendingRequest
@@ -14,12 +15,18 @@ namespace HaCreator.MapSimulator.UI
     {
         internal static AdminShopPacketOwnedResultGateAction ResolveGateAction(
             byte subtype,
+            bool hasResultCode,
             bool hasPendingTradeRequest,
             bool hasPendingWishlistRegister)
         {
             if (!AdminShopDialogClientParityText.HandlesResultSubtype(subtype))
             {
                 return AdminShopPacketOwnedResultGateAction.IgnoreUnsupportedSubtype;
+            }
+
+            if (!hasResultCode)
+            {
+                return AdminShopPacketOwnedResultGateAction.StageMalformedSubtypePayload;
             }
 
             if (hasPendingTradeRequest)

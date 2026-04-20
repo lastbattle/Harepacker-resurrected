@@ -3441,6 +3441,13 @@ namespace HaCreator.MapSimulator
                         source,
                         out message);
 
+                case LocalUtilityPacketInboxManager.RevivePremiumSafetyCharmContextPacketType:
+                    return TryApplyPacketOwnedRevivePremiumSafetyCharmContextPayload(
+                        payload,
+                        LocalUtilityPacketInboxManager.RevivePremiumSafetyCharmContextPacketType,
+                        source,
+                        out message);
+
                   case LocalUtilityPacketInboxManager.LogoutGiftClientPacketType:
                       return TryApplyPacketOwnedLogoutGiftPayload(payload, out message);
 
@@ -3802,16 +3809,14 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
             PacketOwnedRandomMesoBagPresentation presentation = PacketOwnedRewardResultRuntime.CreateRandomMesoBagPresentation(result.Rank, result.MesoAmount);
             _chat?.AddClientChatMessage(presentation.ChatLineText, currTickCount, presentation.ChatMessageType);
-            if (!string.IsNullOrWhiteSpace(presentation.SoundDescriptor)
-                && !TryPlayPacketOwnedWzSound(presentation.SoundDescriptor, "Item.img", out _, out _))
-            {
-                ShowUtilityFeedbackMessage($"Random meso sack tried to play {presentation.SoundDescriptor}, but the sound asset was unavailable.");
-            }
-            ShowPacketOwnedRandomMesoBagWindow(presentation);
+            bool openedRandomMesoBagOwner = ShowPacketOwnedRandomMesoBagWindow(presentation);
 
+            string ownerResultText = openedRandomMesoBagOwner
+                ? "opened the dedicated Random Meso Bag owner"
+                : "skipped the dedicated Random Meso Bag owner because the owner window was unavailable";
             message = trailingByteCount > 0
-                ? $"Applied packet-owned random meso sack success for {result.MesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos, opened the dedicated Random Meso Bag owner, and ignored {trailingByteCount} trailing byte(s), matching the native handler."
-                : $"Applied packet-owned random meso sack success for {result.MesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos and opened the dedicated Random Meso Bag owner.";
+                ? $"Applied packet-owned random meso sack success for {result.MesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos, {ownerResultText}, and ignored {trailingByteCount} trailing byte(s), matching the native handler."
+                : $"Applied packet-owned random meso sack success for {result.MesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos and {ownerResultText}.";
             return true;
         }
 
@@ -4379,8 +4384,7 @@ namespace HaCreator.MapSimulator
             PlayerMovementSyncSnapshot passiveMoveSnapshot,
             int sampleTime)
         {
-            return passiveMoveSnapshot != null
-                   && sampleTime <= passiveMoveSnapshot.PassivePosition.TimeStamp;
+            return passiveMoveSnapshot != null;
         }
 
         private static PacketOwnedActiveEffectMotionBlurOwnerSample ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(
@@ -4791,16 +4795,29 @@ namespace HaCreator.MapSimulator
             ShowUtilityFeedbackMessage(body);
         }
 
-        private void ShowPacketOwnedRandomMesoBagWindow(PacketOwnedRandomMesoBagPresentation presentation)
+        private bool ShowPacketOwnedRandomMesoBagWindow(PacketOwnedRandomMesoBagPresentation presentation)
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RandomMesoBag) is RandomMesoBagWindow randomMesoBagWindow)
             {
                 randomMesoBagWindow.Configure(presentation);
+                if (!string.IsNullOrWhiteSpace(presentation.SoundDescriptor)
+                    && !TryPlayPacketOwnedWzSound(
+                        presentation.SoundDescriptor,
+                        "Item.img",
+                        out _,
+                        out _,
+                        strictClientSoundFamily: true,
+                        defaultVolume: PacketOwnedRewardResultRuntime.ResolveClientSoundVolumeScale(presentation.SoundVolume)))
+                {
+                    ShowUtilityFeedbackMessage($"Random meso sack tried to play {presentation.SoundDescriptor}, but the sound asset was unavailable.");
+                }
+
                 ShowWindow(MapSimulatorWindowNames.RandomMesoBag, randomMesoBagWindow, trackDirectionModeOwner: true);
-                return;
+                return true;
             }
 
             ShowUtilityFeedbackMessage($"{presentation.DescriptionText} {presentation.AmountText}".Trim());
+            return false;
         }
 
         private bool TryApplyPacketOwnedResignQuestReturnPayload(byte[] payload, out string message)
@@ -6949,6 +6966,62 @@ namespace HaCreator.MapSimulator
                 ? SetPacketOwnedRadioCreateLayerContext(bLeft, mutationSource)
                 : ClearPacketOwnedRadioCreateLayerContext(mutationSource);
             ShowUtilityFeedbackMessage($"{message} {DescribePacketOwnedRadioCreateLayerContextStatus()}");
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedRevivePremiumSafetyCharmContextPayload(
+            byte[] payload,
+            int packetType,
+            string source,
+            out string message)
+        {
+            if (!TryDecodePacketOwnedRevivePremiumSafetyCharmContextPayload(payload, out bool hasOverride, out bool armed, out message))
+            {
+                return false;
+            }
+
+            int runtimeCharacterId = Math.Max(0, _playerManager?.Player?.Build?.Id ?? 0);
+            string mutationSource = $"packet-owned-revive-premium-safety-charm:{packetType}:{(string.IsNullOrWhiteSpace(source) ? "local-utility" : source)}";
+            if (hasOverride)
+            {
+                _packetOwnedLocalUtilityContext.SetRevivePremiumSafetyCharmContextValue(armed, mutationSource, currTickCount, runtimeCharacterId);
+                message = $"Applied revive premium safety charm context armed={(armed ? 1 : 0)}.";
+            }
+            else
+            {
+                _packetOwnedLocalUtilityContext.ClearRevivePremiumSafetyCharmContextValue(mutationSource, currTickCount, runtimeCharacterId);
+                message = "Cleared revive premium safety charm context.";
+            }
+
+            ShowUtilityFeedbackMessage($"{message} {_packetOwnedLocalUtilityContext.DescribeRevivePremiumSafetyCharmContext(ReviveOwnerPremiumSafetyCharmContextSlot)}");
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedRevivePremiumSafetyCharmContextPayload(
+            byte[] payload,
+            out bool hasOverride,
+            out bool armed,
+            out string message)
+        {
+            hasOverride = false;
+            armed = false;
+            message = "Revive premium safety charm context payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (payload.Length > 2)
+            {
+                message = "Revive premium safety charm context payload must be [0] to clear or [1,<armed>] to set.";
+                return false;
+            }
+
+            hasOverride = payload[0] != 0;
+            armed = hasOverride && (payload.Length == 1 || payload[1] != 0);
+            message = hasOverride
+                ? $"Decoded revive premium safety charm context armed={(armed ? 1 : 0)}."
+                : "Decoded revive premium safety charm context clear.";
             return true;
         }
 
@@ -11577,6 +11650,23 @@ namespace HaCreator.MapSimulator
         private bool TryPlayPacketOwnedWzSound(
             string descriptor,
             string defaultImageName,
+            out string resolvedDescriptor,
+            out string error,
+            bool strictClientSoundFamily,
+            float defaultVolume)
+        {
+            return TryPlayPacketOwnedWzSound(
+                descriptor,
+                defaultImageName,
+                defaultVolume,
+                out resolvedDescriptor,
+                out error,
+                strictClientSoundFamily);
+        }
+
+        private bool TryPlayPacketOwnedWzSound(
+            string descriptor,
+            string defaultImageName,
             float volumeScale,
             out string resolvedDescriptor,
             out string error,
@@ -15642,6 +15732,43 @@ namespace HaCreator.MapSimulator
                         payload,
                         flagsBeforeRows: false,
                         rowCountByteWidth: sizeof(int),
+                        rowByteCountByteWidth: 0,
+                        out clearRequested,
+                        out entries,
+                        out hasOwnerState,
+                        out ownerState)
+                    && !TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+                        payload,
+                        flagsBeforeRows: true,
+                        rowCountByteWidth: sizeof(byte),
+                        rowByteCountByteWidth: sizeof(byte),
+                        out clearRequested,
+                        out entries,
+                        out hasOwnerState,
+                        out ownerState)
+                    && !TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+                        payload,
+                        flagsBeforeRows: false,
+                        rowCountByteWidth: sizeof(byte),
+                        rowByteCountByteWidth: sizeof(byte),
+                        out clearRequested,
+                        out entries,
+                        out hasOwnerState,
+                        out ownerState)
+                    && !TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+                        payload,
+                        flagsBeforeRows: true,
+                        rowCountByteWidth: sizeof(ushort),
+                        rowByteCountByteWidth: sizeof(byte),
+                        out clearRequested,
+                        out entries,
+                        out hasOwnerState,
+                        out ownerState)
+                    && !TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+                        payload,
+                        flagsBeforeRows: false,
+                        rowCountByteWidth: sizeof(ushort),
+                        rowByteCountByteWidth: sizeof(byte),
                         out clearRequested,
                         out entries,
                         out hasOwnerState,
@@ -15667,6 +15794,27 @@ namespace HaCreator.MapSimulator
             byte[] payload,
             bool flagsBeforeRows,
             int rowCountByteWidth,
+            out bool clearRequested,
+            out RankingEntrySnapshot[] entries,
+            out bool hasOwnerState,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState)
+        {
+            return TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+                payload,
+                flagsBeforeRows,
+                rowCountByteWidth,
+                rowByteCountByteWidth: 0,
+                out clearRequested,
+                out entries,
+                out hasOwnerState,
+                out ownerState);
+        }
+
+        private static bool TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+            byte[] payload,
+            bool flagsBeforeRows,
+            int rowCountByteWidth,
+            int rowByteCountByteWidth,
             out bool clearRequested,
             out RankingEntrySnapshot[] entries,
             out bool hasOwnerState,
@@ -15710,12 +15858,35 @@ namespace HaCreator.MapSimulator
                 List<RankingEntrySnapshot> parsedEntries = new(rowCount);
                 for (int i = 0; i < rowCount; i++)
                 {
-                    string label = ReadPacketOwnedMapleString(reader)?.Trim();
-                    string value = ReadPacketOwnedMapleString(reader)?.Trim();
-                    string detail = ReadPacketOwnedMapleString(reader)?.Trim();
-                    if (!string.IsNullOrWhiteSpace(label))
+                    if (rowByteCountByteWidth > 0)
                     {
-                        parsedEntries.Add(CreatePacketOwnedRankingEntry(label, value, detail));
+                        if (!TryReadPacketOwnedCompactRowCount(reader, rowByteCountByteWidth, out int rowByteCount)
+                            || rowByteCount <= 0
+                            || reader.BaseStream.Length - reader.BaseStream.Position < rowByteCount)
+                        {
+                            return false;
+                        }
+
+                        byte[] rowPayload = reader.ReadBytes(rowByteCount);
+                        if (!TryDecodePacketOwnedRankingCompactRow(rowPayload, out RankingEntrySnapshot rowEntry))
+                        {
+                            return false;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(rowEntry.Label))
+                        {
+                            parsedEntries.Add(rowEntry);
+                        }
+                    }
+                    else
+                    {
+                        string label = ReadPacketOwnedMapleString(reader)?.Trim();
+                        string value = ReadPacketOwnedMapleString(reader)?.Trim();
+                        string detail = ReadPacketOwnedMapleString(reader)?.Trim();
+                        if (!string.IsNullOrWhiteSpace(label))
+                        {
+                            parsedEntries.Add(CreatePacketOwnedRankingEntry(label, value, detail));
+                        }
                     }
                 }
 
@@ -15751,6 +15922,36 @@ namespace HaCreator.MapSimulator
             }
             catch
             {
+                return false;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedRankingCompactRow(byte[] rowPayload, out RankingEntrySnapshot rowEntry)
+        {
+            rowEntry = default;
+            if (rowPayload == null || rowPayload.Length == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream rowStream = new(rowPayload, writable: false);
+                using BinaryReader rowReader = new(rowStream);
+                string label = ReadPacketOwnedMapleString(rowReader)?.Trim();
+                string value = ReadPacketOwnedMapleString(rowReader)?.Trim();
+                string detail = ReadPacketOwnedMapleString(rowReader)?.Trim();
+                if (rowReader.BaseStream.Position != rowReader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                rowEntry = CreatePacketOwnedRankingEntry(label, value, detail);
+                return true;
+            }
+            catch
+            {
+                rowEntry = default;
                 return false;
             }
         }
@@ -16467,6 +16668,55 @@ namespace HaCreator.MapSimulator
                         flagsBeforeCount: false,
                         rowCountByteWidth: sizeof(int),
                         usePackedDate: true,
+                        rowByteCountByteWidth: 0,
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                        payload,
+                        flagsBeforeCount: true,
+                        rowCountByteWidth: sizeof(byte),
+                        usePackedDate: false,
+                        rowByteCountByteWidth: sizeof(byte),
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                        payload,
+                        flagsBeforeCount: true,
+                        rowCountByteWidth: sizeof(byte),
+                        usePackedDate: true,
+                        rowByteCountByteWidth: sizeof(byte),
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                        payload,
+                        flagsBeforeCount: false,
+                        rowCountByteWidth: sizeof(byte),
+                        usePackedDate: false,
+                        rowByteCountByteWidth: sizeof(byte),
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                        payload,
+                        flagsBeforeCount: false,
+                        rowCountByteWidth: sizeof(byte),
+                        usePackedDate: true,
+                        rowByteCountByteWidth: sizeof(byte),
                         out clearRequested,
                         out replaceExistingEntries,
                         out entries,
@@ -16495,6 +16745,33 @@ namespace HaCreator.MapSimulator
             bool flagsBeforeCount,
             int rowCountByteWidth,
             bool usePackedDate,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines)
+        {
+            return TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                payload,
+                flagsBeforeCount,
+                rowCountByteWidth,
+                usePackedDate,
+                rowByteCountByteWidth: 0,
+                out clearRequested,
+                out replaceExistingEntries,
+                out entries,
+                out hasAlarmLines,
+                out replaceAlarmLines,
+                out alarmLines);
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+            byte[] payload,
+            bool flagsBeforeCount,
+            int rowCountByteWidth,
+            bool usePackedDate,
+            int rowByteCountByteWidth,
             out bool clearRequested,
             out bool replaceExistingEntries,
             out EventEntrySnapshot[] entries,
@@ -16552,46 +16829,56 @@ namespace HaCreator.MapSimulator
                 List<EventEntrySnapshot> parsedEntries = new(rowCount);
                 for (int i = 0; i < rowCount; i++)
                 {
-                    int year;
-                    int month;
-                    int day;
-                    if (usePackedDate)
+                    EventEntrySnapshot entry;
+                    if (rowByteCountByteWidth > 0)
                     {
-                        int yyyymmdd = reader.ReadInt32();
-                        year = yyyymmdd / 10000;
-                        month = Math.Abs((yyyymmdd / 100) % 100);
-                        day = Math.Abs(yyyymmdd % 100);
+                        if (!TryReadPacketOwnedCompactRowCount(reader, rowByteCountByteWidth, out int rowByteCount)
+                            || rowByteCount <= 0
+                            || reader.BaseStream.Length - reader.BaseStream.Position < rowByteCount)
+                        {
+                            return false;
+                        }
+
+                        byte[] rowPayload = reader.ReadBytes(rowByteCount);
+                        if (!TryDecodePacketOwnedEventCalendarCompactRow(
+                                rowPayload,
+                                usePackedDate,
+                                out entry))
+                        {
+                            return false;
+                        }
                     }
                     else
                     {
-                        year = reader.ReadUInt16();
-                        month = reader.ReadByte();
-                        day = reader.ReadByte();
+                        if (!TryDecodePacketOwnedEventCalendarCompactRow(
+                                reader,
+                                usePackedDate,
+                                out entry))
+                        {
+                            return false;
+                        }
                     }
 
-                    EventEntryStatus status = DecodePacketOwnedEventCalendarBinaryStatus(reader.ReadByte());
-                    string title = ReadPacketOwnedMapleString(reader)?.Trim();
-                    string detail = ReadPacketOwnedMapleString(reader)?.Trim();
-                    string statusText = ReadPacketOwnedMapleString(reader)?.Trim();
-                    string alarmText = includesInlineAlarmText
-                        ? ReadPacketOwnedMapleString(reader)?.Trim()
-                        : string.Empty;
-                    if (!TryCreatePacketOwnedEventCalendarBinaryDate(year, month, day, out DateTime scheduledAt)
-                        || string.IsNullOrWhiteSpace(title))
+                    if (string.IsNullOrWhiteSpace(entry.Title))
                     {
                         continue;
                     }
 
-                    parsedEntries.Add(CreatePacketOwnedEventCalendarEntry(
-                        scheduledAt,
-                        title,
-                        detail,
-                        status,
-                        string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText,
-                        int.MinValue,
-                        ResolvePacketOwnedEventEntrySortPriority(status),
-                        parsedEntries.Count,
-                        alarmText: alarmText));
+                    if (!includesInlineAlarmText)
+                    {
+                        entry = CreatePacketOwnedEventCalendarEntry(
+                            entry.ScheduledAt,
+                            entry.Title,
+                            entry.Detail,
+                            entry.Status,
+                            entry.StatusText,
+                            entry.SourceTick,
+                            entry.SortPriority,
+                            entry.SortOrder,
+                            alarmText: string.Empty);
+                    }
+
+                    parsedEntries.Add(entry);
                 }
 
                 if (includesAlarmLines)
@@ -16647,6 +16934,88 @@ namespace HaCreator.MapSimulator
             {
                 return false;
             }
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactRow(
+            byte[] rowPayload,
+            bool usePackedDate,
+            out EventEntrySnapshot entry)
+        {
+            entry = default;
+            if (rowPayload == null || rowPayload.Length == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream rowStream = new(rowPayload, writable: false);
+                using BinaryReader rowReader = new(rowStream);
+                if (!TryDecodePacketOwnedEventCalendarCompactRow(rowReader, usePackedDate, out entry)
+                    || rowReader.BaseStream.Position != rowReader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                return true;
+            }
+            catch
+            {
+                entry = default;
+                return false;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactRow(
+            BinaryReader reader,
+            bool usePackedDate,
+            out EventEntrySnapshot entry)
+        {
+            entry = default;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            int year;
+            int month;
+            int day;
+            if (usePackedDate)
+            {
+                int yyyymmdd = reader.ReadInt32();
+                year = yyyymmdd / 10000;
+                month = Math.Abs((yyyymmdd / 100) % 100);
+                day = Math.Abs(yyyymmdd % 100);
+            }
+            else
+            {
+                year = reader.ReadUInt16();
+                month = reader.ReadByte();
+                day = reader.ReadByte();
+            }
+
+            EventEntryStatus status = DecodePacketOwnedEventCalendarBinaryStatus(reader.ReadByte());
+            string title = ReadPacketOwnedMapleString(reader)?.Trim();
+            string detail = ReadPacketOwnedMapleString(reader)?.Trim();
+            string statusText = ReadPacketOwnedMapleString(reader)?.Trim();
+            string alarmText = ReadPacketOwnedMapleString(reader)?.Trim();
+            if (!TryCreatePacketOwnedEventCalendarBinaryDate(year, month, day, out DateTime scheduledAt)
+                || string.IsNullOrWhiteSpace(title))
+            {
+                return false;
+            }
+
+            entry = CreatePacketOwnedEventCalendarEntry(
+                scheduledAt,
+                title,
+                detail,
+                status,
+                string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText,
+                int.MinValue,
+                ResolvePacketOwnedEventEntrySortPriority(status),
+                sortOrder: 0,
+                alarmText: alarmText);
+            return true;
         }
 
         private static bool TryCreatePacketOwnedEventCalendarBinaryDate(int year, int month, int day, out DateTime date)

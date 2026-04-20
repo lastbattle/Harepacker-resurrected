@@ -334,6 +334,12 @@ namespace HaCreator.MapSimulator.Fields
             return GetTeleportItemRestrictionMessage(fieldLimit) ?? GetTransferRestrictionMessage(fieldLimit);
         }
 
+        public static string GetMapTransferRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            return GetMapTransferEntryRestrictionMessage(mapInfo, context: null)
+                ?? GetMapTransferRestrictionMessage(fieldLimit);
+        }
+
         private static string GetMapTransferWindowRestrictionMessage(long fieldLimit, MapInfo mapInfo)
         {
             string entryRestrictionMessage = GetMapTransferEntryRestrictionMessage(mapInfo, context: null);

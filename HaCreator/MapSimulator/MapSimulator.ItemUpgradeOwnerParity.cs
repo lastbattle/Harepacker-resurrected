@@ -15,17 +15,21 @@ namespace HaCreator.MapSimulator
         private const int ItemUpgradeOwnerResultApplyDelayMs = 50;
         private const int ItemUpgradeOwnerExternalResultFallbackDelayMs = 3000;
         private const int ItemUpgradeOwnerExclusiveRequestCooldownMs = 500;
+        private const int ItemUpgradeOwnerResultAckViciousHammerDelayMs = 1000;
         private const int ItemUpgradeOwnerRequestPayloadLength = sizeof(int) * 3;
         private const int ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength = sizeof(int) + sizeof(short) + sizeof(int);
         private const int ItemUpgradeOwnerConsumeCashRequestPayloadLength = ItemUpgradeOwnerConsumeCashRequestPayloadPrefixLength + ItemUpgradeOwnerRequestPayloadLength;
+        private const int ItemUpgradeOwnerResultAckPayloadLength = sizeof(int) * 2;
         private const int ItemUpgradeResultReasonPayloadLength = sizeof(byte) + sizeof(int);
         private const int ItemUpgradeResultOutcomePayloadLength = sizeof(byte) + (sizeof(int) * 2);
         private const byte ItemUpgradePacketResultCodeFail = 0;
         private const byte ItemUpgradePacketResultCodeSuccess = 1;
         private const byte ItemUpgradePacketResultCodeClientNoUpgradeSlot = 65;
         private const byte ItemUpgradePacketResultCodeClientRejected = 66;
+        private const byte ItemUpgradePacketResultCodeViciousHammer = 61;
         private const int ItemUpgradePacketOutcomeStateFail = 0;
         private const int ItemUpgradePacketOutcomeStateSuccess = 1;
+        private const short ItemUpgradeOwnerResultAckOpcode = 296;
         private const int ItemUpgradeClientDuplicateRequestBusyResultValue = 9;
         private const int ItemUpgradeClientInitialResultValue = -2;
 
@@ -37,6 +41,9 @@ namespace HaCreator.MapSimulator
         private InventoryType _itemUpgradeOwnerConsumeCashUseInventoryType = InventoryType.USE;
         private int _itemUpgradeOwnerConsumeCashUseSlotIndex = -1;
         private int _itemUpgradeOwnerConsumeCashUseItemId;
+        private int _itemUpgradeOwnerPendingResultAckReturnCode;
+        private int _itemUpgradeOwnerPendingResultAckValue;
+        private int _itemUpgradeOwnerPendingResultAckReadyTick = int.MinValue;
         private PendingItemUpgradeOwnerRequestState _pendingItemUpgradeOwnerRequest;
 
         private sealed class PendingItemUpgradeOwnerRequestState
@@ -99,6 +106,8 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+
             int requestItemToken = ResolveItemUpgradeRequestItemToken(request);
             int requestSlotPosition = Math.Max(0, request.ConsumableSlotIndex + 1);
             bool hasMatchedConsumeCashSeed = TryConsumeItemUpgradeConsumeCashUseRequestTick(
@@ -153,6 +162,8 @@ namespace HaCreator.MapSimulator
 
         private void UpdateItemUpgradeOwnerState()
         {
+            TryDispatchPendingItemUpgradeResultAck(currTickCount);
+
             if (_pendingItemUpgradeOwnerRequest == null ||
                 unchecked(currTickCount - _pendingItemUpgradeOwnerRequest.ResultReadyAtTick) < 0)
             {
@@ -214,10 +225,13 @@ namespace HaCreator.MapSimulator
             // exclusive resend timer immediately when the result packet arrives,
             // before any Decode* branch handling.
             ClearItemUpgradeOwnerRequestState(currTickCount);
+            bool consumedQuestStartLatch = TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
 
             if (!TryDecodeItemUpgradeResultPayloadState(payload, out ItemUpgradeResultDecodeState decodeState, out string decodeError))
             {
-                message = decodeError;
+                message = consumedQuestStartLatch
+                    ? $"{decodeError} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch."
+                    : decodeError;
                 return false;
             }
 
@@ -225,11 +239,17 @@ namespace HaCreator.MapSimulator
             {
                 _itemUpgradeOwnerLastResultValue = decodeState.OutcomeResultValue;
                 _itemUpgradeOwnerLastUpgradeStateValue = decodeState.OutcomeUpgradeState;
+                StageItemUpgradeResultAck(decodeState.ResultCode, decodeState.OutcomeResultValue, currTickCount);
             }
 
             if (_pendingItemUpgradeOwnerRequest == null)
             {
                 message = $"Observed packet-owned item-upgrade result code {decodeState.ResultCode}, but no pending request is waiting for it.";
+                if (consumedQuestStartLatch)
+                {
+                    message = $"{message} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch.";
+                }
+
                 return true;
             }
 
@@ -247,6 +267,11 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
                 _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
                 message = $"Queued packet-owned item-upgrade recovery apply result code {decodeState.ResultCode}.";
+                if (consumedQuestStartLatch)
+                {
+                    message = $"{message} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch.";
+                }
+
                 return true;
             }
 
@@ -264,6 +289,11 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
                 _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
                 message = $"Queued packet-owned item-upgrade notice result code {decodeState.ResultCode}.";
+                if (consumedQuestStartLatch)
+                {
+                    message = $"{message} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch.";
+                }
+
                 return true;
             }
 
@@ -294,6 +324,11 @@ namespace HaCreator.MapSimulator
             message = success
                 ? $"Queued packet-owned item-upgrade success result code {decodeState.ResultCode}."
                 : $"Queued packet-owned item-upgrade fail result code {decodeState.ResultCode}.";
+            if (consumedQuestStartLatch)
+            {
+                message = $"{message} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch.";
+            }
+
             return true;
         }
 
@@ -634,6 +669,82 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private void StageItemUpgradeResultAck(byte returnResultCode, int resultValue, int currentTick)
+        {
+            _itemUpgradeOwnerPendingResultAckReturnCode = returnResultCode;
+            _itemUpgradeOwnerPendingResultAckValue = resultValue;
+            _itemUpgradeOwnerPendingResultAckReadyTick = unchecked(currentTick + ResolveItemUpgradeResultAckDispatchDelayMs(returnResultCode, resultValue));
+        }
+
+        private void TryDispatchPendingItemUpgradeResultAck(int currentTick)
+        {
+            if (_itemUpgradeOwnerPendingResultAckReadyTick == int.MinValue ||
+                unchecked(currentTick - _itemUpgradeOwnerPendingResultAckReadyTick) < 0)
+            {
+                return;
+            }
+
+            byte[] payload = BuildItemUpgradeResultAckPayload(
+                _itemUpgradeOwnerPendingResultAckReturnCode,
+                _itemUpgradeOwnerPendingResultAckValue);
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(ItemUpgradeOwnerResultAckOpcode, payload, out _))
+            {
+                _itemUpgradeOwnerPendingResultAckReadyTick = int.MinValue;
+                return;
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(ItemUpgradeOwnerResultAckOpcode, payload, out _))
+            {
+                _itemUpgradeOwnerPendingResultAckReadyTick = int.MinValue;
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning &&
+                _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(ItemUpgradeOwnerResultAckOpcode, payload, out _))
+            {
+                _itemUpgradeOwnerPendingResultAckReadyTick = int.MinValue;
+                return;
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(ItemUpgradeOwnerResultAckOpcode, payload, out _))
+            {
+                _itemUpgradeOwnerPendingResultAckReadyTick = int.MinValue;
+            }
+        }
+
+        private static int ResolveItemUpgradeResultAckDispatchDelayMs(byte returnResultCode, int resultValue)
+        {
+            return returnResultCode == ItemUpgradePacketResultCodeViciousHammer && resultValue == ItemUpgradePacketOutcomeStateFail
+                ? ItemUpgradeOwnerResultAckViciousHammerDelayMs
+                : 0;
+        }
+
+        private static byte[] BuildItemUpgradeResultAckPayload(int returnResultCode, int resultValue)
+        {
+            byte[] payload = new byte[ItemUpgradeOwnerResultAckPayloadLength];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), returnResultCode);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)), resultValue);
+            return payload;
+        }
+
+        private static bool TryDecodeItemUpgradeResultAckPayload(
+            byte[] payload,
+            out int returnResultCode,
+            out int resultValue)
+        {
+            returnResultCode = 0;
+            resultValue = 0;
+            if (payload == null || payload.Length < ItemUpgradeOwnerResultAckPayloadLength)
+            {
+                return false;
+            }
+
+            returnResultCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            resultValue = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)));
+            return true;
+        }
+
         private static bool TryDecodeItemUpgradeConsumeCashRequestPayload(
             byte[] payload,
             out int useRequestTick,
@@ -726,6 +837,24 @@ namespace HaCreator.MapSimulator
                 out itemToken,
                 out slotPosition,
                 out updateTick);
+        }
+
+        internal static int ResolveItemUpgradeResultAckDispatchDelayMsForTests(byte returnResultCode, int resultValue)
+        {
+            return ResolveItemUpgradeResultAckDispatchDelayMs(returnResultCode, resultValue);
+        }
+
+        internal static byte[] BuildItemUpgradeResultAckPayloadForTests(int returnResultCode, int resultValue)
+        {
+            return BuildItemUpgradeResultAckPayload(returnResultCode, resultValue);
+        }
+
+        internal static bool TryDecodeItemUpgradeResultAckPayloadForTests(
+            byte[] payload,
+            out int returnResultCode,
+            out int resultValue)
+        {
+            return TryDecodeItemUpgradeResultAckPayload(payload, out returnResultCode, out resultValue);
         }
 
         private static bool ShouldUseConsumeCashItemUseRequestPayload(

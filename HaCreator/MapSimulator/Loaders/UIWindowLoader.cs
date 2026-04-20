@@ -8856,9 +8856,12 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             WzSubProperty eventListProperty = sourceProperty["event"] as WzSubProperty;
-            Texture2D normalRowTexture = LoadCanvasTexture(eventListProperty, "normal", device);
-            Texture2D selectedRowTexture = LoadCanvasTexture(eventListProperty, "select", device) ?? normalRowTexture;
-            Texture2D slotTexture = LoadCanvasTexture(eventListProperty, "slot", device);
+            WzCanvasProperty normalRowCanvas = eventListProperty?["normal"] as WzCanvasProperty;
+            WzCanvasProperty selectedRowCanvas = eventListProperty?["select"] as WzCanvasProperty;
+            WzCanvasProperty slotCanvas = eventListProperty?["slot"] as WzCanvasProperty;
+            Texture2D normalRowTexture = normalRowCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            Texture2D selectedRowTexture = selectedRowCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device) ?? normalRowTexture;
+            Texture2D slotTexture = slotCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
             LoadIndexedCanvasSequence(
                 eventListProperty?["icon"] as WzSubProperty,
                 device,
@@ -8877,8 +8880,10 @@ namespace HaCreator.MapSimulator.Loaders
             Point contentLayerOffset = ResolveCanvasOffset(mainContentCanvas, new Point(11, 88));
             Point calendarOverlayOffset = ResolveCanvasOffset(calendarOverlayCanvas, new Point(6, 23));
             Point calendarGridOffset = ResolveCanvasOffset(calendarGridCanvas, new Point(12, 68));
-            // Client draw clip uses m_ctHeight - 2; EventList/main/backgrnd3 is 35px in v95.
-            int alarmStripClipHeight = 33;
+            Point rowTextureOffset = ResolveCanvasOffset(normalRowCanvas ?? selectedRowCanvas, Point.Zero);
+            Point slotTextureOffset = ResolveCanvasOffset(slotCanvas, Point.Zero);
+            // Client evidence: CUIEventAlarm::Draw clips CT text to m_ctHeight - 2.
+            int alarmStripClipHeight = Math.Max(1, (mainContentCanvas?.GetLinkedWzCanvasBitmap()?.Height ?? 35) - 2);
             (Point statusLaneAnchorOffset, int statusLaneWidth) = ResolveEventStatusLaneLayout(eventListProperty);
             EventWindow window = new EventWindow(
                 new DXObject(0, 0, frameTexture, 0),
@@ -8909,6 +8914,8 @@ namespace HaCreator.MapSimulator.Loaders
                 contentLayerOffset,
                 calendarOverlayOffset,
                 calendarGridOffset,
+                rowTextureOffset,
+                slotTextureOffset,
                 statusLaneAnchorOffset,
                 statusLaneWidth,
                 alarmStripClipHeight)

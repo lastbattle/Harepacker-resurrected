@@ -46,11 +46,15 @@ namespace HaCreator.MapSimulator.Loaders
 
         private sealed class CachedMobActionAssets
         {
-            public readonly Dictionary<string, CachedMobActionEntry> ActionEntries = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<int, CachedMobActionEntry> ActionEntriesByClientSlot = new();
+            public readonly Dictionary<string, CachedMobActionEntry> ActionEntriesByAuthoredName = new(StringComparer.OrdinalIgnoreCase);
         }
 
         private sealed class CachedMobActionEntry
         {
+            public string ActionName { get; init; }
+            public int? ClientActionSlot { get; init; }
+            public int SourcePriority { get; init; }
             public List<WzCanvasProperty> FrameCanvases { get; init; }
             public List<int> FrameDelays { get; init; }
             public List<MobAnimationSet.FrameMetadata> FrameMetadata { get; init; }
@@ -74,6 +78,44 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>> _cachedMobAttackAssetsByDevice = new();
         private static readonly ConcurrentDictionary<string, Lazy<MobImgEntry>> _cachedMobImgEntries = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, byte> _missingMobSoundIds = new(StringComparer.Ordinal);
+        private static readonly string[] _mobClientActionNamesBySlot =
+        {
+            "stand",
+            "move",
+            "fly",
+            "hit1",
+            "die1",
+            "regen",
+            "attack1",
+            "attack2",
+            "attack3",
+            "attack4",
+            "attack5",
+            "attack6",
+            "attack7",
+            "attack8",
+            "skill1",
+            "skill2",
+            "skill3",
+            "skill4",
+            "skill5",
+            "skill6",
+            "skill7",
+            "skill8",
+            "skill9",
+            "skill10",
+            "skill11",
+            "skill12",
+            "skill13",
+            "skill14",
+            "skill15",
+            "skill16"
+        };
+
+        private static readonly Dictionary<string, int> _mobClientActionSlotsByName =
+            _mobClientActionNamesBySlot
+                .Select((name, index) => new { name, index })
+                .ToDictionary(pair => pair.name, pair => pair.index, StringComparer.OrdinalIgnoreCase);
         private sealed class CachedDoomMobAssets
         {
             public MobAnimationSet AnimationSet { get; init; }
@@ -434,8 +476,8 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                string actionName = mobStateProperty.Name.ToLowerInvariant();
-                if (!ShouldLoadMobActionFrames(actionName))
+                string authoredActionName = mobStateProperty.Name.ToLowerInvariant();
+                if (!ShouldLoadMobActionFrames(authoredActionName))
                 {
                     continue;
                 }
@@ -458,8 +500,33 @@ namespace HaCreator.MapSimulator.Loaders
                     AppendReversePlayback(frameCanvases, frameDelays, frameMetadata);
                 }
 
-                cached.ActionEntries[actionName] = new CachedMobActionEntry
+                if (TryResolveMobClientActionSlot(authoredActionName, out int clientActionSlot))
                 {
+                    string resolvedActionName = ResolveMobClientActionName(clientActionSlot) ?? authoredActionName;
+                    var resolvedEntry = new CachedMobActionEntry
+                    {
+                        ActionName = resolvedActionName,
+                        ClientActionSlot = clientActionSlot,
+                        SourcePriority = string.Equals(authoredActionName, resolvedActionName, StringComparison.OrdinalIgnoreCase) ? 1 : 0,
+                        FrameCanvases = frameCanvases,
+                        FrameDelays = frameDelays,
+                        FrameMetadata = frameMetadata
+                    };
+
+                    if (!cached.ActionEntriesByClientSlot.TryGetValue(clientActionSlot, out CachedMobActionEntry existingEntry)
+                        || existingEntry == null
+                        || resolvedEntry.SourcePriority >= existingEntry.SourcePriority)
+                    {
+                        cached.ActionEntriesByClientSlot[clientActionSlot] = resolvedEntry;
+                    }
+
+                    continue;
+                }
+
+                cached.ActionEntriesByAuthoredName[authoredActionName] = new CachedMobActionEntry
+                {
+                    ActionName = authoredActionName,
+                    SourcePriority = 0,
                     FrameCanvases = frameCanvases,
                     FrameDelays = frameDelays,
                     FrameMetadata = frameMetadata
@@ -485,7 +552,8 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                string actionName = mobStateProperty.Name.ToLowerInvariant();
+                string authoredActionName = mobStateProperty.Name.ToLowerInvariant();
+                string actionName = ResolveMobClientActionNameOrAuthored(authoredActionName);
 
                 if (actionName == "angergaugeeffect")
                 {
@@ -645,10 +713,22 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
-            foreach (KeyValuePair<string, CachedMobActionEntry> entry in cachedAssets.ActionEntries)
+            var appliedActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<int, CachedMobActionEntry> entry in cachedAssets.ActionEntriesByClientSlot.OrderBy(pair => pair.Key))
             {
-                var actionEntry = entry.Value;
+                CachedMobActionEntry actionEntry = entry.Value;
                 if (actionEntry?.FrameCanvases == null || actionEntry.FrameCanvases.Count == 0)
+                {
+                    continue;
+                }
+
+                string actionName = actionEntry.ActionName;
+                if (string.IsNullOrWhiteSpace(actionName))
+                {
+                    actionName = ResolveMobClientActionName(entry.Key) ?? string.Empty;
+                }
+
+                if (string.IsNullOrWhiteSpace(actionName))
                 {
                     continue;
                 }
@@ -660,11 +740,42 @@ namespace HaCreator.MapSimulator.Loaders
                     x,
                     y,
                     device);
-                animationSet.AddAnimation(entry.Key, actionFrames);
+                animationSet.AddAnimation(actionName, actionFrames);
 
                 if (actionEntry.FrameMetadata != null && actionEntry.FrameMetadata.Count > 0)
                 {
-                    animationSet.SetFrameMetadata(entry.Key, actionEntry.FrameMetadata);
+                    animationSet.SetFrameMetadata(actionName, actionEntry.FrameMetadata);
+                }
+
+                appliedActions.Add(actionName);
+            }
+
+            foreach (KeyValuePair<string, CachedMobActionEntry> entry in cachedAssets.ActionEntriesByAuthoredName)
+            {
+                CachedMobActionEntry actionEntry = entry.Value;
+                if (actionEntry?.FrameCanvases == null || actionEntry.FrameCanvases.Count == 0)
+                {
+                    continue;
+                }
+
+                string actionName = actionEntry.ActionName ?? entry.Key;
+                if (string.IsNullOrWhiteSpace(actionName) || appliedActions.Contains(actionName))
+                {
+                    continue;
+                }
+
+                List<IDXObject> actionFrames = InstantiateMobActionFrames(
+                    texturePool,
+                    actionEntry.FrameCanvases,
+                    actionEntry.FrameDelays,
+                    x,
+                    y,
+                    device);
+                animationSet.AddAnimation(actionName, actionFrames);
+
+                if (actionEntry.FrameMetadata != null && actionEntry.FrameMetadata.Count > 0)
+                {
+                    animationSet.SetFrameMetadata(actionName, actionEntry.FrameMetadata);
                 }
             }
         }
@@ -1097,6 +1208,39 @@ namespace HaCreator.MapSimulator.Loaders
                    !string.Equals(actionName, "info", StringComparison.OrdinalIgnoreCase) &&
                    !string.Equals(actionName, "angergaugeeffect", StringComparison.OrdinalIgnoreCase) &&
                    !string.Equals(actionName, "angergaugeanimation", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool TryResolveMobClientActionSlot(string actionName, out int slot)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                slot = -1;
+                return false;
+            }
+
+            return _mobClientActionSlotsByName.TryGetValue(actionName.Trim(), out slot);
+        }
+
+        internal static string ResolveMobClientActionName(int slot)
+        {
+            return slot >= 0 && slot < _mobClientActionNamesBySlot.Length
+                ? _mobClientActionNamesBySlot[slot]
+                : null;
+        }
+
+        internal static IReadOnlyList<string> GetMobClientActionNamesBySlotForTests()
+        {
+            return _mobClientActionNamesBySlot;
+        }
+
+        private static string ResolveMobClientActionNameOrAuthored(string actionName)
+        {
+            if (!TryResolveMobClientActionSlot(actionName, out int slot))
+            {
+                return actionName?.ToLowerInvariant() ?? string.Empty;
+            }
+
+            return ResolveMobClientActionName(slot) ?? (actionName?.ToLowerInvariant() ?? string.Empty);
         }
 
         private static List<MobAnimationSet.FrameMetadata> BuildMobActionFrameMetadata(WzImageProperty source)

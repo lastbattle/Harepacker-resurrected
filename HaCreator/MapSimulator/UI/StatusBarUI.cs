@@ -96,6 +96,7 @@ namespace HaCreator.MapSimulator.UI {
         public string TooltipStateText { get; set; }
         public int DurationMs { get; set; }
         public int MaskFrameIndex { get; set; } = 15;
+        public SkillManager.CooldownMaskSurface MaskSurface { get; set; } = SkillManager.CooldownMaskSurface.SkillBookClassic;
         public string TooltipCostLineMarkup { get; set; }
         public bool SuppressProgressOverlay { get; set; }
         public bool SuppressCounterText { get; set; }
@@ -1245,7 +1246,7 @@ namespace HaCreator.MapSimulator.UI {
                 OFFBAR_COOLDOWN_ICON_SPACING,
                 OFFBAR_COOLDOWN_TRAY_RIGHT_MARGIN,
                 offBarTopMargin,
-                SkillManager.CooldownMaskSurface.SkillBook,
+                SkillManager.CooldownMaskSurface.StatusBarOffBarTray,
                 SkillTooltipAnchorOwner.StatusBarOffBarCooldownTray);
         }
 
@@ -1285,14 +1286,14 @@ namespace HaCreator.MapSimulator.UI {
                     sprite.Draw(cooldownEntry.IconTexture, iconRect, Color.White);
                 }
 
-                if (!cooldownEntry.SuppressProgressOverlay)
-                {
-                    DrawCooldownMask(
-                        sprite,
-                        iconRect,
-                        cooldownEntry.MaskFrameIndex,
-                        SkillManager.CooldownMaskSurface.QuickSlot);
-                }
+                    if (!cooldownEntry.SuppressProgressOverlay)
+                    {
+                        DrawCooldownMask(
+                            sprite,
+                            iconRect,
+                            cooldownEntry.MaskFrameIndex,
+                            cooldownEntry.MaskSurface);
+                    }
 
                 if (!HasStatusBarTextRenderer() || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
                 {
@@ -1392,16 +1393,14 @@ namespace HaCreator.MapSimulator.UI {
                         sprite.Draw(cooldownEntry.IconTexture, iconRect, Color.White);
                     }
 
-                    if (!cooldownEntry.SuppressProgressOverlay)
-                    {
-                        DrawCooldownMask(
-                            sprite,
-                            iconRect,
-                            cooldownEntry.MaskFrameIndex,
-                            cooldownEntry.UseQuickSlotMaskSurface
-                                ? SkillManager.CooldownMaskSurface.QuickSlot
-                                : fallbackMaskSurface);
-                    }
+                if (!cooldownEntry.SuppressProgressOverlay)
+                {
+                    DrawCooldownMask(
+                        sprite,
+                        iconRect,
+                        cooldownEntry.MaskFrameIndex,
+                        cooldownEntry.MaskSurface);
+                }
 
                     if (!HasStatusBarTextRenderer() || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
                     {

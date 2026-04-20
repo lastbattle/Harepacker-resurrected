@@ -964,6 +964,18 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
         }
 
+        private bool TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset()
+        {
+            if (!ShouldClearPacketOwnedQuestResultStartQuestRequestLatchFromSharedExclusiveReset(
+                    _packetOwnedQuestResultStartQuestRequestSent))
+            {
+                return false;
+            }
+
+            ClearPacketOwnedQuestResultStartQuestRequestLatch();
+            return true;
+        }
+
         internal static bool ShouldClearPacketOwnedQuestResultStartQuestRequestLatchFromSharedExclusiveReset(
             bool requestSent)
         {
@@ -973,14 +985,12 @@ namespace HaCreator.MapSimulator
 
         private bool TryConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(byte[] payload)
         {
-            if (!_packetOwnedQuestResultStartQuestRequestSent ||
-                !ShouldConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(payload))
+            if (!ShouldConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(payload))
             {
                 return false;
             }
 
-            ClearPacketOwnedQuestResultStartQuestRequestLatch();
-            return true;
+            return TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
         }
 
         internal static bool ShouldConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(

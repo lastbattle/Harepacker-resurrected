@@ -5604,6 +5604,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            foreach (string linkedRootPath in EnumerateClientSummonedUolHeuristicLinkedRootPaths(skillNode, infoNode))
+            {
+                if (!string.IsNullOrWhiteSpace(linkedRootPath) && seenPaths.Add(linkedRootPath))
+                {
+                    normalizedPaths.Add(linkedRootPath);
+                }
+            }
+
             string fallbackPath = BuildClientSummonedUolPathFromSkillNode(skillNode);
             if (!string.IsNullOrWhiteSpace(fallbackPath) && seenPaths.Add(fallbackPath))
             {
@@ -6045,6 +6053,189 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolHeuristicLinkedRootPaths(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode)
+        {
+            var yieldedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (WzImageProperty node in EnumerateClientSummonedUolCandidateNodes(skillNode, infoNode))
+            {
+                foreach (int linkedSkillId in EnumerateClientSummonedUolHeuristicLinkedSkillIds(node, skillNode))
+                {
+                    if (!LooksLikeClientSummonedUolInferredSkillId(linkedSkillId))
+                    {
+                        continue;
+                    }
+
+                    string linkedRootPath = $"Skill/{linkedSkillId / 10000}.img/skill/{linkedSkillId}";
+                    if (yieldedPaths.Add(linkedRootPath))
+                    {
+                        yield return linkedRootPath;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateClientSummonedUolHeuristicLinkedSkillIds(
+            WzImageProperty node,
+            WzImageProperty skillNode)
+        {
+            int contextSkillId = TryParseRequiredSkillId(skillNode?.Name, out int parsedSkillId)
+                ? parsedSkillId
+                : 0;
+            var yieldedSkillIds = new HashSet<int>();
+            foreach ((WzImageProperty Branch, string RelativePath) in EnumerateClientSummonedUolHeuristicCandidateBranches(node))
+            {
+                if (!LooksLikeClientSummonedUolHeuristicOwnerPath(RelativePath))
+                {
+                    continue;
+                }
+
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNames(Branch))
+                {
+                    foreach (int candidateSkillId in ExpandClientSummonedUolHeuristicLinkedSkillIdCandidates(
+                                 linkedSkillId,
+                                 contextSkillId))
+                    {
+                        if (yieldedSkillIds.Add(candidateSkillId))
+                        {
+                            yield return candidateSkillId;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<int> ExpandClientSummonedUolHeuristicLinkedSkillIdCandidates(
+            int linkedSkillId,
+            int contextSkillId)
+        {
+            if (linkedSkillId <= 0)
+            {
+                yield break;
+            }
+
+            yield return linkedSkillId;
+            if (TryBuildClientSummonedUolContextualSkillId(contextSkillId, linkedSkillId, out int contextualSkillId))
+            {
+                yield return contextualSkillId;
+            }
+        }
+
+        private static IEnumerable<(WzImageProperty Branch, string RelativePath)> EnumerateClientSummonedUolHeuristicCandidateBranches(
+            WzImageProperty node)
+        {
+            if (node?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            string normalizedNodeName = node.Name?.Trim() ?? string.Empty;
+            bool nodeIsInfoBranch = normalizedNodeName.Equals("info", StringComparison.OrdinalIgnoreCase);
+            if (nodeIsInfoBranch)
+            {
+                foreach ((WzImageProperty Branch, string RelativePath) nestedInfoBranch in EnumerateClientSummonedUolHeuristicInfoBranches(
+                             node,
+                             relativePathPrefix: normalizedNodeName,
+                             depthRemaining: ClientSummonedUolHeuristicInfoTraversalDepth))
+                {
+                    yield return nestedInfoBranch;
+                }
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                yield return (child, child.Name);
+                if (!child.Name.Equals("info", StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach ((WzImageProperty Branch, string RelativePath) nestedSkillBranch in EnumerateClientSummonedUolHeuristicSkillBranches(
+                                 child,
+                                 relativePathPrefix: child.Name,
+                                 depthRemaining: ClientSummonedUolHeuristicSkillTraversalDepth))
+                    {
+                        yield return nestedSkillBranch;
+                    }
+
+                    continue;
+                }
+
+                foreach ((WzImageProperty Branch, string RelativePath) nestedInfoBranch in EnumerateClientSummonedUolHeuristicInfoBranches(
+                             child,
+                             relativePathPrefix: child.Name,
+                             depthRemaining: ClientSummonedUolHeuristicInfoTraversalDepth))
+                {
+                    yield return nestedInfoBranch;
+                }
+            }
+        }
+
+        private static IEnumerable<(WzImageProperty Branch, string RelativePath)> EnumerateClientSummonedUolHeuristicSkillBranches(
+            WzImageProperty node,
+            string relativePathPrefix,
+            int depthRemaining)
+        {
+            if (node?.WzProperties == null || depthRemaining <= 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string relativePath = string.IsNullOrWhiteSpace(relativePathPrefix)
+                    ? child.Name
+                    : $"{relativePathPrefix}/{child.Name}";
+                yield return (child, relativePath);
+                foreach ((WzImageProperty Branch, string RelativePath) nestedBranch in EnumerateClientSummonedUolHeuristicSkillBranches(
+                             child,
+                             relativePath,
+                             depthRemaining - 1))
+                {
+                    yield return nestedBranch;
+                }
+            }
+        }
+
+        private static IEnumerable<(WzImageProperty Branch, string RelativePath)> EnumerateClientSummonedUolHeuristicInfoBranches(
+            WzImageProperty node,
+            string relativePathPrefix,
+            int depthRemaining)
+        {
+            if (node?.WzProperties == null || depthRemaining < 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string relativePath = string.IsNullOrWhiteSpace(relativePathPrefix)
+                    ? child.Name
+                    : $"{relativePathPrefix}/{child.Name}";
+                yield return (child, relativePath);
+                foreach ((WzImageProperty Branch, string RelativePath) nestedBranch in EnumerateClientSummonedUolHeuristicInfoBranches(
+                             child,
+                             relativePath,
+                             depthRemaining - 1))
+                {
+                    yield return nestedBranch;
+                }
+            }
         }
 
         private static string GetClientSummonedUolCandidateValue(WzImageProperty node, string propertyName)
@@ -8730,6 +8921,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalDamageMin = GetInt(node, "criticaldamageMin", 0, level);
             levelData.CriticalDamageMax = GetInt(node, "criticaldamageMax", 0, level);
             levelData.DamageReductionRate = GetInt(node, "damR", 0, level);
+            levelData.DamageReductionRate = PreferPrimaryStat(levelData.DamageReductionRate, GetInt(node, "PVPdamage", 0, level));
             levelData.BossDamageRate = GetInt(node, "bdR", 0, level);
             levelData.IgnoreDefenseRate = PreferPrimaryStat(
                 GetInt(node, "ignoreMobpdpR", 0, level),
@@ -8851,6 +9043,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalDamageMin = PreferPrimaryStat(levelData.CriticalDamageMin, GetInt(node, "criticalDamageMin", 0, level));
             levelData.CriticalDamageMax = PreferPrimaryStat(levelData.CriticalDamageMax, GetInt(node, "criticalDamageMax", 0, level));
             levelData.DamageReductionRate = PreferPrimaryStat(levelData.DamageReductionRate, GetInt(node, "indieDamR", 0, level));
+            levelData.DamageReductionRate = PreferPrimaryStat(levelData.DamageReductionRate, GetInt(node, "PVPdamage", 0, level));
             levelData.ExperienceRate = GetInt(node, "expR", 0, level);
             levelData.DropRate = GetInt(node, "dropR", 0, level);
             levelData.MesoRate = GetInt(node, "mesoR", 0, level);

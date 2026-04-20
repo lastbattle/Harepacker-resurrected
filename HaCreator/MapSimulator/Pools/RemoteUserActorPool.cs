@@ -133,7 +133,8 @@ namespace HaCreator.MapSimulator.Pools
             int InitDelayMs,
             int ExplosionDelayMs,
             int DragX,
-            int DragY);
+            int DragY,
+            int LimitTimeMs = 0);
         public readonly record struct RemoteHookingChainPresentation(
             int CharacterId,
             SkillData Skill,
@@ -400,6 +401,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int MonsterBombGaugeDistanceSquaredPlusFloor = 832500;
         private const int MonsterBombInitDelayMs = 450;
         private const int MonsterBombExplosionDelayMs = 950;
+        private const int MonsterBombLimitTimeMs = 950;
         private const int GenericGrenadeImpactScale = 600;
         private const int GenericGrenadeFlightLaunchOffsetX = 1;
         private const int GenericGrenadeFlightLaunchOffsetY = -20;
@@ -898,7 +900,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (packet.Fame.HasValue)
             {
-                build.Fame = Math.Max(0, packet.Fame.Value);
+                build.Fame = packet.Fame.Value;
                 build.HasAuthoritativeProfileFame = true;
             }
 
@@ -1652,19 +1654,28 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            if (!IsCoupleChairRecordItemIdForClientParity(packet.ChairItemId))
+            {
+                message = $"Portable-chair record add item {packet.ChairItemId} is not a couple-chair record item.";
+                return false;
+            }
+
+            RemoteUserPortableChairRecordAddPacket normalizedPacket =
+                NormalizePortableChairRecordAddForClientParity(packet);
+
             TryApplyPortableChairRecordRemove(
-                new RemoteUserPortableChairRecordRemovePacket(packet.CharacterId),
+                new RemoteUserPortableChairRecordRemovePacket(normalizedPacket.CharacterId),
                 out _);
             SyncPortableChairPairRecord(
-                packet.CharacterId,
-                packet.ChairItemId,
-                ResolvePortableChairPairPreference(packet.CharacterId),
-                packet.PairCharacterId,
-                packet.Status);
+                normalizedPacket.CharacterId,
+                normalizedPacket.ChairItemId,
+                ResolvePortableChairPairPreference(normalizedPacket.CharacterId),
+                normalizedPacket.PairCharacterId,
+                normalizedPacket.Status);
 
-            message = _actorsById.ContainsKey(packet.CharacterId)
-                ? $"Remote user {packet.CharacterId} couple-chair record applied."
-                : $"Stored remote couple-chair record for inactive owner {packet.CharacterId}.";
+            message = _actorsById.ContainsKey(normalizedPacket.CharacterId)
+                ? $"Remote user {normalizedPacket.CharacterId} couple-chair record applied."
+                : $"Stored remote couple-chair record for inactive owner {normalizedPacket.CharacterId}.";
             return true;
         }
 
@@ -4254,7 +4265,8 @@ namespace HaCreator.MapSimulator.Pools
                     InitDelayMs: MonsterBombInitDelayMs,
                     ExplosionDelayMs: MonsterBombExplosionDelayMs,
                     DragX: (int)(GrenadeDragScale * (impactMagnitudeX / (double)dragDenominator)),
-                    DragY: (int)(GrenadeDragScale * (impactMagnitudeY / (double)dragDenominator)));
+                    DragY: (int)(GrenadeDragScale * (impactMagnitudeY / (double)dragDenominator)),
+                    LimitTimeMs: MonsterBombLimitTimeMs);
             }
 
             int impactMagnitude = (int)(clampedKeyDownTime / 1000d * GenericGrenadeImpactScale);
@@ -4273,7 +4285,8 @@ namespace HaCreator.MapSimulator.Pools
                 InitDelayMs: 0,
                 ExplosionDelayMs: 0,
                 DragX: 0,
-                DragY: 0);
+                DragY: 0,
+                LimitTimeMs: 0);
         }
 
         internal static bool ResolveRemoteGrenadeFacingForParity(RemoteGrenadePresentation presentation)
@@ -4322,6 +4335,13 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation ballAnimation,
             SkillAnimation explosionAnimation)
         {
+            if (presentation.LimitTimeMs > 0)
+            {
+                // CUser::ThrowGrenade writes CGrenade::Init tLimitTime for Monster Bomb
+                // and CGrenade::Update expires against that limit once reached.
+                return presentation.CurrentTime + presentation.LimitTimeMs;
+            }
+
             return ResolveRemoteGrenadeExplosionTimeForParity(presentation, ballAnimation)
                 + ResolveRemoteGrenadeAnimationDurationMs(explosionAnimation);
         }
@@ -8695,6 +8715,18 @@ namespace HaCreator.MapSimulator.Pools
             return chairItemId > 0 && chairItemId / 1000 == 3012;
         }
 
+        internal static RemoteUserPortableChairRecordAddPacket NormalizePortableChairRecordAddForClientParity(
+            RemoteUserPortableChairRecordAddPacket packet)
+        {
+            // CUserPool::OnCoupleChairRecordAdd initializes records as:
+            // dwPairCharacterID = 0, nStatus = 0.
+            return packet with
+            {
+                PairCharacterId = null,
+                Status = 0
+            };
+        }
+
         private void ClearPortableChairPairRecord(int characterId)
         {
             if (characterId > 0)
@@ -9158,6 +9190,16 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.TemporaryStatAuraEffectTails.Add(auraTailState);
             }
+
+            if (ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacement(
+                    previousAuraState,
+                    actor.TemporaryStatAuraEffect))
+            {
+                actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount =
+                    ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountAfterForcedShift(
+                        actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount);
+            }
+
             ResolveRemoteMoreWildDamageUpSkill(knownState, out int? moreWildDamageUpSkillId, out SkillData moreWildDamageUpSkill);
             actor.TemporaryStatMoreWildEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor,
@@ -9266,6 +9308,25 @@ namespace HaCreator.MapSimulator.Pools
                 observedDeltaMs,
                 RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMinimumMs,
                 RemoteTemporaryStatAffectedLayerShiftCadenceFrameDurationMaximumMs);
+        }
+
+        private static bool ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacement(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState)
+        {
+            if (currentState == null
+                || !HasAnyRemoteTemporaryStatAvatarEffectAnimation(currentState))
+            {
+                return false;
+            }
+
+            return previousState == null || previousState.SkillId != currentState.SkillId;
+        }
+
+        private static int ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountAfterForcedShift(
+            int currentUpdateCount)
+        {
+            return 1;
         }
 
         internal static int ResolveRemoteTemporaryStatAnimationStartTimeForTesting(int currentTime, ushort delayMs)
@@ -9614,10 +9675,25 @@ namespace HaCreator.MapSimulator.Pools
 
             CharacterPart mountPart = null;
             actor.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out mountPart);
-            return FollowCharacterEligibilityResolver.ResolveMountedVehicleId(
+            CharacterPart activeMountedRenderOwner = actor.ResolveMountedStateTamingMobPart();
+            return ResolveRemoteRidingVehicleIdForTesting(
                 mountPart,
                 actor.ActionName,
-                actor.TemporaryStats.KnownState.MechanicMode);
+                actor.TemporaryStats.KnownState.MechanicMode,
+                activeMountedRenderOwner);
+        }
+
+        internal static int ResolveRemoteRidingVehicleIdForTesting(
+            CharacterPart equippedMountPart,
+            string actionName,
+            int? mechanicMode,
+            CharacterPart activeMountedRenderOwner)
+        {
+            return FollowCharacterEligibilityResolver.ResolveMountedVehicleId(
+                equippedMountPart,
+                actionName,
+                mechanicMode,
+                activeMountedRenderOwner: activeMountedRenderOwner);
         }
 
         internal static string ResolveClientVisibleActionName(
@@ -10897,6 +10973,19 @@ namespace HaCreator.MapSimulator.Pools
         internal static int ResolveRemoteTemporaryStatAffectedLayerShiftCadenceRemainingUpdatesForTesting(int shiftCadenceUpdateCount)
         {
             return ResolveRemoteTemporaryStatAffectedLayerShiftCadenceRemainingUpdates(shiftCadenceUpdateCount);
+        }
+
+        internal static bool ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacementForTesting(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState)
+        {
+            return ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacement(previousState, currentState);
+        }
+
+        internal static int ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountAfterForcedShiftForTesting(
+            int currentUpdateCount)
+        {
+            return ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountAfterForcedShift(currentUpdateCount);
         }
 
         internal static int ResolveRemoteEnergyChargeMinimumFullChargeValueForTesting(int skillId, SkillData skill)
@@ -12289,8 +12378,7 @@ namespace HaCreator.MapSimulator.Pools
         private static bool ShouldHoldRemoteShadowPartnerCurrentAction(RemoteUserActor actor, int currentTime)
         {
             RemoteShadowPartnerPresentationState presentation = actor?.ShadowPartnerPresentation;
-            if (presentation?.CurrentPlaybackAnimation?.Frames == null
-                || presentation.CurrentPlaybackAnimation.Frames.Count == 0)
+            if (presentation == null || string.IsNullOrWhiteSpace(presentation.CurrentActionName))
             {
                 return false;
             }
@@ -12299,6 +12387,7 @@ namespace HaCreator.MapSimulator.Pools
             return ShadowPartnerClientActionResolver.ShouldHoldBlockingAction(
                 presentation.CurrentActionName,
                 presentation.CurrentPlaybackAnimation,
+                actor?.TemporaryStatShadowPartnerSkill?.ShadowPartnerActionAnimations,
                 elapsedTime);
         }
 
@@ -13049,6 +13138,20 @@ namespace HaCreator.MapSimulator.Pools
                 return scopedMaskBaseChargeSkillId;
             }
 
+            if (AfterImageChargeSkillResolver.TryResolveChargeElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out int scopedMaskBaseChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    scopedMaskBaseChargeElement,
+                    out int scopedMaskBaseElementChargeSkillId))
+            {
+                return scopedMaskBaseElementChargeSkillId;
+            }
+
             if (AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -13144,11 +13247,21 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            if (AfterImageChargeSkillResolver.TryResolveChargeElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out chargeElement))
+            {
+                return true;
+            }
+
             if (AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
-                    preferredSkillId,
+                    effectivePreferredSkillId,
                     out int nearestMaskBaseChargeSkillId)
                 && AfterImageChargeSkillResolver.TryGetChargeElement(nearestMaskBaseChargeSkillId, out chargeElement))
             {
@@ -13675,6 +13788,18 @@ namespace HaCreator.MapSimulator.Pools
                 Assembler.OverrideTamingMobPart = TemporaryStatTamingMobOverridePart;
                 Assembler.FaceExpressionName = PacketOwnedEmotion?.EmotionName ?? "default";
             }
+        }
+
+        internal CharacterPart ResolveMountedStateTamingMobPart()
+        {
+            if (TemporaryStatTamingMobOverridePart?.Slot == EquipSlot.TamingMob)
+            {
+                return TemporaryStatTamingMobOverridePart;
+            }
+
+            CharacterPart equippedMountPart = null;
+            Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out equippedMountPart);
+            return equippedMountPart;
         }
 
         public AssembledFrame GetFrameAtTimeForRendering(int currentTime)

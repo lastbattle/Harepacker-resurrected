@@ -81,6 +81,19 @@ namespace HaCreator.MapSimulator
             public bool ResolvedFromClientStringPool { get; init; }
         }
 
+        private sealed class CashShopListArtSnapshot
+        {
+            public bool HasBuyKeyFocusCanvas { get; init; }
+            public bool HasGiftKeyFocusCanvas { get; init; }
+            public bool HasReserveKeyFocusCanvas { get; init; }
+            public bool HasRemoveKeyFocusCanvas { get; init; }
+            public bool HasAnyKeyFocusCanvas =>
+                HasBuyKeyFocusCanvas
+                || HasGiftKeyFocusCanvas
+                || HasReserveKeyFocusCanvas
+                || HasRemoveKeyFocusCanvas;
+        }
+
         private string PreviewCashAvatarWeatherAction()
         {
             int currTickCount = Environment.TickCount;
@@ -306,7 +319,7 @@ namespace HaCreator.MapSimulator
                         NumberCanvasReadyMask = artSnapshot.NumberCanvasReadyMask,
                         ExpectedNumberCanvasCount = 10,
                         PlateCount = Math.Max(1, artSnapshot.PlateCount),
-                        PlateButtonCount = 12,
+                        PlateButtonCount = previousLaneEnabled ? CashShopOneADayHistorySlotCount : 2,
                         PreviousOfferCount = previousLaneEnabled ? ResolveCashShopOneADayHistorySlotCount() : 0,
                         PlateCanvasBaseName = "NoItem",
                         ShortcutHelpCanvasName = artSnapshot.HasShortcutHelpCanvas ? "ShortcutHelp" : string.Empty,
@@ -322,6 +335,12 @@ namespace HaCreator.MapSimulator
                             remainingMinute,
                             remainingSecond,
                             artSnapshot.NumberCanvasReadyMask),
+                        PlateButtons = BuildCashShopOneADayPlateButtonStates(
+                            artSnapshot,
+                            selectorIndex,
+                            previousLaneEnabled,
+                            historyEntries,
+                            currentCommoditySerialNumber),
                         RewardSessionSummary = BuildCashShopOneADayRewardSessionSummary(
                             stageWindow,
                             historyEntries,
@@ -396,6 +415,74 @@ namespace HaCreator.MapSimulator
             }
 
             return entries;
+        }
+
+        private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.PlateButtonState> BuildCashShopOneADayPlateButtonStates(
+            CashShopOneADayArtSnapshot artSnapshot,
+            int selectorIndex,
+            bool previousLaneEnabled,
+            IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries,
+            int currentCommoditySerialNumber)
+        {
+            int clampedSelectorIndex = Math.Clamp(selectorIndex, 0, previousLaneEnabled ? 1 : 0);
+            bool usePreviousLane = clampedSelectorIndex == 1 && previousLaneEnabled;
+            if (!usePreviousLane)
+            {
+                bool hasBuyCanvas = artSnapshot?.HasBuyButton == true;
+                bool hasItemBoxCanvas = artSnapshot?.HasItemBoxButton == true;
+                bool hasCurrentReward = currentCommoditySerialNumber > 0;
+                return new[]
+                {
+                    new CashShopStageChildWindow.OneADayOwnerState.PlateButtonState
+                    {
+                        ButtonId = 2100,
+                        SlotIndex = 0,
+                        CommandKey = "BtBuy",
+                        Position = new Microsoft.Xna.Framework.Point(165, 202),
+                        HasCanvas = hasBuyCanvas,
+                        IsLoaded = hasBuyCanvas,
+                        IsEnabled = hasCurrentReward,
+                        IsFocused = true,
+                        Label = "Buy"
+                    },
+                    new CashShopStageChildWindow.OneADayOwnerState.PlateButtonState
+                    {
+                        ButtonId = 2101,
+                        SlotIndex = 1,
+                        CommandKey = "BtItemBox",
+                        Position = new Microsoft.Xna.Framework.Point(246, 202),
+                        HasCanvas = hasItemBoxCanvas,
+                        IsLoaded = hasItemBoxCanvas,
+                        IsEnabled = true,
+                        IsFocused = false,
+                        Label = "ItemBox"
+                    }
+                };
+            }
+
+            int historyCount = Math.Max(0, historyEntries?.Count ?? 0);
+            List<CashShopStageChildWindow.OneADayOwnerState.PlateButtonState> buttons = new(CashShopOneADayHistorySlotCount);
+            for (int i = 0; i < CashShopOneADayHistorySlotCount; i++)
+            {
+                bool hasHistoryEntry = i < historyCount;
+                string label = hasHistoryEntry && !string.IsNullOrWhiteSpace(historyEntries[i].ItemLabel)
+                    ? historyEntries[i].ItemLabel.Trim()
+                    : $"History {i + 1}";
+                buttons.Add(new CashShopStageChildWindow.OneADayOwnerState.PlateButtonState
+                {
+                    ButtonId = 2200 + i,
+                    SlotIndex = i,
+                    CommandKey = "BtJoin",
+                    Position = new Microsoft.Xna.Framework.Point(16 + ((i % 4) * 92), 252 + ((i / 4) * 44)),
+                    HasCanvas = artSnapshot?.HasPlateBigCanvas == true,
+                    IsLoaded = hasHistoryEntry,
+                    IsEnabled = hasHistoryEntry,
+                    IsFocused = i == 0,
+                    Label = label
+                });
+            }
+
+            return buttons;
         }
 
         private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState> BuildCashShopOneADaySelectorEntryStates(
@@ -956,6 +1043,9 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<string> BuildCashShopListOwnerLines(AdminShopDialogUI cashShopWindow)
         {
             List<string> lines = new(cashShopWindow?.DescribeListOwnerState() ?? Array.Empty<string>());
+            CashShopListArtSnapshot artSnapshot = ResolveCashShopListArtSnapshot();
+            lines.Add(
+                $"WZ key-focus canvases: Buy={artSnapshot.HasBuyKeyFocusCanvas}, Gift={artSnapshot.HasGiftKeyFocusCanvas}, Reserve={artSnapshot.HasReserveKeyFocusCanvas}, Remove={artSnapshot.HasRemoveKeyFocusCanvas}.");
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
             {
                 if (!string.IsNullOrWhiteSpace(stageWindow.CashPurchaseRecordSummary))
@@ -986,6 +1076,7 @@ namespace HaCreator.MapSimulator
         {
             AdminShopDialogUI.ListOwnerSnapshot snapshot = cashShopWindow?.GetListOwnerSnapshot();
             CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            CashShopListArtSnapshot artSnapshot = ResolveCashShopListArtSnapshot();
             IReadOnlyList<string> recentPackets = stageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>();
             if (stageWindow != null
                 && (snapshot == null || (snapshot.TotalCount <= 0 && stageWindow.CashPacketCatalogEntries.Count > 0)))
@@ -1002,7 +1093,7 @@ namespace HaCreator.MapSimulator
                     ScrollOffset = 0,
                     TotalCount = Math.Max(packetEntries.Count, stageWindow.WishlistCount),
                     PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
-                    HasKeyFocusCanvas = true,
+                    HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
                     VisibleEntries = packetEntries,
                     RecentPackets = recentPackets
                 };
@@ -1018,7 +1109,7 @@ namespace HaCreator.MapSimulator
                     FooterMessage = "Cash Shop list owner snapshot is unavailable.",
                     SelectedIndex = -1,
                     PlateFocusIndex = -1,
-                    HasKeyFocusCanvas = true,
+                    HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
                     RecentPackets = recentPackets
                 };
             }
@@ -1049,10 +1140,29 @@ namespace HaCreator.MapSimulator
                 ScrollOffset = snapshot.ScrollOffset,
                 TotalCount = snapshot.TotalCount,
                 PlateFocusIndex = snapshot.SelectedIndex >= 0 ? snapshot.SelectedIndex - snapshot.ScrollOffset : -1,
-                HasKeyFocusCanvas = true,
+                HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
                 VisibleEntries = entries,
                 RecentPackets = recentPackets
             };
+        }
+
+        private static CashShopListArtSnapshot ResolveCashShopListArtSnapshot()
+        {
+            WzSubProperty listProperty = global::HaCreator.Program.FindImage("ui", "CashShop.img")?["CSList"] as WzSubProperty;
+            return new CashShopListArtSnapshot
+            {
+                HasBuyKeyFocusCanvas = HasCashShopListButtonKeyFocusCanvas(listProperty, "BtBuy"),
+                HasGiftKeyFocusCanvas = HasCashShopListButtonKeyFocusCanvas(listProperty, "BtGift"),
+                HasReserveKeyFocusCanvas = HasCashShopListButtonKeyFocusCanvas(listProperty, "BtReserve"),
+                HasRemoveKeyFocusCanvas = HasCashShopListButtonKeyFocusCanvas(listProperty, "BtRemove")
+            };
+        }
+
+        private static bool HasCashShopListButtonKeyFocusCanvas(WzSubProperty listProperty, string buttonName)
+        {
+            WzSubProperty buttonProperty = listProperty?[buttonName] as WzSubProperty;
+            WzSubProperty keyFocusedProperty = buttonProperty?["keyFocused"] as WzSubProperty;
+            return keyFocusedProperty?["0"] is WzCanvasProperty;
         }
 
         private IReadOnlyList<string> BuildCashShopStatusOwnerLines()
@@ -1892,9 +2002,44 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (packetType == 384 && stageWindow.CashItemResultSubtype == 90 && stageWindow.CashGiftPacketEntries.Count > 0)
+            if (packetType != 384)
+            {
+                return;
+            }
+
+            if (stageWindow.CashItemResultSubtype == 90 && stageWindow.CashGiftPacketEntries.Count > 0)
             {
                 ShowCashReceiveGiftDialog(stageWindow, 0);
+                return;
+            }
+
+            int cashItemSubtype = stageWindow.CashItemResultSubtype;
+            if ((cashItemSubtype == 107 || cashItemSubtype == 108)
+                && stageWindow.TryFinalizeReceiveGiftAcceptResult(
+                    cashItemSubtype,
+                    out string summary,
+                    out string ownerNotice,
+                    out bool accepted,
+                    out int nextGiftIndex))
+            {
+                if (!string.IsNullOrWhiteSpace(summary))
+                {
+                    _chat?.AddSystemMessage(summary, currTickCount);
+                }
+
+                if (accepted)
+                {
+                    ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, summary);
+                    return;
+                }
+
+                bool receiveGiftDialogVisible = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashReceiveGiftDialog)?.IsVisible == true;
+                if (!receiveGiftDialogVisible
+                    && nextGiftIndex >= 0
+                    && nextGiftIndex < stageWindow.CashGiftPacketEntries.Count)
+                {
+                    ShowCashReceiveGiftDialog(stageWindow, nextGiftIndex);
+                }
             }
         }
 
@@ -2417,20 +2562,13 @@ namespace HaCreator.MapSimulator
             string dispatchSummary = buttonIndex == 0
                 ? DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText)
                 : string.Empty;
-            string ownerNotice = buttonIndex == 0
-                ? stageWindow.BuildReceiveGiftAcceptOwnerNotice(selectedGift, normalizedReplyText)
-                : string.Empty;
             string message = buttonIndex == 0
-                ? stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, normalizedReplyText, dispatchSummary)
+                ? stageWindow.StageReceiveGiftAcceptRequest(selectedGiftIndex, normalizedReplyText, dispatchSummary)
                 : "CUIReceiveGift skipped the current decoded gift row and advanced to the next modal-owner pass without sending the accept packet.";
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
             _chat?.AddSystemMessage(message, currTickCount);
             if (buttonIndex == 0)
             {
-                TryTriggerSpecialistPetSocialFeedback(
-                    BuildCashReceiveGiftSpecialistMessages(selectedGift, normalizedReplyText),
-                    currTickCount);
-                ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, selectedGiftIndex, ownerNotice, message);
                 return;
             }
 

@@ -426,6 +426,12 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(1, "stabO1", 0, 720, move: new Point(2, 0)),
                     CreateIndexedPiece(2, "shoot2", 0, 0)
                 },
+                ["fake"] = new[]
+                {
+                    CreateIndexedPiece(0, "shoot2", 0, 90),
+                    CreateIndexedPiece(1, "stabO1", 0, 720, move: new Point(2, 0)),
+                    CreateIndexedPiece(2, "shoot2", 0, 0)
+                },
                 ["doubleupper"] = new[]
                 {
                     CreateIndexedPiece(0, "alert", 0, -240),
@@ -509,6 +515,10 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(1, "stabO1", 0, 540, move: new Point(2, 0)),
                     CreateIndexedPiece(2, "shoot2", 0, 0)
                 },
+                ["flashBang"] = CreateIndexedPieces(
+                    ("swingO3", 0, 90),
+                    ("swingO3", 1, 90),
+                    ("swingO3", 2, 330)),
                 // `Character/00002000.img` still exposes high-count helper-piece rows for
                 // `fist` and `bamboo`. Keep built-in parity plans so loader-owned fallback
                 // retains the same client-init piece ordering and signed-delay timing.
@@ -558,6 +568,22 @@ namespace HaCreator.MapSimulator.Character
                 {
                     CreateIndexedPiece(0, "stabO1", 0, 60, move: new Point(7, 0))
                 },
+                ["homing"] = CreateIndexedPieces(
+                    ("swingO3", 0, -720),
+                    ("swingO3", 1, 120),
+                    ("swingO3", 2, 120)),
+                ["backstep"] = CreateIndexedPieces(
+                    ("stabO1", 0, 300)),
+                ["timeleap"] = CreateIndexedPieces(
+                    ("alert", 0, -450),
+                    ("alert", 1, -540),
+                    ("alert", 2, 450)),
+                ["recovery"] = CreateIndexedPieces(
+                    ("alert", 0, 30)),
+                ["owlDead"] = CreateIndexedPieces(
+                    ("stabO1", 0, -120),
+                    ("stabO1", 0, 840),
+                    ("swingO1", 0, 450)),
                 ["cannon"] = CreateIndexedPieces(
                     ("alert", 0, 780)),
                 ["torpedo"] = CreateIndexedPieces(
@@ -2985,10 +3011,35 @@ namespace HaCreator.MapSimulator.Character
             SkillAnimation playbackAnimation,
             int elapsedTimeMs)
         {
-            return IsBlockingAction(actionName)
-                   && playbackAnimation?.Frames != null
-                   && playbackAnimation.Frames.Count > 0
-                   && !IsPlaybackComplete(playbackAnimation, elapsedTimeMs);
+            return ShouldHoldBlockingAction(
+                actionName,
+                playbackAnimation,
+                actionAnimations: null,
+                elapsedTimeMs);
+        }
+
+        public static bool ShouldHoldBlockingAction(
+            string actionName,
+            SkillAnimation playbackAnimation,
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            int elapsedTimeMs)
+        {
+            if (!IsBlockingAction(actionName))
+            {
+                return false;
+            }
+
+            SkillAnimation resolvedPlaybackAnimation = playbackAnimation;
+            if ((resolvedPlaybackAnimation?.Frames == null || resolvedPlaybackAnimation.Frames.Count == 0)
+                && !string.IsNullOrWhiteSpace(actionName)
+                && actionAnimations != null)
+            {
+                actionAnimations.TryGetValue(actionName, out resolvedPlaybackAnimation);
+            }
+
+            return resolvedPlaybackAnimation?.Frames != null
+                   && resolvedPlaybackAnimation.Frames.Count > 0
+                   && !IsPlaybackComplete(resolvedPlaybackAnimation, elapsedTimeMs);
         }
 
         public static int ResolvePlaybackFrameDurationMs(int frameDelayMs)

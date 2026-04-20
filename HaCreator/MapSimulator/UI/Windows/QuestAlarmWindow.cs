@@ -473,7 +473,8 @@ namespace HaCreator.MapSimulator.UI
         {
             int titleQuestId = !_isMinimized ? GetTitleQuestIdAtPoint(mouseState.X, mouseState.Y) : -1;
             bool titleHovered = titleQuestId > 0;
-            bool localActionHovered = !_isMinimized && (titleHovered || GetDeleteQuestIdAtPoint(mouseState.X, mouseState.Y) > 0 || _deleteAllBounds.Contains(mouseState.X, mouseState.Y));
+            bool rowActionHovered = !_isMinimized && GetRowQuestIdAtPoint(mouseState.X, mouseState.Y) > 0;
+            bool localActionHovered = !_isMinimized && (rowActionHovered || GetDeleteQuestIdAtPoint(mouseState.X, mouseState.Y) > 0 || _deleteAllBounds.Contains(mouseState.X, mouseState.Y));
             if (localActionHovered)
             {
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -499,7 +500,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override bool CanStartDragAt(int x, int y)
         {
-            if (!_isMinimized && (GetTitleQuestIdAtPoint(x, y) > 0 || GetDeleteQuestIdAtPoint(x, y) > 0 || _deleteAllBounds.Contains(x, y)))
+            if (!_isMinimized && (GetRowQuestIdAtPoint(x, y) > 0 || GetDeleteQuestIdAtPoint(x, y) > 0 || _deleteAllBounds.Contains(x, y)))
             {
                 return false;
             }
@@ -741,7 +742,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < _rowLayouts.Count; i++)
             {
                 RowLayout row = _rowLayouts[i];
-                if (!row.TitleBounds.Contains(mouseX, mouseY) || row.DeleteBounds.Contains(mouseX, mouseY))
+                if (!row.Bounds.Contains(mouseX, mouseY) || row.DeleteBounds.Contains(mouseX, mouseY))
                 {
                     continue;
                 }
@@ -1568,6 +1569,20 @@ namespace HaCreator.MapSimulator.UI
             {
                 RowLayout row = _rowLayouts[i];
                 if (row.TitleBounds.Contains(mouseX, mouseY) && !row.DeleteBounds.Contains(mouseX, mouseY))
+                {
+                    return row.QuestId;
+                }
+            }
+
+            return -1;
+        }
+
+        private int GetRowQuestIdAtPoint(int mouseX, int mouseY)
+        {
+            for (int i = 0; i < _rowLayouts.Count; i++)
+            {
+                RowLayout row = _rowLayouts[i];
+                if (row.Bounds.Contains(mouseX, mouseY) && !row.DeleteBounds.Contains(mouseX, mouseY))
                 {
                     return row.QuestId;
                 }

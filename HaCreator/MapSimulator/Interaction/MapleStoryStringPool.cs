@@ -449,8 +449,9 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0618] = "type",
             [0x17F1] = "absRX",
             [0x17F2] = "absRY",
-            // Recovered from MapleStory.exe v95 `CUIQuestAlarm::Draw` and
-            // `CUIQuestAlarm::OnButtonClicked`. Keep these quest-alarm ids explicit so the
+            // Recovered from MapleStory.exe v95 `CUIQuestAlarm::Draw`,
+            // `CUIQuestAlarm::OnButtonClicked`, and `CUIQuestAlarm::OnMouseMove`.
+            // Keep these quest-alarm ids explicit so the
             // owner retains the exact client title and notice strings even if regenerated
             // string-pool order drifts again.
             [0x0E4C] = "Quest Helper (%d/5)",
@@ -459,6 +460,7 @@ namespace HaCreator.MapSimulator.Interaction
             [0x107B] = "Auto Alarm off",
             [0x107C] = "When you click it%2C quests in progress will register automatically and if it is not in progress for 10 minutes%2C it will disappear.",
             [0x107D] = "When you click it%2C the quest will not register automatically even when the quest is in progress.",
+            [0x18A8] = "This quest has recent progress updates.",
             [0x18EC] = "There are no quests in the quest helper.",
             // Recovered from MapleStory.exe v95 `CEngageDlg` and the surrounding
             // CWvsContext engagement result handlers. The generated table in this

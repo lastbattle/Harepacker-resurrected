@@ -9,10 +9,18 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int TrackPathTemplateStringPoolId = 0x1501;
         internal const int AudioPathTemplateStringPoolId = 0x1502;
 
-        public static string FormatNotice(int stringPoolId, string trackName, bool appendFallbackSuffix = false)
+        public static string FormatNotice(
+            int stringPoolId,
+            string trackName,
+            bool appendFallbackSuffix = false,
+            bool preserveEmptyTrackName = false)
         {
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, null, 1, out bool hasResolvedText);
-            string displayName = string.IsNullOrWhiteSpace(trackName) ? "radio track" : trackName.Trim();
+            string displayName = trackName?.Trim() ?? string.Empty;
+            if (!preserveEmptyTrackName && string.IsNullOrWhiteSpace(displayName))
+            {
+                displayName = "radio track";
+            }
             if (hasResolvedText)
             {
                 return string.Format(format, displayName);

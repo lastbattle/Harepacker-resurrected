@@ -126,6 +126,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<RemoteUserOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly Dictionary<ushort, int> _packetMap = new(DefaultPacketMap);
         private readonly Dictionary<ushort, LearnedOpcodeEntry> _learnedPacketMap = new();
+        private readonly Dictionary<string, Dictionary<ushort, LearnedOpcodeEntry>> _learnedTutorPacketMapByBuild = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<ushort, PendingTutorInferenceEvidence> _pendingTutorInferenceMap = new();
         private readonly Dictionary<ushort, string> _tutorInferenceConflictMap = new();
         private readonly object _sync = new();

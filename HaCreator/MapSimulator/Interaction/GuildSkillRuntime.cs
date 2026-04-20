@@ -353,14 +353,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string TryResolvePendingFromClientResultNotice(bool hasExplicitNotice, string notice)
         {
-            if (_pendingRequest == null || !hasExplicitNotice)
+            if (_pendingRequest == null)
             {
                 return null;
             }
 
-            string resolvedNotice = string.IsNullOrWhiteSpace(notice)
-                ? SocialListGuildResultClientText.GetSharedResultNoticeFallback()
-                : notice.Trim();
+            string resolvedNotice = hasExplicitNotice
+                ? (string.IsNullOrWhiteSpace(notice)
+                    ? SocialListGuildResultClientText.GetSharedResultNoticeFallback()
+                    : notice.Trim())
+                : SocialListGuildResultClientText.GetSharedResultNoticeFallback();
             return ResolvePendingPacketRequest(
                 approved: false,
                 summary: $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported: {resolvedNotice}");

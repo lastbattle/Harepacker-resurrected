@@ -1503,6 +1503,12 @@ namespace HaCreator.MapSimulator.UI
                 effectLines.Add("Applies to party members");
             }
 
+            if (GetIntValue(specProperty?["otherParty"]) == 1
+                || GetIntValue(specExProperty?["otherParty"]) == 1)
+            {
+                effectLines.Add("Applies to other party members");
+            }
+
             return effectLines;
         }
 
@@ -2177,6 +2183,7 @@ namespace HaCreator.MapSimulator.UI
             AppendSpecExMobSkillMetadataLines(metadataLines, specExProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendCashRateScheduleMetadataLines(metadataLines, infoProperty);
+            AppendPartyScaleMetadataLines(metadataLines, infoProperty);
             AppendAuthoredAssetPathMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
@@ -3213,6 +3220,30 @@ namespace HaCreator.MapSimulator.UI
             AppendAuthoredScheduleMetadataLines(metadataLines, infoProperty["time"] as WzSubProperty);
         }
 
+        private static void AppendPartyScaleMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            List<(int Index, int Value)> partyRows = GetNumericNamedIntValueRows(infoProperty?["party"] as WzSubProperty);
+            if (partyRows.Count <= 0)
+            {
+                return;
+            }
+
+            const int previewLimit = 6;
+            int previewCount = Math.Min(previewLimit, partyRows.Count);
+            List<string> previewEntries = new(previewCount);
+            for (int i = 0; i < previewCount; i++)
+            {
+                (int index, int value) = partyRows[i];
+                previewEntries.Add(
+                    $"{index.ToString(CultureInfo.InvariantCulture)}={value.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            string suffix = partyRows.Count > previewCount
+                ? $" (+{(partyRows.Count - previewCount).ToString(CultureInfo.InvariantCulture)} more)"
+                : string.Empty;
+            metadataLines.Add($"Party scale rows: {string.Join(", ", previewEntries)}{suffix}");
+        }
+
         private static void AppendAuthoredAssetPathMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
         {
             if (infoProperty == null)
@@ -3321,6 +3352,32 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return values;
+        }
+
+        private static List<(int Index, int Value)> GetNumericNamedIntValueRows(WzSubProperty property)
+        {
+            List<(int Index, int Value)> rows = new();
+            if (property?.WzProperties == null)
+            {
+                return rows;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                int value = GetIntOrStringValue(child);
+                if (value > 0)
+                {
+                    rows.Add((index, value));
+                }
+            }
+
+            rows.Sort((left, right) => left.Index.CompareTo(right.Index));
+            return rows;
         }
 
         private static void AppendAdditionalInfoFlagsMetadataLines(

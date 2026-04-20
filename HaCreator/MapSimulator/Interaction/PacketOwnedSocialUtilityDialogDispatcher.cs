@@ -901,8 +901,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int itemType = ResolveTrunkItemType(slotData.ItemId, inventoryType);
-            byte trunkRow = ResolveStorageRowPosition(ownerRowIndex, slotData);
+            if (!TryResolveTrunkItemType(slotData.ItemId, out int itemType))
+            {
+                StatusMessage = $"CTrunkDlg ignored SendGetItemRequest because item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} did not resolve a valid native item type index.";
+                message = StatusMessage;
+                return false;
+            }
+
+            if (!TryResolveStorageRowPosition(ownerRowIndex, slotData, out byte trunkRow))
+            {
+                StatusMessage = "CTrunkDlg ignored SendGetItemRequest because the selected storage row does not carry a native nIdx token.";
+                message = StatusMessage;
+                return false;
+            }
+
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 TrunkOutboundOpcode,
                 BuildGetItemRequestPayload(itemType, trunkRow),
@@ -963,7 +975,13 @@ namespace HaCreator.MapSimulator.Interaction
                 normalizedQuantity = requestedQuantity;
             }
 
-            short inventoryPosition = ResolveInventoryPosition(inventoryRowIndex, slotData);
+            if (!TryResolveInventoryPosition(inventoryRowIndex, slotData, out short inventoryPosition))
+            {
+                StatusMessage = "CTrunkDlg ignored SendPutItemRequest because the selected inventory row does not carry a native inventory position token.";
+                message = StatusMessage;
+                return false;
+            }
+
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 TrunkOutboundOpcode,
                 BuildPutItemRequestPayload(inventoryPosition, slotData.ItemId, normalizedQuantity),
@@ -1202,43 +1220,46 @@ namespace HaCreator.MapSimulator.Interaction
             return payload;
         }
 
-        private static int ResolveTrunkItemType(int itemId, InventoryType inventoryType)
+        private static bool TryResolveTrunkItemType(int itemId, out int itemType)
         {
-            int itemTypeFromId = itemId > 0 ? itemId / 1000000 : 0;
-            if (itemTypeFromId > 0)
-            {
-                return itemTypeFromId;
-            }
-
-            return inventoryType switch
-            {
-                InventoryType.EQUIP => 1,
-                InventoryType.USE => 2,
-                InventoryType.SETUP => 3,
-                InventoryType.ETC => 4,
-                InventoryType.CASH => 5,
-                _ => 0
-            };
+            itemType = itemId > 0 ? itemId / 1000000 : 0;
+            return itemType > 0 && itemType <= byte.MaxValue;
         }
 
-        private static byte ResolveStorageRowPosition(int ownerRowIndex, InventorySlotData slotData)
+        private static bool TryResolveStorageRowPosition(int ownerRowIndex, InventorySlotData slotData, out byte trunkRow)
         {
             if (slotData?.ClientItemToken is int clientRowToken && clientRowToken != 0)
             {
-                return unchecked((byte)clientRowToken);
+                trunkRow = unchecked((byte)clientRowToken);
+                return true;
             }
 
-            return unchecked((byte)(ownerRowIndex + 1));
+            if (ownerRowIndex >= 0)
+            {
+                trunkRow = unchecked((byte)(ownerRowIndex + 1));
+                return true;
+            }
+
+            trunkRow = 0;
+            return false;
         }
 
-        private static short ResolveInventoryPosition(int inventoryRowIndex, InventorySlotData slotData)
+        private static bool TryResolveInventoryPosition(int inventoryRowIndex, InventorySlotData slotData, out short inventoryPosition)
         {
             if (slotData?.ClientItemToken is int clientPositionToken && clientPositionToken != 0)
             {
-                return unchecked((short)clientPositionToken);
+                inventoryPosition = unchecked((short)clientPositionToken);
+                return true;
             }
 
-            return unchecked((short)(inventoryRowIndex + 1));
+            if (inventoryRowIndex >= 0)
+            {
+                inventoryPosition = unchecked((short)(inventoryRowIndex + 1));
+                return true;
+            }
+
+            inventoryPosition = 0;
+            return false;
         }
     }
 }

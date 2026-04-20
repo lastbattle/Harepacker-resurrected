@@ -659,24 +659,26 @@ namespace HaCreator.MapSimulator.Character
         {
             bool onLadderOrRope = Player?.Physics?.IsOnLadderOrRope == true
                                   || Player?.State is PlayerState.Ladder or PlayerState.Rope;
-            int? layerZFromVecCtrlState = ResolveDragonOwnerLayerZFromVecCtrlState(
+            int? dragonAnchorLayerPage = null;
+            int? dragonAnchorLayerZMass = null;
+            if (_findFoothold != null)
+            {
+                FootholdLine dragonFoothold = _findFoothold(dragonAnchor.X, dragonAnchor.Y, DragonVecCtrlLayerSearchRange);
+                if (dragonFoothold != null)
+                {
+                    dragonAnchorLayerPage = dragonFoothold.LayerNumber;
+                    dragonAnchorLayerZMass = dragonFoothold.PlatformNumber;
+                }
+            }
+
+            return ResolveDragonOwnerLayerZFromVecCtrlContext(
+                dragonAnchorLayerPage,
+                dragonAnchorLayerZMass,
                 Player?.Physics?.CurrentFoothold?.LayerNumber,
                 Player?.Physics?.CurrentFoothold?.PlatformNumber,
                 Player?.Physics?.FallStartFoothold?.LayerNumber,
                 Player?.Physics?.FallStartFoothold?.PlatformNumber,
                 onLadderOrRope);
-            if (layerZFromVecCtrlState.HasValue)
-            {
-                return layerZFromVecCtrlState.Value;
-            }
-
-            if (_findFoothold == null)
-            {
-                return null;
-            }
-
-            FootholdLine foothold = _findFoothold(dragonAnchor.X, dragonAnchor.Y, DragonVecCtrlLayerSearchRange);
-            return ResolveDragonOwnerLayerZFromFoothold(foothold, onLadderOrRope);
         }
 
         internal static int? ResolveDragonOwnerLayerZFromFoothold(FootholdLine foothold, bool onLadderOrRope)
@@ -709,6 +711,32 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return DragonCompanionRuntime.ResolveClientOwnerLayerZFromVecCtrlContext(
+                fallStartLayerPage,
+                fallStartLayerZMass,
+                onLadderOrRope);
+        }
+
+        internal static int? ResolveDragonOwnerLayerZFromVecCtrlContext(
+            int? dragonAnchorLayerPage,
+            int? dragonAnchorLayerZMass,
+            int? currentLayerPage,
+            int? currentLayerZMass,
+            int? fallStartLayerPage,
+            int? fallStartLayerZMass,
+            bool onLadderOrRope)
+        {
+            int? dragonAnchorLayerZ = DragonCompanionRuntime.ResolveClientOwnerLayerZFromVecCtrlContext(
+                dragonAnchorLayerPage,
+                dragonAnchorLayerZMass,
+                onLadderOrRope);
+            if (dragonAnchorLayerZ.HasValue)
+            {
+                return dragonAnchorLayerZ.Value;
+            }
+
+            return ResolveDragonOwnerLayerZFromVecCtrlState(
+                currentLayerPage,
+                currentLayerZMass,
                 fallStartLayerPage,
                 fallStartLayerZMass,
                 onLadderOrRope);
@@ -1461,6 +1489,11 @@ namespace HaCreator.MapSimulator.Character
         internal bool HasMobStatus(PlayerMobStatusEffect effect)
         {
             return _mobStatusController?.HasStatusEffect(effect) == true;
+        }
+
+        internal bool CanAutoSelectMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
+        {
+            return _mobStatusController?.CanAutoSelectMobSkill(skillId, runtimeData, currentTime, sourceX) == true;
         }
 
         internal bool TryGetFearMobStatusVisualState(int currentTime, out float intensity, out int remainingDurationMs)

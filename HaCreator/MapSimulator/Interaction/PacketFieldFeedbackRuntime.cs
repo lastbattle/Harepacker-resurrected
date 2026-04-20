@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<string, bool> IsBlockedFriendName { get; init; }
         internal Func<bool> IsUnderCover { get; init; }
         internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
+        internal Func<bool> ConsumeWhisperChaseTransferRequest { get; init; }
         internal Action<string, string, byte, int> UpdateWhisperUserListLocation { get; init; }
         internal Action<string> ShowBlowWeatherMessage { get; init; }
         internal Func<IReadOnlyList<PacketFieldSwindleWarningEntry>> ResolveSwindleWarnings { get; init; }
@@ -880,8 +881,11 @@ namespace HaCreator.MapSimulator.Interaction
                         int value = reader.ReadInt32();
                         TryBuildWhisperFindMessage(subtype, target, result, value, callbacks, out string resolved);
                         bool queuedTransfer = false;
+                        bool consumeWhisperChaseTransfer = subtype == 9
+                            && callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
                         if (subtype == 9
                             && result == 1
+                            && consumeWhisperChaseTransfer
                             && HasWhisperTransferTarget(value, callbacks)
                             && TryReadWhisperFindTransferPosition(reader, stream, out int transferX, out int transferY))
                         {
@@ -901,7 +905,10 @@ namespace HaCreator.MapSimulator.Interaction
 
                         if (!string.IsNullOrWhiteSpace(resolved))
                         {
-                            callbacks?.AddClientChatMessage?.Invoke(resolved, 1, null);
+                            callbacks?.AddClientChatMessage?.Invoke(
+                                resolved,
+                                ResolveWhisperFindChatLogType(subtype, result, resolved),
+                                null);
                         }
 
                         _statusMessage = queuedTransfer
@@ -2031,6 +2038,18 @@ namespace HaCreator.MapSimulator.Interaction
             x = reader.ReadInt32();
             y = reader.ReadInt32();
             return true;
+        }
+
+        private static int ResolveWhisperFindChatLogType(byte subtype, byte result, string message)
+        {
+            if (subtype == 9
+                && result == 1
+                && !string.IsNullOrWhiteSpace(message))
+            {
+                return 7;
+            }
+
+            return 12;
         }
 
         private static string ResolveBossTimerChatText(

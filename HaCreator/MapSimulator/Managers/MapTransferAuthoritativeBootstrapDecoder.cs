@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int SetFieldServerFileTimeByteLength = sizeof(long);
         private const int MaximumOpaquePostMapTransferTailByteLength = 64;
         private const int MaximumOpaqueBetweenLogoutGiftAndServerFileTimeByteLength = 256;
+        private const int MaximumOpaqueBeforeServerFileTimeByteLength = 256;
         private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int);
         private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);
         private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
@@ -1137,6 +1138,12 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 }
 
+                if (TryValidateKnownTrailingServerFileTimeTail(trailingTail, out bool matchedKnownServerFileTimeTail))
+                {
+                    matchedKnownTail = matchedKnownServerFileTimeTail;
+                    return true;
+                }
+
                 // Keep map-transfer bootstrap recovery resilient when additional
                 // CharacterData tail bytes follow known sections.
                 return trailingByteCount > 0 && trailingByteCount <= MaximumOpaquePostMapTransferTailByteLength;
@@ -1218,6 +1225,32 @@ namespace HaCreator.MapSimulator.Managers
             matchedKnownTail = trailingOpaqueLength == 0 ||
                                trailingOpaqueLength == SetFieldServerFileTimeByteLength ||
                                hasTrailingServerFileTimeSuffix;
+            return true;
+        }
+
+        private static bool TryValidateKnownTrailingServerFileTimeTail(
+            ReadOnlySpan<byte> trailingTail,
+            out bool matchedKnownTail)
+        {
+            matchedKnownTail = false;
+            if (trailingTail.Length < SetFieldServerFileTimeByteLength)
+            {
+                return false;
+            }
+
+            if (!TryMatchTrailingServerFileTimeSuffix(
+                    trailingTail.ToArray(),
+                    out int opaqueBeforeServerFileTimeLength))
+            {
+                return false;
+            }
+
+            if (opaqueBeforeServerFileTimeLength > MaximumOpaqueBeforeServerFileTimeByteLength)
+            {
+                return false;
+            }
+
+            matchedKnownTail = true;
             return true;
         }
 

@@ -628,8 +628,8 @@ namespace HaCreator.MapSimulator
                     activeRaise.QrData = qrData;
                 }
 
-                QuestRewardRaiseState observedRaise = _questRewardRaiseManager.GetObservedRaiseByQuestId(questId);
-                if (observedRaise != null)
+                if (_questRewardRaiseManager.TrySetQrDataForQuest(questId, qrData, out QuestRewardRaiseState observedRaise)
+                    && observedRaise != null)
                 {
                     observedRaise.QrData = qrData;
                 }
@@ -690,6 +690,11 @@ namespace HaCreator.MapSimulator
                 && Math.Max(0, activeRaise.Prompt?.QuestId ?? 0) == questId
                 ? activeRaise
                 : _questRewardRaiseManager.GetObservedRaiseByQuestId(questId);
+            if (observedRaise == null)
+            {
+                observedRaise = _questRewardRaiseManager.EnsureRetainedRaiseForInboundPacket(packet);
+            }
+
             bool raiseIsActive = ReferenceEquals(observedRaise, activeRaise);
             if (observedRaise == null)
             {

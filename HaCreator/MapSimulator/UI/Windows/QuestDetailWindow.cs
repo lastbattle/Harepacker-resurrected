@@ -29,6 +29,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientLogTextArrayBaseY = 127;
         private const int ClientSummaryClipY = 252;
         private const int ClientSummaryClipHeight = 111;
+        private const int ClientCtCullTopPadding = 48;
+        private const int ClientCtLogCullBottomPadding = 24;
+        private const int ClientCtSummaryCullBottomPadding = 26;
         private const int ClientScrLogLenWithSummary = 120;
         private const int ClientScrLogLenWithoutSummary = 238;
         private const float ClientTitleX = 35f;
@@ -1011,6 +1014,14 @@ namespace HaCreator.MapSimulator.UI
                 lane,
                 (token, drawPosition, _, drawStyle) =>
                 {
+                    int cullBottomPadding = clipRect.Height == ClientSummaryClipHeight
+                        ? ClientCtSummaryCullBottomPadding
+                        : ClientCtLogCullBottomPadding;
+                    if (!IsWithinClientCtCullBand(token, drawPosition, clipRect, cullBottomPadding))
+                    {
+                        return;
+                    }
+
                     if (token.Texture != null)
                     {
                         DrawTextureClipped(
@@ -1043,6 +1054,20 @@ namespace HaCreator.MapSimulator.UI
                     }
                 },
                 color);
+        }
+
+        private static bool IsWithinClientCtCullBand(
+            RichTextToken token,
+            Vector2 drawPosition,
+            Rectangle clipRect,
+            int cullBottomPadding)
+        {
+            int tokenTop = (int)Math.Floor(drawPosition.Y + token.DrawOffsetY);
+            int tokenHeight = token.Height > 0 ? token.Height : 0;
+            int tokenBottom = tokenTop + tokenHeight;
+            int cullTop = clipRect.Top - ClientCtCullTopPadding;
+            int cullBottom = clipRect.Bottom + Math.Max(0, cullBottomPadding);
+            return tokenBottom >= cullTop && tokenTop < cullBottom;
         }
 
         private float AdvanceRichText(string text, float maxWidth, float scale, QuestDetailTextLane lane)

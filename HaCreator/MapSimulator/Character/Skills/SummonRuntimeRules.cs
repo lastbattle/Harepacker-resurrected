@@ -323,6 +323,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        internal static bool IsStrictPacketSkillBranchAction(byte packetAction)
+        {
+            return (packetAction & 0x7F) == PacketSkillActionSubsummon;
+        }
+
         internal static SummonAssistType ResolvePacketSkillAssistTypeForRuntimeOwnership(
             SkillData skill,
             byte packetAction,

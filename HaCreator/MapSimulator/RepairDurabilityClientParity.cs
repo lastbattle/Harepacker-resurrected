@@ -197,6 +197,17 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryResolveEncodedPositionFromSlotHint(
+                    slot,
+                    itemId,
+                    preferHiddenLayer,
+                    visibleEquipmentByBodyPart,
+                    hiddenEquipmentByBodyPart,
+                    out encodedPosition))
+            {
+                return true;
+            }
+
             if (TryResolveEncodedPositionFromAvatarLook(
                     itemId,
                     preferHiddenLayer,
@@ -208,6 +219,88 @@ namespace HaCreator.MapSimulator
             }
 
             return TryEncodeLegacyEquippedPosition(slot, out encodedPosition);
+        }
+
+        private static bool TryResolveEncodedPositionFromSlotHint(
+            EquipSlot slot,
+            int itemId,
+            bool preferHiddenLayer,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
+            out int encodedPosition)
+        {
+            encodedPosition = int.MinValue;
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            List<byte> preferredBodyParts = BuildPreferredBodyPartCandidates(slot);
+            if (preferredBodyParts.Count <= 0)
+            {
+                return false;
+            }
+
+            if (preferHiddenLayer)
+            {
+                return TryResolveEncodedPositionFromPreferredBodyParts(itemId, preferredBodyParts, hiddenEquipmentByBodyPart, out encodedPosition)
+                       || TryResolveEncodedPositionFromPreferredBodyParts(itemId, preferredBodyParts, visibleEquipmentByBodyPart, out encodedPosition);
+            }
+
+            return TryResolveEncodedPositionFromPreferredBodyParts(itemId, preferredBodyParts, visibleEquipmentByBodyPart, out encodedPosition)
+                   || TryResolveEncodedPositionFromPreferredBodyParts(itemId, preferredBodyParts, hiddenEquipmentByBodyPart, out encodedPosition);
+        }
+
+        private static List<byte> BuildPreferredBodyPartCandidates(EquipSlot slot)
+        {
+            var candidates = new List<byte>(capacity: 3);
+            if (TryResolveLegacyBodyPart(slot, out int legacyBodyPart))
+            {
+                candidates.Add((byte)legacyBodyPart);
+            }
+
+            int rawSlot = (int)slot;
+            if (rawSlot > 0
+                && rawSlot <= 59
+                && !candidates.Contains((byte)rawSlot))
+            {
+                candidates.Add((byte)rawSlot);
+            }
+
+            return candidates;
+        }
+
+        private static bool TryResolveEncodedPositionFromPreferredBodyParts(
+            int itemId,
+            IReadOnlyList<byte> preferredBodyParts,
+            IReadOnlyDictionary<byte, int> equipmentByBodyPart,
+            out int encodedPosition)
+        {
+            encodedPosition = int.MinValue;
+            if (equipmentByBodyPart == null
+                || equipmentByBodyPart.Count <= 0
+                || preferredBodyParts == null
+                || preferredBodyParts.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < preferredBodyParts.Count; i++)
+            {
+                byte preferredBodyPart = preferredBodyParts[i];
+                if (preferredBodyPart == 0
+                    || preferredBodyPart > 59
+                    || !equipmentByBodyPart.TryGetValue(preferredBodyPart, out int preferredItemId)
+                    || preferredItemId != itemId)
+                {
+                    continue;
+                }
+
+                encodedPosition = -preferredBodyPart;
+                return true;
+            }
+
+            return false;
         }
 
         internal static bool TryEncodeLegacyEquippedPosition(EquipSlot slot, out int encodedPosition)

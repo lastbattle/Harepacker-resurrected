@@ -1654,7 +1654,12 @@ namespace HaCreator.MapSimulator.UI
             frameIndex = 0;
             remainingText = string.Empty;
             return _skillManager != null
-                && _skillManager.TryGetCooldownMaskVisualState(skillId, currentTime, out frameIndex, out remainingText);
+                && _skillManager.TryGetCooldownMaskVisualState(
+                    skillId,
+                    currentTime,
+                    SkillManager.CooldownMaskSurface.SkillBookBigBang,
+                    out frameIndex,
+                    out remainingText);
         }
 
         private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int frameIndex)
@@ -1675,7 +1680,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(frameIndex);
+            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(
+                frameIndex,
+                SkillManager.CooldownMaskSurface.SkillBookBigBang);
             int overlayHeight = Math.Clamp((int)Math.Ceiling(iconRect.Height * remainingProgress), 0, iconRect.Height);
             if (overlayHeight <= 0)
             {

@@ -369,6 +369,7 @@ namespace HaCreator.MapSimulator.Character
             public int PreparedSourceLayerCurrentTime { get; set; } = int.MinValue;
             public int PreparedTransitionStartTime { get; set; } = int.MinValue;
             public int LastInsertCanvasTime { get; set; } = int.MinValue;
+            public int LastInsertCanvasSourceLayerCurrentTime { get; set; } = int.MinValue;
             public int LastInsertCanvasLayerObjectId { get; set; }
             public AvatarRenderLayer? LastInsertCanvasSourceLayer { get; set; }
             public AvatarRenderLayer? LastInsertCanvasOverlayTargetLayer { get; set; }
@@ -6366,6 +6367,7 @@ namespace HaCreator.MapSimulator.Character
                     PreparedSourceLayerCurrentTime = int.MinValue,
                     PreparedTransitionStartTime = int.MinValue,
                     LastInsertCanvasTime = int.MinValue,
+                    LastInsertCanvasSourceLayerCurrentTime = int.MinValue,
                     LastInsertCanvasLayerObjectId = 0,
                     LastInsertCanvasSourceLayer = null,
                     LastInsertCanvasOverlayTargetLayer = null,
@@ -6537,10 +6539,13 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int liveSourceSignature = ComputeMirrorImageSourceLayerSignature(liveSourceParts);
+            int liveSourceLayerCurrentTime = GetRenderAnimationTime(currentTime);
             bool shouldUseLiveSourceLayer = ShouldUseLiveMirrorImageSourceLayerForInsertCanvas(
                 preparedLayer.PreparedLayerObjectId,
                 preparedLayer.LastInsertCanvasLayerObjectId,
                 preparedLayer.RenderLayer,
+                liveSourceLayerCurrentTime,
+                preparedLayer.LastInsertCanvasSourceLayerCurrentTime,
                 ResolveMirrorImageSourcePartsObjectId(liveSourceParts),
                 preparedLayer.LastInsertCanvasSourcePartsObjectId,
                 liveSourceSignature,
@@ -6556,6 +6561,7 @@ namespace HaCreator.MapSimulator.Character
                     preparedLayer,
                     liveSourceSignature,
                     currentTime,
+                    liveSourceLayerCurrentTime,
                     hasSourceCanvas: true,
                     sourceParts: liveSourceParts,
                     insertsLiveSourceCanvas: true);
@@ -6639,6 +6645,7 @@ namespace HaCreator.MapSimulator.Character
                     preparedLayer,
                     sourceSignature,
                     currentTime,
+                    sourceLayerCurrentTime,
                     hasSourceCanvas,
                     sourceParts,
                     insertsLiveSourceCanvas: false);
@@ -6686,6 +6693,7 @@ namespace HaCreator.MapSimulator.Character
                     preparedLayer,
                     sourceSignature,
                     currentTime,
+                    sourceLayerCurrentTime,
                     hasLiveInsertCanvasSource,
                     sourceParts,
                     insertsLiveSourceCanvas: false);
@@ -6752,6 +6760,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer,
                 sourceSignature,
                 currentTime,
+                sourceLayerCurrentTime,
                 HasMirrorImageInsertCanvasSource(
                     HasMirrorImageLiveSourceCanvas(sourceParts)),
                 sourceParts,
@@ -6783,6 +6792,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedSourceLayerCurrentTime = int.MinValue;
             preparedLayer.PreparedTransitionStartTime = int.MinValue;
             preparedLayer.LastInsertCanvasTime = int.MinValue;
+            preparedLayer.LastInsertCanvasSourceLayerCurrentTime = int.MinValue;
             preparedLayer.LastInsertCanvasLayerObjectId = 0;
             preparedLayer.LastInsertCanvasSourceLayer = null;
             preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
@@ -6798,6 +6808,7 @@ namespace HaCreator.MapSimulator.Character
             MirrorImagePreparedSourceLayer preparedLayer,
             int sourceSignature,
             int currentTime,
+            int sourceLayerCurrentTime,
             bool hasSourceCanvas,
             IReadOnlyList<AssembledPart> sourceParts,
             bool insertsLiveSourceCanvas)
@@ -6816,6 +6827,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 preparedLayer.LastInsertedSourceSignature = 0;
                 preparedLayer.LastInsertCanvasTime = int.MinValue;
+                preparedLayer.LastInsertCanvasSourceLayerCurrentTime = int.MinValue;
                 preparedLayer.LastInsertCanvasLayerObjectId = 0;
                 preparedLayer.LastInsertCanvasSourceLayer = null;
                 preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
@@ -6829,6 +6841,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasTime = ResolveMirrorImageLastInsertCanvasTime(
                 preparedLayer.LastInsertCanvasTime,
                 currentTime,
+                updatesFromLiveInsertCanvas);
+            preparedLayer.LastInsertCanvasSourceLayerCurrentTime = ResolveMirrorImageLastInsertCanvasSourceLayerCurrentTime(
+                preparedLayer.LastInsertCanvasSourceLayerCurrentTime,
+                sourceLayerCurrentTime,
                 updatesFromLiveInsertCanvas);
             preparedLayer.LastInsertCanvasLayerObjectId = ResolveMirrorImageLastInsertCanvasLayerObjectId(
                 preparedLayer.LastInsertCanvasLayerObjectId,
@@ -7100,6 +7116,16 @@ namespace HaCreator.MapSimulator.Character
                 : existingLastInsertCanvasTime;
         }
 
+        internal static int ResolveMirrorImageLastInsertCanvasSourceLayerCurrentTime(
+            int existingSourceLayerCurrentTime,
+            int sourceLayerCurrentTime,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && sourceLayerCurrentTime != int.MinValue
+                ? sourceLayerCurrentTime
+                : existingSourceLayerCurrentTime;
+        }
+
         internal static int ResolveMirrorImageLastInsertCanvasLayerObjectId(
             int existingLayerObjectId,
             int currentLayerObjectId,
@@ -7367,6 +7393,8 @@ namespace HaCreator.MapSimulator.Character
             int preparedLayerObjectId,
             int lastInsertCanvasLayerObjectId,
             AvatarRenderLayer sourceLayer,
+            int sourceLayerCurrentTime,
+            int lastInsertCanvasSourceLayerCurrentTime,
             int sourcePartsObjectId,
             int lastInsertCanvasSourcePartsObjectId,
             int sourceSignature,
@@ -7415,6 +7443,25 @@ namespace HaCreator.MapSimulator.Character
                 && lastInsertCanvasTime != int.MinValue
                 && currentTime < lastInsertCanvasTime;
             if (insertTimelineRegressed)
+            {
+                return true;
+            }
+
+            bool sourceLayerTimeMissing = sourceLayerCurrentTime == int.MinValue
+                || lastInsertCanvasSourceLayerCurrentTime == int.MinValue;
+            if (sourceLayerTimeMissing)
+            {
+                return true;
+            }
+
+            bool sourceLayerTimelineRegressed = sourceLayerCurrentTime < lastInsertCanvasSourceLayerCurrentTime;
+            if (sourceLayerTimelineRegressed)
+            {
+                return true;
+            }
+
+            bool sourceLayerTimelineAdvanced = sourceLayerCurrentTime > lastInsertCanvasSourceLayerCurrentTime;
+            if (sourceLayerTimelineAdvanced)
             {
                 return true;
             }
@@ -9027,25 +9074,11 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            SkillAnimation playbackAnimation = _activeShadowPartner.CurrentPlaybackAnimation;
-            if (playbackAnimation?.Frames == null || playbackAnimation.Frames.Count == 0)
-            {
-                if (_activeShadowPartner.ActionAnimations == null
-                    || !_activeShadowPartner.ActionAnimations.TryGetValue(_activeShadowPartner.CurrentActionName, out playbackAnimation))
-                {
-                    return false;
-                }
-            }
-
-            if (!IsShadowPartnerBlockingAction(_activeShadowPartner.CurrentActionName))
-            {
-                return false;
-            }
-
             int elapsedTime = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
             return ShadowPartnerClientActionResolver.ShouldHoldBlockingAction(
                 _activeShadowPartner.CurrentActionName,
-                playbackAnimation,
+                _activeShadowPartner.CurrentPlaybackAnimation,
+                _activeShadowPartner.ActionAnimations,
                 elapsedTime);
         }
 

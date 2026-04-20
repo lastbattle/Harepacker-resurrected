@@ -2439,7 +2439,7 @@ namespace HaCreator.MapSimulator
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                 string failureDetail = $"{DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName)} could not find an HP potion to use.";
-                _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.NoHpPotion, currentTickCount);
                 return failureDetail;
             }
 
@@ -2458,7 +2458,7 @@ namespace HaCreator.MapSimulator
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                 string missingSlotDetail = $"{petLabel} {requestMode} could not queue {target.Candidate.ItemName} because the shared inventory slot could not be resolved.";
-                _localOverlayRuntime.SetFieldHazardFollowUp(missingSlotDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                _localOverlayRuntime.SetFieldHazardFollowUp(missingSlotDetail, FieldHazardFollowUpKind.NoHpPotion, currentTickCount);
                 return missingSlotDetail;
             }
 

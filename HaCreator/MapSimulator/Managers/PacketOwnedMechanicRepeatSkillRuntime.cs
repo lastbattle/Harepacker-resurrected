@@ -44,10 +44,13 @@ namespace HaCreator.MapSimulator.Managers
             @"byte\s*(?<index>\d+)\s*:\s*0x(?<observed>[0-9A-Fa-f]{1,2})\s*->\s*0x(?<rebuilt>[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex Sg88MismatchByteListAssignmentRegex = new(
-            @"(?<label>mismatchBytes|mismatchByteIndices|byteIndices)\s*=\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^\s;\)]+)",
+            @"[""']?(?<label>mismatchBytes|mismatchByteIndices|byteIndices)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^\s;\)]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchSingleByteAssignmentRegex = new(
-            @"(?<label>mismatchByte|mismatchByteIndex|byteIndex)\s*=\s*(?<value>[^\s;\),|]+)",
+            @"[""']?(?<label>mismatchByte|mismatchByteIndex|byteIndex)[""']?\s*[:=]\s*(?<value>[^\s;\),|]+)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex Sg88MismatchFieldListAssignmentRegex = new(
+            @"[""']?(?<label>mismatchFields|mismatchFieldNames|fieldNames|fields)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^;\)\r\n]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
@@ -473,12 +476,27 @@ namespace HaCreator.MapSimulator.Managers
                     out int[] compactByteIndices)
                 || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
                     decodeDetail,
+                    "mismatchBytes:",
+                    requireClosingBracket: false,
+                    out compactByteIndices)
+                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
                     "mismatchByteIndices=",
                     requireClosingBracket: false,
                     out compactByteIndices)
                 || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
                     decodeDetail,
+                    "mismatchByteIndices:",
+                    requireClosingBracket: false,
+                    out compactByteIndices)
+                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
                     "byteIndices=",
+                    requireClosingBracket: false,
+                    out compactByteIndices)
+                || TryExtractSg88ReplayParityMismatchByteIndicesSegment(
+                    decodeDetail,
+                    "byteIndices:",
                     requireClosingBracket: false,
                     out compactByteIndices))
             {
@@ -493,7 +511,9 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByte=", out int mismatchByteIndex)
-                || TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByteIndex=", out mismatchByteIndex))
+                || TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByte:", out mismatchByteIndex)
+                || TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByteIndex=", out mismatchByteIndex)
+                || TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByteIndex:", out mismatchByteIndex))
             {
                 byteIndices = new[] { mismatchByteIndex };
                 return true;
@@ -519,6 +539,12 @@ namespace HaCreator.MapSimulator.Managers
                     byteIndices = parsed;
                     return true;
                 }
+            }
+
+            if (TryExtractSg88ReplayParityMismatchFieldIndicesByRegex(decodeDetail, out int[] mismatchFieldByteIndices))
+            {
+                byteIndices = mismatchFieldByteIndices;
+                return true;
             }
 
             const string legacyMarker = "byteIndex=";
@@ -702,6 +728,36 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        private static bool TryExtractSg88ReplayParityMismatchFieldIndicesByRegex(string decodeDetail, out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
+            if (string.IsNullOrWhiteSpace(decodeDetail))
+            {
+                return false;
+            }
+
+            MatchCollection matches = Sg88MismatchFieldListAssignmentRegex.Matches(decodeDetail);
+            foreach (Match match in matches.Cast<Match>())
+            {
+                Group valueGroup = match.Groups["value"];
+                if (!valueGroup.Success)
+                {
+                    continue;
+                }
+
+                int[] parsedByteIndices = ParseSg88ReplayParityMismatchFieldList(valueGroup.Value);
+                if (parsedByteIndices.Length == 0)
+                {
+                    continue;
+                }
+
+                byteIndices = parsedByteIndices;
+                return true;
+            }
+
+            return false;
+        }
+
         private static List<int> ParseSg88ReplayParityMismatchByteList(string rawSegment)
         {
             List<int> parsedByteIndices = new();
@@ -746,6 +802,110 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return parsedByteIndices;
+        }
+
+        private static int[] ParseSg88ReplayParityMismatchFieldList(string rawSegment)
+        {
+            HashSet<int> parsedByteIndices = new();
+            if (string.IsNullOrWhiteSpace(rawSegment))
+            {
+                return Array.Empty<int>();
+            }
+
+            string normalizedSegment = NormalizeSg88MismatchByteListSegment(rawSegment);
+            if (string.IsNullOrWhiteSpace(normalizedSegment))
+            {
+                return Array.Empty<int>();
+            }
+
+            string[] tokens = normalizedSegment.Split(
+                Sg88MismatchByteListSeparators,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (string rawToken in tokens)
+            {
+                if (string.IsNullOrWhiteSpace(rawToken))
+                {
+                    continue;
+                }
+
+                string token = NormalizeSg88MismatchByteToken(rawToken).Trim().Trim('"', '\'');
+                if (token.StartsWith("field", StringComparison.OrdinalIgnoreCase))
+                {
+                    token = token.Substring("field".Length).TrimStart(':', '=', '_', '-').Trim();
+                }
+
+                if (TryParseSg88ReplayParityMismatchFieldToken(token, out int[] fieldByteIndices))
+                {
+                    foreach (int byteIndex in fieldByteIndices)
+                    {
+                        if (byteIndex >= 0)
+                        {
+                            parsedByteIndices.Add(byteIndex);
+                        }
+                    }
+                }
+            }
+
+            return parsedByteIndices
+                .OrderBy(index => index)
+                .ToArray();
+        }
+
+        private static bool TryParseSg88ReplayParityMismatchFieldToken(string token, out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalized = token.Trim().Replace("_", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
+            if (normalized.StartsWith("payload", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring("payload".Length);
+            }
+
+            switch (normalized)
+            {
+                case "opcode":
+                    byteIndices = new[] { 0, 1 };
+                    return true;
+                case "requesttime":
+                case "requesttick":
+                case "tick":
+                    byteIndices = new[] { 2, 3, 4, 5 };
+                    return true;
+                case "skillid":
+                case "skill":
+                    byteIndices = new[] { 6, 7, 8, 9 };
+                    return true;
+                case "skilllevel":
+                case "level":
+                    byteIndices = new[] { 10 };
+                    return true;
+                case "x":
+                case "xpos":
+                case "positionx":
+                    byteIndices = new[] { 11, 12 };
+                    return true;
+                case "y":
+                case "ypos":
+                case "positiony":
+                    byteIndices = new[] { 13, 14 };
+                    return true;
+                case "moveaction":
+                case "move":
+                case "moveactionlowbit":
+                    byteIndices = new[] { Sg88FirstUseMoveActionByteIndex };
+                    return true;
+                case "vecctrl":
+                case "vecctrlstate":
+                case "vectorctrl":
+                    byteIndices = new[] { Sg88FirstUseVecCtrlByteIndex };
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static string NormalizeSg88MismatchByteListSegment(string rawSegment)

@@ -517,7 +517,17 @@ namespace HaCreator.MapSimulator.UI
 
             if (request.Kind == EquipmentChangeRequestKind.CharacterToCharacter)
             {
-                return inventoryType == ClientEquipInventoryType;
+                if (request.RequestedPart?.IsCash == true)
+                {
+                    return inventoryType == ClientCashInventoryType;
+                }
+
+                if (request.RequestedPart?.IsCash == false)
+                {
+                    return inventoryType == ClientEquipInventoryType;
+                }
+
+                return IsSupportedClientCharacterInventoryType(inventoryType);
             }
 
             if (request.RequestedPart?.IsCash == true)
@@ -543,7 +553,17 @@ namespace HaCreator.MapSimulator.UI
 
             if (request.Kind == EquipmentChangeRequestKind.CharacterToCharacter)
             {
-                return inventoryType == ClientEquipInventoryType;
+                if (request.RequestedPart?.IsCash == true)
+                {
+                    return inventoryType == ClientCashInventoryType;
+                }
+
+                if (request.RequestedPart?.IsCash == false)
+                {
+                    return inventoryType == ClientEquipInventoryType;
+                }
+
+                return IsSupportedClientCharacterInventoryType(inventoryType);
             }
 
             if (request.RequestedPart?.IsCash == true)
@@ -1121,9 +1141,10 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (inventoryType != ClientEquipInventoryType)
+                    if (!IsExpectedCharacterSourceInventory(request, inventoryType)
+                        || !IsExpectedCharacterTargetInventory(request, inventoryType))
                     {
-                        rejectReason = "Character move inventory-operation swap did not target the equipped inventory.";
+                        rejectReason = "Character move inventory-operation swap did not target the expected character inventory.";
                         return false;
                     }
 
@@ -1225,9 +1246,9 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (inventoryType != ClientEquipInventoryType)
+                    if (!IsExpectedCharacterTargetInventory(request, inventoryType))
                     {
-                        rejectReason = "Character move inventory-operation add entry did not target the equipped inventory.";
+                        rejectReason = "Character move inventory-operation add entry did not target the expected character inventory.";
                         return false;
                     }
 

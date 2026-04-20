@@ -6962,7 +6962,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Massacre timerboard and gauge flow",
 
-                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result>|unmap <opcode|all>|stop]]",
+                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result>|unmap <opcode|all>|recent [count]|clearrecent|stop]]",
                 args =>
                 {
                     MassacreField massacre = _specialFieldRuntime.SpecialEffects.Massacre;
@@ -7413,7 +7413,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result>|unmap <opcode|all>|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result>|unmap <opcode|all>|recent [count]|clearrecent|stop]]");
                 });
 
 

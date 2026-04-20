@@ -3917,7 +3917,55 @@ namespace HaCreator.MapSimulator.Interaction
                 return nestedSelection ?? variantChild;
             }
 
+            WzImageProperty fallbackChild = SelectConversationDefaultVariantChild(property, variantChildren);
+            if (fallbackChild != null)
+            {
+                WzImageProperty nestedFallback = SelectConversationVariantProperty(
+                    fallbackChild,
+                    npcId,
+                    currentJob,
+                    currentSubJob,
+                    currentLevel,
+                    currentFame,
+                    currentGender,
+                    questStateResolver);
+                return nestedFallback ?? fallbackChild;
+            }
+
             return property;
+        }
+
+        private static WzImageProperty SelectConversationDefaultVariantChild(
+            WzImageProperty property,
+            IReadOnlyList<WzImageProperty> variantChildren)
+        {
+            if (property?.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return null;
+            }
+
+            HashSet<WzImageProperty> variantSet = variantChildren?.Count > 0
+                ? new HashSet<WzImageProperty>(variantChildren)
+                : null;
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty child = property.WzProperties[i];
+                if (!int.TryParse(child?.Name, out int pageIndex) ||
+                    pageIndex < 0 ||
+                    pageIndex >= 200)
+                {
+                    continue;
+                }
+
+                if (variantSet?.Contains(child) == true || HasConversationVariantMetadata(child))
+                {
+                    continue;
+                }
+
+                return child;
+            }
+
+            return null;
         }
 
         private static List<WzImageProperty> GetConversationVariantChildren(WzImageProperty property)
@@ -9362,23 +9410,43 @@ namespace HaCreator.MapSimulator.Interaction
                 return ParseConversationPages(selectedProperty);
             }
 
-            if (!HasConversationVariantMetadata(selectedProperty))
+            if (IsConversationNumericChild(containerProperty, selectedProperty))
             {
-                return ParseConversationPages(selectedProperty);
-            }
-
-            List<WzImageProperty> sequencePages = CollectConversationVariantPageSequence(containerProperty, selectedProperty);
-            if (sequencePages.Count > 0)
-            {
-                return ParseConversationPageSequence(
-                    sequencePages,
-                    rootChoiceProperty: selectedProperty,
-                    fallbackRootChoiceProperty: containerProperty,
-                    rootStopProperty: selectedProperty?["stop"],
-                    fallbackRootStopProperty: containerProperty?["stop"]);
+                List<WzImageProperty> sequencePages = CollectConversationVariantPageSequence(containerProperty, selectedProperty);
+                if (sequencePages.Count > 0)
+                {
+                    return ParseConversationPageSequence(
+                        sequencePages,
+                        rootChoiceProperty: selectedProperty,
+                        fallbackRootChoiceProperty: containerProperty,
+                        rootStopProperty: selectedProperty?["stop"],
+                        fallbackRootStopProperty: containerProperty?["stop"]);
+                }
             }
 
             return ParseConversationPages(selectedProperty);
+        }
+
+        private static bool IsConversationNumericChild(WzImageProperty containerProperty, WzImageProperty selectedProperty)
+        {
+            if (containerProperty?.WzProperties == null || selectedProperty == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < containerProperty.WzProperties.Count; i++)
+            {
+                WzImageProperty child = containerProperty.WzProperties[i];
+                if (ReferenceEquals(child, selectedProperty) &&
+                    int.TryParse(child?.Name, out int pageIndex) &&
+                    pageIndex >= 0 &&
+                    pageIndex < 200)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationVariantStopPages(

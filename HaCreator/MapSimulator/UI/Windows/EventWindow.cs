@@ -49,6 +49,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _contentLayerOffset;
         private readonly Point _calendarOverlayOffset;
         private readonly Point _calendarGridOffset;
+        private readonly Point _rowTextureOffset;
+        private readonly Point _slotTextureOffset;
         private readonly Point _statusLaneAnchorOffset;
         private readonly int _statusLaneMaxWidth;
         private readonly int _alarmStripClipHeight;
@@ -82,7 +84,7 @@ namespace HaCreator.MapSimulator.UI
             string windowName,
             Texture2D normalRowTexture,
             Texture2D selectedRowTexture)
-            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(11, 88), new Point(6, 23), new Point(12, 68), new Point(226, 5), 57, 35)
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(11, 88), new Point(6, 23), new Point(12, 68), Point.Zero, Point.Zero, new Point(226, 5), 57, 35)
         {
         }
 
@@ -103,6 +105,8 @@ namespace HaCreator.MapSimulator.UI
             Point contentLayerOffset,
             Point calendarOverlayOffset,
             Point calendarGridOffset,
+            Point rowTextureOffset,
+            Point slotTextureOffset,
             Point statusLaneAnchorOffset,
             int statusLaneMaxWidth,
             int alarmStripClipHeight)
@@ -123,6 +127,8 @@ namespace HaCreator.MapSimulator.UI
             _contentLayerOffset = new Point(Math.Max(0, contentLayerOffset.X), Math.Max(0, contentLayerOffset.Y));
             _calendarOverlayOffset = new Point(Math.Max(0, calendarOverlayOffset.X), Math.Max(0, calendarOverlayOffset.Y));
             _calendarGridOffset = new Point(Math.Max(0, calendarGridOffset.X), Math.Max(0, calendarGridOffset.Y));
+            _rowTextureOffset = rowTextureOffset;
+            _slotTextureOffset = slotTextureOffset;
             _statusLaneAnchorOffset = statusLaneAnchorOffset;
             _statusLaneMaxWidth = Math.Max(40, statusLaneMaxWidth);
             _alarmStripClipHeight = Math.Max(1, alarmStripClipHeight);
@@ -360,7 +366,8 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle slotBounds = ResolveEventRowSlotBounds(
                     bounds,
                     _slotTexture?.Width ?? 35,
-                    _slotTexture?.Height ?? 35);
+                    _slotTexture?.Height ?? 35,
+                    _slotTextureOffset);
                 if (_slotTexture != null)
                 {
                     sprite.Draw(_slotTexture, new Vector2(slotBounds.X, slotBounds.Y), Color.White);
@@ -871,7 +878,8 @@ namespace HaCreator.MapSimulator.UI
                 visibleIndex,
                 _normalRowTexture?.Width ?? _selectedRowTexture?.Width ?? 288,
                 _normalRowTexture?.Height ?? _selectedRowTexture?.Height ?? 78,
-                _contentLayerOffset);
+                _contentLayerOffset,
+                _rowTextureOffset);
         }
 
         internal readonly struct EventRowTextLayout
@@ -916,24 +924,58 @@ namespace HaCreator.MapSimulator.UI
             int visibleIndex,
             int authoredRowWidth,
             int authoredRowHeight,
+            Point contentLayerOffset,
+            Point rowTextureOffset)
+        {
+            // WZ evidence: UIWindow2.img/EventList/main/event/{normal,select} canvases
+            // carry their own origin vectors, so rows stay in authored owner space.
+            int rowHeight = Math.Max(1, authoredRowHeight);
+            int rowStride = rowHeight + 4;
+            return new Rectangle(
+                windowX + Math.Max(0, contentLayerOffset.X + 5 + rowTextureOffset.X),
+                windowY + contentTop + rowTextureOffset.Y + (Math.Max(0, visibleIndex) * rowStride),
+                Math.Max(1, authoredRowWidth),
+                rowHeight);
+        }
+
+        internal static Rectangle ResolveEventRowBounds(
+            int windowX,
+            int windowY,
+            int contentTop,
+            int visibleIndex,
+            int authoredRowWidth,
+            int authoredRowHeight,
             Point contentLayerOffset)
         {
-            // WZ evidence: UIWindow2.img/EventList/main/event/normal is 288x78 with origin (0,0).
+            return ResolveEventRowBounds(
+                windowX,
+                windowY,
+                contentTop,
+                visibleIndex,
+                authoredRowWidth,
+                authoredRowHeight,
+                contentLayerOffset,
+                Point.Zero);
+        }
+
+        internal static Rectangle ResolveEventRowSlotBounds(
+            Rectangle rowBounds,
+            int authoredSlotWidth,
+            int authoredSlotHeight,
+            Point slotTextureOffset)
+        {
+            // WZ evidence: EventList/main/event/slot is authored as its own canvas and can
+            // carry origin offsets that should be preserved in owner-local row layout.
             return new Rectangle(
-                windowX + Math.Max(0, contentLayerOffset.X + 5),
-                windowY + contentTop + (Math.Max(0, visibleIndex) * 82),
-                Math.Max(1, authoredRowWidth),
-                Math.Max(1, authoredRowHeight));
+                rowBounds.X + 10 + slotTextureOffset.X,
+                rowBounds.Y + 8 + slotTextureOffset.Y,
+                Math.Max(1, authoredSlotWidth),
+                Math.Max(1, authoredSlotHeight));
         }
 
         internal static Rectangle ResolveEventRowSlotBounds(Rectangle rowBounds, int authoredSlotWidth, int authoredSlotHeight)
         {
-            // WZ evidence: UIWindow2.img/EventList/main/event/slot is 35x35 with origin (0,0).
-            return new Rectangle(
-                rowBounds.X + 10,
-                rowBounds.Y + 8,
-                Math.Max(1, authoredSlotWidth),
-                Math.Max(1, authoredSlotHeight));
+            return ResolveEventRowSlotBounds(rowBounds, authoredSlotWidth, authoredSlotHeight, Point.Zero);
         }
 
         internal static EventRowTextLayout ResolveEventRowTextLayout(Rectangle rowBounds, Rectangle slotBounds)

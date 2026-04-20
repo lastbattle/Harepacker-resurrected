@@ -273,7 +273,7 @@ namespace HaCreator.MapSimulator.UI
         internal Func<int, int, bool> OnImeCandidateSelected;
         internal Action<int, bool> OnClientForwardedFunctionKeyStateChanged;
         internal Action<int, bool> OnClientForwardedNonFunctionHotkeyStateChanged;
-        internal Action<Keys, bool, bool, bool> OnClientForwardedNonFunctionPhysicalKeyStateChanged;
+        internal Action<Keys, bool, bool, bool, bool, bool> OnClientForwardedNonFunctionPhysicalKeyStateChanged;
         internal Func<IntPtr> ResolveImeWindowHandle;
         #endregion
 
@@ -2568,10 +2568,20 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(key, true, controlHeld, shiftHeld);
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(
+                    key,
+                    true,
+                    controlHeld,
+                    shiftHeld,
+                    imeCompositionActive,
+                    imeCandidateWindowActive);
                 _forwardedNonFunctionPhysicalKeys.Add(key);
 
                 if (!hasHotkeySlotCallback
+                    || SkillMacroOwnerKeyHandler.ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                        key,
+                        imeCompositionActive,
+                        imeCandidateWindowActive)
                     || !SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out int hotkeySlot))
                 {
                     continue;
@@ -2594,7 +2604,13 @@ namespace HaCreator.MapSimulator.UI
                 bool wasForwarded = _forwardedNonFunctionPhysicalKeys.Remove(key);
                 if (wasForwarded)
                 {
-                    OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(key, false, controlHeld, shiftHeld);
+                    OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(
+                        key,
+                        false,
+                        controlHeld,
+                        shiftHeld,
+                        imeCompositionActive,
+                        imeCandidateWindowActive);
                 }
 
                 if (!hasHotkeySlotCallback)
@@ -2602,7 +2618,17 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (!_forwardedNonFunctionHotkeySlotsByPhysicalKey.TryGetValue(key, out int hotkeySlot)
+                bool hasTrackedHotkeySlot = _forwardedNonFunctionHotkeySlotsByPhysicalKey.TryGetValue(key, out int hotkeySlot);
+                if (!hasTrackedHotkeySlot
+                    && SkillMacroOwnerKeyHandler.ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                        key,
+                        imeCompositionActive,
+                        imeCandidateWindowActive))
+                {
+                    continue;
+                }
+
+                if (!hasTrackedHotkeySlot
                     && !SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out hotkeySlot))
                 {
                     continue;
@@ -2659,7 +2685,7 @@ namespace HaCreator.MapSimulator.UI
             _forwardedNonFunctionPhysicalKeys.Clear();
             for (int i = 0; i < physicalKeys.Length; i++)
             {
-                OnClientForwardedNonFunctionPhysicalKeyStateChanged(physicalKeys[i], false, false, false);
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged(physicalKeys[i], false, false, false, false, false);
             }
         }
 

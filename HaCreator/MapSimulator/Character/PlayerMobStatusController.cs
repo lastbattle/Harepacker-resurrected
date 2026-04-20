@@ -315,6 +315,15 @@ namespace HaCreator.MapSimulator.Character
                 case 137:
                     ApplyStatus(PlayerMobStatusEffect.Fear, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 50));
                     return true;
+                case 138:
+                    ApplyPeriodicDamageStatus(
+                        PlayerMobStatusEffect.Burn,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 1),
+                        ResolveTickInterval(runtimeData, 1000),
+                        runtimeData.Count);
+                    return true;
                 case 172:
                 case 173:
                     return ApplyPolymorphStatus(runtimeData, currentTime);
@@ -435,7 +444,7 @@ namespace HaCreator.MapSimulator.Character
         {
             return skillId switch
             {
-                120 or 121 or 122 or 123 or 124 or 125 or 126 or 128 or 129 or 131 or 132 or 133 or 135 or 136 or 137 => true,
+                120 or 121 or 122 or 123 or 124 or 125 or 126 or 128 or 129 or 131 or 132 or 133 or 135 or 136 or 137 or 138 => true,
                 _ => false
             };
         }
@@ -481,6 +490,102 @@ namespace HaCreator.MapSimulator.Character
         public bool HasStatusEffect(PlayerMobStatusEffect effect)
         {
             return HasStatus(effect);
+        }
+
+        public bool CanAutoSelectMobSkill(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
+        {
+            RemoveExpiredEffects(currentTime);
+            if (runtimeData == null)
+            {
+                return false;
+            }
+
+            switch (skillId)
+            {
+                case 120:
+                    return WouldStatusApplicationChangeState(PlayerMobStatusEffect.Seal, runtimeData.DurationMs, currentTime, 1);
+                case 121:
+                    return WouldStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Darkness,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 20));
+                case 122:
+                    return WouldStatusApplicationChangeState(PlayerMobStatusEffect.Weakness, runtimeData.DurationMs, currentTime, 1);
+                case 123:
+                    return WouldStatusApplicationChangeState(PlayerMobStatusEffect.Stun, runtimeData.DurationMs, currentTime, 1);
+                case 124:
+                    return WouldStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Curse,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 50));
+                case 125:
+                    return WouldPeriodicStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Poison,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 10),
+                        ResolveTickInterval(runtimeData, 1000),
+                        0);
+                case 126:
+                    return WouldStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Slow,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 20));
+                case 127:
+                    return _skills?.ActiveBuffs?.Count > 0;
+                case 128:
+                    return WouldStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Attract,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveSeduceDirection(sourceX));
+                case 129:
+                    return WouldStatusApplicationChangeState(PlayerMobStatusEffect.Banish, runtimeData.DurationMs, currentTime, 1);
+                case 131:
+                    return WouldStatusApplicationChangeState(PlayerMobStatusEffect.Freeze, runtimeData.DurationMs, currentTime, 1);
+                case 132:
+                    return WouldStatusApplicationChangeState(PlayerMobStatusEffect.ReverseInput, runtimeData.DurationMs, currentTime, 1);
+                case 133:
+                    return WouldStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Undead,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 100));
+                case 134:
+                    return WouldPeriodicStatusApplicationChangeState(
+                        PlayerMobStatusEffect.PainMark,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 1),
+                        ResolveTickInterval(runtimeData, 1000),
+                        runtimeData.Count);
+                case 135:
+                    return WouldStatusApplicationChangeState(PlayerMobStatusEffect.StopPotion, runtimeData.DurationMs, currentTime, 1);
+                case 136:
+                    return WouldStatusApplicationChangeState(PlayerMobStatusEffect.StopMotion, runtimeData.DurationMs, currentTime, 1);
+                case 137:
+                    return WouldStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Fear,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 50));
+                case 138:
+                    return WouldPeriodicStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Burn,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 1),
+                        ResolveTickInterval(runtimeData, 1000),
+                        runtimeData.Count);
+                case 172:
+                case 173:
+                    return WouldPolymorphApplicationChangeState(runtimeData, currentTime);
+                default:
+                    return false;
+            }
         }
 
         public bool TryGetFearVisualState(int currentTime, out float intensity, out int remainingDurationMs)
@@ -662,6 +767,72 @@ namespace HaCreator.MapSimulator.Character
             return Math.Clamp(percent, 1, 100);
         }
 
+        private bool WouldStatusApplicationChangeState(
+            PlayerMobStatusEffect effect,
+            int durationMs,
+            int currentTime,
+            int value)
+        {
+            if (effect == PlayerMobStatusEffect.None || durationMs <= 0)
+            {
+                return false;
+            }
+
+            if (!_entries.TryGetValue(effect, out PlayerMobStatusEntry existingEntry))
+            {
+                return true;
+            }
+
+            int targetExpiration = currentTime + durationMs;
+            return targetExpiration > existingEntry.ExpirationTime
+                   || existingEntry.Value != value;
+        }
+
+        private bool WouldPeriodicStatusApplicationChangeState(
+            PlayerMobStatusEffect effect,
+            int durationMs,
+            int currentTime,
+            int value,
+            int tickIntervalMs,
+            int remainingCount)
+        {
+            if (WouldStatusApplicationChangeState(effect, durationMs, currentTime, value))
+            {
+                return true;
+            }
+
+            if (!_entries.TryGetValue(effect, out PlayerMobStatusEntry existingEntry))
+            {
+                return false;
+            }
+
+            return existingEntry.TickIntervalMs != tickIntervalMs
+                   || existingEntry.RemainingCount != Math.Max(0, remainingCount);
+        }
+
+        private bool WouldPolymorphApplicationChangeState(MobSkillRuntimeData runtimeData, int currentTime)
+        {
+            if (runtimeData == null || runtimeData.DurationMs <= 0)
+            {
+                return false;
+            }
+
+            int morphTemplateId = runtimeData.X;
+            if (morphTemplateId <= 0)
+            {
+                return false;
+            }
+
+            if (!_entries.TryGetValue(PlayerMobStatusEffect.Polymorph, out PlayerMobStatusEntry existingEntry))
+            {
+                return _player?.CanApplyExternalAvatarTransform((int)PlayerMobStatusEffect.Polymorph, actionName: null, morphTemplateId) == true;
+            }
+
+            int targetExpiration = currentTime + runtimeData.DurationMs;
+            return existingEntry.Value != morphTemplateId
+                   || targetExpiration > existingEntry.ExpirationTime;
+        }
+
         private int ResolveSeduceDirection(float sourceX)
         {
             if (sourceX < _player.X)
@@ -760,3 +931,4 @@ namespace HaCreator.MapSimulator.Character
         }
     }
 }
+

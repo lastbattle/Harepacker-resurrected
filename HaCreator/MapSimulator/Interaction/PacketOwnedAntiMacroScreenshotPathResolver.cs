@@ -61,6 +61,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string BuildFilePath(string baseFolder, string userName, DateTime localTime)
         {
+            string resolvedUserName = userName ?? string.Empty;
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}\\{1}_{2:yyyyMMdd_HHmmss}.jpg",
+                baseFolder ?? string.Empty,
+                resolvedUserName,
+                localTime);
+        }
+
+        internal static string BuildFallbackSafeFilePath(string baseFolder, string userName, DateTime localTime)
+        {
             string safeUserName = SanitizeUserName(userName);
             return string.Format(
                 CultureInfo.InvariantCulture,

@@ -123,6 +123,16 @@ namespace HaCreator.MapSimulator.UI
             return Math.Max(0, metadataItemId);
         }
 
+        internal static int ResolvePacketOwnedCommoditySerialNumber(int packetSerialNumber, int metadataSerialNumber)
+        {
+            if (packetSerialNumber > 0)
+            {
+                return packetSerialNumber;
+            }
+
+            return Math.Max(0, metadataSerialNumber);
+        }
+
         internal static bool CanCreateFallbackPacketOwnedCommodityRow(
             int packetItemId,
             long packetPrice)
