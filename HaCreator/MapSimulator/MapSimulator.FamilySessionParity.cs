@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Net;
 
@@ -8,6 +9,8 @@ namespace HaCreator.MapSimulator
     {
         private const int FamilyOfficialSessionBridgeDefaultListenPort = 18506;
         private const ushort FamilyOfficialSessionBridgeDefaultChartOpcode = 98;
+        // IDA evidence: CWvsContext::SendUseFamilyPrivilege (0xA09EE0) builds COutPacket(175).
+        private const ushort FamilyUsePrivilegeRequestOpcode = 175;
         private const int FamilyOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
 
         private readonly MessengerOfficialSessionBridgeManager _familyOfficialSessionBridge =
@@ -154,6 +157,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 bool applied = _familyChartRuntime.TryApplyClientPacketPayload(message.Opcode, message.Payload, out string detail);
+                if (applied)
+                {
+                    detail = AppendFamilyPrivilegeTransferCompletion(detail);
+                }
+
                 _familyOfficialSessionBridge.RecordDispatchResult(message.Source, applied, $"CWvsContext::OnPacket family opcode {message.Opcode}: {detail}");
                 if (string.IsNullOrWhiteSpace(detail))
                 {
@@ -171,9 +179,107 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private string HandleFamilyEntitlementUseResult(FamilyEntitlementUseResult result)
+        {
+            string detail = result.Message ?? string.Empty;
+            if (result.DispatchClientPrivilegeRequest && result.PrivilegeRequestIndex >= 0)
+            {
+                if (TryMirrorFamilyUsePrivilegeClientRequest(
+                        result.PrivilegeRequestIndex,
+                        result.IncludePrivilegeTargetName,
+                        result.PrivilegeTargetName,
+                        out string dispatchStatus))
+                {
+                    detail = string.IsNullOrWhiteSpace(detail)
+                        ? dispatchStatus
+                        : $"{detail} {dispatchStatus}";
+                }
+                else
+                {
+                    detail = string.IsNullOrWhiteSpace(detail)
+                        ? dispatchStatus
+                        : $"{detail} {dispatchStatus}";
+                }
+            }
+
+            if (result.RequestTeleport)
+            {
+                _playerManager?.TeleportTo(result.TeleportPosition.X, result.TeleportPosition.Y);
+            }
+
+            return AppendFamilyPrivilegeTransferCompletion(detail);
+        }
+
+        private string AppendFamilyPrivilegeTransferCompletion(string detail)
+        {
+            if (!_familyChartRuntime.TryConsumeQueuedPrivilegeTeleport(out var teleportPosition, out string teleportMessage))
+            {
+                return detail ?? string.Empty;
+            }
+
+            _playerManager?.TeleportTo(teleportPosition.X, teleportPosition.Y);
+            if (string.IsNullOrWhiteSpace(teleportMessage))
+            {
+                teleportMessage = "Completed packet-owned family privilege transfer.";
+            }
+
+            if (string.IsNullOrWhiteSpace(detail))
+            {
+                return teleportMessage;
+            }
+
+            return $"{detail} {teleportMessage}";
+        }
+
+        private bool TryMirrorFamilyUsePrivilegeClientRequest(
+            int privilegeIndex,
+            bool includeTargetName,
+            string targetName,
+            out string status,
+            bool queueOnly = false)
+        {
+            if (privilegeIndex < 0)
+            {
+                status = "Family privilege request index must be non-negative.";
+                return false;
+            }
+
+            byte[] payload = FamilyPacketCodec.BuildUsePrivilegeRequestPayload(
+                privilegeIndex,
+                includeTargetName,
+                targetName);
+            string payloadHex = Convert.ToHexString(payload);
+            if (queueOnly)
+            {
+                if (_familyOfficialSessionBridge.TryQueueOutboundPacket(FamilyUsePrivilegeRequestOpcode, payload, out string queueStatus))
+                {
+                    status = $"Mirrored CWvsContext::SendUseFamilyPrivilege index {privilegeIndex} as queued opcode {FamilyUsePrivilegeRequestOpcode} [{payloadHex}]. {queueStatus}";
+                    return true;
+                }
+
+                status = $"Failed to queue CWvsContext::SendUseFamilyPrivilege index {privilegeIndex} as opcode {FamilyUsePrivilegeRequestOpcode} [{payloadHex}]. {queueStatus}";
+                return false;
+            }
+
+            if (_familyOfficialSessionBridge.TrySendOutboundPacket(FamilyUsePrivilegeRequestOpcode, payload, out string sendStatus))
+            {
+                status = $"Mirrored CWvsContext::SendUseFamilyPrivilege index {privilegeIndex} as opcode {FamilyUsePrivilegeRequestOpcode} [{payloadHex}] through the live family session bridge. {sendStatus}";
+                return true;
+            }
+
+            if (_familyOfficialSessionBridge.TryQueueOutboundPacket(FamilyUsePrivilegeRequestOpcode, payload, out string deferredQueueStatus))
+            {
+                status = $"Queued CWvsContext::SendUseFamilyPrivilege index {privilegeIndex} as opcode {FamilyUsePrivilegeRequestOpcode} [{payloadHex}] after immediate live injection was unavailable. Bridge: {sendStatus} Deferred queue: {deferredQueueStatus}";
+                return true;
+            }
+
+            status = $"Failed to mirror CWvsContext::SendUseFamilyPrivilege index {privilegeIndex} as opcode {FamilyUsePrivilegeRequestOpcode} [{payloadHex}]. Bridge: {sendStatus} Queue: {deferredQueueStatus}";
+            return false;
+        }
+
         private ChatCommandHandler.CommandResult HandleFamilySessionCommand(string[] args)
         {
-            const string usage = "Usage: /family session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /family session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeFamilyOfficialSessionBridgeStatus());
@@ -202,6 +308,86 @@ namespace HaCreator.MapSimulator
 
                 return ChatCommandHandler.CommandResult.Info(
                     _familyOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+            }
+
+            if (string.Equals(args[0], "history", StringComparison.OrdinalIgnoreCase))
+            {
+                int count = 10;
+                if (args.Length >= 2 && (!int.TryParse(args[1], out count) || count <= 0))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /family session history [count]");
+                }
+
+                return ChatCommandHandler.CommandResult.Info(_familyOfficialSessionBridge.DescribeRecentOutboundPackets(count));
+            }
+
+            if (string.Equals(args[0], "clearhistory", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_familyOfficialSessionBridge.ClearRecentOutboundPackets());
+            }
+
+            if (string.Equals(args[0], "replay", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !int.TryParse(args[1], out int historyIndex) || historyIndex <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /family session replay <historyIndex>");
+                }
+
+                return _familyOfficialSessionBridge.TryReplayRecentOutboundPacket(historyIndex, out string replayStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(replayStatus)
+                    : ChatCommandHandler.CommandResult.Error(replayStatus);
+            }
+
+            if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "queue", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !int.TryParse(args[1], out int privilegeIndex) || privilegeIndex < 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /family session <send|queue> <privilegeIndex> [targetName]");
+                }
+
+                bool queueOnly = string.Equals(args[0], "queue", StringComparison.OrdinalIgnoreCase);
+                string targetName = args.Length >= 3
+                    ? string.Join(" ", args, 2, args.Length - 2).Trim()
+                    : string.Empty;
+                bool includeTargetName = !string.IsNullOrWhiteSpace(targetName);
+                return TryMirrorFamilyUsePrivilegeClientRequest(
+                        privilegeIndex,
+                        includeTargetName,
+                        targetName,
+                        out string sendFamilyStatus,
+                        queueOnly)
+                    ? ChatCommandHandler.CommandResult.Ok(sendFamilyStatus)
+                    : ChatCommandHandler.CommandResult.Error(sendFamilyStatus);
+            }
+
+            if (string.Equals(args[0], "sendraw", StringComparison.OrdinalIgnoreCase))
+            {
+                string parseError = null;
+                if (args.Length < 2 || !FamilyPacketCodec.TryParseHexBytes(string.Join(string.Empty, args, 1, args.Length - 1), out byte[] payload, out parseError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(parseError ?? "Usage: /family session sendraw <hex>");
+                }
+
+                return _familyOfficialSessionBridge.TrySendOutboundPacket(
+                        FamilyUsePrivilegeRequestOpcode,
+                        payload,
+                        out string sendRawStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(sendRawStatus)
+                    : ChatCommandHandler.CommandResult.Error(sendRawStatus);
+            }
+
+            if (string.Equals(args[0], "sendpacketraw", StringComparison.OrdinalIgnoreCase))
+            {
+                string parseError = null;
+                if (args.Length < 2 || !FamilyPacketCodec.TryParseHexBytes(string.Join(string.Empty, args, 1, args.Length - 1), out byte[] rawPacket, out parseError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(parseError ?? "Usage: /family session sendpacketraw <opcode-framed-hex>");
+                }
+
+                return _familyOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string sendRawPacketStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(sendRawPacketStatus)
+                    : ChatCommandHandler.CommandResult.Error(sendRawPacketStatus);
             }
 
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))

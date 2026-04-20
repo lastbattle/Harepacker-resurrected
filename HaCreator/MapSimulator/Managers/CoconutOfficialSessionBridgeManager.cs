@@ -935,7 +935,7 @@ namespace HaCreator.MapSimulator.Managers
                     filteredCandidates.Select(candidate =>
                         $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"))
                 + Environment.NewLine
-                + "Discovery identifies established Maple sockets. Use `/coconut session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or `/coconut session startauto ...` to arm the localhost proxy for decrypt/inject ownership after Maple reconnects through it.";
+                + "Discovery identifies established Maple sockets. Use `/coconut session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or use `/coconut session attachproxy ...` / `/coconut session startauto ...` to arm the localhost proxy for decrypt/inject ownership after Maple reconnects through it.";
         }
 
         private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(

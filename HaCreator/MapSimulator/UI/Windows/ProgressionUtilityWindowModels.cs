@@ -1721,6 +1721,7 @@ namespace HaCreator.MapSimulator.UI
         public int SourceTick { get; init; } = int.MinValue;
         public int SortPriority { get; init; }
         public int SortOrder { get; init; }
+        public bool IncludeInCalendar { get; init; } = true;
     }
 
     internal sealed class EventAlarmLineSnapshot

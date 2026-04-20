@@ -360,7 +360,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                StopInternal(clearPending: true);
+                StopInternal(clearPending: false);
                 _passiveEstablishedSession = candidate;
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
                 RemotePort = candidate.RemoteEndpoint.Port;
@@ -408,7 +408,10 @@ namespace HaCreator.MapSimulator.Managers
                 LastStatus =
                     $"Observed already-established Monster Carnival Maple socket pair {DescribeEstablishedSession(candidate)}. " +
                     $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover decrypt/inject ownership for inbound 346-353 and outbound opcode {OutboundRequestOpcode}. " +
-                    $"Opcode {OutboundRequestOpcode} requests will queue until the proxied handshake initializes.";
+                    $"Opcode {OutboundRequestOpcode} requests will queue until the proxied handshake initializes." +
+                    (_pendingOutboundRequests.IsEmpty
+                        ? string.Empty
+                        : $" Preserved {_pendingOutboundRequests.Count} previously queued request(s) from passive attach.");
                 status = LastStatus;
                 return true;
             }
@@ -576,14 +579,9 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (HasPassiveEstablishedSocketPair && !IsRunning)
-            {
-                status = $"Monster Carnival official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Deferred opcode {OutboundRequestOpcode} queueing only applies to sessions that reconnect through the localhost proxy.";
-                LastStatus = status;
-                return false;
-            }
+            bool passiveOnlyObserve = HasPassiveEstablishedSocketPair && !IsRunning;
 
-            if (!IsRunning && !HasAttachedClient)
+            if (!IsRunning && !HasAttachedClient && !passiveOnlyObserve)
             {
                 status = "Monster Carnival official-session bridge is not armed for deferred live-session injection.";
                 LastStatus = status;
@@ -594,7 +592,9 @@ namespace HaCreator.MapSimulator.Managers
             _pendingOutboundRequests.Enqueue(new PendingRequest(tab, entryIndex, rawPacket));
             QueuedCount++;
             RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"queue-request tab={(int)tab} index={entryIndex}");
-            status = HasPassiveEstablishedSocketPair
+            status = passiveOnlyObserve
+                ? $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) while passively observing an established socket pair. Run /mcarnival session attachproxy <listenPort|0> <remotePort> ... to arm reconnect and flush this queue after handshake init."
+                : HasPassiveEstablishedSocketPair
                 ? $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) for the proxied reconnect handshake."
                 : $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) for deferred live-session injection.";
             LastStatus = status;

@@ -638,15 +638,17 @@ namespace HaCreator.MapSimulator.UI
         private void UpdateInteractiveState()
         {
             IReadOnlyList<StoreBankOwnerRowSnapshot> rows = GetRows();
+            int visualRowCount = GetVisualRowCount();
             bool rowSelectionLocked = _runtime?.HasPendingFeeCalculationRequest == true
                 || _runtime?.HasPendingGetAllRequest == true
                 || _runtime?.HasAcceptedGetAllRequestInFlight == true;
             bool canSelect = IsVisible && rows.Count > 0 && !rowSelectionLocked;
             for (int i = 0; i < _rowButtons.Count; i++)
             {
-                bool visible = _scrollOffset + i < rows.Count;
+                bool visible = _scrollOffset + i < visualRowCount;
                 _rowButtons[i].SetVisible(visible);
-                _rowButtons[i].SetEnabled(visible && canSelect);
+                bool hasItem = _scrollOffset + i < rows.Count;
+                _rowButtons[i].SetEnabled(visible && hasItem && canSelect);
             }
 
             _getButton?.SetEnabled(IsGetButtonEnabled());
@@ -788,7 +790,14 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetMaxScrollOffset()
         {
-            return Math.Max(0, GetRows().Count - VisibleRowCount);
+            return Math.Max(0, GetVisualRowCount() - VisibleRowCount);
+        }
+
+        private int GetVisualRowCount()
+        {
+            int itemRowCount = GetRows().Count;
+            int ownerSlotCount = Math.Max(0, _runtime?.OwnerSlotCount ?? 0);
+            return Math.Max(itemRowCount, ownerSlotCount);
         }
 
         private void SyncOwnerRowRevision()

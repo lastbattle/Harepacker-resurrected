@@ -964,6 +964,13 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
         }
 
+        internal static bool ShouldClearPacketOwnedQuestResultStartQuestRequestLatchFromSharedExclusiveReset(
+            bool requestSent)
+        {
+            // Follow-up quest-start ownership shares CWvsContext exclusive-request send state.
+            return requestSent;
+        }
+
         private bool TryConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(byte[] payload)
         {
             if (!_packetOwnedQuestResultStartQuestRequestSent ||

@@ -69,6 +69,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action ClearBossTimerClock { get; init; }
         internal Action<PacketFieldClockVisualState> ShowFieldClock { get; init; }
         internal Action ClearFieldClock { get; init; }
+        internal Func<bool> RestoreFieldPropertyClock { get; init; }
+        internal Action InvalidateWhisperUserListWindow { get; init; }
     }
 
     internal sealed record PacketFieldSwindleWarningEntry(
@@ -889,6 +891,7 @@ namespace HaCreator.MapSimulator.Interaction
                         if (subtype == 72)
                         {
                             callbacks?.UpdateWhisperUserListLocation?.Invoke(target, resolved, result, value);
+                            callbacks?.InvalidateWhisperUserListWindow?.Invoke();
                             _statusMessage = queuedTransfer
                                 ? $"Updated packet-owned whisper find-reply for {target} and queued map transfer."
                                 : $"Updated packet-owned whisper find-reply for {target}.";
@@ -1303,7 +1306,10 @@ namespace HaCreator.MapSimulator.Interaction
             _fieldClockEventFlag = false;
             callbacks?.ClearBossTimerClock?.Invoke();
             callbacks?.ClearFieldClock?.Invoke();
-            _statusMessage = "Applied packet-owned destroy-clock teardown.";
+            bool restoredFieldPropertyClock = callbacks?.RestoreFieldPropertyClock?.Invoke() == true;
+            _statusMessage = restoredFieldPropertyClock
+                ? "Applied packet-owned destroy-clock teardown and restored the map-authored field clock."
+                : "Applied packet-owned destroy-clock teardown.";
             message = _statusMessage;
             return true;
         }
@@ -1383,7 +1389,10 @@ namespace HaCreator.MapSimulator.Interaction
                         if (!show)
                         {
                             ClearFieldClock(callbacks);
-                            _statusMessage = "Cleared packet-owned event countdown clock.";
+                            bool restoredFieldPropertyClock = callbacks?.RestoreFieldPropertyClock?.Invoke() == true;
+                            _statusMessage = restoredFieldPropertyClock
+                                ? "Cleared packet-owned event countdown clock and restored the map-authored field clock."
+                                : "Cleared packet-owned event countdown clock.";
                             message = _statusMessage;
                             return true;
                         }
@@ -1401,7 +1410,10 @@ namespace HaCreator.MapSimulator.Interaction
                         bool show = reader.ReadByte() != 0;
                         if (!show)
                         {
-                            _statusMessage = "Cleared packet-owned cake-pie timerboard.";
+                            bool restoredFieldPropertyClock = callbacks?.RestoreFieldPropertyClock?.Invoke() == true;
+                            _statusMessage = restoredFieldPropertyClock
+                                ? "Cleared packet-owned cake-pie timerboard and restored the map-authored field clock."
+                                : "Cleared packet-owned cake-pie timerboard.";
                             message = _statusMessage;
                             return true;
                         }

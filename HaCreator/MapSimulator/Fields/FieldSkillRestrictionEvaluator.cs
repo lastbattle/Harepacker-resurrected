@@ -267,16 +267,16 @@ namespace HaCreator.MapSimulator.Fields
                 return "Skills cannot be used while the Mu Lung Dojo massacre field disables skill usage.";
             }
 
-            string noSkillRestrictionMessage = GetNoSkillRestrictionMessage(mapInfo, skill, currentJobId);
-            if (!string.IsNullOrWhiteSpace(noSkillRestrictionMessage))
-            {
-                return noSkillRestrictionMessage;
-            }
-
             string fieldTypeRestrictionMessage = GetClientFieldTypeSkillRestrictionMessage(mapInfo, skill);
             if (!string.IsNullOrWhiteSpace(fieldTypeRestrictionMessage))
             {
                 return fieldTypeRestrictionMessage;
+            }
+
+            string noSkillRestrictionMessage = GetNoSkillRestrictionMessage(mapInfo, skill, currentJobId);
+            if (!string.IsNullOrWhiteSpace(noSkillRestrictionMessage))
+            {
+                return noSkillRestrictionMessage;
             }
 
             // Client evidence: CUserLocal::DoActiveSkill rejects Evan current jobs
@@ -323,14 +323,14 @@ namespace HaCreator.MapSimulator.Fields
                 return null;
             }
 
-            if (MatchesAnyListedSkill(noSkillProperty, skill.SkillId))
-            {
-                return "This skill is forbidden in this field.";
-            }
-
             if (MatchesAnyListedSkillClass(noSkillProperty, currentJobId, skill))
             {
                 return "This field forbids skills for your job branch.";
+            }
+
+            if (MatchesAnyListedSkill(noSkillProperty, skill.SkillId))
+            {
+                return "This skill is forbidden in this field.";
             }
 
             return null;

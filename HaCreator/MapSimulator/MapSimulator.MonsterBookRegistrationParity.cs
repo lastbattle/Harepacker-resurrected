@@ -58,6 +58,8 @@ namespace HaCreator.MapSimulator
             public MonsterBookOwnershipSyncPayload(
                 bool clearRequested,
                 bool replaceExisting,
+                bool hasOwnershipSnapshot,
+                bool? saveAccepted,
                 int? requestId,
                 int? characterId,
                 string characterName,
@@ -67,6 +69,8 @@ namespace HaCreator.MapSimulator
             {
                 ClearRequested = clearRequested;
                 ReplaceExisting = replaceExisting;
+                HasOwnershipSnapshot = hasOwnershipSnapshot;
+                SaveAccepted = saveAccepted;
                 RequestId = requestId;
                 CharacterId = characterId;
                 CharacterName = characterName ?? string.Empty;
@@ -77,6 +81,8 @@ namespace HaCreator.MapSimulator
 
             public bool ClearRequested { get; }
             public bool ReplaceExisting { get; }
+            public bool HasOwnershipSnapshot { get; }
+            public bool? SaveAccepted { get; }
             public int? RequestId { get; }
             public int? CharacterId { get; }
             public string CharacterName { get; }
@@ -275,6 +281,32 @@ namespace HaCreator.MapSimulator
             if (string.IsNullOrWhiteSpace(resolvedCharacterName))
             {
                 resolvedCharacterName = targetBuild?.Name ?? ownerIdentity.CharacterName;
+            }
+
+            if (!sync.HasOwnershipSnapshot)
+            {
+                bool acknowledgedPendingSave = _pendingMonsterBookOwnershipSaveRequest != null
+                    && IsMonsterBookOwnershipSaveAckForPendingRequest(
+                        _pendingMonsterBookOwnershipSaveRequest,
+                        sync.RequestId,
+                        resolvedCharacterId,
+                        resolvedCharacterName);
+                if (acknowledgedPendingSave)
+                {
+                    _pendingMonsterBookOwnershipSaveRequest = null;
+                }
+
+                StampPacketOwnedUtilityRequestState();
+                string ackSummary = sync.SaveAccepted.HasValue && !sync.SaveAccepted.Value
+                    ? "Monster Book ownership-save acknowledgement reported rejection without an ownership snapshot apply."
+                    : "Monster Book ownership-save acknowledgement was applied without forcing a synthetic ownership snapshot.";
+                string ackRequestIdText = sync.RequestId.HasValue && sync.RequestId.Value > 0
+                    ? $" request #{sync.RequestId.Value.ToString(CultureInfo.InvariantCulture)}"
+                    : string.Empty;
+                message = AppendMonsterBookRegistrationStatusText(
+                    sync.StatusText,
+                    $"{ackSummary}{ackRequestIdText}");
+                return true;
             }
 
             MonsterBookSnapshot snapshot = _monsterBookManager.ApplyOwnershipSync(
@@ -509,6 +541,8 @@ namespace HaCreator.MapSimulator
             result = new MonsterBookOwnershipSyncPayload(
                 clearRequested: false,
                 replaceExisting: true,
+                hasOwnershipSnapshot: false,
+                saveAccepted: null,
                 requestId: null,
                 characterId: null,
                 characterName: string.Empty,
@@ -581,6 +615,8 @@ namespace HaCreator.MapSimulator
 
                 bool clearRequested = ReadBoolean(payloadRoot, false, "clear", "reset", "clearRequested");
                 bool replaceExisting = ReadBoolean(payloadRoot, true, "replaceExisting", "replace", "overwrite");
+                bool? saveAccepted = ReadNullableBoolean(payloadRoot, "success", "succeeded", "ok", "accepted", "saved");
+                bool? saveRejected = ReadNullableBoolean(payloadRoot, "failure", "failed", "rejected", "error", "denied");
                 int? requestId = NormalizePositiveInt(ReadInt(payloadRoot, "requestId", "requestToken", "requestSeq", "sequence"));
                 int? characterId = NormalizePositiveInt(ReadInt(payloadRoot, "characterId", "charId", "id"));
                 string characterName = ReadString(payloadRoot, "characterName", "charName", "name", "ownerName");
@@ -593,6 +629,20 @@ namespace HaCreator.MapSimulator
                 if (!requestId.HasValue && usedNestedRoot)
                 {
                     requestId = NormalizePositiveInt(ReadInt(root, "requestId", "requestToken", "requestSeq", "sequence"));
+                }
+                if (!saveAccepted.HasValue && usedNestedRoot)
+                {
+                    saveAccepted = ReadNullableBoolean(root, "success", "succeeded", "ok", "accepted", "saved");
+                }
+
+                if (!saveRejected.HasValue && usedNestedRoot)
+                {
+                    saveRejected = ReadNullableBoolean(root, "failure", "failed", "rejected", "error", "denied");
+                }
+
+                if (!saveAccepted.HasValue && saveRejected == true)
+                {
+                    saveAccepted = false;
                 }
 
                 if (payloadRoot.TryGetProperty("owner", out JsonElement ownerElement)
@@ -620,8 +670,9 @@ namespace HaCreator.MapSimulator
                 }
 
                 Dictionary<int, int> counts = new();
-                if (TryReadMonsterBookCardCounts(payloadRoot, out Dictionary<int, int> parsedCounts)
-                    || (usedNestedRoot && TryReadMonsterBookCardCounts(root, out parsedCounts)))
+                bool hasCountsPayload = TryReadMonsterBookCardCounts(payloadRoot, out Dictionary<int, int> parsedCounts)
+                    || (usedNestedRoot && TryReadMonsterBookCardCounts(root, out parsedCounts));
+                if (hasCountsPayload)
                 {
                     counts = parsedCounts;
                 }
@@ -635,6 +686,8 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
+                    hasOwnershipSnapshot: clearRequested || hasCountsPayload || registeredMobId.HasValue,
+                    saveAccepted: saveAccepted,
                     requestId,
                     characterId,
                     characterName,
@@ -720,6 +773,8 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
+                    hasOwnershipSnapshot: clearRequested || hasRegisteredMob || counts.Count > 0,
+                    saveAccepted: null,
                     requestId,
                     characterId,
                     characterName,
@@ -812,6 +867,8 @@ namespace HaCreator.MapSimulator
                 result = new MonsterBookOwnershipSyncPayload(
                     clearRequested,
                     replaceExisting,
+                    hasOwnershipSnapshot: clearRequested || hasRegisteredMobId || counts.Count > 0,
+                    saveAccepted: null,
                     requestId,
                     characterId,
                     characterName,
@@ -924,6 +981,35 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        private static bool IsMonsterBookOwnershipSaveAckForPendingRequest(
+            PendingMonsterBookOwnershipSaveRequest pendingRequest,
+            int? syncedRequestId,
+            int syncedCharacterId,
+            string syncedCharacterName)
+        {
+            if (pendingRequest == null)
+            {
+                return false;
+            }
+
+            if (syncedRequestId.HasValue && syncedRequestId.Value > 0)
+            {
+                return syncedRequestId.Value == pendingRequest.RequestId;
+            }
+
+            if (syncedCharacterId > 0 && pendingRequest.CharacterId > 0)
+            {
+                return syncedCharacterId == pendingRequest.CharacterId;
+            }
+
+            return !string.IsNullOrWhiteSpace(syncedCharacterName)
+                && !string.IsNullOrWhiteSpace(pendingRequest.CharacterName)
+                && string.Equals(
+                    syncedCharacterName.Trim(),
+                    pendingRequest.CharacterName.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ReadLengthPrefixedUtf8(BinaryReader reader)

@@ -5760,33 +5760,10 @@ namespace HaCreator.MapSimulator.Loaders
                 Position = position
             };
 
-            WzSubProperty skillMainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
-            if (skillMainProperty != null)
-            {
-                WzCanvasProperty tip0 = skillMainProperty["tip0"] as WzCanvasProperty;
-                WzCanvasProperty tip1 = skillMainProperty["tip1"] as WzCanvasProperty;
-                WzCanvasProperty tip2 = skillMainProperty["tip2"] as WzCanvasProperty;
-                window.SetTooltipTextures(new[]
-                {
-                    LoadCanvasTexture(tip0, device),
-                    LoadCanvasTexture(tip1, device),
-                    LoadCanvasTexture(tip2, device)
-                });
-                window.SetTooltipOrigins(new[]
-                {
-                    tip0?.GetCanvasOriginPosition() is System.Drawing.PointF tip0Origin
-                        ? new Point((int)tip0Origin.X, (int)tip0Origin.Y)
-                        : Point.Zero,
-                    tip1?.GetCanvasOriginPosition() is System.Drawing.PointF tip1Origin
-                        ? new Point((int)tip1Origin.X, (int)tip1Origin.Y)
-                        : Point.Zero,
-                    tip2?.GetCanvasOriginPosition() is System.Drawing.PointF tip2Origin
-                        ? new Point((int)tip2Origin.X, (int)tip2Origin.Y)
-                        : Point.Zero
-                });
-            }
+            window.SetTooltipTextures(UILoader.LoadSkillTooltipTextures(device));
+            window.SetTooltipOrigins(UILoader.LoadSkillTooltipOrigins());
 
-            WzSubProperty equipTooltipProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;
+            WzSubProperty equipTooltipProperty = ResolveRepairEquipTooltipProperty(uiWindow2Image);
             if (equipTooltipProperty != null)
             {
                 window.SetEquipTooltipAssets(new EquipUIBigBang.EquipTooltipAssets
@@ -5835,6 +5812,18 @@ namespace HaCreator.MapSimulator.Loaders
 
             window.InitializeButtons(repairAllButton, repairButton, closeButton);
             return window;
+        }
+
+        private static WzSubProperty ResolveRepairEquipTooltipProperty(WzImage uiWindow2Image)
+        {
+            WzSubProperty bigBangProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;
+            if (bigBangProperty != null)
+            {
+                return bigBangProperty;
+            }
+
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            return uiWindowImage?["ToolTip"]?["Equip"] as WzSubProperty;
         }
 
         private static void ApplyRepairButtonOriginPosition(UIObject button, WzSubProperty repairProperty, string buttonName)
@@ -9287,7 +9276,8 @@ namespace HaCreator.MapSimulator.Loaders
                         device,
                         candidateTexture,
                         expandWidth: 0,
-                        expandHeight: 0);
+                        expandHeight: 0,
+                        sourceOffset: candidateOffset);
                     if (setBackgrndTexture != null)
                     {
                         return new DXObject(0, 0, setBackgrndTexture, 0);
@@ -9305,6 +9295,7 @@ namespace HaCreator.MapSimulator.Loaders
                     candidateTexture,
                     composedWidth,
                     composedHeight,
+                    candidateOffset,
                     enforceRequestedSize: backgroundCandidate.RequiresSimulatorComposition);
                 if (clientSizedTexture != null)
                 {
@@ -9365,6 +9356,7 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D sourceTexture,
             int clientOwnerWidth,
             int clientOwnerHeight,
+            Point sourceOffset,
             bool enforceRequestedSize = false)
         {
             if (device == null || sourceTexture == null || clientOwnerWidth <= 0 || clientOwnerHeight <= 0)
@@ -9399,7 +9391,9 @@ namespace HaCreator.MapSimulator.Loaders
                 sourceTexture.Width,
                 sourceTexture.Height,
                 expandedWidth,
-                expandedHeight);
+                expandedHeight,
+                sourceOffset.X,
+                sourceOffset.Y);
             Texture2D clientSizedTexture = new Texture2D(device, expandedWidth, expandedHeight);
             clientSizedTexture.SetData(clientFrameData);
             return clientSizedTexture;
@@ -9409,7 +9403,8 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Texture2D sourceTexture,
             int expandWidth,
-            int expandHeight)
+            int expandHeight,
+            Point sourceOffset)
         {
             if (device == null || sourceTexture == null)
             {
@@ -9439,7 +9434,9 @@ namespace HaCreator.MapSimulator.Loaders
                 sourceTexture.Width,
                 sourceTexture.Height,
                 composedWidth,
-                composedHeight);
+                composedHeight,
+                sourceOffset.X,
+                sourceOffset.Y);
             Texture2D composedTexture = new Texture2D(device, composedWidth, composedHeight);
             composedTexture.SetData(composedData);
             return composedTexture;
@@ -9495,7 +9492,9 @@ namespace HaCreator.MapSimulator.Loaders
             int sourceWidth,
             int sourceHeight,
             int destinationWidth,
-            int destinationHeight)
+            int destinationHeight,
+            int destinationOffsetX = 0,
+            int destinationOffsetY = 0)
         {
             if (destinationWidth <= 0 || destinationHeight <= 0)
             {
@@ -9511,16 +9510,25 @@ namespace HaCreator.MapSimulator.Loaders
                 return destinationData;
             }
 
-            int copyWidth = Math.Min(sourceWidth, destinationWidth);
-            int copyHeight = Math.Min(sourceHeight, destinationHeight);
-            for (int y = 0; y < copyHeight; y++)
+            for (int sourceY = 0; sourceY < sourceHeight; sourceY++)
             {
-                Array.Copy(
-                    sourceData,
-                    y * sourceWidth,
-                    destinationData,
-                    y * destinationWidth,
-                    copyWidth);
+                int destinationY = sourceY + destinationOffsetY;
+                if (destinationY < 0 || destinationY >= destinationHeight)
+                {
+                    continue;
+                }
+
+                for (int sourceX = 0; sourceX < sourceWidth; sourceX++)
+                {
+                    int destinationX = sourceX + destinationOffsetX;
+                    if (destinationX < 0 || destinationX >= destinationWidth)
+                    {
+                        continue;
+                    }
+
+                    destinationData[(destinationY * destinationWidth) + destinationX] =
+                        sourceData[(sourceY * sourceWidth) + sourceX];
+                }
             }
 
             return destinationData;

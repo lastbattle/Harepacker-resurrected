@@ -1421,7 +1421,9 @@ namespace HaCreator.MapSimulator
                     officialChairPacket.CharacterId,
                     officialChairPacket.ChairItemId,
                     out string chairMessage,
-                    officialChairPacket.PairCharacterId);
+                    ResolvePortableChairPairPreferenceFromSeatPacketForParity(
+                        (int)RemoteUserPacketType.UserPortableChairOfficial,
+                        officialChairPacket.PairCharacterId));
                 result = chairApplied
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
                     : chairMessage;
@@ -1749,7 +1751,9 @@ namespace HaCreator.MapSimulator
                         chairPacket.CharacterId,
                         chairPacket.ChairItemId,
                         out string chairMessage,
-                        chairPacket.PairCharacterId);
+                        ResolvePortableChairPairPreferenceFromSeatPacketForParity(
+                            (int)RemoteUserPacketType.UserPortableChair,
+                            chairPacket.PairCharacterId));
                     result = chairApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {chairPacket.CharacterId}."
                         : chairMessage;
@@ -2211,6 +2215,18 @@ namespace HaCreator.MapSimulator
             };
 
             return text != null && (relationshipType != RemoteRelationshipOverlayType.Generic || string.Equals(text.Trim(), "generic", StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static int? ResolvePortableChairPairPreferenceFromSeatPacketForParity(int packetType, int? pairCharacterId)
+        {
+            // CUser::SetActivePortableChair -> CUserPool::OnCoupleChairRecordAdd/Remove
+            // records pair ownership from chair item state only; seat packets do not
+            // carry the pair-owner preference that drives admission.
+            return packetType is
+                (int)RemoteUserPacketType.UserPortableChair
+                or (int)RemoteUserPacketType.UserPortableChairOfficial
+                ? null
+                : pairCharacterId;
         }
 
         private static bool TryParseRemoteUserPacketType(string text, out int packetType)

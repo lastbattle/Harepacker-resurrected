@@ -1761,6 +1761,16 @@ namespace HaCreator.MapSimulator.Physics
         }
 
         /// <summary>
+        /// Snapshot movement path for packet-owned movement registration without appending
+        /// a synthetic latest-state element.
+        /// </summary>
+        public List<MovePathElement> GetMovePathPacketSnapshot(int? timeStampMs = null)
+        {
+            int currentTimeMs = timeStampMs ?? Environment.TickCount;
+            return BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
+        }
+
+        /// <summary>
         /// Make continuous movement path (for smooth network sync).
         /// Client: CVecCtrl::MakeContinuousMovePath
         /// </summary>

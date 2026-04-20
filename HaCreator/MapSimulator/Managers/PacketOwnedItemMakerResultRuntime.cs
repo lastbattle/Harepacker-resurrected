@@ -273,10 +273,25 @@ namespace HaCreator.MapSimulator.Managers
             {
                 1 => MapleStoryStringPool.GetOrFallback(ItemMakerResultNoticeStringPoolId, "This item cannot be disassembled."),
                 2 => MapleStoryStringPool.GetOrFallback(ItemMakerIncorrectRequestStringPoolId, "You have made an incorrect request."),
-                3 => BuildNoEmptySlotNotice(InventoryType.SETUP, disassemblyMode),
-                4 => BuildNoEmptySlotNotice(InventoryType.ETC, disassemblyMode),
+                3 => BuildUnknownNoEmptySlotNotice(disassemblyMode),
+                4 => BuildNoEmptySlotNotice(InventoryType.EQUIP, disassemblyMode),
+                5 => BuildNoEmptySlotNotice(InventoryType.USE, disassemblyMode),
+                6 => BuildNoEmptySlotNotice(InventoryType.SETUP, disassemblyMode),
+                7 => BuildNoEmptySlotNotice(InventoryType.ETC, disassemblyMode),
                 _ => $"Packet-owned maker result code {result.ResultCode} subtype {result.ResultType}."
             };
+        }
+
+        internal static string BuildUnknownNoEmptySlotNotice(bool disassemblyMode = false)
+        {
+            if (disassemblyMode)
+            {
+                return BuildNoEmptySlotNotice(InventoryType.ETC, disassemblyMode: true);
+            }
+
+            return MapleStoryStringPool.GetOrFallback(
+                ItemMakerNoEmptySlotSuffixStringPoolId,
+                "inventory has no empty slot.");
         }
 
         internal static string BuildNoEmptySlotNotice(InventoryType inventoryType, bool disassemblyMode = false)

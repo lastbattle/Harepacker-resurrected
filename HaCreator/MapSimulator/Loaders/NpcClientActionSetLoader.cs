@@ -462,6 +462,36 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         internal static IReadOnlyList<string> BuildClientTemplateActionOrder(
+            WzImage source,
+            int selectedClientActionSetIndex)
+        {
+            if (source == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<NpcClientActionSetDefinition> actionSets = GetClientActionSets(source);
+            if (actionSets.Count <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            if (TryGetClientActionSetDefinition(
+                    actionSets,
+                    selectedClientActionSetIndex,
+                    out NpcClientActionSetDefinition selectedActionSet))
+            {
+                IReadOnlyList<string> selectedTemplateActionOrder = BuildClientTemplateActionOrder(selectedActionSet.Actions);
+                if (selectedTemplateActionOrder.Count > 0)
+                {
+                    return selectedTemplateActionOrder;
+                }
+            }
+
+            return BuildClientTemplateActionOrder(actionSets);
+        }
+
+        internal static IReadOnlyList<string> BuildClientTemplateActionOrder(
             IReadOnlyList<NpcClientActionSetDefinition> actionSets)
         {
             if (actionSets == null || actionSets.Count == 0)
@@ -480,6 +510,27 @@ namespace HaCreator.MapSimulator.Loaders
             foreach (WzImageProperty action in templateActionSource)
             {
                 string actionName = action?.Name;
+                if (IsClientTemplateExtraActionName(actionName) && yielded.Add(actionName))
+                {
+                    templateActionOrder.Add(actionName);
+                }
+            }
+
+            return templateActionOrder;
+        }
+
+        private static IReadOnlyList<string> BuildClientTemplateActionOrder(IReadOnlyList<WzImageProperty> actions)
+        {
+            if (actions == null || actions.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
+            var templateActionOrder = new List<string>();
+            for (int i = 0; i < actions.Count; i++)
+            {
+                string actionName = actions[i]?.Name;
                 if (IsClientTemplateExtraActionName(actionName) && yielded.Add(actionName))
                 {
                     templateActionOrder.Add(actionName);

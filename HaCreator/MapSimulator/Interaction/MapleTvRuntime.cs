@@ -803,10 +803,10 @@ namespace HaCreator.MapSimulator.Interaction
                 _messageStartedAt = currentTick;
                 _activeDurationMs = ResolvePacketTotalWaitDurationMs(totalWaitTime);
                 SetQueueConfirmationWaitFromPacketValue(totalWaitTime, _activeDurationMs);
-                // CMapleTVMan::OnSetMessage keeps the packet wait time verbatim and
-                // drives the receiver surface from the packet-owned message type.
-                _isSelfMessage = !hasReceiverAvatar;
-                _useReceiver = _messageType == 2 || hasReceiverAvatar;
+                // CMapleTVMan::OnSetMessage stores m_nMessageType but determines
+                // self-vs-receiver presentation from nFlag bit 0x02.
+                _isSelfMessage = (flag & 2) == 0;
+                _useReceiver = !_isSelfMessage;
                 _senderBuild = buildResolver?.Invoke(senderLook);
                 if (_senderBuild != null)
                 {

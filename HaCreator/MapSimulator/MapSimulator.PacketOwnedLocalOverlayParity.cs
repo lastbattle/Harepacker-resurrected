@@ -3271,7 +3271,7 @@ namespace HaCreator.MapSimulator
                     _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                     {
                         string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} failed through the packet-owned result path because the HP potion was unavailable.{resultDetailSuffix}";
-                        _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                        _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.NoHpPotion, currentTickCount);
                         return detail;
                     }
 
@@ -4553,7 +4553,7 @@ namespace HaCreator.MapSimulator
                     _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                     {
                         string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} failed through a late packet-owned result because the HP potion was unavailable after the request had already closed.{resultDetailSuffix}";
-                        _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Failure, currentTickCount);
+                        _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.NoHpPotion, currentTickCount);
                         return detail;
                     }
 

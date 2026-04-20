@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator
         private byte[] _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
         private int _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
         private string _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+        private int _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
 
         private sealed record PacketOwnedAntiMacroNoticeDefinition(int StringPoolId, string Text, string AvatarCanvasPath);
         private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string FormatText, bool SaveScreenshot);
@@ -385,6 +386,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
             _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = _localUtilityOfficialSessionBridge.SentCount;
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = _localUtilityOfficialSessionBridge.ReceivedCount;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = ResolvePacketOwnedAntiMacroExpectedResultSource(
                 _localUtilityOfficialSessionBridge.ActiveRemoteEndpoint);
 
@@ -484,6 +486,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
                 _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
                 _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+                _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
                 _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
             }
 
@@ -552,6 +555,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
             _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
             _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
             _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
             _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
             _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
@@ -708,6 +712,21 @@ namespace HaCreator.MapSimulator
 
             return _lastPacketOwnedAntiMacroSubmittedRawPacket != null
                 && _lastPacketOwnedAntiMacroSubmittedRawPacket.Length > 0;
+        }
+
+        private bool HasPacketOwnedAntiMacroAuthoritativeResultEvidence(string resultSource, IReadOnlyList<byte> payload)
+        {
+            if (!HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resultSource)
+                || payload == null
+                || payload.Count == 0)
+            {
+                return false;
+            }
+
+            return _localUtilityOfficialSessionBridge.HasReceivedInboundPacketPayloadSince(
+                PacketOwnedAntiMacroPacketType,
+                payload,
+                Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal));
         }
 
         internal static int ResolvePacketOwnedAntiMacroRoundTripLatencyMs(int submittedTick, int resultTick)
@@ -1207,12 +1226,12 @@ namespace HaCreator.MapSimulator
 
                 if (IsPacketOwnedAntiMacroCloseResultMode(mode))
                 {
-                    bool hasAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                    bool hasAuthoritativeResultEvidence = HasPacketOwnedAntiMacroAuthoritativeResultEvidence(resolvedSource, payload);
                     bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
                         mode,
                         wasAwaitingResult,
                         resolvedSource,
-                        hasAuthoritativeSubmitTransport);
+                        hasAuthoritativeResultEvidence);
                     bool shouldKeepAwaitingAuthoritativeResult = wasAwaitingResult
                         && !authoritativeRoundTrip
                         && HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport();
@@ -1233,12 +1252,12 @@ namespace HaCreator.MapSimulator
                     string userName = reader.BaseStream.Position < reader.BaseStream.Length
                         ? ReadPacketOwnedMapleString(reader)
                         : string.Empty;
-                    bool hasAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                    bool hasAuthoritativeResultEvidence = HasPacketOwnedAntiMacroAuthoritativeResultEvidence(resolvedSource, payload);
                     bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
                         mode,
                         wasAwaitingResult,
                         resolvedSource,
-                        hasAuthoritativeSubmitTransport);
+                        hasAuthoritativeResultEvidence);
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
                         ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName),
                         payload,
@@ -1250,12 +1269,12 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                bool hasNoticeAuthoritativeSubmitTransport = HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(resolvedSource);
+                bool hasNoticeAuthoritativeResultEvidence = HasPacketOwnedAntiMacroAuthoritativeResultEvidence(resolvedSource, payload);
                 bool noticeAuthoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
                     mode,
                     wasAwaitingResult,
                     resolvedSource,
-                    hasNoticeAuthoritativeSubmitTransport);
+                    hasNoticeAuthoritativeResultEvidence);
                 message = AppendPacketOwnedAntiMacroResultSourceSummary(
                     ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType),
                     payload,

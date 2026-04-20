@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.UI
             public int DecodedByteLength { get; init; }
             public int TrailingByteCount { get; init; }
             public string TrailingPayloadHex { get; init; } = string.Empty;
+            public IReadOnlyList<byte> TrailingPayloadBytes { get; init; } = Array.Empty<byte>();
             public bool HasPacketRewardSessionByte { get; init; }
             public int PacketRewardSessionByte { get; init; }
         }
@@ -275,6 +276,7 @@ namespace HaCreator.MapSimulator.UI
         private int _cashOneADayDecodedByteLength;
         private int _cashOneADayTrailingByteCount;
         private string _cashOneADayTrailingPayloadHex = string.Empty;
+        private byte[] _cashOneADayTrailingPayloadBytes = Array.Empty<byte>();
         private bool _cashOneADayHasPacketRewardSessionByte;
         private int _cashOneADayPacketRewardSessionByte;
         private readonly int[] _cashWishlistSerialNumbers = new int[10];
@@ -282,6 +284,10 @@ namespace HaCreator.MapSimulator.UI
         private string _cashPacketBrowseModeLabel = "Wish";
         private string _cashItemLastSummary = "No cash-item result routed yet.";
         private string _cashGiftLastSummary = "No packet-authored gift result routed yet.";
+        private PacketCatalogEntry _cashReceiveGiftPendingAcceptEntry;
+        private int _cashReceiveGiftPendingAcceptIndex = -1;
+        private string _cashReceiveGiftPendingAcceptReplyText = string.Empty;
+        private string _cashReceiveGiftPendingAcceptDispatchSummary = string.Empty;
         private string _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
         private bool _cashPurchaseRecordGlobalState;
         private string _cashPurchaseDialogSelectionSummary = "CConfirmPurchaseDlg has not staged a selector snapshot yet.";
@@ -344,6 +350,7 @@ namespace HaCreator.MapSimulator.UI
         public int CashOneADayDecodedByteLength => _cashOneADayDecodedByteLength;
         public int CashOneADayTrailingByteCount => _cashOneADayTrailingByteCount;
         public string CashOneADayTrailingPayloadHex => _cashOneADayTrailingPayloadHex;
+        public IReadOnlyList<byte> CashOneADayTrailingPayloadBytes => _cashOneADayTrailingPayloadBytes;
         public bool CashOneADayHasPacketRewardSessionByte => _cashOneADayHasPacketRewardSessionByte;
         public int CashOneADayPacketRewardSessionByte => _cashOneADayPacketRewardSessionByte;
         public int CashItemMutationCount => _cashItemMutationCount;
@@ -497,6 +504,10 @@ namespace HaCreator.MapSimulator.UI
             _cashPacketPaneLabel = "Packet wishlist";
             _cashPacketBrowseModeLabel = "Wish";
             _cashGiftLastSummary = "No packet-authored gift result routed yet.";
+            _cashReceiveGiftPendingAcceptEntry = null;
+            _cashReceiveGiftPendingAcceptIndex = -1;
+            _cashReceiveGiftPendingAcceptReplyText = string.Empty;
+            _cashReceiveGiftPendingAcceptDispatchSummary = string.Empty;
             _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
             _cashPurchaseDialogSelectionSummary = "CConfirmPurchaseDlg has not staged a selector snapshot yet.";
             _cashPurchaseDialogSelectedPaymentControlId = 0;
@@ -518,6 +529,7 @@ namespace HaCreator.MapSimulator.UI
             _cashOneADayDecodedByteLength = 0;
             _cashOneADayTrailingByteCount = 0;
             _cashOneADayTrailingPayloadHex = string.Empty;
+            _cashOneADayTrailingPayloadBytes = Array.Empty<byte>();
             _cashOneADayHasPacketRewardSessionByte = false;
             _cashOneADayPacketRewardSessionByte = 0;
             _cashOneADayHistoryEntries.Clear();
@@ -1187,7 +1199,9 @@ namespace HaCreator.MapSimulator.UI
                     ? rebateDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResRebateDone", packetPayload),
                 -105 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResRebateFailed"),
-                109 => BuildCashSimpleResult("CCashShop::OnCashItemResIncSlotCountDone", packetPayload),
+                109 => TryApplyCashIncSlotCountDone(packetPayload, out string incSlotCountMessage)
+                    ? incSlotCountMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResIncSlotCountDone", packetPayload),
                 110 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncSlotCountFailed"),
                 111 => TryApplyCashCounterUpdate(packetPayload, "CCashShop::OnCashItemResIncTrunkCountDone", 48, value => _cashLockerSlotLimit = value, out string trunkMessage)
                     ? trunkMessage
@@ -2394,6 +2408,105 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool TryApplyCashIncSlotCountDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + sizeof(byte) + sizeof(short))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int inventoryTypeValue = reader.ReadByte();
+            int updatedSlotLimit = Math.Max(0, (int)reader.ReadUInt16());
+            if (!TryResolveCashInventoryType(inventoryTypeValue, out InventoryType inventoryType)
+                || updatedSlotLimit <= 0
+                || updatedSlotLimit > 96)
+            {
+                return false;
+            }
+
+            int previousSlotLimit = Math.Max(0, _inventory?.GetSlotLimit(inventoryType) ?? 0);
+            if (previousSlotLimit > 0 && updatedSlotLimit <= previousSlotLimit)
+            {
+                return false;
+            }
+
+            bool syncedRuntime = false;
+            if (_inventory != null)
+            {
+                int runtimeBefore = Math.Max(0, _inventory.GetSlotLimit(inventoryType));
+                int growth = Math.Max(0, updatedSlotLimit - runtimeBefore);
+                if (growth > 0
+                    && _inventory.CanExpandSlotLimit(inventoryType, growth)
+                    && _inventory.TryExpandSlotLimit(inventoryType, growth))
+                {
+                    syncedRuntime = true;
+                }
+            }
+
+            int runtimeAfter = Math.Max(updatedSlotLimit, Math.Max(0, _inventory?.GetSlotLimit(inventoryType) ?? 0));
+            string inventoryTypeLabel = GetCashInventoryTypeLabel(inventoryType);
+            string noticeText = MapleStoryStringPool.GetOrFallback(0x224, "Inventory slots increased.");
+            string trailingSummary = AppendTrailingCashItemInfoFromReader(
+                reader,
+                maxCount: 2,
+                paneLabel: "Packet counter",
+                browseModeLabel: "Counter",
+                titlePrefix: "Slot-count packet body",
+                seller: "CCashShop",
+                stateLabel: "Slot body");
+            _noticeState =
+                $"CCashShop::OnCashItemResIncSlotCountDone raised {inventoryTypeLabel} slots from {previousSlotLimit.ToString(CultureInfo.InvariantCulture)} to {runtimeAfter.ToString(CultureInfo.InvariantCulture)} and reset CCSWnd_Inventory/CCSWnd_List slot-inc state. Notice: {noticeText}";
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                _noticeState += $" {trailingSummary}";
+            }
+
+            AppendCashPacketCatalogEntry("Packet counter", "Counter", new PacketCatalogEntry
+            {
+                Title = $"{inventoryTypeLabel} slots",
+                Detail = _noticeState,
+                Seller = "CCSWnd_Inventory",
+                PriceLabel = previousSlotLimit > 0
+                    ? $"{previousSlotLimit.ToString(CultureInfo.InvariantCulture)} -> {runtimeAfter.ToString(CultureInfo.InvariantCulture)}"
+                    : runtimeAfter.ToString(CultureInfo.InvariantCulture),
+                StateLabel = syncedRuntime ? "Expanded" : "Packet-owned",
+                ListingId = runtimeAfter
+            });
+            message = _noticeState;
+            return true;
+        }
+
+        private static bool TryResolveCashInventoryType(int typeValue, out InventoryType inventoryType)
+        {
+            inventoryType = typeValue switch
+            {
+                1 => InventoryType.EQUIP,
+                2 => InventoryType.USE,
+                3 => InventoryType.SETUP,
+                4 => InventoryType.ETC,
+                5 => InventoryType.CASH,
+                _ => InventoryType.NONE
+            };
+            return inventoryType != InventoryType.NONE;
+        }
+
+        private static string GetCashInventoryTypeLabel(InventoryType inventoryType)
+        {
+            return inventoryType switch
+            {
+                InventoryType.EQUIP => "Equip",
+                InventoryType.USE => "Use",
+                InventoryType.SETUP => "Setup",
+                InventoryType.ETC => "Etc",
+                InventoryType.CASH => "Cash",
+                _ => "Inventory"
+            };
+        }
+
         private bool TryApplyCashLimitGoodsCountChanged(byte[] payload, out string message)
         {
             message = null;
@@ -2685,6 +2798,85 @@ namespace HaCreator.MapSimulator.UI
             return _cashGiftLastSummary;
         }
 
+        public string StageReceiveGiftAcceptRequest(int selectedGiftIndex, string replyText, string dispatchSummary)
+        {
+            if (selectedGiftIndex < 0 || selectedGiftIndex >= _cashGiftPacketEntries.Count)
+            {
+                return "CUIReceiveGift could not stage the selected gift row for accept-packet tracking.";
+            }
+
+            PacketCatalogEntry selectedEntry = _cashGiftPacketEntries[selectedGiftIndex];
+            _cashReceiveGiftPendingAcceptEntry = ClonePacketCatalogEntry(selectedEntry, selectedEntry.StateLabel);
+            _cashReceiveGiftPendingAcceptIndex = selectedGiftIndex;
+            _cashReceiveGiftPendingAcceptReplyText = string.IsNullOrWhiteSpace(replyText)
+                ? string.Empty
+                : SanitizePacketString(replyText, "gift reply");
+            _cashReceiveGiftPendingAcceptDispatchSummary = string.IsNullOrWhiteSpace(dispatchSummary)
+                ? string.Empty
+                : dispatchSummary.Trim();
+            int row = selectedEntry?.PacketRowIndex > 0 ? selectedEntry.PacketRowIndex : selectedGiftIndex + 1;
+            _cashGiftLastSummary = string.IsNullOrWhiteSpace(_cashReceiveGiftPendingAcceptReplyText)
+                ? $"CUIReceiveGift sent an accept request for GW_GiftList row {row.ToString(CultureInfo.InvariantCulture)} and is waiting for cash-item subtype 107 or 108."
+                : $"CUIReceiveGift sent an accept request for GW_GiftList row {row.ToString(CultureInfo.InvariantCulture)} with reply \"{_cashReceiveGiftPendingAcceptReplyText}\" and is waiting for cash-item subtype 107 or 108.";
+            if (!string.IsNullOrWhiteSpace(_cashReceiveGiftPendingAcceptDispatchSummary))
+            {
+                _cashGiftLastSummary = $"{_cashGiftLastSummary} {_cashReceiveGiftPendingAcceptDispatchSummary}";
+            }
+
+            _noticeState = _cashGiftLastSummary;
+            return _cashGiftLastSummary;
+        }
+
+        public bool TryFinalizeReceiveGiftAcceptResult(
+            int cashItemResultSubtype,
+            out string summary,
+            out bool accepted,
+            out int nextGiftIndex)
+        {
+            summary = string.Empty;
+            accepted = false;
+            nextGiftIndex = -1;
+            if (_cashReceiveGiftPendingAcceptEntry == null || (cashItemResultSubtype != 107 && cashItemResultSubtype != 108))
+            {
+                return false;
+            }
+
+            PacketCatalogEntry pendingEntry = _cashReceiveGiftPendingAcceptEntry;
+            int stagedIndex = Math.Max(0, _cashReceiveGiftPendingAcceptIndex);
+            bool success = cashItemResultSubtype == 107;
+            accepted = success;
+            if (success)
+            {
+                RemovePendingReceiveGiftEntryFromQueue(pendingEntry, stagedIndex);
+                int remaining = Math.Max(0, _cashGiftPacketEntries.Count);
+                nextGiftIndex = remaining > 0 ? Math.Clamp(stagedIndex, 0, remaining - 1) : -1;
+                summary =
+                    $"CUIReceiveGift accept-packet branch consumed GW_GiftList row {(pendingEntry.PacketRowIndex > 0 ? pendingEntry.PacketRowIndex : stagedIndex + 1).ToString(CultureInfo.InvariantCulture)} after cash-item subtype 107.";
+            }
+            else
+            {
+                int remaining = Math.Max(0, _cashGiftPacketEntries.Count);
+                nextGiftIndex = remaining > 0 ? Math.Clamp(stagedIndex, 0, remaining - 1) : -1;
+                summary =
+                    $"CUIReceiveGift accept-packet branch kept GW_GiftList row {(pendingEntry.PacketRowIndex > 0 ? pendingEntry.PacketRowIndex : stagedIndex + 1).ToString(CultureInfo.InvariantCulture)} after cash-item subtype 108.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_cashReceiveGiftPendingAcceptDispatchSummary))
+            {
+                summary = $"{summary} {_cashReceiveGiftPendingAcceptDispatchSummary}";
+            }
+
+            _cashGiftLastSummary = string.IsNullOrWhiteSpace(_cashGiftLastSummary)
+                ? summary
+                : $"{summary} {_cashGiftLastSummary}";
+            _noticeState = _cashGiftLastSummary;
+            _cashReceiveGiftPendingAcceptEntry = null;
+            _cashReceiveGiftPendingAcceptIndex = -1;
+            _cashReceiveGiftPendingAcceptReplyText = string.Empty;
+            _cashReceiveGiftPendingAcceptDispatchSummary = string.Empty;
+            return true;
+        }
+
         public string BuildReceiveGiftAcceptOwnerNotice(PacketCatalogEntry selectedGift, string replyText)
         {
             string notice = MapleStoryStringPool.GetOrFallback(
@@ -2699,6 +2891,44 @@ namespace HaCreator.MapSimulator.UI
                 ? "without reply text"
                 : $"reply \"{SanitizePacketString(replyText, "gift reply")}\"";
             return $"{notice} (row {row.ToString(CultureInfo.InvariantCulture)}, {serialLabel}, sender {sender}, {replyLabel})";
+        }
+
+        private void RemovePendingReceiveGiftEntryFromQueue(PacketCatalogEntry pendingEntry, int fallbackIndex)
+        {
+            if (pendingEntry == null || _cashGiftPacketEntries.Count == 0)
+            {
+                return;
+            }
+
+            int index = _cashGiftPacketEntries.FindIndex(entry =>
+                entry != null
+                && entry.PacketRowIndex > 0
+                && pendingEntry.PacketRowIndex > 0
+                && entry.PacketRowIndex == pendingEntry.PacketRowIndex
+                && entry.SerialNumber == pendingEntry.SerialNumber);
+            if (index < 0)
+            {
+                index = _cashGiftPacketEntries.FindIndex(entry =>
+                    entry != null
+                    && entry.SerialNumber > 0
+                    && entry.SerialNumber == pendingEntry.SerialNumber);
+            }
+
+            if (index < 0)
+            {
+                index = fallbackIndex >= 0 && fallbackIndex < _cashGiftPacketEntries.Count
+                    ? fallbackIndex
+                    : -1;
+            }
+
+            if (index < 0)
+            {
+                return;
+            }
+
+            PacketCatalogEntry selectedEntry = _cashGiftPacketEntries[index];
+            _cashGiftPacketEntries.RemoveAt(index);
+            RemoveCashGiftPacketCatalogEntry(selectedEntry);
         }
 
         public string RecordPurchaseDialogSelection(
@@ -3054,6 +3284,7 @@ namespace HaCreator.MapSimulator.UI
                 _cashOneADayDecodedByteLength = 0;
                 _cashOneADayTrailingByteCount = 0;
                 _cashOneADayTrailingPayloadHex = string.Empty;
+                _cashOneADayTrailingPayloadBytes = Array.Empty<byte>();
                 _cashOneADayHasPacketRewardSessionByte = false;
                 _cashOneADayPacketRewardSessionByte = 0;
                 _cashOneADayHistoryEntries.Clear();
@@ -3069,6 +3300,7 @@ namespace HaCreator.MapSimulator.UI
             _cashOneADayDecodedByteLength = Math.Max(0, state.DecodedByteLength);
             _cashOneADayTrailingByteCount = Math.Max(0, state.TrailingByteCount);
             _cashOneADayTrailingPayloadHex = state.TrailingPayloadHex ?? string.Empty;
+            _cashOneADayTrailingPayloadBytes = state.TrailingPayloadBytes?.ToArray() ?? Array.Empty<byte>();
             _cashOneADayHasPacketRewardSessionByte = state.HasPacketRewardSessionByte;
             _cashOneADayPacketRewardSessionByte = Math.Max(0, state.PacketRewardSessionByte);
             _cashOneADayHistoryEntries.Clear();
@@ -3132,16 +3364,23 @@ namespace HaCreator.MapSimulator.UI
                 int trailingByteCount = (int)Math.Max(0L, stream.Length - stream.Position);
                 bool hasPacketRewardSessionByte = trailingByteCount >= 1;
                 int packetRewardSessionByte = 0;
+                byte[] trailingPayloadBytes = Array.Empty<byte>();
                 if (hasPacketRewardSessionByte)
                 {
                     byte[] trailingPayload = reader.ReadBytes(trailingByteCount);
                     packetRewardSessionByte = trailingPayload[Math.Max(0, trailingPayload.Length - 1)];
                     trailingByteCount = Math.Max(0, trailingPayload.Length - 1);
+                    if (trailingByteCount > 0)
+                    {
+                        trailingPayloadBytes = new byte[trailingByteCount];
+                        Array.Copy(trailingPayload, trailingPayloadBytes, trailingByteCount);
+                    }
+
                     decodedByteLength = payload.Length - trailingByteCount;
                 }
                 else if (trailingByteCount > 0)
                 {
-                    reader.ReadBytes(trailingByteCount);
+                    trailingPayloadBytes = reader.ReadBytes(trailingByteCount);
                 }
 
                 state = new OneADayPacketState
@@ -3155,6 +3394,7 @@ namespace HaCreator.MapSimulator.UI
                     TrailingPayloadHex = trailingByteCount > 0
                         ? BuildCompactPayloadHex(payload, decodedByteLength, trailingByteCount)
                         : string.Empty,
+                    TrailingPayloadBytes = trailingPayloadBytes,
                     HasPacketRewardSessionByte = hasPacketRewardSessionByte,
                     PacketRewardSessionByte = packetRewardSessionByte
                 };

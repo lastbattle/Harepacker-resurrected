@@ -62,7 +62,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 4;
         private const int TOOLTIP_FALLBACK_WIDTH = 220;
         private static readonly Regex RichTextTokenRegex = new(
-            @"(\{\{ITEMICON:\d+\}\}|\{\{UICANVAS:[^}]+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\{\{QUESTREF:[^}]+\}\}|\{\{QUESTFONT:[^}]+\}\}|\{\{QUESTFONTSIZE:-?\d+(?:\.\d+)?\}\}|\r?\n|\s+)",
+            @"(\{\{ITEMICON:\d+\}\}|\{\{UICANVAS:[^}]+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\{\{QUESTREF:[^}]+\}\}|\{\{QUESTFONT:[^}]+\}\}|\{\{QUESTFONTRESET\}\}|\{\{QUESTFONTSIZE:-?\d+(?:\.\d+)?\}\}|\{\{QUESTFONTSIZERESET\}\}|\r?\n|\s+)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly string _windowName;
@@ -512,7 +512,8 @@ namespace HaCreator.MapSimulator.UI
                 return new QuestDetailInlineReference(
                     QuestDetailInlineReferenceKind.Item,
                     _hoveredQuestItem.ItemId,
-                    _hoveredQuestItem.Title);
+                    _hoveredQuestItem.Title,
+                    _hoveredQuestItem.Source);
             }
 
             return null;
@@ -1127,9 +1128,21 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                if (token.Kind == RichTextTokenKind.FontReset)
+                {
+                    currentStyle = ApplyQuestDetailFontNameReset(currentStyle);
+                    continue;
+                }
+
                 if (token.Kind == RichTextTokenKind.FontSize)
                 {
                     currentStyle = ApplyQuestDetailFontSize(token.FontSize, currentStyle);
+                    continue;
+                }
+
+                if (token.Kind == RichTextTokenKind.FontSizeReset)
+                {
+                    currentStyle = ApplyQuestDetailFontSizeReset(currentStyle);
                     continue;
                 }
 
@@ -1374,9 +1387,21 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (TryParseQuestFontResetMarker(value))
+            {
+                token = RichTextToken.FontResetToken();
+                return true;
+            }
+
             if (TryParseQuestFontSizeMarker(value, out float fontPixelSize))
             {
                 token = RichTextToken.FontSizeToken(fontPixelSize);
+                return true;
+            }
+
+            if (TryParseQuestFontSizeResetMarker(value))
+            {
+                token = RichTextToken.FontSizeResetToken();
                 return true;
             }
 
@@ -1404,6 +1429,11 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private static bool TryParseQuestFontResetMarker(string value)
+        {
+            return string.Equals(value?.Trim(), "{{QUESTFONTRESET}}", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool TryParseQuestFontSizeMarker(string value, out float fontPixelSize)
         {
             fontPixelSize = 0f;
@@ -1429,14 +1459,29 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private static bool TryParseQuestFontSizeResetMarker(string value)
+        {
+            return string.Equals(value?.Trim(), "{{QUESTFONTSIZERESET}}", StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static bool TryParseQuestFontMarkerForTesting(string value, out string fontName)
         {
             return TryParseQuestFontMarker(value, out fontName);
         }
 
+        internal static bool TryParseQuestFontResetMarkerForTesting(string value)
+        {
+            return TryParseQuestFontResetMarker(value);
+        }
+
         internal static bool TryParseQuestFontSizeMarkerForTesting(string value, out float fontPixelSize)
         {
             return TryParseQuestFontSizeMarker(value, out fontPixelSize);
+        }
+
+        internal static bool TryParseQuestFontSizeResetMarkerForTesting(string value)
+        {
+            return TryParseQuestFontSizeResetMarker(value);
         }
 
         internal static bool TryParseQuestInlineReferenceTokenForTesting(string payload, out QuestDetailInlineReference reference)
@@ -1503,6 +1548,11 @@ namespace HaCreator.MapSimulator.UI
                 : currentStyle with { FontFamily = normalizedFontName };
         }
 
+        private static RichTextStyleState ApplyQuestDetailFontNameReset(RichTextStyleState currentStyle)
+        {
+            return currentStyle with { FontFamily = null };
+        }
+
         private static RichTextStyleState ApplyQuestDetailFontSize(float fontPixelSize, RichTextStyleState currentStyle)
         {
             if (fontPixelSize <= 0f)
@@ -1514,6 +1564,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 FontPixelSize = MathHelper.Clamp(fontPixelSize, 6f, 48f)
             };
+        }
+
+        private static RichTextStyleState ApplyQuestDetailFontSizeReset(RichTextStyleState currentStyle)
+        {
+            return currentStyle with { FontPixelSize = null };
         }
 
         private static Color ResolveQuestDetailStyleColor(string styleTag, Color defaultColor)
@@ -1553,7 +1608,8 @@ namespace HaCreator.MapSimulator.UI
                         new Vector2(Position.X + ClientTextArrayX, y),
                         ClientContentWidth,
                         ClientDetailScale,
-                        QuestDetailTextLane.Detail);
+                        QuestDetailTextLane.Detail,
+                        QuestDetailInlineReferenceSource.RequirementText);
                     if (hoveredInlineItem != null)
                     {
                         return hoveredInlineItem;
@@ -1566,7 +1622,15 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
-                HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RequirementLines, Position.X + ClientTextArrayX, ref y, ClientContentWidth, false);
+                HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(
+                    mouseX,
+                    mouseY,
+                    logClipRect,
+                    _state.RequirementLines,
+                    Position.X + ClientTextArrayX,
+                    ref y,
+                    ClientContentWidth,
+                    false);
                 if (hovered != null)
                 {
                     return hovered;
@@ -1588,7 +1652,8 @@ namespace HaCreator.MapSimulator.UI
                         new Vector2(Position.X + ClientTextArrayX, y),
                         ClientContentWidth,
                         ClientDetailScale,
-                        QuestDetailTextLane.Detail);
+                        QuestDetailTextLane.Detail,
+                        QuestDetailInlineReferenceSource.RewardText);
                     if (hoveredInlineItem != null)
                     {
                         return hoveredInlineItem;
@@ -1601,7 +1666,15 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
-                HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RewardLines, Position.X + ClientTextArrayX, ref y, ClientContentWidth, true);
+                HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(
+                    mouseX,
+                    mouseY,
+                    logClipRect,
+                    _state.RewardLines,
+                    Position.X + ClientTextArrayX,
+                    ref y,
+                    ClientContentWidth,
+                    true);
                 if (hovered != null)
                 {
                     return hovered;
@@ -1620,7 +1693,8 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(Position.X + ClientTextArrayX, y),
                     ClientContentWidth,
                     ClientDetailScale,
-                    QuestDetailTextLane.Detail);
+                    QuestDetailTextLane.Detail,
+                    QuestDetailInlineReferenceSource.HintText);
                 if (hoveredInlineItem != null)
                 {
                     return hoveredInlineItem;
@@ -1640,7 +1714,8 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(Position.X + ClientTextArrayX, summaryY),
                     ClientContentWidth,
                     ClientDetailScale,
-                    QuestDetailTextLane.Detail);
+                    QuestDetailTextLane.Detail,
+                    QuestDetailInlineReferenceSource.SummaryText);
             }
 
             return null;
@@ -1668,7 +1743,8 @@ namespace HaCreator.MapSimulator.UI
                         new Vector2(Position.X + ClientTextArrayX, y),
                         ClientContentWidth,
                         ClientDetailScale,
-                        QuestDetailTextLane.Detail);
+                        QuestDetailTextLane.Detail,
+                        QuestDetailInlineReferenceSource.RequirementText);
                     if (reference.HasValue)
                     {
                         return reference;
@@ -1702,7 +1778,8 @@ namespace HaCreator.MapSimulator.UI
                         new Vector2(Position.X + ClientTextArrayX, y),
                         ClientContentWidth,
                         ClientDetailScale,
-                        QuestDetailTextLane.Detail);
+                        QuestDetailTextLane.Detail,
+                        QuestDetailInlineReferenceSource.RewardText);
                     if (reference.HasValue)
                     {
                         return reference;
@@ -1733,7 +1810,8 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(Position.X + ClientTextArrayX, y),
                     ClientContentWidth,
                     ClientDetailScale,
-                    QuestDetailTextLane.Detail);
+                    QuestDetailTextLane.Detail,
+                    QuestDetailInlineReferenceSource.HintText);
                 if (reference.HasValue)
                 {
                     return reference;
@@ -1753,7 +1831,8 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(Position.X + ClientTextArrayX, summaryY),
                     ClientContentWidth,
                     ClientDetailScale,
-                    QuestDetailTextLane.Detail);
+                    QuestDetailTextLane.Detail,
+                    QuestDetailInlineReferenceSource.SummaryText);
             }
 
             return null;
@@ -1767,7 +1846,8 @@ namespace HaCreator.MapSimulator.UI
             Vector2 position,
             float maxWidth,
             float scale,
-            QuestDetailTextLane lane)
+            QuestDetailTextLane lane,
+            QuestDetailInlineReferenceSource source = QuestDetailInlineReferenceSource.Unknown)
         {
             if (string.IsNullOrWhiteSpace(text) || !clipRect.Contains(mouseX, mouseY))
             {
@@ -1795,7 +1875,7 @@ namespace HaCreator.MapSimulator.UI
                         Math.Max(1, token.Height));
                     if (bounds.Contains(mouseX, mouseY) && bounds.Intersects(clipRect))
                     {
-                        hoveredItem = CreateHoveredQuestItem(token.ItemId.Value, "Quest detail item", null);
+                        hoveredItem = CreateHoveredQuestItem(token.ItemId.Value, "Quest detail item", null, source);
                     }
                 },
                 Color.White);
@@ -1811,7 +1891,8 @@ namespace HaCreator.MapSimulator.UI
             Vector2 position,
             float maxWidth,
             float scale,
-            QuestDetailTextLane lane)
+            QuestDetailTextLane lane,
+            QuestDetailInlineReferenceSource source = QuestDetailInlineReferenceSource.Unknown)
         {
             if (string.IsNullOrWhiteSpace(text) || !clipRect.Contains(mouseX, mouseY))
             {
@@ -1841,7 +1922,17 @@ namespace HaCreator.MapSimulator.UI
                         Math.Max(1, (int)Math.Ceiling(measuredToken.Y)));
                     if (bounds.Contains(mouseX, mouseY) && bounds.Intersects(clipRect))
                     {
-                        hoveredReference = token.InlineReference.Value;
+                        QuestDetailInlineReference inlineReference = token.InlineReference.Value;
+                        if (inlineReference.Source == QuestDetailInlineReferenceSource.Unknown)
+                        {
+                            inlineReference = new QuestDetailInlineReference(
+                                inlineReference.Kind,
+                                inlineReference.TargetId,
+                                inlineReference.Label,
+                                source);
+                        }
+
+                        hoveredReference = inlineReference;
                     }
                 },
                 Color.White);
@@ -1877,12 +1968,16 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
+            QuestDetailInlineReferenceSource source = rewardSection
+                ? QuestDetailInlineReferenceSource.RewardLine
+                : QuestDetailInlineReferenceSource.RequirementLine;
+
             foreach (QuestLogLineSnapshot line in lines.Where(line => line != null))
             {
                 ConditionRowLayout layout = BuildConditionRowLayout(line, x, y, maxWidth, rewardSection);
                 if (line.ItemId.HasValue && clipRect.Contains(mouseX, mouseY) && layout.IconBounds.Contains(mouseX, mouseY))
                 {
-                    return CreateHoveredQuestItem(line.ItemId.Value, line.Text, line.ItemQuantity);
+                    return CreateHoveredQuestItem(line.ItemId.Value, line.Text, line.ItemQuantity, source);
                 }
 
                 HoveredQuestItemInfo inlineItem = TryResolveHoveredRichTextItem(
@@ -1893,7 +1988,8 @@ namespace HaCreator.MapSimulator.UI
                     layout.BodyPosition,
                     layout.BodyMaxWidth,
                     ClientDetailScale,
-                    QuestDetailTextLane.Detail);
+                    QuestDetailTextLane.Detail,
+                    source);
                 if (inlineItem != null)
                 {
                     return inlineItem;
@@ -2540,7 +2636,11 @@ namespace HaCreator.MapSimulator.UI
             return canvasProperty != null;
         }
 
-        private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText, int? quantity)
+        private HoveredQuestItemInfo CreateHoveredQuestItem(
+            int itemId,
+            string lineText,
+            int? quantity,
+            QuestDetailInlineReferenceSource source = QuestDetailInlineReferenceSource.Unknown)
         {
             return new HoveredQuestItemInfo
             {
@@ -2549,7 +2649,8 @@ namespace HaCreator.MapSimulator.UI
                 Title = ResolveItemName(itemId),
                 Subtitle = lineText,
                 Description = ResolveItemDescription(itemId),
-                Icon = ResolveItemIcon(itemId)
+                Icon = ResolveItemIcon(itemId),
+                Source = source
             };
         }
 
@@ -3237,7 +3338,9 @@ namespace HaCreator.MapSimulator.UI
             Surface,
             Style,
             Font,
+            FontReset,
             FontSize,
+            FontSizeReset,
             Reference,
             NewLine
         }
@@ -3303,9 +3406,19 @@ namespace HaCreator.MapSimulator.UI
                 return new RichTextToken(RichTextTokenKind.Font, null, null, null, 0, 0, fontName: fontName);
             }
 
+            public static RichTextToken FontResetToken()
+            {
+                return new RichTextToken(RichTextTokenKind.FontReset, null, null, null, 0, 0);
+            }
+
             public static RichTextToken FontSizeToken(float fontSize)
             {
                 return new RichTextToken(RichTextTokenKind.FontSize, null, null, null, 0, 0, fontSize: fontSize);
+            }
+
+            public static RichTextToken FontSizeResetToken()
+            {
+                return new RichTextToken(RichTextTokenKind.FontSizeReset, null, null, null, 0, 0);
             }
         }
 

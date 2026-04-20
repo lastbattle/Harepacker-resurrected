@@ -579,12 +579,6 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int duration = Math.Max(0, message.Duration);
-                if (duration <= 0)
-                {
-                    continue;
-                }
-
                 // Client parity seam:
                 // CUIStatusBar::SetItemMsg blocks while itemMsg owner objects exist.
                 // Timer expiry is processed in CUIStatusBar::Update, so expired-yet-uncollected

@@ -44,10 +44,36 @@ namespace HaCreator.MapSimulator.Interaction
         Item
     }
 
-    internal readonly record struct QuestDetailInlineReference(
-        QuestDetailInlineReferenceKind Kind,
-        int TargetId,
-        string Label);
+    internal enum QuestDetailInlineReferenceSource
+    {
+        Unknown,
+        RequirementText,
+        RequirementLine,
+        RewardText,
+        RewardLine,
+        HintText,
+        SummaryText
+    }
+
+    internal readonly record struct QuestDetailInlineReference
+    {
+        public QuestDetailInlineReference(
+            QuestDetailInlineReferenceKind kind,
+            int targetId,
+            string label,
+            QuestDetailInlineReferenceSource source = QuestDetailInlineReferenceSource.Unknown)
+        {
+            Kind = kind;
+            TargetId = targetId;
+            Label = label ?? string.Empty;
+            Source = source;
+        }
+
+        public QuestDetailInlineReferenceKind Kind { get; }
+        public int TargetId { get; }
+        public string Label { get; }
+        public QuestDetailInlineReferenceSource Source { get; }
+    }
 
     internal static class QuestDetailDeliveryTypeCodec
     {

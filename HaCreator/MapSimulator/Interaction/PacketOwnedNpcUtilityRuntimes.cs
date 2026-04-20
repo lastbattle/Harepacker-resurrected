@@ -3352,6 +3352,7 @@ namespace HaCreator.MapSimulator.Interaction
         private double _averageHitPerSecond;
         private double _totalAttackTimeSeconds;
         private uint _lastAttackTick;
+        private int _damageAttrRateSampleCount;
         private long _recoveryTotalHpIncApply;
         private long _recoveryTotalMpIncApply;
         private long _recoveryTotalHpIncReq;
@@ -3431,6 +3432,16 @@ namespace HaCreator.MapSimulator.Interaction
                     _directMissCount = 0;
                     _directMaxCriticalDamage = 0;
                     _directMinCriticalDamage = 0;
+                    _damageTotalDamage = 0;
+                    _damageTotalAttackCount = 0;
+                    _damageTotalAttrRate = 0;
+                    _averageAttrRate = 0;
+                    _averageDamagePerHit = 0;
+                    _averageDamagePerSecond = 0;
+                    _averageHitPerSecond = 0d;
+                    _totalAttackTimeSeconds = 0d;
+                    _lastAttackTick = 0;
+                    _damageAttrRateSampleCount = 0;
                     StatusMessage = "CBattleRecordMan cleared damage and DOT summary counters.";
                     break;
                 case 1:
@@ -3439,6 +3450,25 @@ namespace HaCreator.MapSimulator.Interaction
                     LastAttrRate = null;
                     _recoveryTotal = 0;
                     _recoveryCount = 0;
+                    _recoveryTotalHpIncApply = 0;
+                    _recoveryTotalMpIncApply = 0;
+                    _recoveryTotalHpIncReq = 0;
+                    _recoveryTotalMpIncReq = 0;
+                    _recoveryMeritRateHp = 0;
+                    _recoveryMeritRateMp = 0;
+                    _recoveryAverageMeritRateHp = 0;
+                    _recoveryAverageMeritRateMp = 0;
+                    _recoveryTotalUseItem = 0;
+                    _recoveryTotalUseHpItem = 0;
+                    _recoveryTotalUseMpItem = 0;
+                    _recoveryTotalUseHpMpItem = 0;
+                    _recoveryAverageHpIncApply = 0;
+                    _recoveryAverageMpIncApply = 0;
+                    _recoveryAverageHpIncReq = 0;
+                    _recoveryAverageMpIncReq = 0;
+                    _recoveryLastUseItemTick = 0;
+                    _recoveryForecastUsePerHour = 0;
+                    _recoveryTotalUseItemSeconds = 0d;
                     StatusMessage = "CBattleRecordMan cleared recovery and DOT-only summary counters.";
                     break;
                 case 2:
@@ -3644,9 +3674,59 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastDecodedAttrRate = attrRate.Value;
             }
 
+            if (damage >= 0)
+            {
+                UpdateBattleDamageAverages(damage, attrRate);
+            }
+
             StatusMessage = damage < 0
                 ? $"CBattleRecordMan::SetBattleDamageInfo applied recovery={Math.Abs(damage).ToString(CultureInfo.InvariantCulture)} (summon={isSummon}) under the recovered manager gate."
                 : $"CBattleRecordMan::SetBattleDamageInfo applied nDamage={damage.ToString(CultureInfo.InvariantCulture)}, critical={isCritical}, summon={isSummon}, attrRate={(attrRate.HasValue ? attrRate.Value.ToString(CultureInfo.InvariantCulture) : "none")} under the recovered manager gate.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
+        internal string ApplyBattleRecoveryInfo(
+            int hpRecovery,
+            int mpRecovery,
+            int beforeHp,
+            int beforeMp,
+            int? currentHp,
+            int? currentMp,
+            int currentTickCount)
+        {
+            if (!(OnCalc && ServerOnCalc))
+            {
+                StatusMessage = $"CBattleRecordMan::SetBattleRecoveryInfo ignored HP={hpRecovery.ToString(CultureInfo.InvariantCulture)}, MP={mpRecovery.ToString(CultureInfo.InvariantCulture)} because m_bOnCalc/m_bServerOnCalc were not both armed.";
+                AppendNote(StatusMessage);
+                return StatusMessage;
+            }
+
+            int requestedHp = Math.Max(0, hpRecovery);
+            int requestedMp = Math.Max(0, mpRecovery);
+            int resolvedCurrentHp = currentHp ?? checked(beforeHp + requestedHp);
+            int resolvedCurrentMp = currentMp ?? checked(beforeMp + requestedMp);
+            int hpIncreaseApplied = Math.Max(0, resolvedCurrentHp - beforeHp);
+            int mpIncreaseApplied = Math.Max(0, resolvedCurrentMp - beforeMp);
+            int appliedHp = Math.Min(requestedHp, hpIncreaseApplied);
+            int appliedMp = Math.Min(requestedMp, mpIncreaseApplied);
+
+            _recoveryTotalHpIncReq += requestedHp;
+            _recoveryTotalMpIncReq += requestedMp;
+            _recoveryTotalHpIncApply += appliedHp;
+            _recoveryTotalMpIncApply += appliedMp;
+            _recoveryCount += (appliedHp > 0 || appliedMp > 0) ? 1 : 0;
+            _recoveryTotal += appliedHp + appliedMp;
+
+            if (requestedHp > 0 || requestedMp > 0)
+            {
+                IncrementRecoveryUseItemCounters(requestedHp > 0, requestedMp > 0, currentTickCount);
+            }
+
+            RecalculateRecoveryAverages();
+            CheckTotalRecoveryOverflow();
+
+            StatusMessage = $"CBattleRecordMan::SetBattleRecoveryInfo applied HP {appliedHp.ToString(CultureInfo.InvariantCulture)}/{requestedHp.ToString(CultureInfo.InvariantCulture)}, MP {appliedMp.ToString(CultureInfo.InvariantCulture)}/{requestedMp.ToString(CultureInfo.InvariantCulture)} (before {beforeHp.ToString(CultureInfo.InvariantCulture)}/{beforeMp.ToString(CultureInfo.InvariantCulture)} -> current {resolvedCurrentHp.ToString(CultureInfo.InvariantCulture)}/{resolvedCurrentMp.ToString(CultureInfo.InvariantCulture)}).";
             AppendNote(StatusMessage);
             return StatusMessage;
         }
@@ -3784,6 +3864,9 @@ namespace HaCreator.MapSimulator.Interaction
                     lines.Add($"Damage bounds: min={FormatDamage(MinDamage)}, max={FormatDamage(MaxDamage)}, avg={FormatAverageDamage()}");
                     lines.Add($"Direct manager totals: attacks={_directAttackCount.ToString(CultureInfo.InvariantCulture)}, damage={_directDamageTotal.ToString(CultureInfo.InvariantCulture)}, critical={_directCriticalCount.ToString(CultureInfo.InvariantCulture)}, miss={_directMissCount.ToString(CultureInfo.InvariantCulture)}");
                     lines.Add($"Recovery totals: count={_recoveryCount.ToString(CultureInfo.InvariantCulture)}, amount={_recoveryTotal.ToString(CultureInfo.InvariantCulture)}");
+                    lines.Add($"SetBattleDamageInfo averages: attrRate={_averageAttrRate.ToString(CultureInfo.InvariantCulture)}, damage/hit={_averageDamagePerHit.ToString(CultureInfo.InvariantCulture)}, damage/sec={_averageDamagePerSecond.ToString(CultureInfo.InvariantCulture)}, hit/sec={_averageHitPerSecond.ToString("0.##", CultureInfo.InvariantCulture)}");
+                    lines.Add($"SetBattleRecoveryInfo totals: HP req/apply={_recoveryTotalHpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryTotalHpIncApply.ToString(CultureInfo.InvariantCulture)}, MP req/apply={_recoveryTotalMpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryTotalMpIncApply.ToString(CultureInfo.InvariantCulture)}");
+                    lines.Add($"SetBattleRecoveryInfo item usage: total={_recoveryTotalUseItem.ToString(CultureInfo.InvariantCulture)} (hp={_recoveryTotalUseHpItem.ToString(CultureInfo.InvariantCulture)}, mp={_recoveryTotalUseMpItem.ToString(CultureInfo.InvariantCulture)}, hp+mp={_recoveryTotalUseHpMpItem.ToString(CultureInfo.InvariantCulture)}), merit HP/MP={_recoveryMeritRateHp.ToString(CultureInfo.InvariantCulture)}/{_recoveryMeritRateMp.ToString(CultureInfo.InvariantCulture)}%, forecast/hour={_recoveryForecastUsePerHour.ToString(CultureInfo.InvariantCulture)}");
                     if (_directCriticalCount > 0)
                     {
                         lines.Add($"Direct critical bounds: min={FormatDamage(_directMinCriticalDamage)}, max={FormatDamage(_directMaxCriticalDamage)}");
@@ -3890,6 +3973,35 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _recentNotes.Clear();
             }
+            _damageTotalDamage = 0;
+            _damageTotalAttackCount = 0;
+            _damageTotalAttrRate = 0;
+            _averageAttrRate = 0;
+            _averageDamagePerHit = 0;
+            _averageDamagePerSecond = 0;
+            _averageHitPerSecond = 0d;
+            _totalAttackTimeSeconds = 0d;
+            _lastAttackTick = 0;
+            _damageAttrRateSampleCount = 0;
+            _recoveryTotalHpIncApply = 0;
+            _recoveryTotalMpIncApply = 0;
+            _recoveryTotalHpIncReq = 0;
+            _recoveryTotalMpIncReq = 0;
+            _recoveryMeritRateHp = 0;
+            _recoveryMeritRateMp = 0;
+            _recoveryAverageMeritRateHp = 0;
+            _recoveryAverageMeritRateMp = 0;
+            _recoveryTotalUseItem = 0;
+            _recoveryTotalUseHpItem = 0;
+            _recoveryTotalUseMpItem = 0;
+            _recoveryTotalUseHpMpItem = 0;
+            _recoveryAverageHpIncApply = 0;
+            _recoveryAverageMpIncApply = 0;
+            _recoveryAverageHpIncReq = 0;
+            _recoveryAverageMpIncReq = 0;
+            _recoveryLastUseItemTick = 0;
+            _recoveryForecastUsePerHour = 0;
+            _recoveryTotalUseItemSeconds = 0d;
         }
 
         private bool IsDotDamageDecodeReady => OnCalc && ServerOnCalc;
@@ -3961,6 +4073,113 @@ namespace HaCreator.MapSimulator.Interaction
             if (_recentNotes.Count > 3)
             {
                 _recentNotes.RemoveAt(_recentNotes.Count - 1);
+            }
+        }
+
+        private void UpdateBattleDamageAverages(int damage, int? attrRate)
+        {
+            _damageTotalAttackCount++;
+            _damageTotalDamage += damage;
+            if (attrRate.HasValue)
+            {
+                _damageTotalAttrRate += attrRate.Value;
+                _damageAttrRateSampleCount++;
+            }
+
+            uint nowTick = unchecked((uint)Environment.TickCount);
+            if (_lastAttackTick != 0)
+            {
+                uint elapsedTick = unchecked(nowTick - _lastAttackTick);
+                _totalAttackTimeSeconds += elapsedTick / 1000d;
+            }
+
+            _lastAttackTick = nowTick;
+            _averageDamagePerHit = _damageTotalAttackCount > 0
+                ? (int)(_damageTotalDamage / _damageTotalAttackCount)
+                : 0;
+            _averageAttrRate = _damageAttrRateSampleCount > 0
+                ? (int)(_damageTotalAttrRate / _damageAttrRateSampleCount)
+                : 0;
+
+            double elapsedSeconds = Math.Max(0.001d, _totalAttackTimeSeconds);
+            _averageHitPerSecond = _damageTotalAttackCount / elapsedSeconds;
+            _averageDamagePerSecond = (int)Math.Round(_damageTotalDamage / elapsedSeconds, MidpointRounding.AwayFromZero);
+        }
+
+        private void IncrementRecoveryUseItemCounters(bool hasHpRecovery, bool hasMpRecovery, int currentTickCount)
+        {
+            uint nowTick = unchecked((uint)currentTickCount);
+            if (_recoveryLastUseItemTick != 0)
+            {
+                uint elapsedTick = unchecked(nowTick - _recoveryLastUseItemTick);
+                _recoveryTotalUseItemSeconds += elapsedTick / 1000d;
+            }
+
+            _recoveryLastUseItemTick = nowTick;
+            _recoveryTotalUseItem++;
+            if (hasHpRecovery && hasMpRecovery)
+            {
+                _recoveryTotalUseHpMpItem++;
+            }
+            else if (hasHpRecovery)
+            {
+                _recoveryTotalUseHpItem++;
+            }
+            else if (hasMpRecovery)
+            {
+                _recoveryTotalUseMpItem++;
+            }
+        }
+
+        private void RecalculateRecoveryAverages()
+        {
+            int hpUseCount = _recoveryTotalUseHpItem + _recoveryTotalUseHpMpItem;
+            int mpUseCount = _recoveryTotalUseMpItem + _recoveryTotalUseHpMpItem;
+
+            _recoveryAverageHpIncReq = hpUseCount > 0
+                ? (int)(_recoveryTotalHpIncReq / hpUseCount)
+                : 0;
+            _recoveryAverageMpIncReq = mpUseCount > 0
+                ? (int)(_recoveryTotalMpIncReq / mpUseCount)
+                : 0;
+            _recoveryAverageHpIncApply = hpUseCount > 0
+                ? (int)(_recoveryTotalHpIncApply / hpUseCount)
+                : 0;
+            _recoveryAverageMpIncApply = mpUseCount > 0
+                ? (int)(_recoveryTotalMpIncApply / mpUseCount)
+                : 0;
+
+            _recoveryMeritRateHp = _recoveryTotalHpIncReq > 0
+                ? (int)Math.Round((_recoveryTotalHpIncApply * 100d) / _recoveryTotalHpIncReq, MidpointRounding.AwayFromZero)
+                : 0;
+            _recoveryMeritRateMp = _recoveryTotalMpIncReq > 0
+                ? (int)Math.Round((_recoveryTotalMpIncApply * 100d) / _recoveryTotalMpIncReq, MidpointRounding.AwayFromZero)
+                : 0;
+            _recoveryAverageMeritRateHp = _recoveryAverageHpIncReq > 0
+                ? (int)Math.Round((_recoveryAverageHpIncApply * 100d) / _recoveryAverageHpIncReq, MidpointRounding.AwayFromZero)
+                : 0;
+            _recoveryAverageMeritRateMp = _recoveryAverageMpIncReq > 0
+                ? (int)Math.Round((_recoveryAverageMpIncApply * 100d) / _recoveryAverageMpIncReq, MidpointRounding.AwayFromZero)
+                : 0;
+
+            _recoveryForecastUsePerHour = (_recoveryTotalUseItem > 1 && _recoveryTotalUseItemSeconds > 0d)
+                ? (int)Math.Round((_recoveryTotalUseItem * 3600d) / _recoveryTotalUseItemSeconds, MidpointRounding.AwayFromZero)
+                : 0;
+        }
+
+        private void CheckTotalRecoveryOverflow()
+        {
+            if (_recoveryTotalHpIncReq > BattleRecordOverflowThreshold
+                || _recoveryTotalMpIncReq > BattleRecordOverflowThreshold
+                || _recoveryTotalHpIncApply > BattleRecordOverflowThreshold
+                || _recoveryTotalMpIncApply > BattleRecordOverflowThreshold
+                || _damageTotalDamage > BattleRecordOverflowThreshold)
+            {
+                _recoveryTotalHpIncReq = Math.Min(_recoveryTotalHpIncReq, BattleRecordOverflowThreshold);
+                _recoveryTotalMpIncReq = Math.Min(_recoveryTotalMpIncReq, BattleRecordOverflowThreshold);
+                _recoveryTotalHpIncApply = Math.Min(_recoveryTotalHpIncApply, BattleRecordOverflowThreshold);
+                _recoveryTotalMpIncApply = Math.Min(_recoveryTotalMpIncApply, BattleRecordOverflowThreshold);
+                _damageTotalDamage = Math.Min(_damageTotalDamage, BattleRecordOverflowThreshold);
             }
         }
     }

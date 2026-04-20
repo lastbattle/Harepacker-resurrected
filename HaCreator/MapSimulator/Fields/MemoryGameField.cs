@@ -1696,17 +1696,38 @@ namespace HaCreator.MapSimulator.Fields
             catch (EndOfStreamException)
             {
             }
+            bool isLocalPlayer = playerIndex == _localPlayerIndex;
             string leaveStatusMessage = leaveReason.HasValue
-                ? ResolveMiniRoomGameMessage(TranslateLeaveReasonToGameMessageCode(leaveReason.Value), playerName)
+                ? ResolveLeaveStatusMessage(playerName, leaveReason.Value, isLocalPlayer)
                 : $"{playerName} left the Match Cards room.";
             _miniRoomParticipants.Remove(playerIndex);
-            if (IsValidPlayerIndex(playerIndex) && (_stage == RoomStage.Playing || _stage == RoomStage.Result || _stage == RoomStage.Lobby))
+
+            if (isLocalPlayer)
             {
-                Reset();
-                _statusMessage = leaveStatusMessage;
+                if (leaveReason == 2)
+                {
+                    _stage = RoomStage.Result;
+                    _resultExpireTick = Environment.TickCount + 10000;
+                    _pendingHideTick = 0;
+                    _turnDeadlineTick = 0;
+                    _statusMessage = leaveStatusMessage;
+                    SyncMiniRoomRuntime();
+                }
+                else
+                {
+                    Reset();
+                    _statusMessage = leaveStatusMessage;
+                }
             }
             else
             {
+                if (IsValidPlayerIndex(playerIndex))
+                {
+                    _readyStates[playerIndex] = false;
+                    _leaveBookingStates[playerIndex] = false;
+                    _playerNames[playerIndex] = playerIndex == 1 ? "Opponent" : $"Seat {playerIndex}";
+                }
+
                 _statusMessage = leaveStatusMessage;
                 SyncMiniRoomRuntime();
             }
@@ -2763,9 +2784,36 @@ namespace HaCreator.MapSimulator.Fields
             return leaveReason switch
             {
                 2 => 103,
-                3 => 102,
+                3 => -0x1D3,
+                5 => -0x1C9,
+                0 => -0x1CC,
+                4 => -0x1CC,
                 _ => 4
             };
+        }
+
+        private static string ResolveLeaveStatusMessage(string playerName, int leaveReason, bool isLocalPlayer)
+        {
+            int gameMessageCode = TranslateLeaveReasonToGameMessageCode(leaveReason);
+            if (!isLocalPlayer && gameMessageCode >= 0)
+            {
+                return ResolveMiniRoomGameMessage(gameMessageCode, playerName);
+            }
+
+            int noticeStringPoolId = gameMessageCode < 0 ? -gameMessageCode : 0;
+            if (noticeStringPoolId == 0)
+            {
+                return ResolveMiniRoomGameMessage(4, playerName);
+            }
+
+            string fallbackText = noticeStringPoolId switch
+            {
+                0x1CC => "You have left the room.",
+                0x1C9 => "You have called to leave after this game.",
+                0x1D3 => "The room is closed.",
+                _ => "You have left the room."
+            };
+            return MapleStoryStringPool.GetOrFallback(noticeStringPoolId, fallbackText, appendFallbackSuffix: true);
         }
 
 

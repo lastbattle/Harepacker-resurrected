@@ -1546,41 +1546,16 @@ namespace HaCreator.MapSimulator
 
         private void RegisterCurrentMapTransferDestination(MapTransferUI.DestinationEntry selectedEntry)
         {
-            int targetMapId;
-            string targetDisplayName;
-
-
-            if (_mapTransferManualDestination != null)
-            {
-                targetMapId = _mapTransferManualDestination.MapId;
-                targetDisplayName = ResolveMapTransferDisplayName(
-                    targetMapId,
-                    TrimMapTransferCategoryPrefix(_mapTransferManualDestination.DisplayName));
-            }
-            else
-            {
-                if (_mapBoard?.MapInfo == null)
-                {
-                    return;
-                }
-
-
-                targetMapId = _mapBoard.MapInfo.id;
-
-                targetDisplayName = ResolveMapTransferDisplayName(targetMapId, GetCurrentMapTransferDisplayName());
-
-            }
-
-
-
-            if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap)
+            if (!TryResolveMapTransferRegisterTarget(out int targetMapId, out string targetDisplayName))
             {
                 return;
             }
 
-            IReadOnlyList<MapTransferDestinationRecord> currentDestinations = GetCurrentMapTransferDestinations();
+            CharacterBuild activeBuild = GetActiveMapTransferCharacterBuild();
+            MapTransferDestinationBook destinationBook = GetCurrentMapTransferDestinationBook();
+            IReadOnlyList<int> snapshotFieldList = _mapTransferRuntime.SnapshotFieldList(activeBuild, destinationBook);
             int targetSlotIndex = _mapTransferEditDestination?.SavedSlotIndex ?? selectedEntry?.SavedSlotIndex ?? -1;
-            if (targetSlotIndex < 0 && currentDestinations.Count >= GetMapTransferSavedSlotCapacity())
+            if (targetSlotIndex < 0 && !HasMapTransferEmptySlot(snapshotFieldList))
             {
                 _chat.AddMessage(MapTransferClientParityText.ResolveRegisterListFullNotice(), new Color(255, 228, 151), Environment.TickCount);
                 RefreshMapTransferWindow();
@@ -1590,14 +1565,13 @@ namespace HaCreator.MapSimulator
             int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
             if (targetMapId == currentMapId)
             {
-                MapTransferDestinationRecord existingCurrentMapRecord = currentDestinations.FirstOrDefault(destination => destination.MapId == targetMapId);
-                if (existingCurrentMapRecord != null)
+                if (TryFindMapTransferSlot(snapshotFieldList, targetMapId, out int existingSlotIndex))
                 {
                     _chat.AddMessage(MapTransferClientParityText.ResolveCurrentMapAlreadyRegisteredNotice(), new Color(255, 228, 151), Environment.TickCount);
                     RefreshMapTransferWindow();
                     if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is MapTransferUI focusWindow)
                     {
-                        focusWindow.SetSelectedMapId(targetMapId);
+                        focusWindow.SetSelectedDestinationFocus(targetMapId, existingSlotIndex);
                     }
 
                     return;
@@ -1618,11 +1592,10 @@ namespace HaCreator.MapSimulator
             {
                 _mapTransferTitleCache[targetMapId] = targetDisplayName;
             }
-            CharacterBuild activeBuild = GetActiveMapTransferCharacterBuild();
             MapTransferRuntimeRequest request = new()
             {
                 Type = MapTransferRuntimeRequestType.Register,
-                Book = GetCurrentMapTransferDestinationBook(),
+                Book = destinationBook,
                 MapId = targetMapId,
                 SlotIndex = targetSlotIndex
             };
@@ -1679,6 +1652,71 @@ namespace HaCreator.MapSimulator
             {
                 _chat.AddMessage(dispatchStatus, new Color(180, 220, 255), Environment.TickCount);
             }
+        }
+
+        private bool TryResolveMapTransferRegisterTarget(
+            out int targetMapId,
+            out string targetDisplayName)
+        {
+            targetMapId = 0;
+            targetDisplayName = string.Empty;
+
+            if (_mapTransferManualDestination?.MapId > 0 &&
+                _mapTransferManualDestination.MapId != MapConstants.MaxMap)
+            {
+                targetMapId = _mapTransferManualDestination.MapId;
+                targetDisplayName = ResolveMapTransferDisplayName(
+                    targetMapId,
+                    TrimMapTransferCategoryPrefix(_mapTransferManualDestination.DisplayName));
+                return true;
+            }
+
+            if (_mapBoard?.MapInfo == null)
+            {
+                return false;
+            }
+
+            targetMapId = _mapBoard.MapInfo.id;
+            targetDisplayName = ResolveMapTransferDisplayName(targetMapId, GetCurrentMapTransferDisplayName());
+            return targetMapId > 0 && targetMapId != MapConstants.MaxMap;
+        }
+
+        internal static bool HasMapTransferEmptySlot(IReadOnlyList<int> snapshotFieldList)
+        {
+            if (snapshotFieldList == null || snapshotFieldList.Count == 0)
+            {
+                return true;
+            }
+
+            for (int i = 0; i < snapshotFieldList.Count; i++)
+            {
+                if (snapshotFieldList[i] == MapTransferRuntimeManager.EmptyDestinationMapId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool TryFindMapTransferSlot(IReadOnlyList<int> snapshotFieldList, int mapId, out int slotIndex)
+        {
+            slotIndex = -1;
+            if (snapshotFieldList == null || mapId <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < snapshotFieldList.Count; i++)
+            {
+                if (snapshotFieldList[i] == mapId)
+                {
+                    slotIndex = i;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
 
@@ -2728,6 +2766,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+
             if (!TryStageMemoDraftAttachment(sourceInventoryType, sourceSlotIndex, pickedSlotData, out string message))
             {
                 ShowUtilityFeedbackMessage(message);
@@ -3524,13 +3564,7 @@ namespace HaCreator.MapSimulator
                         FamilyEntitlementUseResult result = _familyChartRuntime.ExecuteSelectedEntitlement(
                             Environment.TickCount,
                             _playerManager?.Player?.Position ?? Vector2.Zero);
-                        if (result.RequestTeleport)
-                        {
-                            _playerManager?.TeleportTo(result.TeleportPosition.X, result.TeleportPosition.Y);
-                        }
-
-
-                        return result.Message;
+                        return HandleFamilyEntitlementUseResult(result);
                     },
                     () => _familyChartRuntime.CycleEntitlement(),
                     () =>
@@ -4166,6 +4200,7 @@ namespace HaCreator.MapSimulator
 
             WireSocialSearchWindowData();
             int? launchOption = _socialListRuntime.ResolveCharacterInfoSearchLaunchOption(
+                context.CharacterId,
                 context.CharacterName,
                 context.IsRemoteTarget);
             _socialListRuntime.OpenSearchWindowFromCharacterInfo(
@@ -7327,7 +7362,7 @@ namespace HaCreator.MapSimulator
             return npcPreview;
         }
 
-        private static string ResolveRepairDurabilityNpcAction(int npcTemplateId, NpcItem npcPreview)
+        private string ResolveRepairDurabilityNpcAction(int npcTemplateId, NpcItem npcPreview)
         {
             if (npcTemplateId <= 0 || npcPreview == null)
             {
@@ -7337,11 +7372,25 @@ namespace HaCreator.MapSimulator
             NpcInfo npcInfo = NpcInfo.Get(npcTemplateId.ToString(CultureInfo.InvariantCulture));
             WzImage source = NpcImgEntryResolver.Resolve(npcInfo);
             int? shopActionId = (source?["info"]?["shop"] as WzIntProperty)?.Value;
+            List<NpcClientActionSetLoader.NpcClientActionSetDefinition> actionSets = NpcClientActionSetLoader.GetClientActionSets(source);
+            int selectedClientActionSetIndex = NpcClientActionSetLoader.ResolveClientActionSetIndex(
+                actionSets,
+                _playerManager?.Player?.Build?.Gender,
+                _questRuntime.HasNpcClientActionSelectionContext(),
+                _questRuntime.GetCurrentState,
+                questId => _questRuntime.TryGetQuestRecordValue(questId, out string questRecordValue)
+                    ? questRecordValue
+                    : string.Empty,
+                NpcClientActionSetLoader.AutomaticClientActionSetIndex);
+            IReadOnlyList<string> authoredTemplateActionOrder = NpcClientActionSetLoader.BuildClientTemplateActionOrder(
+                source,
+                selectedClientActionSetIndex);
             return RepairDurabilityClientParity.ResolvePreferredNpcAction(
                 shopActionId,
                 npcPreview.GetAvailableActions(),
                 RepairDurabilityClientParity.EnumerateNpcSpeakFallbackActions(source),
-                source);
+                source,
+                authoredTemplateActionOrder);
         }
 
         private void ProcessPendingRepairDurabilityRequest()
@@ -22947,9 +22996,10 @@ namespace HaCreator.MapSimulator
 
 
 
-                Pools.DropPickupActorKind.Other => !string.IsNullOrWhiteSpace(recentPickup.ActorName)
-                    ? recentPickup.ActorName
-                    : FormatOtherPickupActorLabel(recentPickup.PickerId),
+                Pools.DropPickupActorKind.Other => ResolveRemotePickupActorName(
+                    Pools.DropPickupActorKind.Other,
+                    recentPickup.PickerId,
+                    recentPickup.ActorName),
                 _ => null
             };
         }
@@ -23867,7 +23917,8 @@ namespace HaCreator.MapSimulator
         {
             WzSubProperty itemProperty = LoadInventoryItemProperty(itemId);
             WzSubProperty specProperty = itemProperty?["spec"] as WzSubProperty;
-            if (specProperty == null)
+            WzSubProperty specExProperty = itemProperty?["specEx"] as WzSubProperty;
+            if (specProperty == null && specExProperty == null)
             {
                 return default;
             }
@@ -23875,71 +23926,73 @@ namespace HaCreator.MapSimulator
 
             return new ConsumableItemEffect
             {
-                FlatHp = Math.Max(0, GetWzIntValue(specProperty["hp"])),
-                FlatMp = Math.Max(0, GetWzIntValue(specProperty["mp"])),
-                PercentHp = ResolveConsumablePercentValue(specProperty, "hpR", "hpRatio", "hpPer"),
-                PercentMp = ResolveConsumablePercentValue(specProperty, "mpR", "mpRatio", "mpPer"),
-                DirectExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, "expinc", "exp")),
-                CharismaExperience = Math.Max(0, GetWzIntValue(specProperty["charismaEXP"])),
-                InsightExperience = Math.Max(0, GetWzIntValue(specProperty["insightEXP"])),
-                WillExperience = Math.Max(0, GetWzIntValue(specProperty["willEXP"])),
-                CraftExperience = Math.Max(0, GetWzIntValue(specProperty["craftEXP"])),
-                SenseExperience = Math.Max(0, GetWzIntValue(specProperty["senseEXP"])),
-                CharmExperience = Math.Max(0, GetWzIntValue(specProperty["charmEXP"])),
-                EventPoint = Math.Max(0, GetWzIntValue(specProperty["eventPoint"])),
-                MoveToMapId = Math.Max(0, GetWzIntValue(specProperty["moveTo"])),
-                Booster = ResolveConsumableIntValue(specProperty, "booster", "indieBooster"),
-                Pad = ResolveConsumableIntValue(specProperty, "pad", "indiePad"),
-                Mad = ResolveConsumableIntValue(specProperty, "mad", "indieMad"),
-                Pdd = ResolveConsumableIntValue(specProperty, "pdd", "indiePdd"),
-                Mdd = ResolveConsumableIntValue(specProperty, "mdd", "indieMdd"),
-                Strength = ResolveConsumableIntValue(specProperty, "str", "indieSTR"),
-                Dexterity = ResolveConsumableIntValue(specProperty, "dex", "indieDEX"),
-                Intelligence = ResolveConsumableIntValue(specProperty, "int", "indieINT"),
-                Luck = ResolveConsumableIntValue(specProperty, "luk", "indieLUK"),
-                Accuracy = ResolveConsumableIntValue(specProperty, "acc"),
-                Avoidability = ResolveConsumableIntValue(specProperty, "eva"),
-                Speed = ResolveConsumableIntValue(specProperty, "speed", "indieSpeed"),
-                Jump = ResolveConsumableIntValue(specProperty, "jump", "indieJump"),
-                AllStat = ResolveConsumableIntValue(specProperty, "indieAllStat"),
-                IndieMaxHp = ResolveConsumableIntValue(specProperty, "indieMhp"),
-                IndieMaxMp = ResolveConsumableIntValue(specProperty, "indieMmp"),
-                MaxHpPercent = ResolveConsumablePercentValue(specProperty, "mhpR", "mhpRRate"),
-                MaxMpPercent = ResolveConsumablePercentValue(specProperty, "mmpR", "mmpRRate"),
-                AttackPercent = ResolveConsumablePercentValue(specProperty, "padRate"),
-                MagicAttackPercent = ResolveConsumablePercentValue(specProperty, "madRate"),
-                DefensePercent = ResolveConsumablePercentValue(specProperty, "pddRate", "pddR"),
-                MagicDefensePercent = ResolveConsumablePercentValue(specProperty, "mddRate", "mddR"),
-                AccuracyPercent = ResolveConsumablePercentValue(specProperty, "accRate", "accR"),
-                AvoidabilityPercent = ResolveConsumablePercentValue(specProperty, "evaRate", "evaR"),
-                SpeedPercent = ResolveConsumablePercentValue(specProperty, "speedRate"),
-                AbnormalStatusResistance = ResolveConsumablePercentValue(specProperty, "asrR", "indieAsrR"),
-                ExperienceRate = ResolveConsumablePercentValue(specProperty, "expBuff", "expR", "plusExpRate"),
-                DropRate = ResolveConsumablePercentValue(specProperty, "dropRate", "dropR"),
-                MesoRate = ResolveConsumablePercentValue(specProperty, "mesoR"),
-                EnvironmentalDamageProtection = ResolveConsumableEnvironmentalDamageProtection(specProperty["thaw"]),
-                ConsumeOnPickup = GetWzIntValue(specProperty["consumeOnPickup"]) > 0,
-                DurationMs = Math.Max(0, GetWzIntValue(specProperty["time"])),
+                FlatHp = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "hp")),
+                FlatMp = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "mp")),
+                PercentHp = ResolveConsumablePercentValue(specProperty, specExProperty, "hpR", "hpRatio", "hpPer"),
+                PercentMp = ResolveConsumablePercentValue(specProperty, specExProperty, "mpR", "mpRatio", "mpPer"),
+                DirectExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "expinc", "exp")),
+                CharismaExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "charismaEXP")),
+                InsightExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "insightEXP")),
+                WillExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "willEXP")),
+                CraftExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "craftEXP")),
+                SenseExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "senseEXP")),
+                CharmExperience = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "charmEXP")),
+                EventPoint = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "eventPoint")),
+                MoveToMapId = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "moveTo")),
+                Booster = ResolveConsumableIntValue(specProperty, specExProperty, "booster", "indieBooster"),
+                Pad = ResolveConsumableIntValue(specProperty, specExProperty, "pad", "indiePad"),
+                Mad = ResolveConsumableIntValue(specProperty, specExProperty, "mad", "indieMad"),
+                Pdd = ResolveConsumableIntValue(specProperty, specExProperty, "pdd", "indiePdd"),
+                Mdd = ResolveConsumableIntValue(specProperty, specExProperty, "mdd", "indieMdd"),
+                Strength = ResolveConsumableIntValue(specProperty, specExProperty, "str", "indieSTR"),
+                Dexterity = ResolveConsumableIntValue(specProperty, specExProperty, "dex", "indieDEX"),
+                Intelligence = ResolveConsumableIntValue(specProperty, specExProperty, "int", "indieINT"),
+                Luck = ResolveConsumableIntValue(specProperty, specExProperty, "luk", "indieLUK"),
+                Accuracy = ResolveConsumableIntValue(specProperty, specExProperty, "acc"),
+                Avoidability = ResolveConsumableIntValue(specProperty, specExProperty, "eva"),
+                Speed = ResolveConsumableIntValue(specProperty, specExProperty, "speed", "indieSpeed"),
+                Jump = ResolveConsumableIntValue(specProperty, specExProperty, "jump", "indieJump"),
+                AllStat = ResolveConsumableIntValue(specProperty, specExProperty, "indieAllStat"),
+                IndieMaxHp = ResolveConsumableIntValue(specProperty, specExProperty, "indieMhp"),
+                IndieMaxMp = ResolveConsumableIntValue(specProperty, specExProperty, "indieMmp"),
+                MaxHpPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "mhpR", "mhpRRate"),
+                MaxMpPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "mmpR", "mmpRRate"),
+                AttackPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "padRate"),
+                MagicAttackPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "madRate"),
+                DefensePercent = ResolveConsumablePercentValue(specProperty, specExProperty, "pddRate", "pddR"),
+                MagicDefensePercent = ResolveConsumablePercentValue(specProperty, specExProperty, "mddRate", "mddR"),
+                AccuracyPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "accRate", "accR"),
+                AvoidabilityPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "evaRate", "evaR"),
+                SpeedPercent = ResolveConsumablePercentValue(specProperty, specExProperty, "speedRate"),
+                AbnormalStatusResistance = ResolveConsumablePercentValue(specProperty, specExProperty, "asrR", "indieAsrR"),
+                ExperienceRate = ResolveConsumablePercentValue(specProperty, specExProperty, "expBuff", "expR", "plusExpRate"),
+                DropRate = ResolveConsumablePercentValue(specProperty, specExProperty, "dropRate", "dropR"),
+                MesoRate = ResolveConsumablePercentValue(specProperty, specExProperty, "mesoR"),
+                EnvironmentalDamageProtection = ResolveConsumableEnvironmentalDamageProtection(specProperty?["thaw"], specExProperty?["thaw"]),
+                ConsumeOnPickup = ResolveConsumableIntValue(specProperty, specExProperty, "consumeOnPickup") > 0,
+                DurationMs = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "time")),
 
 
-                MorphTemplateId = Math.Max(0, GetWzIntValue(specProperty["morph"])),
+                MorphTemplateId = Math.Max(0, ResolveConsumableIntValue(specProperty, specExProperty, "morph")),
 
 
 
-                RandomMorphTemplateIds = ResolveConsumableRandomMorphTemplateIds(specProperty["morphRandom"] as WzSubProperty),
-                CuresSeal = GetWzIntValue(specProperty["seal"]) > 0,
-                CuresDarkness = GetWzIntValue(specProperty["darkness"]) > 0,
-                CuresWeakness = GetWzIntValue(specProperty["weakness"]) > 0,
-                CuresStun = GetWzIntValue(specProperty["stun"]) > 0,
-                CuresPoison = GetWzIntValue(specProperty["poison"]) > 0,
-                CuresSlow = GetWzIntValue(specProperty["slow"]) > 0,
-                CuresFreeze = GetWzIntValue(specProperty["freeze"]) > 0,
-                CuresCurse = GetWzIntValue(specProperty["curse"]) > 0,
-                CuresPainMark = GetWzIntValue(specProperty["painmark"]) > 0,
-                CuresDeathMark = GetWzIntValue(specProperty["deathmark"]) > 0,
-                CuresAttract = GetWzIntValue(specProperty["seduce"]) > 0 || GetWzIntValue(specProperty["attract"]) > 0,
-                CuresReverseInput = GetWzIntValue(specProperty["confusion"]) > 0 || GetWzIntValue(specProperty["reverseInput"]) > 0,
-                CuresUndead = GetWzIntValue(specProperty["undead"]) > 0 || GetWzIntValue(specProperty["zombie"]) > 0
+                RandomMorphTemplateIds = ResolveConsumableRandomMorphTemplateIds(
+                    specProperty?["morphRandom"] as WzSubProperty,
+                    specExProperty?["morphRandom"] as WzSubProperty),
+                CuresSeal = ResolveConsumableIntValue(specProperty, specExProperty, "seal") > 0,
+                CuresDarkness = ResolveConsumableIntValue(specProperty, specExProperty, "darkness") > 0,
+                CuresWeakness = ResolveConsumableIntValue(specProperty, specExProperty, "weakness") > 0,
+                CuresStun = ResolveConsumableIntValue(specProperty, specExProperty, "stun") > 0,
+                CuresPoison = ResolveConsumableIntValue(specProperty, specExProperty, "poison") > 0,
+                CuresSlow = ResolveConsumableIntValue(specProperty, specExProperty, "slow") > 0,
+                CuresFreeze = ResolveConsumableIntValue(specProperty, specExProperty, "freeze") > 0,
+                CuresCurse = ResolveConsumableIntValue(specProperty, specExProperty, "curse") > 0,
+                CuresPainMark = ResolveConsumableIntValue(specProperty, specExProperty, "painmark") > 0,
+                CuresDeathMark = ResolveConsumableIntValue(specProperty, specExProperty, "deathmark") > 0,
+                CuresAttract = ResolveConsumableIntValue(specProperty, specExProperty, "seduce", "attract") > 0,
+                CuresReverseInput = ResolveConsumableIntValue(specProperty, specExProperty, "confusion", "reverseInput") > 0,
+                CuresUndead = ResolveConsumableIntValue(specProperty, specExProperty, "undead", "zombie") > 0
             };
         }
 
@@ -24127,9 +24180,15 @@ namespace HaCreator.MapSimulator
             return _activeEnvironmentalDamageProtectionAmount;
         }
 
-        private static int ResolveConsumableEnvironmentalDamageProtection(WzImageProperty property)
+        private static int ResolveConsumableEnvironmentalDamageProtection(WzImageProperty property, WzImageProperty fallbackProperty = null)
         {
-            return Math.Abs(GetWzIntValue(property));
+            int value = GetWzIntValue(property);
+            if (value == 0 && fallbackProperty != null)
+            {
+                value = GetWzIntValue(fallbackProperty);
+            }
+
+            return Math.Abs(value);
         }
 
         private string ResolvePickupActorNameForHistory(Pools.DropPickupActorKind actorKind, int pickerId, bool pickedByPet)
@@ -24148,7 +24207,10 @@ namespace HaCreator.MapSimulator
                     ? ResolvePickupSourceName(pickerId, pickedByPet: true)
                     : ResolveRemotePickupActorName(Pools.DropPickupActorKind.Pet, pickerId, null),
                 Pools.DropPickupActorKind.Mob => ResolveMobPickupSourceName(pickerId),
-                Pools.DropPickupActorKind.Other => FormatOtherPickupActorLabel(pickerId),
+                Pools.DropPickupActorKind.Other => ResolveRemotePickupActorName(
+                    Pools.DropPickupActorKind.Other,
+                    pickerId,
+                    null),
                 _ => null
             };
         }
@@ -24361,6 +24423,26 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private static int[] ResolveConsumableRandomMorphTemplateIds(WzSubProperty morphRandomProperty, WzSubProperty fallbackMorphRandomProperty)
+        {
+            int[] primary = ResolveConsumableRandomMorphTemplateIds(morphRandomProperty);
+            int[] fallback = ResolveConsumableRandomMorphTemplateIds(fallbackMorphRandomProperty);
+            if (primary.Length == 0)
+            {
+                return fallback;
+            }
+
+            if (fallback.Length == 0)
+            {
+                return primary;
+            }
+
+            int[] merged = new int[primary.Length + fallback.Length];
+            Array.Copy(primary, merged, primary.Length);
+            Array.Copy(fallback, 0, merged, primary.Length, fallback.Length);
+            return merged;
+        }
+
 
 
 
@@ -24451,6 +24533,23 @@ namespace HaCreator.MapSimulator
 
             return 0;
         }
+
+        internal static int ResolveConsumablePercentValueForTests(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            params string[] propertyNames)
+        {
+            return ResolveConsumablePercentValue(specProperty, specExProperty, propertyNames);
+        }
+
+        private static int ResolveConsumablePercentValue(WzSubProperty specProperty, WzSubProperty specExProperty, params string[] propertyNames)
+        {
+            int value = ResolveConsumablePercentValue(specProperty, propertyNames);
+            return value > 0
+                ? value
+                : ResolveConsumablePercentValue(specExProperty, propertyNames);
+        }
+
         private static int ResolveConsumableIntValue(WzSubProperty specProperty, params string[] propertyNames)
         {
             if (specProperty == null || propertyNames == null)
@@ -24471,6 +24570,34 @@ namespace HaCreator.MapSimulator
 
             return 0;
 
+        }
+
+        internal static int ResolveConsumableIntValueForTests(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty,
+            params string[] propertyNames)
+        {
+            return ResolveConsumableIntValue(specProperty, specExProperty, propertyNames);
+        }
+
+        private static int ResolveConsumableIntValue(WzSubProperty specProperty, WzSubProperty specExProperty, params string[] propertyNames)
+        {
+            int value = ResolveConsumableIntValue(specProperty, propertyNames);
+            return value != 0
+                ? value
+                : ResolveConsumableIntValue(specExProperty, propertyNames);
+        }
+
+        internal static int ResolveConsumableEnvironmentalDamageProtectionForTests(WzImageProperty thaw, WzImageProperty thawEx)
+        {
+            return ResolveConsumableEnvironmentalDamageProtection(thaw, thawEx);
+        }
+
+        internal static int[] ResolveConsumableRandomMorphTemplateIdsForTests(
+            WzSubProperty morphRandomProperty,
+            WzSubProperty fallbackMorphRandomProperty)
+        {
+            return ResolveConsumableRandomMorphTemplateIds(morphRandomProperty, fallbackMorphRandomProperty);
         }
 
 
@@ -27545,21 +27672,6 @@ namespace HaCreator.MapSimulator
                 return 1;
             }
 
-            if (skill?.AreaAttack == true)
-            {
-                return 1;
-            }
-
-            if (!string.IsNullOrWhiteSpace(skill?.DotType))
-            {
-                return 1;
-            }
-
-            if (string.Equals(skill?.AffectedSkillEffect, "dot", StringComparison.OrdinalIgnoreCase))
-            {
-                return 1;
-            }
-
             return 0;
         }
 
@@ -27592,12 +27704,16 @@ namespace HaCreator.MapSimulator
             }
 
             int resolvedMask = 0;
-            string[] tokenSources =
-            {
-                skill.ElementAttributeToken ?? string.Empty,
-                skill.DotType ?? string.Empty,
-                skill.AffectedSkillEffect ?? string.Empty
-            };
+            string[] tokenSources = !string.IsNullOrWhiteSpace(skill.ElementAttributeToken)
+                ? new[]
+                {
+                    skill.ElementAttributeToken
+                }
+                : new[]
+                {
+                    skill.DotType ?? string.Empty,
+                    skill.AffectedSkillEffect ?? string.Empty
+                };
 
             bool hasAnyTokenSource = false;
             for (int sourceIndex = 0; sourceIndex < tokenSources.Length; sourceIndex++)
@@ -29737,7 +29853,7 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<byte>();
             }
 
-            List<MovePathElement> path = physics.GetMovePathSnapshot(currentTime);
+            List<MovePathElement> path = physics.GetMovePathPacketSnapshot(currentTime);
             if (!CMovePathClientPacketCodec.TryEncode(path, out byte[] payload, out _))
             {
                 return Array.Empty<byte>();
@@ -30329,6 +30445,11 @@ namespace HaCreator.MapSimulator
             // CWvsContext transfer/portal handoff responses consume both shared exclusive-request owners.
             ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
             ClearTransferFieldExclusiveRequestSent(preserveCooldown: false);
+            if (ShouldClearPacketOwnedQuestResultStartQuestRequestLatchFromSharedExclusiveReset(
+                    _packetOwnedQuestResultStartQuestRequestSent))
+            {
+                ClearPacketOwnedQuestResultStartQuestRequestLatch();
+            }
         }
 
         private void RegisterPortalCollisionRequestSource(int portalIndex)
@@ -33411,6 +33532,22 @@ namespace HaCreator.MapSimulator
             HandleQuestWindowActionResult(result);
         }
 
+        private static bool ShouldRouteInlineReferenceToDemandDeliveryHandoff(QuestDetailInlineReference reference)
+        {
+            if (reference.Kind != QuestDetailInlineReferenceKind.Item)
+            {
+                return false;
+            }
+
+            return reference.Source is QuestDetailInlineReferenceSource.RequirementText
+                or QuestDetailInlineReferenceSource.RequirementLine;
+        }
+
+        internal static bool ShouldRouteInlineReferenceToDemandDeliveryHandoffForTesting(QuestDetailInlineReference reference)
+        {
+            return ShouldRouteInlineReferenceToDemandDeliveryHandoff(reference);
+        }
+
         private QuestWindowActionResult OpenQuestDetailInlineReferenceWorldMap(QuestDetailInlineReference reference)
         {
             if (reference.TargetId <= 0)
@@ -33433,6 +33570,7 @@ namespace HaCreator.MapSimulator
             {
                 QuestWindowDetailState detailState = GetQuestWindowDetailStateWithPacketState(_activeQuestDetailQuestId);
                 bool routesToDeliveryHandoff = detailState != null &&
+                                               ShouldRouteInlineReferenceToDemandDeliveryHandoff(reference) &&
                                                detailState.DeliveryType != QuestDetailDeliveryType.None &&
                                                (detailState.TargetItemId == reference.TargetId ||
                                                 _questRuntime.IsQuestDeliveryRequirementItem(

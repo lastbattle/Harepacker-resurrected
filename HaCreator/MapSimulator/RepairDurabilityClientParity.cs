@@ -96,7 +96,8 @@ namespace HaCreator.MapSimulator
             int? shopActionId,
             IEnumerable<string> availableActions,
             IEnumerable<string> speakFallbackActions,
-            WzImage source = null)
+            WzImage source = null,
+            IEnumerable<string> authoredTemplateActionOrder = null)
         {
             List<string> availableActionOrder = availableActions?
                 .Where(static action => !string.IsNullOrWhiteSpace(action))
@@ -110,8 +111,16 @@ namespace HaCreator.MapSimulator
 
             if (shopActionId.GetValueOrDefault() > 0)
             {
-                IReadOnlyList<string> clientTemplateActionOrder =
-                    NpcClientActionSetLoader.BuildClientTemplateActionOrder(source);
+                List<string> clientTemplateActionOrder = authoredTemplateActionOrder?
+                    .Where(static action => !string.IsNullOrWhiteSpace(action))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (clientTemplateActionOrder == null || clientTemplateActionOrder.Count == 0)
+                {
+                    clientTemplateActionOrder =
+                        NpcClientActionSetLoader.BuildClientTemplateActionOrder(source).ToList();
+                }
+
                 if (clientTemplateActionOrder.Count == 0)
                 {
                     clientTemplateActionOrder = availableActionOrder;

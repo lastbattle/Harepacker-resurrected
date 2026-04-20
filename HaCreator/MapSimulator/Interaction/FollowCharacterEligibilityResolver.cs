@@ -131,7 +131,7 @@ namespace HaCreator.MapSimulator.Interaction
             string actionName)
         {
             if (explicitMountedVehicleId > 0
-                && NormalizeMountedVehicleOwnerItemId(candidateMountedVehicleId) <= 0
+                && candidateMountedVehicleId != explicitMountedVehicleId
                 && ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
                     explicitMountedVehicleId,
                     actionName))

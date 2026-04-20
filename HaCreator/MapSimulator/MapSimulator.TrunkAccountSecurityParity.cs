@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.MapSimulator
 {
@@ -15,6 +16,105 @@ namespace HaCreator.MapSimulator
             trunkWindow.AccountSecurityPromptRequested = HandleTrunkAccountSecurityPromptRequested;
             trunkWindow.CloseRequested = HandleTrunkCloseRequested;
             trunkWindow.WindowHidden = HandleTrunkWindowHidden;
+            trunkWindow.PacketOwnedGetItemRequested = HandlePacketOwnedTrunkGetItemRequested;
+            trunkWindow.PacketOwnedPutItemRequested = HandlePacketOwnedTrunkPutItemRequested;
+        }
+
+        private TrunkUI.PacketOwnedTrunkRequestResult HandlePacketOwnedTrunkGetItemRequested(
+            InventoryType inventoryType,
+            int ownerRowIndex,
+            InventorySlotData slotData)
+        {
+            PacketOwnedSocialUtilityDialogDispatcher dispatcher = GetPacketOwnedSocialUtilityDialogDispatcher();
+            if (!dispatcher.IsPacketOwnedTrunkDialogOpen)
+            {
+                return TrunkUI.PacketOwnedTrunkRequestResult.Failure(
+                    "Packet-owned trunk owner is not open; falling back to local trunk inventory mutation.");
+            }
+
+            bool built = dispatcher.TryBuildTrunkGetItemOutboundRequest(
+                inventoryType,
+                ownerRowIndex,
+                slotData,
+                out PacketOwnedNpcUtilityOutboundRequest request,
+                out string message);
+            if (!built)
+            {
+                return TrunkUI.PacketOwnedTrunkRequestResult.Success(message);
+            }
+
+            _ = TryDispatchPacketOwnedTrunkOutboundRequest(request, out string dispatchStatus);
+            string status = string.IsNullOrWhiteSpace(dispatchStatus)
+                ? message
+                : $"{message} {dispatchStatus}";
+            return TrunkUI.PacketOwnedTrunkRequestResult.Success(status);
+        }
+
+        private TrunkUI.PacketOwnedTrunkRequestResult HandlePacketOwnedTrunkPutItemRequested(
+            InventoryType inventoryType,
+            int inventoryRowIndex,
+            InventorySlotData slotData,
+            int requestedQuantity)
+        {
+            PacketOwnedSocialUtilityDialogDispatcher dispatcher = GetPacketOwnedSocialUtilityDialogDispatcher();
+            if (!dispatcher.IsPacketOwnedTrunkDialogOpen)
+            {
+                return TrunkUI.PacketOwnedTrunkRequestResult.Failure(
+                    "Packet-owned trunk owner is not open; falling back to local trunk inventory mutation.");
+            }
+
+            bool built = dispatcher.TryBuildTrunkPutItemOutboundRequest(
+                inventoryType,
+                inventoryRowIndex,
+                slotData,
+                requestedQuantity,
+                out PacketOwnedNpcUtilityOutboundRequest request,
+                out string message);
+            if (!built)
+            {
+                return TrunkUI.PacketOwnedTrunkRequestResult.Success(message);
+            }
+
+            _ = TryDispatchPacketOwnedTrunkOutboundRequest(request, out string dispatchStatus);
+            string status = string.IsNullOrWhiteSpace(dispatchStatus)
+                ? message
+                : $"{message} {dispatchStatus}";
+            return TrunkUI.PacketOwnedTrunkRequestResult.Success(status);
+        }
+
+        private bool TryDispatchPacketOwnedTrunkOutboundRequest(
+            PacketOwnedNpcUtilityOutboundRequest request,
+            out string statusMessage)
+        {
+            statusMessage = string.Empty;
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out string bridgeStatus))
+            {
+                statusMessage = $"Mirrored opcode {request.Opcode} through the live official-session bridge. {bridgeStatus}";
+                return true;
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(request.Opcode, request.Payload, out string outboxStatus))
+            {
+                statusMessage = $"Mirrored opcode {request.Opcode} through the packet outbox after the bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+                return true;
+            }
+
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(request.Opcode, request.Payload, out string queuedBridgeStatus))
+            {
+                statusMessage = $"Queued opcode {request.Opcode} for deferred official-session injection. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+                return true;
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(request.Opcode, request.Payload, out string queuedOutboxStatus))
+            {
+                statusMessage = $"Queued opcode {request.Opcode} for deferred packet outbox delivery. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+                return true;
+            }
+
+            statusMessage = $"Opcode {request.Opcode} remained simulator-owned because bridge/outbox dispatch was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            return false;
         }
 
         private bool HandleTrunkAccountSecurityPromptRequested(TrunkAccountSecurityPromptKind promptKind)
@@ -178,24 +278,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out _))
-            {
-                return true;
-            }
-
-            if (_localUtilityPacketOutbox.TrySendOutboundPacket(request.Opcode, request.Payload, out _))
-            {
-                return true;
-            }
-
-            if (_localUtilityOfficialSessionBridgeEnabled
-                && _localUtilityOfficialSessionBridge.IsRunning
-                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(request.Opcode, request.Payload, out _))
-            {
-                return true;
-            }
-
-            _localUtilityPacketOutbox.TryQueueOutboundPacket(request.Opcode, request.Payload, out _);
+            TryDispatchPacketOwnedTrunkOutboundRequest(request, out _);
             return true;
         }
 

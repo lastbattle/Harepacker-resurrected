@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveRaise.WindowMode = windowMode;
             ActiveRaise.DisplayMode = displayMode;
             ActiveRaise.WindowPosition = windowPosition;
+            ObserveIdentityCounters(ActiveRaise.ManagerSessionId, ActiveRaise.RequestId);
             if (string.IsNullOrWhiteSpace(ActiveRaise.LastInboundSummary))
             {
                 ActiveRaise.LastInboundSummary = snapshot?.LastInboundSummary ?? string.Empty;
@@ -274,6 +275,9 @@ namespace HaCreator.MapSimulator.Interaction
                 isActiveQuest
                     ? ActiveRaise.LastInboundSummary ?? string.Empty
                     : snapshot?.LastInboundSummary ?? string.Empty);
+            ObserveIdentityCounters(
+                isActiveQuest ? ActiveRaise.ManagerSessionId : snapshot?.ManagerSessionId ?? 0,
+                isActiveQuest ? ActiveRaise.RequestId : snapshot?.OwnerRequestId ?? 0);
 
             if (!isActiveQuest)
             {
@@ -303,6 +307,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return;
             }
+
+            ObserveIdentityCounters(state.ManagerSessionId, state.RequestId);
 
             if (!state.IsWindowDismissedLocally)
             {
@@ -378,6 +384,50 @@ namespace HaCreator.MapSimulator.Interaction
                     : isActiveQuest ? ActiveRaise.AwaitingConfirmAck : snapshot?.AwaitingConfirmAck ?? false,
                 isActiveQuest ? ActiveRaise.AwaitingOwnerDestroyAck : snapshot?.AwaitingOwnerDestroyAck ?? false,
                 summary ?? string.Empty);
+            ObserveIdentityCounters(payload.ManagerSessionId, payload.OwnerRequestId);
+        }
+
+        public QuestRewardRaiseState EnsureRetainedRaiseForInboundPacket(QuestRewardRaiseInboundPacket packet)
+        {
+            QuestRewardRaisePacketPayload payload = packet?.Payload;
+            int questId = Math.Max(0, payload?.QuestId ?? 0);
+            if (questId <= 0 || packet.Kind == QuestRewardRaiseInboundPacketKind.OwnerDestroyResult)
+            {
+                return null;
+            }
+
+            if (ActiveRaise?.Prompt?.QuestId == questId)
+            {
+                return ActiveRaise;
+            }
+
+            if (_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
+            {
+                return retainedState;
+            }
+
+            _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            retainedState = new QuestRewardRaiseState
+            {
+                Source = QuestRewardRaiseSourceKind.QuestWindow,
+                Prompt = BuildSyntheticPromptForQuest(questId),
+                GroupIndex = 0,
+                ManagerSessionId = ResolvePositiveObservedValue(payload.ManagerSessionId, snapshot?.ManagerSessionId ?? 0),
+                RequestId = ResolvePositiveObservedValue(payload.OwnerRequestId, snapshot?.OwnerRequestId ?? 0),
+                OwnerItemId = ResolvePositiveObservedValue(payload.OwnerItemId, snapshot?.OwnerItemId ?? 0),
+                QrData = payload.QrData != 0 ? payload.QrData : snapshot?.QrData ?? 0,
+                MaxDropCount = ResolveObservedMaxDropCount(null, snapshot, payload),
+                WindowMode = payload.WindowMode,
+                DisplayMode = payload.DisplayMode,
+                LastInboundSummary = snapshot?.LastInboundSummary ?? string.Empty,
+                AwaitingConfirmAck = snapshot?.AwaitingConfirmAck ?? false,
+                AwaitingOwnerDestroyAck = snapshot?.AwaitingOwnerDestroyAck ?? false,
+                IsWindowDismissedLocally = true
+            };
+            retainedState.SyncSelectionProgressFromPayload(payload);
+            _retainedClosedRaisesByQuestId[questId] = retainedState;
+            RememberState(retainedState);
+            return retainedState;
         }
 
         private static int ResolvePositiveObservedValue(int primaryValue, params int[] fallbackValues)
@@ -437,6 +487,18 @@ namespace HaCreator.MapSimulator.Interaction
                 && (snapshot.AwaitingConfirmAck
                     || snapshot.AwaitingOwnerDestroyAck
                 || !string.IsNullOrWhiteSpace(snapshot.LastInboundSummary));
+        }
+
+        private static QuestRewardChoicePrompt BuildSyntheticPromptForQuest(int questId)
+        {
+            return new QuestRewardChoicePrompt
+            {
+                QuestId = Math.Max(0, questId),
+                QuestName = $"Quest #{Math.Max(0, questId)}",
+                CompletionPhase = false,
+                ActionLabel = string.Empty,
+                Groups = Array.Empty<QuestRewardChoiceGroup>()
+            };
         }
 
         private static int ResolveObservedMaxDropCount(
@@ -590,6 +652,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return requestId;
+        }
+
+        private void ObserveIdentityCounters(int managerSessionId, int ownerRequestId)
+        {
+            int normalizedSessionId = Math.Max(0, managerSessionId);
+            if (normalizedSessionId > 0)
+            {
+                _nextManagerSessionId = Math.Max(_nextManagerSessionId, normalizedSessionId + 1);
+            }
+
+            int normalizedOwnerRequestId = Math.Max(0, ownerRequestId);
+            if (normalizedOwnerRequestId > 0)
+            {
+                _nextOwnerRequestId = Math.Max(_nextOwnerRequestId, normalizedOwnerRequestId + 1);
+            }
         }
     }
 }

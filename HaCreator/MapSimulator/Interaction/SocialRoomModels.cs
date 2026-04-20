@@ -1983,9 +1983,7 @@ namespace HaCreator.MapSimulator.Interaction
                         ? TryApplyTradingRoomItemPacket(payload, out message)
                         : TryApplyTradingRoomItemPacket(reader, out message);
                 case TradingRoomTradePacketType:
-                    ApplyTradingRoomTradePacket();
-                    message = StatusMessage;
-                    return true;
+                    return TryApplyTradingRoomTradePacket(reader, out message);
                 case TradingRoomItemCrcPacketType:
                     return TryApplyTradingRoomCrcPacket(reader, out message);
                 case TradingRoomExceedLimitPacketType:
@@ -2118,8 +2116,44 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write((short)0);
         }
 
-        private void ApplyTradingRoomTradePacket()
+        private bool TryApplyTradingRoomTradePacket(PacketReader reader, out string message)
         {
+            message = null;
+            List<TradeVerificationEntry> requestEntries = null;
+            bool requestChecksumMatched = false;
+            string requestVerificationDetail = null;
+            if (reader != null && reader.Remaining > 0)
+            {
+                int count = reader.ReadByte();
+                if (count < 0)
+                {
+                    message = "Trading-room subtype 17 packet contained an invalid checksum row count.";
+                    return false;
+                }
+
+                requestEntries = new List<TradeVerificationEntry>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    if (reader.Remaining < sizeof(int) + sizeof(int))
+                    {
+                        message = $"Trading-room subtype 17 packet ended before checksum row {i + 1}.";
+                        return false;
+                    }
+
+                    int itemId = reader.ReadInt();
+                    uint checksum = unchecked((uint)reader.ReadInt());
+                    if (itemId <= 0)
+                    {
+                        message = $"Trading-room subtype 17 packet row {i + 1} contained an invalid item id.";
+                        return false;
+                    }
+
+                    requestEntries.Add(new TradeVerificationEntry(itemId, checksum));
+                }
+
+                requestChecksumMatched = TryValidateTradeRequestVerificationEntries(requestEntries, out requestVerificationDetail);
+            }
+
             _tradeRemoteLocked = true;
             _tradeRemoteAccepted = false;
             _tradeLocalAccepted = false;
@@ -2131,10 +2165,24 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeAutoCrcReplyPending = true;
             _tradeVerificationPending = true;
             RoomState = "CRC verification";
-            StatusMessage = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} local item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}, including zero-row replies when no local offer items are staged.";
+            string baseStatus = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} local item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}, including zero-row replies when no local offer items are staged.";
+            if (requestEntries == null)
+            {
+                StatusMessage = $"{baseStatus} Subtype {TradingRoomTradePacketType} did not include the client Trade() checksum rows; continuing with the existing OnTrade follow-up path.";
+            }
+            else if (requestChecksumMatched)
+            {
+                StatusMessage = $"{baseStatus} Subtype {TradingRoomTradePacketType} carried {requestEntries.Count} request checksum entr{(requestEntries.Count == 1 ? "y" : "ies")} that matched the current packet-owned trade rows.";
+            }
+            else
+            {
+                StatusMessage = $"{baseStatus} Subtype {TradingRoomTradePacketType} carried {requestEntries.Count} request checksum entr{(requestEntries.Count == 1 ? "y" : "ies")}, but request verification differed: {requestVerificationDetail}.";
+            }
 
             RefreshTradeOccupantsAndRows();
             PersistState();
+            message = StatusMessage;
+            return true;
         }
 
         private bool TryApplyTradingRoomCrcPacket(PacketReader reader, out string message)
@@ -8416,6 +8464,89 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return entries;
+        }
+
+        private List<TradeVerificationEntry> BuildTradeRequestVerificationEntries()
+        {
+            List<TradeVerificationEntry> entries = new();
+            string remoteName = ResolveRemoteTraderName();
+            for (int slotIndex = 1; slotIndex <= TradingRoomClientItemSlotCount; slotIndex++)
+            {
+                SocialRoomItemEntry localEntry = FindTradingRoomPacketEntry(OwnerName, slotIndex);
+                if (TryBuildTradeVerificationEntry(localEntry, out TradeVerificationEntry localVerificationEntry))
+                {
+                    entries.Add(localVerificationEntry);
+                }
+
+                SocialRoomItemEntry remoteEntry = FindTradingRoomPacketEntry(remoteName, slotIndex);
+                if (TryBuildTradeVerificationEntry(remoteEntry, out TradeVerificationEntry remoteVerificationEntry))
+                {
+                    entries.Add(remoteVerificationEntry);
+                }
+            }
+
+            return entries;
+        }
+
+        private bool TryValidateTradeRequestVerificationEntries(
+            IReadOnlyList<TradeVerificationEntry> receivedEntries,
+            out string detail)
+        {
+            detail = null;
+            List<TradeVerificationEntry> expectedEntries = BuildTradeRequestVerificationEntries();
+            if (expectedEntries.Count == 0 && (receivedEntries == null || receivedEntries.Count == 0))
+            {
+                return true;
+            }
+
+            if (receivedEntries == null)
+            {
+                detail = "the packet did not provide any checksum rows";
+                return false;
+            }
+
+            if (expectedEntries.Count != receivedEntries.Count)
+            {
+                detail = $"expected {expectedEntries.Count} entr{(expectedEntries.Count == 1 ? "y" : "ies")} but received {receivedEntries.Count}";
+                return false;
+            }
+
+            for (int i = 0; i < expectedEntries.Count; i++)
+            {
+                TradeVerificationEntry expected = expectedEntries[i];
+                TradeVerificationEntry received = receivedEntries[i];
+                if (expected.ItemId != received.ItemId)
+                {
+                    detail = $"row {i + 1} expected item {expected.ItemId} but received {received.ItemId}";
+                    return false;
+                }
+
+                if (expected.Checksum != received.Checksum)
+                {
+                    detail = $"row {i + 1} for item {expected.ItemId} expected CRC 0x{expected.Checksum:X8} but received 0x{received.Checksum:X8}";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryBuildTradeVerificationEntry(SocialRoomItemEntry item, out TradeVerificationEntry entry)
+        {
+            entry = default;
+            if (item == null)
+            {
+                return false;
+            }
+
+            int itemId = item.ItemId > 0 ? item.ItemId : ResolveItemIdByName(item.ItemName);
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            entry = new TradeVerificationEntry(itemId, ResolveTradeVerificationChecksum(itemId));
+            return true;
         }
 
         private bool TryValidateTradeVerificationEntries(

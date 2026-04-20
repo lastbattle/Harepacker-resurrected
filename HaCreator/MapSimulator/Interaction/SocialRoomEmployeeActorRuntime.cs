@@ -78,8 +78,8 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
         private readonly Dictionary<int, NameTagAssets> _cashEmployeeNameTagCache = new();
         private readonly HashSet<int> _cashEmployeeNameTagMissingTemplates = new();
-        private readonly Dictionary<ulong, EmployeeActionCacheEntry> _cashActionCache = new();
-        private readonly Dictionary<string, ulong> _cashActionKeyByName = new(StringComparer.Ordinal);
+        private readonly Dictionary<uint, EmployeeActionCacheEntry> _cashActionCache = new();
+        private readonly Dictionary<string, uint> _cashActionKeyByName = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
@@ -737,7 +737,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return new List<IDXObject>();
             }
 
-            ulong cacheKey = BuildEmployeeActionCacheKey(templateId, actionEntry.ClientActionIndex);
+            uint cacheKey = BuildEmployeeActionCacheKey(templateId, actionEntry.ClientActionIndex);
             string actionCacheAlias = BuildEmployeeActionCacheAlias(templateId, actionEntry.ActionName);
 
             if (_cashActionCache.TryGetValue(cacheKey, out EmployeeActionCacheEntry cachedEntry)
@@ -747,7 +747,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return cachedEntry.Frames;
             }
 
-            if (_cashActionKeyByName.TryGetValue(actionCacheAlias, out ulong aliasedCacheKey)
+            if (_cashActionKeyByName.TryGetValue(actionCacheAlias, out uint aliasedCacheKey)
                 && _cashActionCache.TryGetValue(aliasedCacheKey, out EmployeeActionCacheEntry aliasedEntry)
                 && string.Equals(aliasedEntry.ActionName, actionEntry.ActionName, StringComparison.Ordinal))
             {
@@ -789,14 +789,16 @@ namespace HaCreator.MapSimulator.Interaction
             return EmployeeActionCatalog.NormalizeClientActionNames(actionNames);
         }
 
-        private static ulong BuildEmployeeActionCacheKey(int templateId, int actionIndex)
+        private static uint BuildEmployeeActionCacheKey(int templateId, int actionIndex)
         {
-            return ((ulong)(uint)Math.Max(0, templateId) << 32) | (uint)Math.Max(0, actionIndex);
+            uint normalizedTemplateId = (uint)Math.Max(0, templateId);
+            uint normalizedAction = (uint)Math.Clamp(actionIndex, 0, byte.MaxValue);
+            return (normalizedTemplateId << 8) | normalizedAction;
         }
 
-        private static int ExtractTemplateIdFromActionCacheKey(ulong cacheKey)
+        private static int ExtractTemplateIdFromActionCacheKey(uint cacheKey)
         {
-            return (int)(cacheKey >> 32);
+            return (int)(cacheKey >> 8);
         }
 
         private static string BuildEmployeeActionCacheAlias(int templateId, string actionName)
@@ -804,7 +806,7 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{Math.Max(0, templateId)}:{NormalizeActionName(actionName)}";
         }
 
-        private void TouchEmployeeActionCacheEntry(ulong cacheKey, EmployeeActionCacheEntry entry, string actionCacheAlias)
+        private void TouchEmployeeActionCacheEntry(uint cacheKey, EmployeeActionCacheEntry entry, string actionCacheAlias)
         {
             if (entry == null)
             {
@@ -827,7 +829,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int removeCount = Math.Max(1, _cashActionCache.Count - MaxEmployeeActionCacheEntries);
-            KeyValuePair<ulong, EmployeeActionCacheEntry>[] toRemove = _cashActionCache
+            KeyValuePair<uint, EmployeeActionCacheEntry>[] toRemove = _cashActionCache
                 .OrderBy(pair => pair.Value?.LastAccessStamp ?? int.MinValue)
                 .ThenBy(pair => pair.Key)
                 .Take(removeCount)
@@ -835,13 +837,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < toRemove.Length; i++)
             {
-                KeyValuePair<ulong, EmployeeActionCacheEntry> pair = toRemove[i];
+                KeyValuePair<uint, EmployeeActionCacheEntry> pair = toRemove[i];
                 _cashActionCache.Remove(pair.Key);
 
                 string alias = BuildEmployeeActionCacheAlias(
                     ExtractTemplateIdFromActionCacheKey(pair.Key),
                     pair.Value?.ActionName);
-                if (_cashActionKeyByName.TryGetValue(alias, out ulong aliasKey)
+                if (_cashActionKeyByName.TryGetValue(alias, out uint aliasKey)
                     && aliasKey == pair.Key)
                 {
                     _cashActionKeyByName.Remove(alias);
@@ -1939,6 +1941,8 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 List<string> orderedActionNames = NormalizeClientActionNames(candidateActions.Select(action => action.ActionName)).ToList();
+                bool hasBaseAction = orderedActionNames.Count > 0
+                    && string.Equals(orderedActionNames[0], BaseActionName, StringComparison.Ordinal);
                 List<Entry> actions = new();
                 for (int i = 0; i < orderedActionNames.Count; i++)
                 {
@@ -1948,7 +1952,8 @@ namespace HaCreator.MapSimulator.Interaction
                         .ActionProperty;
                     if (actionProperty != null)
                     {
-                        actions.Add(new Entry(actionName, i, actionProperty));
+                        int clientActionIndex = ResolveClientActionIndex(actionName, i, hasBaseAction);
+                        actions.Add(new Entry(actionName, clientActionIndex, actionProperty));
                     }
                 }
 
@@ -1999,6 +2004,17 @@ namespace HaCreator.MapSimulator.Interaction
 
                 normalizedActions.AddRange(nonStandActions);
                 return normalizedActions;
+            }
+
+            private static int ResolveClientActionIndex(string actionName, int orderedIndex, bool hasBaseAction)
+            {
+                if (string.Equals(actionName, BaseActionName, StringComparison.Ordinal))
+                {
+                    return 0;
+                }
+
+                int normalizedOrderedIndex = Math.Max(0, orderedIndex);
+                return hasBaseAction ? normalizedOrderedIndex : normalizedOrderedIndex + 1;
             }
 
             internal IReadOnlyList<Entry> Actions { get; }

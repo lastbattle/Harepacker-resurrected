@@ -104,7 +104,8 @@ namespace HaCreator.MapSimulator.Pools
             byte EffectType,
             string EffectPath,
             int CurrentTime,
-            bool UseOwnerFacing);
+            bool UseOwnerFacing,
+            bool AttachToOwner = true);
         public readonly record struct RemoteChatLogMessagePresentation(
             int CharacterId,
             byte EffectType,
@@ -127,6 +128,7 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 Impact,
             bool FacingRight,
             int CurrentTime,
+            bool GravityFree,
             bool UsesMonsterBombGauge,
             int InitDelayMs,
             int ExplosionDelayMs,
@@ -208,6 +210,7 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation QueuedPlaybackAnimation { get; set; }
             public bool QueuedFacingRight { get; set; }
             public bool QueuedForceReplay { get; set; }
+            public int LastForcedReplayActionTriggerTime { get; set; } = int.MinValue;
         }
 
         public sealed class RemotePacketOwnedEmotionState
@@ -446,6 +449,13 @@ namespace HaCreator.MapSimulator.Pools
             15101006,
             21111005
         };
+        private static readonly int[] RemoteEnergyChargeSkillIds =
+        {
+            5110001,
+            15100004
+        };
+        private const int BuccaneerEnergyChargeMinimumFullChargeValue = 105;
+        private const int ThunderBreakerEnergyChargeMinimumFullChargeValue = 160;
         private static readonly int[] RemoteMoreWildDamageUpSkillIds =
         {
             RemoteMoreWildDamageUpSkillId
@@ -2447,6 +2457,9 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            temporaryStats = ReconcileChargeSkillIdFromPriorSnapshot(
+                temporaryStats,
+                actor.TemporaryStats);
             actor.TemporaryStats = temporaryStats;
             actor.TemporaryStatDelay = delay;
             actor.PendingTemporaryStatTimelineReseed = true;
@@ -2930,6 +2943,45 @@ namespace HaCreator.MapSimulator.Pools
                 packet.MobTemplateId.Value,
                 attackNumber);
             return true;
+        }
+
+        private static RemoteUserTemporaryStatSnapshot ReconcileChargeSkillIdFromPriorSnapshot(
+            RemoteUserTemporaryStatSnapshot snapshot,
+            RemoteUserTemporaryStatSnapshot priorSnapshot)
+        {
+            if (!snapshot.HasWeaponCharge || snapshot.KnownState.ChargeSkillId.HasValue)
+            {
+                return snapshot;
+            }
+
+            int priorChargeSkillId = priorSnapshot.KnownState.ChargeSkillId.GetValueOrDefault();
+            if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(priorChargeSkillId))
+            {
+                return snapshot;
+            }
+
+            int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(snapshot, priorChargeSkillId);
+            if (!resolvedChargeSkillId.HasValue)
+            {
+                return snapshot;
+            }
+
+            RemoteUserTemporaryStatKnownState knownState = snapshot.KnownState with
+            {
+                ChargeSkillId = resolvedChargeSkillId.Value
+            };
+
+            return snapshot with
+            {
+                KnownState = knownState
+            };
+        }
+
+        internal static RemoteUserTemporaryStatSnapshot ReconcileChargeSkillIdFromPriorSnapshotForTesting(
+            RemoteUserTemporaryStatSnapshot snapshot,
+            RemoteUserTemporaryStatSnapshot priorSnapshot)
+        {
+            return ReconcileChargeSkillIdFromPriorSnapshot(snapshot, priorSnapshot);
         }
 
         internal static Vector2 ResolveRemoteHitMobAttackSoundOriginForParity(
@@ -3729,7 +3781,8 @@ namespace HaCreator.MapSimulator.Pools
                         packet.EffectType,
                         makerSkillEffectPath,
                         currentTime,
-                        UseOwnerFacing: false));
+                        UseOwnerFacing: false,
+                        AttachToOwner: true));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered maker-skill fixed effect {makerSkillEffectPath}.";
                     return true;
 
@@ -3797,7 +3850,8 @@ namespace HaCreator.MapSimulator.Pools
                         packet.EffectType,
                         packet.StringValue,
                         currentTime,
-                        packet.KnownSubtype == RemoteUserEffectSubtype.CarnivalReservedEffect));
+                        packet.KnownSubtype == RemoteUserEffectSubtype.CarnivalReservedEffect,
+                        ShouldAttachRemotePacketOwnedStringEffectForParity(packet.KnownSubtype)));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered packet-owned string effect {packet.StringValue}.";
                     return true;
 
@@ -3938,6 +3992,13 @@ namespace HaCreator.MapSimulator.Pools
         private static string ResolveRemoteSoundDescriptor(int stringPoolId, string fallbackDescriptor)
         {
             return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackDescriptor);
+        }
+
+        internal static bool ShouldAttachRemotePacketOwnedStringEffectForParity(RemoteUserEffectSubtype? subtype)
+        {
+            // CUser::OnEffect case 26 (ItemSoundStringEffect) resolves a packet-time
+            // anchor from m_pvc and does not keep a live vecctrl attachment.
+            return subtype != RemoteUserEffectSubtype.ItemSoundStringEffect;
         }
 
         private static bool IsAriantArenaRemoteActor(RemoteUserActor actor)
@@ -4185,6 +4246,7 @@ namespace HaCreator.MapSimulator.Pools
                     new Vector2(impactX, impactMagnitudeY),
                     facingRight,
                     currentTime,
+                    GravityFree: true,
                     UsesMonsterBombGauge: true,
                     InitDelayMs: MonsterBombInitDelayMs,
                     ExplosionDelayMs: MonsterBombExplosionDelayMs,
@@ -4203,6 +4265,7 @@ namespace HaCreator.MapSimulator.Pools
                 new Vector2(facingRight ? impactMagnitude : -impactMagnitude, -impactMagnitude),
                 facingRight,
                 currentTime,
+                GravityFree: false,
                 UsesMonsterBombGauge: false,
                 InitDelayMs: 0,
                 ExplosionDelayMs: 0,
@@ -4266,11 +4329,20 @@ namespace HaCreator.MapSimulator.Pools
             int elapsedMs,
             int flightDurationMs = 1000,
             int dragX = 0,
-            int dragY = 0)
+            int dragY = 0,
+            bool gravityFree = false)
         {
             int clampedDuration = Math.Max(1, flightDurationMs);
             float progress = Math.Clamp(Math.Max(0, elapsedMs) / (float)clampedDuration, 0f, 1f);
             Vector2 position = origin + (impact * progress);
+
+            if (!gravityFree && progress > 0f)
+            {
+                // v95 CGrenade::Init sets m_bGravityFree for Monster Bomb and keeps
+                // non-body-bomb throws on regular vec-control gravity.
+                float elapsedSeconds = Math.Max(0, elapsedMs) / 1000f;
+                position.Y += 0.5f * CVecCtrl.GravityAcceleration * elapsedSeconds * elapsedSeconds;
+            }
 
             if (dragY > 0 && progress > 0f && progress < 1f)
             {
@@ -9981,16 +10053,41 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            bool hasEnergyChargeStyleValue = knownState.WeaponChargeValue.HasValue
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(knownState.WeaponChargeValue.Value);
+            if (hasEnergyChargeStyleValue)
+            {
+                ResolveRemoteEnergyChargeSkill(actor, knownState, out skillId, out skill);
+                return;
+            }
+
             int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(
                 actor?.TemporaryStats ?? default,
                 ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0));
+
+            if (resolvedChargeSkillId.HasValue
+                && AfterImageChargeSkillResolver.IsKnownChargeSkillId(resolvedChargeSkillId.Value))
+            {
+                foreach (int candidateSkillId in EnumerateRemoteWeaponChargeSkillIds(actor?.Build?.Job ?? 0, resolvedChargeSkillId))
+                {
+                    SkillData candidateSkill = _skillLoader.LoadSkill(candidateSkillId);
+                    if (!HasRemoteTemporaryStatAvatarEffect(candidateSkill))
+                    {
+                        continue;
+                    }
+
+                    skillId = candidateSkillId;
+                    skill = candidateSkill;
+                    return;
+                }
+            }
 
             if (!resolvedChargeSkillId.HasValue)
             {
                 return;
             }
 
-            foreach (int candidateSkillId in EnumerateRemoteWeaponChargeSkillIds(actor?.Build?.Job ?? 0, resolvedChargeSkillId))
+            foreach (int candidateSkillId in EnumerateRemoteWeaponChargeSkillIds(actor?.Build?.Job ?? 0, preferredSkillId: null))
             {
                 SkillData candidateSkill = _skillLoader.LoadSkill(candidateSkillId);
                 if (!HasRemoteTemporaryStatAvatarEffect(candidateSkill))
@@ -10002,6 +10099,80 @@ namespace HaCreator.MapSimulator.Pools
                 skill = candidateSkill;
                 return;
             }
+        }
+
+        private void ResolveRemoteEnergyChargeSkill(
+            RemoteUserActor actor,
+            RemoteUserTemporaryStatKnownState knownState,
+            out int? skillId,
+            out SkillData skill)
+        {
+            skillId = null;
+            skill = null;
+            if (_skillLoader == null || !knownState.WeaponChargeValue.HasValue)
+            {
+                return;
+            }
+
+            int weaponChargeValue = knownState.WeaponChargeValue.Value;
+            if (weaponChargeValue <= 0)
+            {
+                return;
+            }
+
+            int jobId = actor?.Build?.Job ?? 0;
+            foreach (int candidateSkillId in EnumerateRemoteEnergyChargeSkillIds(jobId))
+            {
+                SkillData candidateSkill = _skillLoader.LoadSkill(candidateSkillId);
+                if (!CanUseRemoteEnergyChargeAvatarEffect(candidateSkillId, weaponChargeValue, candidateSkill))
+                {
+                    continue;
+                }
+
+                skillId = candidateSkillId;
+                skill = candidateSkill;
+                return;
+            }
+        }
+
+        private static IReadOnlyList<int> EnumerateRemoteEnergyChargeSkillIds(int jobId)
+        {
+            int preferredSkillId = jobId switch
+            {
+                >= 510 and <= 512 => 5110001,
+                >= 1510 and <= 1512 => 15100004,
+                _ => 0
+            };
+
+            return EnumeratePreferredSkillIds(RemoteEnergyChargeSkillIds, preferredSkillId);
+        }
+
+        private static bool CanUseRemoteEnergyChargeAvatarEffect(
+            int skillId,
+            int weaponChargeValue,
+            SkillData skill)
+        {
+            if (weaponChargeValue <= 0
+                || skill?.UsesEnergyChargeRuntime != true
+                || string.IsNullOrWhiteSpace(skill.FullChargeEffectName)
+                || !HasRemoteTemporaryStatAvatarEffect(skill))
+            {
+                return false;
+            }
+
+            return weaponChargeValue >= ResolveRemoteEnergyChargeMinimumFullChargeValue(skillId, skill);
+        }
+
+        private static int ResolveRemoteEnergyChargeMinimumFullChargeValue(int skillId, SkillData skill)
+        {
+            int minimumFullChargeValue = skillId switch
+            {
+                5110001 => BuccaneerEnergyChargeMinimumFullChargeValue,
+                15100004 => ThunderBreakerEnergyChargeMinimumFullChargeValue,
+                _ => 100
+            };
+            int resolvedFormulaBoundary = skill?.ResolveEnergyChargeThreshold(1) ?? minimumFullChargeValue;
+            return Math.Max(1, Math.Max(minimumFullChargeValue, resolvedFormulaBoundary));
         }
 
         private void ResolveRemoteMoreWildDamageUpSkill(
@@ -10722,6 +10893,19 @@ namespace HaCreator.MapSimulator.Pools
             return ResolveRemoteTemporaryStatAffectedLayerShiftCadenceRemainingUpdates(shiftCadenceUpdateCount);
         }
 
+        internal static int ResolveRemoteEnergyChargeMinimumFullChargeValueForTesting(int skillId, SkillData skill)
+        {
+            return ResolveRemoteEnergyChargeMinimumFullChargeValue(skillId, skill);
+        }
+
+        internal static bool CanUseRemoteEnergyChargeAvatarEffectForTesting(
+            int skillId,
+            int weaponChargeValue,
+            SkillData skill)
+        {
+            return CanUseRemoteEnergyChargeAvatarEffect(skillId, weaponChargeValue, skill);
+        }
+
         internal static float ResolveRemoteTemporaryStatAvatarEffectTransitionAlphaForTesting(
             RemoteTemporaryStatAvatarEffectState state,
             int currentTime)
@@ -11015,6 +11199,15 @@ namespace HaCreator.MapSimulator.Pools
                 previousObservedActionTriggerTime);
         }
 
+        internal static bool ShouldForceRemoteShadowPartnerAttackReplayForTriggerForTesting(
+            int observedActionTriggerTime,
+            int previousReplayTriggerTime)
+        {
+            return ShadowPartnerClientActionResolver.ShouldForceReplayForAttackTrigger(
+                observedActionTriggerTime,
+                previousReplayTriggerTime);
+        }
+
         private static bool ShouldRefreshRemoteShadowPartnerObservation(
             string observedPlayerActionName,
             PlayerState observedState,
@@ -11032,6 +11225,22 @@ namespace HaCreator.MapSimulator.Pools
                 || observedFacingRight != previousObservedFacingRight
                 || observedRawActionCode != previousObservedRawActionCode
                 || observedActionTriggerTime != previousObservedActionTriggerTime;
+        }
+
+        private static bool TryMarkRemoteShadowPartnerForcedReplayActionTrigger(
+            RemoteShadowPartnerPresentationState presentation,
+            int observedActionTriggerTime)
+        {
+            if (presentation == null
+                || !ShadowPartnerClientActionResolver.ShouldForceReplayForAttackTrigger(
+                    observedActionTriggerTime,
+                    presentation.LastForcedReplayActionTriggerTime))
+            {
+                return false;
+            }
+
+            presentation.LastForcedReplayActionTriggerTime = observedActionTriggerTime;
+            return true;
         }
 
         private static bool ShouldDrawRemoteShadowPartner(RemoteUserActor actor, int? rawActionCode = null)
@@ -11774,7 +11983,8 @@ namespace HaCreator.MapSimulator.Pools
                         presentation.QueuedActionName = queuedObservedAction;
                         presentation.QueuedPlaybackAnimation = queuedObservedPlayback;
                         presentation.QueuedFacingRight = actor.FacingRight;
-                        presentation.QueuedForceReplay = observedAttackAction && actionTriggerTime != int.MinValue;
+                        presentation.QueuedForceReplay = observedAttackAction
+                            && TryMarkRemoteShadowPartnerForcedReplayActionTrigger(presentation, actionTriggerTime);
                     }
 
                     return;
@@ -11834,7 +12044,9 @@ namespace HaCreator.MapSimulator.Pools
                             resolvedObservedAttackAction,
                             resolvedObservedAttackPlayback);
                         presentation.PendingFacingRight = actor.FacingRight;
-                        presentation.PendingForceReplay = true;
+                        presentation.PendingForceReplay = TryMarkRemoteShadowPartnerForcedReplayActionTrigger(
+                            presentation,
+                            actionTriggerTime);
                     }
                     else
                     {
@@ -12398,7 +12610,9 @@ namespace HaCreator.MapSimulator.Pools
                 resolvedAttackAction,
                 resolvedAttackPlayback);
             presentation.PendingFacingRight = actor.FacingRight;
-            presentation.PendingForceReplay = observedActionTriggerTime != int.MinValue;
+            presentation.PendingForceReplay = TryMarkRemoteShadowPartnerForcedReplayActionTrigger(
+                presentation,
+                observedActionTriggerTime);
         }
 
         private static float ResolveRemoteShadowPartnerFrameAlpha(SkillFrame frame, int frameElapsedMs)
@@ -12842,7 +13056,9 @@ namespace HaCreator.MapSimulator.Pools
                 preferredSkillId,
                 out int payloadChargeSkillId)
                 ? payloadChargeSkillId
-                : null;
+                : AfterImageChargeSkillResolver.IsKnownChargeSkillId(preferredSkillId)
+                    ? preferredSkillId
+                    : null;
         }
 
         internal static bool TryResolveChargeElementFromTemporaryStats(
@@ -12931,7 +13147,9 @@ namespace HaCreator.MapSimulator.Pools
                 snapshot.RawPayload,
                 payloadMaskBaseOffset,
                 preferredSkillId,
-                out chargeElement);
+                out chargeElement)
+                || (AfterImageChargeSkillResolver.IsKnownChargeSkillId(preferredSkillId)
+                    && AfterImageChargeSkillResolver.TryGetChargeElement(preferredSkillId, out chargeElement));
         }
 
         internal static int ResolvePreferredRemoteAfterImageChargeSkillId(

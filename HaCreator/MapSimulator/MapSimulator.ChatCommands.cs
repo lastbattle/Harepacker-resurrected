@@ -553,7 +553,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTradingRoomSessionCommand(string[] args, int actionIndex)
         {
-            const string sessionUsage = "Usage: /socialroom tradingroom [packet] session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]";
+            const string sessionUsage = "Usage: /socialroom tradingroom [packet] session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode|table|autodetect]|startauto <listenPort> <remotePort> [inboundOpcode|table|autodetect] [processName|pid] [localPort]|stop]";
             string sessionAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
             switch (sessionAction.ToLowerInvariant())
             {
@@ -634,13 +634,11 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
 
-                    int inboundOpcodeValue = 0;
+                    ushort inboundOpcode = TradingRoomPacketTable.ResolveRecoveredInboundOpcode(0);
                     if (args.Length > actionIndex + 5
-                        && (!int.TryParse(args[actionIndex + 5], out inboundOpcodeValue)
-                            || inboundOpcodeValue < 0
-                            || inboundOpcodeValue > ushort.MaxValue))
+                        && !TryResolveTradingRoomInboundOpcodeToken(args[actionIndex + 5], out inboundOpcode))
                     {
-                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        return ChatCommandHandler.CommandResult.Error($"{sessionUsage} {TradingRoomPacketTable.DescribeRecoveredInboundOpcodeSet()}");
                     }
 
                     _tradingRoomOfficialSessionBridgeEnabled = true;
@@ -648,7 +646,7 @@ namespace HaCreator.MapSimulator
                     _tradingRoomOfficialSessionBridgeConfiguredListenPort = listenPort;
                     _tradingRoomOfficialSessionBridgeConfiguredRemoteHost = args[actionIndex + 3];
                     _tradingRoomOfficialSessionBridgeConfiguredRemotePort = remotePort;
-                    _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode = (ushort)inboundOpcodeValue;
+                    _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode = inboundOpcode;
                     _tradingRoomOfficialSessionBridgeConfiguredProcessSelector = null;
                     _tradingRoomOfficialSessionBridgeConfiguredLocalPort = null;
                     EnsureTradingRoomOfficialSessionBridgeState(shouldRun: true);
@@ -664,15 +662,17 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
 
-                    int autoInboundOpcodeValue = 0;
+                    ushort autoInboundOpcode = TradingRoomPacketTable.ResolveRecoveredInboundOpcode(0);
                     int trailingIndex = actionIndex + 4;
                     if (args.Length > trailingIndex
-                        && int.TryParse(args[trailingIndex], out int parsedInboundOpcode)
-                        && parsedInboundOpcode >= 0
-                        && parsedInboundOpcode <= ushort.MaxValue)
+                        && TryResolveTradingRoomInboundOpcodeToken(args[trailingIndex], out ushort parsedInboundOpcode))
                     {
-                        autoInboundOpcodeValue = parsedInboundOpcode;
+                        autoInboundOpcode = parsedInboundOpcode;
                         trailingIndex++;
+                    }
+                    else if (args.Length > trailingIndex && IsTradingRoomInboundOpcodeToken(args[trailingIndex]))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"{sessionUsage} {TradingRoomPacketTable.DescribeRecoveredInboundOpcodeSet()}");
                     }
 
                     string autoProcessSelector = args.Length > trailingIndex ? args[trailingIndex] : null;
@@ -692,14 +692,14 @@ namespace HaCreator.MapSimulator
                     _tradingRoomOfficialSessionBridgeConfiguredListenPort = autoListenPort;
                     _tradingRoomOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
                     _tradingRoomOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
-                    _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode = (ushort)autoInboundOpcodeValue;
+                    _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode = autoInboundOpcode;
                     _tradingRoomOfficialSessionBridgeConfiguredProcessSelector = autoProcessSelector;
                     _tradingRoomOfficialSessionBridgeConfiguredLocalPort = autoLocalPortFilter;
 
                     return _tradingRoomOfficialSessionBridge.TryStartFromDiscovery(
                             autoListenPort,
                             autoRemotePort,
-                            (ushort)autoInboundOpcodeValue,
+                            autoInboundOpcode,
                             autoProcessSelector,
                             autoLocalPortFilter,
                             out string startStatus)
@@ -721,6 +721,31 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private static bool IsTradingRoomInboundOpcodeToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalizedToken = token.Trim();
+            return string.Equals(normalizedToken, "table", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "default", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "auto", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "autodetect", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryResolveTradingRoomInboundOpcodeToken(string token, out ushort inboundOpcode)
+        {
+            if (string.Equals(token?.Trim(), "autodetect", StringComparison.OrdinalIgnoreCase))
+            {
+                inboundOpcode = TradingRoomOfficialSessionBridgeManager.AutoDetectInboundTradingRoomOpcode;
+                return true;
+            }
+
+            return TradingRoomPacketTable.TryResolveRecoveredInboundOpcodeToken(token, out inboundOpcode);
+        }
+
         private ChatCommandHandler.CommandResult HandleTransportSessionCommand(string[] args)
         {
             const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]";
@@ -734,8 +759,7 @@ namespace HaCreator.MapSimulator
 
                 case "discover":
                     if (args.Length < 3
-                        || !int.TryParse(args[2], out int discoverRemotePort)
-                        || discoverRemotePort <= 0)
+                        || !TransportationSessionCommandParsing.TryParseRemotePort(args[2], out int discoverRemotePort))
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
@@ -744,7 +768,7 @@ namespace HaCreator.MapSimulator
                     int? localPortFilter = null;
                     if (args.Length >= 5)
                     {
-                        if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                        if (!TransportationSessionCommandParsing.TryParseLocalPortFilter(args[4], out int parsedLocalPort))
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -757,8 +781,7 @@ namespace HaCreator.MapSimulator
 
                 case "attach":
                     if (args.Length < 3
-                        || !int.TryParse(args[2], out int attachRemotePort)
-                        || attachRemotePort <= 0)
+                        || !TransportationSessionCommandParsing.TryParseRemotePort(args[2], out int attachRemotePort))
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
@@ -767,7 +790,7 @@ namespace HaCreator.MapSimulator
                     int? attachLocalPortFilter = null;
                     if (args.Length >= 5)
                     {
-                        if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
+                        if (!TransportationSessionCommandParsing.TryParseLocalPortFilter(args[4], out int parsedAttachLocalPort))
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -792,10 +815,8 @@ namespace HaCreator.MapSimulator
 
                 case "attachproxy":
                     if (args.Length < 4
-                        || !int.TryParse(args[2], out int attachProxyListenPort)
-                        || attachProxyListenPort < 0
-                        || !int.TryParse(args[3], out int attachProxyRemotePort)
-                        || attachProxyRemotePort <= 0)
+                        || !TransportationSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
+                        || !TransportationSessionCommandParsing.TryParseRemotePort(args[3], out int attachProxyRemotePort))
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
@@ -804,7 +825,7 @@ namespace HaCreator.MapSimulator
                     int? attachProxyLocalPortFilter = null;
                     if (args.Length >= 6)
                     {
-                        if (!int.TryParse(args[5], out int parsedAttachProxyLocalPort) || parsedAttachProxyLocalPort <= 0)
+                        if (!TransportationSessionCommandParsing.TryParseLocalPortFilter(args[5], out int parsedAttachProxyLocalPort))
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -903,7 +924,7 @@ namespace HaCreator.MapSimulator
                     int? shipKindOverride = null;
                     if (args.Length >= 3)
                     {
-                        if (!int.TryParse(args[2], out int parsedFieldId) || parsedFieldId <= 0)
+                        if (!TransportationSessionCommandParsing.TryParseFieldIdOverride(args[2], out int parsedFieldId))
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -913,7 +934,7 @@ namespace HaCreator.MapSimulator
 
                     if (args.Length >= 4)
                     {
-                        if (!int.TryParse(args[3], out int parsedShipKind))
+                        if (!TransportationSessionCommandParsing.TryParseShipKindOverride(args[3], out int parsedShipKind))
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -932,7 +953,7 @@ namespace HaCreator.MapSimulator
                     int? shipKindOverride = null;
                     if (args.Length >= 3)
                     {
-                        if (!int.TryParse(args[2], out int parsedFieldId) || parsedFieldId <= 0)
+                        if (!TransportationSessionCommandParsing.TryParseFieldIdOverride(args[2], out int parsedFieldId))
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -942,7 +963,7 @@ namespace HaCreator.MapSimulator
 
                     if (args.Length >= 4)
                     {
-                        if (!int.TryParse(args[3], out int parsedShipKind))
+                        if (!TransportationSessionCommandParsing.TryParseShipKindOverride(args[3], out int parsedShipKind))
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -957,10 +978,8 @@ namespace HaCreator.MapSimulator
 
                 case "start":
                     if (args.Length < 5
-                        || !int.TryParse(args[2], out int listenPort)
-                        || listenPort < 0
-                        || !int.TryParse(args[4], out int remotePort)
-                        || remotePort <= 0)
+                        || !TransportationSessionCommandParsing.TryParseProxyListenPort(args[2], out int listenPort)
+                        || !TransportationSessionCommandParsing.TryParseRemotePort(args[4], out int remotePort))
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
@@ -978,10 +997,8 @@ namespace HaCreator.MapSimulator
 
                 case "startauto":
                     if (args.Length < 4
-                        || !int.TryParse(args[2], out int autoListenPort)
-                        || autoListenPort < 0
-                        || !int.TryParse(args[3], out int autoRemotePort)
-                        || autoRemotePort <= 0)
+                        || !TransportationSessionCommandParsing.TryParseProxyListenPort(args[2], out int autoListenPort)
+                        || !TransportationSessionCommandParsing.TryParseRemotePort(args[3], out int autoRemotePort))
                     {
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
@@ -990,7 +1007,7 @@ namespace HaCreator.MapSimulator
                     int? autoLocalPortFilter = null;
                     if (args.Length >= 6)
                     {
-                        if (!int.TryParse(args[5], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
+                        if (!TransportationSessionCommandParsing.TryParseLocalPortFilter(args[5], out int parsedAutoLocalPort))
                         {
                             return ChatCommandHandler.CommandResult.Error(sessionUsage);
                         }
@@ -7169,6 +7186,33 @@ namespace HaCreator.MapSimulator
                                 : ChatCommandHandler.CommandResult.Error(unmapStatus);
                         }
 
+                        if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
+                        {
+                            int recentCount = 10;
+                            if (args.Length >= 3
+                                && !MassacreSessionCommandParsing.TryParseRecentCount(args[2], out recentCount))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.RecentUsage);
+                            }
+
+                            if (args.Length > 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.RecentUsage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Info(_massacreOfficialSessionBridge.DescribeRecentInboundPackets(recentCount));
+                        }
+
+                        if (string.Equals(args[1], "clearrecent", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length != 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.SessionUsage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_massacreOfficialSessionBridge.ClearRecentInboundPackets());
+                        }
+
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
                             _massacreOfficialSessionBridge.Stop();
@@ -9536,7 +9580,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "family",
                 "Drive the family chart UI and packet-shaped family roster synchronization",
-                "/family [open|tree|status|reset|select <memberId>|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
+                "/family [open|tree|status|reset|select <memberId>|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -9641,7 +9685,7 @@ namespace HaCreator.MapSimulator
                                     }
 
                                     return _familyChartRuntime.TryApplyResultPacketPayload(familyResultPayload, out string familyResultMessage)
-                                        ? ChatCommandHandler.CommandResult.Ok(familyResultMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(AppendFamilyPrivilegeTransferCompletion(familyResultMessage))
                                         : ChatCommandHandler.CommandResult.Error(familyResultMessage);
                                 case "privilegelist":
                                     if (args.Length < 3)
@@ -9770,7 +9814,7 @@ namespace HaCreator.MapSimulator
                                 "localchart" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyLocalChartPacketPayload(familyRawPayload)),
                                 "info" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyInfoPacketPayload(familyRawPayload)),
                                 "result" => _familyChartRuntime.TryApplyResultPacketPayload(familyRawPayload, out string familyRawResultMessage)
-                                    ? ChatCommandHandler.CommandResult.Ok(familyRawResultMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(AppendFamilyPrivilegeTransferCompletion(familyRawResultMessage))
                                     : ChatCommandHandler.CommandResult.Error(familyRawResultMessage),
                                 "privilegelist" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyPrivilegeListPacketPayload(familyRawPayload)),
                                 "setprivilege" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplySetPrivilegePacketPayload(familyRawPayload)),
@@ -9788,7 +9832,7 @@ namespace HaCreator.MapSimulator
                             }
 
                             return _familyChartRuntime.TryApplyClientPacketPayload(familyRecvOpcode, familyRecvPayload, out string familyRecvMessage)
-                                ? ChatCommandHandler.CommandResult.Ok(familyRecvMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(AppendFamilyPrivilegeTransferCompletion(familyRecvMessage))
                                 : ChatCommandHandler.CommandResult.Error(familyRecvMessage);
                         case "packetclientraw":
                             if (args.Length < 2)
@@ -9807,10 +9851,10 @@ namespace HaCreator.MapSimulator
                             }
 
                             return _familyChartRuntime.TryApplyClientPacketPayload(familyClientOpcode, familyClientPayload, out string familyClientMessage)
-                                ? ChatCommandHandler.CommandResult.Ok(familyClientMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(AppendFamilyPrivilegeTransferCompletion(familyClientMessage))
                                 : ChatCommandHandler.CommandResult.Error(familyClientMessage);
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <privilegeIndex> [targetName]|queue <privilegeIndex> [targetName]|sendraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> [chartOpcode]|startauto <listenPort> <remotePort> [chartOpcode] [processName|pid] [localPort]|stop]|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
                     }
                 });
 

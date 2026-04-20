@@ -31,9 +31,9 @@ namespace HaCreator.MapSimulator.Managers
         public const int FieldFadeInOutClientPacketType = 240;
         public const int FieldFadeOutForceClientPacketType = 241;
         public const int BalloonMsgClientPacketType = 245;
-        public const int NotifyHpDecByFieldClientPacketType = 243;
-        public const int DamageMeterClientPacketType = 267;
-        public const int PetConsumeResultPacketType = 1026;
+        public const int NotifyHpDecByFieldClientPacketType = LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType;
+        public const int DamageMeterClientPacketType = LocalUtilityPacketInboxManager.DamageMeterPacketType;
+        public const int PetConsumeResultPacketType = LocalUtilityPacketInboxManager.PetConsumeResultPacketType;
 
         private readonly ConcurrentQueue<LocalOverlayPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -202,18 +202,18 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (string.Equals(normalized, "damagemeter", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "ondamagemeter", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = DamageMeterClientPacketType;
+                return true;
+            }
+
             if (string.Equals(normalized, "hpdec", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "notifyhpdecbyfield", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "onnotifyhpdecbyfield", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = NotifyHpDecByFieldClientPacketType;
-                return true;
-            }
-
-            if (string.Equals(normalized, "damagemeter", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "ondamagemeter", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = DamageMeterClientPacketType;
                 return true;
             }
 
@@ -241,8 +241,8 @@ namespace HaCreator.MapSimulator.Managers
                 FieldFadeInOutClientPacketType => $"OnFieldFadeInOut (0x{packetType:X})",
                 FieldFadeOutForceClientPacketType => $"OnFieldFadeOutForce (0x{packetType:X})",
                 BalloonMsgClientPacketType => $"OnBalloonMsg (0x{packetType:X})",
-                NotifyHpDecByFieldClientPacketType => $"OnNotifyHpDecByField (0x{packetType:X})",
                 DamageMeterClientPacketType => $"OnDamageMeter (0x{packetType:X})",
+                NotifyHpDecByFieldClientPacketType => $"OnNotifyHPDecByField (0x{packetType:X})",
                 PetConsumeResultPacketType => $"OnPetConsumeResult (0x{packetType:X})",
                 _ => $"0x{packetType:X}"
             };
@@ -253,8 +253,8 @@ namespace HaCreator.MapSimulator.Managers
             return packetType == FieldFadeInOutClientPacketType
                 || packetType == FieldFadeOutForceClientPacketType
                 || packetType == BalloonMsgClientPacketType
-                || packetType == NotifyHpDecByFieldClientPacketType
                 || packetType == DamageMeterClientPacketType
+                || packetType == NotifyHpDecByFieldClientPacketType
                 || packetType == PetConsumeResultPacketType;
         }
 

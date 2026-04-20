@@ -128,6 +128,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const string ClientSummonedUolEmbeddedImagePathSuffix = ".img/";
         private const string ClientSummonedUolEmbeddedMountedSkillPathPrefix = "skill/";
         private const int ClientSummonedUolHeuristicInfoTraversalDepth = 4;
+        private const int ClientSummonedUolHeuristicSkillTraversalDepth = 2;
 
         private static readonly string[] PersistentAvatarEffectBranches =
         {
@@ -172,6 +173,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                     14101002, 14101003, 14101006,
                     14111001, 14111002
                 }
+            };
+
+        private static readonly IReadOnlyDictionary<int, int[]> ClientFlagOnlyMorphTemplateOverridesBySkillId =
+            new Dictionary<int, int[]>
+            {
+                // WZ-first evidence (`Skill/001.img/skill/0010109/info/morph = 1`) keeps a
+                // current no-action, flag-only outlier in the morph metadata surface.
+                // Keep this row explicit so future non-suffix remaps can stay in this seam
+                // without widening suffix heuristics.
+                [0010109] = new[] { 109 },
+                // WZ-first evidence (`Skill/2002.img/skill/20020111/info/morph = 1`,
+                // `action/0 = fastest`) keeps the checked action-backed flag-only outlier
+                // on Morph/0111.img.
+                [20020111] = new[] { 111 }
             };
 
         private static readonly string[] PreferredShadowPartnerOffsetActions =
@@ -5821,6 +5836,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (!child.Name.Equals("info", StringComparison.OrdinalIgnoreCase))
                 {
+                    foreach ((WzImageProperty Property, string RelativePath) nestedSkillLeaf in EnumerateClientSummonedUolHeuristicSkillLeaves(
+                                 child,
+                                 relativePathPrefix: child.Name,
+                                 depthRemaining: ClientSummonedUolHeuristicSkillTraversalDepth))
+                    {
+                        yield return nestedSkillLeaf;
+                    }
+
                     continue;
                 }
 
@@ -5830,6 +5853,41 @@ namespace HaCreator.MapSimulator.Character.Skills
                              depthRemaining: ClientSummonedUolHeuristicInfoTraversalDepth))
                 {
                     yield return nestedInfoLeaf;
+                }
+            }
+        }
+
+        private static IEnumerable<(WzImageProperty Property, string RelativePath)> EnumerateClientSummonedUolHeuristicSkillLeaves(
+            WzImageProperty node,
+            string relativePathPrefix,
+            int depthRemaining)
+        {
+            if (node?.WzProperties == null || depthRemaining <= 0)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string relativePath = string.IsNullOrWhiteSpace(relativePathPrefix)
+                    ? child.Name
+                    : $"{relativePathPrefix}/{child.Name}";
+                if (IsClientSummonedUolCandidateValueProperty(child))
+                {
+                    yield return (child, relativePath);
+                }
+
+                foreach ((WzImageProperty Property, string RelativePath) nestedLeaf in EnumerateClientSummonedUolHeuristicSkillLeaves(
+                             child,
+                             relativePath,
+                             depthRemaining - 1))
+                {
+                    yield return nestedLeaf;
                 }
             }
         }
@@ -9592,6 +9650,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var seen = new HashSet<int>();
+            if (ClientFlagOnlyMorphTemplateOverridesBySkillId.TryGetValue(skillId, out int[] overrideTemplateIds)
+                && overrideTemplateIds != null)
+            {
+                foreach (int overrideTemplateId in overrideTemplateIds)
+                {
+                    if (overrideTemplateId > 0 && seen.Add(overrideTemplateId))
+                    {
+                        yield return overrideTemplateId;
+                    }
+                }
+            }
+
             int suffixTemplateId = skillId % 10000;
             if (suffixTemplateId > 0 && seen.Add(suffixTemplateId))
             {

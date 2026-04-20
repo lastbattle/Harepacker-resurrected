@@ -411,9 +411,7 @@ namespace HaCreator.MapSimulator
 
             if (!AdminShopPacketOwnedResultCodec.TryDecode(payload, out AdminShopPacketOwnedResultPayloadSnapshot resultSnapshot))
             {
-                message = payload.Length < 1
-                    ? "Admin-shop packet 366 requires the subtype byte."
-                    : "Admin-shop packet 366 subtype 4 requires the result-code byte.";
+                message = "Admin-shop packet 366 requires the subtype byte.";
                 return false;
             }
 

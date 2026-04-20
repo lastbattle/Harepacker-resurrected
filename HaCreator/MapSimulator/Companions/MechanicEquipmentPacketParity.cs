@@ -319,7 +319,6 @@ namespace HaCreator.MapSimulator.Companions
                             if (!TryReadPassiveClientInventoryOperationAddEntry(
                                     inventoryType,
                                     fromPosition,
-                                    i == operationCount - 1,
                                     reader,
                                     out MechanicInventoryOperationMutation? passiveAddMutation,
                                     out rejectReason))
@@ -1407,7 +1406,6 @@ namespace HaCreator.MapSimulator.Companions
                     out _))
             {
                 matchedByHeader = true;
-                return true;
             }
 
             if (slotType is not 1 and not 2 and not 3)
@@ -1428,7 +1426,6 @@ namespace HaCreator.MapSimulator.Companions
         private static bool TryReadPassiveClientInventoryOperationAddEntry(
             byte inventoryType,
             short targetPosition,
-            bool isLastOperation,
             BinaryReader reader,
             out MechanicInventoryOperationMutation? mutation,
             out string rejectReason)
@@ -1466,13 +1463,6 @@ namespace HaCreator.MapSimulator.Companions
                 && itemId > 0)
             {
                 mutation = new MechanicInventoryOperationMutation(mechanicSlot, itemId);
-                if (isLastOperation)
-                {
-                    // CWvsContext::OnInventoryOperation resolves mode-0 completion from the
-                    // operation header before consuming the full GW_ItemSlotBase tail. Mirror
-                    // that recovery for terminal passive mechanic entries.
-                    return true;
-                }
             }
 
             if (slotType is not 1 and not 2 and not 3)
@@ -1569,11 +1559,9 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            if (title.Length > 13)
-            {
-                rejectReason = "Inventory-operation equip add entry title is outside the expected client byte range.";
-                return false;
-            }
+            // The client decodes the full title body first and only truncates for display later.
+            // Keep long title payloads valid so mode-0 mechanic add entries can be recovered
+            // from retail packets without an artificial simulator-only length gate.
 
             const int equipTailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
             if (!TryEnsureRemaining(stream, equipTailLength + (hasCashSerial ? 0 : sizeof(long)) + sizeof(long) + sizeof(int), out rejectReason))

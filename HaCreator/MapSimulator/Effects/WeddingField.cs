@@ -2583,12 +2583,6 @@ namespace HaCreator.MapSimulator.Effects
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             DismissCurrentDialog();
             SetCeremonyTextOverlay(active: false);
-            if (IsWeddingPhotoSceneOwnerActive && !_isActive)
-            {
-                SetCeremonyCardOverlay(true);
-                SetCeremonyCelebration(active: true);
-            }
-
             SetBlessEffect(true, currentTimeMs);
         }
 

@@ -664,11 +664,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<CashServiceStageWindow.PacketCatalogEntry> entries = new(_packetOwnedAdminShopRows.Count);
-            foreach (PacketOwnedAdminShopCommoditySnapshot row in _packetOwnedAdminShopRows)
+            for (int rowIndex = 0; rowIndex < _packetOwnedAdminShopRows.Count; rowIndex++)
             {
+                PacketOwnedAdminShopCommoditySnapshot row = _packetOwnedAdminShopRows[rowIndex];
                 AdminShopEntry entry = row.Price > 0
-                    ? CreatePacketOwnedCommodityEntry(row)
-                    : CreatePacketOwnedSellTemplateEntry(row);
+                    ? CreatePacketOwnedCommodityEntry(row, rowIndex)
+                    : CreatePacketOwnedSellTemplateEntry(row, rowIndex);
                 if (entry == null)
                 {
                     continue;
@@ -951,6 +952,18 @@ namespace HaCreator.MapSimulator.UI
                 ResetPendingRequestState();
                 ClearPendingPacketOwnedUserSellSnapshot();
                 _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 subtype was ignored by the admin-shop owner.");
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
+            }
+
+            if (!hasResultCode)
+            {
+                RestorePendingRequestState(entry);
+                _pendingPacketOwnedAdminShopResult = true;
+                _packetOwnedAdminShopSession.SetWaitingForResult(true);
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 subtype 4 arrived without a result code byte, so CAdminShopDlg ignored the malformed packet and kept the request staged.");
+                message = "Packet 366 subtype 4 arrived without a result code byte. CAdminShopDlg expects the subtype-4 result code field before applying request state.";
                 _footerMessage = message;
                 UpdateActionButtonStates();
                 return true;
@@ -5419,11 +5432,12 @@ namespace HaCreator.MapSimulator.UI
         {
             if (UsesPacketOwnedAdminShopCatalog(mode))
             {
-                foreach (PacketOwnedAdminShopCommoditySnapshot row in _packetOwnedAdminShopRows)
+                for (int rowIndex = 0; rowIndex < _packetOwnedAdminShopRows.Count; rowIndex++)
                 {
+                    PacketOwnedAdminShopCommoditySnapshot row = _packetOwnedAdminShopRows[rowIndex];
                     AdminShopEntry entry = row.Price > 0
-                        ? CreatePacketOwnedCommodityEntry(row)
-                        : CreatePacketOwnedSellTemplateEntry(row);
+                        ? CreatePacketOwnedCommodityEntry(row, rowIndex)
+                        : CreatePacketOwnedSellTemplateEntry(row, rowIndex);
                     if (entry == null)
                     {
                         continue;
@@ -8489,7 +8503,7 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private AdminShopEntry CreatePacketOwnedCommodityEntry(PacketOwnedAdminShopCommoditySnapshot commodity)
+        private AdminShopEntry CreatePacketOwnedCommodityEntry(PacketOwnedAdminShopCommoditySnapshot commodity, int packetRowOrdinal = -1)
         {
             if (commodity == null)
             {
@@ -8506,15 +8520,17 @@ namespace HaCreator.MapSimulator.UI
             if (resolvedItemId <= 0)
             {
                 if (!AdminShopPacketOwnedSellTemplateParity.CanCreateFallbackPacketOwnedCommodityRow(
-                        commodity.SerialNumber,
                         commodity.ItemId,
                         commodity.Price))
                 {
                     return null;
                 }
 
-                string fallbackTitle = $"Commodity SN {commodity.SerialNumber.ToString(CultureInfo.InvariantCulture)}";
-                string fallbackDetail = $"Packet-authored row kept as an authoritative serial-only commodity (saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {maxPerSlot.ToString(CultureInfo.InvariantCulture)}). Item metadata is unresolved in Etc/Commodity.img.";
+                string fallbackTitle = BuildPacketOwnedFallbackRowTitle(
+                    commodity.SerialNumber,
+                    packetRowOrdinal,
+                    buyRow: true);
+                string fallbackDetail = $"Packet-authored row kept as an authoritative unresolved commodity preview (saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {maxPerSlot.ToString(CultureInfo.InvariantCulture)}). Item metadata is unresolved in Etc/Commodity.img.";
                 return new AdminShopEntry
                 {
                     Title = fallbackTitle,
@@ -8545,6 +8561,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(resolvedItemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                string fallbackTitle = BuildPacketOwnedFallbackRowTitle(
+                    commodity.SerialNumber,
+                    packetRowOrdinal,
+                    buyRow: true);
+                string fallbackDetail = $"Packet-authored row kept as an authoritative unresolved-inventory preview for item {resolvedItemId.ToString(CultureInfo.InvariantCulture)} (saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {maxPerSlot.ToString(CultureInfo.InvariantCulture)}).";
+                return new AdminShopEntry
+                {
+                    Title = fallbackTitle,
+                    Detail = fallbackDetail,
+                    Seller = _packetOwnedAdminShopSession.NpcTemplateId > 0
+                        ? $"NPC {_packetOwnedAdminShopSession.NpcTemplateId.ToString(CultureInfo.InvariantCulture)}"
+                        : "Packet-owned shop",
+                    Price = Math.Abs(commodity.Price),
+                    PriceLabel = FormatPriceLabel(Math.Abs(commodity.Price)),
+                    Category = AdminShopCategory.All,
+                    SupportsWishlist = false,
+                    State = AdminShopEntryState.PreviewOnly,
+                    StateLabel = "Unresolved inventory type",
+                    RewardInventoryType = InventoryType.NONE,
+                    RewardItemId = resolvedItemId,
+                    RewardQuantity = 1,
+                    RewardMaxStackSize = 1,
+                    Response = AdminShopResponse.None,
+                    MaxRequestCount = maxPerSlot,
+                    CommoditySerialNumber = commodity.SerialNumber,
+                    CommodityOnSale = commodity.SaleState == 0,
+                    PacketSerialNumber = commodity.SerialNumber,
+                    PacketSaleState = commodity.SaleState,
+                    IsPacketOwnedSnapshotRow = true
+                };
+            }
+
             AdminShopCategory category = ResolveCommodityCategory(inventoryType);
             string title = InventoryItemMetadataResolver.TryResolveItemName(resolvedItemId, out string itemName)
                 ? itemName
@@ -8609,7 +8659,7 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private AdminShopEntry CreatePacketOwnedSellTemplateEntry(PacketOwnedAdminShopCommoditySnapshot commodity)
+        private AdminShopEntry CreatePacketOwnedSellTemplateEntry(PacketOwnedAdminShopCommoditySnapshot commodity, int packetRowOrdinal = -1)
         {
             if (commodity == null)
             {
@@ -8623,7 +8673,6 @@ namespace HaCreator.MapSimulator.UI
             if (resolvedItemId <= 0)
             {
                 if (!AdminShopPacketOwnedSellTemplateParity.CanCreateFallbackPacketOwnedSellTemplateRow(
-                        commodity.SerialNumber,
                         commodity.ItemId,
                         commodity.Price))
                 {
@@ -8632,8 +8681,11 @@ namespace HaCreator.MapSimulator.UI
 
                 long unresolvedSellPrice = Math.Abs((long)commodity.Price);
                 int maxPerSlot = Math.Max(1, commodity.MaxPerSlot);
-                string fallbackTitle = $"Commodity SN {commodity.SerialNumber.ToString(CultureInfo.InvariantCulture)}";
-                string fallbackDetail = $"Packet-authored sell-template row kept as an authoritative serial-only listing (saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {maxPerSlot.ToString(CultureInfo.InvariantCulture)}). Source-item metadata is unresolved in Etc/Commodity.img.";
+                string fallbackTitle = BuildPacketOwnedFallbackRowTitle(
+                    commodity.SerialNumber,
+                    packetRowOrdinal,
+                    buyRow: false);
+                string fallbackDetail = $"Packet-authored sell-template row kept as an authoritative unresolved listing preview (saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {maxPerSlot.ToString(CultureInfo.InvariantCulture)}). Source-item metadata is unresolved in Etc/Commodity.img.";
                 return new AdminShopEntry
                 {
                     Title = fallbackTitle,
@@ -8660,6 +8712,39 @@ namespace HaCreator.MapSimulator.UI
             }
 
             InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(resolvedItemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                long unresolvedSellPrice = Math.Abs((long)commodity.Price);
+                string fallbackTitle = BuildPacketOwnedFallbackRowTitle(
+                    commodity.SerialNumber,
+                    packetRowOrdinal,
+                    buyRow: false);
+                string fallbackDetail = $"Packet-authored sell-template row kept as an authoritative unresolved-inventory preview for item {resolvedItemId.ToString(CultureInfo.InvariantCulture)} (saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, maxPerSlot {Math.Max(1, commodity.MaxPerSlot).ToString(CultureInfo.InvariantCulture)}).";
+                return new AdminShopEntry
+                {
+                    Title = fallbackTitle,
+                    Detail = fallbackDetail,
+                    Seller = _packetOwnedAdminShopSession.NpcTemplateId > 0
+                        ? $"NPC {_packetOwnedAdminShopSession.NpcTemplateId.ToString(CultureInfo.InvariantCulture)}"
+                        : "Packet-owned shop",
+                    Price = -unresolvedSellPrice,
+                    PriceLabel = $"Sell {FormatPriceLabel(unresolvedSellPrice)}",
+                    Category = AdminShopCategory.All,
+                    SupportsWishlist = false,
+                    State = AdminShopEntryState.PreviewOnly,
+                    StateLabel = "Unresolved inventory type",
+                    RewardInventoryType = InventoryType.NONE,
+                    RewardItemId = 0,
+                    RewardQuantity = 1,
+                    Response = AdminShopResponse.None,
+                    MaxRequestCount = Math.Max(1, commodity.MaxPerSlot),
+                    SuccessMesoReward = unresolvedSellPrice,
+                    PacketSerialNumber = commodity.SerialNumber,
+                    PacketSaleState = commodity.SaleState,
+                    IsPacketOwnedSnapshotRow = true
+                };
+            }
+
             AdminShopCategory category = ResolveCommodityCategory(inventoryType);
             string title = InventoryItemMetadataResolver.TryResolveItemName(resolvedItemId, out string itemName)
                 ? itemName
@@ -8700,6 +8785,19 @@ namespace HaCreator.MapSimulator.UI
                 PacketSaleState = commodity.SaleState,
                 IsPacketOwnedSnapshotRow = true
             };
+        }
+
+        private static string BuildPacketOwnedFallbackRowTitle(int serialNumber, int packetRowOrdinal, bool buyRow)
+        {
+            if (serialNumber > 0)
+            {
+                return $"Commodity SN {serialNumber.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            string rowLabel = buyRow ? "Buy row" : "Sell row";
+            return packetRowOrdinal >= 0
+                ? $"{rowLabel} #{(packetRowOrdinal + 1).ToString(CultureInfo.InvariantCulture)}"
+                : rowLabel;
         }
 
         private static long ComputeSuccessMesoReward(AdminShopEntry entry, int requestQuantity)

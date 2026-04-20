@@ -1878,6 +1878,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int fallbackReplacementForType = 0;
                 int fallbackReplacementBytesForType = 0;
                 int slotCapacity = ResolveBackwardUpdateSlotCapacity(inventoryType, slots, inventorySlotLimits);
+                HashSet<short> occupiedPositivePositions = BuildBackwardUpdateOccupiedPositivePositions(slots, slotCapacity);
                 HashSet<short> reservedValidatedPositions = new();
                 for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
                 {
@@ -1895,9 +1896,20 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         evaluation = BackwardUpdateCashItemPositionEvaluation.Collision;
                     }
+                    else if (evaluation == BackwardUpdateCashItemPositionEvaluation.Validated &&
+                             slot.InventoryPosition >= 1 &&
+                             occupiedPositivePositions.Contains(slot.InventoryPosition))
+                    {
+                        evaluation = BackwardUpdateCashItemPositionEvaluation.Collision;
+                    }
 
                     if (evaluation == BackwardUpdateCashItemPositionEvaluation.Validated)
                     {
+                        if (slot.InventoryPosition >= 1)
+                        {
+                            occupiedPositivePositions.Add(slot.InventoryPosition);
+                        }
+
                         validatedForType++;
                         validatedBytesForType = checked(validatedBytesForType + slotByteCount);
                     }
@@ -1905,7 +1917,7 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         fallbackForType++;
                         fallbackBytesForType = checked(fallbackBytesForType + slotByteCount);
-                        if (TryReserveBackwardUpdateFallbackPosition(slotCapacity, reservedValidatedPositions, out _))
+                        if (TryReserveBackwardUpdateFallbackPosition(slotCapacity, occupiedPositivePositions, out _))
                         {
                             fallbackInsertedForType++;
                             fallbackInsertedBytesForType = checked(fallbackInsertedBytesForType + slotByteCount);
@@ -1990,6 +2002,35 @@ namespace HaCreator.MapSimulator.Interaction
                     positionFallbackReplacementByteCount = checked(positionFallbackReplacementByteCount + fallbackReplacementBytesForType);
                 }
             }
+        }
+
+        private static HashSet<short> BuildBackwardUpdateOccupiedPositivePositions(
+            IReadOnlyList<PacketCharacterDataItemSlot> slots,
+            int slotCapacity)
+        {
+            HashSet<short> occupiedPositions = new();
+            if (slots == null || slots.Count == 0 || slotCapacity <= 0)
+            {
+                return occupiedPositions;
+            }
+
+            for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
+            {
+                PacketCharacterDataItemSlot slot = slots[slotIndex];
+                if (slot.InventoryPosition < 1 || slot.InventoryPosition > slotCapacity)
+                {
+                    continue;
+                }
+
+                if (slot.HasCashItemSerialNumber && slot.CashItemSerialNumber > 0)
+                {
+                    continue;
+                }
+
+                occupiedPositions.Add(slot.InventoryPosition);
+            }
+
+            return occupiedPositions;
         }
 
         private static bool TryReserveBackwardUpdateFallbackPosition(

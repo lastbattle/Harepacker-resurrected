@@ -124,22 +124,18 @@ namespace HaCreator.MapSimulator.UI
         }
 
         internal static bool CanCreateFallbackPacketOwnedCommodityRow(
-            int packetSerialNumber,
             int packetItemId,
             long packetPrice)
         {
             return packetPrice > 0
-                && packetSerialNumber > 0
                 && packetItemId <= 0;
         }
 
         internal static bool CanCreateFallbackPacketOwnedSellTemplateRow(
-            int packetSerialNumber,
             int packetItemId,
             long packetPrice)
         {
             return packetPrice <= 0
-                && packetSerialNumber > 0
                 && packetItemId <= 0;
         }
 

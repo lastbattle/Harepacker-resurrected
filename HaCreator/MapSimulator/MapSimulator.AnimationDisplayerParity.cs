@@ -70,6 +70,10 @@ namespace HaCreator.MapSimulator
         private const int AnimationDisplayerFollowEmissionBoxSize = 25;
         private const int AnimationDisplayerFollowAbsoluteTravelOffsetY = -20;
         private const int AnimationDisplayerFollowEmissionVerticalBias = 10;
+        private const int AnimationDisplayerLadderRawActionCode = 31;
+        private const int AnimationDisplayerRopeRawActionCode = 32;
+        private const int AnimationDisplayerLadder2RawActionCode = 43;
+        private const int AnimationDisplayerRope2RawActionCode = 44;
         private const int AnimationDisplayerPacketOwnedFollowRegistrationMask = unchecked((int)0xC0000000);
         private const int AnimationDisplayerTransientLayerWidth = 800;
         private const int AnimationDisplayerTransientLayerHeight = 600;
@@ -159,6 +163,7 @@ namespace HaCreator.MapSimulator
             public Vector2 Impact { get; init; }
             public int DragX { get; init; }
             public int DragY { get; init; }
+            public bool GravityFree { get; init; }
             public bool FacingRight { get; init; }
             public SkillAnimation BallAnimation { get; init; }
             public SkillAnimation ExplosionAnimation { get; init; }
@@ -1589,12 +1594,16 @@ namespace HaCreator.MapSimulator
                 && targetFieldId != currentMapId;
         }
 
-        internal static int ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreDelayMs(int metadataDurationMs)
+        internal static int ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreDelayMs(
+            int metadataDurationMs,
+            int actionDurationMs = 0)
         {
             return Math.Max(
                 1,
                 metadataDurationMs > 0
                     ? metadataDurationMs
+                    : actionDurationMs > 0
+                        ? actionDurationMs
                     : AnimationDisplayerReservedRemoteUtilityActionRestoreFallbackDurationMs);
         }
 
@@ -2038,6 +2047,7 @@ namespace HaCreator.MapSimulator
                         _playerManager?.Skills?.ActiveBuffs,
                         _playerManager?.Skills?.GetActiveDeferredAvatarEffectSkillIdForParity()),
                     currTickCount,
+                    _playerManager?.Player?.CurrentActionName,
                     out initialElapsedMs,
                     out _,
                     out startFrames,
@@ -2052,6 +2062,7 @@ namespace HaCreator.MapSimulator
                 && TryResolveAnimationDisplayerSpecificUserStateFramesForElapsed(
                     BuildAnimationDisplayerSpecificUserStateCandidates(actor),
                     currTickCount,
+                    actor.ActionName,
                     out initialElapsedMs,
                     out _,
                     out startFrames,
@@ -2067,6 +2078,7 @@ namespace HaCreator.MapSimulator
         private static bool TryResolveAnimationDisplayerSpecificUserStateFramesForElapsed(
             IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> candidateStates,
             int currentTime,
+            string ownerActionName,
             out int initialElapsedMs,
             out int resolvedSkillId,
             out List<IDXObject> startFrames,
@@ -2089,6 +2101,7 @@ namespace HaCreator.MapSimulator
                 RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state = candidateStates[i];
                 if (!TryBuildAnimationDisplayerSpecificUserStateFrames(
                         state,
+                        ownerActionName,
                         out List<IDXObject> candidateStartFrames,
                         out List<IDXObject> candidateRepeatFrames,
                         out List<IDXObject> candidateEndFrames))
@@ -2147,6 +2160,7 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryResolveAnimationDisplayerSpecificUserStateFrames(
             IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> candidateStates,
+            string ownerActionName,
             out int resolvedSkillId,
             out List<IDXObject> startFrames,
             out List<IDXObject> repeatFrames,
@@ -2167,6 +2181,7 @@ namespace HaCreator.MapSimulator
                 RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state = candidateStates[i];
                 if (!TryBuildAnimationDisplayerSpecificUserStateFrames(
                         state,
+                        ownerActionName,
                         out List<IDXObject> candidateStartFrames,
                         out List<IDXObject> candidateRepeatFrames,
                         out List<IDXObject> candidateEndFrames))
@@ -2196,30 +2211,50 @@ namespace HaCreator.MapSimulator
 
         private static bool TryBuildAnimationDisplayerSpecificUserStateFrames(
             RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
+            string ownerActionName,
             out List<IDXObject> startFrames,
             out List<IDXObject> repeatFrames,
             out List<IDXObject> endFrames)
         {
+            bool isLadderOrRopeAction = IsAnimationDisplayerSpecificUserStateLadderActionName(ownerActionName);
+
             startFrames = BuildAnimationDisplayerFramesFromSkillAnimation(
                 state?.Skill?.AffectedEffect
                 ?? state?.Skill?.AffectedSecondaryEffect
                 ?? state?.Skill?.Effect
                 ?? state?.Skill?.EffectSecondary);
             repeatFrames = BuildAnimationDisplayerFramesFromSkillAnimation(
-                state?.Skill?.RepeatEffect
-                ?? state?.Skill?.RepeatSecondaryEffect
-                ?? state?.OverlayAnimation
-                ?? state?.OverlaySecondaryAnimation
-                ?? state?.UnderFaceAnimation
-                ?? state?.UnderFaceSecondaryAnimation);
-            endFrames = BuildAnimationDisplayerFramesFromSkillAnimations(
-                state?.Skill?.AvatarOverlayFinishEffect,
-                state?.Skill?.AvatarUnderFaceFinishEffect,
-                state?.Skill?.AvatarLadderFinishEffect,
-                state?.Skill?.KeydownEndEffect,
-                state?.Skill?.KeydownEndSecondaryEffect,
-                state?.Skill?.StopEffect,
-                state?.Skill?.StopSecondaryEffect);
+                isLadderOrRopeAction
+                    ? state?.Skill?.AvatarLadderEffect
+                      ?? state?.Skill?.RepeatEffect
+                      ?? state?.Skill?.RepeatSecondaryEffect
+                      ?? state?.OverlayAnimation
+                      ?? state?.OverlaySecondaryAnimation
+                      ?? state?.UnderFaceAnimation
+                      ?? state?.UnderFaceSecondaryAnimation
+                    : state?.Skill?.RepeatEffect
+                      ?? state?.Skill?.RepeatSecondaryEffect
+                      ?? state?.OverlayAnimation
+                      ?? state?.OverlaySecondaryAnimation
+                      ?? state?.UnderFaceAnimation
+                      ?? state?.UnderFaceSecondaryAnimation);
+            endFrames = isLadderOrRopeAction
+                ? BuildAnimationDisplayerFramesFromSkillAnimations(
+                    state?.Skill?.AvatarLadderFinishEffect,
+                    state?.Skill?.AvatarOverlayFinishEffect,
+                    state?.Skill?.AvatarUnderFaceFinishEffect,
+                    state?.Skill?.KeydownEndEffect,
+                    state?.Skill?.KeydownEndSecondaryEffect,
+                    state?.Skill?.StopEffect,
+                    state?.Skill?.StopSecondaryEffect)
+                : BuildAnimationDisplayerFramesFromSkillAnimations(
+                    state?.Skill?.AvatarOverlayFinishEffect,
+                    state?.Skill?.AvatarUnderFaceFinishEffect,
+                    state?.Skill?.AvatarLadderFinishEffect,
+                    state?.Skill?.KeydownEndEffect,
+                    state?.Skill?.KeydownEndSecondaryEffect,
+                    state?.Skill?.StopEffect,
+                    state?.Skill?.StopSecondaryEffect);
 
             if (!Animation.AnimationEffects.HasFrames(repeatFrames)
                 && Animation.AnimationEffects.HasFrames(startFrames))
@@ -2230,6 +2265,27 @@ namespace HaCreator.MapSimulator
             return Animation.AnimationEffects.HasFrames(startFrames)
                 || Animation.AnimationEffects.HasFrames(repeatFrames)
                 || Animation.AnimationEffects.HasFrames(endFrames);
+        }
+
+        internal static bool IsAnimationDisplayerSpecificUserStateLadderActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
+            {
+                return rawActionCode == AnimationDisplayerLadderRawActionCode
+                    || rawActionCode == AnimationDisplayerRopeRawActionCode
+                    || rawActionCode == AnimationDisplayerLadder2RawActionCode
+                    || rawActionCode == AnimationDisplayerRope2RawActionCode;
+            }
+
+            return string.Equals(actionName, "ladder", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rope", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "ladder2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static List<IDXObject> BuildAnimationDisplayerFramesFromSkillAnimation(SkillAnimation animation)
@@ -3244,7 +3300,10 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int restoreDelayMs = ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreDelayMs(durationMs);
+            int actionDurationMs = ResolveAnimationDisplayerReservedRemoteUtilityActionDurationMs(actor, actionName);
+            int restoreDelayMs = ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreDelayMs(
+                durationMs,
+                actionDurationMs);
             int restoreAtTime = ResolveAnimationDisplayerReservedStartRegistrationTime(currentTime, restoreDelayMs);
             _animationDisplayerReservedRemoteUtilityActionOwnerStates[characterId] =
                 new AnimationDisplayerReservedRemoteUtilityActionOwnerState
@@ -3255,6 +3314,30 @@ namespace HaCreator.MapSimulator
                     RestoreAtTime = restoreAtTime
                 };
             return true;
+        }
+
+        private static int ResolveAnimationDisplayerReservedRemoteUtilityActionDurationMs(
+            RemoteUserActor actor,
+            string actionName)
+        {
+            if (actor?.Assembler == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return 0;
+            }
+
+            AssembledFrame[] animation = actor.Assembler.GetAnimation(actionName);
+            if (animation == null || animation.Length == 0)
+            {
+                return 0;
+            }
+
+            int totalDurationMs = 0;
+            for (int index = 0; index < animation.Length; index++)
+            {
+                totalDurationMs += Math.Max(0, animation[index]?.Duration ?? 0);
+            }
+
+            return Math.Max(0, totalDurationMs);
         }
 
         private bool TryApplyAnimationDisplayerReservedTransferFieldOwnerEffect(int targetFieldId, int currentTime)
@@ -3493,6 +3576,7 @@ namespace HaCreator.MapSimulator
                 Impact = presentation.Impact,
                 DragX = presentation.DragX,
                 DragY = presentation.DragY,
+                GravityFree = presentation.GravityFree,
                 FacingRight = RemoteUserActorPool.ResolveRemoteGrenadeFacingForParity(presentation),
                 BallAnimation = ballAnimation,
                 ExplosionAnimation = explosionAnimation,
@@ -3635,7 +3719,8 @@ namespace HaCreator.MapSimulator
                     actor.ExplosionTime - actor.FlightStartTime,
                     actor.ExplosionTime - actor.FlightStartTime,
                     actor.DragX,
-                    actor.DragY);
+                    actor.DragY,
+                    actor.GravityFree);
             }
             else if (isPreFlight)
             {
@@ -3650,7 +3735,8 @@ namespace HaCreator.MapSimulator
                     currentTime - actor.FlightStartTime,
                     actor.ExplosionTime - actor.FlightStartTime,
                     actor.DragX,
-                    actor.DragY);
+                    actor.DragY,
+                    actor.GravityFree);
             }
             bool shouldFlip = actor.FacingRight ^ frame.Flip;
             int screenX = (int)MathF.Round(position.X) - mapShiftX + centerX;
@@ -5414,7 +5500,66 @@ namespace HaCreator.MapSimulator
                 return $"Effect/{normalized}";
             }
 
+            if (TryResolveRemotePacketOwnedUtilityEffectAliasUol(normalized, out string utilityAliasUol))
+            {
+                return utilityAliasUol;
+            }
+
             return normalized;
+        }
+
+        private static bool TryResolveRemotePacketOwnedUtilityEffectAliasUol(
+            string normalizedEffectPath,
+            out string aliasedEffectUol)
+        {
+            aliasedEffectUol = null;
+            if (string.IsNullOrWhiteSpace(normalizedEffectPath))
+            {
+                return false;
+            }
+
+            static bool StartsWithPath(string value, string prefix)
+            {
+                return value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+            }
+
+            string normalized = normalizedEffectPath.Trim().Trim('/');
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            if (string.Equals(normalized, "BasicEff", StringComparison.OrdinalIgnoreCase))
+            {
+                aliasedEffectUol = "Effect/BasicEff.img";
+                return true;
+            }
+
+            if (StartsWithPath(normalized, "BasicEff/"))
+            {
+                aliasedEffectUol = $"Effect/BasicEff.img/{normalized["BasicEff/".Length..]}";
+                return true;
+            }
+
+            if (StartsWithPath(normalized, "Catch")
+                || StartsWithPath(normalized, "Flame/")
+                || StartsWithPath(normalized, "Transform")
+                || StartsWithPath(normalized, "TransformOnLadder")
+                || StartsWithPath(normalized, "CoolHit/")
+                || StartsWithPath(normalized, "SquibEffect")
+                || StartsWithPath(normalized, "SquibEffect2"))
+            {
+                string utilityPath = normalized;
+                if (StartsWithPath(normalized, "SquibEffect"))
+                {
+                    utilityPath = $"Flame/{normalized}";
+                }
+
+                aliasedEffectUol = $"Effect/BasicEff.img/{utilityPath}";
+                return true;
+            }
+
+            return false;
         }
 
         private WzImageProperty ResolveAnimationDisplayerProperty(string effectUol)

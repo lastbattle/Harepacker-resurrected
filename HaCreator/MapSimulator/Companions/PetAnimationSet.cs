@@ -93,6 +93,7 @@ namespace HaCreator.MapSimulator.Companions
             "dance",
             "dancing",
             "sneer",
+            "arrogance",
             "hug",
             "huk",
             "front",

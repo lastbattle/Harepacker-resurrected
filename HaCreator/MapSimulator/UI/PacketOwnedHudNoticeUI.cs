@@ -367,6 +367,7 @@ namespace HaCreator.MapSimulator.UI
                 FieldHazardFollowUpKind.Throttled => "WAIT",
                 FieldHazardFollowUpKind.Deferred => "QUEUE",
                 FieldHazardFollowUpKind.Dispatched => "SENT",
+                FieldHazardFollowUpKind.NoHpPotion => "NO POT",
                 _ => string.Empty
             };
         }
@@ -382,6 +383,7 @@ namespace HaCreator.MapSimulator.UI
                 FieldHazardFollowUpKind.Throttled => new Color(255, 219, 145),
                 FieldHazardFollowUpKind.Deferred => new Color(180, 203, 255),
                 FieldHazardFollowUpKind.Dispatched => new Color(154, 244, 226),
+                FieldHazardFollowUpKind.NoHpPotion => new Color(255, 166, 125),
                 _ => Color.White
             };
         }

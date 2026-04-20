@@ -716,6 +716,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal IReadOnlyList<TutorVariantSnapshot> SnapshotActiveDisplayTutorVariants()
         {
+            List<TutorVariantSnapshot> activeVariants = CollectActiveTutorVariantsForDisplay();
+            if (activeVariants.Count == 0)
+            {
+                return activeVariants;
+            }
+
+            return OrderTutorVariantsByClientSlotDisplayOrder(
+                activeVariants,
+                SnapshotSharedClientTutorSkillSlots());
+        }
+
+        private List<TutorVariantSnapshot> CollectActiveTutorVariantsForDisplay()
+        {
             List<TutorVariantSnapshot> variants = new();
             HashSet<long> emittedVariantKeys = new();
 
@@ -786,6 +799,58 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return variants;
+        }
+
+        private static List<TutorVariantSnapshot> OrderTutorVariantsByClientSlotDisplayOrder(
+            IReadOnlyList<TutorVariantSnapshot> activeVariants,
+            IReadOnlyList<int> clientTutorSkillIds)
+        {
+            if (activeVariants == null || activeVariants.Count == 0)
+            {
+                return new List<TutorVariantSnapshot>();
+            }
+
+            List<TutorVariantSnapshot> orderedVariants = new(activeVariants.Count);
+            bool[] consumed = new bool[activeVariants.Count];
+            HashSet<long> emittedVariantKeys = new();
+            if (clientTutorSkillIds != null)
+            {
+                for (int slotIndex = 0; slotIndex < clientTutorSkillIds.Count; slotIndex++)
+                {
+                    int slotSkillId = clientTutorSkillIds[slotIndex];
+                    for (int variantIndex = 0; variantIndex < activeVariants.Count; variantIndex++)
+                    {
+                        if (consumed[variantIndex] || activeVariants[variantIndex].SkillId != slotSkillId)
+                        {
+                            continue;
+                        }
+
+                        TutorVariantSnapshot candidate = activeVariants[variantIndex];
+                        if (emittedVariantKeys.Add(BuildTutorVariantKey(candidate)))
+                        {
+                            orderedVariants.Add(candidate);
+                        }
+
+                        consumed[variantIndex] = true;
+                    }
+                }
+            }
+
+            for (int variantIndex = 0; variantIndex < activeVariants.Count; variantIndex++)
+            {
+                if (consumed[variantIndex])
+                {
+                    continue;
+                }
+
+                TutorVariantSnapshot candidate = activeVariants[variantIndex];
+                if (emittedVariantKeys.Add(BuildTutorVariantKey(candidate)))
+                {
+                    orderedVariants.Add(candidate);
+                }
+            }
+
+            return orderedVariants;
         }
 
         internal bool TryResolveDisplayMessageSnapshot(TutorVariantSnapshot displayVariant, int currentTick, out TutorMessageSnapshot snapshot)

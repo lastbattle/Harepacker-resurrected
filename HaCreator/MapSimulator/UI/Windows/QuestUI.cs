@@ -2634,6 +2634,7 @@ namespace HaCreator.MapSimulator.UI
         public string Subtitle { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
         public Texture2D Icon { get; init; }
+        public QuestDetailInlineReferenceSource Source { get; init; }
     }
 
     internal sealed class QuestAreaFilterEntry

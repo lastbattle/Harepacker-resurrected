@@ -2816,6 +2816,14 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            if (unresolvedPacketName)
+            {
+                // Keep unresolved packet-name ownership conservative when template/position/flip
+                // resolution still leaves multiple authored candidates. This path only admits
+                // single-candidate unresolved packet-name adoption above.
+                return false;
+            }
+
             static bool TrySelectUniqueCandidate(
                 IReadOnlyList<PacketEnterAuthoredReactorCandidate> scope,
                 out int selectedIndex)
@@ -2917,14 +2925,6 @@ namespace HaCreator.MapSimulator.Pools
             {
                 selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
                 return true;
-            }
-
-            if (unresolvedPacketName)
-            {
-                // Keep unresolved packet-name ownership conservative when multiple
-                // authored candidates remain ambiguous after recovered client signals.
-                // Only the fully-ambiguous authored-order fallback above is admitted.
-                return false;
             }
 
             return false;

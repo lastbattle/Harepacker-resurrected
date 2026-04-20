@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxRecentInboundPackets = 32;
         private const int MaxPendingResultExpectations = 32;
+        private const int MaxPassiveInboundOpcodeObservations = 64;
         private const string DefaultProcessName = "MapleStory";
 
         private readonly string _ownerName;
@@ -53,6 +54,12 @@ namespace HaCreator.MapSimulator.Managers
         private readonly HashSet<ushort> _observedInboundOpcodes = new();
         private readonly HashSet<byte> _observedMessengerInboundSubtypes = new();
         private readonly HashSet<byte> _observedMapleTvSendResultCodes = new();
+        private readonly Dictionary<ushort, int> _passiveInboundOpcodeHitCounts = new();
+        private readonly Dictionary<ushort, HashSet<byte>> _passiveInboundSubtypeObservations = new();
+        private readonly Dictionary<ushort, HashSet<byte>> _passiveMapleTvResultCodeObservations = new();
+        private readonly Dictionary<ushort, string> _passiveInboundOpcodeSampleRawHex = new();
+        private readonly Dictionary<byte, string> _observedMessengerSubtypePayloadSamples = new();
+        private readonly Dictionary<byte, string> _observedMapleTvResultCodePayloadSamples = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;

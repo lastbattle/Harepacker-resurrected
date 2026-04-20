@@ -637,6 +637,11 @@ namespace HaCreator.MapSimulator
             // Handle backspace with key repeat - delete at cursor position
             if (newKeyboardState.IsKeyDown(Keys.Back))
             {
+                if (IsWhisperTargetPickerModalFooterFocused())
+                {
+                    return true;
+                }
+
                 ActivateWhisperTargetPickerModalComboFocus();
                 if (oldKeyboardState.IsKeyUp(Keys.Back))
                 {
@@ -672,6 +677,11 @@ namespace HaCreator.MapSimulator
             // Handle Delete key - delete at cursor position (with key repeat)
             if (newKeyboardState.IsKeyDown(Keys.Delete))
             {
+                if (IsWhisperTargetPickerModalFooterFocused())
+                {
+                    return true;
+                }
+
                 ActivateWhisperTargetPickerModalComboFocus();
                 if (oldKeyboardState.IsKeyUp(Keys.Delete))
                 {
@@ -839,6 +849,11 @@ namespace HaCreator.MapSimulator
                     char? c = KeyToChar(key, shift);
                     if (c.HasValue && _inputText.Length < CHAT_MAX_INPUT_LENGTH)
                     {
+                        if (IsWhisperTargetPickerModalFooterFocused())
+                        {
+                            continue;
+                        }
+
                         ActivateWhisperTargetPickerModalComboFocus();
                         _inputText.Insert(_cursorPosition, c.Value);
                         _cursorPosition++;
@@ -858,6 +873,11 @@ namespace HaCreator.MapSimulator
                 char? c = KeyToChar(_lastHeldKey, shift);
                 if (c.HasValue && _inputText.Length < CHAT_MAX_INPUT_LENGTH)
                 {
+                    if (IsWhisperTargetPickerModalFooterFocused())
+                    {
+                        return true;
+                    }
+
                     _inputText.Insert(_cursorPosition, c.Value);
                     _cursorPosition++;
                     SyncWhisperTargetPickerSelectionFromInput();

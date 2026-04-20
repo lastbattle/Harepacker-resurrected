@@ -10,6 +10,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const ushort MessengerInboundOpcode = 372;
         internal const ushort MessengerOutboundOpcode = 143;
         internal const ushort MessengerClaimRequestOpcode = 118;
+        internal const ushort MerchantInboundOpcode = 373;
+        internal const ushort MerchantOutboundOpcode = 144;
 
         internal const ushort MapleTvInboundSetMessageOpcode = 405;
         internal const ushort MapleTvInboundClearMessageOpcode = 406;
@@ -22,6 +24,8 @@ namespace HaCreator.MapSimulator.Interaction
             MessengerOutboundOpcode,
             MessengerClaimRequestOpcode
         };
+        private static readonly ushort[] MerchantInboundOpcodeSet = { MerchantInboundOpcode };
+        private static readonly ushort[] MerchantOutboundOpcodeSet = { MerchantOutboundOpcode };
         private static readonly ushort[] MapleTvInboundOpcodeSet =
         {
             MapleTvInboundSetMessageOpcode,
@@ -54,6 +58,34 @@ namespace HaCreator.MapSimulator.Interaction
                 [6] = "CUIMessenger::ProcessChat"
             };
 
+        private static readonly IReadOnlyDictionary<byte, string> MerchantInboundSubtypeHandlers =
+            new Dictionary<byte, string>
+            {
+                [24] = "CPersonalShopDlg::OnPacket buy-result",
+                [25] = "CPersonalShopDlg::OnPacket -> CMiniRoomBaseDlg::OnPacketBase",
+                [26] = "CPersonalShopDlg::OnSoldItemResult",
+                [27] = "CPersonalShopDlg::OnMoveItemToInventoryResult",
+                [40] = "CEntrustedShopDlg::OnArrangeItemResult",
+                [42] = "CEntrustedShopDlg::OnPacket withdraw-all result",
+                [44] = "CEntrustedShopDlg::OnPacket withdraw-money result",
+                [46] = "CEntrustedShopDlg::OnPacket visit-list result",
+                [47] = "CEntrustedShopDlg::OnPacket blacklist result"
+            };
+
+        private static readonly IReadOnlyDictionary<byte, string> MerchantOutboundSubtypeHandlers =
+            new Dictionary<byte, string>
+            {
+                [10] = "CPersonalShopDlg::SetRet(nRet=2) / close",
+                [23] = "CPersonalShopDlg::BuyItem(personal shop)",
+                [34] = "CPersonalShopDlg::BuyItem(entrusted shop visitor path)",
+                [39] = "CEntrustedShopDlg::OnGoOut",
+                [40] = "CEntrustedShopDlg::OnArrange",
+                [41] = "CEntrustedShopDlg::SetRet(nRet=8) / withdraw-all",
+                [43] = "CEntrustedShopDlg::OnWithdrawMoney",
+                [46] = "CEntrustedShopDlg::OnVisitList",
+                [47] = "CEntrustedShopDlg::OnBlackList"
+            };
+
         internal static IReadOnlyDictionary<byte, string> GetRecoveredMessengerInboundSubtypeHandlers()
         {
             return MessengerInboundSubtypeHandlers;
@@ -74,8 +106,28 @@ namespace HaCreator.MapSimulator.Interaction
             return MessengerOutboundSubtypeHandlers.Keys.OrderBy(key => key).ToArray();
         }
 
+        internal static IReadOnlyDictionary<byte, string> GetRecoveredMerchantInboundSubtypeHandlers()
+        {
+            return MerchantInboundSubtypeHandlers;
+        }
+
+        internal static IReadOnlyDictionary<byte, string> GetRecoveredMerchantOutboundSubtypeHandlers()
+        {
+            return MerchantOutboundSubtypeHandlers;
+        }
+
+        internal static bool IsRecoveredMerchantInboundSubtype(byte subtype)
+        {
+            return MerchantInboundSubtypeHandlers.ContainsKey(subtype);
+        }
+
         internal static IReadOnlyList<ushort> GetRecoveredInboundOpcodes(string ownerName)
         {
+            if (string.Equals(ownerName, "Merchant", StringComparison.OrdinalIgnoreCase))
+            {
+                return MerchantInboundOpcodeSet;
+            }
+
             if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
             {
                 return MapleTvInboundOpcodeSet;
@@ -97,6 +149,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static IReadOnlyList<ushort> GetRecoveredOutboundOpcodes(string ownerName)
         {
+            if (string.Equals(ownerName, "Merchant", StringComparison.OrdinalIgnoreCase))
+            {
+                return MerchantOutboundOpcodeSet;
+            }
+
             if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
             {
                 return MapleTvOutboundOpcodeSet;
@@ -153,6 +210,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string DescribeRecoveredPacketTable(string ownerName)
         {
+            if (string.Equals(ownerName, "Merchant", StringComparison.OrdinalIgnoreCase))
+            {
+                return DescribeMerchantRecoveredPacketTable();
+            }
+
             if (string.Equals(ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
             {
                 return DescribeMapleTvRecoveredPacketTable();
@@ -177,6 +239,18 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string inboundSet = string.Join("/", MapleTvInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
             return $"Recovered MapleTV packet table: inbound opcodes {inboundSet} to CMapleTVMan::OnPacket (405: OnSetMessage, 406: OnClearMessage, 407: OnSendMessageResult); outbound opcode {MapleTvOutboundConsumeCashItemOpcode} via CUserLocal::ConsumeCashItem.";
+        }
+
+        internal static string DescribeMerchantRecoveredPacketTable()
+        {
+            string inboundSet = string.Join("/", MerchantInboundOpcodeSet.Select(opcode => opcode.ToString(CultureInfo.InvariantCulture)));
+            string inboundSubtypes = string.Join(
+                ", ",
+                MerchantInboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            string outboundSubtypes = string.Join(
+                ", ",
+                MerchantOutboundSubtypeHandlers.Select(entry => $"{entry.Key}: {entry.Value}"));
+            return $"Recovered merchant packet table: inbound opcode {inboundSet} to CPersonalShopDlg::OnPacket/CEntrustedShopDlg::OnPacket (subtypes {inboundSubtypes}); outbound opcode {MerchantOutboundOpcode} (subtypes {outboundSubtypes}).";
         }
 
         internal static bool TryBuildRecoveredResultExpectation(

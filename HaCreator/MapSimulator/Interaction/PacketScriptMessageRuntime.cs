@@ -171,7 +171,8 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     BuildNavigationMetadata(hasPrev, hasNext)),
-                BuildSayNavigationChoices(hasPrev, hasNext));
+                BuildSayNavigationChoices(hasPrev, hasNext),
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static NpcInteractionEntry DecodeSayImage(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -201,7 +202,8 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     CreateNumericResponseChoice("Continue", "Continue", 1),
                     CreateNumericResponseChoice("Cancel", "Cancel", -1)
-                });
+                },
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static NpcInteractionEntry DecodeAskYesNo(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isQuestPrompt)
@@ -220,7 +222,8 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     "Client path shows dedicated Yes / No buttons for this prompt."),
-                choices);
+                choices,
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static NpcInteractionEntry DecodeAskText(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -244,7 +247,8 @@ namespace HaCreator.MapSimulator.Interaction
                     DefaultValue = defaultText,
                     MinLength = Math.Max(0, (int)minLength),
                     MaxLength = Math.Max(Math.Max(0, (int)minLength), (int)maxLength)
-                });
+                },
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static NpcInteractionEntry DecodeAskNumber(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -268,7 +272,8 @@ namespace HaCreator.MapSimulator.Interaction
                     DefaultValue = defaultValue.ToString(),
                     MinValue = minValue,
                     MaxValue = maxValue
-                });
+                },
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static NpcInteractionEntry DecodeAskMenu(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -292,7 +297,8 @@ namespace HaCreator.MapSimulator.Interaction
                     choices.Count == 0
                         ? "No inline menu selections were decoded from the packet text."
                         : $"Decoded {choices.Count} inline menu selection(s)."),
-                choices);
+                choices,
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static PacketScriptDecodeResult DecodeAskAvatar(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isMembershopAvatar)
@@ -324,7 +330,8 @@ namespace HaCreator.MapSimulator.Interaction
                     optionDetails,
                     $"Client `CUtilDlgEx::SetUtilDlgEx_AVATAR` opened {optionItemIds.Count} indexed avatar option(s).",
                     "WZ data exposes the packet-owned avatar utility surface under `UIWindow(.img|2.img)/UtilDlgEx_Avatar`."),
-                choices);
+                choices,
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
             return CreateDecodedResult(
                 entry,
                 dedicatedOwner: CreateDedicatedOwner(
@@ -411,7 +418,8 @@ namespace HaCreator.MapSimulator.Interaction
                     ColumnCount = Math.Max(1, (int)columnCount),
                     LineCount = Math.Max(1, (int)lineCount),
                     MaxLength = Math.Max(1, (int)columnCount) * Math.Max(1, (int)lineCount)
-                });
+                },
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static bool TryDecodeAskQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out PacketScriptDecodeResult result)
@@ -462,7 +470,8 @@ namespace HaCreator.MapSimulator.Interaction
                         string.IsNullOrWhiteSpace(hintText) ? null : $"Hint text: {FormatQuotedValue(hintText)}",
                         $"Client payload: minInput={minInputLength}, maxInput={maxInputLength}, remaining={remainingSeconds} sec.",
                         "Client `CWvsContext::OnInitialQuiz` opens the dedicated `CUIInitialQuiz` owner instead of mutating the NPC overlay."),
-                    null),
+                    null,
+                    flipSpeaker: ResolveFlipSpeakerFromParam(param)),
                     suppressDialogMutation: true,
                     statusMessage: $"Opened packet-authored initial quiz owner for {speaker.DisplayName}: client mode 0 creates `CUIInitialQuiz`.",
                     clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateInitialQuiz(
@@ -503,7 +512,8 @@ namespace HaCreator.MapSimulator.Interaction
                     DefaultValue = defaultValue.ToString(),
                     MinValue = minValue,
                     MaxValue = maxValue
-                });
+                },
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static bool TryDecodeAskSpeedQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out PacketScriptDecodeResult result)
@@ -558,7 +568,8 @@ namespace HaCreator.MapSimulator.Interaction
                         CreateNumericResponseChoice("OK", "OK", 1),
                         CreateNumericResponseChoice("Next", "Next", 2),
                         CreateNumericResponseChoice("Give Up", "Give Up", 0)
-                    }),
+                    },
+                    flipSpeaker: ResolveFlipSpeakerFromParam(param)),
                     suppressDialogMutation: true,
                     statusMessage: $"Opened packet-authored speed-quiz owner for {speaker.DisplayName}: client mode 0 creates `CUISpeedQuiz`.",
                     clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateSpeedQuiz(
@@ -602,7 +613,8 @@ namespace HaCreator.MapSimulator.Interaction
                         ? "Compact helper payload did not include explicit options."
                         : $"Compact helper payload exposed {choices.Count} answer option(s).",
                     "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls."),
-                choices);
+                choices,
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static bool TryDecodeAskPetClientPacket(
@@ -803,7 +815,8 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildSpeakerSubtitle(speaker, isPetAll ? "AskPetAll" : "AskPet", param),
                 rawText,
                 BuildPetSelectionEntryText(rawText, optionDetails, resolutionDetails, isPetAll, exceptionExists),
-                choices);
+                choices,
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static List<PacketScriptPetSelectionCandidate> FilterSelectablePets(
@@ -992,7 +1005,8 @@ namespace HaCreator.MapSimulator.Interaction
                         _ => null
                     },
                     "WZ data exposes authored slide-menu variants under `UIWindow(.img|2.img)/SlideMenu`."),
-                choices);
+                choices,
+                flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }
 
         private static IReadOnlyList<NpcInteractionChoice> BuildSayNavigationChoices(bool hasPrev, bool hasNext)
@@ -1060,7 +1074,8 @@ namespace HaCreator.MapSimulator.Interaction
                         RawText = page.RawText,
                         Text = AppendMetadata(page.Text, $"Trailing bytes left unread: {trailingBytes}."),
                         Choices = page.Choices,
-                        InputRequest = page.InputRequest
+                        InputRequest = page.InputRequest,
+                        FlipSpeaker = page.FlipSpeaker
                     }
                 },
                 PrimaryActionLabel = entry.PrimaryActionLabel,
@@ -1075,9 +1090,10 @@ namespace HaCreator.MapSimulator.Interaction
             string rawText,
             string text,
             IReadOnlyList<NpcInteractionChoice> choices,
-            NpcInteractionInputRequest inputRequest = null)
+            NpcInteractionInputRequest inputRequest = null,
+            bool? flipSpeaker = null)
         {
-            bool flipSpeaker = ResolveFlipSpeakerFromSubtitle(subtitle);
+            bool shouldFlipSpeaker = flipSpeaker ?? ResolveFlipSpeakerFromSubtitle(subtitle);
             return new NpcInteractionEntry
             {
                 EntryId = 1,
@@ -1092,12 +1108,18 @@ namespace HaCreator.MapSimulator.Interaction
                         Text = text ?? string.Empty,
                         Choices = choices ?? Array.Empty<NpcInteractionChoice>(),
                         InputRequest = inputRequest,
-                        FlipSpeaker = flipSpeaker
+                        FlipSpeaker = shouldFlipSpeaker
                     }
                 },
                 PrimaryActionLabel = inputRequest == null ? string.Empty : "Send",
                 PrimaryActionEnabled = inputRequest != null
             };
+        }
+
+        private static bool ResolveFlipSpeakerFromParam(byte param)
+        {
+            // Client CUtilDlgEx ownership uses `m_bSpeakerOnRight = (bParam & 6) != 0`.
+            return (param & 0x06) != 0;
         }
 
         private static bool ResolveFlipSpeakerFromSubtitle(string subtitle)

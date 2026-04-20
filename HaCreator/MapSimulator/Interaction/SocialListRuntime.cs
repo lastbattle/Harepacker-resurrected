@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _packetWhisperLocationInfo = string.Empty;
         private int _channel = 1;
         private int _clientPartyId;
+        private int _playerCharacterId;
         private bool _friendOnlineOnly;
         private bool _hasGuildMembership;
         private bool _forceNoGuildMembership;
@@ -68,6 +69,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal int TrackedEntriesCount => _trackedEntriesCount;
         internal Action<string, int> SocialChatObserved { get; set; }
         internal int ClientPartyId => _clientPartyId;
+        internal int PlayerCharacterId => _playerCharacterId;
 
         internal bool HasLocalPartyLeader()
         {
@@ -380,6 +382,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
         {
             _playerName = string.IsNullOrWhiteSpace(build?.Name) ? "Player" : build.Name.Trim();
+            _playerCharacterId = Math.Max(0, build?.Id ?? 0);
             _locationSummary = string.IsNullOrWhiteSpace(locationSummary) ? "Field" : locationSummary.Trim();
             _hasGuildMembership = ResolveEffectiveGuildMembership(build);
             _guildName = ResolveEffectiveGuildName(build, _hasGuildMembership);

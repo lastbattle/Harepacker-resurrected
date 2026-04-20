@@ -2276,14 +2276,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             1221001,
             1321001
         };
-        private static readonly HashSet<int> ClientShowSkillEffectSummonPlacementOwnedSkillIds = new()
+        private static readonly HashSet<int> ClientShowSkillEffectFixedBLeftSkillIds = new()
         {
-            // WZ summon branches were rechecked for these representative summon-owner
-            // callers (`skill/<id>/summon`) before widening local point-offset shaping:
-            // 3111002, 3211002, 33101008, 33111003, 35111001, 35111002, 35111005,
-            // 35111009, 35111010, 35111011, 35121009, 35121010.
-            // Client `DoActiveSkill_SummonMonster` (`0x93eff0`) forwards move-action-owned
-            // `bLeft` and placement-derived `ptOffset` through `CUser::ShowSkillEffect`.
+            // WZ summon branches remain authored for these summon-owner ids.
+            // Client evidence (`CUserLocal::DoActiveSkill_Summon@0x93c0f0`) passes
+            // `CUser::ShowSkillEffect(..., nActionSpeed=6, bLeft=0, nLast=0x7FFFFFFF, pPtOffset=0)`
+            // for this recovered local summon family, so local seam shaping keeps `bLeft`
+            // fixed to `0` (right-facing) instead of deriving from move-action low-bit.
             3111002,
             3211002,
             33101008,
@@ -8324,9 +8323,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static int? ResolveClientLocalShowSkillEffectBLeftOverride(SkillData skill, int? moveActionRawCode)
         {
-            if (skill?.SkillId <= 0
-                || (!ClientShowSkillEffectMoveActionOwnedBLeftSkillIds.Contains(skill.SkillId)
-                    && !ClientShowSkillEffectSummonPlacementOwnedSkillIds.Contains(skill.SkillId)))
+            if (skill?.SkillId <= 0)
+            {
+                return null;
+            }
+
+            if (ClientShowSkillEffectFixedBLeftSkillIds.Contains(skill.SkillId))
+            {
+                return 0;
+            }
+
+            if (!ClientShowSkillEffectMoveActionOwnedBLeftSkillIds.Contains(skill.SkillId))
             {
                 return null;
             }

@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.UI
                 CharacterInventoryOperationContext operationContext = default;
                 bool sawConflictingCharacterMutation = false;
                 string conflictingCharacterMutationRejectReason = null;
+                bool requiresSecondaryStatChangedPointTrailer = false;
                 _ = reader.ReadByte(); // bExclRequestSent reset marker
                 int operationCount = reader.ReadByte();
                 if (operationCount <= 0)
@@ -95,6 +96,8 @@ namespace HaCreator.MapSimulator.UI
                             }
 
                             short toPosition = reader.ReadInt16();
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailer(inventoryType, fromPosition, toPosition);
                             operationContext = ObserveCharacterInventoryOperationRemove(
                                 request,
                                 operationContext,
@@ -132,6 +135,8 @@ namespace HaCreator.MapSimulator.UI
                             _ = reader.ReadInt16();
                             break;
                         case 3:
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailer(inventoryType, fromPosition);
                             operationContext = ObserveCharacterInventoryOperationRemove(
                                 request,
                                 operationContext,
@@ -205,6 +210,14 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
+                if (!TryConsumeClientInventoryOperationTrailer(
+                        reader,
+                        requiresSecondaryStatChangedPointTrailer,
+                        out rejectReason))
+                {
+                    return false;
+                }
+
                 if (sawConflictingCharacterMutation)
                 {
                     rejectReason = $"Inventory-operation payload mutated character inventory slots outside the active request: {conflictingCharacterMutationRejectReason}";
@@ -232,6 +245,58 @@ namespace HaCreator.MapSimulator.UI
 
             rejectReason = "Inventory-operation payload did not include a character-equipment add-or-swap entry matching the active request.";
             return false;
+        }
+
+        private static bool ShouldRequireSecondaryStatChangedPointTrailer(
+            byte inventoryType,
+            short sourcePosition,
+            short targetPosition)
+        {
+            return inventoryType == ClientEquipInventoryType
+                   && (sourcePosition < 0 || targetPosition < 0);
+        }
+
+        private static bool ShouldRequireSecondaryStatChangedPointTrailer(
+            byte inventoryType,
+            short sourcePosition)
+        {
+            return inventoryType == ClientEquipInventoryType
+                   && sourcePosition < 0;
+        }
+
+        private static bool TryConsumeClientInventoryOperationTrailer(
+            BinaryReader reader,
+            bool requiresSecondaryStatChangedPointTrailer,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (reader?.BaseStream == null)
+            {
+                rejectReason = "Inventory-operation payload stream is unavailable while decoding trailer data.";
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            long remainingBytes = stream.Length - stream.Position;
+            if (requiresSecondaryStatChangedPointTrailer)
+            {
+                if (remainingBytes < sizeof(byte))
+                {
+                    rejectReason = "Inventory-operation payload is missing the equip secondary-stat changed-point trailer.";
+                    return false;
+                }
+
+                _ = reader.ReadByte();
+                remainingBytes -= sizeof(byte);
+            }
+
+            if (remainingBytes != 0)
+            {
+                rejectReason = "Inventory-operation payload contained unsupported trailing bytes.";
+                return false;
+            }
+
+            return true;
         }
 
         private static CharacterInventoryOperationContext ObserveCharacterInventoryOperationRemove(

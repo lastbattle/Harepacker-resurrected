@@ -679,13 +679,27 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return token.StartsWith("have", StringComparison.OrdinalIgnoreCase) ||
+                   token.StartsWith("gauge", StringComparison.OrdinalIgnoreCase) ||
+                   token.StartsWith("per", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("cmp", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("vic", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("try", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("gvup", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("lose", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("draw", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("scnt", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("cmpcnt", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("popgap", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("popg", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("mon", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("mg", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("money", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("min", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("hour", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("sec", StringComparison.OrdinalIgnoreCase) ||
                    token.Equals("date", StringComparison.OrdinalIgnoreCase) ||
-                   token.Equals("rank", StringComparison.OrdinalIgnoreCase);
+                   token.Equals("rank", StringComparison.OrdinalIgnoreCase) ||
+                   token.EndsWith("limit", StringComparison.OrdinalIgnoreCase);
         }
 
         private string ResolveQuestDetailRecordTextForDialogue(int questId, string token)
@@ -876,10 +890,19 @@ namespace HaCreator.MapSimulator.Interaction
 
             // Keep auto-completion alert registration closer to the client
             // CheckCompleteDemand owner by checking unmet completion demand only.
-            // Exclude simulator UI-only completion issues (reward-slot capacity and
-            // action metadata presentation) from this registration gate.
+            // Exclude simulator UI-only completion issues (reward-slot capacity), but
+            // keep completion-demand metadata gates (record requirements and action
+            // availability/interval/level bounds) in this registration path.
             var issues = new List<string>();
             AppendQuestStateIssues(definition.EndQuestRequirements, issues);
+            if (HasUnmetQuestRecordRequirements(
+                    definition.QuestId,
+                    definition.EndInfoNumber,
+                    definition.EndInfoRequirements,
+                    definition.EndInfoExRequirements))
+            {
+                issues.Add("Complete quest-record requirements are still unmet.");
+            }
 
             QuestProgress progress = GetOrCreateProgress(definition.QuestId);
             for (int i = 0; i < definition.EndMobRequirements.Count; i++)
@@ -917,6 +940,7 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.EndAllowedDays,
                 issues,
                 "complete");
+            AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
 
             if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
@@ -8148,7 +8172,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            AddParsedScriptNames(names, property.GetString());
+            if (!ShouldSuppressRawScriptNameExtraction(property))
+            {
+                AddParsedScriptNames(names, property.GetString());
+            }
+
             AddParsedScriptPublicationNames(names, FieldObjectScriptPublicationParser.Parse(property));
 
             if (property.WzProperties == null || property.WzProperties.Count == 0)
@@ -8182,7 +8210,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (int.TryParse(propertyName, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            if (IsNumericPropertyName(propertyName))
             {
                 return false;
             }
@@ -8261,7 +8289,9 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool IsNestedScriptAliasContainer(WzImageProperty property)
         {
             if (property == null
-                || !ShouldTreatPropertyNameAsScriptAlias(property.Name))
+                || (!ShouldTreatPropertyNameAsScriptAlias(property.Name)
+                    && !IsScriptAliasWrapperPropertyName(property.Name)
+                    && !IsScriptAliasMetadataPropertyName(property.Name)))
             {
                 return false;
             }
@@ -8288,6 +8318,67 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private static bool ShouldSuppressRawScriptNameExtraction(WzImageProperty property)
+        {
+            if (property?.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return false;
+            }
+
+            string propertyName = property.Name?.Trim();
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            return IsScriptAliasMetadataPropertyName(propertyName)
+                   || IsScriptAliasWrapperPropertyName(propertyName)
+                   || IsScriptMetadataOwnerPropertyName(propertyName);
+        }
+
+        private static bool IsScriptAliasWrapperPropertyName(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            if (propertyName.Equals("script", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("scripts", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("info", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return IsNumericPropertyName(propertyName);
+        }
+
+        private static bool IsScriptMetadataOwnerPropertyName(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            switch (propertyName.Trim().ToLowerInvariant())
+            {
+                case "startscript":
+                case "endscript":
+                case "npcact":
+                case "onuserenter":
+                case "onfirstuserenter":
+                case "fieldscript":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsNumericPropertyName(string propertyName)
+        {
+            return int.TryParse(propertyName, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
         }
 
         private static bool IsScriptAliasMetadataPropertyName(string propertyName)

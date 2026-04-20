@@ -249,6 +249,40 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
+        public static string GetWindowOpenRestrictionMessage(
+            long fieldLimit,
+            MapInfo mapInfo,
+            string windowName)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return null;
+            }
+
+            string windowRestrictionMessage = GetWindowRestrictionMessage(fieldLimit, windowName);
+            if (!string.IsNullOrWhiteSpace(windowRestrictionMessage))
+            {
+                return windowRestrictionMessage;
+            }
+
+            string socialRoomRestrictionMessage = windowName switch
+            {
+                MapSimulatorWindowNames.MiniRoom => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.MiniRoom),
+                MapSimulatorWindowNames.PersonalShop => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.PersonalShop),
+                MapSimulatorWindowNames.EntrustedShop => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.EntrustedShop),
+                MapSimulatorWindowNames.TradingRoom => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.TradingRoom),
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(socialRoomRestrictionMessage))
+            {
+                return socialRoomRestrictionMessage;
+            }
+
+            return windowName == MapSimulatorWindowNames.MapTransfer
+                ? GetMapTransferRestrictionMessage(fieldLimit)
+                : null;
+        }
+
         public static bool CanTakeFallingDamage(long fieldLimit)
         {
             return !FieldLimitType.No_Damage_On_Falling.Check(fieldLimit);

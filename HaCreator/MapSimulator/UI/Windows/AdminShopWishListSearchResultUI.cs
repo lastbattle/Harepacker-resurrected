@@ -369,6 +369,24 @@ namespace HaCreator.MapSimulator.UI
                     ? "This row is already staged in the local wish-list cache."
                     : "BtRegist focuses the selected row in the admin-shop dialog.";
                 DrawDetailBlock(sprite, bounds, 10, footer, new Color(255, 233, 160));
+                if (selectedResult.IsPacketAuthored)
+                {
+                    string sessionLabel = BuildPacketSessionLabel(selectedResult);
+                    DrawDetailBlock(
+                        sprite,
+                        bounds,
+                        12,
+                        $"Packet row session: {sessionLabel}.",
+                        selectedResult.CanRegister ? new Color(198, 208, 224) : new Color(255, 218, 172));
+                    DrawDetailBlock(
+                        sprite,
+                        bounds,
+                        13,
+                        selectedResult.HasLiveCatalogBinding
+                            ? "Live catalog binding resolved."
+                            : "No live catalog binding; BtRegist stays disabled.",
+                        selectedResult.HasLiveCatalogBinding ? new Color(198, 208, 224) : new Color(255, 233, 160));
+                }
             }
             else if (GetResultCount() > 0)
             {
@@ -558,6 +576,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!result.CanRegister)
+            {
+                _statusMessage = BuildResultNotRegisterableMessage(result);
+                UpdateButtons();
+                return;
+            }
+
             if (result.AlreadyWishlisted)
             {
                 _statusMessage = $"{result.Title} is already saved in the in-session wish-list cache.";
@@ -643,10 +668,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (_registerButton != null)
             {
+                AdminShopDialogUI.WishlistSearchResult selectedResult = GetSelectedResult();
                 bool canRegister = IsVisible
                     && !_isRegisterConfirmationOpen
-                    && GetSelectedResult() != null
-                    && !GetSelectedResult().AlreadyWishlisted;
+                    && selectedResult != null
+                    && selectedResult.CanRegister
+                    && !selectedResult.AlreadyWishlisted;
                 _registerButton.SetVisible(IsVisible);
                 _registerButton.SetEnabled(canRegister);
             }
@@ -918,6 +945,37 @@ namespace HaCreator.MapSimulator.UI
             return UseOwnerSession
                 ? _owner.CanMoveWishlistSearchResultSessionPage(delta)
                 : delta < 0 ? _pageIndex > 0 : _pageIndex + 1 < GetPageCount();
+        }
+
+        private static string BuildPacketSessionLabel(AdminShopDialogUI.WishlistSearchResult result)
+        {
+            if (result == null)
+            {
+                return "-1/-1";
+            }
+
+            return $"{Math.Max(-1, result.PacketServiceSessionId)}/{Math.Max(-1, result.PacketSearchSessionId)}";
+        }
+
+        private static string BuildResultNotRegisterableMessage(AdminShopDialogUI.WishlistSearchResult result)
+        {
+            if (result == null)
+            {
+                return "This result row cannot be registered.";
+            }
+
+            if (!result.IsPacketAuthored)
+            {
+                return "This result row cannot be registered.";
+            }
+
+            string sessionLabel = BuildPacketSessionLabel(result);
+            if (!result.HasLiveCatalogBinding)
+            {
+                return $"Packet-authored row session {sessionLabel} has no live NPC catalog binding; BtRegist stays disabled.";
+            }
+
+            return $"Packet-authored row session {sessionLabel} is no longer active in the current admin-shop search session.";
         }
 
         private static string TrimToWidth(string text, float maxWidth)

@@ -6926,9 +6926,25 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            string normalizedRelativeToken = NormalizePacketMobAttackGeneralEffectColonPathSeparators(sourcePathToken)
+                                             ?? sourcePathToken;
+            if (TryResolvePacketMobAttackGeneralEffectSignedSiblingFrameSourcePath(
+                    normalizedFrameAbsolutePath,
+                    normalizedRelativeToken,
+                    defaultCategory,
+                    out normalizedSourcePath)
+                || TryResolvePacketMobAttackGeneralEffectSiblingFrameSourcePath(
+                    normalizedFrameAbsolutePath,
+                    normalizedRelativeToken,
+                    defaultCategory,
+                    out normalizedSourcePath))
+            {
+                return true;
+            }
+
             if (!TryCombinePacketMobAttackGeneralEffectPath(
                     normalizedFrameAbsolutePath,
-                    sourcePathToken,
+                    normalizedRelativeToken,
                     out string combinedPath))
             {
                 return false;
@@ -7243,25 +7259,29 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string normalized = NormalizePacketMobAttackGeneralEffectPathTokenShell(token);
-            if (TryNormalizePacketMobAttackGeneralEffectSourceAliasAssignmentToken(
-                    normalized,
-                    out string normalizedSourceAliasAssignment))
+            bool hasNormalizedSourceAliasAssignment = TryNormalizePacketMobAttackGeneralEffectSourceAliasAssignmentToken(
+                normalized,
+                out string normalizedSourceAliasAssignment);
+            if (hasNormalizedSourceAliasAssignment)
             {
                 normalized = normalizedSourceAliasAssignment;
             }
 
-            for (int i = 0; i < 8; i++)
+            if (!hasNormalizedSourceAliasAssignment)
             {
-                int assignmentIndex = FindPacketMobAttackGeneralEffectPathAssignmentIndex(
-                    normalized,
-                    out int assignmentDelimiterLength);
-                if (assignmentIndex < 0 || assignmentIndex + assignmentDelimiterLength >= normalized.Length)
+                for (int i = 0; i < 8; i++)
                 {
-                    break;
-                }
+                    int assignmentIndex = FindPacketMobAttackGeneralEffectPathAssignmentIndex(
+                        normalized,
+                        out int assignmentDelimiterLength);
+                    if (assignmentIndex < 0 || assignmentIndex + assignmentDelimiterLength >= normalized.Length)
+                    {
+                        break;
+                    }
 
-                normalized = NormalizePacketMobAttackGeneralEffectPathTokenShell(
-                    normalized.Substring(assignmentIndex + assignmentDelimiterLength));
+                    normalized = NormalizePacketMobAttackGeneralEffectPathTokenShell(
+                        normalized.Substring(assignmentIndex + assignmentDelimiterLength));
+                }
             }
 
             string embeddedPathToken = TryExtractPacketMobAttackGeneralEffectEmbeddedPathToken(normalized);
@@ -7418,7 +7438,8 @@ namespace HaCreator.MapSimulator.Pools
                 return string.Empty;
             }
 
-            string normalized = token.Trim().Replace('\\', '/');
+            string normalized = NormalizePacketMobAttackGeneralEffectEncodedPathSeparators(token.Trim())
+                .Replace('\\', '/');
             while (true)
             {
                 string previous = normalized;
@@ -7448,6 +7469,84 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalized.Trim('/');
+        }
+
+        private static string NormalizePacketMobAttackGeneralEffectEncodedPathSeparators(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return string.Empty;
+            }
+
+            var normalizedBuilder = new System.Text.StringBuilder(token.Length);
+            for (int i = 0; i < token.Length; i++)
+            {
+                char current = token[i];
+                if (current == '\\' && i < token.Length - 1)
+                {
+                    char escaped = token[i + 1];
+                    if (escaped == '/' || escaped == '\\' || escaped == ':')
+                    {
+                        normalizedBuilder.Append(escaped == '\\' ? '/' : escaped);
+                        i++;
+                        continue;
+                    }
+                }
+
+                if (current == '%'
+                    && i < token.Length - 2
+                    && TryParsePacketMobAttackGeneralEffectPercentEncodedChar(
+                        token[i + 1],
+                        token[i + 2],
+                        out char decoded))
+                {
+                    if (decoded == '/' || decoded == '\\' || decoded == ':')
+                    {
+                        normalizedBuilder.Append(decoded == '\\' ? '/' : decoded);
+                        i += 2;
+                        continue;
+                    }
+                }
+
+                normalizedBuilder.Append(current);
+            }
+
+            return normalizedBuilder.ToString();
+        }
+
+        private static bool TryParsePacketMobAttackGeneralEffectPercentEncodedChar(
+            char firstHexChar,
+            char secondHexChar,
+            out char decoded)
+        {
+            decoded = '\0';
+            if (!TryParsePacketMobAttackGeneralEffectHexDigit(firstHexChar, out int high)
+                || !TryParsePacketMobAttackGeneralEffectHexDigit(secondHexChar, out int low))
+            {
+                return false;
+            }
+
+            decoded = (char)((high << 4) | low);
+            return true;
+        }
+
+        private static bool TryParsePacketMobAttackGeneralEffectHexDigit(char character, out int value)
+        {
+            value = 0;
+            if (character >= '0' && character <= '9')
+            {
+                value = character - '0';
+                return true;
+            }
+
+            char normalized = char.ToUpperInvariant(character);
+            if (normalized >= 'A' && normalized <= 'F')
+            {
+                value = normalized - 'A' + 10;
+                return true;
+            }
+
+            return false;
         }
 
         private static int FindPacketMobAttackGeneralEffectPathAssignmentIndex(

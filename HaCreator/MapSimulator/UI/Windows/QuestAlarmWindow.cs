@@ -607,9 +607,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EnsurePersistedStateLoaded();
+            QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
+            bool wasVisible = TryGetQuestAlarmEntry(snapshot, questId, out _);
+            bool wasHidden = _hiddenAutoQuestIds.Contains(questId);
             bool removedTrackedQuest = _trackedQuestIds.Remove(questId);
-            bool clearedHiddenAutoQuest = _hiddenAutoQuestIds.Remove(questId);
-            if (!removedTrackedQuest && !clearedHiddenAutoQuest)
+            if (removedTrackedQuest || wasVisible)
+            {
+                // Mirror DeleteQuestByIndex-style suppression so packet-owned removals do not
+                // immediately reappear through local auto registration.
+                _hiddenAutoQuestIds.Add(questId);
+            }
+
+            if (!removedTrackedQuest && !wasVisible && !wasHidden)
             {
                 return false;
             }
@@ -623,7 +632,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
             SavePersistedState();
             QuestDeleted?.Invoke();
-            return removedTrackedQuest;
+            return removedTrackedQuest || wasVisible;
         }
 
         internal int ApplyPacketRegistrationSync(
@@ -634,6 +643,15 @@ namespace HaCreator.MapSimulator.UI
             bool clearHiddenAutoTombstones)
         {
             EnsurePersistedStateLoaded();
+            HashSet<int> previousVisibleQuestIds = null;
+            QuestAlarmSnapshot previousSnapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
+            if (previousSnapshot.Entries != null && previousSnapshot.Entries.Count > 0)
+            {
+                previousVisibleQuestIds = new HashSet<int>(previousSnapshot.Entries
+                    .Where(static entry => entry?.QuestId > 0)
+                    .Select(static entry => entry.QuestId));
+            }
+
             HashSet<int> previousTrackedQuestIds = _trackedQuestIds.Count == 0
                 ? null
                 : _trackedQuestIds.ToHashSet();
@@ -685,6 +703,17 @@ namespace HaCreator.MapSimulator.UI
 
             ResetSelectionAfterMutation();
             QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
+            if (previousVisibleQuestIds != null && previousVisibleQuestIds.Count > 0)
+            {
+                for (int i = 0; i < refreshedSnapshot.Entries.Count; i++)
+                {
+                    previousVisibleQuestIds.Remove(refreshedSnapshot.Entries[i].QuestId);
+                }
+
+                NotifyQuestRecentUpdateAcknowledged(previousVisibleQuestIds);
+                NotifyQuestTooltipCleared(previousVisibleQuestIds);
+            }
+
             HandleEmptySnapshotVisibility(refreshedSnapshot);
             EnsureSelection(refreshedSnapshot);
             EnsureSelectionVisible(refreshedSnapshot);
@@ -1552,10 +1581,20 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            HashSet<int> snapshotQuestIds = new();
+            foreach (QuestAlarmEntrySnapshot entry in fullSnapshot.Entries ?? Array.Empty<QuestAlarmEntrySnapshot>())
+            {
+                if (entry?.QuestId > 0)
+                {
+                    snapshotQuestIds.Add(entry.QuestId);
+                }
+            }
+
             NotifyQuestRecentUpdateAcknowledged(_trackedQuestIds);
             NotifyQuestRecentUpdateAcknowledged(_hiddenAutoQuestIds);
             NotifyQuestTooltipCleared(_trackedQuestIds);
             NotifyQuestTooltipCleared(_hiddenAutoQuestIds);
+            NotifyQuestTooltipCleared(snapshotQuestIds);
 
             foreach (QuestAlarmEntrySnapshot entry in fullSnapshot.Entries ?? Array.Empty<QuestAlarmEntrySnapshot>())
             {

@@ -26,11 +26,14 @@ namespace HaCreator.MapSimulator.Managers
         internal const byte FollowCharacterWithdrawKeyInput = 1;
         private const string DefaultProcessName = "MapleStory";
         private const int SentOutboundHistoryCapacity = 64;
+        private const int ReceivedInboundHistoryCapacity = 64;
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket, int SentOrdinal = 0);
+        private sealed record ReceivedInboundPacket(int PacketType, byte[] Payload, int ReceivedOrdinal = 0);
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _sentOutboundHistory = new();
+        private readonly ConcurrentQueue<ReceivedInboundPacket> _receivedInboundHistory = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -110,7 +113,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,193,234,248,250,253,254,255,256,261,269,270,274,275,291,366,367,405,406,407,425,1011,1023,1025,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,193,234,248,250,253,254,255,256,261,269,270,274,275,291,366,367,405,406,407,425,1011,1023,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -354,6 +357,29 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
+        public bool HasReceivedInboundPacketPayloadSince(int packetType, IReadOnlyList<byte> payload, int minimumReceivedCountExclusive)
+        {
+            if (packetType < 0 || payload == null)
+            {
+                return false;
+            }
+
+            byte[] target = payload as byte[] ?? payload.ToArray();
+            ReceivedInboundPacket[] history = _receivedInboundHistory.ToArray();
+            for (int i = history.Length - 1; i >= 0; i--)
+            {
+                ReceivedInboundPacket received = history[i];
+                if (received.PacketType == packetType
+                    && received.ReceivedOrdinal > minimumReceivedCountExclusive
+                    && received.Payload.AsSpan().SequenceEqual(target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         internal static byte[] BuildFollowCharacterRequestPayload(int driverId, bool autoRequest, bool keyInput)
         {
             byte[] payload = new byte[FollowCharacterRequestPayloadLength];
@@ -484,7 +510,7 @@ namespace HaCreator.MapSimulator.Managers
                     payload,
                     $"official-session:{pair.RemoteEndpoint}",
                     $"packetclientraw {Convert.ToHexString(raw)}"));
-                ReceivedCount++;
+                RecordReceivedInboundPacket(packetType, payload);
                 LastStatus = $"Queued {DescribePacketType(packetType)} from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
@@ -613,8 +639,24 @@ namespace HaCreator.MapSimulator.Managers
             while (_pendingMessages.TryDequeue(out _))
             {
             }
+            while (_receivedInboundHistory.TryDequeue(out _))
+            {
+            }
 
             ReceivedCount = 0;
+        }
+
+        private void RecordReceivedInboundPacket(int packetType, byte[] payload)
+        {
+            ReceivedCount++;
+            _receivedInboundHistory.Enqueue(new ReceivedInboundPacket(
+                packetType,
+                payload ?? Array.Empty<byte>(),
+                ReceivedCount));
+            while (_receivedInboundHistory.Count > ReceivedInboundHistoryCapacity
+                   && _receivedInboundHistory.TryDequeue(out _))
+            {
+            }
         }
 
         private void RecordSentOutboundPacket(int opcode, byte[] rawPacket)
@@ -659,6 +701,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.HireTutorClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.TutorMsgClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.RadioScheduleClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType
                 || packetType == LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType
                 || packetType == LocalUtilityPacketInboxManager.DamageMeterPacketType
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
@@ -697,6 +740,7 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.HireTutorClientPacketType => "HireTutor(255)",
                 LocalUtilityPacketInboxManager.TutorMsgClientPacketType => "TutorMsg(256)",
                 LocalUtilityPacketInboxManager.RadioScheduleClientPacketType => "RadioSchedule(261)",
+                LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType => "RadioCreateLayerContext(1035)",
                 LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
                 LocalUtilityPacketInboxManager.DamageMeterPacketType => "DamageMeter(267)",
                 LocalUtilityPacketInboxManager.PassiveMoveClientPacketType => "PassiveMove(269)",

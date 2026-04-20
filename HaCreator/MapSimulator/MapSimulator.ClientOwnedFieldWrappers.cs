@@ -784,6 +784,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (_playerManager?.IsPlayerActive != true || _playerManager.Player == null)
+            {
+                _limitedViewField.ClearClientOwnedFocusWorldPosition();
+                return;
+            }
+
             _limitedViewField.SetClientOwnedFocusWorldPosition(playerX, playerY);
             _limitedViewField.SetClientOwnedRemoteFocusWorldPositions(EnumerateClientOwnedLimitedViewRemoteFocusWorldPositions());
         }
@@ -1066,6 +1072,7 @@ namespace HaCreator.MapSimulator
         private void ConfigureNoDragonPresentation(MapInfo mapInfo)
         {
             bool allowDragonPresentation = !SuppressesDragonPresentation(mapInfo);
+            _playerManager?.SetDragonWrapperOwnedNoDragonSuppression(!allowDragonPresentation);
 
             if (uiWindowManager?.EquipWindow is EquipUI equipWindow)
             {

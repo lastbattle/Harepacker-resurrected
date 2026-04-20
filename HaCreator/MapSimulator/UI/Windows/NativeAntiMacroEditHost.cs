@@ -634,7 +634,11 @@ namespace HaCreator.MapSimulator.UI
 
             bool controlHeld = IsControlKeyDown();
             bool shiftHeld = IsShiftKeyDown();
-            bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(virtualKey, controlHeld, shiftHeld, HasImeOwnedInputState());
+            bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(
+                virtualKey,
+                controlHeld,
+                shiftHeld,
+                HasImeOwnedInputStateForDownKey());
             if (msg == WmKeyDown && !allowImeOwnedDownHandling && HandleClientOwnedKeyDown(virtualKey, controlHeld, shiftHeld, wParam, lParam))
             {
                 _clientOwnedKeyDowns.Add(virtualKey);
@@ -702,7 +706,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (allowImeOwnedDownHandling)
                 {
-                    _ = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+                    bool imeOwnedDispatchApplied = TryDispatchDeferredDownKeyToImeOwner(hWnd, wParam, lParam);
+                    if (!imeOwnedDispatchApplied)
+                    {
+                        _ = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+                    }
 
                     // Let IME consume the Down key first; only fall through to the parent
                     // path when IME is no longer holding an active composition/candidate state.
@@ -1075,6 +1083,73 @@ namespace HaCreator.MapSimulator.UI
             {
                 ImmReleaseContext(_editHandle, inputContext);
             }
+        }
+
+        private bool HasImeOwnedInputStateForDownKey()
+        {
+            if (!IsAttached || !HasFocus)
+            {
+                return false;
+            }
+
+            IntPtr inputContext = ImmGetContext(_editHandle);
+            if (inputContext == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                bool imeOpen = ImmGetOpenStatus(inputContext);
+                bool compositionActive = ImmGetCompositionString(inputContext, GcsCompStr, IntPtr.Zero, 0) > 0;
+                bool candidateWindowActive = HasActiveImeCandidateWindow(inputContext);
+                bool defaultImeWindowAvailable = HasImeDefaultWindow(_editHandle);
+                return IsImeOwnedDownKeyPath(
+                    imeOpen,
+                    compositionActive,
+                    candidateWindowActive,
+                    defaultImeWindowAvailable);
+            }
+            finally
+            {
+                ImmReleaseContext(_editHandle, inputContext);
+            }
+        }
+
+        private bool TryDispatchDeferredDownKeyToImeOwner(IntPtr hWnd, IntPtr wParam, IntPtr lParam)
+        {
+            IntPtr targetWindow = hWnd != IntPtr.Zero ? hWnd : _editHandle;
+            IntPtr defaultImeWindow = targetWindow == IntPtr.Zero ? IntPtr.Zero : ImmGetDefaultIMEWnd(targetWindow);
+            if (!ShouldDispatchDeferredDownKeyToImeWindow(defaultImeWindow, targetWindow))
+            {
+                return false;
+            }
+
+            SendMessage(defaultImeWindow, WmKeyDown, wParam, lParam);
+            return true;
+        }
+
+        internal static bool IsImeOwnedDownKeyPath(
+            bool imeOpenStatus,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive,
+            bool imeDefaultWindowAvailable)
+        {
+            // `CCtrlEdit::OnKey` checks owner presence (`m_pIMECandWnd`) for VK_DOWN.
+            // In the hosted seam, treat an open IME with a resolvable default IME owner
+            // window as equivalent ownership even when composition bytes are currently empty.
+            return imeOpenStatus && (imeCompositionActive || imeCandidateWindowActive || imeDefaultWindowAvailable);
+        }
+
+        internal static bool ShouldDispatchDeferredDownKeyToImeWindow(IntPtr imeWindowHandle, IntPtr editHandle)
+        {
+            // Keep dispatch constrained to a valid, distinct IME owner window.
+            return imeWindowHandle != IntPtr.Zero && imeWindowHandle != editHandle;
+        }
+
+        private static bool HasImeDefaultWindow(IntPtr editHandle)
+        {
+            return editHandle != IntPtr.Zero && ImmGetDefaultIMEWnd(editHandle) != IntPtr.Zero;
         }
 
         private static bool HasActiveImeCandidateWindow(IntPtr inputContext)
@@ -1611,6 +1686,9 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("imm32.dll", EntryPoint = "ImmGetCandidateListCountW")]
         private static extern int ImmGetCandidateListCount(IntPtr hIMC, out int lpdwListCount);
+
+        [DllImport("imm32.dll")]
+        private static extern IntPtr ImmGetDefaultIMEWnd(IntPtr hWnd);
 
         [DllImport("imm32.dll")]
         private static extern bool ImmGetOpenStatus(IntPtr hIMC);

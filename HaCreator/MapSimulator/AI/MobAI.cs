@@ -1225,7 +1225,6 @@ namespace HaCreator.MapSimulator.AI
                 return false;
             }
 
-            _fullChargeEffectStartTime = currentTick;
             return true;
         }
 

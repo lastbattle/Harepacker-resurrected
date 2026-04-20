@@ -509,6 +509,37 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(1, "stabO1", 0, 540, move: new Point(2, 0)),
                     CreateIndexedPiece(2, "shoot2", 0, 0)
                 },
+                // `Character/00002000.img` still exposes high-count helper-piece rows for
+                // `fist` and `bamboo`. Keep built-in parity plans so loader-owned fallback
+                // retains the same client-init piece ordering and signed-delay timing.
+                ["fist"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, -90),
+                    CreateIndexedPiece(1, "alert", 1, -90),
+                    CreateIndexedPiece(2, "alert", 0, -270),
+                    CreateIndexedPiece(3, "stabOF", 1, 90),
+                    CreateIndexedPiece(4, "stabOF", 1, 90),
+                    CreateIndexedPiece(5, "stabO2", 0, 90),
+                    CreateIndexedPiece(6, "stabO1", 1, 90),
+                    CreateIndexedPiece(7, "stabO1", 1, 90),
+                    CreateIndexedPiece(8, "swingTF", 1, 90),
+                    CreateIndexedPiece(9, "stabOF", 1, 90),
+                    CreateIndexedPiece(10, "stabOF", 1, 90),
+                    CreateIndexedPiece(11, "swingT2", 0, 90),
+                    CreateIndexedPiece(12, "stabO1", 1, 90),
+                    CreateIndexedPiece(13, "stabO1", 1, 90),
+                    CreateIndexedPiece(14, "stabTF", 2, 90),
+                    CreateIndexedPiece(15, "swingOF", 1, 90),
+                    CreateIndexedPiece(16, "swingOF", 2, 90),
+                    CreateIndexedPiece(17, "swingT1", 2, 90),
+                    CreateIndexedPiece(18, "swingT1", 2, 90),
+                    CreateIndexedPiece(19, "stabOF", 0, 90),
+                    CreateIndexedPiece(20, "swingP2", 0, 90),
+                    CreateIndexedPiece(21, "swingOF", 1, 90),
+                    CreateIndexedPiece(22, "swingOF", 1, 90),
+                    CreateIndexedPiece(23, "swingOF", 2, 90, flip: true),
+                    CreateIndexedPiece(24, "swingPF", 3, 90)
+                },
                 ["fireburner"] = new[]
                 {
                     CreateIndexedPiece(0, "shoot2", 0, -240),
@@ -531,6 +562,40 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 0, 780)),
                 ["torpedo"] = CreateIndexedPieces(
                     ("alert", 0, 990)),
+                ["bamboo"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 1, -720),
+                    CreateIndexedPiece(1, "swingPF", 1, -120),
+                    CreateIndexedPiece(2, "swingP2", 1, -120),
+                    CreateIndexedPiece(3, "swingP2", 0, -120),
+                    CreateIndexedPiece(4, "swingOF", 1, -120),
+                    CreateIndexedPiece(5, "swingT2", 0, -120, flip: true),
+                    CreateIndexedPiece(6, "swingTF", 1, -120),
+                    CreateIndexedPiece(7, "swingO1", 2, -120),
+                    CreateIndexedPiece(8, "swingO3", 1, -120),
+                    CreateIndexedPiece(9, "swingO2", 2, -120),
+                    CreateIndexedPiece(10, "swingO2", 1, -120),
+                    CreateIndexedPiece(11, "swingTF", 1, -120),
+                    CreateIndexedPiece(12, "swingO1", 2, -120),
+                    CreateIndexedPiece(13, "swingO2", 1, -120),
+                    CreateIndexedPiece(14, "swingTF", 1, -120),
+                    CreateIndexedPiece(15, "swingTF", 1, -120),
+                    CreateIndexedPiece(16, "swingTF", 1, -120),
+                    CreateIndexedPiece(17, "stabO1", 1, -120),
+                    CreateIndexedPiece(18, "swingTF", 1, -120),
+                    CreateIndexedPiece(19, "swingTF", 1, -120),
+                    CreateIndexedPiece(20, "swingTF", 1, -120),
+                    CreateIndexedPiece(21, "swingTF", 1, -120),
+                    CreateIndexedPiece(22, "swingTF", 1, -120),
+                    CreateIndexedPiece(23, "swingTF", 1, 120),
+                    CreateIndexedPiece(24, "swingTF", 1, 120),
+                    CreateIndexedPiece(25, "swingTF", 1, 120),
+                    CreateIndexedPiece(26, "swingOF", 3, 120),
+                    CreateIndexedPiece(27, "swingOF", 3, 120),
+                    CreateIndexedPiece(28, "swingOF", 3, 120),
+                    CreateIndexedPiece(29, "swingOF", 3, 120),
+                    CreateIndexedPiece(30, "alert", 1, 240)
+                },
                 ["wave"] = new[]
                 {
                     CreateIndexedPiece(0, "swingTF", 1, -60, move: new Point(14, 0)),
@@ -2297,6 +2362,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return string.IsNullOrWhiteSpace(queuedActionName);
+        }
+
+        public static bool ShouldForceReplayForAttackTrigger(
+            int observedActionTriggerTime,
+            int previousReplayTriggerTime)
+        {
+            return observedActionTriggerTime != int.MinValue
+                   && observedActionTriggerTime != previousReplayTriggerTime;
         }
 
         private static bool IsAuthoredAttackAction(string actionName)

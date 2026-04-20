@@ -412,9 +412,7 @@ namespace HaCreator.MapSimulator
             var activeProjectedSupportAreaIds = _playerManager?.Skills != null
                 ? new System.Collections.Generic.HashSet<int>()
                 : null;
-            var activeAreaIdsForLocalPlayerTicks = _remoteAffectedAreaLocalPlayerTickTimes.Count > 0
-                ? new System.Collections.Generic.HashSet<int>()
-                : null;
+            var activeAreaIdsForRuntimePruning = new System.Collections.Generic.HashSet<int>();
             var activeAreaOwnerIds =
                 _remoteAffectedAreaOwnerNames.Count > 0
                 || _remoteAffectedAreaBattlefieldOwnerTeams.Count > 0
@@ -429,7 +427,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                activeAreaIdsForLocalPlayerTicks?.Add(area.ObjectId);
+                activeAreaIdsForRuntimePruning.Add(area.ObjectId);
                 if (area.OwnerId > 0)
                 {
                     activeAreaOwnerIds?.Add(area.OwnerId);
@@ -452,8 +450,8 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            PruneRemoteAffectedAreaLocalPlayerTickTimes(activeAreaIdsForLocalPlayerTicks);
-            PruneRemoteAffectedAreaOwnerAreaRuntimeSnapshots(activeAreaIdsForLocalPlayerTicks);
+            PruneRemoteAffectedAreaLocalPlayerTickTimes(activeAreaIdsForRuntimePruning);
+            PruneRemoteAffectedAreaOwnerAreaRuntimeSnapshots(activeAreaIdsForRuntimePruning);
             PruneRemoteAffectedAreaOwnerRuntimeState(activeAreaOwnerIds);
             _playerManager?.Skills?.SyncExternalAreaSupportBuffs(activeProjectedSupportAreaIds, currentTime);
         }

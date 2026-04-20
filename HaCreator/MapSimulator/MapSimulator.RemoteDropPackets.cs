@@ -315,7 +315,8 @@ namespace HaCreator.MapSimulator
                 IsTrackedDropPartyActor,
                 AreObservedDropPartyActorsLinked,
                 IsObservedDropPartyActorPartyLinked,
-                ResolveDropPartyActorOwnerId);
+                ResolveDropPartyActorOwnerId,
+                IsObservedDropPartyActorPartyLinked);
         }
 
         internal static bool AreDropActorsInSameParty(
@@ -327,7 +328,8 @@ namespace HaCreator.MapSimulator
             Func<int, bool> legacyTrackedActorEvaluator,
             Func<int, int, bool> observedPartyLinkEvaluator = null,
             Func<int, bool> observedPartyAnchorEvaluator = null,
-            Func<int, int> partyActorOwnerResolver = null)
+            Func<int, int> partyActorOwnerResolver = null,
+            Func<int, bool> observedPartyLinkedEvaluator = null)
         {
             int normalizedOwnerId = NormalizeDropPartyActorId(ownerId, partyActorOwnerResolver);
             int normalizedActorId = NormalizeDropPartyActorId(actorId, partyActorOwnerResolver);
@@ -354,7 +356,10 @@ namespace HaCreator.MapSimulator
                         localCharacterId,
                         trackedPartyActorEvaluator,
                         legacyTrackedActorEvaluator,
-                        observedPartyAnchorEvaluator);
+                        observedPartyAnchorEvaluator)
+                    || observedPartyLinkedEvaluator?.Invoke(actorId) == true
+                    || (normalizedActorId != actorId
+                        && observedPartyLinkedEvaluator?.Invoke(normalizedActorId) == true);
             }
 
             if (ownerId == actorId
@@ -381,33 +386,47 @@ namespace HaCreator.MapSimulator
                 || observedPartyAnchorEvaluator?.Invoke(normalizedOwnerId) == true;
             bool observedTrackedActor = observedPartyAnchorEvaluator?.Invoke(actorId) == true
                 || observedPartyAnchorEvaluator?.Invoke(normalizedActorId) == true;
+            bool observedPartyLinkedOwner = observedPartyLinkedEvaluator?.Invoke(ownerId) == true
+                || observedPartyLinkedEvaluator?.Invoke(normalizedOwnerId) == true;
+            bool observedPartyLinkedActor = observedPartyLinkedEvaluator?.Invoke(actorId) == true
+                || observedPartyLinkedEvaluator?.Invoke(normalizedActorId) == true;
             bool knownOwner = IsKnownDropPartyActor(
                     ownerId,
                     localPartyId,
                     localCharacterId,
                     trackedPartyActorEvaluator,
-                    legacyTrackedActorEvaluator)
+                    legacyTrackedActorEvaluator,
+                    observedPartyAnchorEvaluator)
                 || IsKnownDropPartyActor(
                     normalizedOwnerId,
                     localPartyId,
                     localCharacterId,
                     trackedPartyActorEvaluator,
-                    legacyTrackedActorEvaluator);
+                    legacyTrackedActorEvaluator,
+                    observedPartyAnchorEvaluator);
             bool knownActor = IsKnownDropPartyActor(
                     actorId,
                     localPartyId,
                     localCharacterId,
                     trackedPartyActorEvaluator,
-                    legacyTrackedActorEvaluator)
+                    legacyTrackedActorEvaluator,
+                    observedPartyAnchorEvaluator)
                 || IsKnownDropPartyActor(
                     normalizedActorId,
                     localPartyId,
                     localCharacterId,
                     trackedPartyActorEvaluator,
-                    legacyTrackedActorEvaluator);
+                    legacyTrackedActorEvaluator,
+                    observedPartyAnchorEvaluator);
 
             if ((knownOwner || packetTrackedOwner || legacyTrackedOwner || observedTrackedOwner)
                 && (knownActor || packetTrackedActor || legacyTrackedActor || observedTrackedActor))
+            {
+                return true;
+            }
+
+            if ((knownOwner || packetTrackedOwner || legacyTrackedOwner || observedTrackedOwner || observedPartyLinkedOwner)
+                && (knownActor || packetTrackedActor || legacyTrackedActor || observedTrackedActor || observedPartyLinkedActor))
             {
                 return true;
             }
@@ -421,10 +440,12 @@ namespace HaCreator.MapSimulator
                     || knownOwner
                     || legacyTrackedOwner
                     || observedTrackedOwner
+                    || observedPartyLinkedOwner
                     || packetTrackedActor
                     || knownActor
                     || legacyTrackedActor
-                    || observedTrackedActor;
+                    || observedTrackedActor
+                    || observedPartyLinkedActor;
             }
 
             return false;

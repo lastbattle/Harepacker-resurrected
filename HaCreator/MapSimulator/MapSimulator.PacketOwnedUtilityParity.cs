@@ -4367,16 +4367,9 @@ namespace HaCreator.MapSimulator
             int sampleTime)
         {
             PlayerMovementSyncSnapshot passiveMoveSnapshot = _lastPacketOwnedPassiveMoveSnapshot;
-            if (passiveMoveSnapshot != null
-                && sampleTime <= passiveMoveSnapshot.PassivePosition.TimeStamp)
+            if (ShouldUsePacketOwnedActiveEffectMotionBlurPassiveSnapshot(passiveMoveSnapshot, sampleTime))
             {
                 return passiveMoveSnapshot;
-            }
-
-            if (_lastPacketOwnedPassiveMoveSnapshot != null
-                && sampleTime <= _lastPacketOwnedPassiveMoveSnapshot.PassivePosition.TimeStamp)
-            {
-                return _lastPacketOwnedPassiveMoveSnapshot;
             }
 
             if (player == null)
@@ -4386,13 +4379,20 @@ namespace HaCreator.MapSimulator
 
             try
             {
-                PlayerMovementSyncSnapshot sampledSnapshot = player.GetMovementSyncSnapshot(sampleTime, flushPath: false);
-                return sampledSnapshot ?? passiveMoveSnapshot;
+                return player.GetMovementSyncSnapshot(sampleTime, flushPath: false);
             }
             catch
             {
-                return passiveMoveSnapshot;
+                return null;
             }
+        }
+
+        private static bool ShouldUsePacketOwnedActiveEffectMotionBlurPassiveSnapshot(
+            PlayerMovementSyncSnapshot passiveMoveSnapshot,
+            int sampleTime)
+        {
+            return passiveMoveSnapshot != null
+                   && sampleTime <= passiveMoveSnapshot.PassivePosition.TimeStamp;
         }
 
         private static PacketOwnedActiveEffectMotionBlurOwnerSample ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(
@@ -4691,6 +4691,13 @@ namespace HaCreator.MapSimulator
                     fallbackFacingRight,
                     sampleTime);
             return (sample.Position, sample.FacingRight);
+        }
+
+        internal static bool ShouldUsePacketOwnedActiveEffectMotionBlurPassiveSnapshotForTesting(
+            PlayerMovementSyncSnapshot passiveMoveSnapshot,
+            int sampleTime)
+        {
+            return ShouldUsePacketOwnedActiveEffectMotionBlurPassiveSnapshot(passiveMoveSnapshot, sampleTime);
         }
 
         private static void DisposePacketOwnedActiveEffectMotionBlurFrames(IEnumerable<IDXObject> frames)
@@ -6825,6 +6832,16 @@ namespace HaCreator.MapSimulator
 
         private string ShowPacketOwnedWindow(string windowName, string displayName)
         {
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetWindowOpenRestrictionMessage(
+                _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                _mapBoard?.MapInfo,
+                windowName);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                ShowUtilityFeedbackMessage(restrictionMessage);
+                return restrictionMessage;
+            }
+
             if (uiWindowManager?.GetWindow(windowName) is not UIWindowBase window)
             {
                 string unavailable = $"{displayName} owner is not available in this UI build.";
@@ -12677,7 +12694,12 @@ namespace HaCreator.MapSimulator
             string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
             if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
             {
-                TryPlayPacketOwnedWzSound(noticeSoundDescriptor, "UI.img", out _, out _);
+                TryPlayPacketOwnedWzSound(
+                    noticeSoundDescriptor,
+                    "UI.img",
+                    out _,
+                    out _,
+                    strictClientSoundFamily: true);
             }
         }
 
@@ -13775,6 +13797,25 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryApplyPacketOwnedMonsterBookInventoryOperationPickupPayload(payload, out string monsterBookPickupMessage))
+            {
+                StampPacketOwnedUtilityRequestState();
+                message = string.IsNullOrWhiteSpace(message)
+                    ? monsterBookPickupMessage
+                    : $"{message} {monsterBookPickupMessage}";
+                if (!string.IsNullOrWhiteSpace(collisionScriptResetMessage))
+                {
+                    message = $"{message} {collisionScriptResetMessage}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(questStartRequestResetMessage))
+                {
+                    message = $"{message} {questStartRequestResetMessage}";
+                }
+
+                return true;
+            }
+
             if (!string.IsNullOrWhiteSpace(characterRejectReason)
                 && !string.IsNullOrWhiteSpace(message))
             {
@@ -13797,6 +13838,87 @@ namespace HaCreator.MapSimulator
             message = string.IsNullOrWhiteSpace(message)
                 ? resetMessage
                 : $"{message} {resetMessage}";
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedMonsterBookInventoryOperationPickupPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (!MonsterBookInventoryOperationParity.TryCollectConsumeOnPickupCardPickups(
+                    payload,
+                    _monsterBookManager.IsConsumeOnPickupCardItem,
+                    out IReadOnlyList<MonsterBookInventoryCardPickup> pickups,
+                    out _)
+                || pickups.Count <= 0)
+            {
+                return false;
+            }
+
+            CharacterBuild activeBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
+            int activeCharacterId = activeBuild?.Id ?? 0;
+            string activeCharacterName = activeBuild?.Name;
+            int appliedCardUpdates = 0;
+            int fullCardUpdates = 0;
+            int observedPickupRows = 0;
+            MonsterBookSnapshot latestSnapshot = null;
+            for (int i = 0; i < pickups.Count; i++)
+            {
+                MonsterBookInventoryCardPickup pickup = pickups[i];
+                if (pickup.ItemId <= 0 || pickup.Quantity <= 0)
+                {
+                    continue;
+                }
+
+                observedPickupRows++;
+                MonsterBookManager.CardPickupResult pickupResult = _monsterBookManager.RecordCardPickupWithResult(
+                    activeBuild,
+                    activeCharacterId,
+                    activeCharacterName,
+                    pickup.ItemId,
+                    pickup.Quantity,
+                    persistToDisk: false);
+
+                if (pickupResult.Changed)
+                {
+                    appliedCardUpdates++;
+                    latestSnapshot = pickupResult.Snapshot;
+                }
+                else if (pickupResult.Outcome == MonsterBookManager.CardPickupOutcome.AlreadyFull)
+                {
+                    fullCardUpdates++;
+                }
+            }
+
+            if (appliedCardUpdates > 0 && latestSnapshot != null)
+            {
+                QueuePacketOwnedMonsterBookOwnershipSaveApply(
+                    activeBuild,
+                    activeCharacterId,
+                    activeCharacterName,
+                    latestSnapshot,
+                    "Inventory-operation consume-on-pickup Monster Card intake",
+                    showFeedback: false);
+            }
+
+            if (observedPickupRows <= 0)
+            {
+                return false;
+            }
+
+            if (appliedCardUpdates > 0)
+            {
+                message = $"Inventory-operation intake applied {appliedCardUpdates.ToString(CultureInfo.InvariantCulture)} consume-on-pickup Monster Card update(s).";
+                return true;
+            }
+
+            message = fullCardUpdates > 0
+                ? $"Inventory-operation consume-on-pickup Monster Card intake was already at the 5-card completion mark for {fullCardUpdates.ToString(CultureInfo.InvariantCulture)} row(s)."
+                : "Inventory-operation consume-on-pickup Monster Card intake did not change ownership.";
             return true;
         }
 
@@ -14977,7 +15099,25 @@ namespace HaCreator.MapSimulator
                 return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
             }
 
-            if (!TryDecodePacketOwnedStringPayload(normalizedPayload, out string decodedText))
+            bool hasLengthPrefixedPayload = TryResolvePacketOwnedLengthPrefixedPayload(normalizedPayload, out byte[] lengthPrefixedPayload);
+            if (hasLengthPrefixedPayload
+                && TryDecodePacketOwnedEventCalendarBinaryPayload(
+                    lengthPrefixedPayload,
+                    out clearRequested,
+                    out replaceExistingEntries,
+                    out entries,
+                    out hasAlarmLines,
+                    out replaceAlarmLines,
+                    out alarmLines,
+                    out summary,
+                    out message))
+            {
+                return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(normalizedPayload, out string decodedText)
+                && (!hasLengthPrefixedPayload
+                    || !TryDecodePacketOwnedStringPayload(lengthPrefixedPayload, out decodedText)))
             {
                 message = "Event-calendar payload must decode to a binary owner-row envelope, MapleString, UTF-8 text, or a JSON text body.";
                 return false;
@@ -15097,7 +15237,23 @@ namespace HaCreator.MapSimulator
                 return clearRequested || entries.Length > 0 || hasOwnerState;
             }
 
-            if (!TryDecodePacketOwnedStringPayload(normalizedPayload, out string decodedText))
+            bool hasLengthPrefixedPayload = TryResolvePacketOwnedLengthPrefixedPayload(normalizedPayload, out byte[] lengthPrefixedPayload);
+            if (hasLengthPrefixedPayload
+                && TryDecodePacketOwnedRankingPageBinaryPayload(
+                    lengthPrefixedPayload,
+                    out clearRequested,
+                    out entries,
+                    out hasOwnerState,
+                    out ownerState,
+                    out summary,
+                    out message))
+            {
+                return clearRequested || entries.Length > 0 || hasOwnerState;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(normalizedPayload, out string decodedText)
+                && (!hasLengthPrefixedPayload
+                    || !TryDecodePacketOwnedStringPayload(lengthPrefixedPayload, out decodedText)))
             {
                 message = "Ranking-page payload must decode to a binary owner-row envelope, MapleString, UTF-8 text, or a JSON text body.";
                 return false;
@@ -15314,7 +15470,7 @@ namespace HaCreator.MapSimulator
             if (!TryDecodePacketOwnedRankingPageCompactBinaryVariant(
                     payload,
                     flagsBeforeRows: false,
-                    rowCountIsByte: false,
+                    rowCountByteWidth: sizeof(ushort),
                     out clearRequested,
                     out entries,
                     out hasOwnerState,
@@ -15323,7 +15479,7 @@ namespace HaCreator.MapSimulator
                 if (!TryDecodePacketOwnedRankingPageCompactBinaryVariant(
                         payload,
                         flagsBeforeRows: true,
-                        rowCountIsByte: false,
+                        rowCountByteWidth: sizeof(ushort),
                         out clearRequested,
                         out entries,
                         out hasOwnerState,
@@ -15331,7 +15487,7 @@ namespace HaCreator.MapSimulator
                     && !TryDecodePacketOwnedRankingPageCompactBinaryVariant(
                         payload,
                         flagsBeforeRows: true,
-                        rowCountIsByte: true,
+                        rowCountByteWidth: sizeof(byte),
                         out clearRequested,
                         out entries,
                         out hasOwnerState,
@@ -15339,7 +15495,23 @@ namespace HaCreator.MapSimulator
                     && !TryDecodePacketOwnedRankingPageCompactBinaryVariant(
                         payload,
                         flagsBeforeRows: false,
-                        rowCountIsByte: true,
+                        rowCountByteWidth: sizeof(byte),
+                        out clearRequested,
+                        out entries,
+                        out hasOwnerState,
+                        out ownerState)
+                    && !TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+                        payload,
+                        flagsBeforeRows: true,
+                        rowCountByteWidth: sizeof(int),
+                        out clearRequested,
+                        out entries,
+                        out hasOwnerState,
+                        out ownerState)
+                    && !TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+                        payload,
+                        flagsBeforeRows: false,
+                        rowCountByteWidth: sizeof(int),
                         out clearRequested,
                         out entries,
                         out hasOwnerState,
@@ -15364,7 +15536,7 @@ namespace HaCreator.MapSimulator
         private static bool TryDecodePacketOwnedRankingPageCompactBinaryVariant(
             byte[] payload,
             bool flagsBeforeRows,
-            bool rowCountIsByte,
+            int rowCountByteWidth,
             out bool clearRequested,
             out RankingEntrySnapshot[] entries,
             out bool hasOwnerState,
@@ -15398,10 +15570,9 @@ namespace HaCreator.MapSimulator
                     includesOwnerState = (flags & 0x2) != 0;
                 }
 
-                int rowCount = rowCountIsByte
-                    ? reader.ReadByte()
-                    : reader.ReadUInt16();
-                if (rowCount < 0 || rowCount > 100)
+                if (!TryReadPacketOwnedCompactRowCount(reader, rowCountByteWidth, out int rowCount)
+                    || rowCount < 0
+                    || rowCount > 100)
                 {
                     return false;
                 }
@@ -15546,6 +15717,91 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool TryResolvePacketOwnedLengthPrefixedPayload(byte[] payload, out byte[] resolvedPayload)
+        {
+            resolvedPayload = payload ?? Array.Empty<byte>();
+            if (payload == null || payload.Length <= sizeof(int))
+            {
+                return false;
+            }
+
+            int littleEndianLength = BitConverter.ToInt32(payload, 0);
+            int bigEndianLength =
+                (payload[0] << 24)
+                | (payload[1] << 16)
+                | (payload[2] << 8)
+                | payload[3];
+
+            if (TryMatchPacketOwnedLengthPrefixedBodyLength(payload, littleEndianLength, out resolvedPayload)
+                || TryMatchPacketOwnedLengthPrefixedBodyLength(payload, bigEndianLength, out resolvedPayload))
+            {
+                return true;
+            }
+
+            resolvedPayload = payload;
+            return false;
+        }
+
+        private static bool TryMatchPacketOwnedLengthPrefixedBodyLength(byte[] payload, int declaredLength, out byte[] resolvedPayload)
+        {
+            resolvedPayload = payload;
+            if (declaredLength <= 0)
+            {
+                return false;
+            }
+
+            if (declaredLength == payload.Length - sizeof(int)
+                || declaredLength == payload.Length)
+            {
+                resolvedPayload = payload[sizeof(int)..];
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadPacketOwnedCompactRowCount(BinaryReader reader, int rowCountByteWidth, out int rowCount)
+        {
+            rowCount = 0;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            switch (rowCountByteWidth)
+            {
+                case sizeof(byte):
+                    if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(byte))
+                    {
+                        return false;
+                    }
+
+                    rowCount = reader.ReadByte();
+                    return true;
+
+                case sizeof(ushort):
+                    if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(ushort))
+                    {
+                        return false;
+                    }
+
+                    rowCount = reader.ReadUInt16();
+                    return true;
+
+                case sizeof(int):
+                    if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int))
+                    {
+                        return false;
+                    }
+
+                    rowCount = reader.ReadInt32();
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
         private static bool TryDecodePacketOwnedRankingPageJsonPayload(
@@ -15957,7 +16213,7 @@ namespace HaCreator.MapSimulator
             if (!TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
                     payload,
                     flagsBeforeCount: false,
-                    rowCountIsByte: false,
+                    rowCountByteWidth: sizeof(ushort),
                     usePackedDate: false,
                     out clearRequested,
                     out replaceExistingEntries,
@@ -15969,7 +16225,7 @@ namespace HaCreator.MapSimulator
                 if (!TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
                         payload,
                         flagsBeforeCount: false,
-                        rowCountIsByte: false,
+                        rowCountByteWidth: sizeof(ushort),
                         usePackedDate: true,
                         out clearRequested,
                         out replaceExistingEntries,
@@ -15980,7 +16236,7 @@ namespace HaCreator.MapSimulator
                     && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
                         payload,
                         flagsBeforeCount: true,
-                        rowCountIsByte: false,
+                        rowCountByteWidth: sizeof(ushort),
                         usePackedDate: false,
                         out clearRequested,
                         out replaceExistingEntries,
@@ -15991,7 +16247,7 @@ namespace HaCreator.MapSimulator
                     && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
                         payload,
                         flagsBeforeCount: true,
-                        rowCountIsByte: false,
+                        rowCountByteWidth: sizeof(ushort),
                         usePackedDate: true,
                         out clearRequested,
                         out replaceExistingEntries,
@@ -16002,7 +16258,7 @@ namespace HaCreator.MapSimulator
                     && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
                         payload,
                         flagsBeforeCount: true,
-                        rowCountIsByte: true,
+                        rowCountByteWidth: sizeof(byte),
                         usePackedDate: false,
                         out clearRequested,
                         out replaceExistingEntries,
@@ -16013,7 +16269,7 @@ namespace HaCreator.MapSimulator
                     && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
                         payload,
                         flagsBeforeCount: true,
-                        rowCountIsByte: true,
+                        rowCountByteWidth: sizeof(byte),
                         usePackedDate: true,
                         out clearRequested,
                         out replaceExistingEntries,
@@ -16024,7 +16280,7 @@ namespace HaCreator.MapSimulator
                     && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
                         payload,
                         flagsBeforeCount: false,
-                        rowCountIsByte: true,
+                        rowCountByteWidth: sizeof(byte),
                         usePackedDate: false,
                         out clearRequested,
                         out replaceExistingEntries,
@@ -16035,7 +16291,51 @@ namespace HaCreator.MapSimulator
                     && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
                         payload,
                         flagsBeforeCount: false,
-                        rowCountIsByte: true,
+                        rowCountByteWidth: sizeof(byte),
+                        usePackedDate: true,
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                        payload,
+                        flagsBeforeCount: true,
+                        rowCountByteWidth: sizeof(int),
+                        usePackedDate: false,
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                        payload,
+                        flagsBeforeCount: true,
+                        rowCountByteWidth: sizeof(int),
+                        usePackedDate: true,
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                        payload,
+                        flagsBeforeCount: false,
+                        rowCountByteWidth: sizeof(int),
+                        usePackedDate: false,
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                        payload,
+                        flagsBeforeCount: false,
+                        rowCountByteWidth: sizeof(int),
                         usePackedDate: true,
                         out clearRequested,
                         out replaceExistingEntries,
@@ -16063,7 +16363,7 @@ namespace HaCreator.MapSimulator
         private static bool TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
             byte[] payload,
             bool flagsBeforeCount,
-            bool rowCountIsByte,
+            int rowCountByteWidth,
             bool usePackedDate,
             out bool clearRequested,
             out bool replaceExistingEntries,
@@ -16093,15 +16393,18 @@ namespace HaCreator.MapSimulator
                 if (flagsBeforeCount)
                 {
                     flags = reader.ReadByte();
-                    rowCount = rowCountIsByte
-                        ? reader.ReadByte()
-                        : reader.ReadUInt16();
+                    if (!TryReadPacketOwnedCompactRowCount(reader, rowCountByteWidth, out rowCount))
+                    {
+                        return false;
+                    }
                 }
                 else
                 {
-                    rowCount = rowCountIsByte
-                        ? reader.ReadByte()
-                        : reader.ReadUInt16();
+                    if (!TryReadPacketOwnedCompactRowCount(reader, rowCountByteWidth, out rowCount))
+                    {
+                        return false;
+                    }
+
                     flags = reader.ReadByte();
                 }
 

@@ -334,6 +334,7 @@ namespace HaCreator.MapSimulator.Character
             public bool ObservedPlayerFloatingState { get; set; }
             public int ObservedPlayerActionTriggerTime { get; set; } = int.MinValue;
             public int? ObservedPlayerRawActionCode { get; set; }
+            public int LastForcedReplayActionTriggerTime { get; set; } = int.MinValue;
         }
 
         private sealed class MirrorImageState
@@ -4327,13 +4328,19 @@ namespace HaCreator.MapSimulator.Character
             string queuedActionName = resolvedActionName;
             SkillAnimation queuedPlaybackAnimation = resolvedPlaybackAnimation;
             bool queuedForceReplay = false;
+            int initialForceReplayTriggerTime = int.MinValue;
             if (useSpawnAction && observedAttackAction)
             {
                 if (observedAttackActionResolved)
                 {
                     queuedActionName = resolvedAttackActionName;
                     queuedPlaybackAnimation = resolvedAttackPlaybackAnimation;
-                    queuedForceReplay = observedAttackAction && observedAttackTriggerTime != int.MinValue;
+                    queuedForceReplay = ShadowPartnerClientActionResolver.ShouldForceReplayForAttackTrigger(
+                        observedAttackTriggerTime,
+                        int.MinValue);
+                    initialForceReplayTriggerTime = queuedForceReplay
+                        ? observedAttackTriggerTime
+                        : int.MinValue;
                 }
                 else
                 {
@@ -4368,7 +4375,8 @@ namespace HaCreator.MapSimulator.Character
                 ObservedPlayerActionTriggerTime = observedAttackTriggerTime,
                 ObservedPlayerRawActionCode = TryGetCurrentClientRawActionCode(out int observedRawActionCode)
                     ? observedRawActionCode
-                    : null
+                    : null,
+                LastForcedReplayActionTriggerTime = initialForceReplayTriggerTime
             };
 
             if (TryRestoreShadowPartnerActionOwnerCounter(
@@ -7372,15 +7380,27 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            _ = sourcePartsObjectId;
-            _ = lastInsertCanvasSourcePartsObjectId;
-            _ = sourceSignature;
-            _ = lastInsertedSourceSignature;
-            _ = lastInsertCanvasSourceLayer;
-            _ = overlayTargetLayer;
-            _ = lastInsertCanvasOverlayTargetLayer;
+            bool sourcePartsIdentityChanged = sourcePartsObjectId > 0
+                && lastInsertCanvasSourcePartsObjectId > 0
+                && sourcePartsObjectId != lastInsertCanvasSourcePartsObjectId;
+            bool sourceSignatureChanged = sourceSignature != 0
+                && lastInsertedSourceSignature != 0
+                && sourceSignature != lastInsertedSourceSignature;
+            if (sourcePartsIdentityChanged || sourceSignatureChanged)
+            {
+                return true;
+            }
 
-            return true;
+            bool sourceIdentityMetadataMissing = sourcePartsObjectId <= 0
+                || lastInsertCanvasSourcePartsObjectId <= 0
+                || sourceSignature == 0
+                || lastInsertedSourceSignature == 0;
+            if (sourceIdentityMetadataMissing)
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private static AssembledPart CloneMirrorImageSourcePart(AssembledPart part)
@@ -8034,7 +8054,7 @@ namespace HaCreator.MapSimulator.Character
                             delayedAttackAction,
                             _activeShadowPartner.PendingPlaybackAnimation);
                         _activeShadowPartner.PendingFacingRight = FacingRight;
-                        _activeShadowPartner.PendingForceReplay = true;
+                        _activeShadowPartner.PendingForceReplay = TryMarkShadowPartnerForcedReplayActionTrigger(actionTriggerTime);
                     }
                     else
                     {
@@ -9019,6 +9039,20 @@ namespace HaCreator.MapSimulator.Character
                 || observedRawActionCode != previousObservedRawActionCode;
         }
 
+        private bool TryMarkShadowPartnerForcedReplayActionTrigger(int observedActionTriggerTime)
+        {
+            if (_activeShadowPartner == null
+                || !ShadowPartnerClientActionResolver.ShouldForceReplayForAttackTrigger(
+                    observedActionTriggerTime,
+                    _activeShadowPartner.LastForcedReplayActionTriggerTime))
+            {
+                return false;
+            }
+
+            _activeShadowPartner.LastForcedReplayActionTriggerTime = observedActionTriggerTime;
+            return true;
+        }
+
         private void TryQueuePostCreateShadowPartnerAttackResolution(
             string observedPlayerActionName,
             int observedActionTriggerTime,
@@ -9049,7 +9083,7 @@ namespace HaCreator.MapSimulator.Character
                 resolvedAttackAction,
                 resolvedAttackPlayback);
             _activeShadowPartner.PendingFacingRight = FacingRight;
-            _activeShadowPartner.PendingForceReplay = observedActionTriggerTime != int.MinValue;
+            _activeShadowPartner.PendingForceReplay = TryMarkShadowPartnerForcedReplayActionTrigger(observedActionTriggerTime);
         }
 
         private bool IsShadowPartnerAttackAction(string actionName)
@@ -9845,6 +9879,15 @@ namespace HaCreator.MapSimulator.Character
                 previousObservedRawActionCode);
         }
 
+        internal static bool ShouldForceShadowPartnerAttackReplayForTriggerForTesting(
+            int observedActionTriggerTime,
+            int previousReplayTriggerTime)
+        {
+            return ShadowPartnerClientActionResolver.ShouldForceReplayForAttackTrigger(
+                observedActionTriggerTime,
+                previousReplayTriggerTime);
+        }
+
         internal static string ResolveMirrorImageActionOwnerNameForTesting()
         {
             return MirrorImagePersistentActionOwnerName;
@@ -10093,6 +10136,15 @@ namespace HaCreator.MapSimulator.Character
                     return mountedBodyRelMoveY;
                 }
 
+                if (TryResolveCurrentMountedClientBodyRelMoveYFromAssembledFrames(
+                        actionName,
+                        animationTime,
+                        mountedPart,
+                        out mountedBodyRelMoveY))
+                {
+                    return mountedBodyRelMoveY;
+                }
+
                 CharacterAnimation mountedAnimation = CharacterAssembler.GetPartAnimation(mountedPart, actionName);
                 if (mountedAnimation?.Frames?.Count > 0)
                 {
@@ -10190,6 +10242,35 @@ namespace HaCreator.MapSimulator.Character
                 out bodyRelMoveY);
         }
 
+        internal bool TryResolveCurrentMountedClientBodyRelMoveYFromAssembledFrames(
+            string actionName,
+            int animationTime,
+            CharacterPart mountedPart,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (mountedPart?.Slot != EquipSlot.TamingMob
+                || Assembler == null
+                || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            AssembledFrame[] frames = Assembler.GetAnimation(actionName);
+            if (frames == null || frames.Length == 0)
+            {
+                return false;
+            }
+
+            int frameIndex = Assembler.GetFrameIndexAtTime(actionName, animationTime);
+            return TryResolveMountedClientBodyRelMoveYFromFallbackFrames(
+                frames,
+                frameIndex,
+                mountedFrames: null,
+                mountedFrameIndex: 0,
+                out bodyRelMoveY);
+        }
+
         internal static CharacterPart ResolveMountedBodyRelMoveSourceTamingMobPart(
             int mountedVehicleId,
             CharacterPart mountedStatePart,
@@ -10264,11 +10345,31 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
-        internal static int ResolveClientBodyRelMoveY(IReadOnlyList<CharacterFrame> frames, int frameIndex)
+        internal static bool TryResolveMountedClientBodyRelMoveYFromFallbackFrames(
+            IReadOnlyList<AssembledFrame> assembledFrames,
+            int assembledFrameIndex,
+            IReadOnlyList<CharacterFrame> mountedFrames,
+            int mountedFrameIndex,
+            out int bodyRelMoveY)
         {
+            bodyRelMoveY = 0;
+            if (TryResolveClientBodyRelMoveY(assembledFrames, assembledFrameIndex, out bodyRelMoveY))
+            {
+                return true;
+            }
+
+            return TryResolveClientBodyRelMoveY(mountedFrames, mountedFrameIndex, out bodyRelMoveY);
+        }
+
+        internal static bool TryResolveClientBodyRelMoveY(
+            IReadOnlyList<CharacterFrame> frames,
+            int frameIndex,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
             if (frames == null || frames.Count == 0)
             {
-                return 0;
+                return false;
             }
 
             if ((uint)frameIndex >= (uint)frames.Count)
@@ -10280,23 +10381,36 @@ namespace HaCreator.MapSimulator.Character
             CharacterFrame currentFrame = frames[frameIndex];
             if (baseFrame == null || currentFrame == null)
             {
-                return 0;
+                return false;
             }
 
             if (baseFrame.Map?.TryGetValue("navel", out Point baseNavel) == true
                 && currentFrame.Map?.TryGetValue("navel", out Point currentNavel) == true)
             {
-                return currentNavel.Y - baseNavel.Y;
+                bodyRelMoveY = currentNavel.Y - baseNavel.Y;
+                return true;
             }
 
-            return currentFrame.Origin.Y - baseFrame.Origin.Y;
+            bodyRelMoveY = currentFrame.Origin.Y - baseFrame.Origin.Y;
+            return true;
         }
 
-        internal static int ResolveClientBodyRelMoveY(IReadOnlyList<AssembledFrame> frames, int frameIndex)
+        internal static int ResolveClientBodyRelMoveY(IReadOnlyList<CharacterFrame> frames, int frameIndex)
         {
+            return TryResolveClientBodyRelMoveY(frames, frameIndex, out int bodyRelMoveY)
+                ? bodyRelMoveY
+                : 0;
+        }
+
+        internal static bool TryResolveClientBodyRelMoveY(
+            IReadOnlyList<AssembledFrame> frames,
+            int frameIndex,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
             if (frames == null || frames.Count == 0)
             {
-                return 0;
+                return false;
             }
 
             if ((uint)frameIndex >= (uint)frames.Count)
@@ -10308,16 +10422,25 @@ namespace HaCreator.MapSimulator.Character
             AssembledFrame currentFrame = frames[frameIndex];
             if (baseFrame == null || currentFrame == null)
             {
-                return 0;
+                return false;
             }
 
             if (baseFrame.MapPoints?.TryGetValue("navel", out Point baseNavel) == true
                 && currentFrame.MapPoints?.TryGetValue("navel", out Point currentNavel) == true)
             {
-                return currentNavel.Y - baseNavel.Y;
+                bodyRelMoveY = currentNavel.Y - baseNavel.Y;
+                return true;
             }
 
-            return currentFrame.Origin.Y - baseFrame.Origin.Y;
+            bodyRelMoveY = currentFrame.Origin.Y - baseFrame.Origin.Y;
+            return true;
+        }
+
+        internal static int ResolveClientBodyRelMoveY(IReadOnlyList<AssembledFrame> frames, int frameIndex)
+        {
+            return TryResolveClientBodyRelMoveY(frames, frameIndex, out int bodyRelMoveY)
+                ? bodyRelMoveY
+                : 0;
         }
 
         public AssembledFrame TryGetCurrentFrame(int currentTime)

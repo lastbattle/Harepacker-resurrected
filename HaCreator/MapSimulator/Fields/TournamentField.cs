@@ -69,7 +69,8 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Queue<string> _packetActionTrail = new();
         private TournamentSessionPhase _sessionPhase;
         private string _sessionPhaseSummary;
-        private bool _clientTournamentParticipationContext;
+        private bool _clientTournamentFlagBitContext;
+        private bool _clientTournamentRegistrationContext;
         private readonly TournamentMatchTableDialogState _matchTableDialog = new();
 
         public bool IsActive => _isActive;
@@ -83,7 +84,9 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<int> LastPrizeItemIds => _lastPrizeItemIds;
         public TournamentLifecyclePhase LifecyclePhase => _lifecyclePhase;
         public TournamentSessionPhase SessionPhase => _sessionPhase;
-        public bool ClientTournamentParticipationContext => _clientTournamentParticipationContext;
+        public bool ClientTournamentParticipationContext => HasClientTournamentParticipationContext();
+        public bool ClientTournamentFlagBitContext => _clientTournamentFlagBitContext;
+        public bool ClientTournamentRegistrationContext => _clientTournamentRegistrationContext;
         public TournamentMatchTableDialogState MatchTableDialog => _matchTableDialog;
         public IReadOnlyList<string> PacketActionTrail => _packetActionTrail.ToArray();
 
@@ -94,7 +97,8 @@ namespace HaCreator.MapSimulator.Fields
             _isActive = mapInfo?.fieldType == FieldType.FIELDTYPE_TOURNAMENT;
             if (_isActive)
             {
-                _clientTournamentParticipationContext = true;
+                _clientTournamentFlagBitContext = true;
+                _clientTournamentRegistrationContext = true;
                 SetLifecyclePhase(
                     TournamentLifecyclePhase.Lobby,
                     "String/Map.img/victoria/109070000/help0 keeps the Tournament wrapper anchored to the bracket lobby, resting period, prize podium, and five-minute post-finals exit flow.");
@@ -108,7 +112,19 @@ namespace HaCreator.MapSimulator.Fields
 
         public void SetClientTournamentParticipationContext(bool isParticipantOrRegistered)
         {
-            _clientTournamentParticipationContext = isParticipantOrRegistered;
+            _clientTournamentFlagBitContext = isParticipantOrRegistered;
+            _clientTournamentRegistrationContext = isParticipantOrRegistered;
+        }
+
+        public void SetClientTournamentParticipationContext(bool hasParticipationFlagBit, bool hasRegistrationContext)
+        {
+            _clientTournamentFlagBitContext = hasParticipationFlagBit;
+            _clientTournamentRegistrationContext = hasRegistrationContext;
+        }
+
+        public string DescribeParticipationContext()
+        {
+            return $"CWvsContext tournament gate: flagBit={_clientTournamentFlagBitContext}, registration={_clientTournamentRegistrationContext}, active={HasClientTournamentParticipationContext()}.";
         }
 
         public void Update(int tickCount)
@@ -287,7 +303,7 @@ namespace HaCreator.MapSimulator.Fields
             string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
             string matchTableText = _matchTableDialog.DescribeStatus();
             string phaseText = BuildLifecycleStatusText(Environment.TickCount);
-            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
+            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | context={DescribeParticipationContext()} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
         }
 
         public string DescribeMatchTableDialog()
@@ -335,7 +351,8 @@ namespace HaCreator.MapSimulator.Fields
             _packetActionTrail.Clear();
             _sessionPhase = TournamentSessionPhase.None;
             _sessionPhaseSummary = null;
-            _clientTournamentParticipationContext = true;
+            _clientTournamentFlagBitContext = true;
+            _clientTournamentRegistrationContext = true;
             _matchTableDialog.Reset();
         }
 
@@ -344,7 +361,7 @@ namespace HaCreator.MapSimulator.Fields
             byte branch = reader.ReadByte();
             byte noticeCode = reader.ReadByte();
 
-            if (branch == 0 && _clientTournamentParticipationContext)
+            if (branch == 0 && HasClientTournamentParticipationContext())
             {
                 if (!TryResolveBlockedEntryNotice(noticeCode, out TournamentClientMessage blockedEntryNotice))
                 {
@@ -357,16 +374,16 @@ namespace HaCreator.MapSimulator.Fields
 
                 SetLifecyclePhase(
                     TournamentLifecyclePhase.EntryGate,
-                    $"Blocked entry branch={branch} code={noticeCode} stayed inside the Tournament lobby gate.");
+                    $"Blocked entry branch={branch} code={noticeCode} stayed inside the Tournament lobby gate ({DescribeParticipationContext()}).");
                 SetStatus(
                     FormatStringPoolMessage(blockedEntryNotice),
                     currentTimeMs,
                     new[] { blockedEntryNotice.StringPoolId },
-                    $"notice (374) branch={branch} blocked-entry code={noticeCode}",
+                    $"notice (374) branch={branch} blocked-entry code={noticeCode} ctx(flag={_clientTournamentFlagBitContext},reg={_clientTournamentRegistrationContext})",
                     "CUtilDlg::Notice");
                 SetSessionPhase(
                     TournamentSessionPhase.Notice,
-                    $"CField_Tournament::OnTournament handled blocked-entry branch={branch} code={noticeCode}.");
+                    $"CField_Tournament::OnTournament handled blocked-entry branch={branch} code={noticeCode} with blocked-entry context ({DescribeParticipationContext()}).");
                 return;
             }
 
@@ -374,7 +391,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 SetLifecyclePhase(
                     TournamentLifecyclePhase.RestPeriod,
-                    "CField_Tournament::OnTournament treated branch 0 as the round-result path because the local CWvsContext tournament participation flags were not set.");
+                    $"CField_Tournament::OnTournament treated branch 0 as the round-result path because both CWvsContext participation gates were absent ({DescribeParticipationContext()}).");
             }
 
             if (noticeCode > 0x10)
@@ -405,11 +422,16 @@ namespace HaCreator.MapSimulator.Fields
                 },
                 currentTimeMs,
                 new[] { message.StringPoolId },
-                $"notice (374) branch={branch} round-result code={noticeCode}",
+                $"notice (374) branch={branch} round-result code={noticeCode} ctx(flag={_clientTournamentFlagBitContext},reg={_clientTournamentRegistrationContext})",
                 "CUtilDlg::Notice");
             SetSessionPhase(
                 TournamentSessionPhase.Notice,
                 $"CField_Tournament::OnTournament handled round-result branch={branch} code={noticeCode}.");
+        }
+
+        private bool HasClientTournamentParticipationContext()
+        {
+            return _clientTournamentFlagBitContext || _clientTournamentRegistrationContext;
         }
 
         private void ApplyMatchTable(byte[] payload, int currentTimeMs)
@@ -479,7 +501,7 @@ namespace HaCreator.MapSimulator.Fields
                 ? new TournamentClientMessage(0x3A8, $"Tournament prize notice without items selected branch code {prizeCode}.")
                 : new TournamentClientMessage(0x3A9, "Tournament prize notice reported no item rewards for the local branch.");
 
-            if (!_clientTournamentParticipationContext)
+            if (!HasClientTournamentParticipationContext())
             {
                 SetStatus(
                     null,

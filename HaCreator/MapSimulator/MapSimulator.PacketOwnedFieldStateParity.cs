@@ -586,7 +586,29 @@ namespace HaCreator.MapSimulator
 
         private void PrunePendingPortalSessionValueImpacts(int currentMapId)
         {
-            _pendingPortalSessionValueImpacts.RemoveAll(entry => entry?.IsValid != true || entry.MapId != currentMapId);
+            MapleLib.WzLib.WzStructure.MapInfo mapInfo = _mapBoard?.MapInfo;
+            bool partyRaidRuntimeActive = _specialFieldRuntime?.PartyRaid.IsActive == true;
+            _pendingPortalSessionValueImpacts.RemoveAll(entry =>
+                entry?.IsValid != true
+                || entry.MapId != currentMapId
+                || !IsPendingPortalSessionValueImpactOwnerStillAdmitted(entry.OwnerKind, mapInfo, partyRaidRuntimeActive));
+        }
+
+        internal static bool IsPendingPortalSessionValueImpactOwnerStillAdmitted(
+            PortalSessionValueImpactOwnerKind ownerKind,
+            MapleLib.WzLib.WzStructure.MapInfo mapInfo,
+            bool partyRaidRuntimeActive)
+        {
+            return ownerKind switch
+            {
+                PortalSessionValueImpactOwnerKind.UnresolvedSessionValue => true,
+                PortalSessionValueImpactOwnerKind.PartyRaid => partyRaidRuntimeActive
+                    && PartyRaidField.IsPartyRaidMap(mapInfo),
+                PortalSessionValueImpactOwnerKind.HuntingAdBalloon =>
+                    mapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON,
+                PortalSessionValueImpactOwnerKind.ChaosZakum => IsChaosZakumPortalSessionWrapperMap(mapInfo),
+                _ => false
+            };
         }
 
         private void ClearPendingPortalSessionValueImpacts()

@@ -380,6 +380,12 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedFocusWorldPositionValid = true;
         }
 
+        public void ClearClientOwnedFocusWorldPosition()
+        {
+            _clientOwnedFocusWorldPositionValid = false;
+            _clientOwnedRemoteFocusWorldPositions.Clear();
+        }
+
         public void SetClientOwnedRemoteFocusWorldPositions(IEnumerable<Vector2> worldPositions)
         {
             _clientOwnedRemoteFocusWorldPositions.Clear();
@@ -933,6 +939,11 @@ namespace HaCreator.MapSimulator.Fields
         internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityScreenMaskCenters(int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
             _clientOwnedScreenMaskCentersBuffer.Clear();
+            if (!_clientOwnedFocusWorldPositionValid)
+            {
+                return _clientOwnedScreenMaskCentersBuffer;
+            }
+
             _clientOwnedScreenMaskCentersBuffer.Add(GetClientOwnedUpdateParityScreenMaskCenter(mapShiftX, mapShiftY, centerX, centerY));
 
             foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
@@ -946,26 +957,20 @@ namespace HaCreator.MapSimulator.Fields
         internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityMaskTopLefts(int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
             _clientOwnedMaskTopLeftsBuffer.Clear();
+            if (!_clientOwnedFocusWorldPositionValid)
+            {
+                return _clientOwnedMaskTopLeftsBuffer;
+            }
 
-            if (_clientOwnedFocusWorldPositionValid)
-            {
-                _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
-                    _clientOwnedFocusWorldPosition.X,
-                    _clientOwnedFocusWorldPosition.Y,
-                    mapShiftX,
-                    mapShiftY,
-                    centerX,
-                    centerY,
-                    _clientOwnedMaskOriginX,
-                    _clientOwnedMaskOriginY));
-            }
-            else
-            {
-                Vector2 screenCenter = _clientOwnedScreenMaskCenter;
-                _clientOwnedMaskTopLeftsBuffer.Add(new Vector2(
-                    screenCenter.X - (_clientOwnedMaskWidth * 0.5f),
-                    screenCenter.Y - (_clientOwnedMaskHeight * 0.5f)));
-            }
+            _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
+                _clientOwnedFocusWorldPosition.X,
+                _clientOwnedFocusWorldPosition.Y,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                _clientOwnedMaskOriginX,
+                _clientOwnedMaskOriginY));
 
             foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
             {

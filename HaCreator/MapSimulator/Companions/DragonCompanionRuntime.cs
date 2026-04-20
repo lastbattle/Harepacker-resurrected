@@ -722,18 +722,12 @@ namespace HaCreator.MapSimulator.Companions
 
         private bool ShouldSuppressForCurrentMap()
         {
-            MapInfo mapInfo = _currentMapInfoProvider?.Invoke();
-            return ResolveNoDragonSuppression(_wrapperOwnedNoDragonSuppression, mapInfo);
+            return ResolveNoDragonSuppression(_wrapperOwnedNoDragonSuppression);
         }
 
-        private static bool ShouldSuppressForMapInfo(MapInfo mapInfo)
+        internal static bool ResolveNoDragonSuppression(bool? wrapperOwnedSuppression)
         {
-            return MapSimulator.SuppressesDragonPresentation(mapInfo);
-        }
-
-        internal static bool ResolveNoDragonSuppression(bool? wrapperOwnedSuppression, MapInfo mapInfo)
-        {
-            return wrapperOwnedSuppression ?? ShouldSuppressForMapInfo(mapInfo);
+            return wrapperOwnedSuppression == true;
         }
 
         private bool ShouldSuppress(PlayerCharacter owner)

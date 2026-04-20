@@ -43,6 +43,12 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly Regex Sg88MismatchPairRegex = new(
             @"byte\s*(?<index>\d+)\s*:\s*0x(?<observed>[0-9A-Fa-f]{1,2})\s*->\s*0x(?<rebuilt>[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex Sg88MismatchByteListAssignmentRegex = new(
+            @"(?<label>mismatchBytes|mismatchByteIndices|byteIndices)\s*=\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^\s;\)]+)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex Sg88MismatchSingleByteAssignmentRegex = new(
+            @"(?<label>mismatchByte|mismatchByteIndex|byteIndex)\s*=\s*(?<value>[^\s;\),|]+)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
         public const int Sg88ManualAttackConfirmPacketType = 1021;
@@ -467,10 +473,22 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (TryExtractSg88ReplayParityMismatchByteIndicesByRegex(decodeDetail, out int[] regexByteIndices))
+            {
+                byteIndices = regexByteIndices;
+                return true;
+            }
+
             if (TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByte=", out int mismatchByteIndex)
                 || TryExtractSg88ReplayParityMismatchSingleByteValue(decodeDetail, "mismatchByteIndex=", out mismatchByteIndex))
             {
                 byteIndices = new[] { mismatchByteIndex };
+                return true;
+            }
+
+            if (TryExtractSg88ReplayParityMismatchSingleByteValueByRegex(decodeDetail, out int regexMismatchByteIndex))
+            {
+                byteIndices = new[] { regexMismatchByteIndex };
                 return true;
             }
 
@@ -606,6 +624,64 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        private static bool TryExtractSg88ReplayParityMismatchByteIndicesByRegex(string decodeDetail, out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
+            if (string.IsNullOrWhiteSpace(decodeDetail))
+            {
+                return false;
+            }
+
+            MatchCollection matches = Sg88MismatchByteListAssignmentRegex.Matches(decodeDetail);
+            foreach (Match match in matches.Cast<Match>())
+            {
+                Group valueGroup = match.Groups["value"];
+                if (!valueGroup.Success)
+                {
+                    continue;
+                }
+
+                List<int> parsedByteIndices = ParseSg88ReplayParityMismatchByteList(valueGroup.Value);
+                if (parsedByteIndices.Count == 0)
+                {
+                    continue;
+                }
+
+                byteIndices = parsedByteIndices
+                    .Distinct()
+                    .OrderBy(value => value)
+                    .ToArray();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryExtractSg88ReplayParityMismatchSingleByteValueByRegex(string decodeDetail, out int byteIndex)
+        {
+            byteIndex = -1;
+            if (string.IsNullOrWhiteSpace(decodeDetail))
+            {
+                return false;
+            }
+
+            Match match = Sg88MismatchSingleByteAssignmentRegex.Match(decodeDetail);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            Group valueGroup = match.Groups["value"];
+            if (!valueGroup.Success
+                || !TryParseSg88MismatchByteIndexToken(valueGroup.Value, out int parsedByteIndex))
+            {
+                return false;
+            }
+
+            byteIndex = parsedByteIndex;
+            return true;
+        }
+
         private static List<int> ParseSg88ReplayParityMismatchByteList(string rawSegment)
         {
             List<int> parsedByteIndices = new();
@@ -614,7 +690,13 @@ namespace HaCreator.MapSimulator.Managers
                 return parsedByteIndices;
             }
 
-            string[] tokens = rawSegment.Split(
+            string normalizedSegment = NormalizeSg88MismatchByteListSegment(rawSegment);
+            if (string.IsNullOrWhiteSpace(normalizedSegment))
+            {
+                return parsedByteIndices;
+            }
+
+            string[] tokens = normalizedSegment.Split(
                 Sg88MismatchByteListSeparators,
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             foreach (string rawToken in tokens)
@@ -644,6 +726,37 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return parsedByteIndices;
+        }
+
+        private static string NormalizeSg88MismatchByteListSegment(string rawSegment)
+        {
+            if (string.IsNullOrWhiteSpace(rawSegment))
+            {
+                return string.Empty;
+            }
+
+            string normalized = rawSegment.Trim()
+                .TrimStart(':', '=')
+                .Trim()
+                .TrimEnd('.', ',', ';');
+            if (normalized.StartsWith("bytes", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring("bytes".Length);
+            }
+            else if (normalized.StartsWith("byte", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring("byte".Length);
+            }
+
+            normalized = normalized.TrimStart(':', '=').Trim();
+            while (normalized.Length >= 2
+                   && TryResolveSg88MismatchTokenWrapper(normalized[0], out char closingWrapper)
+                   && normalized[^1] == closingWrapper)
+            {
+                normalized = normalized.Substring(1, normalized.Length - 2).Trim();
+            }
+
+            return normalized;
         }
 
         private static bool TryExtractSg88MismatchByteRange(string token, out int start, out int end)

@@ -45,7 +45,16 @@ namespace HaCreator.MapSimulator.UI
 
             if (payload.Length < sizeof(byte) * 2)
             {
-                return false;
+                snapshot = new AdminShopPacketOwnedResultPayloadSnapshot
+                {
+                    Subtype = subtype,
+                    ResultCode = 0,
+                    HasResultCode = false,
+                    TrailingByteCount = 0,
+                    TrailingPayloadSignature = "none",
+                    TrailingPayload = Array.Empty<byte>()
+                };
+                return true;
             }
 
             int handledTrailingByteCount = Math.Max(0, payload.Length - (sizeof(byte) * 2));

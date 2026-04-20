@@ -673,6 +673,9 @@ namespace HaCreator.MapSimulator.Managers
             int packetType;
             lock (_sync)
             {
+                string officialSessionBuildTag = ResolveOfficialSessionBuildTag(source);
+                bool trustV95LocalOwnerTable = !IsOfficialSessionSource(source)
+                    || IsBuildTagKnownV95(officialSessionBuildTag);
                 bool hasMappedPacketType = _packetMap.TryGetValue(opcode, out packetType);
                 if (hasMappedPacketType
                     && ShouldRevalidateTutorOpcodeMappingForSourceNoLock(opcode, packetType, source, out string revalidationStatus))
@@ -696,7 +699,8 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
-                    if (TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(opcode, out packetType, out string knownOwnerReason))
+                    if (trustV95LocalOwnerTable
+                        && TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(opcode, out packetType, out string knownOwnerReason))
                     {
                         if (!TryValidateKnownTutorOwnerPayloadNoLock(opcode, inferencePayload, packetType, out string knownPayloadReason))
                         {
@@ -709,14 +713,22 @@ namespace HaCreator.MapSimulator.Managers
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
                         LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from recovered CUserLocal owner table ({knownOwnerReason}) with exact remote wrapper proof ({knownPayloadReason}); {OfficialRemoteOwnerEvidence}";
                     }
-                    else if (TryResolveKnownNonTutorLocalOwnerFromV95LocalOwnerTable(opcode, out string knownNonTutorReason))
+                    else if (trustV95LocalOwnerTable
+                        && TryResolveKnownNonTutorLocalOwnerFromV95LocalOwnerTable(opcode, out string knownNonTutorReason))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: known recovered CUserLocal::OnPacket owner ({knownNonTutorReason}) is non-tutor. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
-                    else if (!TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(opcode, inferencePayload, out packetType, out string inferenceReason))
+                    else if (!TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(
+                                 opcode,
+                                 inferencePayload,
+                                 trustV95LocalOwnerTable,
+                                 out packetType,
+                                 out string inferenceReason))
                     {
-                        LastStatus = $"Ignored CUserPool local-user opcode {opcode}: payload did not match an exact remote tutor-owner wrapper. {OfficialRemoteOwnerEvidence}";
+                        LastStatus = trustV95LocalOwnerTable
+                            ? $"Ignored CUserPool local-user opcode {opcode}: payload did not match an exact remote tutor-owner wrapper. {OfficialRemoteOwnerEvidence}"
+                            : $"Ignored CUserPool local-user opcode {opcode} on build {officialSessionBuildTag}: payload did not match an exact remote tutor-owner wrapper while v95 owner-table shortcuts were disabled. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
                     else
@@ -814,12 +826,14 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(
             ushort opcode,
             byte[] payload,
+            bool trustV95LocalOwnerTable,
             out int packetType,
             out string reason)
         {
             packetType = 0;
             reason = string.Empty;
-            if (!IsOfficialTutorLocalOpcodeCoveredByV95OwnerTable(opcode)
+            if (trustV95LocalOwnerTable
+                && !IsOfficialTutorLocalOpcodeCoveredByV95OwnerTable(opcode)
                 && !KnownNoHandlerLocalOwnerOpcodesV95.Contains(opcode))
             {
                 return false;
@@ -886,6 +900,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        private static bool IsBuildTagKnownV95(string buildTag)
+        {
+            string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+            return string.Equals(normalizedBuildTag, "v95", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool TryObserveTutorInferenceNoLock(

@@ -849,7 +849,7 @@ namespace HaCreator.MapSimulator
             for (int scanCode = 0; scanCode < _packetOwnedFuncKeyMapped.Length; scanCode++)
             {
                 PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
-                int packetPaletteSlotId = entry.Type != 0 && entry.Id > 0
+                int packetPaletteSlotId = entry.Type != 0
                     ? ResolvePacketOwnedKeyConfigPaletteSlotId(entry.Type, entry.Id)
                     : -1;
                 KeyConfigWindow.ShortcutVisualState shortcutVisualState = BuildPacketOwnedKeyConfigShortcutVisualStateFromPacketEntry(entry);

@@ -180,6 +180,7 @@ namespace HaCreator.MapSimulator.UI
         private int _softKeyboardPressedVisualUntil;
         private Point? _lastMousePosition;
         private readonly Dictionary<Keys, int> _forwardedNonFunctionHotkeySlotsByPhysicalKey = new();
+        private readonly HashSet<Keys> _forwardedNonFunctionPhysicalKeys = new();
 
         // Buttons
         private UIObject _btnOK;
@@ -461,7 +462,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ResetEditingState()
         {
-            ReleaseForwardedNonFunctionHotkeys();
+            ReleaseForwardedNonFunctionOwnerKeys();
             _editingMacroIndex = -1;
             _editingMacroName = string.Empty;
             _notifyPartyMembers = false;
@@ -2078,7 +2079,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Hide()
         {
-            ReleaseForwardedNonFunctionHotkeys();
+            ReleaseForwardedNonFunctionOwnerKeys();
             HideSoftKeyboard();
             CancelDrag();
             ClearCompositionText();
@@ -2112,7 +2113,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!CapturesKeyboardInput)
             {
-                ReleaseForwardedNonFunctionHotkeys();
+                ReleaseForwardedNonFunctionOwnerKeys();
                 _previousKeyboardState = keyboardState;
                 return;
             }
@@ -2541,6 +2542,7 @@ namespace HaCreator.MapSimulator.UI
             if (!hasPhysicalKeyCallback && !hasHotkeySlotCallback)
             {
                 _forwardedNonFunctionHotkeySlotsByPhysicalKey.Clear();
+                _forwardedNonFunctionPhysicalKeys.Clear();
                 return;
             }
 
@@ -2567,6 +2569,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(key, true, controlHeld, shiftHeld);
+                _forwardedNonFunctionPhysicalKeys.Add(key);
 
                 if (!hasHotkeySlotCallback
                     || !SkillMacroOwnerKeyHandler.TryResolveClientForwardedNonFunctionHotkeySlot(key, controlHeld, out int hotkeySlot))
@@ -2588,7 +2591,11 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(key, false, controlHeld, shiftHeld);
+                bool wasForwarded = _forwardedNonFunctionPhysicalKeys.Remove(key);
+                if (wasForwarded)
+                {
+                    OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(key, false, controlHeld, shiftHeld);
+                }
 
                 if (!hasHotkeySlotCallback)
                 {
@@ -2604,6 +2611,12 @@ namespace HaCreator.MapSimulator.UI
                 _forwardedNonFunctionHotkeySlotsByPhysicalKey.Remove(key);
                 OnClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, false);
             }
+        }
+
+        private void ReleaseForwardedNonFunctionOwnerKeys()
+        {
+            ReleaseForwardedNonFunctionHotkeys();
+            ReleaseForwardedNonFunctionPhysicalKeys();
         }
 
         private void ReleaseForwardedNonFunctionHotkeys()
@@ -2626,6 +2639,27 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < uniqueSlots.Length; i++)
             {
                 OnClientForwardedNonFunctionHotkeyStateChanged(uniqueSlots[i], false);
+            }
+        }
+
+        private void ReleaseForwardedNonFunctionPhysicalKeys()
+        {
+            if (_forwardedNonFunctionPhysicalKeys.Count == 0)
+            {
+                return;
+            }
+
+            if (OnClientForwardedNonFunctionPhysicalKeyStateChanged == null)
+            {
+                _forwardedNonFunctionPhysicalKeys.Clear();
+                return;
+            }
+
+            Keys[] physicalKeys = _forwardedNonFunctionPhysicalKeys.ToArray();
+            _forwardedNonFunctionPhysicalKeys.Clear();
+            for (int i = 0; i < physicalKeys.Length; i++)
+            {
+                OnClientForwardedNonFunctionPhysicalKeyStateChanged(physicalKeys[i], false, false, false);
             }
         }
 

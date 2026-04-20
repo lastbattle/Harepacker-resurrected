@@ -167,7 +167,7 @@ namespace HaCreator.MapSimulator.Fields
             _contractImage = contractImage;
             EnsureImageParsed(contractImage);
 
-            if (contractImage["foothold"] is not WzImageProperty footholdRoot)
+            if (!TryGetChildProperty(contractImage, "foothold", out WzImageProperty footholdRoot))
             {
                 LoadDynamicObjectSummary(contractImage);
                 return;
@@ -237,7 +237,8 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                if (rootChild["obj"] is not WzImageProperty objRoot || objRoot.WzProperties == null)
+                if (!TryGetChildProperty(rootChild, "obj", out WzImageProperty objRoot)
+                    || objRoot.WzProperties == null)
                 {
                     continue;
                 }
@@ -245,7 +246,7 @@ namespace HaCreator.MapSimulator.Fields
                 bool layerHasDynamicObject = false;
                 foreach (WzImageProperty mapObject in objRoot.WzProperties)
                 {
-                    if (mapObject?["dynamic"] is not WzImageProperty dynamicProperty)
+                    if (!TryGetChildProperty(mapObject, "dynamic", out WzImageProperty dynamicProperty))
                     {
                         continue;
                     }
@@ -283,7 +284,8 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryGetLinkedMapId(WzImage mapImage, out int linkedMapId)
         {
             linkedMapId = 0;
-            if (mapImage?["info"]?["link"] is not WzImageProperty linkProperty)
+            if (!TryGetChildProperty(mapImage, "info", out WzImageProperty infoProperty)
+                || !TryGetChildProperty(infoProperty, "link", out WzImageProperty linkProperty))
             {
                 return false;
             }
@@ -737,7 +739,9 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryReadStringProperty(WzImageProperty parent, string propertyName, out string value)
         {
             value = null;
-            if (parent?[propertyName] is not WzStringProperty stringProperty || string.IsNullOrWhiteSpace(stringProperty.Value))
+            if (!TryGetChildProperty(parent, propertyName, out WzImageProperty property)
+                || property is not WzStringProperty stringProperty
+                || string.IsNullOrWhiteSpace(stringProperty.Value))
             {
                 return false;
             }
@@ -749,7 +753,7 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryReadIntProperty(WzImageProperty parent, string propertyName, out int value)
         {
             value = 0;
-            if (parent?[propertyName] is not WzImageProperty property)
+            if (!TryGetChildProperty(parent, propertyName, out WzImageProperty property))
             {
                 return false;
             }
@@ -773,7 +777,7 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryReadTokenProperty(WzImageProperty parent, string propertyName, out string value)
         {
             value = null;
-            if (parent?[propertyName] is not WzImageProperty property)
+            if (!TryGetChildProperty(parent, propertyName, out WzImageProperty property))
             {
                 return false;
             }
@@ -797,6 +801,67 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return value.Length > 0;
+        }
+
+        private static bool TryGetChildProperty(WzImage image, string propertyName, out WzImageProperty property)
+        {
+            property = null;
+            if (image == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            property = image[propertyName] as WzImageProperty;
+            if (property != null)
+            {
+                return true;
+            }
+
+            return TryFindChildPropertyCaseInsensitive(image.WzProperties, propertyName, out property);
+        }
+
+        private static bool TryGetChildProperty(WzImageProperty parent, string propertyName, out WzImageProperty property)
+        {
+            property = null;
+            if (parent == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            property = parent[propertyName];
+            if (property != null)
+            {
+                return true;
+            }
+
+            return TryFindChildPropertyCaseInsensitive(parent.WzProperties, propertyName, out property);
+        }
+
+        private static bool TryFindChildPropertyCaseInsensitive(
+            IReadOnlyList<WzImageProperty> properties,
+            string propertyName,
+            out WzImageProperty property)
+        {
+            property = null;
+            if (properties == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < properties.Count; i++)
+            {
+                WzImageProperty candidate = properties[i];
+                if (candidate?.Name == null
+                    || !candidate.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                property = candidate;
+                return true;
+            }
+
+            return false;
         }
     }
 }

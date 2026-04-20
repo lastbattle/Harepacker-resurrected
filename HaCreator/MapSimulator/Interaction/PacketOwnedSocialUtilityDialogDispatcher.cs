@@ -595,8 +595,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (!IsOpen)
             {
-                message = "Parcel dialog packet 24 requires an open packet-owned parcel owner.";
-                return false;
+                StatusMessage = "CParcelDlg packet 24 arrived without an open packet-owned parcel owner, so it followed the client no-op branch.";
+                message = StatusMessage;
+                return true;
             }
 
             if (!PacketOwnedParcelPacketCodec.TryDecodeSingleEntryPayload(payload.AsSpan(1), out PacketOwnedParcelDecodedEntry entry, out string error))
@@ -929,9 +930,23 @@ namespace HaCreator.MapSimulator.Interaction
             bool treatSingly = inventoryType == InventoryType.EQUIP
                 || InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotData.MaxStackSize) <= 1;
             int availableQuantity = Math.Max(1, slotData.Quantity);
-            int normalizedQuantity = treatSingly
-                ? 1
-                : Math.Clamp(requestedQuantity, 1, availableQuantity);
+            int normalizedQuantity;
+            if (treatSingly)
+            {
+                normalizedQuantity = 1;
+            }
+            else
+            {
+                if (requestedQuantity <= 0 || requestedQuantity > availableQuantity)
+                {
+                    StatusMessage = $"CTrunkDlg ignored SendPutItemRequest because the requested count {requestedQuantity.ToString(CultureInfo.InvariantCulture)} is outside the accepted AskItemCount range 1..{availableQuantity.ToString(CultureInfo.InvariantCulture)}.";
+                    message = StatusMessage;
+                    return false;
+                }
+
+                normalizedQuantity = requestedQuantity;
+            }
+
             short inventoryPosition = ResolveInventoryPosition(inventoryRowIndex, slotData);
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 TrunkOutboundOpcode,
@@ -1191,18 +1206,22 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static byte ResolveStorageRowPosition(int ownerRowIndex, InventorySlotData slotData)
         {
-            int row = slotData?.ClientItemToken.GetValueOrDefault() > 0
-                ? slotData.ClientItemToken.Value
-                : ownerRowIndex + 1;
-            return unchecked((byte)Math.Clamp(row, 0, byte.MaxValue));
+            if (slotData?.ClientItemToken is int clientRowToken && clientRowToken != 0)
+            {
+                return unchecked((byte)clientRowToken);
+            }
+
+            return unchecked((byte)(ownerRowIndex + 1));
         }
 
         private static short ResolveInventoryPosition(int inventoryRowIndex, InventorySlotData slotData)
         {
-            int position = slotData?.ClientItemToken.GetValueOrDefault() > 0
-                ? slotData.ClientItemToken.Value
-                : inventoryRowIndex + 1;
-            return unchecked((short)Math.Clamp(position, 0, short.MaxValue));
+            if (slotData?.ClientItemToken is int clientPositionToken && clientPositionToken != 0)
+            {
+                return unchecked((short)clientPositionToken);
+            }
+
+            return unchecked((short)(inventoryRowIndex + 1));
         }
     }
 }

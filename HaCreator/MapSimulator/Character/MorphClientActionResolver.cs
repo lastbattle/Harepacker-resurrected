@@ -301,31 +301,47 @@ namespace HaCreator.MapSimulator.Character
                 ["cannon"] = new[] { "alert", "doublefire" },
                 ["torpedo"] = new[] { "alert", "doublefire" },
                 ["octopus"] = new[] { "alert", "swingPF", "stabT2", "swingT2", "swingP2", "swingOF", "doublefire" },
-                // The current WZ export publishes cannon-family skill actions under
-                // Skill/501, 530, 531, and 532, but pirate Morph/*.img still exposes
-                // no verbatim cannon combat branches. Keep them on the same loader-
-                // owned gun surface as the older raw `cannon` and `torpedo` names.
-                ["flamesplash"] = new[] { "doublefire" },
-                ["swiftShot"] = new[] { "doublefire" },
-                ["cannonSmash"] = new[] { "doublefire" },
-                ["giganticBackstep"] = new[] { "doublefire" },
-                ["rushBoom"] = new[] { "doublefire" },
-                ["cannonSlam"] = new[] { "doublefire" },
-                ["counterCannon"] = new[] { "doublefire" },
-                ["cannonSpike"] = new[] { "doublefire" },
-                ["superCannon"] = new[] { "doublefire" },
-                ["magneticCannon"] = new[] { "doublefire" },
-                ["bombExplosion"] = new[] { "doublefire" },
-                ["monkeyBoomboom"] = new[] { "doublefire" },
-                ["immolation"] = new[] { "doublefire" },
-                // The same cannon-family client block also publishes buff/voice action
-                // requests that current Morph/*.img does not author as separate roots.
-                ["piratebless"] = new[] { "doublefire" },
-                ["pirateSpirit"] = new[] { "doublefire" },
-                ["cannonBooster"] = new[] { "doublefire" },
-                ["noiseWave"] = new[] { "doublefire" },
-                ["noiseWave_pre"] = new[] { "doublefire" },
-                ["noiseWave_ing"] = new[] { "doublefire" },
+                // Character/00002000.img cannon-family body rows keep a narrower ordered
+                // redirect surface than a direct authored-morph gun collapse:
+                // flamesplash -> shootF, stabO1, alert
+                // swiftShot -> swingO3, stabO1, alert
+                // cannonSmash -> stabO1, alert
+                // giganticBackstep -> stabO1
+                // rushBoom -> alert, swingOF, swingTF, swingT3
+                // cannonSlam -> alert, swingPF, stabO2, swingP2, swingT2, swingP1
+                // counterCannon -> swingT3
+                // cannonSpike -> alert, swingO3
+                // superCannon -> alert, swingOF, swingO3
+                // magneticCannon -> swingO2, swingP2, swingPF
+                // bombExplosion -> alert, stabO1, swingP1
+                // monkeyBoomboom -> alert, swingP1
+                // immolation -> shootF, stabO1
+                // piratebless -> alert, swingP1
+                // pirateSpirit -> alert, swingP2, swingO2, swingPF
+                // cannonBooster -> swingT2, swingP1
+                // noiseWave -> swingOF, swingTF, swingT3, alert
+                // noiseWave_pre/noiseWave_ing -> alert
+                // Keep authored `doublefire` as the final backstop for templates that
+                // do not publish all body-redirect aliases.
+                ["flamesplash"] = new[] { "shootF", "stabO1", "alert", "doublefire" },
+                ["swiftShot"] = new[] { "swingO3", "stabO1", "alert", "doublefire" },
+                ["cannonSmash"] = new[] { "stabO1", "alert", "doublefire" },
+                ["giganticBackstep"] = new[] { "stabO1", "doublefire" },
+                ["rushBoom"] = new[] { "alert", "swingOF", "swingTF", "swingT3", "doublefire" },
+                ["cannonSlam"] = new[] { "alert", "swingPF", "stabO2", "swingP2", "swingT2", "swingP1", "doublefire" },
+                ["counterCannon"] = new[] { "swingT3", "doublefire" },
+                ["cannonSpike"] = new[] { "alert", "swingO3", "doublefire" },
+                ["superCannon"] = new[] { "alert", "swingOF", "swingO3", "doublefire" },
+                ["magneticCannon"] = new[] { "swingO2", "swingP2", "swingPF", "doublefire" },
+                ["bombExplosion"] = new[] { "alert", "stabO1", "swingP1", "doublefire" },
+                ["monkeyBoomboom"] = new[] { "alert", "swingP1", "doublefire" },
+                ["immolation"] = new[] { "shootF", "stabO1", "doublefire" },
+                ["piratebless"] = new[] { "alert", "swingP1", "doublefire" },
+                ["pirateSpirit"] = new[] { "alert", "swingP2", "swingO2", "swingPF", "doublefire" },
+                ["cannonBooster"] = new[] { "swingT2", "swingP1", "doublefire" },
+                ["noiseWave"] = new[] { "swingOF", "swingTF", "swingT3", "alert", "doublefire" },
+                ["noiseWave_pre"] = new[] { "alert", "doublefire" },
+                ["noiseWave_ing"] = new[] { "alert", "doublefire" },
                 // Character/00002000.img keeps the post-table Mercedes dual-vulcan rows
                 // on explicit body redirects rather than only generic `shoot*`:
                 // `dualVulcanPrep -> swingT1, shoot1, alert, swingP2`,

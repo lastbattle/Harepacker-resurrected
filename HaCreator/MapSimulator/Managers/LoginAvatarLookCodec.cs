@@ -397,7 +397,41 @@ namespace HaCreator.MapSimulator.Managers
                 _ => 0
             };
 
+            if (bodyPart == 0 && TryResolveSpecialVehicleBodyPart(category, itemId, out byte specialBodyPart))
+            {
+                bodyPart = specialBodyPart;
+            }
+
             return bodyPart != 0 && IsCorrectBodyPart(itemId, bodyPart);
+        }
+
+        private static bool TryResolveSpecialVehicleBodyPart(int category, int itemId, out byte bodyPart)
+        {
+            bodyPart = category switch
+            {
+                180 => itemId == 1802100 ? (byte)21 : (byte)14,
+                181 => ResolveMonsterRidingAccessoryBodyPart(itemId),
+                182 => 21,
+                183 => 29,
+                _ => 0
+            };
+            return bodyPart != 0;
+        }
+
+        private static byte ResolveMonsterRidingAccessoryBodyPart(int itemId)
+        {
+            return itemId switch
+            {
+                1812000 => 23,
+                1812001 => 22,
+                1812002 => 24,
+                1812003 => 25,
+                1812004 => 26,
+                1812005 => 27,
+                1812006 => 28,
+                1812007 => 46,
+                _ => 0
+            };
         }
 
         private static bool IsCorrectBodyPart(int itemId, byte bodyPart)

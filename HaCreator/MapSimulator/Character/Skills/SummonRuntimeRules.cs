@@ -276,10 +276,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (normalizedAction == PacketSkillActionSubsummon)
             {
-                return ResolvePacketSpecialBranch(
-                    skill,
-                    assistType,
-                    "subsummon");
+                // Client action `14` is authored on the `subsummon` family only.
+                // Do not alias this action to support/summon fallbacks when missing.
+                return ResolveNamedSummonBranch(skill, "subsummon");
             }
 
             if (normalizedAction == ClientSelfDestructAttackAction)
@@ -578,7 +577,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (assistType == SummonAssistType.SummonAction
                 && string.Equals(
                     branchName,
-                    ResolveLocalSummonActionBranch(skill),
+                    ResolveStrictSubsummonActionBranch(skill),
                     StringComparison.OrdinalIgnoreCase))
             {
                 return PacketSkillActionSubsummon;
@@ -680,6 +679,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2")
                    ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0);
+        }
+
+        internal static string ResolveStrictSubsummonActionBranch(SkillData skill)
+        {
+            return ResolveNamedSummonBranch(skill, "subsummon");
         }
 
         internal static string ResolveEmptyActionRetryBranch(SkillData skill)
@@ -1393,20 +1397,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                     "attack1",
                     "attack",
                     "attack0"),
-            ClientSupportOwnedAttackAction => ResolveNamedSummonBranch(
-                skill,
-                EnumeratePacketSupportOwnedAttackBranchCandidates(skill)),
+                ClientSupportOwnedAttackAction => ResolveNamedSummonBranch(
+                    skill,
+                    EnumeratePacketSupportOwnedAttackBranchCandidates(skill)),
                 PacketSkillActionSubsummon => ResolveNamedSummonBranch(
                     skill,
-                    "subsummon",
-                    "skill1",
-                    "skill2")
-                   ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0),
-            ClientSelfDestructAttackAction => ResolveNamedSummonBranch(
-                skill,
-                EnumeratePacketSelfDestructAttackBranchCandidates(skill)),
-            _ => null
-        };
+                    "subsummon"),
+                ClientSelfDestructAttackAction => ResolveNamedSummonBranch(
+                    skill,
+                    EnumeratePacketSelfDestructAttackBranchCandidates(skill)),
+                _ => null
+            };
         }
 
         private static string ResolveClientSummonedActionBranch(SkillData skill, int normalizedAction)

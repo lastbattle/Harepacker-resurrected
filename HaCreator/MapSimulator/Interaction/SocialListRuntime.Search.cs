@@ -69,7 +69,7 @@ namespace HaCreator.MapSimulator.Interaction
             ClampSearchSelection(_searchCurrentTab);
         }
 
-        internal int? ResolveCharacterInfoSearchLaunchOption(string characterName, bool isRemoteTarget)
+        internal int? ResolveCharacterInfoSearchLaunchOption(int characterId, string characterName, bool isRemoteTarget)
         {
             if (!isRemoteTarget)
             {
@@ -77,7 +77,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             EnsureSearchSeedData();
-            return HasCharacterInfoPartyLaunchEntry(characterName)
+            bool trackedPartyMember = characterId > 0 && IsTrackedPartyActor(characterId);
+            if (!trackedPartyMember)
+            {
+                trackedPartyMember = IsTrackedPartyMember(characterName);
+            }
+
+            return trackedPartyMember || HasCharacterInfoPartyLaunchEntry(characterName)
                 ? (int)SocialSearchTab.Party
                 : (int)SocialSearchTab.PartyMember;
         }

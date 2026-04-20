@@ -26,11 +26,12 @@ namespace HaCreator.MapSimulator
         private const byte ItemUpgradePacketResultCodeClientRejected = 66;
         private const int ItemUpgradePacketOutcomeStateFail = 0;
         private const int ItemUpgradePacketOutcomeStateSuccess = 1;
-        private const int ItemUpgradeClientBusyResultFallbackValue = 9;
+        private const int ItemUpgradeClientDuplicateRequestBusyResultValue = 9;
+        private const int ItemUpgradeClientInitialResultValue = -2;
 
         private bool _itemUpgradeOwnerRequestSent;
         private int _itemUpgradeOwnerRequestSentTick = int.MinValue;
-        private int _itemUpgradeOwnerLastResultValue = ItemUpgradeClientBusyResultFallbackValue;
+        private int _itemUpgradeOwnerLastResultValue = ItemUpgradeClientInitialResultValue;
         private int _itemUpgradeOwnerLastUpgradeStateValue = int.MinValue;
         private int _itemUpgradeOwnerConsumeCashUseRequestTick = int.MinValue;
         private InventoryType _itemUpgradeOwnerConsumeCashUseInventoryType = InventoryType.USE;
@@ -76,7 +77,7 @@ namespace HaCreator.MapSimulator
         {
             if (HasActiveItemUpgradeOwnerRequestBlock(currTickCount))
             {
-                string busyNotice = ResolveItemUpgradeBusyNotice(_itemUpgradeOwnerLastResultValue);
+                string busyNotice = ResolveItemUpgradeBusyNotice(ItemUpgradeClientDuplicateRequestBusyResultValue);
                 ShowUtilityFeedbackMessage(busyNotice);
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
                 {
@@ -764,7 +765,7 @@ namespace HaCreator.MapSimulator
             {
                 if (reasonCode.GetValueOrDefault() != 0)
                 {
-                    message = ResolveItemUpgradeBusyNotice(resultValue ?? ItemUpgradeClientBusyResultFallbackValue);
+                    message = ResolveItemUpgradeBusyNotice(resultValue ?? ItemUpgradeClientInitialResultValue);
                     return true;
                 }
 
@@ -787,9 +788,19 @@ namespace HaCreator.MapSimulator
                 1 => ResolveItemUpgradeSelectionRequiredNotice(),
                 2 => ResolveItemUpgradeIncompatibleSelectionNotice(),
                 3 => ResolveItemUpgradeViciousHammerBlockedNotice(),
-                _ => ResolveItemUpgradeBusyNotice(resultValue ?? ItemUpgradeClientBusyResultFallbackValue)
+                _ => ResolveItemUpgradeBusyNotice(resultValue ?? ItemUpgradeClientInitialResultValue)
             };
             return true;
+        }
+
+        internal static int ResolveItemUpgradeClientDuplicateRequestBusyResultValueForTests()
+        {
+            return ItemUpgradeClientDuplicateRequestBusyResultValue;
+        }
+
+        internal static int ResolveItemUpgradeClientInitialResultValueForTests()
+        {
+            return ItemUpgradeClientInitialResultValue;
         }
 
         internal static bool TryResolveItemUpgradePacketOwnedNoticeOnlyResultForTests(

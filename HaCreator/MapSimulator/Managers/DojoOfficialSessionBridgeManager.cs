@@ -659,6 +659,12 @@ namespace HaCreator.MapSimulator.Managers
 
             if (wrapperPacketType < DojoField.PacketTypeClock || wrapperPacketType > DojoField.PacketTypeTimeOver)
             {
+                if (wrapperPacketType == CurrentWrapperRelayOpcode
+                    && TryMapNestedFieldSpecificDispatchPacket(rawPacket, source, opcode, payload, out message))
+                {
+                    return true;
+                }
+
                 if (TryMapFieldSpecificDispatchPacket(
                         rawPacket,
                         source,

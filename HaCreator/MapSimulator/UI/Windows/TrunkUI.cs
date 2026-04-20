@@ -2298,13 +2298,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int availableQuantity = Math.Max(1, _pendingPutSlotData.Quantity);
-            int normalizedQuantity = Math.Clamp(requestedQuantity, 1, availableQuantity);
             PacketOwnedTrunkRequestResult packetOwnedResult = PacketOwnedPutItemRequested(
                 _pendingPutInventoryType,
                 _pendingPutInventoryRowIndex,
                 _pendingPutSlotData,
-                normalizedQuantity);
+                requestedQuantity);
             _statusMessage = string.IsNullOrWhiteSpace(packetOwnedResult.Message)
                 ? packetOwnedResult.Accepted
                     ? "CTrunkDlg::SendPutItemRequest was staged."
