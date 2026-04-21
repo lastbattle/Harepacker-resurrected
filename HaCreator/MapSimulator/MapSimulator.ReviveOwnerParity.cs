@@ -79,7 +79,7 @@ namespace HaCreator.MapSimulator
             int currentTick = Environment.TickCount;
             Vector2 spawnPoint = _playerManager?.GetSpawnPoint() ?? new Vector2(player?.DeathX ?? 0f, player?.DeathY ?? 0f);
             Vector2 deathPoint = new(player?.DeathX ?? spawnPoint.X, player?.DeathY ?? spawnPoint.Y);
-            SetRevivePremiumSafetyCharmContextFromInventory("revive-owner-open-sync", currentTick);
+            EnsureRevivePremiumSafetyCharmContextInitializedFromInventory("revive-owner-open-sync", currentTick);
             ReviveOwnerVariant variant = ResolveReviveOwnerVariant();
             bool hasPremiumChoice = ReviveOwnerRuntime.HasPremiumChoiceForVariant(variant);
             string ownerLabel = ReviveOwnerRuntime.GetOwnerLabel(variant);
@@ -253,15 +253,19 @@ namespace HaCreator.MapSimulator
         private ReviveOwnerVariant ResolveReviveOwnerVariant()
         {
             bool hasSoulStone = _playerManager?.Skills?.HasBuff(ReviveOwnerSoulStoneSkillId) == true;
-            int premiumSafetyCharmCount = GetInventoryWindowItemCount(5131000);
             int safetyCharmCount = GetInventoryWindowItemCount(5130000);
             int wheelOfFortuneCount = GetInventoryWindowItemCount(5510000);
-            bool canUsePremiumCurrentFieldRecovery = IsPremiumCurrentFieldReviveUsable();
+            bool fieldAllowsCurrentFieldRecovery = IsPremiumCurrentFieldReviveUsable(_mapBoard?.MapInfo);
+            bool premiumSafetyCharmContextArmed = ResolveRevivePremiumSafetyCharmContextArmed(
+                fallbackArmed: GetInventoryWindowItemCount(5131000) > 0);
+            bool canUsePremiumCurrentFieldRecovery = IsPremiumCurrentFieldReviveUsable(
+                fieldAllowsCurrentFieldRecovery,
+                premiumSafetyCharmContextArmed);
             bool canUseUpgradeTombRevive = IsUpgradeTombReviveUsable();
 
             return ResolveReviveOwnerVariant(
                 hasSoulStone,
-                premiumSafetyCharmCount,
+                premiumSafetyCharmContextArmed,
                 safetyCharmCount,
                 wheelOfFortuneCount,
                 canUsePremiumCurrentFieldRecovery,
@@ -270,7 +274,7 @@ namespace HaCreator.MapSimulator
 
         internal static ReviveOwnerVariant ResolveReviveOwnerVariant(
             bool hasSoulStone,
-            int premiumSafetyCharmCount,
+            bool premiumSafetyCharmContextArmed,
             int safetyCharmCount,
             int wheelOfFortuneCount,
             bool canUsePremiumCurrentFieldRecovery,
@@ -289,16 +293,8 @@ namespace HaCreator.MapSimulator
             return ReviveOwnerRuntime.ResolveClientVariant(
                 hasSoulStone,
                 hasUpgradeTombChoice: wheelOfFortuneCount > 0 && canUseUpgradeTombRevive,
-                hasPremiumSafetyCharm: canUsePremiumCurrentFieldRecovery && premiumSafetyCharmCount > 0,
+                hasPremiumSafetyCharm: canUsePremiumCurrentFieldRecovery && premiumSafetyCharmContextArmed,
                 hasSafetyCharm: safetyCharmCount > 0);
-        }
-
-        private bool IsPremiumCurrentFieldReviveUsable()
-        {
-            bool fieldAllowsCurrentFieldRecovery = IsPremiumCurrentFieldReviveUsable(_mapBoard?.MapInfo);
-            bool premiumSafetyCharmArmed = ResolveRevivePremiumSafetyCharmContextArmed(
-                fallbackArmed: GetInventoryWindowItemCount(5131000) > 0);
-            return IsPremiumCurrentFieldReviveUsable(fieldAllowsCurrentFieldRecovery, premiumSafetyCharmArmed);
         }
 
         internal static bool IsPremiumCurrentFieldReviveUsable(MapInfo mapInfo)
@@ -365,6 +361,23 @@ namespace HaCreator.MapSimulator
                     : source,
                 currentTick,
                 runtimeCharacterId);
+        }
+
+        private void EnsureRevivePremiumSafetyCharmContextInitializedFromInventory(string source, int currentTick)
+        {
+            int runtimeCharacterId = ResolveReviveOwnerRuntimeCharacterId();
+            if (_packetOwnedLocalUtilityContext.RequiresRevivePremiumSafetyCharmCharacterReset(runtimeCharacterId))
+            {
+                _packetOwnedLocalUtilityContext.ResetRevivePremiumSafetyCharmForCharacter(runtimeCharacterId);
+            }
+
+            _packetOwnedLocalUtilityContext.ObserveRevivePremiumSafetyCharmRuntimeCharacterId(runtimeCharacterId);
+            if (_packetOwnedLocalUtilityContext.HasRevivePremiumSafetyCharmContextValue)
+            {
+                return;
+            }
+
+            SetRevivePremiumSafetyCharmContextFromInventory(source, currentTick);
         }
 
         private int ResolveReviveOwnerRuntimeCharacterId()

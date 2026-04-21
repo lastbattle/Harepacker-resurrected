@@ -708,19 +708,22 @@ namespace HaCreator.MapSimulator.Managers
         private static int AdjustAreaGroup(int currentAreaGroup, int delta)
         {
             EnsureCountryNameCatalogLoaded();
-            return _hasCountryNameCatalogData && _areaGroupItemParams.Count > 0
-                ? CycleCountryNameItemParam(_areaGroupItemParams, currentAreaGroup, delta)
-                : Wrap(currentAreaGroup + delta, 0, 255);
+            return AdjustAreaGroupFromCatalogState(
+                _hasCountryNameCatalogData,
+                _areaGroupItemParams,
+                currentAreaGroup,
+                delta);
         }
 
         private static int AdjustAreaDetail(int currentAreaGroup, int currentAreaDetail, int delta)
         {
             EnsureCountryNameCatalogLoaded();
-            return _hasCountryNameCatalogData
-                && _areaDetailItemParams.TryGetValue(currentAreaGroup, out IReadOnlyList<int> itemParams)
-                && itemParams.Count > 0
-                    ? CycleCountryNameItemParam(itemParams, currentAreaDetail, delta)
-                    : Wrap(currentAreaDetail + delta, 0, 255);
+            return AdjustAreaDetailFromCatalogState(
+                _hasCountryNameCatalogData,
+                _areaDetailItemParams,
+                currentAreaGroup,
+                currentAreaDetail,
+                delta);
         }
 
         private static int CycleCountryNameItemParam(IReadOnlyList<int> itemParams, int currentValue, int delta)
@@ -751,22 +754,82 @@ namespace HaCreator.MapSimulator.Managers
         private static int ResolveLoadedAreaGroup(int requestedAreaGroup)
         {
             EnsureCountryNameCatalogLoaded();
-            return _hasCountryNameCatalogData
-                ? SelectClientComboItemParamForLoad(requestedAreaGroup, _areaGroupItemParams)
-                : requestedAreaGroup;
+            return ResolveLoadedAreaGroupFromCatalogState(
+                _hasCountryNameCatalogData,
+                requestedAreaGroup,
+                _areaGroupItemParams);
         }
 
         private static int ResolveLoadedAreaDetail(int selectedAreaGroup, int requestedAreaDetail)
         {
             EnsureCountryNameCatalogLoaded();
-            if (!_hasCountryNameCatalogData)
+            return ResolveLoadedAreaDetailFromCatalogState(
+                _hasCountryNameCatalogData,
+                selectedAreaGroup,
+                requestedAreaDetail,
+                _areaDetailItemParams);
+        }
+
+        internal static int ResolveLoadedAreaGroupFromCatalogState(
+            bool hasCountryNameCatalogData,
+            int requestedAreaGroup,
+            IReadOnlyList<int> areaGroupItemParams)
+        {
+            return hasCountryNameCatalogData
+                ? SelectClientComboItemParamForLoad(requestedAreaGroup, areaGroupItemParams)
+                : 0;
+        }
+
+        internal static int ResolveLoadedAreaDetailFromCatalogState(
+            bool hasCountryNameCatalogData,
+            int selectedAreaGroup,
+            int requestedAreaDetail,
+            IReadOnlyDictionary<int, IReadOnlyList<int>> areaDetailItemParams)
+        {
+            if (!hasCountryNameCatalogData)
             {
-                return requestedAreaDetail;
+                return 0;
             }
 
-            return _areaDetailItemParams.TryGetValue(selectedAreaGroup, out IReadOnlyList<int> itemParams)
-                ? SelectClientComboItemParamForLoad(requestedAreaDetail, itemParams)
+            return areaDetailItemParams != null
+                && areaDetailItemParams.TryGetValue(selectedAreaGroup, out IReadOnlyList<int> itemParams)
+                    ? SelectClientComboItemParamForLoad(requestedAreaDetail, itemParams)
+                    : 0;
+        }
+
+        internal static int AdjustAreaGroupFromCatalogState(
+            bool hasCountryNameCatalogData,
+            IReadOnlyList<int> areaGroupItemParams,
+            int currentAreaGroup,
+            int delta)
+        {
+            if (!hasCountryNameCatalogData)
+            {
+                return 0;
+            }
+
+            return areaGroupItemParams != null && areaGroupItemParams.Count > 0
+                ? CycleCountryNameItemParam(areaGroupItemParams, currentAreaGroup, delta)
                 : 0;
+        }
+
+        internal static int AdjustAreaDetailFromCatalogState(
+            bool hasCountryNameCatalogData,
+            IReadOnlyDictionary<int, IReadOnlyList<int>> areaDetailItemParams,
+            int currentAreaGroup,
+            int currentAreaDetail,
+            int delta)
+        {
+            if (!hasCountryNameCatalogData)
+            {
+                return 0;
+            }
+
+            return areaDetailItemParams != null
+                && areaDetailItemParams.TryGetValue(currentAreaGroup, out IReadOnlyList<int> itemParams)
+                && itemParams.Count > 0
+                    ? CycleCountryNameItemParam(itemParams, currentAreaDetail, delta)
+                    : 0;
         }
 
         private static bool TryGetCountryNameEntry(WzImageProperty child, out int id, out string name)

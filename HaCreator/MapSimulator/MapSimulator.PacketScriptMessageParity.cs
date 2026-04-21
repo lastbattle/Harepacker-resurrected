@@ -7,6 +7,7 @@ using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 
 namespace HaCreator.MapSimulator
@@ -294,9 +295,45 @@ namespace HaCreator.MapSimulator
                 statuses.Add(loopbackStatus);
             }
 
+            if (TryApplyPacketScriptAskMenuMigrateToShopParity(responsePacket, out string localParityStatus))
+            {
+                statuses.Add(localParityStatus);
+            }
+
             dispatched |= loopbackSent;
             status = statuses.Count == 0 ? status : string.Join(" ", statuses);
             return dispatched;
+        }
+
+        internal static bool IsPacketScriptAskMenuMigrateToShopSelection(
+            PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket)
+        {
+            if (responsePacket == null || responsePacket.MessageType != 5)
+            {
+                return false;
+            }
+
+            return int.TryParse(
+                       responsePacket.SubmittedValue,
+                       NumberStyles.Integer,
+                       CultureInfo.InvariantCulture,
+                       out int selectionId)
+                   && selectionId == -2;
+        }
+
+        private bool TryApplyPacketScriptAskMenuMigrateToShopParity(
+            PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket,
+            out string status)
+        {
+            status = null;
+            if (!IsPacketScriptAskMenuMigrateToShopSelection(responsePacket))
+            {
+                return false;
+            }
+
+            OpenCashServiceOwnerFamily(HaCreator.MapSimulator.UI.CashServiceStageKind.CashShop, resetStageSession: true);
+            status = "Applied CScriptMan::OnAskMenu side effect: accepted selection -2 triggered SendMigrateToShopRequest and opened the Cash Shop owner family.";
+            return true;
         }
 
         private string DescribePacketScriptOfficialSessionBridgeStatus()

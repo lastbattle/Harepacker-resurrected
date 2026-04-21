@@ -166,12 +166,6 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _packetWhisperLocationInfo = string.Empty;
                 _packetWhisperFindPresenceByName.Remove(normalizedName);
-                ApplyPacketWhisperFindMutationToFriendEntry(
-                    normalizedName,
-                    result,
-                    locationSummary: string.Empty,
-                    channel: resolvedChannel,
-                    clearLocation: true);
                 _lastPacketSyncSummaryByTab[SocialListTab.Friend] = $"Packet whisper find invalidated user-list location for {normalizedName}.";
                 return;
             }
@@ -181,12 +175,6 @@ namespace HaCreator.MapSimulator.Interaction
             if (result == 2 || result == 4)
             {
                 _packetWhisperFindPresenceByName.Remove(normalizedName);
-                ApplyPacketWhisperFindMutationToFriendEntry(
-                    normalizedName,
-                    result,
-                    detailText,
-                    channel: resolvedChannel,
-                    clearLocation: false);
             }
             else
             {
@@ -222,68 +210,9 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 _packetWhisperFindPresenceByName[normalizedName] = state;
-                ApplyPacketWhisperFindMutationToFriendEntry(
-                    normalizedName,
-                    result,
-                    state.LocationSummary,
-                    channel: state.Channel,
-                    clearLocation: false);
             }
 
             _lastPacketSyncSummaryByTab[SocialListTab.Friend] = $"Packet whisper find updated user-list location for {normalizedName}.";
-        }
-
-        private void ApplyPacketWhisperFindMutationToFriendEntry(
-            string normalizedName,
-            byte result,
-            string locationSummary,
-            int channel,
-            bool clearLocation)
-        {
-            if (string.IsNullOrWhiteSpace(normalizedName)
-                || !_entriesByTab.TryGetValue(SocialListTab.Friend, out List<SocialEntryState> friendEntries)
-                || friendEntries == null)
-            {
-                return;
-            }
-
-            int friendIndex = friendEntries.FindIndex(entry =>
-                entry != null
-                && !entry.IsLocalPlayer
-                && string.Equals(entry.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
-            if (friendIndex < 0)
-            {
-                return;
-            }
-
-            SocialEntryState existing = friendEntries[friendIndex];
-            string resolvedLocation = clearLocation
-                ? "Location unknown"
-                : (string.IsNullOrWhiteSpace(locationSummary) ? existing.LocationSummary : locationSummary.Trim());
-            int resolvedChannel = channel > 0 ? channel : existing.Channel;
-            bool resolvedOnline = result switch
-            {
-                1 or 3 => true,
-                2 or 4 => false,
-                _ => existing.IsOnline
-            };
-
-            friendEntries[friendIndex] = EnsureEntryHasMemberId(
-                SocialListTab.Friend,
-                new SocialEntryState(
-                    existing.Name,
-                    existing.PrimaryText,
-                    existing.SecondaryText,
-                    resolvedLocation,
-                    resolvedChannel,
-                    resolvedOnline,
-                    existing.IsLeader,
-                    existing.IsBlocked)
-                {
-                    IsLocalPlayer = existing.IsLocalPlayer
-                },
-                existing.MemberId);
-            ResetSelectionAfterMutation(SocialListTab.Friend);
         }
 
         internal bool TryResolvePacketWhisperFindPresence(string characterName, out string locationSummary, out int channel)
@@ -442,7 +371,7 @@ namespace HaCreator.MapSimulator.Interaction
                 GetEffectiveGuildRoleLabelForUi(),
                 CanManageGuildSkills(),
                 TryGetEffectiveGuildPoints(),
-                null);
+                GetEffectivePacketGuildId());
         }
 
         internal SocialListSnapshot BuildSnapshot()

@@ -672,7 +672,7 @@ namespace HaCreator.MapSimulator.Fields
                 usesRemoveAlphaCopy: true);
         }
 
-        private void DrawClientOwnedViewrangeFogAtTopLeft(
+        private bool DrawClientOwnedViewrangeFogAtTopLeft(
             SpriteBatch spriteBatch,
             int left,
             int top,
@@ -712,7 +712,7 @@ namespace HaCreator.MapSimulator.Fields
                 out Rectangle destinationRect,
                 out Rectangle sourceRect))
             {
-                return;
+                return false;
             }
 
             // CField_LimitedView::DrawViewrange restores prior m_lpPrev entries
@@ -736,10 +736,11 @@ namespace HaCreator.MapSimulator.Fields
                 // SpriteBatch alpha blending approximates the COM remove-alpha copy
                 // used by CField_LimitedView for the viewrange mask blit.
                 spriteBatch.Draw(_clientOwnedViewrangeTexture, destinationRect, sourceRect, tint);
-                return;
+                return true;
             }
 
             spriteBatch.Draw(_clientOwnedViewrangeTexture, destinationRect, sourceRect, tint);
+            return true;
         }
 
         private void DrawClientOwnedDarkLayerAroundCurrentViewrange(SpriteBatch spriteBatch, int left, int top, int right, int bottom, Color fogColor)
@@ -1225,6 +1226,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            int successfulCopyCount = 0;
             foreach (ClientOwnedDrawViewrangeOperation operation in operations)
             {
                 switch (operation.Kind)
@@ -1240,7 +1242,7 @@ namespace HaCreator.MapSimulator.Fields
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.CopyLocalViewrange:
                     case ClientOwnedDrawViewrangeOperationKind.CopyRemoteViewrange:
-                        DrawClientOwnedViewrangeFogAtTopLeft(
+                        if (DrawClientOwnedViewrangeFogAtTopLeft(
                             spriteBatch,
                             (int)MathF.Round(operation.TopLeft.X),
                             (int)MathF.Round(operation.TopLeft.Y),
@@ -1252,13 +1254,50 @@ namespace HaCreator.MapSimulator.Fields
                             operation.SourceY,
                             operation.SourceWidth,
                             operation.SourceHeight,
-                            operation.UsesRemoveAlphaCopy);
+                            operation.UsesRemoveAlphaCopy))
+                        {
+                            successfulCopyCount++;
+                        }
                         break;
                     case ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory:
                         TrackClientOwnedCurrentMaskTopLeft(operation.TopLeft);
                         break;
                 }
             }
+
+            if (ShouldDrawClientOwnedDarkLayerFallbackAfterCopyOperations(operations, successfulCopyCount))
+            {
+                DrawClientOwnedDarkLayerFallback(spriteBatch, fogColor);
+            }
+        }
+
+        internal static bool ShouldDrawClientOwnedDarkLayerFallbackAfterCopyOperations(
+            IReadOnlyList<ClientOwnedDrawViewrangeOperation> operations,
+            int successfulCopyCount)
+        {
+            if (operations == null || successfulCopyCount > 0)
+            {
+                return false;
+            }
+
+            bool hasCopyOperation = false;
+            bool hasExplicitFallbackOperation = false;
+            foreach (ClientOwnedDrawViewrangeOperation operation in operations)
+            {
+                if (operation.Kind == ClientOwnedDrawViewrangeOperationKind.DrawDarkLayerFallback)
+                {
+                    hasExplicitFallbackOperation = true;
+                    continue;
+                }
+
+                if (operation.Kind == ClientOwnedDrawViewrangeOperationKind.CopyLocalViewrange
+                    || operation.Kind == ClientOwnedDrawViewrangeOperationKind.CopyRemoteViewrange)
+                {
+                    hasCopyOperation = true;
+                }
+            }
+
+            return hasCopyOperation && !hasExplicitFallbackOperation;
         }
 
         private void DrawClientOwnedDarkLayerFallback(SpriteBatch spriteBatch, Color fogColor)

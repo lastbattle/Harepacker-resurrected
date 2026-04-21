@@ -46,6 +46,30 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(fillTexture, rect, PlainTooltipBackgroundColor);
         }
 
+        internal static void DrawTooltipFrameOrPlainBackground(
+            SpriteBatch sprite,
+            Texture2D[] frames,
+            int frameIndex,
+            Texture2D fillTexture,
+            Rectangle rect)
+        {
+            if (sprite == null || rect.Width <= 0 || rect.Height <= 0)
+            {
+                return;
+            }
+
+            Texture2D frame = frames != null && frameIndex >= 0 && frameIndex < frames.Length
+                ? frames[frameIndex]
+                : null;
+            if (frame != null)
+            {
+                sprite.Draw(frame, rect, Color.White);
+                return;
+            }
+
+            DrawPlainTooltipBackground(sprite, fillTexture, rect);
+        }
+
         internal static Point ResolveSameFamilyOriginFallback(
             Point authoredOrigin,
             int authoredWidth,

@@ -248,6 +248,7 @@ namespace HaCreator.MapSimulator.Pools
             public byte[] RawTrailingPayload { get; init; }
             public string HitString { get; init; }
             public int? HitSecondaryInt32Value { get; init; }
+            public int[] HitTrailingInt32Values { get; init; }
             public int PacketTime { get; init; }
         }
 
@@ -847,6 +848,8 @@ namespace HaCreator.MapSimulator.Pools
             build.HasAuthoritativeProfilePocketSlot = false;
             build.HasAuthoritativeProfileMedal = false;
             build.HasAuthoritativeProfileCollection = false;
+            build.HasAuthoritativeProfileMarriage = false;
+            build.IsProfileMarried = false;
             build.GuildName = string.Empty;
             build.AllianceName = string.Empty;
             build.Fame = 0;
@@ -2706,6 +2709,7 @@ namespace HaCreator.MapSimulator.Pools
                 RawTrailingPayload = packet.RawTrailingPayload,
                 HitString = packet.HitString,
                 HitSecondaryInt32Value = packet.HitSecondaryInt32Value,
+                HitTrailingInt32Values = packet.HitTrailingInt32Values,
                 PacketTime = currentTime
             };
 
@@ -2959,6 +2963,22 @@ namespace HaCreator.MapSimulator.Pools
             return false;
         }
 
+        private void ApplyMarriageProfileAuthorityFromRelationshipState(
+            int characterId,
+            bool hasAuthoritativeMarriageState)
+        {
+            if (characterId <= 0
+                || !_actorsById.TryGetValue(characterId, out RemoteUserActor actor)
+                || actor?.Build == null)
+            {
+                return;
+            }
+
+            actor.Build.HasAuthoritativeProfileMarriage = hasAuthoritativeMarriageState;
+            actor.Build.IsProfileMarried = hasAuthoritativeMarriageState
+                && HasActiveMarriageRelationshipRecord(characterId);
+        }
+
         private static RemoteUserTemporaryStatSnapshot ReconcileChargeSkillIdFromPriorSnapshot(
             RemoteUserTemporaryStatSnapshot snapshot,
             RemoteUserTemporaryStatSnapshot priorSnapshot)
@@ -2977,7 +2997,15 @@ namespace HaCreator.MapSimulator.Pools
             int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(snapshot, priorChargeSkillId);
             if (!resolvedChargeSkillId.HasValue)
             {
-                return snapshot;
+                RemoteUserTemporaryStatKnownState noHintKnownState = snapshot.KnownState with
+                {
+                    ChargeSkillId = priorChargeSkillId
+                };
+
+                return snapshot with
+                {
+                    KnownState = noHintKnownState
+                };
             }
 
             RemoteUserTemporaryStatKnownState knownState = snapshot.KnownState with
@@ -4328,13 +4356,24 @@ namespace HaCreator.MapSimulator.Pools
             RemoteGrenadePresentation presentation,
             SkillAnimation ballAnimation)
         {
+            // CUser::ThrowGrenade writes CGrenade::Init tLimitTime for Monster Bomb.
+            // Keep that packet-owned window as a cap on pre-explosion time, then
+            // allow explosion playback to own the final expiry segment.
+            int limitCapTime = presentation.LimitTimeMs > 0
+                ? presentation.CurrentTime + presentation.LimitTimeMs
+                : int.MaxValue;
+
             if (presentation.ExplosionDelayMs > presentation.InitDelayMs)
             {
-                return presentation.CurrentTime + presentation.ExplosionDelayMs;
+                return Math.Min(
+                    presentation.CurrentTime + presentation.ExplosionDelayMs,
+                    limitCapTime);
             }
 
-            return ResolveRemoteGrenadeFlightStartTimeForParity(presentation)
-                + ResolveRemoteGrenadeAnimationDurationMs(ballAnimation);
+            return Math.Min(
+                ResolveRemoteGrenadeFlightStartTimeForParity(presentation)
+                    + ResolveRemoteGrenadeAnimationDurationMs(ballAnimation),
+                limitCapTime);
         }
 
         public static int ResolveRemoteGrenadeExpireTimeForParity(
@@ -4342,13 +4381,6 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation ballAnimation,
             SkillAnimation explosionAnimation)
         {
-            if (presentation.LimitTimeMs > 0)
-            {
-                // CUser::ThrowGrenade writes CGrenade::Init tLimitTime for Monster Bomb
-                // and CGrenade::Update expires against that limit once reached.
-                return presentation.CurrentTime + presentation.LimitTimeMs;
-            }
-
             return ResolveRemoteGrenadeExplosionTimeForParity(presentation, ballAnimation)
                 + ResolveRemoteGrenadeAnimationDurationMs(explosionAnimation);
         }
@@ -7231,7 +7263,7 @@ namespace HaCreator.MapSimulator.Pools
             bool fallbackFacingRight,
             int sampleTime)
         {
-            if (movementSnapshot != null)
+            if (ShouldUseRemoteActiveEffectMotionBlurMovementSnapshot(movementSnapshot, sampleTime))
             {
                 PassivePositionSnapshot sample = movementSnapshot.SampleAtTime(sampleTime);
                 return new RemoteActiveEffectMotionBlurOwnerSample(
@@ -7240,6 +7272,58 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return new RemoteActiveEffectMotionBlurOwnerSample(fallbackPosition, fallbackFacingRight);
+        }
+
+        private static bool ShouldUseRemoteActiveEffectMotionBlurMovementSnapshot(
+            PlayerMovementSyncSnapshot movementSnapshot,
+            int sampleTime)
+        {
+            if (!TryResolveRemoteActiveEffectMotionBlurMovementSnapshotSampleTimeBounds(
+                    movementSnapshot,
+                    out int startTime,
+                    out int endTime))
+            {
+                return false;
+            }
+
+            return sampleTime >= startTime && sampleTime <= endTime;
+        }
+
+        private static bool TryResolveRemoteActiveEffectMotionBlurMovementSnapshotSampleTimeBounds(
+            PlayerMovementSyncSnapshot movementSnapshot,
+            out int startTime,
+            out int endTime)
+        {
+            startTime = 0;
+            endTime = 0;
+            if (movementSnapshot == null)
+            {
+                return false;
+            }
+
+            startTime = movementSnapshot.PassivePosition.TimeStamp;
+            endTime = movementSnapshot.PassivePosition.TimeStamp;
+            List<MovePathElement> movePath = movementSnapshot.MovePath;
+            if (movePath == null || movePath.Count == 0)
+            {
+                return true;
+            }
+
+            for (int i = 0; i < movePath.Count; i++)
+            {
+                int timeStamp = movePath[i].TimeStamp;
+                if (timeStamp < startTime)
+                {
+                    startTime = timeStamp;
+                }
+
+                if (timeStamp > endTime)
+                {
+                    endTime = timeStamp;
+                }
+            }
+
+            return true;
         }
 
         internal static bool TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
@@ -8400,13 +8484,17 @@ namespace HaCreator.MapSimulator.Pools
                 .Select(sourceRecord =>
                 {
                     PortableChairPairParticipant participant = participantMap[sourceRecord.CharacterId];
+                    int? existingPairCharacterId = ResolvePortableChairExistingPairCharacterIdForParity(
+                        sourceRecord,
+                        sourceRecordMap,
+                        participantMap);
                     return new PortableChairPairParticipant(
                         participant.CharacterId,
                         participant.Chair,
                         participant.Position,
                         participant.FacingRight,
                         sourceRecord.PreferredPairCharacterId,
-                        sourceRecord.PairCharacterId,
+                        existingPairCharacterId,
                         participant.IsChairSessionActive,
                         participant.IsVisibleInWorld,
                         participant.IsRelationshipOverlaySuppressed);
@@ -8475,6 +8563,35 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return resolvedRecords;
+        }
+
+        private static int? ResolvePortableChairExistingPairCharacterIdForParity(
+            PortableChairPairRecord sourceRecord,
+            IReadOnlyDictionary<int, PortableChairPairRecord> sourceRecordMap,
+            IReadOnlyDictionary<int, PortableChairPairParticipant> participantMap)
+        {
+            if (!sourceRecord.PairCharacterId.HasValue
+                || sourceRecord.PairCharacterId.Value <= 0
+                || sourceRecord.PairCharacterId.Value == sourceRecord.CharacterId)
+            {
+                return null;
+            }
+
+            int partnerCharacterId = sourceRecord.PairCharacterId.Value;
+            if (!sourceRecordMap.TryGetValue(partnerCharacterId, out PortableChairPairRecord partnerRecord)
+                || !participantMap.TryGetValue(partnerCharacterId, out PortableChairPairParticipant partnerParticipant))
+            {
+                return null;
+            }
+
+            if (partnerParticipant.Chair?.IsCoupleChair != true
+                || partnerParticipant.Chair.ItemId != sourceRecord.ItemId
+                || partnerRecord.ItemId != sourceRecord.ItemId)
+            {
+                return null;
+            }
+
+            return partnerCharacterId;
         }
 
         private static bool TryFindPortableChairPairCandidateIndex(
@@ -11392,12 +11509,14 @@ namespace HaCreator.MapSimulator.Pools
                 int currentTime,
                 bool facingRight,
                 bool preserveTimingWhenOnlyFacingChanges,
-                bool forceRestartWhenSameAction)
+                bool forceRestartWhenSameAction,
+                SkillAnimation currentPlaybackAnimation = null)
         {
             var presentation = new RemoteShadowPartnerPresentationState
             {
                 CurrentActionStartTime = currentActionStartTime,
-                CurrentFacingRight = currentFacingRight
+                CurrentFacingRight = currentFacingRight,
+                CurrentPlaybackAnimation = currentPlaybackAnimation
             };
             ApplyRemoteShadowPartnerSameActionPresentationTransition(
                 presentation,
@@ -12465,7 +12584,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             presentation.CurrentFacingRight = facingRight;
-            if (preserveTimingWhenOnlyFacingChanges)
+            bool preserveTimingForFacingChange = preserveTimingWhenOnlyFacingChanges
+                || ShadowPartnerClientActionResolver.ShouldPreserveOneShotAlphaLifetimeOnFacingChange(
+                    presentation.CurrentPlaybackAnimation,
+                    Math.Max(0, currentTime - presentation.CurrentActionStartTime));
+            if (preserveTimingForFacingChange)
             {
                 return;
             }

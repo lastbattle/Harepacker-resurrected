@@ -1167,6 +1167,11 @@ namespace HaCreator.MapSimulator.Interaction
                 memoText += $"\n\nQuick-delivery internal bytes: {FormatByteHex(entry.QuickDeliveryReservedBytes)}.";
             }
 
+            if (entry.HasTrailingPayloadBytes)
+            {
+                memoText += $"\n\nUndecoded parcel trailing bytes: {FormatByteHex(entry.TrailingPayloadBytes)}.";
+            }
+
             return memoText;
         }
 

@@ -997,14 +997,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
                 statusBarUi.BuffCancelRequested = skillId =>
                 {
-                    var skills = _playerManager?.Skills;
-                    if (skills == null)
-                    {
-                        return;
-                    }
-
-                    using var _ = skills.BeginClientCancelBatchScope();
-                    skills.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
+                    RequestStatusBarBuffCancelForClientCancelIngress(skillId, currTickCount);
                 };
             }
             ConfigureStatusBarChatUi();
@@ -1856,14 +1849,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
                 statusBarUi.BuffCancelRequested = skillId =>
                 {
-                    var skills = _playerManager?.Skills;
-                    if (skills == null)
-                    {
-                        return;
-                    }
-
-                    using var _ = skills.BeginClientCancelBatchScope();
-                    skills.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
+                    RequestStatusBarBuffCancelForClientCancelIngress(skillId, currTickCount);
                 };
             }
             ConfigureStatusBarChatUi();

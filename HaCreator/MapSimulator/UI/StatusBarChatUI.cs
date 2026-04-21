@@ -1674,9 +1674,15 @@ namespace HaCreator.MapSimulator.UI
             Color textColor = isSelected || pressed
                 ? Color.White
                 : new Color(24, 24, 24);
+            string clippedRowText = ResolveWhisperPickerModalDropdownDisplayText(
+                text,
+                rowBounds.Width,
+                WhisperPickerFramePadding + 1,
+                WhisperPickerFramePadding,
+                value => MeasureChatText(value).X);
             DrawTextWithShadow(
                 sprite,
-                text ?? string.Empty,
+                clippedRowText,
                 new Vector2(
                     rowBounds.X + WhisperPickerFramePadding + 1,
                     rowBounds.Y + Math.Max(0f, (rowBounds.Height - MeasureChatText("Ag").Y) * 0.5f)),
@@ -1924,7 +1930,12 @@ namespace HaCreator.MapSimulator.UI
 
             DrawTextWithShadow(
                 sprite,
-                text ?? string.Empty,
+                ResolveWhisperPickerModalDropdownDisplayText(
+                    text,
+                    Math.Max(1, width - Math.Max(0, rowOriginDelta.X)),
+                    WhisperPickerFramePadding + 1,
+                    WhisperPickerFramePadding,
+                    value => MeasureChatText(value).X),
                 new Vector2(
                     x + WhisperPickerFramePadding + 1 + rowOriginDelta.X,
                     y + rowOriginDelta.Y + Math.Max(0f, (height - MeasureChatText("Ag").Y) * 0.5f)),
@@ -2411,6 +2422,23 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return best > 0 ? text.Substring(0, best) : string.Empty;
+        }
+
+        internal static string ResolveWhisperPickerModalDropdownDisplayText(
+            string text,
+            int rowWidth,
+            int leftPadding,
+            int rightPadding,
+            Func<string, float> measureWidth)
+        {
+            int safeRowWidth = Math.Max(1, rowWidth);
+            int safeLeftPadding = Math.Max(0, leftPadding);
+            int safeRightPadding = Math.Max(0, rightPadding);
+            float maxWidth = Math.Max(1f, safeRowWidth - safeLeftPadding - safeRightPadding);
+            return ResolveWhisperPickerModalComboDisplayText(
+                text,
+                maxWidth,
+                measureWidth);
         }
 
         private int ResolveFontLineSpacing()

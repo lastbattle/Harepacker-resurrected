@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -11,6 +12,22 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int DualBladeFlashJumpSkillId = 4321003;
         private const int NightWalkerFlashJumpSkillId = 14101004;
         private const int RocketBoosterSkillId = 35101004;
+        private static readonly HashSet<string> ConstrainedType40BoundJumpActionNameMarkers =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                "doublejump",
+                "flash jump",
+                "flashjump",
+                "archerdoublejump",
+                "icedoublejump",
+                "spiritjump",
+                "swiftphantom",
+                "htswiftphantom",
+                "demonjump",
+                "demonjumpfoward",
+                "demonjumpforward",
+                "demonfly"
+            };
 
         internal static bool IsDirectBoundJumpSkillId(int skillId, bool includeRocketBoosterSkillId = true)
         {
@@ -37,14 +54,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             // Keep non-explicit type-40 ownership on the rechecked WZ-authored
             // bound-jump movement profile set.
-            return ActionTextContains(actionName, "doublejump")
-                   || ActionTextContains(actionName, "flash jump")
-                   || ActionTextContains(actionName, "archerdoublejump")
-                   || ActionTextContains(actionName, "icedoublejump")
-                   || ActionTextContains(actionName, "spiritjump")
-                   || ActionTextContains(actionName, "swiftphantom")
-                   || ActionTextContains(actionName, "demonjump")
-                   || ActionTextContains(actionName, "demonfly");
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            foreach (string marker in ConstrainedType40BoundJumpActionNameMarkers)
+            {
+                if (ActionTextContains(actionName, marker))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool IsConstrainedType40BoundJumpSkillId(int skillId)

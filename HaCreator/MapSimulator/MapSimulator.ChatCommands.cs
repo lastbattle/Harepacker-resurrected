@@ -8349,7 +8349,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error(clientPacketError ?? "Usage: /memorygame packetclientraw <hex bytes>");
                             }
 
-                            if (!field.TryDispatchOfficialClientPacket(clientPayload, currTickCount, out string clientPacketMessage, enforcePromptFlow: true))
+                            if (!field.TryDispatchOfficialClientPacket(clientPayload, currTickCount, out string clientPacketMessage, enforcePromptFlow: true, relayOutboundTransport: true))
                             {
                                 return ChatCommandHandler.CommandResult.Error(clientPacketMessage);
                             }

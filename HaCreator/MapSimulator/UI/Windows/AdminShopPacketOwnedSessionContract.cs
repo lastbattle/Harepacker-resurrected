@@ -266,6 +266,27 @@ namespace HaCreator.MapSimulator.UI
             TouchWishlistSearchStateToken();
         }
 
+        public void ApplyWishlistSearchSessionIds(int serviceSessionId, int searchSessionId)
+        {
+            bool changed = false;
+            if (serviceSessionId >= 0 && ServiceSessionId != serviceSessionId)
+            {
+                ServiceSessionId = serviceSessionId;
+                changed = true;
+            }
+
+            if (searchSessionId >= 0 && WishlistSearchSessionId != searchSessionId)
+            {
+                WishlistSearchSessionId = searchSessionId;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                TouchWishlistSearchStateToken();
+            }
+        }
+
         public void RecordResultIgnoredByOwner(
             byte subtype,
             byte resultCode,

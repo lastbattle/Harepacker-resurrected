@@ -978,10 +978,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldCancelImeCompositionOnFocusChange(bool hasFocus)
         {
-            // Keep composition cleanup on both focus transitions so the hosted
-            // seam mirrors the recovered blur cleanup (`OnSetFocus(false)`) while
-            // preserving the existing focus-gain reset behavior.
-            return true;
+            // `CCtrlEdit::OnSetFocus` clears IME composition only on focus gain.
+            return hasFocus;
         }
 
         internal static bool ShouldForwardDeferredDownKeyToParentAfterIme(bool imeOwnedInputStateAfterKeyDown)
@@ -1188,9 +1186,9 @@ namespace HaCreator.MapSimulator.UI
             bool imeDefaultWindowAvailable)
         {
             // `CCtrlEdit::OnKey` checks owner presence (`m_pIMECandWnd`) for VK_DOWN.
-            // In the hosted seam, treat an open IME with a resolvable default IME owner
-            // window as equivalent ownership even when composition bytes are currently empty.
-            return imeOpenStatus && (imeCompositionActive || imeCandidateWindowActive || imeDefaultWindowAvailable);
+            // Keep the hosted gate on recoverable owner presence/state instead of
+            // requiring IME open status, which the native branch does not inspect.
+            return imeCompositionActive || imeCandidateWindowActive || imeDefaultWindowAvailable;
         }
 
         internal static bool ShouldDispatchDeferredDownKeyToImeWindow(IntPtr imeWindowHandle, IntPtr editHandle)

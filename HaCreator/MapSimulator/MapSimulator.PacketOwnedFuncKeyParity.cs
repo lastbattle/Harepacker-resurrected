@@ -324,9 +324,6 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedFuncKeyInitPayload(byte[] payload, out string message)
         {
             ApplyPersistedPacketOwnedFuncKeyConfig();
-            // Mirror CFuncKeyMappedMan::OnInit ownership: keep the pre-init table in the Old mirror
-            // before packet/config hydration mutates the live FUNCKEY_MAPPED table.
-            CopyPacketOwnedFuncKeyMap(_packetOwnedFuncKeyMapped, _packetOwnedFuncKeyMappedOld);
             bool fallbackToConfig = payload == null
                 || payload.Length < PacketOwnedFuncKeyPayloadSize
                 || payload[0] != 0;
@@ -364,6 +361,9 @@ namespace HaCreator.MapSimulator
             }
 
             int translatedBindings = ApplyPacketOwnedFuncKeyMappingsToLiveInput(_playerManager?.Input);
+            // Match CFuncKeyMappedMan::OnInit: once hydration/adaptation is complete, mirror the
+            // current table into the Old buffer so legacy lookup paths stay aligned to the live map.
+            CopyPacketOwnedFuncKeyMap(_packetOwnedFuncKeyMapped, _packetOwnedFuncKeyMappedOld);
             PersistPacketOwnedFuncKeyConfig();
 
             int configuredCount = CountConfiguredPacketOwnedFuncKeyEntries(_packetOwnedFuncKeyMapped);

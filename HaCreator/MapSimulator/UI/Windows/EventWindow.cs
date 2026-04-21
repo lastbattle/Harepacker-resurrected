@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator.UI
         private EventWindowSnapshot _currentSnapshot = new();
         private readonly List<EventEntrySnapshot> _filteredEntriesBuffer = new();
         private readonly List<EventEntrySnapshot> _visibleEntriesBuffer = new();
+        private readonly List<EventEntrySnapshot> _calendarEntriesBuffer = new();
         private readonly Dictionary<DateTime, int> _calendarEntryCountBuffer = new();
         private readonly List<string> _calendarSummaryTitlesBuffer = new();
         private EventEntryStatus? _filter;
@@ -447,7 +448,7 @@ namespace HaCreator.MapSimulator.UI
         private void DrawCalendar(SpriteBatch sprite, EventWindowSnapshot snapshot, int contentOffsetY)
         {
             DateTime month = _calendarMonth;
-            IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(snapshot);
+            IReadOnlyList<EventEntrySnapshot> entries = GetCalendarEntries(snapshot);
             BuildCalendarEntryCounts(entries);
 
             Rectangle calendarBounds = GetCalendarBounds(snapshot);
@@ -1178,7 +1179,7 @@ namespace HaCreator.MapSimulator.UI
         private void SetCalendarMonth(DateTime month)
         {
             _calendarMonth = new DateTime(month.Year, month.Month, 1);
-            IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(_currentSnapshot ?? RefreshSnapshot());
+            IReadOnlyList<EventEntrySnapshot> entries = GetCalendarEntries(_currentSnapshot ?? RefreshSnapshot());
             DateTime anchorDate = _selectedCalendarDate?.Date ?? DateTime.Today.Date;
             _selectedCalendarDate = ResolveCalendarSelectionForMonth(entries, _calendarMonth, anchorDate);
         }
@@ -1272,7 +1273,13 @@ namespace HaCreator.MapSimulator.UI
             DateTime resolved = DateTime.MinValue;
             for (int i = 0; i < entries.Count; i++)
             {
-                DateTime date = entries[i].ScheduledAt.Date;
+                EventEntrySnapshot entry = entries[i];
+                if (entry == null || !entry.IncludeInCalendar)
+                {
+                    continue;
+                }
+
+                DateTime date = entry.ScheduledAt.Date;
                 if (date.Year <= 1)
                 {
                     continue;
@@ -1348,7 +1355,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void InitializeCalendarSelection(EventWindowSnapshot snapshot)
         {
-            IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(snapshot);
+            IReadOnlyList<EventEntrySnapshot> entries = GetCalendarEntries(snapshot);
             DateTime targetDate = ResolveNearestCalendarDate(entries, DateTime.Today.Date);
             _selectedCalendarDate = targetDate;
             SetCalendarMonth(new DateTime(targetDate.Year, targetDate.Month, 1));
@@ -1422,7 +1429,13 @@ namespace HaCreator.MapSimulator.UI
             int totalMatches = 0;
             for (int i = 0; i < entries.Count; i++)
             {
-                if (entries[i].ScheduledAt.Date != selectedDate)
+                EventEntrySnapshot entry = entries[i];
+                if (entry == null || !entry.IncludeInCalendar)
+                {
+                    continue;
+                }
+
+                if (entry.ScheduledAt.Date != selectedDate)
                 {
                     continue;
                 }
@@ -1430,7 +1443,7 @@ namespace HaCreator.MapSimulator.UI
                 totalMatches++;
                 if (_calendarSummaryTitlesBuffer.Count < 3)
                 {
-                    _calendarSummaryTitlesBuffer.Add(entries[i].Title);
+                    _calendarSummaryTitlesBuffer.Add(entry.Title);
                 }
             }
 
@@ -1638,7 +1651,7 @@ namespace HaCreator.MapSimulator.UI
         private void SyncCalendarSelection(EventWindowSnapshot snapshot)
         {
             CalendarSelectionState selection = ResolveLiveCalendarSelection(
-                snapshot?.Entries ?? Array.Empty<EventEntrySnapshot>(),
+                GetCalendarIncludedEntries(snapshot?.Entries ?? Array.Empty<EventEntrySnapshot>()),
                 _calendarMonth,
                 _selectedCalendarDate);
             _calendarMonth = selection.Month;
@@ -1706,7 +1719,13 @@ namespace HaCreator.MapSimulator.UI
             _calendarEntryCountBuffer.Clear();
             for (int i = 0; i < entries.Count; i++)
             {
-                DateTime date = entries[i].ScheduledAt.Date;
+                EventEntrySnapshot entry = entries[i];
+                if (entry == null || !entry.IncludeInCalendar)
+                {
+                    continue;
+                }
+
+                DateTime date = entry.ScheduledAt.Date;
                 if (date.Year <= 1)
                 {
                     continue;
@@ -1715,6 +1734,42 @@ namespace HaCreator.MapSimulator.UI
                 _calendarEntryCountBuffer.TryGetValue(date, out int count);
                 _calendarEntryCountBuffer[date] = count + 1;
             }
+        }
+
+        private IReadOnlyList<EventEntrySnapshot> GetCalendarEntries(EventWindowSnapshot snapshot)
+        {
+            _calendarEntriesBuffer.Clear();
+            IReadOnlyList<EventEntrySnapshot> filteredEntries = GetFilteredEntries(snapshot);
+            for (int i = 0; i < filteredEntries.Count; i++)
+            {
+                EventEntrySnapshot entry = filteredEntries[i];
+                if (entry?.IncludeInCalendar == true)
+                {
+                    _calendarEntriesBuffer.Add(entry);
+                }
+            }
+
+            return _calendarEntriesBuffer;
+        }
+
+        private static IReadOnlyList<EventEntrySnapshot> GetCalendarIncludedEntries(IReadOnlyList<EventEntrySnapshot> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return Array.Empty<EventEntrySnapshot>();
+            }
+
+            List<EventEntrySnapshot> calendarEntries = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                EventEntrySnapshot entry = entries[i];
+                if (entry?.IncludeInCalendar == true)
+                {
+                    calendarEntries.Add(entry);
+                }
+            }
+
+            return calendarEntries;
         }
 
         private Texture2D GetStatusIcon(int index)

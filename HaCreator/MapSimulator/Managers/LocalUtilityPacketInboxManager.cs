@@ -869,8 +869,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (token.Equals("petconsumeresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetconsumeresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petitemuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetitemuseresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpetuseresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("hpresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("hazardresult", StringComparison.OrdinalIgnoreCase))
             {

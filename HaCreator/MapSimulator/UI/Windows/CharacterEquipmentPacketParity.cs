@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.UI
             bool SawExpectedPositiveEquipRemove,
             bool SawNegativeEquipRemove,
             bool SawExpectedNegativeEquipRemove,
+            bool SawExpectedNegativeCashRemove,
             bool SawExpectedTargetEquipRemove,
             bool SawExpectedTargetCashRemove);
 
@@ -62,6 +63,7 @@ namespace HaCreator.MapSimulator.UI
                 bool sawMatchingAddEntry = false;
                 bool sawMatchingSwap = false;
                 bool sawDisplacedAddEntry = false;
+                byte matchedCharacterInventoryType = 0;
                 CharacterInventoryOperationContext operationContext = default;
                 bool sawConflictingCharacterMutation = false;
                 string conflictingCharacterMutationRejectReason = null;
@@ -110,6 +112,16 @@ namespace HaCreator.MapSimulator.UI
                                     toPosition,
                                     out rejectReason))
                             {
+                                if (!TryCaptureMatchedCharacterInventoryType(
+                                        inventoryType,
+                                        ref matchedCharacterInventoryType,
+                                        out string inventoryTypeRejectReason))
+                                {
+                                    sawConflictingCharacterMutation = true;
+                                    conflictingCharacterMutationRejectReason ??= inventoryTypeRejectReason;
+                                    break;
+                                }
+
                                 sawMatchingSwap = true;
                                 break;
                             }
@@ -176,6 +188,16 @@ namespace HaCreator.MapSimulator.UI
                                     out addMismatchRejectReason);
                             if (isMatchingAddEntry)
                             {
+                                if (!TryCaptureMatchedCharacterInventoryType(
+                                        inventoryType,
+                                        ref matchedCharacterInventoryType,
+                                        out string inventoryTypeRejectReason))
+                                {
+                                    sawConflictingCharacterMutation = true;
+                                    conflictingCharacterMutationRejectReason ??= inventoryTypeRejectReason;
+                                    break;
+                                }
+
                                 sawMatchingAddEntry = true;
                             }
                             else if (TryMatchesExpectedCharacterDisplacedAdd(
@@ -187,6 +209,16 @@ namespace HaCreator.MapSimulator.UI
                                          sawDisplacedAddEntry,
                                          out string displacedAddRejectReason))
                             {
+                                if (!TryCaptureMatchedCharacterInventoryType(
+                                        inventoryType,
+                                        ref matchedCharacterInventoryType,
+                                        out string inventoryTypeRejectReason))
+                                {
+                                    sawConflictingCharacterMutation = true;
+                                    conflictingCharacterMutationRejectReason ??= inventoryTypeRejectReason;
+                                    break;
+                                }
+
                                 sawDisplacedAddEntry = true;
                             }
                             else if (IsSupportedClientCharacterInventoryType(inventoryType))
@@ -234,6 +266,7 @@ namespace HaCreator.MapSimulator.UI
                     return TryValidateCharacterAddEntrySourceEvidence(
                         request,
                         operationContext,
+                        matchedCharacterInventoryType,
                         out rejectReason);
                 }
             }
@@ -314,6 +347,7 @@ namespace HaCreator.MapSimulator.UI
             bool sawExpectedPositiveEquipRemove = context.SawExpectedPositiveEquipRemove;
             bool sawNegativeEquipRemove = context.SawNegativeEquipRemove;
             bool sawExpectedNegativeEquipRemove = context.SawExpectedNegativeEquipRemove;
+            bool sawExpectedNegativeCashRemove = context.SawExpectedNegativeCashRemove;
             bool sawExpectedTargetEquipRemove = context.SawExpectedTargetEquipRemove;
             bool sawExpectedTargetCashRemove = context.SawExpectedTargetCashRemove;
 
@@ -333,6 +367,7 @@ namespace HaCreator.MapSimulator.UI
                     sawExpectedPositiveEquipRemove,
                     sawNegativeEquipRemove,
                     sawExpectedNegativeEquipRemove,
+                    sawExpectedNegativeCashRemove,
                     sawExpectedTargetEquipRemove,
                     sawExpectedTargetCashRemove);
             }
@@ -346,7 +381,17 @@ namespace HaCreator.MapSimulator.UI
                     && IsExpectedCharacterSourceInventory(request, inventoryType))
                 {
                     short expectedSourcePosition = ToClientEquipPosition(request.SourceEquipSlot.Value);
-                    sawExpectedNegativeEquipRemove = sawExpectedNegativeEquipRemove || sourcePosition == expectedSourcePosition;
+                    if (sourcePosition == expectedSourcePosition)
+                    {
+                        if (inventoryType == ClientCashInventoryType)
+                        {
+                            sawExpectedNegativeCashRemove = true;
+                        }
+                        else if (inventoryType == ClientEquipInventoryType)
+                        {
+                            sawExpectedNegativeEquipRemove = true;
+                        }
+                    }
                 }
 
                 if ((request.Kind == EquipmentChangeRequestKind.InventoryToCharacter
@@ -374,6 +419,7 @@ namespace HaCreator.MapSimulator.UI
                 sawExpectedPositiveEquipRemove,
                 sawNegativeEquipRemove,
                 sawExpectedNegativeEquipRemove,
+                sawExpectedNegativeCashRemove,
                 sawExpectedTargetEquipRemove,
                 sawExpectedTargetCashRemove);
         }
@@ -381,6 +427,7 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryValidateCharacterAddEntrySourceEvidence(
             EquipmentChangeRequest request,
             CharacterInventoryOperationContext operationContext,
+            byte matchedCharacterInventoryType,
             out string rejectReason)
         {
             rejectReason = null;
@@ -408,13 +455,19 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 case EquipmentChangeRequestKind.CharacterToCharacter:
                 case EquipmentChangeRequestKind.CharacterToInventory:
-                    if (operationContext.SawNegativeEquipRemove && !operationContext.SawExpectedNegativeEquipRemove)
+                    bool sawExpectedNegativeRemove = matchedCharacterInventoryType switch
+                    {
+                        ClientEquipInventoryType => operationContext.SawExpectedNegativeEquipRemove,
+                        ClientCashInventoryType => operationContext.SawExpectedNegativeCashRemove,
+                        _ => operationContext.SawExpectedNegativeEquipRemove || operationContext.SawExpectedNegativeCashRemove
+                    };
+                    if (operationContext.SawNegativeEquipRemove && !sawExpectedNegativeRemove)
                     {
                         rejectReason = "Inventory-operation add entry did not include removal from the requested character source slot.";
                         return false;
                     }
 
-                    if (!operationContext.SawExpectedNegativeEquipRemove)
+                    if (!sawExpectedNegativeRemove)
                     {
                         rejectReason = "Inventory-operation add entry is missing source-slot removal for the requested character equipment operation.";
                         return false;
@@ -425,6 +478,32 @@ namespace HaCreator.MapSimulator.UI
                     rejectReason = "Unsupported character equipment request kind for add-entry source validation.";
                     return false;
             }
+        }
+
+        private static bool TryCaptureMatchedCharacterInventoryType(
+            byte inventoryType,
+            ref byte matchedCharacterInventoryType,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (!IsSupportedClientCharacterInventoryType(inventoryType))
+            {
+                return true;
+            }
+
+            if (matchedCharacterInventoryType == 0)
+            {
+                matchedCharacterInventoryType = inventoryType;
+                return true;
+            }
+
+            if (matchedCharacterInventoryType == inventoryType)
+            {
+                return true;
+            }
+
+            rejectReason = "Inventory-operation payload mixed equip and cash character inventory owners while resolving one active request.";
+            return false;
         }
 
         private static bool TryMatchesExpectedCharacterDisplacedAdd(

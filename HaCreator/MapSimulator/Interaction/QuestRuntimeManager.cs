@@ -327,6 +327,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndPetRecallLimit { get; init; }
             public int? EndPetTamenessMinimum { get; init; }
             public int? EndPetTamenessMaximum { get; init; }
+            public int EndMorphTemplateId { get; init; }
             public int? EndInfoNumber { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> EndInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> EndInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
@@ -406,6 +407,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Func<int, string> _mapNameProvider;
         private Func<int, IReadOnlyList<int>> _mobMapIdsProvider;
         private Func<int, IReadOnlyList<int>> _npcMapIdsProvider;
+        private Func<int> _currentMorphTemplateIdProvider;
         private bool _definitionsLoaded;
         private const long QuestAlarmRecentUpdateWindowMs = 8000;
         private const long QuestAlarmAutoRegisterActiveWindowMs = 10L * 60L * 1000L;
@@ -772,13 +774,15 @@ namespace HaCreator.MapSimulator.Interaction
             Func<int> currentMapIdProvider,
             Func<int, string> mapNameProvider,
             Func<int, IReadOnlyList<int>> mobMapIdsProvider = null,
-            Func<int, IReadOnlyList<int>> npcMapIdsProvider = null)
+            Func<int, IReadOnlyList<int>> npcMapIdsProvider = null,
+            Func<int> currentMorphTemplateIdProvider = null)
         {
             _applyQuestBuffItem = applyQuestBuffItem;
             _currentMapIdProvider = currentMapIdProvider;
             _mapNameProvider = mapNameProvider;
             _mobMapIdsProvider = mobMapIdsProvider;
             _npcMapIdsProvider = npcMapIdsProvider;
+            _currentMorphTemplateIdProvider = currentMorphTemplateIdProvider;
         }
 
         public void SetPacketOwnedAutoStartQuestRegistration(int questId, bool registered)
@@ -943,6 +947,13 @@ namespace HaCreator.MapSimulator.Interaction
                 "complete");
             AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+            if (HasUnmetCompletionMorphDemand(
+                    definition.EndMorphTemplateId,
+                    ResolveCurrentMorphTemplateIdForCompletionDemand(_currentMorphTemplateIdProvider)))
+            {
+                issues.Add($"Morph demand requires template {definition.EndMorphTemplateId}.");
+            }
+
             if (build == null &&
                 HasUnresolvedCompletionBuildContextDemand(
                     definition.MinLevel,
@@ -972,6 +983,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return issues.Count > 0;
+        }
+
+        internal static int ResolveCurrentMorphTemplateIdForCompletionDemand(Func<int> currentMorphTemplateIdProvider)
+        {
+            return Math.Max(0, currentMorphTemplateIdProvider?.Invoke() ?? 0);
+        }
+
+        internal static bool HasUnmetCompletionMorphDemand(int requiredMorphTemplateId, int currentMorphTemplateId)
+        {
+            return requiredMorphTemplateId > 0
+                   && currentMorphTemplateId != requiredMorphTemplateId;
         }
 
         internal static bool HasUnresolvedCompletionBuildContextDemand(
@@ -2150,28 +2172,23 @@ namespace HaCreator.MapSimulator.Interaction
             var seen = new HashSet<int>();
             var resolvedMapIds = new List<int>();
             QuestDemandItemMapResultSource source = QuestDemandItemMapResultSource.None;
-            bool hasSingleVisibleDemandItem = definition.EndItemRequirements
-                .Count(requirement => requirement != null && !requirement.IsSecret && requirement.ItemId > 0) == 1;
-            bool hasSingleDemandMob = definition.EndMobRequirements
-                .Count(requirement => requirement != null && requirement.MobId > 0) == 1;
-
-            if (hasSingleVisibleDemandItem || hasSingleDemandMob)
+            // Client evidence (`CUIQuestInfoDetail::OnButtonClicked`) seeds world-map quest demand mobs
+            // before dispatching the demand-item query packet. Mirror that by always preferring
+            // demand-mob candidate maps in the local fallback seam, then falling back to NPC/current field.
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
             {
-                for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                if (requirement == null || requirement.MobId <= 0)
                 {
-                    QuestMobRequirement requirement = definition.EndMobRequirements[i];
-                    if (requirement == null || requirement.MobId <= 0)
-                    {
-                        continue;
-                    }
-
-                    AppendUniqueMapIds(resolvedMapIds, seen, _mobMapIdsProvider?.Invoke(requirement.MobId));
+                    continue;
                 }
 
-                if (resolvedMapIds.Count > 0)
-                {
-                    source = QuestDemandItemMapResultSource.WzMobDemand;
-                }
+                AppendUniqueMapIds(resolvedMapIds, seen, _mobMapIdsProvider?.Invoke(requirement.MobId));
+            }
+
+            if (resolvedMapIds.Count > 0)
+            {
+                source = QuestDemandItemMapResultSource.WzMobDemand;
             }
 
             if (resolvedMapIds.Count == 0)
@@ -4406,7 +4423,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (state == QuestStateType.Started &&
                 !isCompletionNpc &&
-                TryGetStopPages(stopPages, "npc", out IReadOnlyList<NpcInteractionPage> npcPages))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> npcPages, "npc", "npcid"))
             {
                 return npcPages;
             }
@@ -4426,7 +4443,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (hasMissingItems &&
-                TryGetStopPages(stopPages, "item", out IReadOnlyList<NpcInteractionPage> itemPages))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> itemPages, "item", "items"))
             {
                 return itemPages;
             }
@@ -4448,7 +4465,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return mobPages;
                 }
 
-                if (TryGetStopPages(stopPages, "monster", out IReadOnlyList<NpcInteractionPage> monsterPages))
+                if (TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> monsterPages, "monster", "monsters"))
                 {
                     return monsterPages;
                 }
@@ -4461,44 +4478,57 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (hasUnmetQuestRequirements &&
-                TryGetStopPages(stopPages, "quest", out IReadOnlyList<NpcInteractionPage> questPages))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> questPages, "quest", "questid"))
             {
                 return questPages;
             }
 
             if (state == QuestStateType.Not_Started &&
                 hasUnmetJobRequirement &&
-                TryGetStopPages(stopPages, "job", out IReadOnlyList<NpcInteractionPage> jobPages))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> jobPages, "job", "jobid"))
             {
                 return jobPages;
             }
 
             if (hasUnmetQuestRecordRequirements &&
-                TryGetStopPages(stopPages, "info", out IReadOnlyList<NpcInteractionPage> blockedInfoPages))
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> blockedInfoPages,
+                    "info",
+                    "record",
+                    "questrecord"))
             {
                 return blockedInfoPages;
             }
 
             if (hasUnmetLevelRequirement &&
-                TryGetStopPages(stopPages, "lv", out IReadOnlyList<NpcInteractionPage> levelPages))
-            {
-                return levelPages;
-            }
-
-            if (hasUnmetLevelRequirement &&
-                TryGetStopPages(stopPages, "level", out levelPages))
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> levelPages,
+                    "lv",
+                    "level",
+                    "lvmin",
+                    "minlevel",
+                    "levelmin",
+                    "lvmax",
+                    "maxlevel",
+                    "levelmax"))
             {
                 return levelPages;
             }
 
             if (hasUnmetFameRequirement &&
-                TryGetStopPages(stopPages, "pop", out IReadOnlyList<NpcInteractionPage> famePages))
-            {
-                return famePages;
-            }
-
-            if (hasUnmetFameRequirement &&
-                TryGetStopPages(stopPages, "fame", out famePages))
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> famePages,
+                    "pop",
+                    "fame",
+                    "popmin",
+                    "minfame",
+                    "famemin",
+                    "popmax",
+                    "maxfame",
+                    "famemax"))
             {
                 return famePages;
             }
@@ -4516,37 +4546,25 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (hasUnmetMesoRequirement &&
-                TryGetStopPages(stopPages, "money", out IReadOnlyList<NpcInteractionPage> mesoPages))
-            {
-                return mesoPages;
-            }
-
-            if (hasUnmetMesoRequirement &&
-                TryGetStopPages(stopPages, "meso", out mesoPages))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> mesoPages, "money", "meso", "mesos"))
             {
                 return mesoPages;
             }
 
             if (hasUnmetAvailabilityRequirement &&
-                TryGetStopPages(stopPages, "day", out IReadOnlyList<NpcInteractionPage> dayPages))
-            {
-                return dayPages;
-            }
-
-            if (hasUnmetAvailabilityRequirement &&
-                TryGetStopPages(stopPages, "date", out IReadOnlyList<NpcInteractionPage> datePages))
-            {
-                return datePages;
-            }
-
-            if (hasUnmetAvailabilityRequirement &&
-                TryGetStopPages(stopPages, "time", out IReadOnlyList<NpcInteractionPage> timePages))
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> timePages,
+                    "day",
+                    "date",
+                    "time",
+                    "weekday"))
             {
                 return timePages;
             }
 
             if (hasUnmetEquipRequirement &&
-                TryGetStopPages(stopPages, "equip", out IReadOnlyList<NpcInteractionPage> equipPages))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> equipPages, "equip", "equipment"))
             {
                 return equipPages;
             }
@@ -5575,6 +5593,13 @@ namespace HaCreator.MapSimulator.Interaction
                 "complete");
             AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+            if (HasUnmetCompletionMorphDemand(
+                    definition.EndMorphTemplateId,
+                    ResolveCurrentMorphTemplateIdForCompletionDemand(_currentMorphTemplateIdProvider)))
+            {
+                issues.Add($"Morph demand requires template {definition.EndMorphTemplateId}.");
+            }
+
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(
                 definition.EndActions.RewardItems,
                 build,
@@ -7924,6 +7949,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
                 EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
+                EndMorphTemplateId = ParsePositiveInt(endCheck?["morph"]).GetValueOrDefault(),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndInfoRequirements = ParseQuestRecordTextRequirements(endCheck?["info"]),
                 EndInfoExRequirements = ParseQuestRecordValueRequirements(endCheck?["infoex"]),
@@ -10928,6 +10954,40 @@ namespace HaCreator.MapSimulator.Interaction
             if (stopPages != null && stopPages.TryGetValue(key, out pages) && pages?.Count > 0)
             {
                 return true;
+            }
+
+            if (stopPages != null && !string.IsNullOrWhiteSpace(key))
+            {
+                string normalizedKey = NormalizeConversationMetadataKey(key);
+                foreach ((string branchKey, IReadOnlyList<NpcInteractionPage> branchPages) in stopPages)
+                {
+                    if (branchPages?.Count > 0 &&
+                        NormalizeConversationMetadataKey(branchKey) == normalizedKey)
+                    {
+                        pages = branchPages;
+                        return true;
+                    }
+                }
+            }
+
+            pages = Array.Empty<NpcInteractionPage>();
+            return false;
+        }
+
+        private static bool TryGetStopPagesByAliases(
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
+            out IReadOnlyList<NpcInteractionPage> pages,
+            params string[] keys)
+        {
+            if (keys != null)
+            {
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    if (TryGetStopPages(stopPages, keys[i], out pages))
+                    {
+                        return true;
+                    }
+                }
             }
 
             pages = Array.Empty<NpcInteractionPage>();

@@ -1366,7 +1366,7 @@ namespace HaCreator.MapSimulator
             {
                 string normalizedQuestionText = NormalizePacketOwnedQuizText(questionText);
                 return (
-                    string.IsNullOrWhiteSpace(normalizedQuestionText)
+                    normalizedQuestionText.Length == 0
                         ? $"Packet-authored quiz question {category}-{problemId} has no `q` text; cleared the StatusBar notice text and kept the 30s timer path."
                         : $"Packet-authored quiz question {category}-{problemId}: {normalizedQuestionText}",
                     normalizedQuestionText,
@@ -1395,7 +1395,7 @@ namespace HaCreator.MapSimulator
             }
 
             string answerMarker = $"{answerPrefix}{answerBody}]";
-            return string.IsNullOrWhiteSpace(normalizedDetailText)
+            return normalizedDetailText.Length == 0
                 ? answerMarker
                 : $"{normalizedDetailText} {answerMarker}";
         }
@@ -1425,15 +1425,14 @@ namespace HaCreator.MapSimulator
 
         private static string NormalizePacketOwnedQuizText(string value)
         {
-            if (string.IsNullOrWhiteSpace(value))
+            if (value == null)
             {
                 return string.Empty;
             }
 
             return value
                 .Replace("\r\n", "\n", StringComparison.Ordinal)
-                .Replace('\r', '\n')
-                .Trim();
+                .Replace('\r', '\n');
         }
 
         private void DrawPacketOwnedQuizNotice(int currentTickCount)

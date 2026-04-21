@@ -669,12 +669,6 @@ namespace HaCreator.MapSimulator.Fields
             MapInfo mapInfo,
             FieldEntryRestrictionContext? context)
         {
-            string preflightRestrictionMessage = GetMapTransferRegisterPreflightRestrictionMessage(mapId);
-            if (!string.IsNullOrWhiteSpace(preflightRestrictionMessage))
-            {
-                return MapTransferRuntimePacketResultCode.CannotSaveDestination;
-            }
-
             if (mapInfo == null)
             {
                 return null;

@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator.Interaction
         private GuildMarkSelection? _packetGuildMarkSelection;
         private int _packetGuildPoints;
         private int _packetGuildLevel;
+        private int _packetGuildId;
         private readonly List<GuildRankingSeedEntry> _packetGuildRankingEntries = [];
         private GuildDialogPendingRequest? _pendingGuildDialogRequest;
         private int _guildDialogMesoBalance = 10_000_000;
@@ -110,6 +111,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _packetGuildMarkSelection = null;
                     _packetGuildPoints = 0;
                     _packetGuildLevel = 0;
+                    _packetGuildId = 0;
                 }
             }
 
@@ -323,6 +325,11 @@ namespace HaCreator.MapSimulator.Interaction
                 hasGuildMembership && GuildSkillRuntime.HasGuildMembership(normalizedGuildName),
                 normalizedGuildName,
                 Math.Max(0, guildLevel));
+            if (!_packetGuildUiState.Value.HasGuildMembership)
+            {
+                _packetGuildId = 0;
+            }
+
             _packetGuildUiRevision = AdvanceGuildDialogRevision(_packetGuildUiRevision);
             TryFinalizePendingGuildDialogRequestFromPacket();
             return _packetGuildUiState.Value.HasGuildMembership
@@ -333,6 +340,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string ClearPacketGuildUiContext()
         {
             _packetGuildUiState = null;
+            _packetGuildId = 0;
             return "Guild UI returned to the local build seam.";
         }
 
@@ -443,6 +451,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildPointsAndLevel(int guildPoints, int guildLevel, int guildId)
         {
+            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            {
+                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+            }
+
+            RememberPacketGuildId(guildId);
             _packetGuildPoints = Math.Max(0, guildPoints);
             _packetGuildLevel = Math.Max(0, guildLevel);
             _packetGuildPointsAndLevelRevision = AdvanceGuildDialogRevision(_packetGuildPointsAndLevelRevision);
@@ -467,6 +481,11 @@ namespace HaCreator.MapSimulator.Interaction
                     ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildBoardAuthKey}) cleared the guild-board auth key."
                     : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildBoardAuthKey}) refreshed the guild-board auth key.";
             return _lastPacketSyncSummaryByTab[SocialListTab.Guild];
+        }
+
+        internal int? GetEffectivePacketGuildId()
+        {
+            return _packetGuildId > 0 ? _packetGuildId : null;
         }
 
         internal string SubmitLocalGuildMarkSelection(GuildMarkSelection selection)
@@ -982,6 +1001,20 @@ namespace HaCreator.MapSimulator.Interaction
             bool canManage = localAllianceEntry.IsLeader || CanManageAllianceByRole(roleLabel);
             authority = new PacketAllianceAuthorityState(roleLabel, canManage, canManage);
             return true;
+        }
+
+        private bool ShouldIgnoreGuildScopedResult(int guildId, out int activeGuildId)
+        {
+            activeGuildId = _packetGuildId;
+            return guildId > 0 && activeGuildId > 0 && guildId != activeGuildId;
+        }
+
+        private void RememberPacketGuildId(int guildId)
+        {
+            if (guildId > 0)
+            {
+                _packetGuildId = guildId;
+            }
         }
 
         private static bool CanManageGuildByRole(string role)

@@ -164,7 +164,7 @@ namespace HaCreator.MapSimulator.Interaction
                     BuildClientGuildQuestQueueNoticeSummary(packet)),
                 SocialListClientGuildResultKind.GuildBoardAuthKey => SetPacketGuildBoardAuthKey(packet.GuildBoardAuthKey),
                 SocialListClientGuildResultKind.SkillRecord when packet.GuildSkillRecord.HasValue =>
-                    $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) decoded guild-skill record {packet.GuildSkillRecord.Value.SkillId} for guild {packet.GuildId}.",
+                    BuildClientGuildSkillRecordSummary(packet),
                 SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildResultNoticeSummary(packet)),
@@ -172,6 +172,17 @@ namespace HaCreator.MapSimulator.Interaction
                     SocialListTab.Guild,
                     BuildClientGuildResultFallbackNoticeSummary(packet))
             };
+        }
+
+        private string BuildClientGuildSkillRecordSummary(SocialListClientGuildResultPacket packet)
+        {
+            if (ShouldIgnoreGuildScopedResult(packet.GuildId, out int activeGuildId))
+            {
+                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) for guild {packet.GuildId} because the active packet-owned guild context is {activeGuildId}.";
+            }
+
+            RememberPacketGuildId(packet.GuildId);
+            return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) decoded guild-skill record {packet.GuildSkillRecord!.Value.SkillId} for guild {packet.GuildId}.";
         }
 
         private static string BuildClientGuildResultNoticeSummary(SocialListClientGuildResultPacket packet)

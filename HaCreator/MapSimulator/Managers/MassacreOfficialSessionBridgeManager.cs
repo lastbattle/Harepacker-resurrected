@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int CurrentWrapperRelayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
         private const int PacketTypeIncGauge = 173;
         private const int PacketTypeResult = 174;
+        private const int MaxNestedRelayDepth = 8;
         private const int MaxRecentInboundPackets = 32;
         private const string DiscoverCommandUsage = "/massacre session discover <remotePort> [processName|pid] [localPort]";
         private const string AttachCommandUsage = "/massacre session attach <remotePort> [processName|pid] [localPort]";
@@ -805,44 +807,38 @@ namespace HaCreator.MapSimulator.Managers
             out MassacrePacketInboxMessage message)
         {
             message = null;
-            payload ??= Array.Empty<byte>();
-            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                    payload,
-                    out int firstRelayPacketType,
-                    out byte[] firstRelayPayload,
-                    out _))
+            byte[] relayPayload = payload ?? Array.Empty<byte>();
+            for (int depth = 0; depth < MaxNestedRelayDepth; depth++)
             {
-                return false;
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        relayPayload,
+                        out int relayPacketType,
+                        out byte[] nestedPayload,
+                        out _))
+                {
+                    return false;
+                }
+
+                if (TryBuildNestedRelayMessage(
+                        relayPacketType,
+                        nestedPayload,
+                        source,
+                        rawPacket,
+                        mappedInboundOpcodes,
+                        out message))
+                {
+                    return true;
+                }
+
+                if (relayPacketType != CurrentWrapperRelayOpcode)
+                {
+                    return false;
+                }
+
+                relayPayload = nestedPayload ?? Array.Empty<byte>();
             }
 
-            if (TryBuildNestedRelayMessage(
-                    firstRelayPacketType,
-                    firstRelayPayload,
-                    source,
-                    rawPacket,
-                    mappedInboundOpcodes,
-                    out message))
-            {
-                return true;
-            }
-
-            if (firstRelayPacketType != CurrentWrapperRelayOpcode
-                || !SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                    firstRelayPayload,
-                    out int secondRelayPacketType,
-                    out byte[] secondRelayPayload,
-                    out _))
-            {
-                return false;
-            }
-
-            return TryBuildNestedRelayMessage(
-                secondRelayPacketType,
-                secondRelayPayload,
-                source,
-                rawPacket,
-                mappedInboundOpcodes,
-                out message);
+            return false;
         }
 
         private static bool TryBuildNestedRelayMessage(
@@ -920,7 +916,7 @@ namespace HaCreator.MapSimulator.Managers
                 _ => mappedKind
             };
             int stageValue = mappedKind == MassacrePacketInboxMessageKind.Stage
-                ? BitConverter.ToInt32(payload, 0)
+                ? BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)))
                 : 0;
 
             message = new MassacrePacketInboxMessage(

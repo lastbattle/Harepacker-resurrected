@@ -41,7 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (activeMountedRenderOwner?.Slot == EquipSlot.TamingMob
-                && CharacterAssembler.SupportsTamingMobAction(activeMountedRenderOwner, actionName))
+                && SupportsMountedOwnershipAction(activeMountedRenderOwner, actionName))
             {
                 return ResolveMountedActionOwnerItemId(
                     activeMountedRenderOwner.ItemId,
@@ -50,7 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (tamingMobPart?.Slot == EquipSlot.TamingMob
-                && CharacterAssembler.SupportsTamingMobAction(tamingMobPart, actionName))
+                && SupportsMountedOwnershipAction(tamingMobPart, actionName))
             {
                 return ResolveMountedActionOwnerItemId(
                     tamingMobPart.ItemId,
@@ -140,6 +140,65 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return candidateMountedVehicleId;
+        }
+
+        private static bool SupportsMountedOwnershipAction(CharacterPart tamingMobPart, string actionName)
+        {
+            if (tamingMobPart?.Slot != EquipSlot.TamingMob || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (!ShouldRequireExactPublishedActionForOwnership(tamingMobPart.ItemId, actionName))
+            {
+                return CharacterAssembler.SupportsTamingMobAction(tamingMobPart, actionName);
+            }
+
+            return HasPublishedExactTamingMobAction(tamingMobPart, actionName);
+        }
+
+        private static bool ShouldRequireExactPublishedActionForOwnership(int mountItemId, string actionName)
+        {
+            // Keep `sit` out client-owned mounted owner inference when the mount family does not
+            // publish a dedicated `sit` root in WZ. This still allows explicit `sit` ownership
+            // if an exact `sit` animation exists on the mounted asset.
+            return ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleMountOwnerItemId(mountItemId)
+                   && string.Equals(actionName, "sit", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool HasPublishedExactTamingMobAction(CharacterPart tamingMobPart, string actionName)
+        {
+            if (tamingMobPart?.Type != CharacterPartType.TamingMob || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (tamingMobPart.Animations.TryGetValue(actionName, out CharacterAnimation animation)
+                && animation?.Frames?.Count > 0)
+            {
+                return true;
+            }
+
+            if (tamingMobPart.AvailableAnimations != null
+                && tamingMobPart.AvailableAnimations.Count > 0
+                && !tamingMobPart.AvailableAnimations.Contains(actionName))
+            {
+                return false;
+            }
+
+            if (tamingMobPart.AnimationResolver == null)
+            {
+                return false;
+            }
+
+            animation = tamingMobPart.AnimationResolver(actionName);
+            if (animation?.Frames?.Count > 0)
+            {
+                tamingMobPart.Animations[actionName] = animation;
+                return true;
+            }
+
+            return false;
         }
     }
 }

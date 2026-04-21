@@ -662,6 +662,7 @@ namespace HaCreator.MapSimulator
         private const int SKILL_COOLDOWN_BLOCKED_MESSAGE_COOLDOWN_MS = 600;
         private const int REMOTE_PLAYER_PICKUP_INTERVAL_MS = 220;
         private const int REMOTE_PET_PICKUP_INTERVAL_MS = 260;
+        private const int DEFAULT_MOB_PICKUP_INTERVAL_MS = 1200;
         private const int PICKUP_REMOTE_NOTICE_SUPPRESSION_MS = 900;
         private const string SkillCooldownNoticeSoundKey = "SkillCooldownNotice";
         private const string LoginEntryGameInSoundKey = "LoginEntryGameIn";
@@ -730,6 +731,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _lastSkillCooldownBlockedMessageTimes = new();
         private readonly Dictionary<int, int> _lastRemotePlayerPickupTimes = new();
         private readonly Dictionary<long, int> _lastRemotePetPickupTimes = new();
+        private readonly Dictionary<int, int> _lastMobPickupTimes = new();
         private readonly Dictionary<long, int> _recentPickupRemoteNoticeTimes = new();
         private int _simulatorWorldId = DefaultSimulatorWorldId;
         private int _simulatorChannelIndex = DefaultSimulatorChannelIndex;
@@ -973,6 +975,11 @@ namespace HaCreator.MapSimulator
             return npcId > 0 && _questNpcMapIdsByNpcId.TryGetValue(npcId, out IReadOnlyList<int> mapIds)
                 ? mapIds
                 : Array.Empty<int>();
+        }
+
+        private int ResolveCurrentMorphTemplateIdForQuestDemand()
+        {
+            return Math.Max(0, _playerManager?.Player?.GetActiveMorphTemplateIdForQuestDemand() ?? 0);
         }
 
         private void EnsureQuestWorldMapEntityIndex()
@@ -1443,7 +1450,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string mapTransferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            string mapTransferRestrictionMessage = GetCurrentMapTransferRestrictionMessage();
             if (!string.IsNullOrWhiteSpace(mapTransferRestrictionMessage))
             {
                 ShowFieldRestrictionMessage(mapTransferRestrictionMessage);
@@ -1626,11 +1633,8 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
-                targetMapId,
-                ResolveMapTransferDestinationMapInfo(targetMapId),
-                BuildFieldEntryRestrictionContext());
-            if (!string.IsNullOrWhiteSpace(registrationRestriction))
+            string registrationPreflightRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegisterPreflightRestrictionMessage(targetMapId);
+            if (!string.IsNullOrWhiteSpace(registrationPreflightRestriction))
             {
                 _chat.AddMessage(MapTransferClientParityText.ResolveCannotSaveDestinationNotice(), new Color(255, 228, 151), Environment.TickCount);
                 RefreshMapTransferWindow();
@@ -1836,7 +1840,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string mapTransferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            string mapTransferRestrictionMessage = GetCurrentMapTransferRestrictionMessage();
             if (!string.IsNullOrWhiteSpace(mapTransferRestrictionMessage))
             {
                 ShowFieldRestrictionMessage(mapTransferRestrictionMessage);
@@ -1871,7 +1875,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string mapTransferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            string mapTransferRestrictionMessage = GetCurrentMapTransferRestrictionMessage();
             if (!string.IsNullOrWhiteSpace(mapTransferRestrictionMessage))
             {
                 ShowFieldRestrictionMessage(mapTransferRestrictionMessage);
@@ -2098,7 +2102,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            string restrictionMessage = GetCurrentMapTransferRestrictionMessage();
             if (!string.IsNullOrWhiteSpace(restrictionMessage))
             {
                 return restrictionMessage;
@@ -2168,6 +2172,14 @@ namespace HaCreator.MapSimulator
             }
 
             return null;
+        }
+
+        private string GetCurrentMapTransferRestrictionMessage()
+        {
+            var currentMapInfo = _mapBoard?.MapInfo;
+            return FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(
+                currentMapInfo?.fieldLimit ?? 0,
+                currentMapInfo);
         }
 
         private string GetMapTransferEntryRestrictionMessage(int targetMapId)
@@ -6211,6 +6223,56 @@ namespace HaCreator.MapSimulator
 
             using var _ = skills.BeginClientCancelBatchScope();
             skills.ReleaseActiveKeydownSkill(currentTime);
+        }
+
+        private void RequestStatusBarBuffCancelForClientCancelIngress(int skillId, int currentTime)
+        {
+            var skills = _playerManager?.Skills;
+            if (skills == null)
+            {
+                return;
+            }
+
+            TryExecuteStatusBarBuffCancelForClientCancelIngress(
+                skillId,
+                currentTime,
+                () => skills.BeginClientCancelBatchScope(),
+                tickCount => skills.ReleaseActiveKeydownSkill(tickCount),
+                (cancelSkillId, tickCount) => skills.RequestClientSkillCancel(cancelSkillId, tickCount, enforceFieldCancelRestrictions: true));
+        }
+
+        private static bool TryExecuteStatusBarBuffCancelForClientCancelIngress(
+            int skillId,
+            int currentTime,
+            Func<IDisposable> beginClientCancelBatchScope,
+            Action<int> releaseActiveKeydownSkill,
+            Func<int, int, bool> requestClientSkillCancel)
+        {
+            if (beginClientCancelBatchScope == null
+                || releaseActiveKeydownSkill == null
+                || requestClientSkillCancel == null)
+            {
+                return false;
+            }
+
+            using var _ = beginClientCancelBatchScope();
+            releaseActiveKeydownSkill(currentTime);
+            return requestClientSkillCancel(skillId, currentTime);
+        }
+
+        internal static bool TryExecuteStatusBarBuffCancelForClientCancelIngressForTests(
+            int skillId,
+            int currentTime,
+            Func<IDisposable> beginClientCancelBatchScope,
+            Action<int> releaseActiveKeydownSkill,
+            Func<int, int, bool> requestClientSkillCancel)
+        {
+            return TryExecuteStatusBarBuffCancelForClientCancelIngress(
+                skillId,
+                currentTime,
+                beginClientCancelBatchScope,
+                releaseActiveKeydownSkill,
+                requestClientSkillCancel);
         }
 
         private bool TryRejectOnlyPickupInventoryUse(int itemId, InventoryType inventoryType, int currentTime)
@@ -18732,6 +18794,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            RegisterMobDropPickupAbility(mob);
+
 
             ApplyRespawnedMobState(mob);
 
@@ -19900,6 +19964,7 @@ namespace HaCreator.MapSimulator
             // Update drop pool for physics and expiration (frame-rate independent)
 
             _dropPool?.Update(tickCount, deltaSecondsLocal);
+            UpdateMobDropPickups(tickCount);
             UpdateRemotePlayerDropPickups(tickCount);
             UpdateRemotePetDropPickups(tickCount);
 
@@ -19926,6 +19991,90 @@ namespace HaCreator.MapSimulator
             _pickupNoticeUI?.Update(tickCount, deltaSecondsLocal);
             _skillCooldownNoticeUI?.Update(tickCount, deltaSecondsLocal);
         }
+
+        private void UpdateMobDropPickups(int currentTime)
+        {
+            if (_dropPool == null || _mobPool == null || _mobPool.ActiveMobCount == 0)
+            {
+                return;
+            }
+
+            foreach (MobItem mob in _mobPool.ActiveMobs)
+            {
+                if (!TryResolveMobPickupTemplateId(mob, out int mobTemplateId))
+                {
+                    continue;
+                }
+
+                int pickupIntervalMs = ResolveMobDropPickupIntervalMs(
+                    ResolveMobDropItemPeriodSecondsForPickup(mob));
+                if (_lastMobPickupTimes.TryGetValue(mob.PoolId, out int lastPickupTime)
+                    && currentTime - lastPickupTime < pickupIntervalMs)
+                {
+                    continue;
+                }
+
+                DropItem pickedDrop = _dropPool.TryPickUpDropByMob(
+                    mobTemplateId,
+                    mob.CurrentX,
+                    mob.CurrentY,
+                    currentTime);
+                if (pickedDrop != null)
+                {
+                    _lastMobPickupTimes[mob.PoolId] = currentTime;
+                }
+            }
+        }
+
+        private void RegisterMobDropPickupAbility(MobItem mob)
+        {
+            if (_dropPool == null || !TryResolveMobPickupTemplateId(mob, out int mobTemplateId))
+            {
+                return;
+            }
+
+            if (ShouldEnableMobDropPickupProducer(ResolveMobDropItemPeriodSecondsForPickup(mob)))
+            {
+                _dropPool.RegisterMobWithPickupAbility(mobTemplateId);
+            }
+        }
+
+        internal static bool ShouldEnableMobDropPickupProducer(int dropItemPeriodSeconds)
+        {
+            return dropItemPeriodSeconds > 0;
+        }
+
+        internal static int ResolveMobDropPickupIntervalMs(int dropItemPeriodSeconds)
+        {
+            return dropItemPeriodSeconds > 0
+                ? Math.Clamp(dropItemPeriodSeconds, 1, 60) * 1000
+                : DEFAULT_MOB_PICKUP_INTERVAL_MS;
+        }
+
+        private static bool TryResolveMobPickupTemplateId(MobItem mob, out int mobTemplateId)
+        {
+            mobTemplateId = 0;
+            return mob?.AI?.IsDead == false
+                && int.TryParse(mob.MobInstance?.MobInfo?.ID, NumberStyles.Integer, CultureInfo.InvariantCulture, out mobTemplateId)
+                && mobTemplateId > 0;
+        }
+
+        private static int ResolveMobDropItemPeriodSecondsForPickup(MobItem mob)
+        {
+            WzImage mobImage = mob?.MobInstance?.MobInfo?.LinkedWzImage;
+            if (mobImage == null)
+            {
+                return 0;
+            }
+
+            if (!mobImage.Parsed)
+            {
+                mobImage.ParseImage();
+            }
+
+            return Math.Max(0, GetWzIntValue(mobImage["info"]?["dropItemPeriod"]));
+        }
+
         private void UpdateRemotePlayerDropPickups(int currentTime)
         {
             if (_dropPool == null || _remoteUserPool.Count == 0)
@@ -20260,7 +20409,8 @@ namespace HaCreator.MapSimulator
                                skill.SkillId,
                                runtimeData,
                                currentTick,
-                               sourceMob.CurrentX)
+                               sourceMob.CurrentX,
+                               recastLeadTimeMs: Math.Max(1000, Math.Max(skill.SkillAfter, skill.EffectAfter)))
                            ?? false);
             }
 
@@ -20342,12 +20492,13 @@ namespace HaCreator.MapSimulator
                 _playerManager.PlayMobSkillHitEffect(skill.SkillId, skill.Level, currentTick);
             }
 
-            if (applied &&
-                runtimeData.DurationMs > 0 &&
-                PlayerSkillBlockingStatusMapper.TryMapMobSkill(skill.SkillId, out PlayerSkillBlockingStatus status))
+            if (applied)
             {
-                _playerManager.Player.ApplySkillBlockingStatus(status, runtimeData.DurationMs, currentTick);
-                applied = true;
+                _playerManager.TryApplyMobSkillBlockingStatus(
+                    skill.SkillId,
+                    skill.Level,
+                    runtimeData,
+                    currentTick);
             }
 
 
@@ -22815,7 +22966,10 @@ namespace HaCreator.MapSimulator
 
             if (closestSlotIndex < 0)
             {
-                return false;
+                resolvedSlotIndex = slotIndex < RemotePetPickupPredictedSlotCount
+                    ? slotIndex
+                    : RemotePetPickupPredictedSlotCount - 1;
+                return resolvedSlotIndex >= 0;
             }
 
             resolvedSlotIndex = closestSlotIndex;
@@ -24681,7 +24835,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryQueueConsumableMapTransfer(int targetMapId)
         {
-            string transferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            string transferRestrictionMessage = GetCurrentMapTransferRestrictionMessage();
             if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
             {
                 ShowFieldRestrictionMessage(transferRestrictionMessage);
@@ -27916,6 +28070,7 @@ namespace HaCreator.MapSimulator
 
                 bool allowLocalPreview = ShouldAllowLocalCoconutAttackPreview(
                     _coconutOfficialSessionBridge.HasConnectedSession,
+                    _coconutOfficialSessionBridge.HasAttachedClient,
                     _coconutOfficialSessionBridge.HasPassiveEstablishedSocketPair,
                     _coconutPacketInbox.HasConnectedClients);
                 if (coconut.TryHandleNormalAttack(worldHitbox, currentTick, skillId: skillId, allowLocalPreview: allowLocalPreview))
@@ -27950,10 +28105,12 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldAllowLocalCoconutAttackPreview(
             bool officialSessionBridgeHasConnectedSession,
+            bool officialSessionBridgeHasAttachedClient,
             bool officialSessionBridgeHasPassiveEstablishedSocketPair,
             bool transportHasConnectedClients)
         {
             return !officialSessionBridgeHasConnectedSession
+                && !officialSessionBridgeHasAttachedClient
                 && !officialSessionBridgeHasPassiveEstablishedSocketPair
                 && !transportHasConnectedClients;
         }
@@ -28502,16 +28659,14 @@ namespace HaCreator.MapSimulator
 
         private static bool IsClientMagicLaneExplicitAreaDurationFallbackSkillId(int skillId)
         {
-            // IDA: explicit TryDoingMagicAttack local area-owner branch keeps a fixed 3-second fallback
-            // on this narrowed family when authored duration resolves to zero.
+            // IDA: TryDoingMagicAttack explicit area-owner duration fallback branch only keeps
+            // 12111003/2121007/2221007/2321008/32121004 on the tDuration assignment path when
+            // authored duration resolves to zero; neighboring explicit owners dispatch separate
+            // presentation-only branches.
             return skillId == 12111003
-                   || skillId == 12111005
                    || skillId == 2121007
-                   || skillId == 2221001
                    || skillId == 2221007
                    || skillId == 2321008
-                   || skillId == 22161001
-                   || skillId == 22181002
                    || skillId == 32121004;
         }
 
@@ -29919,13 +30074,15 @@ namespace HaCreator.MapSimulator
             PlayerCharacter player = _playerManager?.Player;
             bool hasActiveOneTimeAction = HasActivePassiveTransferFieldOneTimeAction(player);
             bool hasLiveFieldInterface = HasPassiveTransferFieldInterface();
+            PassiveTransferFieldInterfaceGateState interfaceGateState =
+                ResolvePassiveTransferFieldInterfaceGateState(currentTime, hasLiveFieldInterface);
             bool hasCollidingTransferPortal = HasPassiveTransferFieldPortalCollision();
             return PassiveTransferFieldReadinessEvaluator.EvaluateQueuedRetryDecision(
                 new PassiveTransferFieldQueuedRetryDecisionState(
                     HasPendingRequest: _passiveTransferRequestPending,
                     HasOneTimeActionCompleted: !hasActiveOneTimeAction,
                     HasReadyFieldInterface: !hasActiveOneTimeAction
-                                            && ResolvePassiveTransferFieldQueuedRetryInterfaceGateState(currentTime),
+                                            && ResolvePassiveTransferFieldQueuedRetryInterfaceGateState(interfaceGateState),
                     HasCollidingTransferPortal: hasCollidingTransferPortal,
                     HasLiveFieldInterface: hasLiveFieldInterface,
                     HasPendingMapChange: _gameState.PendingMapChange,
@@ -29933,29 +30090,17 @@ namespace HaCreator.MapSimulator
                     IsPlayerActive: _playerManager?.IsPlayerActive == true));
         }
 
-        private bool ResolvePassiveTransferFieldQueuedRetryInterfaceGateState(int currentTime)
+        private bool ResolvePassiveTransferFieldQueuedRetryInterfaceGateState(PassiveTransferFieldInterfaceGateState interfaceGateState)
         {
-            return PassiveTransferFieldReadinessEvaluator.CanAdmitQueuedRetryInterfaceGate(
-                new PassiveTransferFieldInterfaceGateState(
-                    HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
-                    HasPendingMapChange: _gameState.PendingMapChange,
-                    HasPlayerInputControl: _gameState.IsPlayerInputEnabled,
-                    HasStandAloneControlOwner: _gameState.StandAloneModeActive,
-                    AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
-                    HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
-                    HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
-                    HasPacketOwnedTeleportRegistrationCoolingDown: IsPacketOwnedTeleportRegistrationCoolingDown(currentTime),
-                    HasPendingExclusiveTransferRequest: HasPendingExclusiveTransferRequest(currentTime),
-                    HasAttachedPacketOwnedDriver: _localFollowRuntime.HasAttachedDriver,
-                    HasPendingSameMapTransfer: _sameMapTeleportPending,
-                    HasBlockingScriptedSequence: _specialFieldRuntime.HasBlockingScriptedSequence));
+            return PassiveTransferFieldReadinessEvaluator.CanAdmitQueuedRetryInterfaceGate(interfaceGateState);
         }
 
         private bool ResolvePassiveTransferFieldReadyState(int currentTime, bool requirePortalCollision = true)
         {
+            bool hasLiveFieldInterface = HasPassiveTransferFieldInterface();
             return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
                 new PassiveTransferFieldInterfaceState(
-                    HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
+                    HasLiveFieldInterface: hasLiveFieldInterface,
                     HasCollidingTransferPortal: !requirePortalCollision || HasPassiveTransferFieldPortalCollision(),
                     HasActiveVectorControl: _playerManager?.IsPlayerActive == true,
                     HasPendingMapChange: _gameState.PendingMapChange,
@@ -29969,6 +30114,25 @@ namespace HaCreator.MapSimulator
                     HasAttachedPacketOwnedDriver: _localFollowRuntime.HasAttachedDriver,
                     HasPendingSameMapTransfer: _sameMapTeleportPending,
                     HasBlockingScriptedSequence: _specialFieldRuntime.HasBlockingScriptedSequence));
+        }
+
+        private PassiveTransferFieldInterfaceGateState ResolvePassiveTransferFieldInterfaceGateState(
+            int currentTime,
+            bool? hasLiveFieldInterfaceOverride = null)
+        {
+            return new PassiveTransferFieldInterfaceGateState(
+                HasLiveFieldInterface: hasLiveFieldInterfaceOverride ?? HasPassiveTransferFieldInterface(),
+                HasPendingMapChange: _gameState.PendingMapChange,
+                HasPlayerInputControl: _gameState.IsPlayerInputEnabled,
+                HasStandAloneControlOwner: _gameState.StandAloneModeActive,
+                AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
+                HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
+                HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
+                HasPacketOwnedTeleportRegistrationCoolingDown: IsPacketOwnedTeleportRegistrationCoolingDown(currentTime),
+                HasPendingExclusiveTransferRequest: HasPendingExclusiveTransferRequest(currentTime),
+                HasAttachedPacketOwnedDriver: _localFollowRuntime.HasAttachedDriver,
+                HasPendingSameMapTransfer: _sameMapTeleportPending,
+                HasBlockingScriptedSequence: _specialFieldRuntime.HasBlockingScriptedSequence);
         }
 
         private bool HasPendingExclusiveTransferRequest(int currentTime)
@@ -31547,6 +31711,7 @@ namespace HaCreator.MapSimulator
             // Initialize drop pool for item/meso drops
             _dropPool = new DropPool();
             _dropPool.Initialize();
+            _lastMobPickupTimes.Clear();
             ApplyMesoAnimationsToDropPool();
             _dropPool.SetPickupAvailabilityEvaluator(EvaluatePickupAvailability);
             _dropPool.SetPetPickupAvailabilityEvaluator(EvaluatePetPickupAvailability);
@@ -31583,6 +31748,11 @@ namespace HaCreator.MapSimulator
 
 
             _dropPool.SetOnMobPickedUp(HandleDropPickedUpByMob);
+
+            for (int i = 0; i < _mobsArray.Length; i++)
+            {
+                RegisterMobDropPickupAbility(_mobsArray[i]);
+            }
 
 
 
@@ -32843,6 +33013,7 @@ namespace HaCreator.MapSimulator
             _playerManager.SetCurrentMapIdProvider(() => _mapBoard?.MapInfo?.id ?? -1);
             _playerManager.SetCurrentMapInfoProvider(() => _mapBoard?.MapInfo);
             _playerManager.SetDragonQuestInfoStateProvider(() => _questRuntime.GetDragonQuestInfoState(_playerManager?.Player?.Build));
+            _playerManager.SetDragonOwnerPhaseContextProvider(ResolveDragonOwnerPhaseContextParity);
             _playerManager.SetReactorAttackAreaHandler((worldHitbox, currentTick, skillId, damage) =>
             {
                 TriggerAttackReactors(worldHitbox, currentTick, skillId, damage);
@@ -33749,7 +33920,8 @@ namespace HaCreator.MapSimulator
                 () => _mapBoard?.MapInfo?.id ?? 0,
                 mapId => ResolveMapTransferDisplayName(mapId, null),
                 ResolveQuestMobMapIds,
-                ResolveQuestNpcMapIds);
+                ResolveQuestNpcMapIds,
+                ResolveCurrentMorphTemplateIdForQuestDemand);
 
 
 
@@ -36955,7 +37127,11 @@ namespace HaCreator.MapSimulator
 
 
                 SkillData skill = _playerManager.SkillLoader.LoadSkill(skillId);
-                if (!_playerManager.Skills.TryGetCooldownUiState(skillId, currentTime, out var cooldownState)
+                if (!_playerManager.Skills.TryGetCooldownUiState(
+                        skillId,
+                        currentTime,
+                        SkillManager.CooldownMaskSurface.StatusBarShortcutTray,
+                        out var cooldownState)
                     || !cooldownState.DisplayInCooldownUi)
                 {
                     continue;
@@ -37057,7 +37233,11 @@ namespace HaCreator.MapSimulator
 
 
                 SkillData skill = _playerManager.Skills.GetSkillData(skillId);
-                if (!_playerManager.Skills.TryGetCooldownUiState(skillId, currentTime, out var cooldownState)
+                if (!_playerManager.Skills.TryGetCooldownUiState(
+                        skillId,
+                        currentTime,
+                        SkillManager.CooldownMaskSurface.StatusBarOffBarTray,
+                        out var cooldownState)
                     || !cooldownState.DisplayInCooldownUi)
                 {
                     continue;
@@ -39604,6 +39784,7 @@ namespace HaCreator.MapSimulator
         private void DrainMemoryGamePacketInbox(int currentTickCount)
         {
             MemoryGameField field = _specialFieldRuntime.Minigames.MemoryGame;
+            field.SetOfficialClientRelayEnabled(_memoryGameOfficialSessionBridge.IsRunning || _memoryGameOfficialSessionBridge.HasConnectedSession);
             while (_memoryGamePacketInbox.TryDequeue(out MemoryGamePacketInboxMessage message))
             {
                 if (message == null)
@@ -39615,7 +39796,7 @@ namespace HaCreator.MapSimulator
                 bool applyClientMirror = !string.IsNullOrWhiteSpace(message.RawText)
                     && message.RawText.StartsWith("packetclientraw", StringComparison.OrdinalIgnoreCase);
                 bool applied = applyClientMirror
-                    ? field.TryDispatchOfficialClientPacket(message.Payload, currentTickCount, out string resultMessage, enforcePromptFlow: true)
+                    ? field.TryDispatchOfficialClientPacket(message.Payload, currentTickCount, out string resultMessage, enforcePromptFlow: true, relayOutboundTransport: true)
                     : field.TryDispatchMiniRoomPacket(message.Payload, currentTickCount, out resultMessage);
                 _memoryGamePacketInbox.RecordDispatchResult(
                     message.Source,
@@ -39640,7 +39821,7 @@ namespace HaCreator.MapSimulator
                     && bridgeMessage.RawText.StartsWith("packetclientraw", StringComparison.OrdinalIgnoreCase);
                 string bridgeResultMessage;
                 bool applied = applyClientMirror
-                    ? field.TryDispatchOfficialClientPacket(bridgeMessage.Payload, currentTickCount, out bridgeResultMessage, enforcePromptFlow: true)
+                    ? field.TryDispatchOfficialClientPacket(bridgeMessage.Payload, currentTickCount, out bridgeResultMessage, enforcePromptFlow: true, relayOutboundTransport: false)
                     : field.TryDispatchMiniRoomPacket(bridgeMessage.Payload, currentTickCount, out bridgeResultMessage);
                 _memoryGameOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
@@ -39652,6 +39833,11 @@ namespace HaCreator.MapSimulator
                 {
                     ShowMiniRoomWindow();
                 }
+            }
+
+            while (field.TryDequeuePendingOfficialClientRequest(out byte[] outboundPayload))
+            {
+                _memoryGameOfficialSessionBridge.TrySendOrQueueClientMiniRoomRequest(outboundPayload, out _, out _);
             }
         }
 
@@ -40448,7 +40634,7 @@ namespace HaCreator.MapSimulator
                 bool applied = TryApplyMassacreInboxMessage(field, bridgeMessage, currentTickCount, out string bridgeResultMessage);
                 _massacreOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
-                    bridgeMessage.PacketType,
+                    bridgeMessage,
                     applied,
                     applied ? field.DescribeStatus() : bridgeResultMessage);
             }

@@ -619,6 +619,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             LastSubtype = 24;
             _deliveryCount++;
+            _arrivalNoticeCount++;
+            _lastArrivalNotices.Add(PacketOwnedSocialUtilityStringPoolText.ResolveParcelDeliveryNotice());
             StatusMessage = $"CParcelDlg packet 24 decoded PARCEL::Decode payload serial {entry.ParcelSerial.ToString(CultureInfo.InvariantCulture)} from {entry.Sender}.";
             message = StatusMessage;
             return true;
@@ -1241,6 +1243,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (ownerRowIndex >= 0 && ownerRowIndex < byte.MaxValue)
+            {
+                trunkRow = unchecked((byte)(ownerRowIndex + 1));
+                return true;
+            }
+
             trunkRow = 0;
             return false;
         }
@@ -1252,6 +1260,12 @@ namespace HaCreator.MapSimulator.Interaction
                 && clientPositionToken <= short.MaxValue)
             {
                 inventoryPosition = unchecked((short)clientPositionToken);
+                return true;
+            }
+
+            if (inventoryRowIndex >= 0 && inventoryRowIndex < short.MaxValue)
+            {
+                inventoryPosition = unchecked((short)(inventoryRowIndex + 1));
                 return true;
             }
 

@@ -3870,6 +3870,7 @@ namespace HaCreator.MapSimulator.Interaction
                     lines.Add($"SetBattleDamageInfo averages: attrRate={_averageAttrRate.ToString(CultureInfo.InvariantCulture)}, damage/hit={_averageDamagePerHit.ToString(CultureInfo.InvariantCulture)}, damage/sec={_averageDamagePerSecond.ToString(CultureInfo.InvariantCulture)}, hit/sec={_averageHitPerSecond.ToString("0.##", CultureInfo.InvariantCulture)}");
                     lines.Add($"SetBattleRecoveryInfo totals: HP req/apply={_recoveryTotalHpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryTotalHpIncApply.ToString(CultureInfo.InvariantCulture)}, MP req/apply={_recoveryTotalMpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryTotalMpIncApply.ToString(CultureInfo.InvariantCulture)}");
                     lines.Add($"SetBattleRecoveryInfo item usage: total={_recoveryTotalUseItem.ToString(CultureInfo.InvariantCulture)} (hp={_recoveryTotalUseHpItem.ToString(CultureInfo.InvariantCulture)}, mp={_recoveryTotalUseMpItem.ToString(CultureInfo.InvariantCulture)}, hp+mp={_recoveryTotalUseHpMpItem.ToString(CultureInfo.InvariantCulture)}), merit HP/MP={_recoveryMeritRateHp.ToString(CultureInfo.InvariantCulture)}/{_recoveryMeritRateMp.ToString(CultureInfo.InvariantCulture)}%, forecast/hour={_recoveryForecastUsePerHour.ToString(CultureInfo.InvariantCulture)}");
+                    lines.Add($"SetBattleRecoveryInfo averages: HP req/apply={_recoveryAverageHpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryAverageHpIncApply.ToString(CultureInfo.InvariantCulture)}, MP req/apply={_recoveryAverageMpIncReq.ToString(CultureInfo.InvariantCulture)}/{_recoveryAverageMpIncApply.ToString(CultureInfo.InvariantCulture)}, merit HP/MP={_recoveryAverageMeritRateHp.ToString(CultureInfo.InvariantCulture)}/{_recoveryAverageMeritRateMp.ToString(CultureInfo.InvariantCulture)}%");
                     if (_directCriticalCount > 0)
                     {
                         lines.Add($"Direct critical bounds: min={FormatDamage(_directMinCriticalDamage)}, max={FormatDamage(_directMaxCriticalDamage)}");
@@ -4146,13 +4147,6 @@ namespace HaCreator.MapSimulator.Interaction
         private void IncrementRecoveryUseItemCounters(bool hasHpRecovery, bool hasMpRecovery, int currentTickCount)
         {
             uint nowTick = unchecked((uint)currentTickCount);
-            if (_recoveryLastUseItemTick != 0)
-            {
-                uint elapsedTick = unchecked(nowTick - _recoveryLastUseItemTick);
-                _recoveryTotalUseItemSeconds += elapsedTick / 1000d;
-            }
-
-            _recoveryLastUseItemTick = nowTick;
             _recoveryTotalUseItem++;
             if (hasHpRecovery && hasMpRecovery)
             {
@@ -4213,12 +4207,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             uint elapsedTick = unchecked(nowTick - _recoveryLastUseItemTick);
-            if (elapsedTick == 0 || _recoveryTotalUseItem <= 0)
+            if (_recoveryTotalUseItem <= 0)
             {
+                _recoveryLastUseItemTick = nowTick;
                 return;
             }
 
-            _recoveryTotalUseItemSeconds += elapsedTick / 1000d;
+            if (elapsedTick > 0)
+            {
+                _recoveryTotalUseItemSeconds += elapsedTick / 1000d;
+            }
+
             if (_recoveryTotalUseItemSeconds > 0d)
             {
                 _recoveryForecastUsePerHour = (int)((_recoveryTotalUseItem / _recoveryTotalUseItemSeconds) * 3600d);

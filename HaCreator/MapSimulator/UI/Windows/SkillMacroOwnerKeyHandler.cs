@@ -119,6 +119,14 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                    key,
+                    imeCompositionActive,
+                    imeCandidateWindowActive))
+            {
+                return false;
+            }
+
             return key switch
             {
                 Keys.Back => false,
@@ -132,9 +140,20 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        internal static bool ShouldForwardClientOwnedNonFunctionKeyUpToParent(Keys key)
+        internal static bool ShouldForwardClientOwnedNonFunctionKeyUpToParent(
+            Keys key,
+            bool imeCompositionActive,
+            bool imeCandidateWindowActive)
         {
-            return !TryGetClientForwardedFunctionKeyIndex(key, out _);
+            if (TryGetClientForwardedFunctionKeyIndex(key, out _))
+            {
+                return false;
+            }
+
+            return !ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+                key,
+                imeCompositionActive,
+                imeCandidateWindowActive);
         }
 
         internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)

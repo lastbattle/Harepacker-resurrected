@@ -156,6 +156,10 @@ namespace HaCreator.MapSimulator.UI
             public string RewardSessionSummary { get; init; } = string.Empty;
             public bool HasPacketRewardSessionByte { get; init; }
             public int PacketRewardSessionByte { get; init; }
+            public int PacketPayloadLength { get; init; }
+            public int PacketDecodedByteLength { get; init; }
+            public int PacketTrailingByteCount { get; init; }
+            public string PacketTrailingPayloadHex { get; init; } = string.Empty;
             public string PacketStateSignature { get; init; } = string.Empty;
             public IReadOnlyList<HistoryEntryState> HistoryEntries { get; init; } = Array.Empty<HistoryEntryState>();
             public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
@@ -851,6 +855,19 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(rewardSessionSummary))
             {
                 DrawWrapped(sprite, rewardSessionSummary, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+            if (state.PacketPayloadLength > 0)
+            {
+                string trailingHex = string.IsNullOrWhiteSpace(state.PacketTrailingPayloadHex)
+                    ? "none"
+                    : state.PacketTrailingPayloadHex;
+                DrawWrapped(
+                    sprite,
+                    $"Packet395 payload {state.PacketPayloadLength.ToString(CultureInfo.InvariantCulture)}B / decoded {state.PacketDecodedByteLength.ToString(CultureInfo.InvariantCulture)}B / trailing {state.PacketTrailingByteCount.ToString(CultureInfo.InvariantCulture)}B ({trailingHex}).",
+                    Position.X + contentBounds.X + 12,
+                    ref lineY,
+                    contentBounds.Width - 24f,
+                    detailColor);
             }
 
             DrawWrapped(sprite, _oneADaySessionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);

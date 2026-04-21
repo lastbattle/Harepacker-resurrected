@@ -1178,6 +1178,11 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
+            if (TryDecodeMapleStringStatusText(payload, out string mapleStringText))
+            {
+                return mapleStringText;
+            }
+
             if (TryDecodeLengthPrefixedStatusText(payload, out string lengthPrefixedText))
             {
                 return lengthPrefixedText;
@@ -1208,6 +1213,65 @@ namespace HaCreator.MapSimulator
             }
 
             return Encoding.UTF8.GetString(payload).Trim();
+        }
+
+        private static bool TryDecodeMapleStringStatusText(ReadOnlySpan<byte> payload, out string statusText)
+        {
+            statusText = string.Empty;
+            if (payload.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            short lengthPrefix = BinaryPrimitives.ReadInt16LittleEndian(payload);
+            if (lengthPrefix >= 0)
+            {
+                int byteLength = lengthPrefix;
+                if (payload.Length < sizeof(short) + byteLength)
+                {
+                    return false;
+                }
+
+                ReadOnlySpan<byte> encodedText = payload.Slice(sizeof(short), byteLength);
+                ReadOnlySpan<byte> trailing = payload.Slice(sizeof(short) + byteLength);
+                if (!HasOnlyZeroPadding(trailing))
+                {
+                    return false;
+                }
+
+                statusText = Encoding.UTF8.GetString(encodedText).Trim();
+                return true;
+            }
+
+            int charLength = -lengthPrefix;
+            int byteCount = charLength * sizeof(char);
+            if (payload.Length < sizeof(short) + byteCount)
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> utf16Payload = payload.Slice(sizeof(short), byteCount);
+            ReadOnlySpan<byte> utf16Trailing = payload.Slice(sizeof(short) + byteCount);
+            if (!HasOnlyZeroPadding(utf16Trailing))
+            {
+                return false;
+            }
+
+            statusText = Encoding.Unicode.GetString(utf16Payload).Trim();
+            return true;
+        }
+
+        private static bool HasOnlyZeroPadding(ReadOnlySpan<byte> payload)
+        {
+            for (int i = 0; i < payload.Length; i++)
+            {
+                if (payload[i] != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool TryDecodeLengthPrefixedStatusText(ReadOnlySpan<byte> payload, out string statusText)
@@ -1327,7 +1391,29 @@ namespace HaCreator.MapSimulator
 
             origin = tooltipFrameOrigins[frameIndex];
             size = tooltipFrameSizes[frameIndex];
-            return origin != Point.Zero && size.X > 0 && size.Y > 0;
+            if (size.X <= 0 || size.Y <= 0)
+            {
+                return false;
+            }
+
+            if (origin == Point.Zero)
+            {
+                origin = ResolveFallbackTooltipOrigin(frameIndex, size);
+            }
+
+            return true;
+        }
+
+        private static Point ResolveFallbackTooltipOrigin(int frameIndex, Point frameSize)
+        {
+            int width = Math.Max(1, frameSize.X);
+            int height = Math.Max(1, frameSize.Y);
+            return frameIndex switch
+            {
+                0 => new Point(width - 1, height - 1),
+                2 => new Point(width - 1, 0),
+                _ => new Point(0, height - 1)
+            };
         }
 
         private static Rectangle CreateTooltipRectFromFrameOrigin(

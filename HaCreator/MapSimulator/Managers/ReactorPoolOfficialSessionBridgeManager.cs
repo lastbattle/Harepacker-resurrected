@@ -538,7 +538,6 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
                     LastStatus = $"Reactor official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    FlushQueuedTouchRequests(pair, Environment.TickCount);
                     pair.ClientSession.WaitForData();
                     return;
                 }

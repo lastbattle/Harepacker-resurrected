@@ -49,6 +49,11 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0F9E] = "The message was successfully sent.",
             [0x0F9F] = "The waiting line is longer than an hour. \r\nPlease try using it at a later time.",
             [0x0FA0] = "You've entered the wrong user name.",
+            // Recovered from MapleStory.exe v95 `CUILogoutGift::OnCreate`.
+            // The logout-gift owner binds `CCtrlButton::CreateWnd` through StringPool id 0x146
+            // (`paramButton.sUOL`) for `UI/Login.img/CharSelect/BtSelect`, so pin it here
+            // because generated-table ordering in this workspace resolves 0x146 incorrectly.
+            [0x0146] = "UI/Login.img/CharSelect/BtSelect",
             // Recovered from MapleStory.exe v95 `CAvatarMegaphone::OnCreate`.
             // The owner chooses id 0x0FB0 or 0x0FB1 from measured sender-name width
             // before resolving the name-tag canvas through the resource manager.
@@ -628,14 +633,15 @@ namespace HaCreator.MapSimulator.Interaction
             int searchStart = 0;
             while (tokenIndex < maxPlaceholderCount)
             {
-                int markerIndex = FindNextPrintfPlaceholder(format, searchStart);
-                if (markerIndex < 0)
+                if (!TryFindNextPrintfPlaceholder(format, searchStart, out int markerIndex, out int markerLength, out string numericFormat))
                 {
                     break;
                 }
 
-                string replacement = $"{{{tokenIndex}}}";
-                format = format.Remove(markerIndex, 2).Insert(markerIndex, replacement);
+                string replacement = string.IsNullOrEmpty(numericFormat)
+                    ? $"{{{tokenIndex}}}"
+                    : $"{{{tokenIndex}:{numericFormat}}}";
+                format = format.Remove(markerIndex, markerLength).Insert(markerIndex, replacement);
                 searchStart = markerIndex + replacement.Length;
                 tokenIndex++;
             }
@@ -643,22 +649,69 @@ namespace HaCreator.MapSimulator.Interaction
             return format;
         }
 
-        private static int FindNextPrintfPlaceholder(string format, int searchStart)
+        private static bool TryFindNextPrintfPlaceholder(
+            string format,
+            int searchStart,
+            out int markerIndex,
+            out int markerLength,
+            out string numericFormat)
         {
-            int stringIndex = format.IndexOf("%s", searchStart, StringComparison.Ordinal);
-            int digitIndex = format.IndexOf("%d", searchStart, StringComparison.Ordinal);
+            markerIndex = -1;
+            markerLength = 0;
+            numericFormat = null;
 
-            if (stringIndex < 0)
+            for (int i = Math.Max(0, searchStart); i < format.Length - 1; i++)
             {
-                return digitIndex;
+                if (format[i] != '%')
+                {
+                    continue;
+                }
+
+                int cursor = i + 1;
+                if (format[cursor] == '%')
+                {
+                    i = cursor;
+                    continue;
+                }
+
+                bool zeroPad = false;
+                if (format[cursor] == '0')
+                {
+                    zeroPad = true;
+                    cursor++;
+                }
+
+                int width = 0;
+                bool hasWidth = false;
+                while (cursor < format.Length && char.IsDigit(format[cursor]))
+                {
+                    hasWidth = true;
+                    width = (width * 10) + (format[cursor] - '0');
+                    cursor++;
+                }
+
+                if (cursor >= format.Length)
+                {
+                    continue;
+                }
+
+                char specifier = format[cursor];
+                if (specifier != 'd' && specifier != 's')
+                {
+                    continue;
+                }
+
+                markerIndex = i;
+                markerLength = (cursor - i) + 1;
+                if (specifier == 'd' && zeroPad && hasWidth && width > 0)
+                {
+                    numericFormat = $"D{width}";
+                }
+
+                return true;
             }
 
-            if (digitIndex < 0)
-            {
-                return stringIndex;
-            }
-
-            return Math.Min(stringIndex, digitIndex);
+            return false;
         }
     }
 }

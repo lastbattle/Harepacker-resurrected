@@ -341,7 +341,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             byte normalizedAction = (byte)(packetAction & 0x7F);
             if (normalizedAction == PacketSkillActionSubsummon)
             {
-                return HasAuthoredSummonOwnedPacketSkillBranch(skill, normalizedAction)
+                return HasAuthoredSummonOwnedPacketSkillBranch(
+                        skill,
+                        normalizedAction,
+                        allowMissingSummonMinionCue: true)
                     ? SummonAssistType.SummonAction
                     : currentAssistType;
             }
@@ -365,16 +368,41 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (normalizedAction >= PacketSkillActionSkillBranchMin
                 && normalizedAction <= PacketSkillActionSkillBranchMax)
             {
-                if (HasMinionAbilityToken(skill.MinionAbility, "summon"))
+                bool hasSummonMinionCue = HasMinionAbilityToken(skill.MinionAbility, "summon");
+                bool hasSupportMinionCue = HasSupportOwnedMinionAbilityCue(skill);
+                bool hasExplicitSummonCue = HasExplicitSummonOwnedPacketSkillBranch(skill, normalizedAction);
+                bool hasExplicitSupportCue = HasExplicitSupportOwnedPacketSkillBranch(skill, normalizedAction);
+
+                if (hasSummonMinionCue)
                 {
-                    return HasAuthoredSummonOwnedPacketSkillBranch(skill, normalizedAction)
+                    return HasAuthoredSummonOwnedPacketSkillBranch(
+                            skill,
+                            normalizedAction,
+                            allowMissingSummonMinionCue: false)
                         ? SummonAssistType.SummonAction
                         : currentAssistType;
                 }
 
-                if (HasMinionAbilityToken(skill.MinionAbility, "heal")
-                    || HasMinionAbilityToken(skill.MinionAbility, "mes")
-                    || HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage"))
+                if (hasSupportMinionCue)
+                {
+                    return HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction)
+                        ? SummonAssistType.Support
+                        : currentAssistType;
+                }
+
+                // When minionAbility does not disambiguate indexed skill actions, keep
+                // ownership deterministic only when authored branches expose a single family.
+                if (hasExplicitSummonCue && !hasExplicitSupportCue)
+                {
+                    return HasAuthoredSummonOwnedPacketSkillBranch(
+                            skill,
+                            normalizedAction,
+                            allowMissingSummonMinionCue: true)
+                        ? SummonAssistType.SummonAction
+                        : currentAssistType;
+                }
+
+                if (hasExplicitSupportCue && !hasExplicitSummonCue)
                 {
                     return HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction)
                         ? SummonAssistType.Support
@@ -402,13 +430,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     // Client action `14` is the subsummon family. Do not flip ownership
                     // unless the authored subsummon branch exists.
-                    return HasAuthoredSummonOwnedPacketSkillBranch(skill, normalizedAction);
+                    return HasAuthoredSummonOwnedPacketSkillBranch(
+                        skill,
+                        normalizedAction,
+                        allowMissingSummonMinionCue: true);
                 }
 
                 if (normalizedAction >= PacketSkillActionSkillBranchMin
                     && normalizedAction <= PacketSkillActionSkillBranchMax)
                 {
-                    return HasAuthoredSummonOwnedPacketSkillBranch(skill, normalizedAction);
+                    bool hasSummonOwnershipCue = HasMinionAbilityToken(skill.MinionAbility, "summon")
+                        || HasExplicitSummonOwnedPacketSkillBranch(skill, normalizedAction);
+                    return hasSummonOwnershipCue
+                           && HasAuthoredSummonOwnedPacketSkillBranch(
+                               skill,
+                               normalizedAction,
+                               allowMissingSummonMinionCue: true);
                 }
             }
             else if (assistType == SummonAssistType.Support)
@@ -438,7 +475,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                     && normalizedAction <= PacketSkillActionSkillBranchMax)
                 {
                     bool hasSupportMinionCue = HasSupportOwnedMinionAbilityCue(skill);
-                    if (!hasSupportMinionCue && skill.SkillId != BeholderSummonSkillId)
+                    bool hasExplicitSupportCue = HasExplicitSupportOwnedPacketSkillBranch(skill, normalizedAction);
+                    if (!hasSupportMinionCue
+                        && !hasExplicitSupportCue
+                        && skill.SkillId != BeholderSummonSkillId)
                     {
                         return false;
                     }
@@ -450,7 +490,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             return !string.IsNullOrWhiteSpace(ResolvePacketSkillBranch(skill, normalizedAction, assistType));
         }
 
-        private static bool HasAuthoredSummonOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
+        private static bool HasAuthoredSummonOwnedPacketSkillBranch(
+            SkillData skill,
+            byte normalizedAction,
+            bool allowMissingSummonMinionCue)
         {
             if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
             {
@@ -464,7 +507,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (normalizedAction < PacketSkillActionSkillBranchMin
                 || normalizedAction > PacketSkillActionSkillBranchMax
-                || !HasMinionAbilityToken(skill.MinionAbility, "summon"))
+                || (!allowMissingSummonMinionCue
+                    && !HasMinionAbilityToken(skill.MinionAbility, "summon")))
             {
                 return false;
             }
@@ -544,7 +588,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "heal", "support"));
             }
 
+            if (normalizedAction >= PacketSkillActionSkillBranchMin
+                && normalizedAction <= PacketSkillActionSkillBranchMax)
+            {
+                return !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "heal", "support"));
+            }
+
             return false;
+        }
+
+        private static bool HasExplicitSummonOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return false;
+            }
+
+            if (normalizedAction == PacketSkillActionSubsummon)
+            {
+                return !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "subsummon"));
+            }
+
+            if (normalizedAction < PacketSkillActionSkillBranchMin
+                || normalizedAction > PacketSkillActionSkillBranchMax)
+            {
+                return false;
+            }
+
+            // Indexed actions expose an explicit summon-family cue only when `subsummon`
+            // exists as an authored branch candidate.
+            return (normalizedAction == 1 || normalizedAction == 2)
+                && !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "subsummon"));
         }
 
         public static string ResolvePacketAttackBranch(SkillData skill, byte packetAction)

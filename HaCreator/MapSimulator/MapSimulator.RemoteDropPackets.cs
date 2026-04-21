@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator
         private int _remoteDropPacketServerClockFieldId;
         private readonly System.Collections.Generic.Dictionary<int, int> _observedDropPartyActorParents = new();
         private readonly System.Collections.Generic.HashSet<int> _observedDropPartyAnchorActorIds = new();
+        private readonly System.Collections.Generic.Dictionary<int, int> _observedDropPartyActorOwners = new();
         private readonly Dictionary<int, Vector2> _observedRemotePetPickupActorPositions = new();
         private readonly Dictionary<int, Vector2> _predictedRemotePetPickupActorPositions = new();
 
@@ -228,6 +229,7 @@ namespace HaCreator.MapSimulator
             {
                 _dropPool?.ClearPacketDrops();
                 ClearObservedDropPartyActorLinks();
+                ClearObservedDropPartyActorOwners();
                 ClearObservedRemotePetPickupActorPositions();
                 ClearPredictedRemotePetPickupActorPositions();
                 if (ShouldClearRemoteDropPacketServerClockOnFieldBind(
@@ -557,6 +559,11 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            if (TryResolveObservedDropPartyActorOwner(actorId, out int observedOwnerId))
+            {
+                return observedOwnerId;
+            }
+
             return actorId;
         }
 
@@ -582,6 +589,33 @@ namespace HaCreator.MapSimulator
         {
             _observedDropPartyActorParents.Clear();
             _observedDropPartyAnchorActorIds.Clear();
+        }
+
+        private void RememberObservedDropPartyActorOwner(int actorId, int ownerCharacterId)
+        {
+            if (actorId == 0 || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            _observedDropPartyActorOwners[actorId] = ownerCharacterId;
+        }
+
+        private bool TryResolveObservedDropPartyActorOwner(int actorId, out int ownerCharacterId)
+        {
+            if (actorId != 0 && _observedDropPartyActorOwners.TryGetValue(actorId, out int observedOwnerId) && observedOwnerId > 0)
+            {
+                ownerCharacterId = observedOwnerId;
+                return true;
+            }
+
+            ownerCharacterId = 0;
+            return false;
+        }
+
+        private void ClearObservedDropPartyActorOwners()
+        {
+            _observedDropPartyActorOwners.Clear();
         }
 
         private void RememberObservedRemotePetPickupActorPosition(int petActorId, Vector2 position)
@@ -720,6 +754,7 @@ namespace HaCreator.MapSimulator
             }
 
             ForgetObservedDropPartyActor(actorId);
+            ForgetObservedDropPartyActorOwner(actorId);
             ForgetObservedRemotePetPickupOwner(actorId);
         }
 
@@ -731,6 +766,17 @@ namespace HaCreator.MapSimulator
             if (normalizedActorId != actorId)
             {
                 RemoveObservedDropPartyActor(_observedDropPartyActorParents, _observedDropPartyAnchorActorIds, normalizedActorId);
+            }
+        }
+
+        private void ForgetObservedDropPartyActorOwner(int actorId)
+        {
+            RemoveObservedDropPartyActorOwners(_observedDropPartyActorOwners, actorId);
+
+            int normalizedActorId = NormalizeDropPartyActorId(actorId, ResolveDropPartyActorOwnerId);
+            if (normalizedActorId != actorId)
+            {
+                RemoveObservedDropPartyActorOwners(_observedDropPartyActorOwners, normalizedActorId);
             }
         }
 
@@ -782,6 +828,26 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < actorIdsToRemove.Length; i++)
             {
                 observedPetActorPositions.Remove(actorIdsToRemove[i]);
+            }
+        }
+
+        internal static void RemoveObservedDropPartyActorOwners(
+            IDictionary<int, int> actorOwners,
+            int actorId)
+        {
+            if (actorOwners == null || actorId == 0)
+            {
+                return;
+            }
+
+            actorOwners.Remove(actorId);
+            int[] keysToRemove = actorOwners
+                .Where(entry => entry.Value == actorId)
+                .Select(entry => entry.Key)
+                .ToArray();
+            for (int i = 0; i < keysToRemove.Length; i++)
+            {
+                actorOwners.Remove(keysToRemove[i]);
             }
         }
 

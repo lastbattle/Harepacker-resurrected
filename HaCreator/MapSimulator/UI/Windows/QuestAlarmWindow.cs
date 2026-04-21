@@ -584,6 +584,18 @@ namespace HaCreator.MapSimulator.UI
             return _trackedQuestIds.Contains(questId);
         }
 
+        internal bool IsAutoRegisterEnabled()
+        {
+            EnsurePersistedStateLoaded();
+            return _autoTrackEnabled;
+        }
+
+        internal bool IsWindowMinimized()
+        {
+            EnsurePersistedStateLoaded();
+            return _isMinimized;
+        }
+
         internal bool CanTrackQuest(int questId)
         {
             if (questId <= 0)

@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Combat
             public MobAttackEntry Attack { get; set; }
             public MobTargetInfo TargetInfo { get; set; }
             public List<IDXObject> Frames { get; set; }
+            public Vector2 LaunchPoint { get; set; }
             public Vector2 PreviousPosition { get; set; }
             public Vector2 Position { get; set; }
             public Vector2 Velocity { get; set; }
@@ -444,6 +445,7 @@ namespace HaCreator.MapSimulator.Combat
                     Attack = attack,
                     TargetInfo = laneAssignment.TargetInfo?.Clone(),
                     Frames = mobItem.GetAttackProjectileFrames(attack.AnimationName),
+                    LaunchPoint = spawn,
                     PreviousPosition = spawn,
                     Position = spawn,
                     Velocity = direction * speed,
@@ -633,7 +635,7 @@ namespace HaCreator.MapSimulator.Combat
 
                 projectile.PreviousPosition = projectile.Position;
                 projectile.Position = ResolveProjectilePositionAtTime(
-                    projectile.PreviousPosition,
+                    projectile.LaunchPoint,
                     projectile.Target,
                     projectile.LaunchTime,
                     projectile.ExpireTime,

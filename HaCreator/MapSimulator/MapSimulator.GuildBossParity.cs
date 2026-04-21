@@ -37,6 +37,28 @@ namespace HaCreator.MapSimulator
             return !officialSessionBridgeHoldsOwnership;
         }
 
+        internal static bool ShouldKeepRunningGuildBossBridge(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int configuredListenPort,
+            string configuredRemoteHost,
+            int configuredRemotePort)
+        {
+            bool autoSelectListenPort = configuredListenPort <= 0;
+            int expectedListenPort = autoSelectListenPort
+                ? GuildBossOfficialSessionBridgeManager.DefaultListenPort
+                : configuredListenPort;
+            return GuildBossOfficialSessionBridgeManager.MatchesRequestedTargetConfiguration(
+                currentListenPort,
+                currentRemoteHost,
+                currentRemotePort,
+                expectedListenPort,
+                configuredRemoteHost,
+                configuredRemotePort,
+                ignoreListenPort: autoSelectListenPort);
+        }
+
         private bool HoldsGuildBossOfficialSessionBridgeOwnership()
         {
             return HasGuildBossOfficialSessionBridgeOwnership(
@@ -124,15 +146,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            int expectedListenPort = _guildBossOfficialSessionBridgeConfiguredListenPort <= 0
-                ? GuildBossOfficialSessionBridgeManager.DefaultListenPort
-                : _guildBossOfficialSessionBridgeConfiguredListenPort;
             if (_guildBossOfficialSessionBridge.IsRunning
-                && GuildBossOfficialSessionBridgeManager.MatchesTargetConfiguration(
+                && ShouldKeepRunningGuildBossBridge(
                     _guildBossOfficialSessionBridge.ListenPort,
                     _guildBossOfficialSessionBridge.RemoteHost,
                     _guildBossOfficialSessionBridge.RemotePort,
-                    expectedListenPort,
+                    _guildBossOfficialSessionBridgeConfiguredListenPort,
                     _guildBossOfficialSessionBridgeConfiguredRemoteHost,
                     _guildBossOfficialSessionBridgeConfiguredRemotePort))
             {

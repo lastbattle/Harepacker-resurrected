@@ -55,6 +55,9 @@ namespace HaCreator.MapSimulator.Companions
         internal const int ClientInventoryOperationPacketType = 28;
         internal const byte ClientEquipInventoryType = 1;
         internal const ushort ClientChangeSlotPositionCountAll = 0xFFFF;
+        private const byte ItemSlotTypeEquip = 1;
+        private const byte ItemSlotTypeBundle = 2;
+        private const byte ItemSlotTypePet = 3;
 
         private readonly record struct MechanicInventoryOperationContext(
             bool SawPositiveEquipRemove,
@@ -1484,26 +1487,27 @@ namespace HaCreator.MapSimulator.Companions
                 matchedByHeader = true;
             }
 
-            if (slotType is not 1 and not 2 and not 3)
+            if (TryConsumeClientInventoryOperationAddEntryBody(
+                    reader,
+                    slotType,
+                    itemId,
+                    hasCashSerial,
+                    out rejectReason))
             {
-                if (matchedByHeader)
-                {
-                    // Keep mechanic completion recoverable from the shared operation
-                    // header even when deeper GW_ItemSlotBase subtype decode is unknown.
-                    return true;
-                }
-
-                rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
-                return false;
+                return true;
             }
 
-            return slotType switch
+            if (matchedByHeader)
             {
-                1 => TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, out rejectReason),
-                2 => TryReadClientInventoryOperationBundleBody(reader, itemId, out rejectReason),
-                3 => TryReadClientInventoryOperationPetBody(reader, out rejectReason),
-                _ => FailUnsupportedItemSlotType(slotType, out rejectReason)
-            };
+                // CWvsContext::OnInventoryOperation first commits the shared mode-0
+                // header mutation and then descends into GW_ItemSlotBase::Decode.
+                // Preserve completion ownership when the header already proves this
+                // request even if deep body decode is truncated or unsupported.
+                rejectReason = null;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryReadPassiveClientInventoryOperationAddEntry(
@@ -1550,25 +1554,47 @@ namespace HaCreator.MapSimulator.Companions
                 mutation = new MechanicInventoryOperationMutation(mechanicSlot, itemId);
             }
 
-            if (slotType is not 1 and not 2 and not 3)
+            if (TryConsumeClientInventoryOperationAddEntryBody(
+                    reader,
+                    slotType,
+                    itemId,
+                    hasCashSerial,
+                    out rejectReason))
             {
-                if (mutation.HasValue)
-                {
-                    // Preserve the recovered mechanic mutation from the shared add-entry
-                    // header and stop scanning because subtype body length is unknown.
-                    terminateAfterHeader = true;
-                    return true;
-                }
+                return true;
+            }
 
-                rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
+            if (mutation.HasValue)
+            {
+                // Keep passive non-proxy ownership recoverable from the mode-0 header
+                // when the follow-up GW_ItemSlotBase body is unavailable.
+                terminateAfterHeader = true;
+                rejectReason = null;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryConsumeClientInventoryOperationAddEntryBody(
+            BinaryReader reader,
+            byte slotType,
+            int itemId,
+            bool hasCashSerial,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (reader == null)
+            {
+                rejectReason = "Inventory-operation add entry reader is unavailable.";
                 return false;
             }
 
             return slotType switch
             {
-                1 => TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, out rejectReason),
-                2 => TryReadClientInventoryOperationBundleBody(reader, itemId, out rejectReason),
-                3 => TryReadClientInventoryOperationPetBody(reader, out rejectReason),
+                ItemSlotTypeEquip => TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, out rejectReason),
+                ItemSlotTypeBundle => TryReadClientInventoryOperationBundleBody(reader, itemId, out rejectReason),
+                ItemSlotTypePet => TryReadClientInventoryOperationPetBody(reader, out rejectReason),
                 _ => FailUnsupportedItemSlotType(slotType, out rejectReason)
             };
         }

@@ -427,6 +427,7 @@ namespace HaCreator.MapSimulator
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
                     SourceTick = _lastPacketOwnedEventAlarmTick,
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPriorityPrimary,
                     SortOrder = nextSortOrder++
                 });
@@ -453,6 +454,7 @@ namespace HaCreator.MapSimulator
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
                     SourceTick = _lastEventOpenTick,
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPriorityPrimary,
                     SortOrder = nextSortOrder++
                 });
@@ -470,6 +472,7 @@ namespace HaCreator.MapSimulator
                     StatusText = _loginRuntime.HasWorldInformation ? "Clear" : "Running",
                     Status = _loginRuntime.HasWorldInformation ? EventEntryStatus.Clear : EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPriorityBootstrap,
                     SortOrder = nextSortOrder++
                 });
@@ -485,6 +488,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPriorityPrimary,
                     SortOrder = nextSortOrder++
                 });
@@ -500,6 +504,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPriorityPrimary,
                     SortOrder = nextSortOrder++
                 });
@@ -514,6 +519,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPriorityRuntime,
                     SortOrder = nextSortOrder++
                 });
@@ -528,6 +534,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPriorityRuntime,
                     SortOrder = nextSortOrder++
                 });
@@ -543,6 +550,7 @@ namespace HaCreator.MapSimulator
                     Status = EventEntryStatus.Clear,
                     ScheduledAt = DateTime.Today,
                     SourceTick = _lastClassCompetitionOpenTick,
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPrioritySecondary,
                     SortOrder = nextSortOrder++
                 });
@@ -563,6 +571,7 @@ namespace HaCreator.MapSimulator
                     Status = logoutGiftVisible ? EventEntryStatus.InProgress : EventEntryStatus.Clear,
                     ScheduledAt = DateTime.Today,
                     SourceTick = logoutGiftTick,
+                    IncludeInCalendar = false,
                     SortPriority = logoutGiftVisible ? EventEntrySortPriorityPrimary : EventEntrySortPrioritySecondary,
                     SortOrder = nextSortOrder++
                 });
@@ -580,6 +589,7 @@ namespace HaCreator.MapSimulator
                     StatusText = readyCount > 0 ? "Clear" : "Running",
                     Status = readyCount > 0 ? EventEntryStatus.Clear : EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    IncludeInCalendar = false,
                     SortPriority = readyCount > 0 ? EventEntrySortPrioritySecondary : EventEntrySortPriorityRuntime,
                     SortOrder = nextSortOrder++
                 });
@@ -595,6 +605,7 @@ namespace HaCreator.MapSimulator
                     Status = fieldEntry.Status,
                     ScheduledAt = fieldEntry.ScheduledAt,
                     SourceTick = fieldEntry.SourceTick,
+                    IncludeInCalendar = fieldEntry.IncludeInCalendar,
                     SortPriority = fieldEntry.SortPriority,
                     SortOrder = nextSortOrder++
                 });
@@ -609,6 +620,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Will",
                     Status = EventEntryStatus.Upcoming,
                     ScheduledAt = DateTime.Today.AddDays(1),
+                    IncludeInCalendar = false,
                     SortPriority = EventEntrySortPriorityFallback,
                     SortOrder = nextSortOrder++
                 });
@@ -649,6 +661,7 @@ namespace HaCreator.MapSimulator
                 Status = entry.Status,
                 ScheduledAt = entry.ScheduledAt.Date,
                 SourceTick = entry.SourceTick == int.MinValue ? defaultSourceTick : entry.SourceTick,
+                IncludeInCalendar = entry.IncludeInCalendar,
                 SortPriority = entry.SortPriority,
                 SortOrder = Math.Max(0, sortOrder)
             };
@@ -714,6 +727,7 @@ namespace HaCreator.MapSimulator
                 StatusText = "Running",
                 Status = EventEntryStatus.InProgress,
                 ScheduledAt = DateTime.Today,
+                IncludeInCalendar = false,
                 SortPriority = EventEntrySortPriorityRuntime
             };
         }
@@ -864,6 +878,7 @@ namespace HaCreator.MapSimulator
                 StatusText = statusText,
                 ScheduledAt = DateTime.Today,
                 SourceTick = sourceTick,
+                IncludeInCalendar = false,
                 SortPriority = status == EventEntryStatus.InProgress || status == EventEntryStatus.Start
                     ? EventEntrySortPriorityPrimary
                     : EventEntrySortPrioritySecondary

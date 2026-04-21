@@ -44,13 +44,13 @@ namespace HaCreator.MapSimulator.Managers
             @"byte\s*(?<index>\d+)\s*:\s*0x(?<observed>[0-9A-Fa-f]{1,2})\s*->\s*0x(?<rebuilt>[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex Sg88MismatchByteListAssignmentRegex = new(
-            @"[""']?(?<label>mismatchBytes|mismatchByteIndices|byteIndices)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^\s;\)]+)",
+            @"[""']?(?<label>mismatch[\s_\-]*bytes|mismatch[\s_\-]*byte[\s_\-]*indices|byte[\s_\-]*indices)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^\s;\)]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchSingleByteAssignmentRegex = new(
-            @"[""']?(?<label>mismatchByte|mismatchByteIndex|byteIndex)[""']?\s*[:=]\s*(?<value>[^\s;\),|]+)",
+            @"[""']?(?<label>mismatch[\s_\-]*byte|mismatch[\s_\-]*byte[\s_\-]*index|byte[\s_\-]*index)[""']?\s*[:=]\s*(?<value>[^\s;\),|]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchFieldListAssignmentRegex = new(
-            @"[""']?(?<label>mismatchFields|mismatchField|mismatchFieldNames|mismatchFieldName|fieldNames|fieldName|fields|field)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^;\)\r\n]+)",
+            @"[""']?(?<label>mismatch[\s_\-]*fields|mismatch[\s_\-]*field|mismatch[\s_\-]*field[\s_\-]*names|mismatch[\s_\-]*field[\s_\-]*name|field[\s_\-]*names|field[\s_\-]*name|fields|field)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^;\)\r\n]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MoveActionMismatchClassAssignmentRegex = new(
             @"[""']?(?<label>move[\s_\-]*action[\s_\-]*(?:mismatch|diff|parity)|move[\s_\-]*mismatch)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",

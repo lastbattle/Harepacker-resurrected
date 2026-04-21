@@ -806,6 +806,7 @@ namespace HaCreator.MapSimulator.UI
         {
             AddDetailRecords(
                 records,
+                entry,
                 entry?.Detail,
                 ResolveEntryDetailStyleIndex(entry),
                 ResolveEntryDetailValueStyleIndex(entry),
@@ -815,6 +816,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static void AddDetailRecords(
             List<CollectionBookRecordSnapshot> records,
+            CollectionBookEntrySnapshot entry,
             string detail,
             int leftStyleIndex,
             int rightStyleIndex,
@@ -827,7 +829,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             IReadOnlyList<string> compactClauses = ResolveCompactDetailClauses(detail);
-            if (compactClauses.Count >= 2)
+            if (compactClauses.Count >= 2 && ShouldUseCompactDetailLedgerSplit(entry))
             {
                 AddCompactDetailClauseRecords(records, compactClauses, leftStyleIndex, rightStyleIndex, top, measureTextWidth);
                 return;
@@ -848,6 +850,7 @@ namespace HaCreator.MapSimulator.UI
         private static int GetEntryDetailBottom(CollectionBookEntrySnapshot entry, int top, int fallbackBottom, Func<string, int, float> measureTextWidth = null)
         {
             return GetDetailRecordBottom(
+                entry,
                 entry?.Detail,
                 ResolveEntryDetailStyleIndex(entry),
                 ResolveEntryDetailValueStyleIndex(entry),
@@ -857,6 +860,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private static int GetDetailRecordBottom(
+            CollectionBookEntrySnapshot entry,
             string detail,
             int leftStyleIndex,
             int rightStyleIndex,
@@ -870,7 +874,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             IReadOnlyList<string> compactClauses = ResolveCompactDetailClauses(detail);
-            if (compactClauses.Count >= 2)
+            if (compactClauses.Count >= 2 && ShouldUseCompactDetailLedgerSplit(entry))
             {
                 return GetCompactDetailClauseBottom(compactClauses, leftStyleIndex, rightStyleIndex, top, fallbackBottom, measureTextWidth);
             }
@@ -1430,6 +1434,12 @@ namespace HaCreator.MapSimulator.UI
             return tone is CollectionBookEntryTone.Normal or CollectionBookEntryTone.Muted
                 ? ResolveEntryDetailStyleIndex(entry)
                 : ResolveEntryValueStyleIndex(entry);
+        }
+
+        private static bool ShouldUseCompactDetailLedgerSplit(CollectionBookEntrySnapshot entry)
+        {
+            return !string.IsNullOrWhiteSpace(entry?.Label)
+                && !string.IsNullOrWhiteSpace(entry?.Value);
         }
 
         private static IReadOnlyList<string> ResolveCompactDetailClauses(string detail)

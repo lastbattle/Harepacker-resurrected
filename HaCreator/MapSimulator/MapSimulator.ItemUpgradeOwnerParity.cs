@@ -265,7 +265,7 @@ namespace HaCreator.MapSimulator
                     ResolveItemUpgradeRecoveredSlotNotice(recoverySlotCountArgument);
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
-                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
+                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(decodeState.ResultCode);
                 message = $"Queued packet-owned item-upgrade recovery apply result code {decodeState.ResultCode}.";
                 if (consumedQuestStartLatch)
                 {
@@ -287,7 +287,7 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
-                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
+                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(decodeState.ResultCode);
                 message = $"Queued packet-owned item-upgrade notice result code {decodeState.ResultCode}.";
                 if (consumedQuestStartLatch)
                 {
@@ -320,7 +320,7 @@ namespace HaCreator.MapSimulator
             _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
-            _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ItemUpgradeOwnerResultApplyDelayMs;
+            _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(decodeState.ResultCode);
             message = success
                 ? $"Queued packet-owned item-upgrade success result code {decodeState.ResultCode}."
                 : $"Queued packet-owned item-upgrade fail result code {decodeState.ResultCode}.";
@@ -330,6 +330,17 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        private static int ResolveItemUpgradeResultReadyDelayMs(byte resultCode)
+        {
+            // CUIItemUpgrade::OnItemUpgradeResult handles 65/66 branches in the same call
+            // (Decode4 reason + immediate notice/recovery path), while non-65/66 outcomes
+            // transition through the regular result-state show path.
+            return resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot ||
+                   resultCode == ItemUpgradePacketResultCodeClientRejected
+                ? 0
+                : ItemUpgradeOwnerResultApplyDelayMs;
         }
 
         private int ResolveItemUpgradeRecoveredSlotCountArgument(EquipSlot slot)
@@ -890,6 +901,11 @@ namespace HaCreator.MapSimulator
         internal static bool TryMapItemUpgradeOutcomeStateResultForTests(int packetResultValue, out bool success)
         {
             return TryMapItemUpgradeOutcomeStateResult(packetResultValue, out success);
+        }
+
+        internal static int ResolveItemUpgradeResultReadyDelayMsForTests(byte resultCode)
+        {
+            return ResolveItemUpgradeResultReadyDelayMs(resultCode);
         }
 
         internal static bool TryDecodeItemUpgradeResultPayloadStateForTests(

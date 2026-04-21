@@ -2089,14 +2089,16 @@ namespace HaCreator.MapSimulator.Interaction
                    && !_sessionOwnedLeaveRequestInFlight;
         }
 
-        private void TryResolveDeleteGateAfterStateChange(string summary)
+        private void TryResolveDeleteGateAfterStateChange(string summary, bool allowImmediateDestroy = false)
         {
             if (!_deleteRequested || !CanDestroyMessengerWindow())
             {
                 return;
             }
 
-            if (_deleteDestroyReadyTick != int.MinValue && Environment.TickCount < _deleteDestroyReadyTick)
+            if (!allowImmediateDestroy
+                && _deleteDestroyReadyTick != int.MinValue
+                && Environment.TickCount < _deleteDestroyReadyTick)
             {
                 _lastActionSummary = summary;
                 AddSystemLog(summary);
@@ -2180,7 +2182,9 @@ namespace HaCreator.MapSimulator.Interaction
                 RecordPacketSummary(packetSummary);
             }
 
-            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the server-owned room state cleared.");
+            TryResolveDeleteGateAfterStateChange(
+                "Messenger close gate passed after the server-owned room state cleared.",
+                allowImmediateDestroy: true);
         }
 
         private void TryExpireSessionOwnedLeaveRequestWait(int tickCount)
@@ -2197,7 +2201,9 @@ namespace HaCreator.MapSimulator.Interaction
             _lastActionSummary = summary;
             AddSystemLog(summary);
             RecordPacketSummary($"Timed out waiting for CUIMessenger::OnDestroy leave acknowledgement after {SessionOwnedLeaveAckTimeoutMs} ms.");
-            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after leave-ack timeout and local room state collapse.");
+            TryResolveDeleteGateAfterStateChange(
+                "Messenger close gate passed after leave-ack timeout and local room state collapse.",
+                allowImmediateDestroy: true);
         }
 
         private void ApplyPacketProfile(string name, bool isOnline, int channel, int level, string jobName, string locationSummary, string statusText)

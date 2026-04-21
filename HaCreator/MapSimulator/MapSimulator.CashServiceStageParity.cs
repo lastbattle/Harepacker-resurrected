@@ -371,6 +371,10 @@ namespace HaCreator.MapSimulator
                             remainingSecond),
                         HasPacketRewardSessionByte = packetOwnedRewardSessionByte,
                         PacketRewardSessionByte = packetRewardSessionByte,
+                        PacketPayloadLength = stageWindow.CashOneADayPayloadLength,
+                        PacketDecodedByteLength = stageWindow.CashOneADayDecodedByteLength,
+                        PacketTrailingByteCount = stageWindow.CashOneADayTrailingByteCount,
+                        PacketTrailingPayloadHex = stageWindow.CashOneADayTrailingPayloadHex,
                         PacketStateSignature = BuildCashShopOneADayPacketStateSignature(stageWindow, historyEntries),
                         HistoryEntries = historyEntries,
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
@@ -748,7 +752,11 @@ namespace HaCreator.MapSimulator
             string mismatchSuffix = stageWindow.CashOneADayHasPacketRewardSessionByte && rewardSessionByte != approximatedRewardSessionByte
                 ? $" (owner-approx 0x{approximatedRewardSessionByte:X2})"
                 : string.Empty;
-            return $"Reward session {sessionByteSource} 0x{rewardSessionByte:X2}{mismatchSuffix}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10 (mask 0x{artSnapshot.NumberCanvasReadyMask:X3}).";
+            string trailingState = stageWindow.CashOneADayTrailingByteCount > 0
+                ? $"trailing {stageWindow.CashOneADayTrailingByteCount.ToString(CultureInfo.InvariantCulture)}B ({stageWindow.CashOneADayTrailingPayloadHex})"
+                : "trailing none";
+            return
+                $"Reward session {sessionByteSource} 0x{rewardSessionByte:X2}{mismatchSuffix}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10 (mask 0x{artSnapshot.NumberCanvasReadyMask:X3}), payload {stageWindow.CashOneADayPayloadLength.ToString(CultureInfo.InvariantCulture)}B decoded {stageWindow.CashOneADayDecodedByteLength.ToString(CultureInfo.InvariantCulture)}B, {trailingState}.";
         }
 
         internal static int ResolveCashShopOneADayHistorySlotCount()
@@ -775,6 +783,10 @@ namespace HaCreator.MapSimulator
                 stageWindow.CashOneADayItemDate.ToString(CultureInfo.InvariantCulture),
                 stageWindow.CashOneADayHasPacketRewardSessionByte ? "packet-byte" : "no-packet-byte",
                 stageWindow.CashOneADayPacketRewardSessionByte.ToString(CultureInfo.InvariantCulture),
+                stageWindow.CashOneADayPayloadLength.ToString(CultureInfo.InvariantCulture),
+                stageWindow.CashOneADayDecodedByteLength.ToString(CultureInfo.InvariantCulture),
+                stageWindow.CashOneADayTrailingByteCount.ToString(CultureInfo.InvariantCulture),
+                stageWindow.CashOneADayTrailingPayloadHex ?? string.Empty,
                 stageWindow.NoticeState ?? string.Empty
             };
 
@@ -1600,9 +1612,33 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<string> BuildItcListOwnerLines(AdminShopDialogUI mtsWindow, CashServiceStageWindow mtsStageWindow)
         {
             List<string> lines = new(mtsWindow?.DescribeListOwnerState() ?? Array.Empty<string>());
+            IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> stagedEntries =
+                (mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) > 0
+                    ? mtsStageWindow.ItcPacketCatalogEntries
+                    : mtsStageWindow?.ItcWishPacketEntries;
             if (mtsStageWindow?.ItcWishPacketEntries.Count > 0)
             {
                 lines.Add($"Wish-sale rows {mtsStageWindow.ItcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
+            }
+            else if ((mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) > 0)
+            {
+                lines.Add($"Main-list rows {mtsStageWindow.ItcPacketCatalogEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
+            }
+
+            if (stagedEntries != null)
+            {
+                foreach (CashServiceStageWindow.PacketCatalogEntry entry in stagedEntries.Take(2))
+                {
+                    if (!string.IsNullOrWhiteSpace(entry.Detail))
+                    {
+                        lines.Add(entry.Detail);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(entry.PacketFieldSummary))
+                    {
+                        lines.Add(entry.PacketFieldSummary);
+                    }
+                }
             }
 
             foreach (string recentPacket in mtsStageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>())
@@ -2651,15 +2687,9 @@ namespace HaCreator.MapSimulator
             }
 
             string dispatchSummary = DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText);
-            string message = stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, normalizedReplyText, dispatchSummary);
-            string ownerNotice = stageWindow.BuildReceiveGiftAcceptOwnerNotice(selectedGift, normalizedReplyText);
+            string message = stageWindow.StageReceiveGiftAcceptRequest(selectedGiftIndex, normalizedReplyText, dispatchSummary);
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
             _chat?.AddSystemMessage(message, currTickCount);
-
-            int nextGiftIndex = stageWindow.CashGiftPacketEntries.Count > 0
-                ? Math.Clamp(selectedGiftIndex, 0, stageWindow.CashGiftPacketEntries.Count - 1)
-                : -1;
-            ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, message);
         }
 
         private static IEnumerable<string> BuildCashReceiveGiftSpecialistMessages(

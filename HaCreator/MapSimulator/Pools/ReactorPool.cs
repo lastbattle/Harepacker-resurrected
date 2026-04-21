@@ -3927,7 +3927,6 @@ namespace HaCreator.MapSimulator.Pools
                 || data.PacketProperEventIndex != -2
                 || sourceEventTypes is { Count: > 0 }
                 || data.PacketAnimationSourceState < 0
-                || data.PacketAnimationSourceState == sourceState
                 || getExactAuthoredEventTypes == null)
             {
                 return sourceState;
@@ -4230,7 +4229,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketHitAnimationState = -1;
             data.PacketPendingVisualState = -1;
             data.PacketAnimationEndTime = 0;
-            data.PacketAnimationPhase = PacketReactorAnimationPhase.AwaitingAutoHitLayerCompletion;
+            data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
         }

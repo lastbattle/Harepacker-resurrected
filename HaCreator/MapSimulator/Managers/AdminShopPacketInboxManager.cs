@@ -287,7 +287,11 @@ namespace HaCreator.MapSimulator.Managers
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new AdminShopPacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line));
+                        _pendingMessages.Enqueue(new AdminShopPacketInboxMessage(
+                            message.PacketType,
+                            message.Payload,
+                            $"admin-shop-packet-inbox:{remoteEndpoint}",
+                            line));
                         ReceivedCount++;
                         LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {remoteEndpoint}.";
                     }

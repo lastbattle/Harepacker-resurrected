@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> ResultRows { get; init; }
             = Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
         public bool IsStateOnlySessionSnapshot { get; init; }
+        public bool IgnoredDueToSessionMismatch { get; init; }
         public int TrailingByteCount { get; init; }
     }
 
@@ -221,7 +222,9 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            List<int> itemIds = rows.Select(row => row.ItemId).ToList();
+            List<int> itemIds = rows
+                .Select(row => row.ResultItemId > 0 ? row.ResultItemId : row.ItemId)
+                .ToList();
 
             snapshot = new AdminShopPacketOwnedWishlistSearchSnapshot
             {

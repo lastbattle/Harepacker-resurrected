@@ -86,6 +86,7 @@ namespace HaCreator.MapSimulator
         private bool _initialQuizOwnerTimeoutCloseArmed;
         private InitialQuizOwnerFocusTarget _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
         private InitialQuizOwnerCaptureState _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
+        private InitialQuizOwnerChildControlState _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Inactive;
 
         private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs);
         private sealed record InitialQuizButtonFrame(Texture2D Texture, Point Origin);
@@ -110,6 +111,12 @@ namespace HaCreator.MapSimulator
             None,
             OwnerOnly,
             OwnerWithEditFocus
+        }
+
+        internal readonly record struct InitialQuizOwnerChildControlState(bool EditVisible, bool EditEnabled, bool OkButtonEnabled)
+        {
+            internal static InitialQuizOwnerChildControlState Active { get; } = new(true, true, true);
+            internal static InitialQuizOwnerChildControlState Inactive { get; } = new(false, false, false);
         }
 
         private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
@@ -167,6 +174,7 @@ namespace HaCreator.MapSimulator
             DestroyInitialQuizOwnerControlStack();
             EnsureInitialQuizOwnerControlStackCreated();
             ResetInitialQuizOwnerHeldEditKey();
+            _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Active;
             _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
                 ownerActive: true,
                 _initialQuizOwnerFocusTarget);
@@ -185,6 +193,7 @@ namespace HaCreator.MapSimulator
             ClearInitialQuizOwnerCompositionText();
             ClearInitialQuizOwnerImeCandidateList();
             ResetInitialQuizOwnerHeldEditKey();
+            _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Inactive;
             _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
         }
 
@@ -199,6 +208,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
                 ownerActive: true,
                 _initialQuizOwnerFocusTarget);
+            _initialQuizOwnerChildControlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
 
             InitialQuizOwnerTimeoutBehavior timeoutBehavior = ResolveInitialQuizOwnerTimeoutBehavior(
                 snapshot.RemainingSeconds,
@@ -235,9 +245,11 @@ namespace HaCreator.MapSimulator
             Rectangle okButtonBounds = ResolveInitialQuizOwnerOkButtonBounds(ownerBounds);
             Rectangle inputBounds = ResolveInitialQuizOwnerInputBounds(ownerBounds);
             Point cursor = new(mouseState.X, mouseState.Y);
-            bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingSeconds);
+            InitialQuizOwnerChildControlState controlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
+            bool showInput = controlState.EditVisible && controlState.EditEnabled;
             bool cursorInInput = inputBounds.Contains(cursor);
-            _initialQuizOwnerHoveringOkButton = showInput && okButtonBounds.Contains(cursor);
+            bool okButtonEnabled = controlState.OkButtonEnabled;
+            _initialQuizOwnerHoveringOkButton = showInput && okButtonEnabled && okButtonBounds.Contains(cursor);
             AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
 
             bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
@@ -259,7 +271,9 @@ namespace HaCreator.MapSimulator
                     _initialQuizOwnerHoveringOkButton,
                     cursorInInput);
                 SetInitialQuizOwnerFocusTarget(nextFocusTarget);
-                _initialQuizOwnerPressedOkButton = showInput && nextFocusTarget == InitialQuizOwnerFocusTarget.OkButton;
+                _initialQuizOwnerPressedOkButton = showInput
+                    && okButtonEnabled
+                    && nextFocusTarget == InitialQuizOwnerFocusTarget.OkButton;
                 if (nextFocusTarget == InitialQuizOwnerFocusTarget.Input)
                 {
                     if (editControl != null)
@@ -287,7 +301,7 @@ namespace HaCreator.MapSimulator
                 bool confirm = ShouldSubmitInitialQuizOwnerOkButtonRelease(
                     _initialQuizOwnerPressedOkButton,
                     _initialQuizOwnerHoveringOkButton,
-                    showInput);
+                    showInput && okButtonEnabled);
                 _initialQuizOwnerPressedOkButton = false;
                 if (confirm)
                 {
@@ -340,15 +354,26 @@ namespace HaCreator.MapSimulator
 
             bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
             bool buttonFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.OkButton;
+            InitialQuizOwnerChildControlState controlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
 
             if (newKeyboardState.IsKeyDown(Keys.Enter) && oldKeyboardState.IsKeyUp(Keys.Enter))
             {
+                if (!controlState.OkButtonEnabled)
+                {
+                    return true;
+                }
+
                 SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currentTickCount, showFeedback: true);
                 return true;
             }
 
             if (newKeyboardState.IsKeyDown(Keys.Space) && oldKeyboardState.IsKeyUp(Keys.Space) && buttonFocused)
             {
+                if (!controlState.OkButtonEnabled)
+                {
+                    return true;
+                }
+
                 SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currentTickCount, showFeedback: true);
                 return true;
             }
@@ -574,7 +599,8 @@ namespace HaCreator.MapSimulator
                     InitialQuizOwnerSecondaryTextScale);
             }
 
-            bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingSeconds);
+            _initialQuizOwnerChildControlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
+            bool showInput = _initialQuizOwnerChildControlState.EditVisible;
             DrawInitialQuizOwnerAnswerLabel(inputBounds);
             if (showInput)
             {
@@ -596,7 +622,7 @@ namespace HaCreator.MapSimulator
                     InitialQuizOwnerLabelTextScale);
             }
 
-            InitialQuizButtonFrame okButtonFrame = ResolveInitialQuizOwnerOkButtonFrame(showInput);
+            InitialQuizButtonFrame okButtonFrame = ResolveInitialQuizOwnerOkButtonFrame(_initialQuizOwnerChildControlState.OkButtonEnabled);
             if (okButtonFrame?.Texture != null)
             {
                 Rectangle drawBounds = new(
@@ -640,10 +666,11 @@ namespace HaCreator.MapSimulator
 
         private void DrawInitialQuizOwnerInputField(Rectangle ownerBounds, Rectangle inputBounds, int currentTickCount)
         {
-            bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
+            bool inputEnabled = _initialQuizOwnerChildControlState.EditVisible && _initialQuizOwnerChildControlState.EditEnabled;
+            bool inputFocused = inputEnabled && _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
 
             AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
-            if (editControl != null && ownerBounds != Rectangle.Empty)
+            if (editControl != null && ownerBounds != Rectangle.Empty && _initialQuizOwnerChildControlState.EditVisible)
             {
                 editControl.SetFocus(inputFocused);
                 editControl.Draw(_spriteBatch, ownerBounds, drawChrome: false);
@@ -860,15 +887,30 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldCaptureInitialQuizOwnerTextInput(bool ownerActive, int remainingSeconds, InitialQuizOwnerFocusTarget focusTarget)
         {
-            return ownerActive
-                && remainingSeconds > 0
-                && focusTarget == InitialQuizOwnerFocusTarget.Input;
+            return ShouldCaptureInitialQuizOwnerTextInput(
+                ownerActive,
+                ResolveInitialQuizOwnerChildControlState(remainingSeconds),
+                focusTarget);
         }
 
         private bool ShouldCaptureInitialQuizOwnerTextInput()
         {
             return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out InitialQuizOwnerSnapshot snapshot)
-                && ShouldCaptureInitialQuizOwnerTextInput(true, snapshot.RemainingSeconds, _initialQuizOwnerFocusTarget);
+                && ShouldCaptureInitialQuizOwnerTextInput(
+                    ownerActive: true,
+                    ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds),
+                    _initialQuizOwnerFocusTarget);
+        }
+
+        internal static bool ShouldCaptureInitialQuizOwnerTextInput(
+            bool ownerActive,
+            InitialQuizOwnerChildControlState controlState,
+            InitialQuizOwnerFocusTarget focusTarget)
+        {
+            return ownerActive
+                && controlState.EditVisible
+                && controlState.EditEnabled
+                && focusTarget == InitialQuizOwnerFocusTarget.Input;
         }
 
         private bool DoesInitialQuizOwnerCaptureWindowInput()
@@ -1401,7 +1443,14 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldShowInitialQuizOwnerInput(int remainingSeconds)
         {
-            return remainingSeconds > 0;
+            return ResolveInitialQuizOwnerChildControlState(remainingSeconds).EditVisible;
+        }
+
+        internal static InitialQuizOwnerChildControlState ResolveInitialQuizOwnerChildControlState(int remainingSeconds)
+        {
+            return remainingSeconds > 0
+                ? InitialQuizOwnerChildControlState.Active
+                : InitialQuizOwnerChildControlState.Inactive;
         }
 
         internal static InitialQuizOwnerFocusTarget ResolveInitialQuizOwnerMousePressFocusTarget(

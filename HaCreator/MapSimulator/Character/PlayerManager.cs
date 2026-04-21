@@ -876,19 +876,12 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (!PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out PlayerSkillBlockingStatus status))
+            if (!PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out _))
             {
                 return true;
             }
 
-            MobSkillEffectData effectData = _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, Math.Max(1, skillLevel));
-            int durationMs = runtimeData?.DurationMs > 0
-                ? runtimeData.DurationMs
-                : Math.Max(0, (effectData?.Time ?? 0) * 1000);
-            if (durationMs > 0)
-            {
-                Player.ApplySkillBlockingStatus(status, durationMs, currentTime);
-            }
+            TryApplyMobSkillBlockingStatus(skillId, Math.Max(1, skillLevel), runtimeData, currentTime);
 
             return true;
         }
@@ -1472,6 +1465,22 @@ namespace HaCreator.MapSimulator.Character
             return unchecked(AffectedAreaAvatarEffectIdBase + objectId);
         }
 
+        private static int ResolveMobSkillBlockingDurationMs(int skillId, MobSkillRuntimeData runtimeData, MobSkillEffectData effectData)
+        {
+            int runtimeStatusDurationMs = PlayerMobStatusController.ResolveSkillStatusDurationMs(skillId, runtimeData);
+            if (runtimeStatusDurationMs > 0)
+            {
+                return runtimeStatusDurationMs;
+            }
+
+            if (runtimeData?.DurationMs > 0)
+            {
+                return runtimeData.DurationMs;
+            }
+
+            return Math.Max(0, (effectData?.Time ?? 0) * 1000);
+        }
+
         internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f, int elementAttribute = 0)
         {
             if (Player == null)
@@ -1480,6 +1489,24 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return _mobStatusController?.TryApplyMobSkill(skillId, runtimeData, currentTime, sourceX, elementAttribute) == true;
+        }
+
+        internal bool TryApplyMobSkillBlockingStatus(int skillId, int skillLevel, MobSkillRuntimeData runtimeData, int currentTime)
+        {
+            if (Player == null || !PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out PlayerSkillBlockingStatus status))
+            {
+                return false;
+            }
+
+            MobSkillEffectData effectData = _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, Math.Max(1, skillLevel));
+            int durationMs = ResolveMobSkillBlockingDurationMs(skillId, runtimeData, effectData);
+            if (durationMs <= 0)
+            {
+                return false;
+            }
+
+            Player.ApplySkillBlockingStatus(status, durationMs, currentTime);
+            return true;
         }
 
         internal int ClearMobStatuses(IEnumerable<PlayerMobStatusEffect> effects)
@@ -1492,9 +1519,19 @@ namespace HaCreator.MapSimulator.Character
             return _mobStatusController?.HasStatusEffect(effect) == true;
         }
 
-        internal bool CanAutoSelectMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
+        internal bool CanAutoSelectMobSkillStatus(
+            int skillId,
+            MobSkillRuntimeData runtimeData,
+            int currentTime,
+            float sourceX = 0f,
+            int recastLeadTimeMs = 0)
         {
-            return _mobStatusController?.CanAutoSelectMobSkill(skillId, runtimeData, currentTime, sourceX) == true;
+            return _mobStatusController?.CanAutoSelectMobSkill(
+                       skillId,
+                       runtimeData,
+                       currentTime,
+                       sourceX,
+                       recastLeadTimeMs) == true;
         }
 
         internal bool TryGetFearMobStatusVisualState(int currentTime, out float intensity, out int remainingDurationMs)

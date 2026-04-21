@@ -101,6 +101,14 @@ namespace HaCreator.MapSimulator
                 or PacketOwnedAntiMacroNoticeMode;
         }
 
+        internal static bool ShouldResetPacketOwnedAntiMacroRemainingQuestionOnResultMode(int mode)
+        {
+            // `CWvsContext::OnAntiMacroResult` zeroes m_tRemainAntiMacroQuestion only
+            // on the close/result teardown family (modes 7 and 9).
+            return mode is PacketOwnedAntiMacroDestroyMode
+                or PacketOwnedAntiMacroResultMode;
+        }
+
         internal static bool IsPacketOwnedAntiMacroUserBranchMode(int mode)
         {
             return mode is PacketOwnedAntiMacroScreenshotReportMode
@@ -847,15 +855,37 @@ namespace HaCreator.MapSimulator
             }
 
             Directory.CreateDirectory(screenshotDirectory);
-            string safeUserName = PacketOwnedAntiMacroScreenshotPathResolver.SanitizeUserName(userName);
+            string rawUserName = userName ?? string.Empty;
             string filePath = PacketOwnedAntiMacroScreenshotPathResolver.BuildFilePath(
                 screenshotDirectory,
-                safeUserName,
+                rawUserName,
                 DateTime.Now);
 
             if (!_screenshotManager.TrySaveBackBufferAsJpeg(GraphicsDevice, filePath, out string error))
             {
-                _lastPacketOwnedAntiMacroSummary = $"Failed to save packet-owned anti-macro screenshot for {safeUserName}: {error}";
+                string fallbackFilePath = PacketOwnedAntiMacroScreenshotPathResolver.BuildFallbackSafeFilePath(
+                    screenshotDirectory,
+                    rawUserName,
+                    DateTime.Now);
+                string fallbackError = string.Empty;
+                bool canTryFallback =
+                    !string.Equals(
+                        filePath,
+                        fallbackFilePath,
+                        StringComparison.OrdinalIgnoreCase);
+                if (!canTryFallback
+                    || !_screenshotManager.TrySaveBackBufferAsJpeg(GraphicsDevice, fallbackFilePath, out fallbackError))
+                {
+                    string resolvedError = canTryFallback
+                        ? $"{error}; fallback save also failed: {fallbackError}"
+                        : error;
+                    _lastPacketOwnedAntiMacroSummary = $"Failed to save packet-owned anti-macro screenshot for {rawUserName}: {resolvedError}";
+                    return _lastPacketOwnedAntiMacroSummary;
+                }
+
+                _lastPacketOwnedAntiMacroScreenshotPath = fallbackFilePath;
+                _lastPacketOwnedAntiMacroSummary =
+                    $"Saved packet-owned anti-macro screenshot to {fallbackFilePath} after client-shaped raw-name save failed ({error}).";
                 return _lastPacketOwnedAntiMacroSummary;
             }
 
@@ -1257,6 +1287,11 @@ namespace HaCreator.MapSimulator
                         resolvedSource,
                         authoritativeRoundTrip,
                         awaitingTerminalResult: shouldKeepAwaitingAuthoritativeResult);
+                    if (ShouldResetPacketOwnedAntiMacroRemainingQuestionOnResultMode(mode))
+                    {
+                        _packetOwnedAntiMacroCurrentRemainingMs = 0;
+                    }
+
                     return true;
                 }
 

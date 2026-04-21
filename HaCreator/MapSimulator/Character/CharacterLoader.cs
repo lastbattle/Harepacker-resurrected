@@ -780,11 +780,12 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (int rootCandidate in EnumerateMorphTemplateRootCandidates(morphTemplateId))
             {
+                bool allowLinkInheritance = rootCandidate == morphTemplateId;
                 WzImage rootImage = rootCandidate == morphTemplateId
                     ? exactMorphImage
                     : null;
 
-                foreach (int candidate in EnumerateMorphLinkChain(rootCandidate, rootImage, seen))
+                foreach (int candidate in EnumerateMorphLinkChain(rootCandidate, rootImage, seen, allowLinkInheritance))
                 {
                     yield return candidate;
                 }
@@ -800,7 +801,8 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (int rootCandidate in EnumerateMorphTemplateRootCandidates(morphTemplateId))
             {
-                foreach (int candidate in EnumerateMorphLinkChain(rootCandidate, linkedTemplateResolver, seen))
+                bool allowLinkInheritance = rootCandidate == morphTemplateId;
+                foreach (int candidate in EnumerateMorphLinkChain(rootCandidate, linkedTemplateResolver, seen, allowLinkInheritance))
                 {
                     candidates.Add(candidate);
                 }
@@ -839,7 +841,11 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private static IEnumerable<int> EnumerateMorphLinkChain(int morphTemplateId, WzImage exactMorphImage, HashSet<int> seen)
+        private static IEnumerable<int> EnumerateMorphLinkChain(
+            int morphTemplateId,
+            WzImage exactMorphImage,
+            HashSet<int> seen,
+            bool allowLinkInheritance)
         {
             if (morphTemplateId <= 0 || seen == null || !seen.Add(morphTemplateId))
             {
@@ -847,6 +853,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             yield return morphTemplateId;
+
+            // Keep `info/link` inheritance anchored to the requested morph template.
+            // Paired/family fallback roots are simulator-side backstops and should not
+            // recursively pull their own link chains.
+            if (!allowLinkInheritance)
+            {
+                yield break;
+            }
 
             WzImage morphImage = exactMorphImage ?? Program.FindImage("Morph", morphTemplateId.ToString("D4") + ".img");
             int linkedTemplateId = GetMorphLinkTemplateId(morphImage);
@@ -855,7 +869,11 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            foreach (int linkedCandidate in EnumerateMorphLinkChain(linkedTemplateId, exactMorphImage: null, seen))
+            foreach (int linkedCandidate in EnumerateMorphLinkChain(
+                         linkedTemplateId,
+                         exactMorphImage: null,
+                         seen,
+                         allowLinkInheritance: true))
             {
                 yield return linkedCandidate;
             }
@@ -864,7 +882,8 @@ namespace HaCreator.MapSimulator.Character
         private static IEnumerable<int> EnumerateMorphLinkChain(
             int morphTemplateId,
             Func<int, int> linkedTemplateResolver,
-            HashSet<int> seen)
+            HashSet<int> seen,
+            bool allowLinkInheritance)
         {
             if (morphTemplateId <= 0 || seen == null || !seen.Add(morphTemplateId))
             {
@@ -873,13 +892,22 @@ namespace HaCreator.MapSimulator.Character
 
             yield return morphTemplateId;
 
+            if (!allowLinkInheritance)
+            {
+                yield break;
+            }
+
             int linkedTemplateId = linkedTemplateResolver?.Invoke(morphTemplateId) ?? 0;
             if (linkedTemplateId <= 0 || linkedTemplateId == morphTemplateId)
             {
                 yield break;
             }
 
-            foreach (int linkedCandidate in EnumerateMorphLinkChain(linkedTemplateId, linkedTemplateResolver, seen))
+            foreach (int linkedCandidate in EnumerateMorphLinkChain(
+                         linkedTemplateId,
+                         linkedTemplateResolver,
+                         seen,
+                         allowLinkInheritance: true))
             {
                 yield return linkedCandidate;
             }

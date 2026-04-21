@@ -44,13 +44,33 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _animationEffects.AddOneTime(
-                _tombFallFrames,
-                presentation.Position.X,
-                presentation.Position.Y,
-                flip: false,
+            string ownerActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            bool ownerFacingRight = true;
+            if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor actor) == true
+                && actor != null)
+            {
+                ownerActionName = ResolveAnimationDisplayerRemotePacketOwnedActionName(actor);
+                ownerFacingRight = actor.FacingRight;
+            }
+
+            int initialElapsedMs = ResolveAnimationDisplayerRemoteUpgradeTombInitialElapsed(
+                presentation.CharacterId,
+                presentation.ItemId,
+                ownerActionName,
+                ownerFacingRight,
                 presentation.CurrentTime,
-                zOrder: 1);
+                ResolveAnimationDisplayerOneTimeFrameDurationMsForTesting(_tombFallFrames));
+            Vector2 packetAnchor = presentation.Position;
+            _animationEffects.AddOneTimeAttached(
+                _tombFallFrames,
+                () => packetAnchor,
+                getFlip: null,
+                packetAnchor.X,
+                packetAnchor.Y,
+                fallbackFlip: false,
+                presentation.CurrentTime,
+                zOrder: 1,
+                initialElapsedMs: initialElapsedMs);
         }
 
         private void HandleRemoteHitFeedback(RemoteUserActorPool.RemoteHitFeedbackPresentation presentation)
@@ -2189,6 +2209,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (resolvedOwnerCharacterId > 0)
+            {
+                RememberObservedDropPartyActorOwner(packet.ActorId, resolvedOwnerCharacterId);
+                RememberObservedDropPartyActorOwner(resolvedActorId, resolvedOwnerCharacterId);
+            }
+
             foreach (int linkedActorId in ResolveRemoteUserDropPickupPartyLinkActorIds(
                 packet,
                 resolvedActorId,
@@ -2630,18 +2656,13 @@ namespace HaCreator.MapSimulator
         internal static int ResolveRemoteUserCommonChatLogType(byte chatType)
         {
             // Client CUserPool::OnUserCommonPacket (181/182) routes through CUser::OnChat.
-            // Preserve known ChatLogAdd lType values when packet chatType already carries one;
-            // otherwise keep the existing common non-zero fallback to lType 11.
+            // CUser::OnChat calls ChatLogAdd with lType 0 when chatType == 0, else lType 11.
             if (chatType == 0)
             {
                 return 0;
             }
 
-            return chatType switch
-            {
-                11 or 18 or 19 or 20 or 21 or 22 or 23 => chatType,
-                _ => 11
-            };
+            return 11;
         }
 
         private static string SanitizeRemoteUserChatText(string text)

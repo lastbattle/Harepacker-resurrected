@@ -960,32 +960,51 @@ namespace HaCreator.MapSimulator.Managers
                 List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions = null;
                 List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals = null;
 
-                if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions))
+                if (useCompactCountWidth)
                 {
-                    disassemblyTargetAdditions = useCompactCountWidth
-                        ? ReadDisassemblyTargetAdditions16(reader, "Maker-session delta disassembly target addition")
-                        : ReadDisassemblyTargetAdditions(reader, "Maker-session delta disassembly target addition");
+                    if (!TryReadCompactDeltaLists(
+                            reader,
+                            deltaFlags,
+                            out disassemblyTargetAdditions,
+                            out disassemblyTargetRemovals,
+                            out hiddenRecipeAdditions,
+                            out hiddenRecipeRemovals,
+                            out string compactDecodeError))
+                    {
+                        error = compactDecodeError ?? "Maker-session delta payload could not be decoded with compact count/list encodings.";
+                        reader.BaseStream.Position = startPosition;
+                        return false;
+                    }
                 }
-
-                if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetRemovals))
+                else
                 {
-                    disassemblyTargetRemovals = useCompactCountWidth
-                        ? ReadDisassemblyTargetRemovals16(reader, "Maker-session delta disassembly target removal")
-                        : ReadDisassemblyTargetRemovals(reader, "Maker-session delta disassembly target removal");
-                }
+                    if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions))
+                    {
+                        disassemblyTargetAdditions = ReadDisassemblyTargetAdditions(
+                            reader,
+                            "Maker-session delta disassembly target addition");
+                    }
 
-                if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions))
-                {
-                    hiddenRecipeAdditions = useCompactCountWidth
-                        ? ReadHiddenRecipeEntries16(reader, "Maker-session delta hidden recipe addition")
-                        : ReadHiddenRecipeEntries(reader, "Maker-session delta hidden recipe addition");
-                }
+                    if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetRemovals))
+                    {
+                        disassemblyTargetRemovals = ReadDisassemblyTargetRemovals(
+                            reader,
+                            "Maker-session delta disassembly target removal");
+                    }
 
-                if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals))
-                {
-                    hiddenRecipeRemovals = useCompactCountWidth
-                        ? ReadHiddenRecipeRemovalEntries16(reader, "Maker-session delta hidden recipe removal")
-                        : ReadHiddenRecipeRemovalEntries(reader, "Maker-session delta hidden recipe removal");
+                    if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions))
+                    {
+                        hiddenRecipeAdditions = ReadHiddenRecipeEntries(
+                            reader,
+                            "Maker-session delta hidden recipe addition");
+                    }
+
+                    if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals))
+                    {
+                        hiddenRecipeRemovals = ReadHiddenRecipeRemovalEntries(
+                            reader,
+                            "Maker-session delta hidden recipe removal");
+                    }
                 }
 
                 if (reader.BaseStream.Position != reader.BaseStream.Length)
@@ -1012,6 +1031,156 @@ namespace HaCreator.MapSimulator.Managers
                 reader.BaseStream.Position = startPosition;
                 return false;
             }
+        }
+
+        private static bool TryReadCompactDeltaLists(
+            BinaryReader reader,
+            PacketOwnedItemMakerSessionDeltaFlags deltaFlags,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals,
+            out string error)
+        {
+            disassemblyTargetAdditions = null;
+            disassemblyTargetRemovals = null;
+            hiddenRecipeAdditions = null;
+            hiddenRecipeRemovals = null;
+            error = null;
+
+            if (reader == null)
+            {
+                error = "Maker-session compact delta payload reader is missing.";
+                return false;
+            }
+
+            long payloadStart = reader.BaseStream.Position;
+            DisassemblyTargetEntryEncoding[] disassemblyAdditionEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions)
+                ? new[]
+                {
+                    DisassemblyTargetEntryEncoding.WideSlotInt32,
+                    DisassemblyTargetEntryEncoding.CompactSlotUInt16,
+                    DisassemblyTargetEntryEncoding.WideSlotOnlyInt32,
+                    DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16
+                }
+                : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
+            DisassemblyTargetEntryEncoding[] disassemblyRemovalEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetRemovals)
+                ? new[]
+                {
+                    DisassemblyTargetEntryEncoding.WideSlotInt32,
+                    DisassemblyTargetEntryEncoding.CompactSlotUInt16,
+                    DisassemblyTargetEntryEncoding.WideSlotOnlyInt32,
+                    DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16
+                }
+                : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
+            HiddenRecipeEntryEncoding[] hiddenAdditionEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions)
+                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                : new[] { HiddenRecipeEntryEncoding.Pair };
+            HiddenRecipeEntryEncoding[] hiddenRemovalEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals)
+                ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
+                : new[] { HiddenRecipeEntryEncoding.Pair };
+
+            for (int additionEncodingIndex = 0; additionEncodingIndex < disassemblyAdditionEncodings.Length; additionEncodingIndex++)
+            {
+                DisassemblyTargetEntryEncoding disassemblyAdditionEncoding = disassemblyAdditionEncodings[additionEncodingIndex];
+                for (int removalEncodingIndex = 0; removalEncodingIndex < disassemblyRemovalEncodings.Length; removalEncodingIndex++)
+                {
+                    DisassemblyTargetEntryEncoding disassemblyRemovalEncoding = disassemblyRemovalEncodings[removalEncodingIndex];
+                    for (int hiddenAdditionEncodingIndex = 0; hiddenAdditionEncodingIndex < hiddenAdditionEncodings.Length; hiddenAdditionEncodingIndex++)
+                    {
+                        HiddenRecipeEntryEncoding hiddenAdditionEncoding = hiddenAdditionEncodings[hiddenAdditionEncodingIndex];
+                        for (int hiddenRemovalEncodingIndex = 0; hiddenRemovalEncodingIndex < hiddenRemovalEncodings.Length; hiddenRemovalEncodingIndex++)
+                        {
+                            HiddenRecipeEntryEncoding hiddenRemovalEncoding = hiddenRemovalEncodings[hiddenRemovalEncodingIndex];
+                            if (TryReadCompactDeltaListsWithEncodings(
+                                    reader,
+                                    payloadStart,
+                                    deltaFlags,
+                                    disassemblyAdditionEncoding,
+                                    disassemblyRemovalEncoding,
+                                    hiddenAdditionEncoding,
+                                    hiddenRemovalEncoding,
+                                    out disassemblyTargetAdditions,
+                                    out disassemblyTargetRemovals,
+                                    out hiddenRecipeAdditions,
+                                    out hiddenRecipeRemovals))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            reader.BaseStream.Position = payloadStart;
+            error = "Maker-session compact delta payload could not be decoded for any supported list encoding combination.";
+            return false;
+        }
+
+        private static bool TryReadCompactDeltaListsWithEncodings(
+            BinaryReader reader,
+            long payloadStart,
+            PacketOwnedItemMakerSessionDeltaFlags deltaFlags,
+            DisassemblyTargetEntryEncoding disassemblyAdditionEncoding,
+            DisassemblyTargetEntryEncoding disassemblyRemovalEncoding,
+            HiddenRecipeEntryEncoding hiddenAdditionEncoding,
+            HiddenRecipeEntryEncoding hiddenRemovalEncoding,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals)
+        {
+            disassemblyTargetAdditions = null;
+            disassemblyTargetRemovals = null;
+            hiddenRecipeAdditions = null;
+            hiddenRecipeRemovals = null;
+
+            reader.BaseStream.Position = payloadStart;
+            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions)
+                && !TryReadDisassemblyTargetEntries16(
+                    reader,
+                    disassemblyAdditionEncoding,
+                    requirePositiveItemId: false,
+                    "Maker-session delta disassembly target addition",
+                    out disassemblyTargetAdditions))
+            {
+                return false;
+            }
+
+            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetRemovals)
+                && !TryReadDisassemblyTargetEntries16(
+                    reader,
+                    disassemblyRemovalEncoding,
+                    requirePositiveItemId: false,
+                    "Maker-session delta disassembly target removal",
+                    out disassemblyTargetRemovals))
+            {
+                return false;
+            }
+
+            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions)
+                && !TryReadHiddenRecipeEntries16(
+                    reader,
+                    hiddenAdditionEncoding,
+                    requirePositiveOutputItemId: true,
+                    "Maker-session delta hidden recipe addition",
+                    out hiddenRecipeAdditions))
+            {
+                return false;
+            }
+
+            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals)
+                && !TryReadHiddenRecipeEntries16(
+                    reader,
+                    hiddenRemovalEncoding,
+                    requirePositiveOutputItemId: false,
+                    "Maker-session delta hidden recipe removal",
+                    out hiddenRecipeRemovals))
+            {
+                return false;
+            }
+
+            return reader.BaseStream.Position == reader.BaseStream.Length;
         }
 
         private static bool TryDecodeCompactHiddenTail(

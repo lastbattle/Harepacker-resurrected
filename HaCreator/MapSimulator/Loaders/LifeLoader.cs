@@ -93,6 +93,15 @@ namespace HaCreator.MapSimulator.Loaders
             _mobClientCanonicalActionNamesBySlot
                 .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
                 .ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
+
+        private static readonly IReadOnlyDictionary<string, int> _mobClientActionSlotAliasesByName =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                // WZ mob roots still ship non-indexed hit/die branches on some templates;
+                // canonicalize them onto the client-owned slot surface.
+                ["hit"] = 3,
+                ["die"] = 4
+            };
         private sealed class CachedDoomMobAssets
         {
             public MobAnimationSet AnimationSet { get; init; }
@@ -1237,7 +1246,13 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            return _mobClientActionSlotsByName.TryGetValue(actionName.Trim(), out slot);
+            string normalizedActionName = actionName.Trim();
+            if (_mobClientActionSlotsByName.TryGetValue(normalizedActionName, out slot))
+            {
+                return true;
+            }
+
+            return _mobClientActionSlotAliasesByName.TryGetValue(normalizedActionName, out slot);
         }
 
         internal static string ResolveMobClientActionName(int slot)

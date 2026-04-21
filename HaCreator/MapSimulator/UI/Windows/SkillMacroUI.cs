@@ -2595,8 +2595,17 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < releasedKeys.Length; i++)
             {
                 Keys key = releasedKeys[i];
-                if (!keyboardState.IsKeyUp(key)
-                    || !SkillMacroOwnerKeyHandler.ShouldForwardClientOwnedNonFunctionKeyUpToParent(key))
+                if (!keyboardState.IsKeyUp(key))
+                {
+                    continue;
+                }
+
+                bool hasTrackedPhysicalKey = _forwardedNonFunctionPhysicalKeys.Contains(key);
+                if (!hasTrackedPhysicalKey
+                    && !SkillMacroOwnerKeyHandler.ShouldForwardClientOwnedNonFunctionKeyUpToParent(
+                        key,
+                        imeCompositionActive,
+                        imeCandidateWindowActive))
                 {
                     continue;
                 }

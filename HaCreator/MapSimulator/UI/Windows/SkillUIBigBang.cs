@@ -1569,7 +1569,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
         {
-            SkillTooltipFrameLayout.DrawPlainTooltipBackground(sprite, _debugPlaceholder, rect);
+            SkillTooltipFrameLayout.DrawTooltipFrameOrPlainBackground(
+                sprite,
+                _tooltipFrames,
+                tooltipFrameIndex,
+                _debugPlaceholder,
+                rect);
         }
 
         private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)

@@ -379,10 +379,7 @@ namespace HaCreator.MapSimulator.Managers
                     string endpoint = client.Client?.RemoteEndPoint?.ToString() ?? $"reactor-touch-outbox-{clientId}";
                     var connectedClient = new ConnectedClient(clientId, client, endpoint);
                     _clients[clientId] = connectedClient;
-                    int flushed = FlushQueuedOutboundPackets(Environment.TickCount);
-                    LastStatus = flushed > 0
-                        ? $"Reactor touch outbox client connected: {endpoint}. Flushed {flushed} queued packet(s)."
-                        : $"Reactor touch outbox client connected: {endpoint}.";
+                    LastStatus = $"Reactor touch outbox client connected: {endpoint}.";
                     _ = Task.Run(() => HandleClientAsync(connectedClient, cancellationToken), cancellationToken);
                 }
             }

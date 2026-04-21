@@ -44,6 +44,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ClientEmployeeDefaultFrameDelayMs = 180;
         private const int MaxEmployeeActionCacheEntries = 512;
         private const int MaxEmployeeImageCacheEntries = 128;
+        private const int ClientEmployeeCacheSweepIntervalMs = 60000;
+        private const int ClientEmployeeCacheEntryLifetimeMs = 300000;
 
         private static readonly Color SignHeadlineColor = new(255, 242, 176);
         private static readonly Color SignDetailColor = new(244, 244, 244);
@@ -58,14 +60,14 @@ namespace HaCreator.MapSimulator.Interaction
                 WzImage imageRoot,
                 WzImageProperty templateRoot,
                 WzImageProperty propertyRoot,
-                int lastAccessStamp)
+                int lastAccessTickMs)
             {
                 TemplateId = Math.Max(0, templateId);
                 ImagePath = imagePath ?? string.Empty;
                 ImageRoot = imageRoot;
                 TemplateRoot = templateRoot;
                 PropertyRoot = propertyRoot;
-                LastAccessStamp = Math.Max(0, lastAccessStamp);
+                LastAccessTickMs = lastAccessTickMs;
             }
 
             internal int TemplateId { get; }
@@ -73,7 +75,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal WzImage ImageRoot { get; }
             internal WzImageProperty TemplateRoot { get; }
             internal WzImageProperty PropertyRoot { get; }
-            internal int LastAccessStamp { get; set; }
+            internal int LastAccessTickMs { get; set; }
         }
 
         private readonly Dictionary<string, NpcItem> _actorCache = new(StringComparer.Ordinal);
@@ -89,8 +91,7 @@ namespace HaCreator.MapSimulator.Interaction
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
         private NameTagAssets _defaultNameTagAssets;
         private NameTagAssets _activeNameTagAssets;
-        private int _employeeActionCacheAccessStamp;
-        private int _employeeImageCacheAccessStamp;
+        private int _lastEmployeeCacheSweepTickMs;
 
         private NpcItem _activeActor;
         private SocialRoomFieldActorSnapshot _activeSnapshot;
@@ -132,6 +133,8 @@ namespace HaCreator.MapSimulator.Interaction
                 Clear();
                 return;
             }
+
+            SweepEmployeeCachesIfNeeded();
 
             NpcItem actor = EnsureActor(
                 snapshot,
@@ -728,7 +731,7 @@ namespace HaCreator.MapSimulator.Interaction
                 itemImage,
                 templateRoot,
                 employeeRoot,
-                ++_employeeImageCacheAccessStamp);
+                GetClientTickCountMs());
             _cashEmployeeImgEntryCache[templateId] = entry;
             TrimEmployeeImageEntryCacheIfNeeded();
             return entry;
@@ -784,7 +787,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            EmployeeActionCacheEntry entry = new(templateId, actionEntry.ActionName, frames, ++_employeeActionCacheAccessStamp);
+            EmployeeActionCacheEntry entry = new(templateId, actionEntry.ActionName, frames, GetClientTickCountMs());
             _cashActionCache[cacheKey] = entry;
             _cashActionKeyByName[actionCacheAlias] = cacheKey;
             TrimEmployeeActionCacheIfNeeded();
@@ -820,7 +823,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            entry.LastAccessStamp = ++_employeeImageCacheAccessStamp;
+            entry.LastAccessTickMs = GetClientTickCountMs();
             _cashEmployeeImgEntryCache[entry.TemplateId] = entry;
         }
 
@@ -833,7 +836,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             int removeCount = Math.Max(1, _cashEmployeeImgEntryCache.Count - MaxEmployeeImageCacheEntries);
             KeyValuePair<int, EmployeeImageEntry>[] toRemove = _cashEmployeeImgEntryCache
-                .OrderBy(pair => pair.Value?.LastAccessStamp ?? int.MinValue)
+                .OrderBy(pair => pair.Value?.LastAccessTickMs ?? int.MinValue)
                 .ThenBy(pair => pair.Key)
                 .Take(removeCount)
                 .ToArray();
@@ -856,7 +859,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            entry.LastAccessStamp = ++_employeeActionCacheAccessStamp;
+            entry.LastAccessTickMs = GetClientTickCountMs();
             _cashActionCache[cacheKey] = entry;
             if (!string.IsNullOrWhiteSpace(actionCacheAlias))
             {
@@ -873,7 +876,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             int removeCount = Math.Max(1, _cashActionCache.Count - MaxEmployeeActionCacheEntries);
             KeyValuePair<uint, EmployeeActionCacheEntry>[] toRemove = _cashActionCache
-                .OrderBy(pair => pair.Value?.LastAccessStamp ?? int.MinValue)
+                .OrderBy(pair => pair.Value?.LastAccessTickMs ?? int.MinValue)
                 .ThenBy(pair => pair.Key)
                 .Take(removeCount)
                 .ToArray();
@@ -882,16 +885,82 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 KeyValuePair<uint, EmployeeActionCacheEntry> pair = toRemove[i];
                 _cashActionCache.Remove(pair.Key);
-                uint removedKey = pair.Key;
-                string[] aliases = _cashActionKeyByName
-                    .Where(aliasPair => aliasPair.Value == removedKey)
-                    .Select(aliasPair => aliasPair.Key)
-                    .ToArray();
-                for (int aliasIndex = 0; aliasIndex < aliases.Length; aliasIndex++)
-                {
-                    _cashActionKeyByName.Remove(aliases[aliasIndex]);
-                }
+                RemoveActionCacheAliasesByCacheKey(pair.Key);
             }
+        }
+
+        private void SweepEmployeeCachesIfNeeded()
+        {
+            int currentTickMs = GetClientTickCountMs();
+            if (_lastEmployeeCacheSweepTickMs != 0
+                && GetElapsedCacheTimeMs(currentTickMs, _lastEmployeeCacheSweepTickMs) < ClientEmployeeCacheSweepIntervalMs)
+            {
+                return;
+            }
+
+            _lastEmployeeCacheSweepTickMs = currentTickMs;
+            EvictExpiredEmployeeImageEntries(currentTickMs);
+            EvictExpiredEmployeeActionEntries(currentTickMs);
+        }
+
+        private void EvictExpiredEmployeeImageEntries(int currentTickMs)
+        {
+            int[] expiredTemplateIds = _cashEmployeeImgEntryCache
+                .Where(pair => pair.Value == null || HasCacheEntryExpired(pair.Value.LastAccessTickMs, currentTickMs))
+                .Select(pair => pair.Key)
+                .ToArray();
+
+            for (int i = 0; i < expiredTemplateIds.Length; i++)
+            {
+                int templateId = expiredTemplateIds[i];
+                _cashEmployeeImgEntryCache.Remove(templateId);
+                _cashActionCatalogCache.Remove(templateId);
+                _cashEmployeeNameTagCache.Remove(templateId);
+                _cashEmployeeNameTagMissingTemplates.Remove(templateId);
+                PurgeEmployeeActionCacheForTemplate(templateId);
+            }
+        }
+
+        private void EvictExpiredEmployeeActionEntries(int currentTickMs)
+        {
+            uint[] expiredKeys = _cashActionCache
+                .Where(pair => pair.Value == null || HasCacheEntryExpired(pair.Value.LastAccessTickMs, currentTickMs))
+                .Select(pair => pair.Key)
+                .ToArray();
+
+            for (int i = 0; i < expiredKeys.Length; i++)
+            {
+                uint cacheKey = expiredKeys[i];
+                _cashActionCache.Remove(cacheKey);
+                RemoveActionCacheAliasesByCacheKey(cacheKey);
+            }
+        }
+
+        private void RemoveActionCacheAliasesByCacheKey(uint cacheKey)
+        {
+            string[] aliases = _cashActionKeyByName
+                .Where(aliasPair => aliasPair.Value == cacheKey)
+                .Select(aliasPair => aliasPair.Key)
+                .ToArray();
+            for (int aliasIndex = 0; aliasIndex < aliases.Length; aliasIndex++)
+            {
+                _cashActionKeyByName.Remove(aliases[aliasIndex]);
+            }
+        }
+
+        private static bool HasCacheEntryExpired(int lastAccessTickMs, int currentTickMs)
+        {
+            return GetElapsedCacheTimeMs(currentTickMs, lastAccessTickMs) >= ClientEmployeeCacheEntryLifetimeMs;
+        }
+
+        private static int GetElapsedCacheTimeMs(int currentTickMs, int previousTickMs)
+        {
+            return unchecked(currentTickMs - previousTickMs);
+        }
+
+        private static int GetClientTickCountMs()
+        {
+            return Environment.TickCount;
         }
 
         private void PurgeEmployeeActionCacheForTemplate(int templateId)
@@ -2107,18 +2176,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed class EmployeeActionCacheEntry
         {
-            internal EmployeeActionCacheEntry(int templateId, string actionName, List<IDXObject> frames, int lastAccessStamp)
+            internal EmployeeActionCacheEntry(int templateId, string actionName, List<IDXObject> frames, int lastAccessTickMs)
             {
                 TemplateId = Math.Max(0, templateId);
                 ActionName = NormalizeActionName(actionName);
                 Frames = frames ?? new List<IDXObject>();
-                LastAccessStamp = lastAccessStamp;
+                LastAccessTickMs = lastAccessTickMs;
             }
 
             internal int TemplateId { get; }
             internal string ActionName { get; }
             internal List<IDXObject> Frames { get; }
-            internal int LastAccessStamp { get; set; }
+            internal int LastAccessTickMs { get; set; }
         }
 
         private sealed class MiniRoomBalloonAssets

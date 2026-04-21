@@ -31,6 +31,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int AttachmentQuantity { get; init; }
         public int AttachmentMeso { get; init; }
         public bool HasUndecodedItemAttachment { get; init; }
+        public byte[] TrailingPayloadBytes { get; init; } = Array.Empty<byte>();
+        public bool HasTrailingPayloadBytes { get; init; }
     }
 
     internal sealed class PacketOwnedParcelSessionDecodeResult
@@ -126,7 +128,54 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            long remainingLength = stream.Length - stream.Position;
+            if (remainingLength > 0)
+            {
+                if (remainingLength > int.MaxValue)
+                {
+                    error = "Parcel payload trailing byte segment was larger than supported decoder limits.";
+                    return false;
+                }
+
+                byte[] trailingBytes = reader.ReadBytes((int)remainingLength);
+                entry = CloneWithTrailingPayloadBytes(entry, trailingBytes);
+            }
+
             return true;
+        }
+
+        private static PacketOwnedParcelDecodedEntry CloneWithTrailingPayloadBytes(PacketOwnedParcelDecodedEntry source, byte[] trailingBytes)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            byte[] resolvedTrailingBytes = trailingBytes ?? Array.Empty<byte>();
+            return new PacketOwnedParcelDecodedEntry
+            {
+                ParcelSerial = source.ParcelSerial,
+                Sender = source.Sender,
+                MemoText = source.MemoText,
+                IsQuickDelivery = source.IsQuickDelivery,
+                QuickDeliveryRawFlag = source.QuickDeliveryRawFlag,
+                QuickDeliveryReservedBytes = source.QuickDeliveryReservedBytes ?? Array.Empty<byte>(),
+                HasQuickDeliveryReservedState = source.HasQuickDeliveryReservedState,
+                ExpirationTimestampUtc = source.ExpirationTimestampUtc,
+                IsRead = source.IsRead,
+                IsKept = source.IsKept,
+                IsAttachmentClaimed = source.IsAttachmentClaimed,
+                StateFlags = source.StateFlags,
+                PostBodyItemPresenceFlag = source.PostBodyItemPresenceFlag,
+                HasItemAttachment = source.HasItemAttachment,
+                HasMesoAttachment = source.HasMesoAttachment,
+                AttachmentItemId = source.AttachmentItemId,
+                AttachmentQuantity = source.AttachmentQuantity,
+                AttachmentMeso = source.AttachmentMeso,
+                HasUndecodedItemAttachment = source.HasUndecodedItemAttachment,
+                TrailingPayloadBytes = resolvedTrailingBytes,
+                HasTrailingPayloadBytes = resolvedTrailingBytes.Length > 0
+            };
         }
 
         private static bool TryDecodeParcelEntry(BinaryReader reader, out PacketOwnedParcelDecodedEntry entry, out string error)

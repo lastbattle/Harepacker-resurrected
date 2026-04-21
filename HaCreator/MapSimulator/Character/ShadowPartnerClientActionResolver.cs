@@ -2335,6 +2335,26 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        internal static IEnumerable<string> EnumerateClientInitializedFallbackActionNames()
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string actionName in EnumerateClientInitializedShadowPartnerRawActionNames())
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach (string actionName in GenericHelperSurfaceActionNames)
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+        }
+
         internal static bool IsClientInitializedShadowPartnerRawActionName(string actionName)
         {
             return !string.IsNullOrWhiteSpace(actionName)
@@ -3105,6 +3125,23 @@ namespace HaCreator.MapSimulator.Character
             return ResolveFrameAlpha(alphaFrame, alphaFrameElapsedMs);
         }
 
+        public static bool ShouldPreserveOneShotAlphaLifetimeOnFacingChange(
+            SkillAnimation playbackAnimation,
+            int actionElapsedMs)
+        {
+            if (playbackAnimation?.Loop != false
+                || playbackAnimation.Frames == null
+                || playbackAnimation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            int totalDurationMs = ResolvePlaybackTotalDurationMs(playbackAnimation);
+            return totalDurationMs > 0
+                   && actionElapsedMs >= totalDurationMs
+                   && HasAuthoredFrameAlphaEnvelope(playbackAnimation);
+        }
+
         private static bool ShouldClampLoopedPlaybackAlphaEnvelope(
             SkillAnimation playbackAnimation,
             int actionElapsedMs)
@@ -3258,6 +3295,7 @@ namespace HaCreator.MapSimulator.Character
         internal static bool ShouldSynthesizeClientInitializedFallbackAction(string actionName)
         {
             return IsAttackAction(actionName)
+                   || IsGenericHelperSurfaceActionName(actionName)
                    || (!string.IsNullOrWhiteSpace(actionName)
                        && ClientInitializedFallbackOnlyActionNames.Contains(actionName));
         }

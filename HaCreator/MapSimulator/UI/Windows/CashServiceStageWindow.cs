@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyList<byte> TrailingPayloadBytes { get; init; } = Array.Empty<byte>();
             public bool HasPacketRewardSessionByte { get; init; }
             public int PacketRewardSessionByte { get; init; }
+            public int RewardSessionByteOffset { get; init; } = -1;
         }
 
         public sealed class PacketCatalogEntry
@@ -1245,7 +1246,7 @@ namespace HaCreator.MapSimulator.UI
                 -86 => TryApplyCashFreeCashItemDone(packetPayload, out string freeCashItemMessage)
                     ? freeCashItemMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResFreeCashItemDone", packetPayload),
-                _ => $"{subtypeLabel} reached CCashShop with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state."
+                _ => BuildCashUnknownResultSummary(_cashItemResultSubtype, subtypeLabel, packetPayload)
             };
             _cashItemCommoditySerialNumber = _cashPacketCatalogEntries.FirstOrDefault()?.ListingId ?? 0;
             _cashItemProductId = _cashPacketCatalogEntries.FirstOrDefault()?.ItemId ?? 0;
@@ -2696,18 +2697,29 @@ namespace HaCreator.MapSimulator.UI
             string failureMessage = reason >= 0
                 ? $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}."
                 : $"{ownerName} failed before a reason byte could be decoded.";
-            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeEmbeddedCashItemInfoSnapshots(payload, startOffset: 2, maxCount: 4);
-            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
-                embeddedSnapshots,
-                paneLabel: "Packet purchase",
-                browseModeLabel: "Buy",
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                startOffset: 2,
+                maxCount: 4,
+                paneLabel: "Packet failures",
+                browseModeLabel: "Fail",
                 titlePrefix: "Failure packet body",
                 seller: "CCashShop",
                 stateLabel: "Failed body");
-            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
             {
-                failureMessage += $" {embeddedSummary}";
+                failureMessage += $" {trailingSummary}";
             }
+
+            AppendCashPacketCatalogEntry("Packet failures", "Fail", new PacketCatalogEntry
+            {
+                Title = ownerName,
+                Detail = failureMessage,
+                Seller = "CCashShop",
+                PriceLabel = reason >= 0 ? $"Reason {reason.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = "Failed"
+            });
+
             _noticeState = failureMessage;
 
             if (ownerName.Contains("Coupon", StringComparison.Ordinal))
@@ -2728,6 +2740,37 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return failureMessage;
+        }
+
+        private string BuildCashUnknownResultSummary(int subtype, string subtypeLabel, byte[] payload)
+        {
+            byte[] normalizedPayload = payload ?? Array.Empty<byte>();
+            string summary =
+                $"{subtypeLabel} reached CCashShop with {normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state.";
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                normalizedPayload,
+                startOffset: 1,
+                maxCount: 4,
+                paneLabel: "Packet unknown",
+                browseModeLabel: "Unknown",
+                titlePrefix: $"{subtypeLabel} packet body",
+                seller: "CCashShop",
+                stateLabel: "Unknown body");
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
+            {
+                summary += $" {trailingSummary}";
+            }
+
+            AppendCashPacketCatalogEntry("Packet unknown", "Unknown", new PacketCatalogEntry
+            {
+                Title = subtypeLabel,
+                Detail = summary,
+                Seller = "CCashShop",
+                PriceLabel = $"Subtype {subtype.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Unknown"
+            });
+            _noticeState = summary;
+            return summary;
         }
 
         private string BuildCashSimpleResult(string ownerName, byte[] payload)
@@ -3623,11 +3666,13 @@ namespace HaCreator.MapSimulator.UI
                 int trailingByteCount = (int)Math.Max(0L, stream.Length - stream.Position);
                 bool hasPacketRewardSessionByte = trailingByteCount >= 1;
                 int packetRewardSessionByte = 0;
+                int rewardSessionByteOffset = -1;
                 byte[] trailingPayloadBytes = Array.Empty<byte>();
                 if (hasPacketRewardSessionByte)
                 {
                     byte[] trailingPayload = reader.ReadBytes(trailingByteCount);
                     packetRewardSessionByte = trailingPayload[Math.Max(0, trailingPayload.Length - 1)];
+                    rewardSessionByteOffset = decodedByteLength + Math.Max(0, trailingPayload.Length - 1);
                     trailingByteCount = Math.Max(0, trailingPayload.Length - 1);
                     if (trailingByteCount > 0)
                     {
@@ -3635,7 +3680,7 @@ namespace HaCreator.MapSimulator.UI
                         Array.Copy(trailingPayload, trailingPayloadBytes, trailingByteCount);
                     }
 
-                    decodedByteLength = payload.Length - trailingByteCount;
+                    decodedByteLength++;
                 }
                 else if (trailingByteCount > 0)
                 {
@@ -3650,12 +3695,13 @@ namespace HaCreator.MapSimulator.UI
                     PayloadLength = payload.Length,
                     DecodedByteLength = decodedByteLength,
                     TrailingByteCount = trailingByteCount,
-                    TrailingPayloadHex = trailingByteCount > 0
-                        ? BuildCompactPayloadHex(payload, decodedByteLength, trailingByteCount)
+                    TrailingPayloadHex = trailingPayloadBytes.Length > 0
+                        ? BuildCompactPayloadHex(trailingPayloadBytes)
                         : string.Empty,
                     TrailingPayloadBytes = trailingPayloadBytes,
                     HasPacketRewardSessionByte = hasPacketRewardSessionByte,
-                    PacketRewardSessionByte = packetRewardSessionByte
+                    PacketRewardSessionByte = packetRewardSessionByte,
+                    RewardSessionByteOffset = rewardSessionByteOffset
                 };
                 return true;
             }
@@ -3671,25 +3717,48 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static string BuildCompactPayloadHex(byte[] payload)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            int sliceLength = Math.Min(8, payload.Length);
+            byte[] slice = new byte[sliceLength];
+            Array.Copy(payload, slice, sliceLength);
+            string prefix = Convert.ToHexString(slice);
+            return payload.Length > sliceLength
+                ? $"{prefix}+{(payload.Length - sliceLength).ToString(CultureInfo.InvariantCulture)}B"
+                : prefix;
+        }
+
         private static string BuildCompactPayloadHex(byte[] payload, int offset, int count)
         {
-            if (payload == null || payload.Length == 0 || offset < 0 || count <= 0 || offset >= payload.Length)
+            if (payload == null || payload.Length == 0 || count <= 0)
             {
                 return string.Empty;
             }
 
-            int availableCount = Math.Min(count, payload.Length - offset);
-            if (availableCount <= 0)
+            int start = Math.Clamp(offset, 0, payload.Length);
+            int available = payload.Length - start;
+            if (available <= 0)
             {
                 return string.Empty;
             }
 
-            int sliceLength = Math.Min(8, availableCount);
+            int sliceLength = Math.Min(Math.Min(8, available), count);
+            if (sliceLength <= 0)
+            {
+                return string.Empty;
+            }
+
             byte[] slice = new byte[sliceLength];
-            Array.Copy(payload, offset, slice, 0, sliceLength);
+            Array.Copy(payload, start, slice, 0, sliceLength);
             string prefix = Convert.ToHexString(slice);
-            return availableCount > sliceLength
-                ? $"{prefix}+{(availableCount - sliceLength).ToString(CultureInfo.InvariantCulture)}B"
+            int totalRangeLength = Math.Min(available, count);
+            return totalRangeLength > sliceLength
+                ? $"{prefix}+{(totalRangeLength - sliceLength).ToString(CultureInfo.InvariantCulture)}B"
                 : prefix;
         }
 

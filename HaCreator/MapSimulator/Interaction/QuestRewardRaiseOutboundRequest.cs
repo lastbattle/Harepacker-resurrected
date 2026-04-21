@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
         string Summary)
     {
         internal const int ClientPutItemOpcode = 286;
+        internal const int ClientPutItemReleaseOpcode = 285;
         internal const int ClientOpenOwnerOpcode = 284;
         internal const int OpenOwnerOpcode = 283;
         internal const int PutItemAddOpcode = 283;
@@ -94,8 +95,8 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestRewardRaiseOutboundRequestKind.PutItemRelease,
                 PutItemReleaseOpcode,
                 Array.AsReadOnly(payload),
-                -1,
-                Array.Empty<byte>(),
+                ClientPutItemReleaseOpcode,
+                Array.AsReadOnly(BuildClientPutItemPayload(piece.InventoryType, piece.SlotIndex, piece.ItemId)),
                 $"PutItem release owner #{Math.Max(0, state?.OwnerItemId ?? 0)} req #{piece.RequestId} item {piece.ItemId} slot {piece.InventoryType}:{piece.SlotIndex + 1}");
         }
 

@@ -18,6 +18,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Pools
@@ -7305,6 +7306,31 @@ namespace HaCreator.MapSimulator.Pools
                     consumedTokenCount = 2;
                     return true;
                 }
+
+                if (TryReadPacketMobAttackGeneralEffectSignedAliasValueToken(
+                        rawTokens,
+                        startIndex + 1,
+                        out string normalizedSplitSignedValueToken,
+                        out int splitSignedValueTokenCount))
+                {
+                    coalescedToken = $"{aliasPrefixToken}{trailingAssignmentDelimiter}{normalizedSplitSignedValueToken}";
+                    consumedTokenCount = 1 + splitSignedValueTokenCount;
+                    return true;
+                }
+            }
+
+            if (startIndex < rawTokens.Count - 1)
+            {
+                string normalizedSignedValueToken = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(
+                    rawTokens[startIndex + 1]);
+                if (TryParsePacketMobAttackGeneralEffectSignedIntegerToken(
+                        normalizedSignedValueToken,
+                        out int signedFrameOffset))
+                {
+                    coalescedToken = $"{aliasPrefixToken}{(signedFrameOffset >= 0 ? "+" : string.Empty)}{signedFrameOffset}";
+                    consumedTokenCount = 2;
+                    return true;
+                }
             }
 
             if (hasTrailingOpenWrapper && startIndex < rawTokens.Count - 2)
@@ -7324,6 +7350,27 @@ namespace HaCreator.MapSimulator.Pools
                     consumedTokenCount = 3;
                     return true;
                 }
+
+                if (TryReadPacketMobAttackGeneralEffectSignedAliasValueToken(
+                        rawTokens,
+                        startIndex + 1,
+                        out string normalizedSplitWrappedValueToken,
+                        out int splitWrappedValueTokenCount)
+                    && startIndex + 1 + splitWrappedValueTokenCount < rawTokens.Count)
+                {
+                    closeWrapperToken = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(
+                        rawTokens[startIndex + 1 + splitWrappedValueTokenCount]);
+                    if (TryResolvePacketMobAttackGeneralEffectAliasWrapperPair(
+                            trailingOpenWrapperDelimiter.ToString(),
+                            closeWrapperToken,
+                            out _,
+                            out char resolvedCloseWrapperDelimiter))
+                    {
+                        coalescedToken = $"{aliasPrefixToken}{trailingOpenWrapperDelimiter}{normalizedSplitWrappedValueToken}{resolvedCloseWrapperDelimiter}";
+                        consumedTokenCount = 2 + splitWrappedValueTokenCount;
+                        return true;
+                    }
+                }
             }
 
             if (startIndex < rawTokens.Count - 2)
@@ -7340,11 +7387,35 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
                 }
 
+                if (IsPacketMobAttackGeneralEffectAliasAssignmentDelimiter(normalizedDelimiterToken)
+                    && TryReadPacketMobAttackGeneralEffectSignedAliasValueToken(
+                        rawTokens,
+                        startIndex + 2,
+                        out string normalizedSplitSignedValueToken,
+                        out int splitSignedValueTokenCount))
+                {
+                    coalescedToken = $"{aliasPrefixToken}{normalizedDelimiterToken}{normalizedSplitSignedValueToken}";
+                    consumedTokenCount = 2 + splitSignedValueTokenCount;
+                    return true;
+                }
+
                 if (string.Equals(normalizedDelimiterToken, "/", StringComparison.Ordinal)
                     && IsPacketMobAttackGeneralEffectAliasFrameToken(normalizedValueToken))
                 {
                     coalescedToken = $"{aliasPrefixToken}/{normalizedValueToken}";
                     consumedTokenCount = 3;
+                    return true;
+                }
+
+                if (string.Equals(normalizedDelimiterToken, "/", StringComparison.Ordinal)
+                    && TryReadPacketMobAttackGeneralEffectSignedAliasValueToken(
+                        rawTokens,
+                        startIndex + 2,
+                        out string normalizedSplitSlashSignedValueToken,
+                        out int splitSlashSignedValueTokenCount))
+                {
+                    coalescedToken = $"{aliasPrefixToken}/{normalizedSplitSlashSignedValueToken}";
+                    consumedTokenCount = 2 + splitSlashSignedValueTokenCount;
                     return true;
                 }
             }
@@ -7368,9 +7439,74 @@ namespace HaCreator.MapSimulator.Pools
                     consumedTokenCount = 4;
                     return true;
                 }
+
+                if (TryReadPacketMobAttackGeneralEffectSignedAliasValueToken(
+                        rawTokens,
+                        startIndex + 2,
+                        out string normalizedSplitWrappedValueToken,
+                        out int splitWrappedValueTokenCount)
+                    && startIndex + 2 + splitWrappedValueTokenCount < rawTokens.Count)
+                {
+                    closeWrapperToken = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(
+                        rawTokens[startIndex + 2 + splitWrappedValueTokenCount]);
+                    if (TryResolvePacketMobAttackGeneralEffectAliasWrapperPair(
+                            openWrapperToken,
+                            closeWrapperToken,
+                            out char resolvedOpenWrapperDelimiter,
+                            out char resolvedCloseWrapperDelimiter))
+                    {
+                        coalescedToken = $"{aliasPrefixToken}{resolvedOpenWrapperDelimiter}{normalizedSplitWrappedValueToken}{resolvedCloseWrapperDelimiter}";
+                        consumedTokenCount = 3 + splitWrappedValueTokenCount;
+                        return true;
+                    }
+                }
             }
 
             return false;
+        }
+
+        private static bool TryReadPacketMobAttackGeneralEffectSignedAliasValueToken(
+            IReadOnlyList<string> rawTokens,
+            int startIndex,
+            out string normalizedSignedValueToken,
+            out int consumedTokenCount)
+        {
+            normalizedSignedValueToken = null;
+            consumedTokenCount = 0;
+            if (rawTokens == null || startIndex < 0 || startIndex >= rawTokens.Count)
+            {
+                return false;
+            }
+
+            string firstPiece = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(rawTokens[startIndex]);
+            if (TryParsePacketMobAttackGeneralEffectSignedIntegerToken(firstPiece, out int directSignedValue))
+            {
+                normalizedSignedValueToken = directSignedValue.ToString(CultureInfo.InvariantCulture);
+                consumedTokenCount = 1;
+                return true;
+            }
+
+            if (!string.Equals(firstPiece, "+", StringComparison.Ordinal)
+                && !string.Equals(firstPiece, "-", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (startIndex >= rawTokens.Count - 1)
+            {
+                return false;
+            }
+
+            string secondPiece = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(rawTokens[startIndex + 1]);
+            if (!int.TryParse(secondPiece, NumberStyles.Integer, CultureInfo.InvariantCulture, out int magnitude))
+            {
+                return false;
+            }
+
+            int value = string.Equals(firstPiece, "-", StringComparison.Ordinal) ? -magnitude : magnitude;
+            normalizedSignedValueToken = value.ToString(CultureInfo.InvariantCulture);
+            consumedTokenCount = 2;
+            return true;
         }
 
         private static bool TrySplitPacketMobAttackGeneralEffectAliasPrefixTrailingAssignmentToken(
@@ -7385,7 +7521,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            string[] delimiters = { "=>", "->", "=", ":", "/", ".", "_" };
+            string[] delimiters = { "=>", "->", "=", ":", "/", ".", "_", "+", "-" };
             for (int i = 0; i < delimiters.Length; i++)
             {
                 string delimiter = delimiters[i];

@@ -129,6 +129,27 @@ namespace HaCreator.MapSimulator.Effects
             BlessEffect
         }
 
+        private enum PendingWeddingRemoteParticipantOperationType
+        {
+            TemporaryStatSet,
+            TemporaryStatReset,
+            GuildNameChanged,
+            Profile,
+            GuildMarkChanged
+        }
+
+        private readonly record struct PendingWeddingRemoteParticipantOperation(
+            PendingWeddingRemoteParticipantOperationType Type,
+            RemoteUserTemporaryStatSnapshot TemporaryStats,
+            ushort TemporaryStatDelay,
+            int[] ResetMaskWords,
+            string GuildName,
+            RemoteUserProfilePacket ProfilePacket,
+            int MarkBackgroundId,
+            int MarkBackgroundColor,
+            int MarkId,
+            int MarkColor);
+
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
         {
@@ -161,6 +182,7 @@ namespace HaCreator.MapSimulator.Effects
         private readonly Dictionary<int, WeddingRemoteParticipant> _participantActors = new();
         private readonly Dictionary<string, WeddingRemoteParticipant> _audienceActors = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, string> _audienceActorNamesById = new();
+        private readonly Dictionary<int, List<PendingWeddingRemoteParticipantOperation>> _pendingRemoteParticipantOperationsByCharacterId = new();
         private readonly Queue<int> _pendingExternalRemoteActorLoads = new();
         private readonly HashSet<int> _pendingExternalRemoteActorLoadIds = new();
         private readonly HashSet<int> _loadedExternalRemoteActorIds = new();
@@ -315,6 +337,7 @@ namespace HaCreator.MapSimulator.Effects
             _participantActors.Clear();
             _audienceActors.Clear();
             _audienceActorNamesById.Clear();
+            _pendingRemoteParticipantOperationsByCharacterId.Clear();
             _pendingExternalRemoteActorLoads.Clear();
             _pendingExternalRemoteActorLoadIds.Clear();
             _loadedExternalRemoteActorIds.Clear();
@@ -386,6 +409,7 @@ namespace HaCreator.MapSimulator.Effects
             _participantActors.Clear();
             _audienceActors.Clear();
             _audienceActorNamesById.Clear();
+            _pendingRemoteParticipantOperationsByCharacterId.Clear();
             _pendingExternalRemoteActorLoads.Clear();
             _pendingExternalRemoteActorLoadIds.Clear();
             _loadedExternalRemoteActorIds.Clear();
@@ -963,6 +987,7 @@ namespace HaCreator.MapSimulator.Effects
 
             participant.MovementSnapshot = null;
             participant.MovementDrivenActionSelection = false;
+            TryApplyPendingRemoteParticipantOperations(participant);
 
             return true;
         }
@@ -1015,6 +1040,7 @@ namespace HaCreator.MapSimulator.Effects
             participant.Position = worldPosition;
             participant.MovementSnapshot = null;
             participant.MovementDrivenActionSelection = false;
+            TryApplyPendingRemoteParticipantOperations(participant);
             if (participant.CharacterId > 0)
             {
                 _audienceActorNamesById[participant.CharacterId] = actorName;
@@ -1060,6 +1086,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _audienceActorNamesById.Remove(participant.CharacterId);
                 RemoveExternalRemoteActorTracking(participant.CharacterId);
+                _pendingRemoteParticipantOperationsByCharacterId.Remove(participant.CharacterId);
             }
 
             return _audienceActors.Remove(normalized);
@@ -1070,6 +1097,7 @@ namespace HaCreator.MapSimulator.Effects
             foreach (int characterId in _audienceActorNamesById.Keys.ToArray())
             {
                 RemoveExternalRemoteActorTracking(characterId);
+                _pendingRemoteParticipantOperationsByCharacterId.Remove(characterId);
             }
 
             _audienceActors.Clear();
@@ -1391,6 +1419,11 @@ namespace HaCreator.MapSimulator.Effects
                 removed = true;
             }
 
+            if (_pendingRemoteParticipantOperationsByCharacterId.Remove(characterId))
+            {
+                removed = true;
+            }
+
             if (characterId == _groomId && LocalParticipantRole != WeddingParticipantRole.Groom)
             {
                 _groomPosition = null;
@@ -1580,9 +1613,28 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            return TryApplyRemoteTemporaryStatSetPacket(packet, out errorMessage);
+        }
+
+        internal bool TryApplyRemoteTemporaryStatSetPacket(RemoteUserTemporaryStatSetPacket packet, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out _))
             {
-                return false;
+                QueuePendingRemoteParticipantOperation(
+                    packet.CharacterId,
+                    new PendingWeddingRemoteParticipantOperation(
+                        PendingWeddingRemoteParticipantOperationType.TemporaryStatSet,
+                        packet.TemporaryStats,
+                        packet.Delay,
+                        Array.Empty<int>(),
+                        null,
+                        default,
+                        0,
+                        0,
+                        0,
+                        0));
+                return true;
             }
 
             SetParticipantTemporaryStats(participant, packet.TemporaryStats, packet.Delay);
@@ -1597,36 +1649,31 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
-            {
-                return false;
-            }
+            return TryApplyRemoteTemporaryStatResetPacket(packet, out errorMessage);
+        }
 
-            int[] currentMaskWords = participant.TemporaryStats.MaskWords ?? Array.Empty<int>();
-            int[] resetMaskWords = packet.MaskWords ?? Array.Empty<int>();
-            int maskWordCount = Math.Max(currentMaskWords.Length, resetMaskWords.Length);
-            if (maskWordCount == 0)
+        internal bool TryApplyRemoteTemporaryStatResetPacket(RemoteUserTemporaryStatResetPacket packet, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out _))
             {
-                participant.TemporaryStats = default;
-                participant.TemporaryStatDelay = 0;
-                ApplyParticipantTemporaryStatPresentation(participant);
-                participant.TemporaryStatRevision++;
+                QueuePendingRemoteParticipantOperation(
+                    packet.CharacterId,
+                    new PendingWeddingRemoteParticipantOperation(
+                        PendingWeddingRemoteParticipantOperationType.TemporaryStatReset,
+                        default,
+                        0,
+                        packet.MaskWords ?? Array.Empty<int>(),
+                        null,
+                        default,
+                        0,
+                        0,
+                        0,
+                        0));
                 return true;
             }
 
-            int[] remainingMaskWords = new int[maskWordCount];
-            for (int i = 0; i < maskWordCount; i++)
-            {
-                int currentWord = i < currentMaskWords.Length ? currentMaskWords[i] : 0;
-                int resetWord = i < resetMaskWords.Length ? resetMaskWords[i] : 0;
-                int remainingWord = currentWord & ~resetWord;
-                remainingMaskWords[i] = remainingWord;
-            }
-
-            SetParticipantTemporaryStats(
-                participant,
-                RemoteUserPacketCodec.ApplyResetMask(participant.TemporaryStats, remainingMaskWords),
-                delay: 0);
+            ApplyParticipantTemporaryStatReset(participant, packet.MaskWords ?? Array.Empty<int>());
             return true;
         }
 
@@ -1638,9 +1685,28 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            return TryApplyRemoteGuildNameChangedPacket(packet, out errorMessage);
+        }
+
+        internal bool TryApplyRemoteGuildNameChangedPacket(RemoteUserGuildNameChangedPacket packet, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out _))
             {
-                return false;
+                QueuePendingRemoteParticipantOperation(
+                    packet.CharacterId,
+                    new PendingWeddingRemoteParticipantOperation(
+                        PendingWeddingRemoteParticipantOperationType.GuildNameChanged,
+                        default,
+                        0,
+                        Array.Empty<int>(),
+                        packet.GuildName,
+                        default,
+                        0,
+                        0,
+                        0,
+                        0));
+                return true;
             }
 
             ApplyParticipantGuildNameChanged(participant, packet.GuildName);
@@ -1655,9 +1721,28 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            return TryApplyRemoteProfilePacket(packet, out errorMessage);
+        }
+
+        internal bool TryApplyRemoteProfilePacket(RemoteUserProfilePacket packet, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out _))
             {
-                return false;
+                QueuePendingRemoteParticipantOperation(
+                    packet.CharacterId,
+                    new PendingWeddingRemoteParticipantOperation(
+                        PendingWeddingRemoteParticipantOperationType.Profile,
+                        default,
+                        0,
+                        Array.Empty<int>(),
+                        null,
+                        packet,
+                        0,
+                        0,
+                        0,
+                        0));
+                return true;
             }
 
             ApplyParticipantProfileMetadata(participant, packet);
@@ -1672,9 +1757,28 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            return TryApplyRemoteGuildMarkChangedPacket(packet, out errorMessage);
+        }
+
+        internal bool TryApplyRemoteGuildMarkChangedPacket(RemoteUserGuildMarkChangedPacket packet, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out _))
             {
-                return false;
+                QueuePendingRemoteParticipantOperation(
+                    packet.CharacterId,
+                    new PendingWeddingRemoteParticipantOperation(
+                        PendingWeddingRemoteParticipantOperationType.GuildMarkChanged,
+                        default,
+                        0,
+                        Array.Empty<int>(),
+                        null,
+                        default,
+                        packet.MarkBackgroundId,
+                        packet.MarkBackgroundColor,
+                        packet.MarkId,
+                        packet.MarkColor));
+                return true;
             }
 
             ApplyParticipantGuildMarkChanged(
@@ -1901,6 +2005,42 @@ namespace HaCreator.MapSimulator.Effects
             {
                 RefreshParticipantNameTag(participant);
             }
+        }
+
+        private static void ApplyParticipantTemporaryStatReset(
+            WeddingRemoteParticipant participant,
+            IReadOnlyList<int> resetMaskWords)
+        {
+            if (participant == null)
+            {
+                return;
+            }
+
+            int[] currentMaskWords = participant.TemporaryStats.MaskWords ?? Array.Empty<int>();
+            int resetWordCount = resetMaskWords?.Count ?? 0;
+            int maskWordCount = Math.Max(currentMaskWords.Length, resetWordCount);
+            if (maskWordCount == 0)
+            {
+                participant.TemporaryStats = default;
+                participant.TemporaryStatDelay = 0;
+                ApplyParticipantTemporaryStatPresentation(participant);
+                participant.TemporaryStatRevision++;
+                return;
+            }
+
+            int[] remainingMaskWords = new int[maskWordCount];
+            for (int i = 0; i < maskWordCount; i++)
+            {
+                int currentWord = i < currentMaskWords.Length ? currentMaskWords[i] : 0;
+                int resetWord = i < resetWordCount ? resetMaskWords[i] : 0;
+                int remainingWord = currentWord & ~resetWord;
+                remainingMaskWords[i] = remainingWord;
+            }
+
+            SetParticipantTemporaryStats(
+                participant,
+                RemoteUserPacketCodec.ApplyResetMask(participant.TemporaryStats, remainingMaskWords),
+                delay: 0);
         }
 
         private static void ApplyParticipantGuildNameChanged(WeddingRemoteParticipant participant, string guildName)
@@ -2131,6 +2271,68 @@ namespace HaCreator.MapSimulator.Effects
 
             errorMessage = $"Wedding remote actor id {characterId} does not exist.";
             return false;
+        }
+
+        private void QueuePendingRemoteParticipantOperation(
+            int characterId,
+            PendingWeddingRemoteParticipantOperation operation)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            if (!_pendingRemoteParticipantOperationsByCharacterId.TryGetValue(characterId, out List<PendingWeddingRemoteParticipantOperation> operations))
+            {
+                operations = new List<PendingWeddingRemoteParticipantOperation>();
+                _pendingRemoteParticipantOperationsByCharacterId[characterId] = operations;
+            }
+
+            operations.Add(operation);
+        }
+
+        private void TryApplyPendingRemoteParticipantOperations(WeddingRemoteParticipant participant)
+        {
+            if (participant == null || participant.CharacterId <= 0)
+            {
+                return;
+            }
+
+            if (!_pendingRemoteParticipantOperationsByCharacterId.TryGetValue(participant.CharacterId, out List<PendingWeddingRemoteParticipantOperation> operations)
+                || operations == null
+                || operations.Count == 0)
+            {
+                return;
+            }
+
+            foreach (PendingWeddingRemoteParticipantOperation operation in operations)
+            {
+                switch (operation.Type)
+                {
+                    case PendingWeddingRemoteParticipantOperationType.TemporaryStatSet:
+                        SetParticipantTemporaryStats(participant, operation.TemporaryStats, operation.TemporaryStatDelay);
+                        break;
+                    case PendingWeddingRemoteParticipantOperationType.TemporaryStatReset:
+                        ApplyParticipantTemporaryStatReset(participant, operation.ResetMaskWords ?? Array.Empty<int>());
+                        break;
+                    case PendingWeddingRemoteParticipantOperationType.GuildNameChanged:
+                        ApplyParticipantGuildNameChanged(participant, operation.GuildName);
+                        break;
+                    case PendingWeddingRemoteParticipantOperationType.Profile:
+                        ApplyParticipantProfileMetadata(participant, operation.ProfilePacket);
+                        break;
+                    case PendingWeddingRemoteParticipantOperationType.GuildMarkChanged:
+                        ApplyParticipantGuildMarkChanged(
+                            participant,
+                            operation.MarkBackgroundId,
+                            operation.MarkBackgroundColor,
+                            operation.MarkId,
+                            operation.MarkColor);
+                        break;
+                }
+            }
+
+            _pendingRemoteParticipantOperationsByCharacterId.Remove(participant.CharacterId);
         }
 
         private CharacterBuild CreateRemoteBuildFromAvatarLook(string actorName, LoginAvatarLook avatarLook, out string errorMessage)
@@ -4387,6 +4589,7 @@ namespace HaCreator.MapSimulator.Effects
             if (characterId <= 0 || !position.HasValue)
             {
                 _participantActors.Remove(characterId);
+                _pendingRemoteParticipantOperationsByCharacterId.Remove(characterId);
                 return;
             }
 
@@ -4394,6 +4597,7 @@ namespace HaCreator.MapSimulator.Effects
             if (_localCharacterId.HasValue && _localCharacterId.Value == characterId)
             {
                 _participantActors.Remove(characterId);
+                _pendingRemoteParticipantOperationsByCharacterId.Remove(characterId);
                 return;
             }
 
@@ -4428,6 +4632,8 @@ namespace HaCreator.MapSimulator.Effects
                 participant.BaseActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
                 participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
             }
+
+            TryApplyPendingRemoteParticipantOperations(participant);
         }
 
 

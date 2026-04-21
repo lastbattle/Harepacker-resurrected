@@ -130,7 +130,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = PluralSuffixRegex.Replace(formatted, "s");
             formatted = ResidualHashRegex.Replace(formatted, string.Empty);
 
-            return NormalizeWhitespace(formatted);
+            return NormalizeWhitespace(formatted, preserveLeadingLineWhitespace: false);
         }
 
         public static string FormatPreservingItemIcons(string text, NpcDialogueFormattingContext context = null)
@@ -216,7 +216,8 @@ namespace HaCreator.MapSimulator.Interaction
             preservedMarkers = QuestDetailStyleRegex.Replace(
                 preservedMarkers,
                 match => PreserveQuestDetailStyleTag(match, styleInput));
-            return Format(preservedMarkers, context);
+            string formatted = Format(preservedMarkers, context);
+            return NormalizeWhitespace(formatted, preserveLeadingLineWhitespace: true);
         }
 
         private static bool IsClientQuestDetailCanvasTokenPayload(string canvasPath)
@@ -468,7 +469,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static string NormalizeWhitespace(string text)
+        private static string NormalizeWhitespace(string text, bool preserveLeadingLineWhitespace)
         {
             if (string.IsNullOrEmpty(text))
             {
@@ -477,6 +478,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             var builder = new StringBuilder(text.Length);
             int pendingSpaces = 0;
+            int pendingLeadingSpaces = 0;
             bool lineHasContent = false;
 
             for (int i = 0; i < text.Length; i++)
@@ -487,6 +489,7 @@ namespace HaCreator.MapSimulator.Interaction
                     TrimTrailingSpace(builder);
                     builder.Append('\n');
                     pendingSpaces = 0;
+                    pendingLeadingSpaces = 0;
                     lineHasContent = false;
                     continue;
                 }
@@ -496,6 +499,10 @@ namespace HaCreator.MapSimulator.Interaction
                     if (lineHasContent)
                     {
                         pendingSpaces++;
+                    }
+                    else if (preserveLeadingLineWhitespace)
+                    {
+                        pendingLeadingSpaces++;
                     }
 
                     continue;
@@ -507,8 +514,18 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         pendingSpaces = Math.Max(pendingSpaces, 1);
                     }
+                    else if (preserveLeadingLineWhitespace)
+                    {
+                        pendingLeadingSpaces = Math.Max(pendingLeadingSpaces, 1);
+                    }
 
                     continue;
+                }
+
+                if (!lineHasContent && preserveLeadingLineWhitespace && pendingLeadingSpaces > 0)
+                {
+                    builder.Append(' ', pendingLeadingSpaces);
+                    pendingLeadingSpaces = 0;
                 }
 
                 if (pendingSpaces > 0)

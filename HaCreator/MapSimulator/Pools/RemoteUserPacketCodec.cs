@@ -363,7 +363,8 @@ namespace HaCreator.MapSimulator.Pools
         byte? CharacterLevel = null,
         byte? SkillLevel = null,
         string StringValue = null,
-        int? SecondaryInt32Value = null)
+        int? SecondaryInt32Value = null,
+        int[] TrailingInt32Values = null)
     {
         public RemoteUserEffectSubtype? KnownSubtype => EffectType switch
         {
@@ -407,7 +408,8 @@ namespace HaCreator.MapSimulator.Pools
         int? SkillId,
         byte[] RawTrailingPayload = null,
         string HitString = null,
-        int? HitSecondaryInt32Value = null);
+        int? HitSecondaryInt32Value = null,
+        int[] HitTrailingInt32Values = null);
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
     public readonly record struct RemoteUserReceiveHpPacket(int CharacterId, int CurrentHp, int MaxHp);
@@ -615,6 +617,25 @@ namespace HaCreator.MapSimulator.Pools
             "startnpc",
             "endnpc",
             "portal",
+            "arrowup",
+            "arrowdown",
+            "arrowright",
+            "arrowleft",
+            "arrowupright",
+            "arrowupleft",
+            "arrowdownright",
+            "arrowdownleft"
+        };
+        private static readonly HashSet<string> KnownMinimapIconDirectionAncillaryMarkerNames = new(StringComparer.Ordinal)
+        {
+            "nw",
+            "n",
+            "ne",
+            "w",
+            "e",
+            "sw",
+            "s",
+            "se",
             "arrowup",
             "arrowdown",
             "arrowright",
@@ -1379,10 +1400,14 @@ namespace HaCreator.MapSimulator.Pools
                 byte[] rawTrailingPayload = null;
                 string hitString = null;
                 int? hitSecondaryInt32Value = null;
+                int[] hitTrailingInt32Values = null;
                 if (reader.RemainingLength != 0)
                 {
                     rawTrailingPayload = reader.ReadRemainingBytes();
-                    hitString = TryParseOptionalHitString(rawTrailingPayload, out hitSecondaryInt32Value);
+                    hitString = TryParseOptionalHitString(
+                        rawTrailingPayload,
+                        out hitSecondaryInt32Value,
+                        out hitTrailingInt32Values);
                 }
 
                 if (characterId <= 0)
@@ -1410,7 +1435,8 @@ namespace HaCreator.MapSimulator.Pools
                     skillId,
                     rawTrailingPayload,
                     hitString,
-                    hitSecondaryInt32Value);
+                    hitSecondaryInt32Value,
+                    hitTrailingInt32Values);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1420,9 +1446,13 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private static string TryParseOptionalHitString(ReadOnlySpan<byte> payload, out int? secondaryInt32Value)
+        private static string TryParseOptionalHitString(
+            ReadOnlySpan<byte> payload,
+            out int? secondaryInt32Value,
+            out int[] trailingInt32Values)
         {
             secondaryInt32Value = null;
+            trailingInt32Values = null;
             if (payload.Length == 0)
             {
                 return null;
@@ -1433,9 +1463,11 @@ namespace HaCreator.MapSimulator.Pools
                     allowSecondaryInt32: true,
                     maxBranchPrefixBytes: 2,
                     out string parsedString,
-                    out int? parsedSecondaryInt32Value))
+                    out int? parsedSecondaryInt32Value,
+                    out int[] parsedTrailingInt32Values))
             {
                 secondaryInt32Value = parsedSecondaryInt32Value;
+                trailingInt32Values = parsedTrailingInt32Values;
                 return parsedString;
             }
 
@@ -1551,6 +1583,7 @@ namespace HaCreator.MapSimulator.Pools
                 byte? skillLevel = null;
                 string stringValue = null;
                 int? secondaryInt32Value = null;
+                int[] trailingInt32Values = null;
                 switch ((RemoteUserEffectSubtype)effectType)
                 {
                     case RemoteUserEffectSubtype.GenericUserState:
@@ -1589,6 +1622,7 @@ namespace HaCreator.MapSimulator.Pools
                                     allowSecondaryInt32: false,
                                     out stringValue,
                                     out secondaryInt32Value,
+                                    out trailingInt32Values,
                                     out error))
                             {
                                 return false;
@@ -1628,6 +1662,7 @@ namespace HaCreator.MapSimulator.Pools
                                     allowSecondaryInt32: true,
                                     out stringValue,
                                     out secondaryInt32Value,
+                                    out trailingInt32Values,
                                     out error))
                             {
                                 return false;
@@ -1652,6 +1687,7 @@ namespace HaCreator.MapSimulator.Pools
                                     allowSecondaryInt32: true,
                                     out stringValue,
                                     out secondaryInt32Value,
+                                    out trailingInt32Values,
                                     out error))
                             {
                                 return false;
@@ -1670,7 +1706,8 @@ namespace HaCreator.MapSimulator.Pools
                     characterLevel,
                     skillLevel,
                     stringValue,
-                    secondaryInt32Value);
+                    secondaryInt32Value,
+                    trailingInt32Values);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1702,10 +1739,12 @@ namespace HaCreator.MapSimulator.Pools
             bool allowSecondaryInt32,
             out string stringValue,
             out int? secondaryInt32Value,
+            out int[] trailingInt32Values,
             out string error)
         {
             stringValue = null;
             secondaryInt32Value = null;
+            trailingInt32Values = null;
             error = null;
 
             if (payload.Length == 0)
@@ -1718,7 +1757,8 @@ namespace HaCreator.MapSimulator.Pools
                     allowSecondaryInt32,
                     maxBranchPrefixBytes: 2,
                     out stringValue,
-                    out secondaryInt32Value))
+                    out secondaryInt32Value,
+                    out trailingInt32Values))
             {
                 return true;
             }
@@ -1731,16 +1771,19 @@ namespace HaCreator.MapSimulator.Pools
             ReadOnlySpan<byte> payload,
             bool allowSecondaryInt32,
             out string stringValue,
-            out int? secondaryInt32Value)
+            out int? secondaryInt32Value,
+            out int[] trailingInt32Values)
         {
             stringValue = null;
             secondaryInt32Value = null;
+            trailingInt32Values = null;
 
             if (TryParseMapleStringPayloadWithOptionalSecondaryInt32(
                     payload,
                     allowSecondaryInt32,
                     out stringValue,
-                    out secondaryInt32Value))
+                    out secondaryInt32Value,
+                    out trailingInt32Values))
             {
                 return true;
             }
@@ -1749,7 +1792,8 @@ namespace HaCreator.MapSimulator.Pools
                     payload,
                     allowSecondaryInt32,
                     out stringValue,
-                    out secondaryInt32Value))
+                    out secondaryInt32Value,
+                    out trailingInt32Values))
             {
                 return true;
             }
@@ -1762,16 +1806,19 @@ namespace HaCreator.MapSimulator.Pools
             bool allowSecondaryInt32,
             int maxBranchPrefixBytes,
             out string stringValue,
-            out int? secondaryInt32Value)
+            out int? secondaryInt32Value,
+            out int[] trailingInt32Values)
         {
             stringValue = null;
             secondaryInt32Value = null;
+            trailingInt32Values = null;
 
             if (TryParseMapleOrPlainStringPayload(
                     payload,
                     allowSecondaryInt32,
                     out stringValue,
-                    out secondaryInt32Value))
+                    out secondaryInt32Value,
+                    out trailingInt32Values))
             {
                 return true;
             }
@@ -1786,7 +1833,8 @@ namespace HaCreator.MapSimulator.Pools
                         payload[consumedBranchBytes..],
                         allowSecondaryInt32,
                         out stringValue,
-                        out secondaryInt32Value))
+                        out secondaryInt32Value,
+                        out trailingInt32Values))
                 {
                     return true;
                 }
@@ -1799,10 +1847,12 @@ namespace HaCreator.MapSimulator.Pools
             ReadOnlySpan<byte> payload,
             bool allowSecondaryInt32,
             out string stringValue,
-            out int? secondaryInt32Value)
+            out int? secondaryInt32Value,
+            out int[] trailingInt32Values)
         {
             stringValue = null;
             secondaryInt32Value = null;
+            trailingInt32Values = null;
             if (payload.Length < sizeof(ushort))
             {
                 return false;
@@ -1813,17 +1863,13 @@ namespace HaCreator.MapSimulator.Pools
                 var payloadReader = new PacketReader(payload);
                 string parsed = payloadReader.ReadString16();
                 ReadOnlySpan<byte> remaining = payload[payloadReader.Offset..];
-                if (TryParseTrailingSecondaryInt32Payload(
+                if (TryParseTrailingInt32Payload(
                         remaining,
                         allowSecondaryInt32,
-                        out secondaryInt32Value))
+                        out secondaryInt32Value,
+                        out trailingInt32Values))
                 {
                     stringValue = string.IsNullOrWhiteSpace(parsed) ? null : parsed.Trim();
-                    if (secondaryInt32Value.HasValue)
-                    {
-                        secondaryInt32Value = payloadReader.ReadInt32();
-                    }
-
                     return true;
                 }
             }
@@ -1839,10 +1885,12 @@ namespace HaCreator.MapSimulator.Pools
             ReadOnlySpan<byte> payload,
             bool allowSecondaryInt32,
             out string stringValue,
-            out int? secondaryInt32Value)
+            out int? secondaryInt32Value,
+            out int[] trailingInt32Values)
         {
             stringValue = null;
             secondaryInt32Value = null;
+            trailingInt32Values = null;
 
             string plainText = TryDecodePrintableText(payload);
             if (!string.IsNullOrWhiteSpace(plainText))
@@ -1857,29 +1905,57 @@ namespace HaCreator.MapSimulator.Pools
                     payload,
                     allowSecondaryInt32,
                     out stringValue,
-                    out secondaryInt32Value);
+                    out secondaryInt32Value,
+                    out trailingInt32Values);
             }
 
-            ReadOnlySpan<byte> textPayload = payload[..^sizeof(int)];
-            string textWithTrailingInt = TryDecodePrintableText(textPayload);
-            if (string.IsNullOrWhiteSpace(textWithTrailingInt))
+            int maxTrailingWordCount = payload.Length / sizeof(int);
+            for (int trailingWordCount = 1; trailingWordCount <= maxTrailingWordCount; trailingWordCount++)
             {
-                return false;
+                int trailingLength = trailingWordCount * sizeof(int);
+                if (trailingLength >= payload.Length)
+                {
+                    break;
+                }
+
+                ReadOnlySpan<byte> textPayload = payload[..^trailingLength];
+                string textWithTrailingInts = TryDecodePrintableText(textPayload);
+                if (string.IsNullOrWhiteSpace(textWithTrailingInts))
+                {
+                    continue;
+                }
+
+                if (!TryParseTrailingInt32Payload(
+                        payload[^trailingLength..],
+                        allowSecondaryInt32,
+                        out secondaryInt32Value,
+                        out trailingInt32Values))
+                {
+                    continue;
+                }
+
+                stringValue = textWithTrailingInts;
+                return true;
             }
 
-            secondaryInt32Value = BinaryPrimitives.ReadInt32LittleEndian(payload[^sizeof(int)..]);
-            stringValue = textWithTrailingInt;
-            return true;
+            return TryParseNullTerminatedPlainTextPayloadWithOptionalSecondaryInt32(
+                payload,
+                allowSecondaryInt32,
+                out stringValue,
+                out secondaryInt32Value,
+                out trailingInt32Values);
         }
 
         private static bool TryParseNullTerminatedPlainTextPayloadWithOptionalSecondaryInt32(
             ReadOnlySpan<byte> payload,
             bool allowSecondaryInt32,
             out string stringValue,
-            out int? secondaryInt32Value)
+            out int? secondaryInt32Value,
+            out int[] trailingInt32Values)
         {
             stringValue = null;
             secondaryInt32Value = null;
+            trailingInt32Values = null;
 
             int terminatorIndex = payload.IndexOf((byte)0);
             if (terminatorIndex <= 0)
@@ -1894,10 +1970,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ReadOnlySpan<byte> trailing = payload[(terminatorIndex + 1)..];
-            if (!TryParseTrailingSecondaryInt32Payload(
+            if (!TryParseTrailingInt32Payload(
                     trailing,
                     allowSecondaryInt32,
-                    out secondaryInt32Value))
+                    out secondaryInt32Value,
+                    out trailingInt32Values))
             {
                 return false;
             }
@@ -1906,26 +1983,45 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private static bool TryParseTrailingSecondaryInt32Payload(
+        private static bool TryParseTrailingInt32Payload(
             ReadOnlySpan<byte> payload,
-            bool allowSecondaryInt32,
-            out int? secondaryInt32Value)
+            bool allowTrailingInt32,
+            out int? secondaryInt32Value,
+            out int[] trailingInt32Values)
         {
             secondaryInt32Value = null;
+            trailingInt32Values = null;
             if (payload.Length == 0 || IsAllZeroBytes(payload))
             {
                 return true;
             }
 
-            if (allowSecondaryInt32
-                && payload.Length >= sizeof(int)
-                && (payload.Length == sizeof(int) || IsAllZeroBytes(payload[sizeof(int)..])))
+            if (!allowTrailingInt32)
             {
-                secondaryInt32Value = BinaryPrimitives.ReadInt32LittleEndian(payload);
-                return true;
+                return false;
             }
 
-            return false;
+            int fullWordCount = payload.Length / sizeof(int);
+            int remainderLength = payload.Length % sizeof(int);
+            if (fullWordCount == 0)
+            {
+                return remainderLength > 0 && IsAllZeroBytes(payload);
+            }
+
+            if (remainderLength > 0 && !IsAllZeroBytes(payload[^remainderLength..]))
+            {
+                return false;
+            }
+
+            trailingInt32Values = new int[fullWordCount];
+            for (int i = 0; i < fullWordCount; i++)
+            {
+                trailingInt32Values[i] = BinaryPrimitives.ReadInt32LittleEndian(
+                    payload.Slice(i * sizeof(int), sizeof(int)));
+            }
+
+            secondaryInt32Value = trailingInt32Values[0];
+            return true;
         }
 
         public static bool TryParseUpgradeTombEffect(ReadOnlySpan<byte> payload, out RemoteUserUpgradeTombPacket packet, out string error)
@@ -3380,10 +3476,25 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool hasDefaultHelperPathContext = markerName.IndexOf("DefaultHelper", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool hasMinimapIconDirectionPathContext = markerName.IndexOf("MiniMap/iconDirection", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool hasMinimapIconNpcPathContext = markerName.IndexOf("MiniMap/iconNpc", StringComparison.OrdinalIgnoreCase) >= 0;
             bool isPlainMarkerToken = markerName.IndexOf('/') < 0 && markerName.IndexOf('\\') < 0;
-            if (!hasDefaultHelperPathContext && !isPlainMarkerToken)
+            if (!hasDefaultHelperPathContext
+                && !hasMinimapIconDirectionPathContext
+                && !hasMinimapIconNpcPathContext
+                && !isPlainMarkerToken)
             {
                 return false;
+            }
+
+            if (hasMinimapIconDirectionPathContext)
+            {
+                return KnownMinimapIconDirectionAncillaryMarkerNames.Contains(normalizedMarkerName);
+            }
+
+            if (hasMinimapIconNpcPathContext)
+            {
+                return string.Equals(normalizedMarkerName, "iconnpc", StringComparison.Ordinal);
             }
 
             if (!KnownDefaultHelperAncillaryMarkerNames.Contains(normalizedMarkerName))

@@ -537,6 +537,17 @@ namespace HaCreator.MapSimulator.Character
         public bool HasActiveMorphTransform => GetActiveAvatarTransform()?.AvatarPart?.Type == CharacterPartType.Morph;
         public int HorizontalInputDirection => _inputLeft == _inputRight ? 0 : (_inputRight ? 1 : -1);
 
+        public int GetActiveMorphTemplateIdForQuestDemand()
+        {
+            SkillAvatarTransformState transform = GetActiveAvatarTransform();
+            if (transform?.AvatarPart?.Type != CharacterPartType.Morph)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, transform.AvatarPart.ItemId);
+        }
+
         /// <summary>
         /// GM Fly Mode - allows free flying around the map ignoring physics
         /// Toggle with G key
@@ -6424,6 +6435,7 @@ namespace HaCreator.MapSimulator.Character
                     sourceSignature,
                     facingRight,
                     CanPreserveMirrorImagePreparedSourceLayerObject(
+                        existingLayer?.PreparedLayerObjectId ?? 0,
                         existingLayer?.PreparedFacingRight ?? false,
                         facingRight,
                         existingLayer?.Parts?.Count ?? 0),
@@ -6595,6 +6607,7 @@ namespace HaCreator.MapSimulator.Character
             if (sourceParts == null || sourceParts.Count == 0)
             {
                 if (CanPreserveMirrorImagePreparedSourceLayerWhenSourceMissing(
+                    preparedLayer.PreparedLayerObjectId,
                     preparedLayer.PreparedFacingRight,
                     facingRight,
                     preparedLayer.Parts?.Count ?? 0)
@@ -6973,12 +6986,13 @@ namespace HaCreator.MapSimulator.Character
         }
 
         internal static bool CanPreserveMirrorImagePreparedSourceLayerObject(
+            int existingLayerObjectId,
             bool existingFacingRight,
             bool currentFacingRight,
             int existingPartCount)
         {
             return !ShouldRecreateMirrorImagePreparedSourceLayerObject(
-                existingPartCount > 0,
+                existingLayerObjectId > 0 || existingPartCount > 0,
                 existingFacingRight == currentFacingRight);
         }
 
@@ -7190,20 +7204,25 @@ namespace HaCreator.MapSimulator.Character
         }
 
         internal static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
+            IReadOnlyList<int> existingLayerObjectIds,
             IReadOnlyList<int> existingPartCounts,
             IReadOnlyList<bool> existingFacingRightByLayer,
             bool currentFacingRight)
         {
-            if (existingPartCounts == null || existingFacingRightByLayer == null)
+            if (existingLayerObjectIds == null
+                || existingPartCounts == null
+                || existingFacingRightByLayer == null)
             {
                 return false;
             }
 
-            int layerCount = Math.Min(existingPartCounts.Count, existingFacingRightByLayer.Count);
+            int layerCount = Math.Min(existingLayerObjectIds.Count, Math.Min(existingPartCounts.Count, existingFacingRightByLayer.Count));
             bool hasPreservableLayer = false;
             for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
             {
-                if (existingPartCounts[layerIndex] <= 0)
+                bool hasExistingLayer = existingLayerObjectIds[layerIndex] > 0
+                    || existingPartCounts[layerIndex] > 0;
+                if (!hasExistingLayer)
                 {
                     continue;
                 }
@@ -7220,11 +7239,13 @@ namespace HaCreator.MapSimulator.Character
         }
 
         internal static bool CanPreserveMirrorImagePreparedSourceLayerWhenSourceMissing(
+            int existingLayerObjectId,
             bool existingFacingRight,
             bool currentFacingRight,
             int existingPartCount)
         {
             return CanPreserveMirrorImagePreparedSourceLayerObject(
+                existingLayerObjectId,
                 existingFacingRight,
                 currentFacingRight,
                 existingPartCount);
@@ -7239,16 +7260,19 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            int[] existingLayerObjectIds = new int[existingLayers.Length];
             int[] existingPartCounts = new int[existingLayers.Length];
             bool[] existingFacingRightByLayer = new bool[existingLayers.Length];
             for (int layerIndex = 0; layerIndex < existingLayers.Length; layerIndex++)
             {
                 MirrorImagePreparedSourceLayer existingLayer = existingLayers[layerIndex];
+                existingLayerObjectIds[layerIndex] = existingLayer?.PreparedLayerObjectId ?? 0;
                 existingPartCounts[layerIndex] = existingLayer?.Parts?.Count ?? 0;
                 existingFacingRightByLayer[layerIndex] = existingLayer?.PreparedFacingRight ?? false;
             }
 
             return CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
+                existingLayerObjectIds,
                 existingPartCounts,
                 existingFacingRightByLayer,
                 currentFacingRight);
@@ -8372,7 +8396,11 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 _activeShadowPartner.CurrentFacingRight = facingRight;
-                if (preserveTimingWhenOnlyFacingChanges)
+                bool preserveTimingForFacingChange = preserveTimingWhenOnlyFacingChanges
+                    || ShadowPartnerClientActionResolver.ShouldPreserveOneShotAlphaLifetimeOnFacingChange(
+                        _activeShadowPartner.CurrentPlaybackAnimation,
+                        Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime));
+                if (preserveTimingForFacingChange)
                 {
                     StoreShadowPartnerActionOwnerCounter(currentTime);
                     return;
@@ -10212,7 +10240,7 @@ namespace HaCreator.MapSimulator.Character
 
         internal int TryGetCurrentBodyRelMoveY(int currentTime, int mountedVehicleId)
         {
-            string actionName = CurrentActionName;
+            string actionName = ResolveBodyRelMoveActionName(CurrentActionName, CurrentAction);
             CharacterPart mountedStatePart = ResolveMountedStateTamingMobPart();
             CharacterPart mountedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(mountedVehicleId);
             if (mountedPart?.Slot == EquipSlot.TamingMob)
@@ -10286,6 +10314,13 @@ namespace HaCreator.MapSimulator.Character
 
             int frameIndex = Assembler.GetFrameIndexAtTime(actionName, resolvedAnimationTime);
             return ResolveClientBodyRelMoveY(frames, frameIndex);
+        }
+
+        internal static string ResolveBodyRelMoveActionName(string currentActionName, CharacterAction currentAction)
+        {
+            return !string.IsNullOrWhiteSpace(currentActionName)
+                ? currentActionName
+                : CharacterPart.GetActionString(currentAction);
         }
 
         internal bool TryResolveCurrentRenderedMountedClientBodyRelMoveY(

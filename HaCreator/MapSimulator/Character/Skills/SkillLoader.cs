@@ -2808,7 +2808,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
                 ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
 
-            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedShadowPartnerRawActionNames())
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedFallbackActionNames())
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
@@ -7182,6 +7182,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromResolvedClientSummonedUolOwnerBranches(
+                         resolvedProperty,
+                         parts))
+            {
+                yield return linkedSkillId;
+            }
+
             foreach (int linkedSkillId in ParseLinkedSkillIds(resolvedProperty))
             {
                 yield return linkedSkillId;
@@ -7259,6 +7266,46 @@ namespace HaCreator.MapSimulator.Character.Skills
                             yield return linkedSkillId;
                         }
                     }
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromResolvedClientSummonedUolOwnerBranches(
+            WzImageProperty resolvedProperty,
+            string[] resolvedPathParts)
+        {
+            if (resolvedProperty?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            WzImageProperty infoProperty = resolvedProperty["info"];
+            if (infoProperty != null)
+            {
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromInfoLinkLeaves(infoProperty))
+                {
+                    yield return linkedSkillId;
+                }
+
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromNestedClientSummonedUolInfoLeaves(
+                             infoProperty,
+                             BuildResolvedClientSummonedUolChildPathParts(resolvedPathParts, "info")))
+                {
+                    yield return linkedSkillId;
+                }
+            }
+
+            foreach (string branchName in new[] { "req", "psdSkill" })
+            {
+                WzImageProperty branchProperty = resolvedProperty[branchName];
+                if (branchProperty == null)
+                {
+                    continue;
+                }
+
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNames(branchProperty))
+                {
+                    yield return linkedSkillId;
                 }
             }
         }
@@ -7622,6 +7669,31 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return nestedPathParts.ToArray();
+        }
+
+        private static string[] BuildResolvedClientSummonedUolChildPathParts(
+            string[] resolvedPathParts,
+            string childSegment)
+        {
+            if (string.IsNullOrWhiteSpace(childSegment))
+            {
+                return resolvedPathParts;
+            }
+
+            if (resolvedPathParts == null || resolvedPathParts.Length == 0)
+            {
+                return new[] { childSegment };
+            }
+
+            if (resolvedPathParts[^1].Equals(childSegment, StringComparison.OrdinalIgnoreCase))
+            {
+                return resolvedPathParts;
+            }
+
+            var childPathParts = new string[resolvedPathParts.Length + 1];
+            Array.Copy(resolvedPathParts, childPathParts, resolvedPathParts.Length);
+            childPathParts[^1] = childSegment;
+            return childPathParts;
         }
 
         private static bool TryParseNormalizedSkillAnimationPath(
@@ -10241,25 +10313,73 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (ClientFlagOnlyMorphTemplateOverridesBySkillId.TryGetValue(skillId, out int[] overrideTemplateIds)
                 && overrideTemplateIds != null)
             {
+                bool yieldedOverride = false;
                 foreach (int overrideTemplateId in overrideTemplateIds)
                 {
                     if (overrideTemplateId > 0 && seen.Add(overrideTemplateId))
                     {
+                        yieldedOverride = true;
                         yield return overrideTemplateId;
                     }
+                }
+
+                // Keep checked non-suffix outlier remaps authoritative when present so
+                // suffix/family heuristics cannot reorder known rows.
+                if (yieldedOverride)
+                {
+                    yield break;
                 }
             }
 
             int suffixTemplateId = skillId % 10000;
-            if (suffixTemplateId > 0 && seen.Add(suffixTemplateId))
+            foreach (int candidateTemplateId in EnumerateFlagOnlyMorphTemplateFamilyCandidates(suffixTemplateId))
             {
-                yield return suffixTemplateId;
+                if (candidateTemplateId > 0 && seen.Add(candidateTemplateId))
+                {
+                    yield return candidateTemplateId;
+                }
             }
         }
 
         internal static IReadOnlyList<int> EnumerateFlagOnlyMorphTemplateCandidatesForTesting(int skillId)
         {
             return EnumerateFlagOnlyMorphTemplateCandidates(skillId).ToArray();
+        }
+
+        private static IEnumerable<int> EnumerateFlagOnlyMorphTemplateFamilyCandidates(int suffixTemplateId)
+        {
+            if (suffixTemplateId <= 0)
+            {
+                yield break;
+            }
+
+            yield return suffixTemplateId;
+
+            if (suffixTemplateId >= 1000 && suffixTemplateId < 1200)
+            {
+                int pairedTemplateId = suffixTemplateId >= 1100
+                    ? suffixTemplateId - 100
+                    : suffixTemplateId + 100;
+                if (pairedTemplateId > 0)
+                {
+                    yield return pairedTemplateId;
+                }
+            }
+
+            int[] familyBases =
+            {
+                (suffixTemplateId / 10) * 10,
+                (suffixTemplateId / 100) * 100,
+                (suffixTemplateId / 1000) * 1000
+            };
+
+            foreach (int familyBase in familyBases)
+            {
+                if (familyBase > 0)
+                {
+                    yield return familyBase;
+                }
+            }
         }
 
         private static bool HasFlagOnlyMorphMetadata(WzImageProperty node, string name)

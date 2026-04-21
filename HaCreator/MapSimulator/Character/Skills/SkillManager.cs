@@ -2300,6 +2300,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             35121003,
             3111002,
             3211002,
+            13111004,
+            4341006,
             33111003,
             35111001,
             35111002,
@@ -2407,6 +2409,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             35121003,
             3111002,
             3211002,
+            13111004,
+            4341006,
             33101008,
             33111003,
             35111001,
@@ -2440,6 +2444,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int SUMMON_BODY_CONTACT_COOLDOWN_MS = 700;
         private const int SUMMON_HIT_PERIOD_DURATION_MS = 1500;
         private const int SUMMON_PASSIVE_EFFECT_COOLDOWN_MS = 240;
+        private const int EXTREME_MECH_MASTERY_SKILL_ID = 35120000;
         private const int BEHOLDER_SUMMON_SKILL_ID = 1321007;
         private const int BEHOLDER_ATTACK_SKILL_ID = 1320011;
         private const int BEHOLDER_HEAL_SKILL_ID = 1320008;
@@ -2451,7 +2456,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int BEHOLDER_BUFF_PAD_ID = -13200094;
         private static readonly int[] PassiveWeaponSpecificStatWeaponCodes =
         {
-            30, 31, 32, 33, 34, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 52, 53, 56, 57, 58
+            30, 31, 32, 33, 34, 36, 37, 38, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 52, 53, 56, 57, 58, 59
         };
         private const float TeslaTriangleMinimumEdgeLengthSq = 16f;
         private static readonly int[] WildHunterJaguarTamingMobCandidateIds =
@@ -3611,6 +3616,19 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal bool TryGetCooldownUiState(int skillId, int currentTime, out CooldownUiState state)
         {
+            return TryGetCooldownUiState(
+                skillId,
+                currentTime,
+                CooldownMaskSurface.SkillBookClassic,
+                out state);
+        }
+
+        internal bool TryGetCooldownUiState(
+            int skillId,
+            int currentTime,
+            CooldownMaskSurface maskSurface,
+            out CooldownUiState state)
+        {
             state = default;
 
             int remainingMs = GetCooldownRemaining(skillId, currentTime);
@@ -3648,6 +3666,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     PresentationKind: CooldownUiPresentationKind.VehicleDurability,
                     CurrentValue: currentValue,
                     MaxValue: maxValue);
+                state = ResolveCooldownUiStateForSurface(state, maskSurface);
                 return true;
             }
 
@@ -3670,7 +3689,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 PresentationKind: CooldownUiPresentationKind.Default,
                 CurrentValue: 0,
                 MaxValue: 0);
+            state = ResolveCooldownUiStateForSurface(state, maskSurface);
             return true;
+        }
+
+        internal static CooldownUiState ResolveCooldownUiStateForSurface(
+            CooldownUiState state,
+            CooldownMaskSurface maskSurface)
+        {
+            if (state.PresentationKind != CooldownUiPresentationKind.VehicleDurability)
+            {
+                return state;
+            }
+
+            bool displayInCooldownUi = maskSurface == CooldownMaskSurface.StatusBarOffBarTray;
+            return state with
+            {
+                DisplayInCooldownUi = displayInCooldownUi,
+                SuppressProgressOverlay = true,
+                SuppressCounterText = false,
+                CounterText = state.CurrentValue > 0 ? state.CurrentValue.ToString() : state.CounterText
+            };
         }
 
         internal bool TryGetCooldownMaskVisualState(int skillId, int currentTime, out int frameIndex, out string remainingText)
@@ -3693,7 +3732,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             frameIndex = 15;
             remainingText = string.Empty;
 
-            return TryGetCooldownUiState(skillId, currentTime, out CooldownUiState cooldownState)
+            return TryGetCooldownUiState(skillId, currentTime, maskSurface, out CooldownUiState cooldownState)
                 && TryResolveCooldownMaskVisualState(
                     cooldownState,
                     out frameIndex,
@@ -11323,6 +11362,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skillId == ClientPrepareSwallowTargetAdmissionSkillId;
         }
 
+        internal static bool IsClientTownPortalBlockedMapCategoryForTesting(int mapId)
+        {
+            return IsClientTownPortalBlockedMapCategory(mapId);
+        }
+
         internal static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
         {
             if (skill == null)
@@ -15275,7 +15319,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool ShouldRegisterMagicBulletAnimation(string ballUol)
         {
-            return !string.IsNullOrWhiteSpace(ballUol);
+            // RegisterMagicBulletAnimation gates on non-empty BSTR length, not whitespace trimming.
+            return !string.IsNullOrEmpty(ballUol);
         }
 
         internal static Vector2 ResolveBulletAnimationSourcePoint(ActiveProjectile projectile)
@@ -19401,6 +19446,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
                         hasSwallowState: false,
+                        hasPendingSwallowAbsorb: false,
                         swallowFamilyOutcome))
                 {
                     _swallowAbsorbOutcomeBuffer.Store(
@@ -19422,6 +19468,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
                         hasSwallowState: true,
+                        hasPendingSwallowAbsorb: hasPendingAbsorbOutcome,
                         swallowFamilyOutcome))
                 {
                     _swallowAbsorbOutcomeBuffer.Store(
@@ -26208,6 +26255,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(label, MasteryBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MapleWarriorBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, AllStatsBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, StrengthBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, DexterityBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, IntelligenceBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, LuckBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, StanceBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MaxHpBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MaxMpBuffLabel, StringComparison.OrdinalIgnoreCase);
@@ -27891,8 +27942,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             string mergedName = sourceSkill?.Name;
             string mergedDescription = sourceSkill?.Description ?? string.Empty;
-            string mergedAffectedSkillEffect = sourceSkill?.AffectedSkillEffect;
-            string mergedMinionAbility = sourceSkill?.MinionAbility;
+            string mergedAffectedSkillEffect = MergeSupportMetadataTokens(
+                existingTokens: null,
+                candidateTokens: sourceSkill?.AffectedSkillEffect);
+            string mergedMinionAbility = MergeSupportMetadataTokens(
+                existingTokens: null,
+                candidateTokens: sourceSkill?.MinionAbility);
             bool redirectsDamageToMp = sourceSkill?.RedirectsDamageToMp == true;
             bool hasMagicStealMetadata = sourceSkill?.HasMagicStealMetadata == true;
             bool reflectsIncomingDamage = sourceSkill?.ReflectsIncomingDamage == true;
@@ -27932,15 +27987,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                             : $"{mergedDescription} {supportSkill.Description}";
                     }
 
-                    if (string.IsNullOrWhiteSpace(mergedAffectedSkillEffect) && !string.IsNullOrWhiteSpace(supportSkill.AffectedSkillEffect))
-                    {
-                        mergedAffectedSkillEffect = supportSkill.AffectedSkillEffect;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(mergedMinionAbility) && !string.IsNullOrWhiteSpace(supportSkill.MinionAbility))
-                    {
-                        mergedMinionAbility = supportSkill.MinionAbility;
-                    }
+                    mergedAffectedSkillEffect = MergeSupportMetadataTokens(
+                        mergedAffectedSkillEffect,
+                        supportSkill.AffectedSkillEffect);
+                    mergedMinionAbility = MergeSupportMetadataTokens(
+                        mergedMinionAbility,
+                        supportSkill.MinionAbility);
 
                     redirectsDamageToMp |= supportSkill.RedirectsDamageToMp;
                     hasMagicStealMetadata |= supportSkill.HasMagicStealMetadata;
@@ -28080,6 +28132,67 @@ namespace HaCreator.MapSimulator.Character.Skills
             return string.IsNullOrWhiteSpace(minionAbility)
                 ? token
                 : $"{minionAbility}&&{token}";
+        }
+
+        internal static string MergeSupportMetadataTokens(string existingTokens, string candidateTokens)
+        {
+            if (string.IsNullOrWhiteSpace(existingTokens))
+            {
+                return NormalizeSupportMetadataTokens(candidateTokens);
+            }
+
+            if (string.IsNullOrWhiteSpace(candidateTokens))
+            {
+                return NormalizeSupportMetadataTokens(existingTokens);
+            }
+
+            var mergedTokens = new List<string>();
+            var seenTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            AppendSupportMetadataTokens(mergedTokens, seenTokens, existingTokens);
+            AppendSupportMetadataTokens(mergedTokens, seenTokens, candidateTokens);
+
+            return mergedTokens.Count == 0
+                ? null
+                : string.Join("&&", mergedTokens);
+        }
+
+        private static string NormalizeSupportMetadataTokens(string tokens)
+        {
+            if (string.IsNullOrWhiteSpace(tokens))
+            {
+                return null;
+            }
+
+            var normalizedTokens = new List<string>();
+            var seenTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AppendSupportMetadataTokens(normalizedTokens, seenTokens, tokens);
+            return normalizedTokens.Count == 0
+                ? null
+                : string.Join("&&", normalizedTokens);
+        }
+
+        private static void AppendSupportMetadataTokens(
+            ICollection<string> output,
+            ISet<string> seenTokens,
+            string tokens)
+        {
+            if (output == null || seenTokens == null || string.IsNullOrWhiteSpace(tokens))
+            {
+                return;
+            }
+
+            string[] tokenEntries = tokens.Split(new[] { "&&" }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < tokenEntries.Length; i++)
+            {
+                string token = tokenEntries[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(token) || !seenTokens.Add(token))
+                {
+                    continue;
+                }
+
+                output.Add(token);
+            }
         }
 
         private static void AssignExternalAreaSupportAvatarEffectPlanes(
@@ -28314,10 +28427,33 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            // WZ `skill/3512.img/skill/35120000/common` publishes mastery plus enhanced stat
+            // payloads for Extreme Mech while localized `String/Skill.img` text can omit the
+            // English "extreme mech"/"your mech" tokens used by the legacy matcher.
+            if (skill.SkillId == EXTREME_MECH_MASTERY_SKILL_ID)
+            {
+                return true;
+            }
+
             string name = (skill.Name ?? string.Empty).Trim().ToLowerInvariant();
             string description = (skill.Description ?? string.Empty).Trim().ToLowerInvariant();
             return name.Contains("extreme mech")
                    || description.Contains("your mech");
+        }
+
+        internal static bool RequiresMechanicVehicleStateForTesting(
+            int skillId,
+            string name = null,
+            string description = null)
+        {
+            SkillData skill = new()
+            {
+                SkillId = skillId,
+                Name = name,
+                Description = description
+            };
+
+            return RequiresMechanicVehicleState(skill);
         }
 
         public void LearnAllNonHiddenSkills(int defaultLevel = 1)
@@ -28652,9 +28788,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
             bool hasSwallowState,
+            bool hasPendingSwallowAbsorb,
             bool swallowFamilyOutcome)
         {
-            return swallowFamilyOutcome && !hasSwallowState;
+            return swallowFamilyOutcome
+                   && (!hasSwallowState || hasPendingSwallowAbsorb);
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

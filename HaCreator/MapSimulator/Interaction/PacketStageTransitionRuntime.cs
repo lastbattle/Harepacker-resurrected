@@ -1305,6 +1305,11 @@ namespace HaCreator.MapSimulator.Interaction
                 Dictionary<InventoryType, int> inventoryItemRecordByteCounts = new();
                 Dictionary<InventoryType, int> inventoryTerminatorByteCounts = new();
                 Dictionary<InventoryType, int> cashItemSerialNumberCountsByType = new();
+                Dictionary<ulong, int> inventorySectionByteCountsByFlag = new();
+                Dictionary<ulong, int> inventoryItemRecordCountsByFlag = new();
+                Dictionary<ulong, int> inventoryItemRecordByteCountsByFlag = new();
+                Dictionary<ulong, int> inventoryTerminatorByteCountsByFlag = new();
+                Dictionary<ulong, int> cashItemSerialNumberCountsByFlag = new();
                 int inventorySectionTotalByteCount = 0;
                 int cashInventorySerialNumberCount = 0;
                 int totalCashItemSerialNumberCount = 0;
@@ -1319,6 +1324,11 @@ namespace HaCreator.MapSimulator.Interaction
                     inventoryTerminatorByteCounts[inventoryType] = 0;
                     cashItemSerialNumberCountsByType[inventoryType] = 0;
                     decodedSectionByteCounts[inventoryFlag] = 0;
+                    inventorySectionByteCountsByFlag[inventoryFlag] = 0;
+                    inventoryItemRecordCountsByFlag[inventoryFlag] = 0;
+                    inventoryItemRecordByteCountsByFlag[inventoryFlag] = 0;
+                    inventoryTerminatorByteCountsByFlag[inventoryFlag] = 0;
+                    cashItemSerialNumberCountsByFlag[inventoryFlag] = 0;
                 }
 
                 for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
@@ -1353,10 +1363,15 @@ namespace HaCreator.MapSimulator.Interaction
                         inventoryItemRecordCounts[inventoryType] = equipItemRecordCount;
                         inventoryItemRecordByteCounts[inventoryType] = equipItemRecordByteCount;
                         inventoryTerminatorByteCounts[inventoryType] = equipTerminatorByteCount;
+                        inventorySectionByteCountsByFlag[inventoryFlag] = sectionByteCount;
+                        inventoryItemRecordCountsByFlag[inventoryFlag] = equipItemRecordCount;
+                        inventoryItemRecordByteCountsByFlag[inventoryFlag] = equipItemRecordByteCount;
+                        inventoryTerminatorByteCountsByFlag[inventoryFlag] = equipTerminatorByteCount;
                         decodedSectionByteCounts[inventoryFlag] = sectionByteCount;
                         inventorySectionTotalByteCount += sectionByteCount;
                         int equipCashSerialCount = CountItemSlotsWithCashSerialNumber(equipItems);
                         cashItemSerialNumberCountsByType[inventoryType] = equipCashSerialCount;
+                        cashItemSerialNumberCountsByFlag[inventoryFlag] = equipCashSerialCount;
                         totalCashItemSerialNumberCount += equipCashSerialCount;
                         if (inventoryType == InventoryType.CASH)
                         {
@@ -1384,10 +1399,15 @@ namespace HaCreator.MapSimulator.Interaction
                     inventoryItemRecordCounts[inventoryType] = inventoryItemRecordCount;
                     inventoryItemRecordByteCounts[inventoryType] = inventoryItemRecordByteCount;
                     inventoryTerminatorByteCounts[inventoryType] = inventoryTerminatorByteCount;
+                    inventorySectionByteCountsByFlag[inventoryFlag] = sectionBytes;
+                    inventoryItemRecordCountsByFlag[inventoryFlag] = inventoryItemRecordCount;
+                    inventoryItemRecordByteCountsByFlag[inventoryFlag] = inventoryItemRecordByteCount;
+                    inventoryTerminatorByteCountsByFlag[inventoryFlag] = inventoryTerminatorByteCount;
                     decodedSectionByteCounts[inventoryFlag] = sectionBytes;
                     inventorySectionTotalByteCount += sectionBytes;
                     int sectionCashSerialCount = CountItemSlotsWithCashSerialNumber(inventoryItems);
                     cashItemSerialNumberCountsByType[inventoryType] = sectionCashSerialCount;
+                    cashItemSerialNumberCountsByFlag[inventoryFlag] = sectionCashSerialCount;
                     totalCashItemSerialNumberCount += sectionCashSerialCount;
                     if (inventoryType == InventoryType.CASH)
                     {
@@ -1403,6 +1423,11 @@ namespace HaCreator.MapSimulator.Interaction
                     InventoryItemRecordByteCounts = inventoryItemRecordByteCounts,
                     InventoryTerminatorByteCounts = inventoryTerminatorByteCounts,
                     CashItemSerialNumberCountsByType = cashItemSerialNumberCountsByType,
+                    InventorySectionByteCountsByFlag = inventorySectionByteCountsByFlag,
+                    InventoryItemRecordCountsByFlag = inventoryItemRecordCountsByFlag,
+                    InventoryItemRecordByteCountsByFlag = inventoryItemRecordByteCountsByFlag,
+                    InventoryTerminatorByteCountsByFlag = inventoryTerminatorByteCountsByFlag,
+                    CashItemSerialNumberCountsByFlag = cashItemSerialNumberCountsByFlag,
                     InventorySectionTotalByteCount = inventorySectionTotalByteCount,
                     CashInventorySerialNumberCount = cashInventorySerialNumberCount,
                     TotalCashItemSerialNumberCount = totalCashItemSerialNumberCount,
@@ -2609,6 +2634,13 @@ namespace HaCreator.MapSimulator.Interaction
                 int skillExpirationRecordCount = 0;
                 int skillCooldownRecordCount = 0;
                 int skillMasterLevelRecordCount = 0;
+                int skillRecordCountByteCount = 0;
+                int skillRecordRecordByteCount = 0;
+                int skillRecordMasterLevelRecordByteCount = 0;
+                int skillExpirationRecordCountByteCount = 0;
+                int skillExpirationRecordByteCount = 0;
+                int skillCooldownRecordCountByteCount = 0;
+                int skillCooldownRecordByteCount = 0;
                 ulong decodedSectionFlags = snapshot.DecodedSectionFlags;
                 Dictionary<ulong, int> decodedSectionByteCounts = CloneDecodedSectionByteCounts(snapshot);
 
@@ -2621,7 +2653,10 @@ namespace HaCreator.MapSimulator.Interaction
                         out skillRecords,
                         out rawSkillRecords,
                         out skillMasterLevels,
-                        out rawSkillMasterLevels);
+                        out rawSkillMasterLevels,
+                        out skillRecordCountByteCount,
+                        out skillRecordRecordByteCount,
+                        out skillRecordMasterLevelRecordByteCount);
                     skillRecordCount = skillRecordEntries?.Count ?? 0;
                     skillMasterLevelRecordCount = rawSkillMasterLevels?.Count ?? 0;
                     decodedSectionFlags |= CharacterDataSkillRecordFlag;
@@ -2632,7 +2667,11 @@ namespace HaCreator.MapSimulator.Interaction
                 if ((characterDataFlags & CharacterDataSkillExpirationFlag) != 0)
                 {
                     long sectionStart = reader.BaseStream.Position;
-                    skillExpirationRecordEntries = ReadCharacterDataSkillExpirationRecords(reader, out skillExpirations);
+                    skillExpirationRecordEntries = ReadCharacterDataSkillExpirationRecords(
+                        reader,
+                        out skillExpirations,
+                        out skillExpirationRecordCountByteCount,
+                        out skillExpirationRecordByteCount);
                     skillExpirationRecordCount = skillExpirationRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordExpirations(skillRecordEntries, skillExpirations);
                     decodedSectionFlags |= CharacterDataSkillExpirationFlag;
@@ -2643,7 +2682,11 @@ namespace HaCreator.MapSimulator.Interaction
                 if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
                 {
                     long sectionStart = reader.BaseStream.Position;
-                    skillCooldownRecordEntries = ReadCharacterDataInt16ValueRecords(reader, out skillCooldowns);
+                    skillCooldownRecordEntries = ReadCharacterDataInt16ValueRecords(
+                        reader,
+                        out skillCooldowns,
+                        out skillCooldownRecordCountByteCount,
+                        out skillCooldownRecordByteCount);
                     skillCooldownRecordCount = skillCooldownRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordCooldowns(skillRecordEntries, skillCooldowns);
                     decodedSectionFlags |= CharacterDataSkillCooldownFlag;
@@ -2666,6 +2709,13 @@ namespace HaCreator.MapSimulator.Interaction
                     SkillMasterLevelRecordCount = skillMasterLevelRecordCount,
                     SkillMasterLevels = skillMasterLevels,
                     RawSkillMasterLevels = rawSkillMasterLevels,
+                    SkillRecordCountByteCount = skillRecordCountByteCount,
+                    SkillRecordRecordByteCount = skillRecordRecordByteCount,
+                    SkillRecordMasterLevelRecordByteCount = skillRecordMasterLevelRecordByteCount,
+                    SkillExpirationRecordCountByteCount = skillExpirationRecordCountByteCount,
+                    SkillExpirationRecordByteCount = skillExpirationRecordByteCount,
+                    SkillCooldownRecordCountByteCount = skillCooldownRecordCountByteCount,
+                    SkillCooldownRecordByteCount = skillCooldownRecordByteCount,
                     Int16ValueRecordCount = 0,
                     Int16ValueRecordEntries = null,
                     Int16ValueRecords = null,
@@ -2692,9 +2742,15 @@ namespace HaCreator.MapSimulator.Interaction
             out IReadOnlyDictionary<int, int> skillRecords,
             out IReadOnlyDictionary<int, int> rawSkillRecords,
             out IReadOnlyDictionary<int, int> skillMasterLevels,
-            out IReadOnlyDictionary<int, int> rawSkillMasterLevels)
+            out IReadOnlyDictionary<int, int> rawSkillMasterLevels,
+            out int countByteCount,
+            out int recordByteCount,
+            out int masterLevelRecordByteCount)
         {
             ushort count = reader.ReadUInt16();
+            countByteCount = sizeof(ushort);
+            recordByteCount = 0;
+            masterLevelRecordByteCount = 0;
             List<PacketCharacterDataSkillRecord> entries = new(count);
             Dictionary<int, int> levelsBySkillId = new(count);
             Dictionary<int, int> rawLevelsBySkillId = new(count);
@@ -2708,6 +2764,13 @@ namespace HaCreator.MapSimulator.Interaction
                 int rawMasterLevel = hasMasterLevelData
                     ? reader.ReadInt32()
                     : 0;
+                int entryByteCount = sizeof(int) + sizeof(int) + (hasMasterLevelData ? sizeof(int) : 0);
+                recordByteCount = checked(recordByteCount + entryByteCount);
+                if (hasMasterLevelData)
+                {
+                    masterLevelRecordByteCount = checked(masterLevelRecordByteCount + sizeof(int));
+                }
+
                 if (skillId > 0)
                 {
                     int normalizedSkillLevel = Math.Max(0, rawSkillLevel);
@@ -2743,9 +2806,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IReadOnlyList<PacketCharacterDataSkillExpirationRecord> ReadCharacterDataSkillExpirationRecords(
             BinaryReader reader,
-            out IReadOnlyDictionary<int, long> records)
+            out IReadOnlyDictionary<int, long> records,
+            out int countByteCount,
+            out int recordByteCount)
         {
             ushort count = reader.ReadUInt16();
+            countByteCount = sizeof(ushort);
+            recordByteCount = checked(count * (sizeof(int) + sizeof(long)));
             List<PacketCharacterDataSkillExpirationRecord> entries = new(count);
             Dictionary<int, long> recordsBySkillId = new(count);
             for (int i = 0; i < count; i++)
@@ -2783,7 +2850,22 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out IReadOnlyDictionary<int, int> records)
         {
+            return ReadCharacterDataInt16ValueRecords(
+                reader,
+                out records,
+                out _,
+                out _);
+        }
+
+        private static IReadOnlyList<PacketCharacterDataInt16ValueRecord> ReadCharacterDataInt16ValueRecords(
+            BinaryReader reader,
+            out IReadOnlyDictionary<int, int> records,
+            out int countByteCount,
+            out int recordByteCount)
+        {
             ushort count = reader.ReadUInt16();
+            countByteCount = sizeof(ushort);
+            recordByteCount = checked(count * (sizeof(int) + sizeof(ushort)));
             List<PacketCharacterDataInt16ValueRecord> entries = new(count);
             Dictionary<int, int> recordsByKey = new(count);
             for (int i = 0; i < count; i++)
@@ -3598,6 +3680,11 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<InventoryType, int> InventoryItemRecordByteCounts = null,
         IReadOnlyDictionary<InventoryType, int> InventoryTerminatorByteCounts = null,
         IReadOnlyDictionary<InventoryType, int> CashItemSerialNumberCountsByType = null,
+        IReadOnlyDictionary<ulong, int> InventorySectionByteCountsByFlag = null,
+        IReadOnlyDictionary<ulong, int> InventoryItemRecordCountsByFlag = null,
+        IReadOnlyDictionary<ulong, int> InventoryItemRecordByteCountsByFlag = null,
+        IReadOnlyDictionary<ulong, int> InventoryTerminatorByteCountsByFlag = null,
+        IReadOnlyDictionary<ulong, int> CashItemSerialNumberCountsByFlag = null,
         int InventorySectionTotalByteCount = 0,
         int CashInventorySerialNumberCount = 0,
         int TotalCashItemSerialNumberCount = 0,
@@ -3645,6 +3732,13 @@ namespace HaCreator.MapSimulator.Interaction
         int SkillMasterLevelRecordCount = 0,
         IReadOnlyDictionary<int, int> SkillMasterLevels = null,
         IReadOnlyDictionary<int, int> RawSkillMasterLevels = null,
+        int SkillRecordCountByteCount = 0,
+        int SkillRecordRecordByteCount = 0,
+        int SkillRecordMasterLevelRecordByteCount = 0,
+        int SkillExpirationRecordCountByteCount = 0,
+        int SkillExpirationRecordByteCount = 0,
+        int SkillCooldownRecordCountByteCount = 0,
+        int SkillCooldownRecordByteCount = 0,
         int Int16ValueRecordCount = 0,
         IReadOnlyList<PacketCharacterDataInt16ValueRecord> Int16ValueRecordEntries = null,
         IReadOnlyDictionary<int, int> Int16ValueRecords = null,

@@ -1525,7 +1525,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (selectedHoverTarget != null)
             {
-                SetHoveredTooltip(selectedTooltipText, ResolveTooltipAnchorPointForTesting(mouseState.X, mouseState.Y));
+                int relativeMouseX = mouseState.X - Position.X;
+                int relativeMouseY = mouseState.Y - Position.Y;
+                SetHoveredTooltip(
+                    selectedTooltipText,
+                    ResolveTooltipAnchorPointForTesting(Position.X, Position.Y, relativeMouseX, relativeMouseY));
                 return true;
             }
 
@@ -1702,11 +1706,16 @@ namespace HaCreator.MapSimulator.UI
                 || portalType == PortalType.TownPortalPoint;
         }
 
-        internal static Point ResolveTooltipAnchorPointForTesting(int mouseX, int mouseY)
+        internal static Point ResolveTooltipAnchorPointForTesting(int windowX, int windowY, int relativeMouseX, int relativeMouseY)
         {
             return new Point(
-                mouseX + ClientTooltipMouseOffset,
-                mouseY + ClientTooltipMouseOffset);
+                windowX + relativeMouseX + ClientTooltipMouseOffset,
+                windowY + relativeMouseY + ClientTooltipMouseOffset);
+        }
+
+        internal static Point ResolveTooltipAnchorPointForTesting(int mouseX, int mouseY)
+        {
+            return ResolveTooltipAnchorPointForTesting(0, 0, mouseX, mouseY);
         }
 
         internal static bool IsClientHoverTargetKindPreferredForTesting(

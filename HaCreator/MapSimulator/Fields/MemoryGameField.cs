@@ -160,6 +160,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<Card> _cards = new();
         private readonly List<int> _revealedCardIndices = new(2);
         private readonly Queue<PendingRemoteAction> _pendingRemoteActions = new();
+        private readonly Queue<byte[]> _pendingOfficialClientRelayPackets = new();
         private readonly Dictionary<int, MiniRoomParticipantState> _miniRoomParticipants = new();
         private readonly int[] _scores = new int[2];
         private readonly bool[] _readyStates = new bool[2];
@@ -222,6 +223,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool _localTieRequestSent;
         private bool _localTieRequestSentThisTurn;
         private bool _localGiveUpRequestSent;
+        private bool _officialClientRelayEnabled;
 
 
         public enum RoomStage
@@ -374,6 +376,27 @@ namespace HaCreator.MapSimulator.Fields
         public string LastPacketSummary => _lastPacketSummary;
         public bool HasPendingPrompt => _pendingPrompt.IsActive;
         public string PendingPromptText => _pendingPrompt.Text;
+
+        public void SetOfficialClientRelayEnabled(bool enabled)
+        {
+            _officialClientRelayEnabled = enabled;
+            if (!enabled)
+            {
+                _pendingOfficialClientRelayPackets.Clear();
+            }
+        }
+
+        public bool TryDequeuePendingOfficialClientRequest(out byte[] payload)
+        {
+            payload = Array.Empty<byte>();
+            if (_pendingOfficialClientRelayPackets.Count <= 0)
+            {
+                return false;
+            }
+
+            payload = _pendingOfficialClientRelayPackets.Dequeue();
+            return payload != null && payload.Length > 0;
+        }
 
 
         public void Initialize(GraphicsDevice graphicsDevice)
@@ -1039,14 +1062,15 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryDispatchOfficialClientPacket(byte[] packetBytes, int tickCount, out string message)
         {
-            return TryDispatchOfficialClientPacket(packetBytes, tickCount, out message, enforcePromptFlow: false);
+            return TryDispatchOfficialClientPacket(packetBytes, tickCount, out message, enforcePromptFlow: false, relayOutboundTransport: true);
         }
 
         public bool TryDispatchOfficialClientPacket(
             byte[] packetBytes,
             int tickCount,
             out string message,
-            bool enforcePromptFlow)
+            bool enforcePromptFlow,
+            bool relayOutboundTransport)
         {
             if (packetBytes == null || packetBytes.Length == 0)
             {
@@ -1087,6 +1111,11 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGameStartPacketType => TryApplyOutgoingStartRequest(out message),
                 _ => FailOfficialClientPacket(packetType, out message)
             };
+
+            if (handled && relayOutboundTransport && _officialClientRelayEnabled)
+            {
+                TryQueueOfficialClientRelayPacket(packetBytes);
+            }
 
             _lastPacketSummary = $"official client {packetType}: {message}";
             return handled;
@@ -1438,6 +1467,7 @@ namespace HaCreator.MapSimulator.Fields
             _statusMessage = "Open a MiniRoom to begin.";
             _stage = RoomStage.Hidden;
             _pendingRemoteActions.Clear();
+            _pendingOfficialClientRelayPackets.Clear();
             _miniRoomParticipants.Clear();
             _lastPacketType = null;
             _lastPacketSummary = "Memory Game room reset.";
@@ -1459,6 +1489,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             _resultExpireTick = 0;
             _pendingRemoteActions.Clear();
+            _pendingOfficialClientRelayPackets.Clear();
             ClearPendingPrompt();
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
@@ -1618,6 +1649,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
             _pendingRemoteActions.Clear();
+            _pendingOfficialClientRelayPackets.Clear();
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
@@ -2213,6 +2245,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             _resultExpireTick = 0;
             _pendingRemoteActions.Clear();
+            _pendingOfficialClientRelayPackets.Clear();
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
@@ -3090,7 +3123,7 @@ namespace HaCreator.MapSimulator.Fields
                 Buffer.BlockCopy(extraPayload, 0, payload, 1, extraPayload.Length);
             }
 
-            return TryDispatchOfficialClientPacket(payload, tickCount, out message, enforcePromptFlow: true);
+            return TryDispatchOfficialClientPacket(payload, tickCount, out message, enforcePromptFlow: true, relayOutboundTransport: true);
         }
 
         private void ClearPendingPrompt()
@@ -3197,6 +3230,44 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGameClientBookLeavePacketType => true,
                 MemoryGameClientCancelLeavePacketType => true,
                 MemoryGameClientBanOrTurnUpCardPacketType => packetBytes.Length <= 1,
+                _ => false
+            };
+        }
+
+        private void TryQueueOfficialClientRelayPacket(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return;
+            }
+
+            if (!IsRelayEligibleOfficialClientSubtype(packetBytes))
+            {
+                return;
+            }
+
+            _pendingOfficialClientRelayPackets.Enqueue((byte[])packetBytes.Clone());
+        }
+
+        private static bool IsRelayEligibleOfficialClientSubtype(byte[] packetBytes)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                return false;
+            }
+
+            return packetBytes[0] switch
+            {
+                MiniRoomBaseLeavePacketType => true,
+                MemoryGameTieRequestPacketType => true,
+                MemoryGameTieResultPacketType => true,
+                MemoryGameClientGiveUpPacketType => true,
+                MemoryGameClientBookLeavePacketType => true,
+                MemoryGameClientCancelLeavePacketType => true,
+                MemoryGameReadyPacketType => true,
+                MemoryGameCancelReadyPacketType => true,
+                MemoryGameClientBanOrTurnUpCardPacketType => true,
+                MemoryGameStartPacketType => true,
                 _ => false
             };
         }

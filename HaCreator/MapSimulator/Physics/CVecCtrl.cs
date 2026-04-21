@@ -1600,10 +1600,13 @@ namespace HaCreator.MapSimulator.Physics
                 VelocityY = (short)VelocityY,
                 Action = CurrentAction,
                 FootholdId = CurrentFoothold?.num ?? 0,
+                FallStartFootholdId = FallStartFoothold?.num ?? 0,
                 TimeStamp = timeStampMs ?? Environment.TickCount,
                 Duration = 0,
                 FacingRight = FacingRight,
                 MovePathAttribute = CurrentMovePathAttribute,
+                XOffset = 0,
+                YOffset = 0,
                 RandomCount = randomCount,
                 ActualRandomCount = actualRandomCount,
                 StatChanged = false
@@ -2079,6 +2082,11 @@ namespace HaCreator.MapSimulator.Physics
         public int FootholdId;
 
         /// <summary>
+        /// Foothold where falling started (used by attribute 12 payload shape).
+        /// </summary>
+        public int FallStartFootholdId;
+
+        /// <summary>
         /// Timestamp when this element was created
         /// </summary>
         public int TimeStamp;
@@ -2097,6 +2105,12 @@ namespace HaCreator.MapSimulator.Physics
         /// Client-owned move-path attribute captured for this element.
         /// </summary>
         public int MovePathAttribute;
+
+        /// <summary>
+        /// Optional client movement offsets encoded for attr 0/12/14 families.
+        /// </summary>
+        public short XOffset;
+        public short YOffset;
 
         /// <summary>
         /// Optional CMovePath random-count suffix values.

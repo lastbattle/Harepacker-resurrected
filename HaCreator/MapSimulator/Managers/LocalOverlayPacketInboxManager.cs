@@ -220,8 +220,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (string.Equals(normalized, "petconsumeresult", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "onpetconsumeresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "petitemuseresult", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "onpetitemuseresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "petuseresult", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "onpetuseresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "hazardresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "hpresult", StringComparison.OrdinalIgnoreCase))
             {

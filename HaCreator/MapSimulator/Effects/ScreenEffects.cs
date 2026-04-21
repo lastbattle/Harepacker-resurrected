@@ -82,7 +82,7 @@ namespace HaCreator.MapSimulator.Effects
             _trembleEndTime = _trembleStartTime + additionalTimeMs + baseDuration;
 
             // Reduction factor based on type
-            if (additionalTimeMs > 0)
+            if (additionalTimeMs != 0)
             {
                 _trembleReduction = 1.0; // No reduction during additional time
             }

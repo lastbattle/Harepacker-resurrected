@@ -603,7 +603,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetMapTransferRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            string restrictionMessage = GetCurrentMapTransferRestrictionMessage();
             if (!string.IsNullOrWhiteSpace(restrictionMessage))
             {
                 ShowUtilityFeedbackMessage(restrictionMessage);

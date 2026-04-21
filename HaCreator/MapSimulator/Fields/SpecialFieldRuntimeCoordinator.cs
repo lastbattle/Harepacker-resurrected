@@ -247,6 +247,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             bool applied = TryDispatchCurrentWrapperPacketCore(packetType, wrapperPayload, currentTimeMs, out string relayMessage);
+            if (!applied
+                && _specialEffects.Dojo.IsActive
+                && TryDecodeDojoPacketFromSharedRelay(packetType, wrapperPayload, out int dojoPacketType, out byte[] dojoPayload, out string dojoRelayEvidence))
+            {
+                applied = TryDispatchCurrentWrapperPacketCore(dojoPacketType, dojoPayload, currentTimeMs, out string dojoMessage);
+                relayMessage = string.IsNullOrWhiteSpace(dojoMessage)
+                    ? $"decoded Mu Lung Dojo packet {dojoPacketType} from nested relay packet-id prefixes ({dojoRelayEvidence})"
+                    : $"decoded Mu Lung Dojo packet {dojoPacketType} from nested relay packet-id prefixes ({dojoRelayEvidence}). {dojoMessage}";
+            }
+
             string relayPrefix =
                 $"CField::OnPacket opcode {CurrentWrapperRelayOpcode} relayed wrapper packet {packetType}.";
             message = string.IsNullOrWhiteSpace(relayMessage)
@@ -372,6 +382,86 @@ namespace HaCreator.MapSimulator.Fields
             wrapperPayload = new byte[payloadLength];
             Buffer.BlockCopy(relayPayload, sizeof(ushort), wrapperPayload, 0, payloadLength);
             return true;
+        }
+
+        private static bool TryDecodeDojoPacketFromSharedRelay(
+            int wrapperPacketType,
+            byte[] wrapperPayload,
+            out int dojoPacketType,
+            out byte[] dojoPayload,
+            out string evidence)
+        {
+            dojoPacketType = -1;
+            dojoPayload = Array.Empty<byte>();
+            evidence = string.Empty;
+            wrapperPayload ??= Array.Empty<byte>();
+
+            if (wrapperPacketType == FieldSpecificDataRelayOpcode
+                && DojoField.TryDecodeFieldSpecificPacketPayload(wrapperPayload, out dojoPacketType, out dojoPayload, out _))
+            {
+                evidence = FieldSpecificDataRelayOpcode.ToString();
+                return true;
+            }
+
+            if (wrapperPacketType != CurrentWrapperRelayOpcode)
+            {
+                return false;
+            }
+
+            return TryDecodeNestedDojoPacketFromRelayPayload(wrapperPayload, out dojoPacketType, out dojoPayload, out evidence);
+        }
+
+        private static bool TryDecodeNestedDojoPacketFromRelayPayload(
+            byte[] relayPayload,
+            out int dojoPacketType,
+            out byte[] dojoPayload,
+            out string evidence)
+        {
+            dojoPacketType = -1;
+            dojoPayload = Array.Empty<byte>();
+            evidence = string.Empty;
+            relayPayload ??= Array.Empty<byte>();
+
+            const int maxNestedRelayDepth = 8;
+            List<int> relayPrefixChain = new();
+            byte[] nestedRelayPayload = relayPayload;
+            for (int depth = 0; depth < maxNestedRelayDepth; depth++)
+            {
+                if (!TryDecodeCurrentWrapperRelayPayload(
+                        nestedRelayPayload,
+                        out int nestedRelayPacketType,
+                        out byte[] nestedPayload,
+                        out _))
+                {
+                    return false;
+                }
+
+                relayPrefixChain.Add(nestedRelayPacketType);
+                if (nestedRelayPacketType == FieldSpecificDataRelayOpcode
+                    && DojoField.TryDecodeFieldSpecificPacketPayload(
+                        nestedPayload,
+                        out dojoPacketType,
+                        out dojoPayload,
+                        out _))
+                {
+                    evidence = string.Join("->", relayPrefixChain);
+                    return true;
+                }
+
+                if (nestedRelayPacketType != CurrentWrapperRelayOpcode
+                    && nestedRelayPacketType != FieldSpecificDataRelayOpcode)
+                {
+                    return false;
+                }
+
+                nestedRelayPayload = nestedPayload;
+                if (nestedRelayPayload.Length < sizeof(ushort))
+                {
+                    break;
+                }
+            }
+
+            return false;
         }
 
         private bool TryDispatchCurrentWrapperPacketCore(int packetType, byte[] payload, int currentTimeMs, out string message)

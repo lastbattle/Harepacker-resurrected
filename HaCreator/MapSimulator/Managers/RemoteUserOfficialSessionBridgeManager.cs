@@ -791,13 +791,35 @@ namespace HaCreator.MapSimulator.Managers
                             return false;
                         }
 
-                        _pendingTutorInferenceMap.Remove(opcode);
-                        _packetMap[opcode] = packetType;
                         string inferenceBuildTag = ResolveOfficialSessionBuildTag(source);
                         int inferenceBuildProof = pendingEvidence.ResolveOfficialSessionBuildUniqueObservationCount(inferenceBuildTag);
+                        if (!trustV95LocalOwnerTable
+                            && !HasBuildScopedCompanionTutorOwnerProofNoLock(opcode, packetType, inferenceBuildTag, out string companionReason))
+                        {
+                            LastStatus = $"Observed potential tutor-owner mapping for opcode {opcode} -> {RemoteUserPacketInboxManager.DescribePacketType(packetType)} ({pendingEvidence.Reason}); build {inferenceBuildTag} has distinct wrapper proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount}, but awaits companion tutor-owner opcode proof ({companionReason}) before mapping. {OfficialRemoteOwnerEvidence}";
+                            return false;
+                        }
+
+                        _pendingTutorInferenceMap.Remove(opcode);
+                        _packetMap[opcode] = packetType;
                         string learnedEvidence = $"auto:{inferenceReason}; inferenceDistinctWrapperProof={inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount}@{inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
-                        LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session distinct wrapper proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
+                        if (!trustV95LocalOwnerTable)
+                        {
+                            string promoted = PromoteBuildScopedTutorOwnerInferenceMappingsNoLock(inferenceBuildTag, source);
+                            if (!string.IsNullOrWhiteSpace(promoted))
+                            {
+                                LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session distinct wrapper proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {inferenceBuildTag}; promoted pending build-scoped tutor owner mappings: {promoted}; {OfficialRemoteOwnerEvidence}";
+                            }
+                            else
+                            {
+                                LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session distinct wrapper proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
+                            }
+                        }
+                        else
+                        {
+                            LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}) after official-session distinct wrapper proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount} for build {inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
+                        }
                     }
                 }
             }
@@ -1048,6 +1070,110 @@ namespace HaCreator.MapSimulator.Managers
 
             reason = $"unsupported expected tutor packet type {expectedPacketType}";
             return false;
+        }
+
+        private bool HasBuildScopedCompanionTutorOwnerProofNoLock(
+            ushort opcode,
+            int packetType,
+            string buildTag,
+            out string reason)
+        {
+            reason = "missing opposite tutor packet type proof";
+            int oppositePacketType = packetType == (int)Pools.RemoteUserPacketType.UserTutorHire
+                ? (int)Pools.RemoteUserPacketType.UserTutorMessage
+                : packetType == (int)Pools.RemoteUserPacketType.UserTutorMessage
+                    ? (int)Pools.RemoteUserPacketType.UserTutorHire
+                    : 0;
+            if (oppositePacketType == 0)
+            {
+                reason = $"unsupported tutor packet type {packetType}";
+                return false;
+            }
+
+            if (_learnedTutorPacketMapByBuild.TryGetValue(buildTag, out Dictionary<ushort, LearnedOpcodeEntry> learnedMap))
+            {
+                foreach ((ushort learnedOpcode, LearnedOpcodeEntry learnedEntry) in learnedMap)
+                {
+                    if (learnedOpcode == opcode
+                        || learnedEntry.PacketType != oppositePacketType)
+                    {
+                        continue;
+                    }
+
+                    int proof = learnedEntry.ResolveOfficialSessionBuildProofCount(buildTag);
+                    if (proof >= MinOfficialSessionTutorInferenceProofCount)
+                    {
+                        reason = $"learned opcode {learnedOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(oppositePacketType)} with build proof {proof}/{MinOfficialSessionTutorInferenceProofCount}";
+                        return true;
+                    }
+                }
+            }
+
+            foreach ((ushort pendingOpcode, PendingTutorInferenceEvidence pendingEvidence) in _pendingTutorInferenceMap)
+            {
+                if (pendingOpcode == opcode
+                    || pendingEvidence.PacketType != oppositePacketType)
+                {
+                    continue;
+                }
+
+                int buildProof = pendingEvidence.ResolveOfficialSessionBuildUniqueObservationCount(buildTag);
+                if (buildProof >= MinOfficialSessionTutorInferenceProofCount)
+                {
+                    reason = $"pending opcode {pendingOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(oppositePacketType)} with distinct wrapper proof {buildProof}/{MinOfficialSessionTutorInferenceProofCount}";
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private string PromoteBuildScopedTutorOwnerInferenceMappingsNoLock(string buildTag, string source)
+        {
+            if (string.IsNullOrWhiteSpace(buildTag)
+                || _pendingTutorInferenceMap.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> promotedMappings = null;
+            KeyValuePair<ushort, PendingTutorInferenceEvidence>[] pendingEntries = _pendingTutorInferenceMap.ToArray();
+            for (int i = 0; i < pendingEntries.Length; i++)
+            {
+                ushort pendingOpcode = pendingEntries[i].Key;
+                PendingTutorInferenceEvidence pendingEvidence = pendingEntries[i].Value;
+                int buildProof = pendingEvidence.ResolveOfficialSessionBuildUniqueObservationCount(buildTag);
+                if (buildProof < MinOfficialSessionTutorInferenceProofCount)
+                {
+                    continue;
+                }
+
+                int pendingPacketType = pendingEvidence.PacketType;
+                if (pendingPacketType != (int)Pools.RemoteUserPacketType.UserTutorHire
+                    && pendingPacketType != (int)Pools.RemoteUserPacketType.UserTutorMessage)
+                {
+                    continue;
+                }
+
+                if (!HasBuildScopedCompanionTutorOwnerProofNoLock(
+                        pendingOpcode,
+                        pendingPacketType,
+                        buildTag,
+                        out _))
+                {
+                    continue;
+                }
+
+                _pendingTutorInferenceMap.Remove(pendingOpcode);
+                _packetMap[pendingOpcode] = pendingPacketType;
+                string evidence = $"auto:{pendingEvidence.Reason}; inferenceDistinctWrapperProof={buildProof}/{MinOfficialSessionTutorInferenceProofCount}@{buildTag}; pairedBuildTutorOwnerTable=1; {OfficialRemoteOwnerEvidence}";
+                RememberLearnedOpcodeNoLock(pendingOpcode, pendingPacketType, evidence, isManual: false, source, payload: null);
+                (promotedMappings ??= new List<string>()).Add($"{pendingOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(pendingPacketType)}");
+            }
+
+            return promotedMappings == null || promotedMappings.Count == 0
+                ? string.Empty
+                : string.Join(", ", promotedMappings);
         }
 
         private static string BuildTutorInferencePayloadSignature(int packetType, byte[] payload)

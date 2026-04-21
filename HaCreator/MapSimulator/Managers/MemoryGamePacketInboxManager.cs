@@ -180,6 +180,16 @@ namespace HaCreator.MapSimulator.Managers
                 return MemoryGameOfficialSessionBridgeManager.TryDecodeClientOpcodePacket(rawClientPacket, out payload, out error);
             }
 
+            if (trimmed.StartsWith("packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryParseHexPayload(trimmed["packetraw".Length..].Trim(), out payload, out error);
+            }
+
+            if (trimmed.StartsWith("raw=", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryParseHexPayload(trimmed["raw=".Length..].Trim(), out payload, out error);
+            }
+
             string[] recvTokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
             if (recvTokens.Length >= 3
                 && (recvTokens[0].Equals("recv", StringComparison.OrdinalIgnoreCase)
@@ -317,7 +327,11 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TryParseHexPayload(string text, out byte[] payload, out string error)
         {
             payload = Array.Empty<byte>();
-            string compactHex = RemoveWhitespace(text);
+            string compactHex = RemoveWhitespace(text)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(":", string.Empty, StringComparison.Ordinal)
+                .Replace(",", string.Empty, StringComparison.Ordinal)
+                .Replace("|", string.Empty, StringComparison.Ordinal);
             if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
                 compactHex = compactHex[2..];

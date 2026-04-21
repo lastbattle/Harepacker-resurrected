@@ -41,7 +41,8 @@ namespace HaCreator.MapSimulator.Fields
         MatchTable = 3,
         Prize = 4,
         Uew = 5,
-        NoOp = 6
+        NoOp = 6,
+        Forwarded = 7
     }
 
     public sealed class TournamentField
@@ -280,8 +281,23 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (!Enum.IsDefined(typeof(TournamentPacketType), packetType))
             {
-                errorMessage = $"Unsupported Tournament raw packet type: {packetType}";
-                return false;
+                if (!_isActive)
+                {
+                    errorMessage = "Tournament runtime inactive.";
+                    return false;
+                }
+
+                SetStatus(
+                    $"Tournament raw packet {packetType} stayed outside 374-378 and was forwarded through CField::OnPacket(raw).",
+                    currentTimeMs,
+                    Array.Empty<int>(),
+                    $"forwarded raw packet {packetType}",
+                    "CField::OnPacket(raw)");
+                SetSessionPhase(
+                    TournamentSessionPhase.Forwarded,
+                    $"CField_Tournament::OnPacket forwarded raw packet {packetType} to CField::OnPacket(raw).");
+                errorMessage = null;
+                return true;
             }
 
             return TryApplyPacket((TournamentPacketType)packetType, payload, currentTimeMs, out errorMessage);
@@ -635,6 +651,7 @@ namespace HaCreator.MapSimulator.Fields
                 TournamentSessionPhase.Prize => "prize",
                 TournamentSessionPhase.Uew => "uew",
                 TournamentSessionPhase.NoOp => "noop",
+                TournamentSessionPhase.Forwarded => "forwarded",
                 _ => "none"
             };
 

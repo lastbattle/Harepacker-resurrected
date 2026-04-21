@@ -72,6 +72,9 @@ namespace HaCreator.MapSimulator.Physics
                     tail.Y = current.Y;
                     tail.VelocityX = current.VelocityX;
                     tail.VelocityY = current.VelocityY;
+                    tail.FallStartFootholdId = current.FallStartFootholdId;
+                    tail.XOffset = current.XOffset;
+                    tail.YOffset = current.YOffset;
                     tail.RandomCount = current.RandomCount;
                     tail.ActualRandomCount = current.ActualRandomCount;
                     normalized[tailIndex] = tail;
@@ -111,11 +114,11 @@ namespace HaCreator.MapSimulator.Physics
                     writer.Write(ClampToShort(element.FootholdId));
                     if (attribute == 12)
                     {
-                        writer.Write((short)0);
+                        writer.Write(ClampToShort(element.FallStartFootholdId));
                     }
 
-                    writer.Write((short)0);
-                    writer.Write((short)0);
+                    writer.Write(element.XOffset);
+                    writer.Write(element.YOffset);
                     break;
                 case 1:
                 case 2:
@@ -201,8 +204,11 @@ namespace HaCreator.MapSimulator.Physics
             if (!IsClientCoalesceAttribute(current.MovePathAttribute)
                 || tail.MovePathAttribute != current.MovePathAttribute
                 || tail.FootholdId != current.FootholdId
+                || tail.FallStartFootholdId != current.FallStartFootholdId
                 || tail.Action != current.Action
-                || tail.FacingRight != current.FacingRight)
+                || tail.FacingRight != current.FacingRight
+                || tail.XOffset != current.XOffset
+                || tail.YOffset != current.YOffset)
             {
                 return false;
             }

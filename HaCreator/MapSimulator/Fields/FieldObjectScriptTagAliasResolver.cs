@@ -20,6 +20,10 @@ namespace HaCreator.MapSimulator.Fields
             @"\[\s*[""'](?<name>[A-Za-z_][A-Za-z0-9_]*)[""']\s*\]",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex BracketMemberAliasInvocationPattern = new(
+            @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\[\s*[""'](?<name>[A-Za-z_][A-Za-z0-9_]*)[""']\s*\]\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         internal readonly record struct PublishedTagMutation(
             IReadOnlyList<string> TagsToEnable,
             IReadOnlyList<string> TagsToDisable);
@@ -300,6 +304,15 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             foreach (Match match in FunctionBodyAliasInvocationPattern.Matches(value))
+            {
+                string aliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (IsPotentialFunctionAliasName(aliasName))
+                {
+                    return aliasName;
+                }
+            }
+
+            foreach (Match match in BracketMemberAliasInvocationPattern.Matches(value))
             {
                 string aliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
                 if (IsPotentialFunctionAliasName(aliasName))
@@ -667,6 +680,20 @@ namespace HaCreator.MapSimulator.Fields
                 if (seen.Add(normalizedFunctionName))
                 {
                     yield return normalizedFunctionName;
+                }
+            }
+
+            foreach (Match match in BracketMemberAliasInvocationPattern.Matches(scriptName))
+            {
+                string bracketMemberName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (!IsPotentialFunctionAliasName(bracketMemberName))
+                {
+                    continue;
+                }
+
+                if (seen.Add(bracketMemberName))
+                {
+                    yield return bracketMemberName;
                 }
             }
         }
@@ -1075,7 +1102,7 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                if (current == '(' || current == ')' || current == '"' || current == '\'')
+                if (current == '(' || current == ')' || current == '"' || current == '\'' || current == '[' || current == ']')
                 {
                     continue;
                 }

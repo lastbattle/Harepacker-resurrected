@@ -286,20 +286,36 @@ namespace HaCreator.MapSimulator
 
             if (!sync.HasOwnershipSnapshot)
             {
-                bool acknowledgedPendingSave = _pendingMonsterBookOwnershipSaveRequest != null
+                PendingMonsterBookOwnershipSaveRequest pendingSaveRequest = _pendingMonsterBookOwnershipSaveRequest;
+                bool acknowledgedPendingSave = pendingSaveRequest != null
                     && IsMonsterBookOwnershipSaveAckForPendingRequest(
-                        _pendingMonsterBookOwnershipSaveRequest,
+                        pendingSaveRequest,
                         sync.RequestId,
                         resolvedCharacterId,
                         resolvedCharacterName);
+                bool persistedAckOwnedSnapshot = false;
                 if (acknowledgedPendingSave)
                 {
+                    if (sync.SaveAccepted.GetValueOrDefault(true))
+                    {
+                        _monsterBookManager.ApplyOwnershipSync(
+                            pendingSaveRequest.Build,
+                            pendingSaveRequest.CharacterId,
+                            pendingSaveRequest.CharacterName,
+                            pendingSaveRequest.CardCountsByMob,
+                            registeredMobId: pendingSaveRequest.RegisteredMobId,
+                            replaceExisting: true);
+                        persistedAckOwnedSnapshot = true;
+                    }
+
                     _pendingMonsterBookOwnershipSaveRequest = null;
                 }
 
                 StampPacketOwnedUtilityRequestState();
                 string ackSummary = sync.SaveAccepted.HasValue && !sync.SaveAccepted.Value
                     ? "Monster Book ownership-save acknowledgement reported rejection without an ownership snapshot apply."
+                    : persistedAckOwnedSnapshot
+                        ? "Monster Book ownership-save acknowledgement accepted and persisted the pending packet-owned ownership snapshot without forcing a synthetic ownership-sync payload."
                     : "Monster Book ownership-save acknowledgement was applied without forcing a synthetic ownership snapshot.";
                 string ackRequestIdText = sync.RequestId.HasValue && sync.RequestId.Value > 0
                     ? $" request #{sync.RequestId.Value.ToString(CultureInfo.InvariantCulture)}"
@@ -748,6 +764,7 @@ namespace HaCreator.MapSimulator
                 bool hasCharacterName = (flags & 0x10) != 0;
                 bool hasStatusText = (flags & 0x20) != 0;
                 bool hasRequestId = (flags & 0x40) != 0;
+                bool hasSaveAccepted = (flags & 0x80) != 0;
 
                 int? characterId = hasCharacterId
                     ? NormalizePositiveInt(reader.ReadInt32())
@@ -757,6 +774,9 @@ namespace HaCreator.MapSimulator
                     : null;
                 int? requestId = hasRequestId
                     ? NormalizePositiveInt(reader.ReadInt32())
+                    : null;
+                bool? saveAccepted = hasSaveAccepted
+                    ? ReadNullableBooleanByte(reader)
                     : null;
                 ushort entryCount = reader.ReadUInt16();
                 Dictionary<int, int> counts = new();
@@ -786,7 +806,7 @@ namespace HaCreator.MapSimulator
                     clearRequested,
                     replaceExisting,
                     hasOwnershipSnapshot: clearRequested || hasRegisteredMob || counts.Count > 0,
-                    saveAccepted: null,
+                    saveAccepted: saveAccepted,
                     requestId,
                     characterId,
                     characterName,
@@ -828,6 +848,7 @@ namespace HaCreator.MapSimulator
                 bool hasRegisteredMobId = (flags & 0x10) != 0;
                 bool hasStatusText = (flags & 0x20) != 0;
                 bool hasRequestId = (flags & 0x40) != 0;
+                bool hasSaveAccepted = (flags & 0x80) != 0;
 
                 int? characterId = hasCharacterId
                     ? NormalizePositiveInt(reader.ReadInt32())
@@ -842,6 +863,9 @@ namespace HaCreator.MapSimulator
                     : null;
                 int? requestId = hasRequestId
                     ? NormalizePositiveInt(reader.ReadInt32())
+                    : null;
+                bool? saveAccepted = hasSaveAccepted
+                    ? ReadNullableBooleanByte(reader)
                     : null;
 
                 ushort entryCount = reader.ReadUInt16();
@@ -880,7 +904,7 @@ namespace HaCreator.MapSimulator
                     clearRequested,
                     replaceExisting,
                     hasOwnershipSnapshot: clearRequested || hasRegisteredMobId || counts.Count > 0,
-                    saveAccepted: null,
+                    saveAccepted: saveAccepted,
                     requestId,
                     characterId,
                     characterName,
@@ -1046,6 +1070,27 @@ namespace HaCreator.MapSimulator
             return bytes?.Length > 0
                 ? Encoding.UTF8.GetString(bytes).Trim()
                 : string.Empty;
+        }
+
+        private static bool? ReadNullableBooleanByte(BinaryReader reader)
+        {
+            if (reader == null || reader.BaseStream == null || !reader.BaseStream.CanRead)
+            {
+                return null;
+            }
+
+            if (reader.BaseStream.Position >= reader.BaseStream.Length)
+            {
+                return null;
+            }
+
+            byte value = reader.ReadByte();
+            return value switch
+            {
+                0 => false,
+                1 => true,
+                _ => null
+            };
         }
 
         private static bool TryReadMonsterBookCardCounts(JsonElement root, out Dictionary<int, int> counts)

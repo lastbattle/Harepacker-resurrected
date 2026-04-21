@@ -2123,36 +2123,32 @@ namespace HaCreator.MapSimulator.Interaction
             List<TradeVerificationEntry> requestEntries = null;
             bool requestChecksumMatched = false;
             string requestVerificationDetail = null;
+            bool ignoredTradePayload = false;
+            int ignoredTradePayloadLength = 0;
             if (reader != null && reader.Remaining > 0)
             {
-                int count = reader.ReadByte();
-                if (count < 0)
+                byte[] requestPayload = reader.ReadBytes(reader.Remaining);
+                if (TryDecodeTradingRoomTradeRequestChecksums(
+                    requestPayload,
+                    out List<TradeVerificationEntry> parsedEntries,
+                    out string decodeDetail))
                 {
-                    message = "Trading-room subtype 17 packet contained an invalid checksum row count.";
-                    return false;
+                    requestEntries = parsedEntries;
+                    requestVerificationDetail = decodeDetail;
+                    requestChecksumMatched = TryValidateTradeRequestVerificationEntries(requestEntries, out string validationDetail);
+                    if (!string.IsNullOrWhiteSpace(validationDetail))
+                    {
+                        requestVerificationDetail = string.IsNullOrWhiteSpace(requestVerificationDetail)
+                            ? validationDetail
+                            : $"{requestVerificationDetail}; {validationDetail}";
+                    }
                 }
-
-                requestEntries = new List<TradeVerificationEntry>(count);
-                for (int i = 0; i < count; i++)
+                else if (requestPayload.Length > 0)
                 {
-                    if (reader.Remaining < sizeof(int) + sizeof(int))
-                    {
-                        message = $"Trading-room subtype 17 packet ended before checksum row {i + 1}.";
-                        return false;
-                    }
-
-                    int itemId = reader.ReadInt();
-                    uint checksum = unchecked((uint)reader.ReadInt());
-                    if (itemId <= 0)
-                    {
-                        message = $"Trading-room subtype 17 packet row {i + 1} contained an invalid item id.";
-                        return false;
-                    }
-
-                    requestEntries.Add(new TradeVerificationEntry(itemId, checksum));
+                    ignoredTradePayload = true;
+                    ignoredTradePayloadLength = requestPayload.Length;
+                    requestVerificationDetail = decodeDetail;
                 }
-
-                requestChecksumMatched = TryValidateTradeRequestVerificationEntries(requestEntries, out requestVerificationDetail);
             }
 
             _tradeRemoteLocked = true;
@@ -2179,10 +2175,72 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 StatusMessage = $"{baseStatus} Subtype {TradingRoomTradePacketType} carried {requestEntries.Count} request checksum entr{(requestEntries.Count == 1 ? "y" : "ies")}, but request verification differed: {requestVerificationDetail}.";
             }
+            if (ignoredTradePayload)
+            {
+                string ignoredDetail = string.IsNullOrWhiteSpace(requestVerificationDetail)
+                    ? "unrecognized subtype 17 payload shape"
+                    : requestVerificationDetail;
+                StatusMessage = $"{StatusMessage} Ignored {ignoredTradePayloadLength} trailing byte{(ignoredTradePayloadLength == 1 ? string.Empty : "s")} in subtype {TradingRoomTradePacketType}, matching CTradingRoomDlg::OnTrade (0x763F20) which does not decode an inbound checksum body before sending subtype {TradingRoomItemCrcPacketType}. ({ignoredDetail})";
+            }
 
             RefreshTradeOccupantsAndRows();
             PersistState();
             message = StatusMessage;
+            return true;
+        }
+
+        private static bool TryDecodeTradingRoomTradeRequestChecksums(
+            ReadOnlySpan<byte> payload,
+            out List<TradeVerificationEntry> entries,
+            out string detail)
+        {
+            entries = null;
+            detail = string.Empty;
+            if (payload.Length <= 0)
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new MemoryStream(payload.ToArray(), writable: false);
+            using BinaryReader reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+            int count = reader.ReadByte();
+            if (count < 0)
+            {
+                detail = "negative checksum-row count";
+                return false;
+            }
+
+            if (stream.Length - stream.Position < count * (sizeof(int) + sizeof(int)))
+            {
+                detail = $"checksum-row payload truncated (count={count}, bytes={payload.Length})";
+                return false;
+            }
+
+            List<TradeVerificationEntry> parsed = new List<TradeVerificationEntry>(count);
+            for (int i = 0; i < count; i++)
+            {
+                int itemId = reader.ReadInt32();
+                uint checksum = unchecked((uint)reader.ReadInt32());
+                if (itemId <= 0)
+                {
+                    detail = $"checksum row {i + 1} had invalid item id {itemId}";
+                    return false;
+                }
+
+                parsed.Add(new TradeVerificationEntry(itemId, checksum));
+            }
+
+            int trailingBytes = (int)(stream.Length - stream.Position);
+            if (trailingBytes > 0)
+            {
+                detail = $"decoded {count} checksum entr{(count == 1 ? "y" : "ies")} with {trailingBytes} trailing byte{(trailingBytes == 1 ? string.Empty : "s")}";
+            }
+            else
+            {
+                detail = $"decoded {count} checksum entr{(count == 1 ? "y" : "ies")}";
+            }
+
+            entries = parsed;
             return true;
         }
 
@@ -4147,6 +4205,11 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 unwrapped {envelopeDispatch.EnvelopeSummary} and forwarded nested packet {envelopeDispatch.PacketType} into {envelopeDispatch.OwnerName}, but it was not modeled. {envelopeDispatch.Message} | payload={envelopePayloadPreview} | bytes={envelopeDispatch.ForwardedPayload.Length} | remaining={envelopeDispatch.RemainingBytes}";
                 handled = envelopeDispatch.Handled;
             }
+            if (!handled)
+            {
+                detail = $"{detail} The simulator still keeps this subtype 6 payload on the dialog-owned Update branch (CMiniRoomBaseDlg::OnPacketBase case 6) even without a dedicated decoder for nested packet {nestedPacketType}.";
+                handled = true;
+            }
 
             _lastPacketOwnerSummary = detail;
             message = detail;
@@ -4371,6 +4434,41 @@ namespace HaCreator.MapSimulator.Interaction
                     prefixLength: 6,
                     payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(2, sizeof(uint)))),
                     envelopeSummary: $"opcode+len32 envelope opcode={BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort)))}",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                nestedPayload,
+                prefixLength: 1,
+                payloadLength: nestedPayload[0],
+                envelopeSummary: "len8 envelope",
+                tickCount,
+                out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 4 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 2,
+                    payloadLength: BinaryPrimitives.ReadUInt16LittleEndian(nestedPayload.AsSpan(0, sizeof(ushort))),
+                    envelopeSummary: "len16 envelope",
+                    tickCount,
+                    out result))
+            {
+                return true;
+            }
+
+            if (nestedPayload.Length >= 8 &&
+                TryDispatchMiniRoomSubtype6LengthEnvelopeCandidate(
+                    nestedPayload,
+                    prefixLength: 4,
+                    payloadLength: checked((int)BinaryPrimitives.ReadUInt32LittleEndian(nestedPayload.AsSpan(0, sizeof(uint)))),
+                    envelopeSummary: "len32 envelope",
                     tickCount,
                     out result))
             {

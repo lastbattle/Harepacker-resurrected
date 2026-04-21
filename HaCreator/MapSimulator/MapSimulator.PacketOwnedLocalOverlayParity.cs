@@ -3912,15 +3912,6 @@ namespace HaCreator.MapSimulator
                 case LocalOverlayPacketInboxManager.BalloonMsgClientPacketType:
                     return TryApplyPacketOwnedBalloonPayload(payload, out message);
 
-                case LocalOverlayPacketInboxManager.DamageMeterClientPacketType:
-                    return TryApplyPacketOwnedDamageMeterPayload(payload, out message);
-
-                case LocalOverlayPacketInboxManager.NotifyHpDecByFieldClientPacketType:
-                    return TryApplyPacketOwnedFieldHazardPayload(payload, out message);
-
-                case LocalOverlayPacketInboxManager.PetConsumeResultPacketType:
-                    return TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
-
                 default:
                     message = $"Unsupported local overlay packet type {packetType}.";
                     return false;
@@ -4014,7 +4005,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|petconsumeresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]");
+                        "Usage: /localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]");
             }
         }
 
@@ -4031,7 +4022,7 @@ namespace HaCreator.MapSimulator
                 int port = LocalOverlayPacketInboxManager.DefaultPort;
                 if (args.Length >= 2 && (!int.TryParse(args[1], out port) || port <= 0 || port > ushort.MaxValue))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|petconsumeresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
                 }
 
                 _localOverlayPacketInboxConfiguredPort = port;
@@ -4060,7 +4051,7 @@ namespace HaCreator.MapSimulator
                     rawHex: string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase));
             }
 
-            return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|petconsumeresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+            return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayPacketCommand(string[] args, bool rawHex)
@@ -4075,7 +4066,7 @@ namespace HaCreator.MapSimulator
 
             if (!LocalOverlayPacketInboxManager.TryParsePacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Local overlay packet type must be fade, fadeoutforce, balloon, damagemeter, hpdec, petconsumeresult, 240, 241, 243, 245, 267, or 1026.");
+                return ChatCommandHandler.CommandResult.Error("Local overlay packet type must be fade, fadeoutforce, balloon, 240, 241, or 245.");
             }
 
             byte[] payload = Array.Empty<byte>();
@@ -4289,28 +4280,28 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryDecodePacketOwnedFieldFadeOutForcePayload(
             byte[] payload,
-            out int fadeOutMs,
+            out int fadeLayer,
             out string message)
         {
             return TryDecodeSingleInt32LocalUtilityPayload(
                 payload,
                 "Field-fade-out-force",
-                "fade-out duration",
-                out fadeOutMs,
+                "fade layer",
+                out fadeLayer,
                 out message);
         }
 
         private bool TryApplyPacketOwnedFieldFadeOutForcePayload(byte[] payload, out string message)
         {
-            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int fadeOutMs, out message))
+            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int fadeLayer, out message))
             {
                 return false;
             }
 
-            int forcedCount = _packetOwnedFieldFadeOverlay.ForceFadeOutPending(fadeOutMs, currTickCount);
-            message = forcedCount > 0
-                ? $"Forced fade-out on {forcedCount} packet-authored field fade entr{(forcedCount == 1 ? "y" : "ies")} (fadeOut={Math.Max(0, fadeOutMs)}ms)."
-                : "No packet-authored field fade entries were eligible for forced fade-out.";
+            int removedCount = _packetOwnedFieldFadeOverlay.RemoveLayer(fadeLayer);
+            message = removedCount > 0
+                ? $"Removed {removedCount} packet-authored field fade entr{(removedCount == 1 ? "y" : "ies")} for layer {fadeLayer}."
+                : $"No packet-authored field fade entries matched layer {fadeLayer}.";
             return true;
         }
 
