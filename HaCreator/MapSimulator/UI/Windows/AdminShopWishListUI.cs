@@ -476,6 +476,7 @@ namespace HaCreator.MapSimulator.UI
 
             string clientSearchQuery = AdminShopDialogUI.BuildClientWishlistSearchQuery(_searchQuery?.Trim());
             _searchQuery = clientSearchQuery;
+            _sourceDialog.StagePacketOwnedWishlistSearchRequest(clientSearchQuery, _selectedCategoryKey, _selectedPriceRangeIndex);
             IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> refreshedResults = _sourceDialog.SearchWishlistEntries(clientSearchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out message);
             _searchResults = refreshedResults.ToList();
             BeginWishlistSearchResultSession(_searchResults, isCategoryResult: false, categoryLabel: string.Empty);
@@ -1042,6 +1043,7 @@ namespace HaCreator.MapSimulator.UI
 
             string clientSearchQuery = AdminShopDialogUI.BuildClientWishlistSearchQuery(_searchQuery?.Trim());
             _searchQuery = clientSearchQuery;
+            _sourceDialog.StagePacketOwnedWishlistSearchRequest(clientSearchQuery, _selectedCategoryKey, _selectedPriceRangeIndex);
             IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results = _sourceDialog.SearchWishlistEntries(clientSearchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out _statusMessage);
             _searchResults = results.ToList();
             BeginWishlistSearchResultSession(_searchResults, isCategoryResult: false, categoryLabel: string.Empty);

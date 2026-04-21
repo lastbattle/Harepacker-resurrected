@@ -452,8 +452,9 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (inventoryType != ClientEquipInventoryType)
+                    if (!IsExpectedCharacterSourceInventory(request, inventoryType))
                     {
+                        rejectReason = "Inventory-operation displaced add entry did not target the expected character inventory.";
                         return false;
                     }
 
@@ -462,7 +463,13 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!operationContext.SawExpectedTargetEquipRemove)
+                    bool sawExpectedTargetRemove = inventoryType switch
+                    {
+                        ClientCashInventoryType => operationContext.SawExpectedTargetCashRemove,
+                        ClientEquipInventoryType => operationContext.SawExpectedTargetEquipRemove,
+                        _ => false
+                    };
+                    if (!sawExpectedTargetRemove)
                     {
                         rejectReason = "Inventory-operation add entry returned a displaced character slot item before the requested target slot was removed.";
                         return false;
@@ -483,13 +490,13 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    bool sawExpectedTargetRemove = inventoryType switch
+                    bool sawExpectedTargetRemoveForInventoryToCharacter = inventoryType switch
                     {
                         ClientEquipInventoryType => operationContext.SawExpectedTargetEquipRemove,
                         ClientCashInventoryType => operationContext.SawExpectedTargetCashRemove,
                         _ => false
                     };
-                    if (!sawExpectedTargetRemove)
+                    if (!sawExpectedTargetRemoveForInventoryToCharacter)
                     {
                         rejectReason = "Inventory-operation add entry returned a displaced target-slot item before the requested character slot was removed.";
                         return false;

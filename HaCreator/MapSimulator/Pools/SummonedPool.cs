@@ -7387,7 +7387,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            string[] delimiters = { "=>", "->", "=", ":", "/" };
+            string[] delimiters = { "=>", "->", "=", ":", "/", ".", "_" };
             for (int i = 0; i < delimiters.Length; i++)
             {
                 string delimiter = delimiters[i];
@@ -7460,7 +7460,11 @@ namespace HaCreator.MapSimulator.Pools
             return string.Equals(token, "=", StringComparison.Ordinal)
                    || string.Equals(token, "->", StringComparison.Ordinal)
                    || string.Equals(token, "=>", StringComparison.Ordinal)
-                   || string.Equals(token, ":", StringComparison.Ordinal);
+                   || string.Equals(token, ":", StringComparison.Ordinal)
+                   || string.Equals(token, "+", StringComparison.Ordinal)
+                   || string.Equals(token, "-", StringComparison.Ordinal)
+                   || string.Equals(token, ".", StringComparison.Ordinal)
+                   || string.Equals(token, "_", StringComparison.Ordinal);
         }
 
         private static bool IsPacketMobAttackGeneralEffectAliasFrameToken(string token)

@@ -9,7 +9,11 @@ namespace HaCreator.MapSimulator.Fields
     internal static class FieldObjectScriptTagAliasResolver
     {
         private static readonly Regex LocalAliasAssignmentPattern = new(
-            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<rhs>[^;,\r\n\)\}]+)",
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<rhs>[^;,\r\n]+)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex FunctionBodyAliasInvocationPattern = new(
+            @"(?:^|[^A-Za-z0-9_\.])(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         internal readonly record struct PublishedTagMutation(
@@ -118,7 +122,8 @@ namespace HaCreator.MapSimulator.Fields
 
             var publications = new List<ScriptAliasPublication>();
             var seen = new HashSet<(string ScriptName, int DelayMs)>();
-            CollectTimerCallbackPublications(scriptName, inheritedDelayMs: 0, publications, seen);
+            IReadOnlyDictionary<string, string> localAliasMap = BuildLocalAliasMap(scriptName);
+            CollectTimerCallbackPublications(scriptName, inheritedDelayMs: 0, publications, seen, localAliasMap);
             return publications.Count == 0
                 ? Array.Empty<ScriptAliasPublication>()
                 : publications;
@@ -227,9 +232,21 @@ namespace HaCreator.MapSimulator.Fields
         private static string ResolveAssignmentAliasCandidate(string value)
         {
             string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
-            if (string.IsNullOrWhiteSpace(normalizedValue)
-                || normalizedValue.StartsWith("function", StringComparison.OrdinalIgnoreCase)
-                || !IsPotentialAliasArgument(normalizedValue, argumentIndex: 0))
+            if (string.IsNullOrWhiteSpace(normalizedValue))
+            {
+                return string.Empty;
+            }
+
+            if (IsFunctionExpressionText(normalizedValue))
+            {
+                string functionAlias = ResolveFunctionExpressionAliasCandidate(normalizedValue);
+                if (!string.IsNullOrWhiteSpace(functionAlias))
+                {
+                    return functionAlias;
+                }
+            }
+
+            if (!IsPotentialAliasArgument(normalizedValue, argumentIndex: 0))
             {
                 return string.Empty;
             }
@@ -246,6 +263,44 @@ namespace HaCreator.MapSimulator.Fields
                 if (IsPotentialFunctionAliasName(parsedName))
                 {
                     return parsedName;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static bool IsFunctionExpressionText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            return value.StartsWith("function", StringComparison.OrdinalIgnoreCase)
+                || value.Contains("=>", StringComparison.Ordinal);
+        }
+
+        private static string ResolveFunctionExpressionAliasCandidate(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            foreach (string functionAliasName in EnumerateFunctionAliasNames(value))
+            {
+                if (IsPotentialFunctionAliasName(functionAliasName))
+                {
+                    return functionAliasName;
+                }
+            }
+
+            foreach (Match match in FunctionBodyAliasInvocationPattern.Matches(value))
+            {
+                string aliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (IsPotentialFunctionAliasName(aliasName))
+                {
+                    return aliasName;
                 }
             }
 
@@ -566,7 +621,8 @@ namespace HaCreator.MapSimulator.Fields
             string value,
             int inheritedDelayMs,
             ICollection<ScriptAliasPublication> publications,
-            ISet<(string ScriptName, int DelayMs)> seen)
+            ISet<(string ScriptName, int DelayMs)> seen,
+            IReadOnlyDictionary<string, string> localAliasMap)
         {
             if (string.IsNullOrWhiteSpace(value) || publications == null || seen == null)
             {
@@ -597,13 +653,21 @@ namespace HaCreator.MapSimulator.Fields
                         continue;
                     }
 
-                    string untimedArgument = RemoveNestedTimerCallbackCalls(argument);
-                    if (!string.IsNullOrWhiteSpace(untimedArgument))
+                    foreach (string canonicalArgument in EnumerateCanonicalAliasCandidates(argument, localAliasMap))
                     {
-                        AddPublication(untimedArgument, dueDelayMs, publications, seen);
-                    }
+                        string untimedArgument = RemoveNestedTimerCallbackCalls(canonicalArgument);
+                        if (!string.IsNullOrWhiteSpace(untimedArgument))
+                        {
+                            AddPublication(untimedArgument, dueDelayMs, publications, seen);
+                        }
 
-                    CollectTimerCallbackPublications(argument, dueDelayMs, publications, seen);
+                        CollectTimerCallbackPublications(
+                            canonicalArgument,
+                            dueDelayMs,
+                            publications,
+                            seen,
+                            localAliasMap);
+                    }
                 }
             }
         }

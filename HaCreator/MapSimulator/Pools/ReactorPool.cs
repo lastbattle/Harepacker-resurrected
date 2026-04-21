@@ -3801,10 +3801,21 @@ namespace HaCreator.MapSimulator.Pools
             int sourceState = ResolvePacketHitAnimationState(
                 data,
                 fallbackAnimationOwnerState);
+            IReadOnlyList<int> sourceEventTypes = reactor.GetExactAuthoredEventTypes(sourceState);
+            int sourceStateBeforeFallback = sourceState;
+            sourceState = ResolvePacketHitAnimationLoadSourceState(
+                sourceState,
+                data,
+                sourceEventTypes,
+                reactor.GetExactAuthoredEventTypes);
+            if (sourceState != sourceStateBeforeFallback)
+            {
+                sourceEventTypes = reactor.GetExactAuthoredEventTypes(sourceState);
+            }
             int packetProperEventIndex = data.PacketProperEventIndex;
             if (!TryResolvePacketLoadLayerProperEventIndex(
                     packetProperEventIndex,
-                    reactor.GetExactAuthoredEventTypes(sourceState),
+                    sourceEventTypes,
                     data.HitOption,
                     data.ReactorType,
                     out int properEventIndex,
@@ -3902,6 +3913,28 @@ namespace HaCreator.MapSimulator.Pools
                 : data.PacketAnimationSourceState >= 0
                     ? data.PacketAnimationSourceState
                     : fallbackAnimationOwnerState;
+        }
+
+        internal static int ResolvePacketHitAnimationLoadSourceState(
+            int sourceState,
+            ReactorRuntimeData data,
+            IReadOnlyList<int> sourceEventTypes,
+            Func<int, IReadOnlyList<int>> getExactAuthoredEventTypes)
+        {
+            if (data == null
+                || data.PacketProperEventIndex != -2
+                || sourceEventTypes is { Count: > 0 }
+                || data.PacketAnimationSourceState < 0
+                || data.PacketAnimationSourceState == sourceState
+                || getExactAuthoredEventTypes == null)
+            {
+                return sourceState;
+            }
+
+            IReadOnlyList<int> animationSourceEventTypes = getExactAuthoredEventTypes(data.PacketAnimationSourceState);
+            return animationSourceEventTypes is { Count: > 0 }
+                ? data.PacketAnimationSourceState
+                : sourceState;
         }
 
         internal static int ResolvePacketMutationFallbackAnimationOwnerState(

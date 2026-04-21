@@ -2641,7 +2641,9 @@ namespace HaCreator.MapSimulator.UI
                 .Trim()
                 .Replace('\\', '/')
                 .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            if (pathSegments.Length < 3)
+            if (pathSegments.Length < 3 ||
+                !string.Equals(pathSegments[0], "UI", StringComparison.OrdinalIgnoreCase) ||
+                !pathSegments[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }

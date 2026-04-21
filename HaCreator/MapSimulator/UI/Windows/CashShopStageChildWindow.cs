@@ -183,6 +183,41 @@ namespace HaCreator.MapSimulator.UI
             public Func<string> Action { get; init; }
         }
 
+        private sealed class OneADaySelectorRuntimeState
+        {
+            public int ControlId { get; set; } = 2001;
+            public int InitArg { get; set; } = 4;
+            public int StartX { get; set; } = 2;
+            public int StartY { get; set; } = 2;
+            public Point Position { get; set; } = new(412, 406);
+            public int SelectorCount { get; set; } = 2;
+            public int ActiveSelectorIndex { get; set; }
+            public int NormalColor { get; set; } = -12949590;
+            public int SelectedColor { get; set; } = -1;
+            public int OutlineColor { get; set; } = -16777216;
+            public int Revision { get; set; }
+        }
+
+        private sealed class OneADayCounterRuntimeState
+        {
+            public int DigitCanvasMask { get; set; }
+            public int DigitCanvasCount { get; set; }
+            public int ExpectedDigitCanvasCount { get; set; } = 10;
+            public int RemainingSeconds { get; set; }
+            public string CounterText { get; set; } = "00:00:00";
+            public int Revision { get; set; }
+        }
+
+        private sealed class OneADayRewardSessionRuntimeState
+        {
+            public bool PacketOwned { get; set; }
+            public int SessionByte { get; set; }
+            public int Revision { get; set; }
+            public bool IsPending { get; set; }
+            public int CountdownDeadlineTick { get; set; } = int.MinValue;
+            public string PacketStateSignature { get; set; } = string.Empty;
+        }
+
         private readonly string _windowName;
         private readonly string _title;
         private readonly List<LayerInfo> _layers = new();
@@ -242,6 +277,9 @@ namespace HaCreator.MapSimulator.UI
         private int _oneADayRewardSessionRevision;
         private int _oneADayNumberCanvasReadyMask;
         private bool _oneADayRewardSessionPacketOwned;
+        private readonly OneADaySelectorRuntimeState _oneADaySelectorObject = new();
+        private readonly OneADayCounterRuntimeState _oneADayCounterObject = new();
+        private readonly OneADayRewardSessionRuntimeState _oneADayRewardSessionObject = new();
 
         public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
             : base(frame)
@@ -731,13 +769,13 @@ namespace HaCreator.MapSimulator.UI
             string previousLabel = string.IsNullOrWhiteSpace(state.PreviousSelectorLabel) ? "Previous" : state.PreviousSelectorLabel.Trim();
             sprite.DrawString(
                 _font,
-                $"Selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} init {state.SelectorInitArg.ToString(CultureInfo.InvariantCulture)} {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  start {state.SelectorStartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorStartY.ToString(CultureInfo.InvariantCulture)}  pos {state.SelectorPosition.X.ToString(CultureInfo.InvariantCulture)},{state.SelectorPosition.Y.ToString(CultureInfo.InvariantCulture)}",
+                $"Selector#{_oneADaySelectorObject.ControlId.ToString(CultureInfo.InvariantCulture)} init {_oneADaySelectorObject.InitArg.ToString(CultureInfo.InvariantCulture)} {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  start {_oneADaySelectorObject.StartX.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.StartY.ToString(CultureInfo.InvariantCulture)}  pos {_oneADaySelectorObject.Position.X.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.Position.Y.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
             lineY += _font.LineSpacing;
             sprite.DrawString(
                 _font,
-                $"Selector attr {state.SelectorNormalColor.ToString(CultureInfo.InvariantCulture)}/{state.SelectorSelectedColor.ToString(CultureInfo.InvariantCulture)}/{state.SelectorOutlineColor.ToString(CultureInfo.InvariantCulture)}  Runtime {DescribeOneADaySelectorRuntime()}",
+                $"Selector attr {_oneADaySelectorObject.NormalColor.ToString(CultureInfo.InvariantCulture)}/{_oneADaySelectorObject.SelectedColor.ToString(CultureInfo.InvariantCulture)}/{_oneADaySelectorObject.OutlineColor.ToString(CultureInfo.InvariantCulture)}  Runtime {DescribeOneADaySelectorRuntime()}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
@@ -798,6 +836,12 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(
                 _font,
                 $"KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}  Plate {(state.HasPlateCanvas ? "small" : "off")}/{(state.HasPlateBigCanvas ? "big" : "off")}  Digits {state.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/{state.ExpectedNumberCanvasCount.ToString(CultureInfo.InvariantCulture)}  Plate buttons {state.PlateButtonCount.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Runtime selector rev {_oneADaySelectorObject.Revision.ToString(CultureInfo.InvariantCulture)}  counter rev {_oneADayCounterObject.Revision.ToString(CultureInfo.InvariantCulture)}  reward-session rev {_oneADayRewardSessionObject.Revision.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
@@ -2083,9 +2127,9 @@ namespace HaCreator.MapSimulator.UI
 
             _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
             RefreshOneADaySelectorRuntime(state);
-            RefreshOneADayCounterRuntime(state);
             RefreshOneADayPlateButtonRuntime(state);
             RefreshOneADayRewardSessionRuntime(state);
+            RefreshOneADayCounterRuntime(state);
             _oneADayRuntimeSeeded = true;
             _oneADaySessionState = _oneADayPending
                 ? $"CCSWnd_OneADay::ChangeState(0,1) armed selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)}, {_oneADayCounterRuntime.Count.ToString(CultureInfo.InvariantCulture)} counter slots, and {_oneADayPlateButtonRuntime.Count.ToString(CultureInfo.InvariantCulture)} recovered plate-button lanes."
@@ -2119,6 +2163,8 @@ namespace HaCreator.MapSimulator.UI
                 _oneADaySessionState = "CCSWnd_OneADay exhausted the current reward countdown and returned to the idle owner state.";
                 _statusMessage = _oneADaySessionState;
             }
+
+            UpdateOneADayRewardSessionObject(_oneADayStateProvider?.Invoke(), _oneADayRewardSessionByte);
         }
 
         private static string FormatOneADayCounterDigits(int remainingSeconds)
@@ -2145,6 +2191,7 @@ namespace HaCreator.MapSimulator.UI
             if (state == null)
             {
                 _oneADaySelectorRuntime = Array.Empty<OneADayOwnerState.SelectorEntryState>();
+                UpdateOneADaySelectorRuntimeObject(null);
                 return;
             }
 
@@ -2158,6 +2205,7 @@ namespace HaCreator.MapSimulator.UI
                         IsActive = entry.Index == _oneADaySelectorIndex
                     })
                     .ToArray();
+                UpdateOneADaySelectorRuntimeObject(state);
                 return;
             }
 
@@ -2178,6 +2226,7 @@ namespace HaCreator.MapSimulator.UI
                     IsActive = _oneADaySelectorIndex == 1
                 }
             };
+            UpdateOneADaySelectorRuntimeObject(state);
         }
 
         private void RefreshOneADayCounterRuntime(OneADayOwnerState state = null)
@@ -2209,6 +2258,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 _oneADayCounterRuntime = templatedSlots;
+                UpdateOneADayCounterRuntimeObject(state);
                 return;
             }
 
@@ -2228,6 +2278,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _oneADayCounterRuntime = slots;
+            UpdateOneADayCounterRuntimeObject(state);
         }
 
         private void RefreshOneADayPlateButtonRuntime(OneADayOwnerState state)
@@ -2360,6 +2411,8 @@ namespace HaCreator.MapSimulator.UI
                 : (state.NumberCanvasReadyMask != 0
                     ? state.NumberCanvasReadyMask
                     : BuildOneADayNumberCanvasReadyMask(state.NumberCanvasCount));
+
+            UpdateOneADayRewardSessionObject(state, nextSessionByte);
         }
 
         private static bool HasOneADayPreviousLane(OneADayOwnerState state)
@@ -2391,8 +2444,15 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildOneADayRewardSessionSummary()
         {
-            string sourceLabel = _oneADayRewardSessionPacketOwned ? "packet-owned" : "owner-approx";
-            return $"Reward session {sourceLabel} byte 0x{_oneADayRewardSessionByte:X2} rev {_oneADayRewardSessionRevision.ToString(CultureInfo.InvariantCulture)}  Selector runtime {_oneADaySelectorRuntime.Count.ToString(CultureInfo.InvariantCulture)}  Number mask 0x{_oneADayNumberCanvasReadyMask:X3}.";
+            string sourceLabel = _oneADayRewardSessionObject.PacketOwned ? "packet-owned" : "owner-approx";
+            string packetSignature = string.IsNullOrWhiteSpace(_oneADayRewardSessionObject.PacketStateSignature)
+                ? "none"
+                : TrimToLength(_oneADayRewardSessionObject.PacketStateSignature, 24);
+            return
+                $"Reward session {sourceLabel} byte 0x{_oneADayRewardSessionObject.SessionByte:X2} rev {_oneADayRewardSessionObject.Revision.ToString(CultureInfo.InvariantCulture)}  " +
+                $"Selector runtime {_oneADaySelectorRuntime.Count.ToString(CultureInfo.InvariantCulture)} (obj rev {_oneADaySelectorObject.Revision.ToString(CultureInfo.InvariantCulture)})  " +
+                $"Number mask 0x{_oneADayCounterObject.DigitCanvasMask:X3} (obj rev {_oneADayCounterObject.Revision.ToString(CultureInfo.InvariantCulture)})  " +
+                $"Packet sig {packetSignature}.";
         }
 
         private string DescribeOneADaySelectorRuntime()
@@ -2418,6 +2478,99 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return mask;
+        }
+
+        private void UpdateOneADaySelectorRuntimeObject(OneADayOwnerState state)
+        {
+            int controlId = state?.SelectorControlId ?? 2001;
+            int initArg = state?.SelectorInitArg ?? 4;
+            int startX = state?.SelectorStartX ?? 2;
+            int startY = state?.SelectorStartY ?? 2;
+            Point position = state?.SelectorPosition ?? new Point(412, 406);
+            int selectorCount = Math.Max(1, state?.SelectorCount ?? 2);
+            int normalColor = state?.SelectorNormalColor ?? -12949590;
+            int selectedColor = state?.SelectorSelectedColor ?? -1;
+            int outlineColor = state?.SelectorOutlineColor ?? -16777216;
+            int activeSelectorIndex = Math.Clamp(_oneADaySelectorIndex, 0, selectorCount - 1);
+
+            bool changed =
+                _oneADaySelectorObject.ControlId != controlId
+                || _oneADaySelectorObject.InitArg != initArg
+                || _oneADaySelectorObject.StartX != startX
+                || _oneADaySelectorObject.StartY != startY
+                || _oneADaySelectorObject.Position != position
+                || _oneADaySelectorObject.SelectorCount != selectorCount
+                || _oneADaySelectorObject.ActiveSelectorIndex != activeSelectorIndex
+                || _oneADaySelectorObject.NormalColor != normalColor
+                || _oneADaySelectorObject.SelectedColor != selectedColor
+                || _oneADaySelectorObject.OutlineColor != outlineColor;
+
+            _oneADaySelectorObject.ControlId = controlId;
+            _oneADaySelectorObject.InitArg = initArg;
+            _oneADaySelectorObject.StartX = startX;
+            _oneADaySelectorObject.StartY = startY;
+            _oneADaySelectorObject.Position = position;
+            _oneADaySelectorObject.SelectorCount = selectorCount;
+            _oneADaySelectorObject.ActiveSelectorIndex = activeSelectorIndex;
+            _oneADaySelectorObject.NormalColor = normalColor;
+            _oneADaySelectorObject.SelectedColor = selectedColor;
+            _oneADaySelectorObject.OutlineColor = outlineColor;
+            if (changed)
+            {
+                _oneADaySelectorObject.Revision++;
+            }
+        }
+
+        private void UpdateOneADayCounterRuntimeObject(OneADayOwnerState state)
+        {
+            int expectedDigitCanvasCount = Math.Max(1, state?.ExpectedNumberCanvasCount ?? 10);
+            int digitCanvasCount = Math.Clamp(state?.NumberCanvasCount ?? 0, 0, expectedDigitCanvasCount);
+            string counterText = _oneADayCounterDigits ?? "00:00:00";
+            int remainingSeconds = Math.Max(0, _oneADayRemainingSeconds);
+            int digitCanvasMask = _oneADayNumberCanvasReadyMask;
+
+            bool changed =
+                _oneADayCounterObject.DigitCanvasMask != digitCanvasMask
+                || _oneADayCounterObject.DigitCanvasCount != digitCanvasCount
+                || _oneADayCounterObject.ExpectedDigitCanvasCount != expectedDigitCanvasCount
+                || _oneADayCounterObject.RemainingSeconds != remainingSeconds
+                || !string.Equals(_oneADayCounterObject.CounterText, counterText, StringComparison.Ordinal);
+
+            _oneADayCounterObject.DigitCanvasMask = digitCanvasMask;
+            _oneADayCounterObject.DigitCanvasCount = digitCanvasCount;
+            _oneADayCounterObject.ExpectedDigitCanvasCount = expectedDigitCanvasCount;
+            _oneADayCounterObject.RemainingSeconds = remainingSeconds;
+            _oneADayCounterObject.CounterText = counterText;
+            if (changed)
+            {
+                _oneADayCounterObject.Revision++;
+            }
+        }
+
+        private void UpdateOneADayRewardSessionObject(OneADayOwnerState state, int sessionByte)
+        {
+            bool packetOwned = state?.HasPacketRewardSessionByte == true;
+            bool pending = _oneADayPending;
+            int countdownDeadlineTick = _oneADayCountdownDeadlineTick;
+            string packetStateSignature = state?.PacketStateSignature ?? string.Empty;
+
+            bool changed =
+                _oneADayRewardSessionObject.PacketOwned != packetOwned
+                || _oneADayRewardSessionObject.SessionByte != sessionByte
+                || _oneADayRewardSessionObject.IsPending != pending
+                || _oneADayRewardSessionObject.CountdownDeadlineTick != countdownDeadlineTick
+                || !string.Equals(_oneADayRewardSessionObject.PacketStateSignature, packetStateSignature, StringComparison.Ordinal);
+
+            _oneADayRewardSessionObject.PacketOwned = packetOwned;
+            _oneADayRewardSessionObject.SessionByte = sessionByte;
+            _oneADayRewardSessionObject.IsPending = pending;
+            _oneADayRewardSessionObject.CountdownDeadlineTick = countdownDeadlineTick;
+            _oneADayRewardSessionObject.PacketStateSignature = packetStateSignature;
+            _oneADayRewardSessionObject.Revision = _oneADayRewardSessionRevision;
+            if (changed)
+            {
+                _oneADayRewardSessionObject.Revision = Math.Max(_oneADayRewardSessionObject.Revision, _oneADayRewardSessionRevision + 1);
+            }
         }
 
         private string ResolveOneADayPlateName(OneADayOwnerState state)

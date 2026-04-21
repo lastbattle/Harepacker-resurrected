@@ -944,12 +944,27 @@ namespace HaCreator.MapSimulator.Interaction
             AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
 
-            if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
+            if (build != null && HasUnmetCompletionLevelFloor(definition.MinLevel, build.Level))
+            {
+                issues.Add($"Reach level {definition.MinLevel.Value}.");
+            }
+
+            if (build != null && HasUnmetCompletionLevelCap(definition.MaxLevel, build.Level))
             {
                 issues.Add($"This quest is capped at level {definition.MaxLevel.Value}.");
             }
 
             return issues.Count > 0;
+        }
+
+        internal static bool HasUnmetCompletionLevelFloor(int? minLevel, int currentLevel)
+        {
+            return minLevel.HasValue && currentLevel < minLevel.Value;
+        }
+
+        internal static bool HasUnmetCompletionLevelCap(int? maxLevel, int currentLevel)
+        {
+            return maxLevel.HasValue && currentLevel > maxLevel.Value;
         }
 
         public void PrimeQuestAlarmAutoRegisterActivity(IEnumerable<int> questIds)
@@ -8724,23 +8739,33 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<int>();
             }
 
+            var jobs = new List<int>();
+            CollectJobIds(property, jobs);
+            return jobs.Count == 0 ? Array.Empty<int>() : jobs;
+        }
+
+        private static void CollectJobIds(WzImageProperty property, ICollection<int> jobs)
+        {
+            if (property == null || jobs == null)
+            {
+                return;
+            }
+
+            int? parsedJob = ParseInt(property);
+            if (parsedJob.HasValue && parsedJob.Value >= 0 && !jobs.Contains(parsedJob.Value))
+            {
+                jobs.Add(parsedJob.Value);
+            }
+
             if (property.WzProperties == null || property.WzProperties.Count == 0)
             {
-                int? singleJob = ParseInt(property);
-                return singleJob.HasValue && singleJob.Value >= 0 ? new[] { singleJob.Value } : Array.Empty<int>();
+                return;
             }
 
-            var jobs = new List<int>();
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
-                int? jobId = ParseInt(property.WzProperties[i]);
-                if (jobId.HasValue && jobId.Value >= 0)
-                {
-                    jobs.Add(jobId.Value);
-                }
+                CollectJobIds(property.WzProperties[i], jobs);
             }
-
-            return jobs.Distinct().ToArray();
         }
 
         private static IReadOnlyList<QuestStateRequirement> ParseQuestRequirements(WzImageProperty property)
@@ -8751,35 +8776,39 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             var requirements = new List<QuestStateRequirement>();
-            if (TryParseQuestStateRequirement(property, out QuestStateRequirement directRequirement))
+            CollectQuestStateRequirements(property, requirements);
+            return requirements.Count == 0
+                ? Array.Empty<QuestStateRequirement>()
+                : requirements;
+        }
+
+        private static void CollectQuestStateRequirements(
+            WzImageProperty property,
+            ICollection<QuestStateRequirement> requirements)
+        {
+            if (property == null || requirements == null)
             {
-                requirements.Add(directRequirement);
+                return;
+            }
+
+            if (TryParseQuestStateRequirement(property, out QuestStateRequirement requirement) &&
+                !requirements.Any(existing =>
+                    existing.QuestId == requirement.QuestId &&
+                    existing.State == requirement.State &&
+                    existing.MatchesStartedOrCompleted == requirement.MatchesStartedOrCompleted))
+            {
+                requirements.Add(requirement);
             }
 
             if (property.WzProperties == null || property.WzProperties.Count == 0)
             {
-                return requirements.Count == 0
-                    ? Array.Empty<QuestStateRequirement>()
-                    : requirements;
+                return;
             }
 
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
-                if (!TryParseQuestStateRequirement(property.WzProperties[i], out QuestStateRequirement requirement))
-                {
-                    continue;
-                }
-
-                if (!requirements.Any(existing =>
-                        existing.QuestId == requirement.QuestId &&
-                        existing.State == requirement.State &&
-                        existing.MatchesStartedOrCompleted == requirement.MatchesStartedOrCompleted))
-                {
-                    requirements.Add(requirement);
-                }
+                CollectQuestStateRequirements(property.WzProperties[i], requirements);
             }
-
-            return requirements;
         }
 
         private static bool TryParseQuestStateRequirement(
@@ -13076,6 +13105,28 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool IsQuestDeliveryRequirementItem(int questId, int itemId, QuestDetailDeliveryType deliveryType)
         {
+            return IsQuestDeliveryRequirementItemCore(
+                questId,
+                itemId,
+                deliveryType,
+                enforceQuestState: true);
+        }
+
+        public bool IsQuestDeliveryRequirementItemIgnoringQuestState(int questId, int itemId, QuestDetailDeliveryType deliveryType)
+        {
+            return IsQuestDeliveryRequirementItemCore(
+                questId,
+                itemId,
+                deliveryType,
+                enforceQuestState: false);
+        }
+
+        private bool IsQuestDeliveryRequirementItemCore(
+            int questId,
+            int itemId,
+            QuestDetailDeliveryType deliveryType,
+            bool enforceQuestState)
+        {
             if (questId <= 0 || itemId <= 0 || deliveryType == QuestDetailDeliveryType.None)
             {
                 return false;
@@ -13093,7 +13144,7 @@ namespace HaCreator.MapSimulator.Interaction
             switch (deliveryType)
             {
                 case QuestDetailDeliveryType.Accept:
-                    if (state != QuestStateType.Not_Started)
+                    if (enforceQuestState && state != QuestStateType.Not_Started)
                     {
                         return false;
                     }
@@ -13102,7 +13153,7 @@ namespace HaCreator.MapSimulator.Interaction
                     hasDeliveryNpc = definition.StartNpcId.HasValue;
                     break;
                 case QuestDetailDeliveryType.Complete:
-                    if (state != QuestStateType.Started)
+                    if (enforceQuestState && state != QuestStateType.Started)
                     {
                         return false;
                     }

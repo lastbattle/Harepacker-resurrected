@@ -18,8 +18,11 @@ namespace HaCreator.MapSimulator.UI
             public int CommoditySerialNumber { get; init; }
             public int ItemId { get; init; }
             public int Price { get; init; }
+            public int Quantity { get; init; } = 1;
+            public bool CommodityOnSale { get; init; }
             public string ListingTitle { get; init; } = string.Empty;
             public string Seller { get; init; } = string.Empty;
+            public string ListingSignature { get; init; } = string.Empty;
             public string PacketSummary { get; init; } = string.Empty;
         }
 
@@ -851,7 +854,16 @@ namespace HaCreator.MapSimulator.UI
             string listing = string.IsNullOrWhiteSpace(snapshot.ListingTitle)
                 ? $"SN {snapshot.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
                 : snapshot.ListingTitle.Trim();
-            AppendChatLine("System", $"CCashTradingRoomDlg staged packet-owned listing {listing} (item {snapshot.ItemId.ToString(CultureInfo.InvariantCulture)}).");
+            string quantitySuffix = snapshot.Quantity > 1
+                ? $" x{snapshot.Quantity.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            string saleSuffix = snapshot.CommodityOnSale ? string.Empty : " off-sale";
+            string listingSignature = string.IsNullOrWhiteSpace(snapshot.ListingSignature)
+                ? string.Empty
+                : $" sig {TrimToLength(snapshot.ListingSignature.Trim(), 24)}";
+            AppendChatLine(
+                "System",
+                $"CCashTradingRoomDlg staged packet-owned listing {listing} (item {snapshot.ItemId.ToString(CultureInfo.InvariantCulture)}{quantitySuffix}, {snapshot.Price.ToString("N0", CultureInfo.InvariantCulture)} NX{saleSuffix}{listingSignature}).");
             if (!string.IsNullOrWhiteSpace(snapshot.PacketSummary))
             {
                 _statusMessage = snapshot.PacketSummary.Trim();

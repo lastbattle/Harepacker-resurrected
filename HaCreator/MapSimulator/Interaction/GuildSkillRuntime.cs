@@ -351,7 +351,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{summary.Trim()} {result}";
         }
 
-        internal string TryResolvePendingFromClientResultNotice(bool hasExplicitNotice, string notice)
+        internal string TryResolvePendingFromClientResultNotice(int guildResultSubtype, bool hasExplicitNotice, string notice)
         {
             if (_pendingRequest == null)
             {
@@ -365,7 +365,15 @@ namespace HaCreator.MapSimulator.Interaction
                 : SocialListGuildResultClientText.GetSharedResultNoticeFallback();
             return ResolvePendingPacketRequest(
                 approved: false,
-                summary: $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported: {resolvedNotice}");
+                summary: $"Client OnGuildResult({Math.Max(0, guildResultSubtype).ToString(CultureInfo.InvariantCulture)}) reported: {resolvedNotice}");
+        }
+
+        internal string TryResolvePendingFromClientResultNotice(bool hasExplicitNotice, string notice)
+        {
+            return TryResolvePendingFromClientResultNotice(
+                (byte)SocialListClientGuildResultKind.ResultNotice,
+                hasExplicitNotice,
+                notice);
         }
 
         internal string ApplyPacketOwnedResult(GuildSkillResultPacket packet)

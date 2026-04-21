@@ -762,7 +762,7 @@ namespace HaCreator.MapSimulator.Character
 
             Combat.OnMobSkillStatusApplied = (skillId, skillLevel, currentTime, sourceX, applyRuntimeStatus) =>
             {
-                ApplyPlayerMobSkillStatus(skillId, skillLevel, currentTime, sourceX, applyRuntimeStatus);
+                return ApplyPlayerMobSkillStatus(skillId, skillLevel, currentTime, sourceX, applyRuntimeStatus);
             };
 
             Combat.OnMobAttackMissPlayer = (x, y, currentTime) =>
@@ -858,11 +858,11 @@ namespace HaCreator.MapSimulator.Character
 
         }
 
-        private void ApplyPlayerMobSkillStatus(int skillId, int skillLevel, int currentTime, float sourceX, bool applyRuntimeStatus)
+        private bool ApplyPlayerMobSkillStatus(int skillId, int skillLevel, int currentTime, float sourceX, bool applyRuntimeStatus)
         {
             if (Player == null)
             {
-                return;
+                return false;
             }
 
             MobSkillRuntimeData runtimeData = _mobSkillRuntimeResolver?.Invoke(skillId, Math.Max(1, skillLevel));
@@ -874,12 +874,12 @@ namespace HaCreator.MapSimulator.Character
 
             if (!runtimeApplied)
             {
-                return;
+                return false;
             }
 
             if (!PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out PlayerSkillBlockingStatus status))
             {
-                return;
+                return true;
             }
 
             MobSkillEffectData effectData = _mobSkillEffectLoader?.LoadMobSkillEffect(skillId, Math.Max(1, skillLevel));
@@ -890,6 +890,8 @@ namespace HaCreator.MapSimulator.Character
             {
                 Player.ApplySkillBlockingStatus(status, durationMs, currentTime);
             }
+
+            return true;
         }
 
         internal bool TryApplyRemoteAffectedAreaPlayerSkillStatus(

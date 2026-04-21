@@ -681,8 +681,12 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void AddMiss(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
         {
+            if (TryRouteSpecialTextToAnimationDisplayerOwner("Miss", x, y, currentTime, colorType))
+            {
+                return;
+            }
+
             AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, "Miss");
-            _animationDisplayerSpecialTextSink?.Invoke("Miss", x, y, currentTime, colorType);
         }
 
         public void AddGuard(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
@@ -699,8 +703,28 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            if (TryRouteSpecialTextToAnimationDisplayerOwner(resolvedSpecialTextName, x, y, currentTime, colorType))
+            {
+                return;
+            }
+
             AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, resolvedSpecialTextName);
-            _animationDisplayerSpecialTextSink?.Invoke(resolvedSpecialTextName, x, y, currentTime, colorType);
+        }
+
+        private bool TryRouteSpecialTextToAnimationDisplayerOwner(
+            string resolvedSpecialTextName,
+            float x,
+            float y,
+            int currentTime,
+            DamageColorType colorType)
+        {
+            if (_animationDisplayerSpecialTextSink == null)
+            {
+                return false;
+            }
+
+            _animationDisplayerSpecialTextSink(resolvedSpecialTextName, x, y, currentTime, colorType);
+            return true;
         }
 
         /// <summary>

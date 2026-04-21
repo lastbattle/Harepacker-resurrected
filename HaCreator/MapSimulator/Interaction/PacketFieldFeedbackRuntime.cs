@@ -880,12 +880,11 @@ namespace HaCreator.MapSimulator.Interaction
                         byte result = reader.ReadByte();
                         int value = reader.ReadInt32();
                         TryBuildWhisperFindMessage(subtype, target, result, value, callbacks, out string resolved);
+                        bool chaseTransferArmed = callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
                         bool queuedTransfer = false;
-                        bool consumeWhisperChaseTransfer = subtype == 9
-                            && callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
                         if (subtype == 9
                             && result == 1
-                            && consumeWhisperChaseTransfer
+                            && chaseTransferArmed
                             && HasWhisperTransferTarget(value, callbacks)
                             && TryReadWhisperFindTransferPosition(reader, stream, out int transferX, out int transferY))
                         {
@@ -896,9 +895,7 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             callbacks?.UpdateWhisperUserListLocation?.Invoke(target, resolved, result, value);
                             callbacks?.InvalidateWhisperUserListWindow?.Invoke();
-                            _statusMessage = queuedTransfer
-                                ? $"Updated packet-owned whisper find-reply for {target} and queued map transfer."
-                                : $"Updated packet-owned whisper find-reply for {target}.";
+                            _statusMessage = $"Updated packet-owned whisper find-reply for {target}.";
                             message = _statusMessage;
                             return true;
                         }

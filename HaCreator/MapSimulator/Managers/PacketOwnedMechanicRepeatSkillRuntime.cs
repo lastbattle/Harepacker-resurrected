@@ -50,7 +50,7 @@ namespace HaCreator.MapSimulator.Managers
             @"[""']?(?<label>mismatchByte|mismatchByteIndex|byteIndex)[""']?\s*[:=]\s*(?<value>[^\s;\),|]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchFieldListAssignmentRegex = new(
-            @"[""']?(?<label>mismatchFields|mismatchFieldNames|fieldNames|fields)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^;\)\r\n]+)",
+            @"[""']?(?<label>mismatchFields|mismatchField|mismatchFieldNames|mismatchFieldName|fieldNames|fieldName|fields|field)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^;\)\r\n]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
@@ -859,7 +859,61 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string normalized = token.Trim().Replace("_", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
+            string[] candidateTokens = BuildSg88MismatchFieldTokenCandidates(token);
+            for (int i = 0; i < candidateTokens.Length; i++)
+            {
+                if (!TryMapSg88MismatchFieldTokenToByteIndices(candidateTokens[i], out int[] mappedByteIndices))
+                {
+                    continue;
+                }
+
+                byteIndices = mappedByteIndices;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string[] BuildSg88MismatchFieldTokenCandidates(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return Array.Empty<string>();
+            }
+
+            string trimmedToken = token.Trim();
+            List<string> candidates = new()
+            {
+                trimmedToken
+            };
+            int separatorIndex = trimmedToken.IndexOfAny(new[] { ':', '=' });
+            if (separatorIndex > 0 && separatorIndex < trimmedToken.Length - 1)
+            {
+                candidates.Add(trimmedToken.Substring(0, separatorIndex).Trim());
+                candidates.Add(trimmedToken.Substring(separatorIndex + 1).Trim());
+            }
+
+            return candidates
+                .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static bool TryMapSg88MismatchFieldTokenToByteIndices(string token, out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalized = token.Trim()
+                .Trim('"', '\'')
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(".", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
             if (normalized.StartsWith("payload", StringComparison.Ordinal))
             {
                 normalized = normalized.Substring("payload".Length);
@@ -872,6 +926,8 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 case "requesttime":
                 case "requesttick":
+                case "requestat":
+                case "requesttimestamp":
                 case "tick":
                     byteIndices = new[] { 2, 3, 4, 5 };
                     return true;
@@ -880,6 +936,7 @@ namespace HaCreator.MapSimulator.Managers
                     byteIndices = new[] { 6, 7, 8, 9 };
                     return true;
                 case "skilllevel":
+                case "skilllvl":
                 case "level":
                     byteIndices = new[] { 10 };
                     return true;
@@ -895,12 +952,18 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 case "moveaction":
                 case "move":
+                case "moveactionbyte":
+                case "moveactionflag":
+                case "rawmoveaction":
                 case "moveactionlowbit":
                     byteIndices = new[] { Sg88FirstUseMoveActionByteIndex };
                     return true;
                 case "vecctrl":
+                case "vecctrlbyte":
+                case "vecctrlowner":
                 case "vecctrlstate":
                 case "vectorctrl":
+                case "vectorcontrol":
                     byteIndices = new[] { Sg88FirstUseVecCtrlByteIndex };
                     return true;
                 default:

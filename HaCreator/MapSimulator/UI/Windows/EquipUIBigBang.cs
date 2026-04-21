@@ -311,6 +311,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<EquipmentChangeRequest, EquipmentChangeSubmission> EquipmentChangeSubmitted { get; set; }
         public Func<EquipmentChangeResolutionQuery, EquipmentChangeResult> EquipmentChangeResultRequested { get; set; }
         public Func<bool> EquipmentDragStartBlocked { get; set; }
+        public Action CompanionDragCommitIngressRequested { get; set; }
         public override CharacterBuild CharacterBuild
         {
             get => _characterBuild;
@@ -1965,6 +1966,8 @@ namespace HaCreator.MapSimulator.UI
 
                 return true;
             }
+
+            CompanionDragCommitIngressRequested?.Invoke();
 
             bool removed = _draggedCompanionKind switch
             {
@@ -4350,6 +4353,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 return false;
             }
+
+            CompanionDragCommitIngressRequested?.Invoke();
 
             PetRuntime sourcePet = ResolveDraggedPet();
             PetRuntime targetPet = ResolvePetByIndex(targetIndex.Value);

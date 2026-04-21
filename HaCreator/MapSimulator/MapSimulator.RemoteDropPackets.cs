@@ -911,11 +911,20 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            int targetRoot = FindObservedDropPartyActorRoot(actorParents, actorId);
+            int[] targetRoots = ResolveObservedDropPartyTargetRoots(
+                actorParents,
+                actorId,
+                normalizedActorId);
+            if (targetRoots.Length == 0)
+            {
+                return false;
+            }
+
             int[] linkedActorIds = actorParents.Keys.ToArray();
             foreach (int linkedActorId in linkedActorIds)
             {
-                if (FindObservedDropPartyActorRoot(actorParents, linkedActorId) != targetRoot)
+                int linkedRoot = FindObservedDropPartyActorRoot(actorParents, linkedActorId);
+                if (Array.IndexOf(targetRoots, linkedRoot) < 0)
                 {
                     continue;
                 }
@@ -946,6 +955,34 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static int[] ResolveObservedDropPartyTargetRoots(
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            int actorId,
+            int normalizedActorId)
+        {
+            if (actorParents == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            var targetRoots = new HashSet<int>();
+            if (actorId != 0 && actorParents.ContainsKey(actorId))
+            {
+                targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, actorId));
+            }
+
+            if (normalizedActorId != 0
+                && normalizedActorId != actorId
+                && actorParents.ContainsKey(normalizedActorId))
+            {
+                targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, normalizedActorId));
+            }
+
+            return targetRoots.Count == 0
+                ? Array.Empty<int>()
+                : targetRoots.ToArray();
         }
 
         private static bool IsKnownDropPartyActor(

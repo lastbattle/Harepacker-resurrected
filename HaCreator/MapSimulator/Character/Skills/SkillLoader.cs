@@ -2913,7 +2913,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || actionAnimations.ContainsKey(actionName)
                     || actionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase)
                     || ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName)
-                    || !ShadowPartnerClientActionResolver.IsAttackAction(actionName))
+                    || !ShadowPartnerClientActionResolver.ShouldSynthesizeClientInitializedFallbackAction(actionName))
                 {
                     continue;
                 }
@@ -5937,7 +5937,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsClientSummonedUolCandidateValueProperty(WzImageProperty property)
         {
-            return property is WzStringProperty || property is WzUOLProperty;
+            return property is WzStringProperty
+                   || property is WzUOLProperty
+                   || property is WzIntProperty
+                   || property is WzShortProperty
+                   || property is WzLongProperty;
         }
 
         private static bool LooksLikeClientSummonedUolHeuristicCandidateValue(string value)
@@ -6255,6 +6259,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 case WzUOLProperty uolProperty:
                     string linkedValue = uolProperty.GetString();
                     return string.IsNullOrWhiteSpace(linkedValue) ? null : linkedValue;
+                case WzIntProperty intProperty when intProperty.Value > 0:
+                    return intProperty.Value.ToString(CultureInfo.InvariantCulture);
+                case WzShortProperty shortProperty when shortProperty.Value > 0:
+                    return shortProperty.Value.ToString(CultureInfo.InvariantCulture);
+                case WzLongProperty longProperty when longProperty.Value > 0:
+                    return longProperty.Value.ToString(CultureInfo.InvariantCulture);
                 default:
                     return null;
             }

@@ -4289,28 +4289,28 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryDecodePacketOwnedFieldFadeOutForcePayload(
             byte[] payload,
-            out int layerZ,
+            out int fadeOutMs,
             out string message)
         {
             return TryDecodeSingleInt32LocalUtilityPayload(
                 payload,
                 "Field-fade-out-force",
-                "layer",
-                out layerZ,
+                "fade-out duration",
+                out fadeOutMs,
                 out message);
         }
 
         private bool TryApplyPacketOwnedFieldFadeOutForcePayload(byte[] payload, out string message)
         {
-            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int layerZ, out message))
+            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int fadeOutMs, out message))
             {
                 return false;
             }
 
-            int removedCount = _packetOwnedFieldFadeOverlay.RemoveLayer(layerZ);
-            message = removedCount > 0
-                ? $"Removed {removedCount} packet-authored field fade entr{(removedCount == 1 ? "y" : "ies")} at layer {layerZ}."
-                : $"No packet-authored field fade entries matched layer {layerZ}.";
+            int forcedCount = _packetOwnedFieldFadeOverlay.ForceFadeOutPending(fadeOutMs, currTickCount);
+            message = forcedCount > 0
+                ? $"Forced fade-out on {forcedCount} packet-authored field fade entr{(forcedCount == 1 ? "y" : "ies")} (fadeOut={Math.Max(0, fadeOutMs)}ms)."
+                : "No packet-authored field fade entries were eligible for forced fade-out.";
             return true;
         }
 
@@ -4657,60 +4657,89 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int slot = 0;
-            int itemId = 0;
-            int requestIndex = -1;
-            bool hasRequestIndex = false;
-            string detail = string.Empty;
-            int offset = sizeof(byte);
-
-            if (payload.Length >= offset + sizeof(ushort))
+            int[] bodyOffsets =
             {
-                slot = BitConverter.ToUInt16(payload, offset);
-                offset += sizeof(ushort);
-            }
-
-            if (payload.Length >= offset + sizeof(int))
+                sizeof(byte),
+                sizeof(byte) + sizeof(int),
+                sizeof(byte) + sizeof(ulong),
+                sizeof(byte) + sizeof(ulong) + sizeof(int)
+            };
+            string lastDecodeError = null;
+            for (int i = 0; i < bodyOffsets.Length; i++)
             {
-                itemId = BitConverter.ToInt32(payload, offset);
-                offset += sizeof(int);
-            }
-
-            if (payload.Length > offset)
-            {
-                string tailDecodeError;
-                if (!TryDecodeFieldHazardPetConsumeResultTail(
+                if (!TryDecodeFieldHazardPetConsumeResultBody(
                         payload,
-                        offset,
-                        out requestIndex,
-                        out hasRequestIndex,
-                        out detail,
-                        out tailDecodeError))
+                        bodyOffsets[i],
+                        out int slot,
+                        out int itemId,
+                        out int tailOffset,
+                        out string bodyDecodeError))
                 {
-                    // Additional observed shape in mixed simulator/live traces:
-                    // [petSerial:8][requestIndex/detail tail]
-                    if (!(payload.Length >= offset + sizeof(ulong)
-                          && TryDecodeFieldHazardPetConsumeResultTail(
-                              payload,
-                              offset + sizeof(ulong),
-                              out requestIndex,
-                              out hasRequestIndex,
-                              out detail,
-                              out tailDecodeError)))
+                    lastDecodeError ??= bodyDecodeError;
+                    continue;
+                }
+
+                int requestIndex = -1;
+                bool hasRequestIndex = false;
+                string detail = string.Empty;
+                if (payload.Length > tailOffset)
+                {
+                    if (!TryDecodeFieldHazardPetConsumeResultTail(
+                            payload,
+                            tailOffset,
+                            out requestIndex,
+                            out hasRequestIndex,
+                            out detail,
+                            out string tailDecodeError))
                     {
-                        error = tailDecodeError ?? "Pet-consume result payload has an unsupported tail shape.";
-                        return false;
+                        lastDecodeError ??= tailDecodeError;
+                        continue;
                     }
                 }
+
+                result = new FieldHazardPetConsumeInboundResult(
+                    kind,
+                    slot,
+                    itemId,
+                    requestIndex,
+                    hasRequestIndex,
+                    detail);
+                return true;
             }
 
-            result = new FieldHazardPetConsumeInboundResult(
-                kind,
-                slot,
-                itemId,
-                requestIndex,
-                hasRequestIndex,
-                detail);
+            error = lastDecodeError
+                ?? "Pet-consume result payload has an unsupported shape.";
+            return false;
+        }
+
+        private static bool TryDecodeFieldHazardPetConsumeResultBody(
+            byte[] payload,
+            int bodyOffset,
+            out int slot,
+            out int itemId,
+            out int tailOffset,
+            out string error)
+        {
+            slot = 0;
+            itemId = 0;
+            tailOffset = bodyOffset;
+            error = null;
+            if (payload == null)
+            {
+                error = "Pet-consume result payload is missing.";
+                return false;
+            }
+
+            int requiredBytes = sizeof(ushort) + sizeof(int);
+            if (bodyOffset < 0 || payload.Length < bodyOffset + requiredBytes)
+            {
+                error = "Pet-consume result payload is missing slot/item targeting fields.";
+                return false;
+            }
+
+            slot = BitConverter.ToUInt16(payload, bodyOffset);
+            itemId = BitConverter.ToInt32(payload, bodyOffset + sizeof(ushort));
+            tailOffset = bodyOffset + requiredBytes;
             return true;
         }
 

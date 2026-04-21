@@ -468,11 +468,14 @@ namespace HaCreator.MapSimulator
                 return detail;
             }
 
-            if (packet.Kind == SocialListClientGuildResultKind.ResultNotice)
+            bool isClientResultNotice = packet.Kind == SocialListClientGuildResultKind.ResultNotice;
+            bool shouldResolvePendingFromSharedNotice = isClientResultNotice || packet.UsesSharedResultNoticeFallback;
+            if (shouldResolvePendingFromSharedNotice)
             {
                 string pendingResolutionDetail = _guildSkillRuntime.TryResolvePendingFromClientResultNotice(
-                    packet.HasExplicitNotice,
-                    packet.ResultNotice);
+                    packet.RawSubtype,
+                    isClientResultNotice && packet.HasExplicitNotice,
+                    isClientResultNotice ? packet.ResultNotice : null);
                 if (!string.IsNullOrWhiteSpace(pendingResolutionDetail))
                 {
                     TryTriggerSpecialistPetSocialFeedback(pendingResolutionDetail, Environment.TickCount);

@@ -97,6 +97,12 @@ namespace HaCreator.MapSimulator.Fields
             !_timeExpired &&
             FieldInteractionRestrictionEvaluator.CanTransferField(_fieldLimit);
 
+        /// <summary>
+        /// Passive transfer-field handoff mirrors client portal-local retry ownership.
+        /// Field runtime only blocks this handoff when timer-expiry ownership has taken over.
+        /// </summary>
+        public bool CanRetryPassiveTransferFieldOwnership => !_timeExpired;
+
         public IReadOnlyList<string> Reset(int currentTimeMs)
         {
             _enteredAt = currentTimeMs;

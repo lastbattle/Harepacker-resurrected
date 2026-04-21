@@ -2433,6 +2433,40 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            string paneLabel = "Packet counter";
+            string browseModeLabel = "Counter";
+            string title = "Counter update";
+            string seller = "CCashShop";
+            string stateLabel = "Updated";
+            int previousValue = 0;
+            if (ownerName?.Contains("IncTrunkCount", StringComparison.Ordinal) == true)
+            {
+                paneLabel = "Packet locker";
+                browseModeLabel = "Locker";
+                title = "Locker slots";
+                seller = "CCSWnd_Locker";
+                stateLabel = "Locker limit";
+                previousValue = Math.Max(0, _cashLockerSlotLimit);
+            }
+            else if (ownerName?.Contains("IncCharacterSlotCount", StringComparison.Ordinal) == true)
+            {
+                paneLabel = "Packet counter";
+                browseModeLabel = "Character";
+                title = "Character slots";
+                seller = "CCSWnd_Char";
+                stateLabel = "Character limit";
+                previousValue = Math.Max(0, _cashCharacterSlotCount);
+            }
+            else if (ownerName?.Contains("IncBuyCharacterCount", StringComparison.Ordinal) == true)
+            {
+                paneLabel = "Packet counter";
+                browseModeLabel = "Character";
+                title = "Buy-character count";
+                seller = "CCSWnd_Char";
+                stateLabel = "Buy count";
+                previousValue = Math.Max(0, _cashBuyCharacterCount);
+            }
+
             int value = Math.Max(0, (int)BitConverter.ToInt16(payload, 1));
             if (maxValue > 0)
             {
@@ -2449,7 +2483,20 @@ namespace HaCreator.MapSimulator.UI
                 titlePrefix: "Counter packet body",
                 seller: "CCashShop",
                 stateLabel: "Counter body");
+            string valueDelta = previousValue > 0
+                ? $"{previousValue.ToString(CultureInfo.InvariantCulture)} -> {value.ToString(CultureInfo.InvariantCulture)}"
+                : value.ToString(CultureInfo.InvariantCulture);
             _noticeState = $"{ownerName} updated the packet-owned counter to {value.ToString(CultureInfo.InvariantCulture)}.{(string.IsNullOrWhiteSpace(trailingSummary) ? string.Empty : $" {trailingSummary}")}";
+            AppendCashPacketCatalogEntry(paneLabel, browseModeLabel, new PacketCatalogEntry
+            {
+                Title = title,
+                Detail = _noticeState,
+                Seller = seller,
+                PriceLabel = valueDelta,
+                StateLabel = stateLabel,
+                ListingId = value,
+                Quantity = value
+            });
             message = _noticeState;
             return true;
         }

@@ -59,7 +59,9 @@ namespace HaCreator.MapSimulator.Entities
         MobMoveType MoveType,
         MobJumpState JumpState,
         MobAction CurrentAction,
-        bool FacingRight);
+        bool FacingRight,
+        int ReceiveTime,
+        int MoveAction);
 
     /// <summary>
     /// Stores movement state and physics for a mob in the MapSimulator.
@@ -644,8 +646,24 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         public MobPacketMoveInterruptSnapshot? LastPacketMoveInterruptSnapshot { get; private set; }
 
-        public void ApplyPacketMoveInterrupt(bool notForceLandingWhenDiscard)
+        public void ApplyPacketMoveInterrupt(
+            bool notForceLandingWhenDiscard,
+            int receiveTime = 0,
+            int moveAction = -1,
+            bool? facingLeft = null)
         {
+            if (facingLeft.HasValue && !NoFlip)
+            {
+                bool facingRight = !facingLeft.Value;
+                FlipX = facingRight;
+                MoveDirection = facingRight ? MobMoveDirection.Right : MobMoveDirection.Left;
+            }
+
+            if (moveAction >= 0)
+            {
+                CurrentAction = ResolvePacketOwnedMoveAction(moveAction, CurrentAction);
+            }
+
             LastPacketMoveInterruptSnapshot = new MobPacketMoveInterruptSnapshot(
                 X,
                 Y,
@@ -654,7 +672,9 @@ namespace HaCreator.MapSimulator.Entities
                 MoveType,
                 JumpState,
                 CurrentAction,
-                FlipX);
+                FlipX,
+                receiveTime,
+                moveAction);
 
             _pendingDirection = MobMoveDirection.None;
             _framesSinceDirectionChange = 0;
@@ -691,6 +711,19 @@ namespace HaCreator.MapSimulator.Entities
             VelocityX = 0f;
             VelocityY = 0f;
             CurrentAction = MobAction.Stand;
+        }
+
+        private static MobAction ResolvePacketOwnedMoveAction(int moveAction, MobAction fallback)
+        {
+            return moveAction switch
+            {
+                // Attack move-action lane (13-21) feeds CMob::DoAttack.
+                >= 13 and <= 21 => MobAction.Attack1,
+                0 => MobAction.Stand,
+                1 => MobAction.Move,
+                2 or 3 => MobAction.Jump,
+                _ => fallback
+            };
         }
 
         /// <summary>

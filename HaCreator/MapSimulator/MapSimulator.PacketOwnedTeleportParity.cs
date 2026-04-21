@@ -452,6 +452,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedTeleportMovePathPayload = TryEncodePortalOwnedMovePathSnapshot(
                 physics,
                 currentTime,
+                _packetOwnedMovePathRandomCounterOptionEnabled,
                 out _);
 
             bool effectShown = TryShowPacketOwnedTeleportGeneralEffect(targetX, targetY, currentTime);

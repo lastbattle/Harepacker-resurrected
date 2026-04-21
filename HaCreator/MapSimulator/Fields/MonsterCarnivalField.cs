@@ -1288,6 +1288,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _nextMobSpawnPointIndex;
         private int _lastRequestTab;
         private int _lastRequestIndex;
+        private int _pendingLocalRequestTab;
+        private int _pendingLocalRequestIndex;
         private string _lastRequestFailureChatRoute;
         private string _lastMemberOutChatRoute;
         private string _lastResultChatRoute;
@@ -1374,6 +1376,12 @@ namespace HaCreator.MapSimulator.Fields
                 ? null
                 : characterName.Trim();
             RegisterKnownCharacterTeam(_localCharacterName, _localTeam);
+        }
+
+        public void MarkPendingLocalRequest(MonsterCarnivalTab tab, int entryIndex)
+        {
+            _pendingLocalRequestTab = (int)tab;
+            _pendingLocalRequestIndex = entryIndex;
         }
 
         public bool TryResolveCharacterTeam(string characterName, out MonsterCarnivalTeam team)
@@ -1629,6 +1637,7 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalTab tab = TryParseTab(tabCode, out MonsterCarnivalTab parsedTab)
                 ? parsedTab
                 : _activeTab;
+            bool pendingLocalRequestMatch = IsPendingLocalRequest(tab, entryIndex);
             MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
             if (entry == null)
             {
@@ -1636,10 +1645,15 @@ namespace HaCreator.MapSimulator.Fields
                     ? $"Monster Carnival request result received for tab {(int)tab}, index {entryIndex}."
                     : characterName.Trim();
                 ShowStatus(fallbackMessage, tickCount);
+                if (pendingLocalRequestMatch)
+                {
+                    _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "success", (int)tab, entryIndex);
+                    ClearPendingLocalRequest();
+                }
                 return;
             }
 
-            bool spendLocalCp = IsLocalRequestOwner(characterName);
+            bool spendLocalCp = IsLocalRequestOwner(characterName) || pendingLocalRequestMatch;
             bool ownerTeamKnown = TryResolveKnownCharacterTeam(characterName, out MonsterCarnivalTeam ownerTeam);
             ApplySuccessfulRequest(entry, ownerTeamKnown ? ownerTeam : _localTeam, spendLocalCp, ownerTeamKnown);
             string successMessage = BuildRequestSuccessMessage(entry, characterName);
@@ -1656,13 +1670,20 @@ namespace HaCreator.MapSimulator.Fields
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult accepted tab {(int)tab}, index {entryIndex}, and reset the local request timer state.",
                 successDefinition.HasValue ? new[] { successDefinition.Value.StringPoolId } : Array.Empty<int>());
             UpdateSeason2SubDialogOnRequest(entry, success: true, reasonCode: null);
+            if (pendingLocalRequestMatch)
+            {
+                ClearPendingLocalRequest();
+            }
         }
 
         public void OnRequestFailure(int reasonCode, int tickCount)
         {
             ShowStatus(DescribeRequestFailure(reasonCode), tickCount);
             MonsterCarnivalStringPoolMessage? definition = GetRequestFailureMessage(reasonCode);
-            _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "failure", _lastRequestTab, _lastRequestIndex);
+            int requestTab = _pendingLocalRequestTab >= 0 ? _pendingLocalRequestTab : _lastRequestTab;
+            int requestIndex = _pendingLocalRequestIndex >= 0 ? _pendingLocalRequestIndex : _lastRequestIndex;
+            _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "failure", requestTab, requestIndex);
+            ClearPendingLocalRequest();
             if (definition.HasValue)
             {
                 _lastRequestFailureChatRoute =
@@ -2380,6 +2401,8 @@ namespace HaCreator.MapSimulator.Fields
             _selectedEntryIndex = 0;
             _lastRequestTab = -1;
             _lastRequestIndex = -1;
+            _pendingLocalRequestTab = -1;
+            _pendingLocalRequestIndex = -1;
             _lastRequestFailureChatRoute = null;
             _lastMemberOutChatRoute = null;
             _lastResultChatRoute = null;
@@ -3127,11 +3150,22 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (string.IsNullOrWhiteSpace(characterName))
             {
-                return true;
+                return false;
             }
 
             return !string.IsNullOrWhiteSpace(_localCharacterName)
                 && string.Equals(characterName.Trim(), _localCharacterName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsPendingLocalRequest(MonsterCarnivalTab tab, int entryIndex)
+        {
+            return _pendingLocalRequestTab == (int)tab && _pendingLocalRequestIndex == entryIndex;
+        }
+
+        private void ClearPendingLocalRequest()
+        {
+            _pendingLocalRequestTab = -1;
+            _pendingLocalRequestIndex = -1;
         }
 
         private void ApplySuccessfulRequest(MonsterCarnivalEntry entry, MonsterCarnivalTeam ownerTeam, bool spendLocalCp, bool ownerTeamKnown)
@@ -3764,6 +3798,7 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalStringPoolMessage? definition = GetGameResultMessage(resultCode);
             if (!definition.HasValue)
             {
+                _lastResultChatRoute = null;
                 if (ShouldTrackVariantClientOwnerAction())
                 {
                     RecordClientOwnerAction(
@@ -3778,6 +3813,8 @@ namespace HaCreator.MapSimulator.Fields
             string message = FormatStringPoolMessage(definition.Value);
             if (_definition?.IsReviveMode == true)
             {
+                _lastResultChatRoute =
+                    $"{_definition.ClientOwnerLabel}::OnShowGameResult(code={resultCode}) -> CUIStatusBar::ChatLogAdd(type=12,item=-1)";
                 RecordClientOwnerAction(
                     $"{_definition.ClientOwnerLabel}::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) code={resultCode}",
                     new[] { definition.Value.StringPoolId });
@@ -3786,12 +3823,15 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_definition?.IsWaitingRoom == true || _definition?.IsSeason2Mode == true)
             {
+                _lastResultChatRoute =
+                    $"{_definition.ClientOwnerLabel} delegated OnShowGameResult(code={resultCode}) -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)";
                 RecordClientOwnerAction(
                     $"{_definition.ClientOwnerLabel} delegated OnShowGameResult code={resultCode} to CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
                     new[] { definition.Value.StringPoolId });
                 return $"{message} via {_definition.ClientOwnerLabel} -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)";
             }
 
+            _lastResultChatRoute = $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnShowGameResult(code={resultCode})";
             return message;
         }
 

@@ -133,7 +133,10 @@ namespace HaCreator.MapSimulator
         private string GetFieldWindowRestrictionMessage(string windowName)
         {
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
-            return FieldInteractionRestrictionEvaluator.GetWindowRestrictionMessage(fieldLimit, windowName);
+            return FieldInteractionRestrictionEvaluator.GetWindowOpenRestrictionMessage(
+                fieldLimit,
+                _mapBoard?.MapInfo,
+                windowName);
         }
 
         private void HandlePlayerLanding(PlayerCharacter player, PlayerLandingInfo landingInfo)

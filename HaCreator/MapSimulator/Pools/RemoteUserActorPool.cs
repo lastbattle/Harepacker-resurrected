@@ -402,6 +402,8 @@ namespace HaCreator.MapSimulator.Pools
         private const int MonsterBombInitDelayMs = 450;
         private const int MonsterBombExplosionDelayMs = 950;
         private const int MonsterBombLimitTimeMs = 950;
+        private const int MonsterBombCollisionRadius = 145;
+        private const int MonsterBombAnimationLayerOffsetX = 50;
         private const int GenericGrenadeImpactScale = 600;
         private const int GenericGrenadeFlightLaunchOffsetX = 1;
         private const int GenericGrenadeFlightLaunchOffsetY = -20;
@@ -4387,6 +4389,30 @@ namespace HaCreator.MapSimulator.Pools
             return position;
         }
 
+        public static Vector2 ResolveRemoteGrenadeRenderOffsetForParity(RemoteGrenadePresentation presentation)
+        {
+            if (!presentation.UsesMonsterBombGauge)
+            {
+                return Vector2.Zero;
+            }
+
+            // CGrenade::PrepareAnimationLayer offsets the loaded bullet layer for
+            // Monster Bomb after optional rotate-layer collision-offset correction.
+            bool bFlip = !presentation.FacingRight;
+            if (!bFlip)
+            {
+                return new Vector2(-MonsterBombAnimationLayerOffsetX, 0f);
+            }
+
+            int angle = ResolveRemoteGrenadeBallAngleDegreesForParity(presentation);
+            double radians = angle * (Math.PI / 180d);
+            int collisionOffsetX = (int)(Math.Cos(radians) * MonsterBombCollisionRadius);
+            int collisionOffsetY = (int)(Math.Sin(radians) * MonsterBombCollisionRadius);
+            return new Vector2(
+                MonsterBombAnimationLayerOffsetX - collisionOffsetX,
+                -collisionOffsetY);
+        }
+
         private static int ResolveRemoteGrenadeAnimationDurationMs(SkillAnimation animation)
         {
             if (animation?.Frames == null || animation.Frames.Count == 0)
@@ -4409,6 +4435,23 @@ namespace HaCreator.MapSimulator.Pools
             return skillId == MonsterBombSkillId
                 ? Math.Max(MonsterBombMinimumKeyDownMs, keyDownTime)
                 : keyDownTime;
+        }
+
+        private static int ResolveRemoteGrenadeBallAngleDegreesForParity(RemoteGrenadePresentation presentation)
+        {
+            if (!presentation.UsesMonsterBombGauge)
+            {
+                return 0;
+            }
+
+            double absX = Math.Abs(presentation.Impact.X);
+            double absY = Math.Abs(presentation.Impact.Y);
+            if (absX <= 0d)
+            {
+                return 90;
+            }
+
+            return (int)(Math.Atan(absY / absX) * (180d / Math.PI));
         }
 
         private static int ResolveRemoteGrenadeMaxGaugeTimeMs(int skillId)
@@ -8509,11 +8552,6 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (fallbackCandidateIndex < 0)
-            {
-                return false;
-            }
-
             candidateIndex = existingPairCandidateIndex >= 0
                 ? existingPairCandidateIndex
                 : preferredPairCandidateIndex >= 0
@@ -8523,7 +8561,7 @@ namespace HaCreator.MapSimulator.Pools
                         : reciprocalPreferredPairCandidateIndex >= 0
                             ? reciprocalPreferredPairCandidateIndex
                             : fallbackCandidateIndex;
-            return true;
+            return candidateIndex >= 0;
         }
 
         private Dictionary<int, int> BuildPortableChairPairMap(PlayerCharacter localPlayer, bool preferVisibleOnly)
@@ -9188,7 +9226,7 @@ namespace HaCreator.MapSimulator.Pools
                     actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount,
                     out RemoteTemporaryStatAvatarEffectState auraTailState))
             {
-                actor.TemporaryStatAuraEffectTails.Add(auraTailState);
+                AppendRemoteTemporaryStatAuraTailState(actor.TemporaryStatAuraEffectTails, auraTailState);
             }
 
             if (ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacement(
@@ -10863,6 +10901,24 @@ namespace HaCreator.MapSimulator.Pools
             return minimumDelayMs == int.MaxValue ? 0 : minimumDelayMs;
         }
 
+        private static void AppendRemoteTemporaryStatAuraTailState(
+            List<RemoteTemporaryStatAvatarEffectState> tailStates,
+            RemoteTemporaryStatAvatarEffectState tailState)
+        {
+            if (tailStates == null || tailState == null)
+            {
+                return;
+            }
+
+            tailStates.Add(tailState);
+
+            // `m_lpLayerAffected` handoff continuity keeps a single active tail-owner in this seam.
+            if (tailStates.Count > 1)
+            {
+                tailStates.RemoveRange(0, tailStates.Count - 1);
+            }
+        }
+
         private static void AccumulateRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(
             SkillAnimation animation,
             ref int minimumDelayMs)
@@ -11015,6 +11071,48 @@ namespace HaCreator.MapSimulator.Pools
             int beforeCount = tailStates?.Count ?? 0;
             PruneExpiredRemoteTemporaryStatAvatarEffectTailStates(tailStates, currentTime);
             return tailStates == null ? 0 : Math.Max(0, beforeCount - tailStates.Count);
+        }
+
+        internal static int AppendRemoteTemporaryStatAuraTailStateForTesting(
+            List<RemoteTemporaryStatAvatarEffectState> tailStates,
+            RemoteTemporaryStatAvatarEffectState tailState)
+        {
+            AppendRemoteTemporaryStatAuraTailState(tailStates, tailState);
+            return tailStates?.Count ?? 0;
+        }
+
+        internal static IReadOnlyList<int> BuildRemoteTemporaryStatAvatarEffectDrawOrderSkillIdsForTesting(
+            RemoteTemporaryStatAvatarEffectState soulArrowState,
+            RemoteTemporaryStatAvatarEffectState weaponChargeState,
+            RemoteTemporaryStatAvatarEffectState auraState,
+            IReadOnlyList<RemoteTemporaryStatAvatarEffectState> auraTailStates,
+            RemoteTemporaryStatAvatarEffectState moreWildState,
+            RemoteTemporaryStatAvatarEffectState barrierState,
+            RemoteTemporaryStatAvatarEffectState blessingArmorState,
+            RemoteTemporaryStatAvatarEffectState repeatState,
+            RemoteTemporaryStatAvatarEffectState magicShieldState,
+            RemoteTemporaryStatAvatarEffectState finalCutState)
+        {
+            IReadOnlyList<RemoteTemporaryStatAvatarEffectState> orderedStates =
+                BuildRemoteTemporaryStatAvatarEffectDrawStates(
+                    soulArrowState,
+                    weaponChargeState,
+                    auraState,
+                    auraTailStates,
+                    moreWildState,
+                    barrierState,
+                    blessingArmorState,
+                    repeatState,
+                    magicShieldState,
+                    finalCutState);
+
+            var orderedSkillIds = new List<int>(orderedStates.Count);
+            for (int i = 0; i < orderedStates.Count; i++)
+            {
+                orderedSkillIds.Add(orderedStates[i]?.SkillId ?? 0);
+            }
+
+            return orderedSkillIds;
         }
 
         internal static bool TryCreateRemoteTemporaryStatAvatarEffectState(
@@ -11365,109 +11463,76 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             PruneExpiredRemoteTemporaryStatAvatarEffectTailStates(actor.TemporaryStatAuraEffectTails, currentTime);
-            for (int i = 0; i < actor.TemporaryStatAuraEffectTails.Count; i++)
+            IReadOnlyList<RemoteTemporaryStatAvatarEffectState> drawStates =
+                BuildRemoteTemporaryStatAvatarEffectDrawStates(
+                    actor?.TemporaryStatSoulArrowEffect,
+                    actor?.TemporaryStatWeaponChargeEffect,
+                    actor?.TemporaryStatAuraEffect,
+                    actor?.TemporaryStatAuraEffectTails,
+                    actor?.TemporaryStatMoreWildEffect,
+                    actor?.TemporaryStatBarrierEffect,
+                    actor?.TemporaryStatBlessingArmorEffect,
+                    actor?.TemporaryStatRepeatEffect,
+                    actor?.TemporaryStatMagicShieldEffect,
+                    actor?.TemporaryStatFinalCutEffect);
+            for (int i = 0; i < drawStates.Count; i++)
             {
                 DrawRemoteTemporaryStatAvatarEffectState(
                     spriteBatch,
                     skeletonRenderer,
                     actor,
-                    actor.TemporaryStatAuraEffectTails[i],
+                    drawStates[i],
                     frame,
                     screenX,
                     screenY,
                     currentTime,
                     drawFrontLayers);
             }
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatBarrierEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatBlessingArmorEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatRepeatEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatAuraEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatMoreWildEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatMagicShieldEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatSoulArrowEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatWeaponChargeEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
-            DrawRemoteTemporaryStatAvatarEffectState(
-                spriteBatch,
-                skeletonRenderer,
-                actor,
-                actor.TemporaryStatFinalCutEffect,
-                frame,
-                screenX,
-                screenY,
-                currentTime,
-                drawFrontLayers);
+        }
+
+        private static IReadOnlyList<RemoteTemporaryStatAvatarEffectState> BuildRemoteTemporaryStatAvatarEffectDrawStates(
+            RemoteTemporaryStatAvatarEffectState soulArrowState,
+            RemoteTemporaryStatAvatarEffectState weaponChargeState,
+            RemoteTemporaryStatAvatarEffectState auraState,
+            IReadOnlyList<RemoteTemporaryStatAvatarEffectState> auraTailStates,
+            RemoteTemporaryStatAvatarEffectState moreWildState,
+            RemoteTemporaryStatAvatarEffectState barrierState,
+            RemoteTemporaryStatAvatarEffectState blessingArmorState,
+            RemoteTemporaryStatAvatarEffectState repeatState,
+            RemoteTemporaryStatAvatarEffectState magicShieldState,
+            RemoteTemporaryStatAvatarEffectState finalCutState)
+        {
+            var orderedStates = new List<RemoteTemporaryStatAvatarEffectState>(11);
+
+            void AddState(RemoteTemporaryStatAvatarEffectState state)
+            {
+                if (state != null)
+                {
+                    orderedStates.Add(state);
+                }
+            }
+
+            // Client owner-family chain from `CUser::Update` / `CUser::UpdateMoreWildEffect`:
+            // SoulArrow -> WeaponCharge -> Aura(affected-layer tails + active) -> MoreWild -> Barrier
+            // -> BlessingArmor -> Repeat -> MagicShield -> FinalCut.
+            AddState(soulArrowState);
+            AddState(weaponChargeState);
+            if (auraTailStates != null)
+            {
+                for (int i = 0; i < auraTailStates.Count; i++)
+                {
+                    AddState(auraTailStates[i]);
+                }
+            }
+
+            AddState(auraState);
+            AddState(moreWildState);
+            AddState(barrierState);
+            AddState(blessingArmorState);
+            AddState(repeatState);
+            AddState(magicShieldState);
+            AddState(finalCutState);
+            return orderedStates;
         }
 
         private static void DrawRemoteTransientSkillUseAvatarEffects(
@@ -11937,7 +12002,12 @@ namespace HaCreator.MapSimulator.Pools
                 actor.TemporaryStatShadowPartnerSkill.ShadowPartnerHorizontalOffsetPx);
             int anchorX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
             int anchorY = screenY + clientOffset.Y;
-            Color frameTint = RemoteShadowPartnerTint * ResolveRemoteShadowPartnerFrameAlpha(frame, frameElapsedMs);
+            int actionElapsedMs = Math.Max(0, currentTime - actor.ShadowPartnerPresentation.CurrentActionStartTime);
+            Color frameTint = RemoteShadowPartnerTint * ResolveRemoteShadowPartnerFrameAlpha(
+                actor.ShadowPartnerPresentation?.CurrentPlaybackAnimation,
+                frame,
+                frameElapsedMs,
+                actionElapsedMs);
             if (ShadowPartnerClientActionResolver.TryResolveFrameDrawTransform(
                     frame,
                     anchorX,
@@ -12710,9 +12780,17 @@ namespace HaCreator.MapSimulator.Pools
                 observedActionTriggerTime);
         }
 
-        private static float ResolveRemoteShadowPartnerFrameAlpha(SkillFrame frame, int frameElapsedMs)
+        private static float ResolveRemoteShadowPartnerFrameAlpha(
+            SkillAnimation animation,
+            SkillFrame frame,
+            int frameElapsedMs,
+            int actionElapsedMs)
         {
-            return ShadowPartnerClientActionResolver.ResolveFrameAlpha(frame, frameElapsedMs);
+            return ShadowPartnerClientActionResolver.ResolveFrameAlphaForPlayback(
+                animation,
+                frame,
+                frameElapsedMs,
+                actionElapsedMs);
         }
 
         private void RegisterMeleeAfterImage(
@@ -13162,6 +13240,20 @@ namespace HaCreator.MapSimulator.Pools
                 return nearestMaskBaseChargeSkillId;
             }
 
+            if (AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int nearestMaskBaseChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    nearestMaskBaseChargeElement,
+                    out int nearestMaskBaseElementChargeSkillId))
+            {
+                return nearestMaskBaseElementChargeSkillId;
+            }
+
             return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                 snapshot.RawPayload,
                 payloadMaskBaseOffset,
@@ -13264,6 +13356,16 @@ namespace HaCreator.MapSimulator.Pools
                     effectivePreferredSkillId,
                     out int nearestMaskBaseChargeSkillId)
                 && AfterImageChargeSkillResolver.TryGetChargeElement(nearestMaskBaseChargeSkillId, out chargeElement))
+            {
+                return true;
+            }
+
+            if (AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out chargeElement))
             {
                 return true;
             }

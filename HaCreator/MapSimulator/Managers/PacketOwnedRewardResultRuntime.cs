@@ -296,6 +296,29 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        internal static string GetAssetParentPath(string resourcePath, int levels = 1)
+        {
+            if (string.IsNullOrWhiteSpace(resourcePath))
+            {
+                return string.Empty;
+            }
+
+            string normalizedPath = NormalizeAssetPath(resourcePath);
+            int trimLevels = Math.Max(1, levels);
+            for (int i = 0; i < trimLevels; i++)
+            {
+                int separatorIndex = normalizedPath.LastIndexOf('/');
+                if (separatorIndex <= 0)
+                {
+                    return string.Empty;
+                }
+
+                normalizedPath = normalizedPath[..separatorIndex];
+            }
+
+            return normalizedPath;
+        }
+
         private static string ResolveRandomMesoBagDialogResourcePath(int rank)
         {
             int stringPoolId = rank switch

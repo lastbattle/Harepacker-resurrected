@@ -715,33 +715,60 @@ namespace HaCreator.MapSimulator.Fields
         private void RestartRemoteOpenGatePartnerAfterPartnerLoss(uint ownerCharacterId, bool removedFirstSlot, int currentTime)
         {
             RemoteOpenGateKey partnerKey = new(ownerCharacterId, !removedFirstSlot);
-            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner)
-                || partner.Phase == RemoteOpenGateVisualPhase.Removing)
+            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner))
+            {
+                return;
+            }
+
+            (RemoteOpenGateVisualPhase phase, int phaseStartedAt) = ResolveRemoteOpenGatePartnerPromotion(partner, currentTime);
+            if (phase == partner.Phase && phaseStartedAt == partner.PhaseStartedAt)
             {
                 return;
             }
 
             _remoteOpenGates[partnerKey] = partner with
             {
-                Phase = RemoteOpenGateVisualPhase.Stable,
-                PhaseStartedAt = currentTime
+                Phase = phase,
+                PhaseStartedAt = phaseStartedAt
             };
         }
 
         private void PromoteRemoteOpenGatePartnerAfterPartnerCreate(uint ownerCharacterId, bool createdFirstSlot, int currentTime)
         {
             RemoteOpenGateKey partnerKey = new(ownerCharacterId, !createdFirstSlot);
-            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner)
-                || partner.Phase == RemoteOpenGateVisualPhase.Removing)
+            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner))
+            {
+                return;
+            }
+
+            (RemoteOpenGateVisualPhase phase, int phaseStartedAt) = ResolveRemoteOpenGatePartnerPromotion(partner, currentTime);
+            if (phase == partner.Phase && phaseStartedAt == partner.PhaseStartedAt)
             {
                 return;
             }
 
             _remoteOpenGates[partnerKey] = partner with
             {
-                Phase = RemoteOpenGateVisualPhase.Stable,
-                PhaseStartedAt = currentTime
+                Phase = phase,
+                PhaseStartedAt = phaseStartedAt
             };
+        }
+
+        private static (RemoteOpenGateVisualPhase Phase, int PhaseStartedAt) ResolveRemoteOpenGatePartnerPromotion(
+            RemoteOpenGateState partner,
+            int currentTime)
+        {
+            if (partner.Phase == RemoteOpenGateVisualPhase.Removing)
+            {
+                return (partner.Phase, partner.PhaseStartedAt);
+            }
+
+            if (partner.Phase == RemoteOpenGateVisualPhase.Stable)
+            {
+                return (partner.Phase, partner.PhaseStartedAt);
+            }
+
+            return (RemoteOpenGateVisualPhase.Stable, currentTime);
         }
 
         private void SyncRemoteTownPortalVisuals()
@@ -4141,17 +4168,69 @@ namespace HaCreator.MapSimulator.Fields
         internal static RemoteOpenGateVisualPhase ResolveRemoteOpenGatePartnerLossPhaseForTesting(
             RemoteOpenGateVisualPhase partnerPhase)
         {
-            return partnerPhase == RemoteOpenGateVisualPhase.Removing
-                ? partnerPhase
-                : RemoteOpenGateVisualPhase.Stable;
+            RemoteOpenGateState partner = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: 1,
+                X: 0,
+                Y: 0,
+                IsFirstSlot: true,
+                PartyId: 0,
+                Phase: partnerPhase,
+                PhaseStartedAt: 0);
+            return ResolveRemoteOpenGatePartnerPromotion(partner, currentTime: 0).Phase;
         }
 
         internal static RemoteOpenGateVisualPhase ResolveRemoteOpenGatePartnerCreatePhaseForTesting(
             RemoteOpenGateVisualPhase partnerPhase)
         {
-            return partnerPhase == RemoteOpenGateVisualPhase.Removing
-                ? partnerPhase
-                : RemoteOpenGateVisualPhase.Stable;
+            RemoteOpenGateState partner = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: 1,
+                X: 0,
+                Y: 0,
+                IsFirstSlot: true,
+                PartyId: 0,
+                Phase: partnerPhase,
+                PhaseStartedAt: 0);
+            return ResolveRemoteOpenGatePartnerPromotion(partner, currentTime: 0).Phase;
+        }
+
+        internal static int ResolveRemoteOpenGatePartnerLossPhaseStartedAtForTesting(
+            RemoteOpenGateVisualPhase partnerPhase,
+            int partnerPhaseStartedAt,
+            int currentTime)
+        {
+            RemoteOpenGateState partner = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: 1,
+                X: 0,
+                Y: 0,
+                IsFirstSlot: true,
+                PartyId: 0,
+                Phase: partnerPhase,
+                PhaseStartedAt: partnerPhaseStartedAt);
+            return ResolveRemoteOpenGatePartnerPromotion(partner, currentTime).PhaseStartedAt;
+        }
+
+        internal static int ResolveRemoteOpenGatePartnerCreatePhaseStartedAtForTesting(
+            RemoteOpenGateVisualPhase partnerPhase,
+            int partnerPhaseStartedAt,
+            int currentTime)
+        {
+            RemoteOpenGateState partner = new(
+                OwnerCharacterId: 1,
+                State: 1,
+                MapId: 1,
+                X: 0,
+                Y: 0,
+                IsFirstSlot: true,
+                PartyId: 0,
+                Phase: partnerPhase,
+                PhaseStartedAt: partnerPhaseStartedAt);
+            return ResolveRemoteOpenGatePartnerPromotion(partner, currentTime).PhaseStartedAt;
         }
     }
 }

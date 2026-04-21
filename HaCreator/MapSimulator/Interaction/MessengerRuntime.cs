@@ -1070,6 +1070,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastActionSummary = $"{localPlayer.Name} left the Messenger.";
             AddSystemLog($"{localPlayer.Name} left the Messenger. Simulator room reset to a solo state.");
             RecordPacketSummary("Simulated Messenger delete or leave lifecycle for the local player.");
+            TryResolveSessionOwnedLeaveRequestAfterRoomMutation("CUIMessenger::OnDestroy leave request completed after local room-state reset.");
             TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the local room reset.");
             return _lastActionSummary;
         }
@@ -1188,6 +1189,12 @@ namespace HaCreator.MapSimulator.Interaction
             RecordPacketSummary(rejectedInvite
                 ? $"Applied simulated Messenger reject packet from {participant.Name}."
                 : $"Applied simulated Messenger leave packet from {participant.Name}.");
+            if (!rejectedInvite)
+            {
+                TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
+                    $"CUIMessenger::OnDestroy leave request completed after slot {participant.SlotIndex} ({participant.Name}) cleared.");
+            }
+
             TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the remote slot cleared.");
             return _lastActionSummary;
         }
@@ -2457,6 +2464,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _selectedSlot = 0;
                 StartBlink(Environment.TickCount);
                 RecordPacketSummary($"Decoded Messenger leave packet for local slot {packet.SlotIndex}.");
+                TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
+                    $"CUIMessenger::OnDestroy leave request acknowledged by OnLeave slot {packet.SlotIndex}.");
                 return _lastActionSummary;
             }
 
@@ -2466,6 +2475,8 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Decoded Messenger leave packet for slot {packet.SlotIndex} ({participant.Name}).");
+            TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
+                $"CUIMessenger::OnDestroy leave request progressed after OnLeave removed slot {packet.SlotIndex} ({participant.Name}).");
             return _lastActionSummary;
         }
 
@@ -2590,6 +2601,8 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Decoded Messenger migrated packet with {packet.Participants.Length} slot record(s).");
+            TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
+                "CUIMessenger::OnDestroy leave request completed after OnMigrated collapsed the room state.");
             TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the migrated room state collapsed.");
             return _lastActionSummary;
         }

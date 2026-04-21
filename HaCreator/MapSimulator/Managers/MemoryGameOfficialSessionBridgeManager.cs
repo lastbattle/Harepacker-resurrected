@@ -776,8 +776,8 @@ namespace HaCreator.MapSimulator.Managers
             subtype = payload[0];
             return subtype switch
             {
-                10 or 50 or 52 or 56 or 57 or 58 or 59 or 61 => true,
-                60 => payload.Length >= 2,
+                10 or 50 or 51 or 52 or 56 or 57 or 58 or 59 or 61 => true,
+                60 => payload.Length >= 1,
                 _ => false
             };
         }

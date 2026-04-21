@@ -321,7 +321,13 @@ namespace HaCreator.MapSimulator.Managers
                 long payloadStart = reader.BaseStream.Position;
                 string firstDecodeError = null;
                 DisassemblyTargetEntryEncoding[] disassemblyEncodings = flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeDisassemblyTargets)
-                    ? new[] { DisassemblyTargetEntryEncoding.WideSlotInt32, DisassemblyTargetEntryEncoding.CompactSlotUInt16 }
+                    ? new[]
+                    {
+                        DisassemblyTargetEntryEncoding.WideSlotInt32,
+                        DisassemblyTargetEntryEncoding.CompactSlotUInt16,
+                        DisassemblyTargetEntryEncoding.WideSlotOnlyInt32,
+                        DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16
+                    }
                     : new[] { DisassemblyTargetEntryEncoding.WideSlotInt32 };
                 HiddenRecipeEntryEncoding[] hiddenEncodings = flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList)
                     ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
@@ -378,22 +384,46 @@ namespace HaCreator.MapSimulator.Managers
                 if (count > 0)
                 {
                     disassemblyTargets = new List<PacketOwnedItemMakerDisassemblyTargetEntry>(count);
-                    int disassemblyEntryWidth = disassemblyEncoding == DisassemblyTargetEntryEncoding.CompactSlotUInt16
-                        ? sizeof(ushort) + sizeof(int)
-                        : sizeof(int) * 2;
+                    bool requiresPositiveItemId = disassemblyEncoding is DisassemblyTargetEntryEncoding.WideSlotInt32
+                        or DisassemblyTargetEntryEncoding.CompactSlotUInt16;
+                    int disassemblyEntryWidth = disassemblyEncoding switch
+                    {
+                        DisassemblyTargetEntryEncoding.CompactSlotUInt16 => sizeof(ushort) + sizeof(int),
+                        DisassemblyTargetEntryEncoding.WideSlotOnlyInt32 => sizeof(int),
+                        DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16 => sizeof(ushort),
+                        _ => sizeof(int) * 2
+                    };
                     for (int i = 0; i < count; i++)
                     {
                         EnsureReadable(reader, disassemblyEntryWidth, "Maker-session compact disassembly target entry is truncated.");
-                        int slotIndex = disassemblyEncoding == DisassemblyTargetEntryEncoding.CompactSlotUInt16
-                            ? reader.ReadUInt16()
-                            : reader.ReadInt32();
-                        int itemId = reader.ReadInt32();
+                        int slotIndex;
+                        int itemId;
+                        switch (disassemblyEncoding)
+                        {
+                            case DisassemblyTargetEntryEncoding.CompactSlotUInt16:
+                                slotIndex = reader.ReadUInt16();
+                                itemId = reader.ReadInt32();
+                                break;
+                            case DisassemblyTargetEntryEncoding.WideSlotOnlyInt32:
+                                slotIndex = reader.ReadInt32();
+                                itemId = 0;
+                                break;
+                            case DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16:
+                                slotIndex = reader.ReadUInt16();
+                                itemId = 0;
+                                break;
+                            default:
+                                slotIndex = reader.ReadInt32();
+                                itemId = reader.ReadInt32();
+                                break;
+                        }
+
                         if (slotIndex < 0)
                         {
                             throw new InvalidDataException("Maker-session compact disassembly target slots must be zero-based and non-negative.");
                         }
 
-                        if (itemId <= 0)
+                        if (requiresPositiveItemId && itemId <= 0)
                         {
                             throw new InvalidDataException("Maker-session compact disassembly target entries must include a positive item id.");
                         }

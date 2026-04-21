@@ -542,11 +542,12 @@ namespace HaCreator.MapSimulator
             }
 
             skinKey ??= hudProfile.SkinKey;
+            bool resolvedIsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(skillId, isKeydownSkill: false);
             int resolvedGaugeDurationMs = PreparedSkillHudRules.ResolvePreparedGaugeDuration(
                 skillId,
                 hasGaugeOverride ? Math.Max(0, gaugeDurationMs) : 0,
-                durationMs);
-            bool resolvedIsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(skillId, isKeydownSkill: true);
+                durationMs,
+                resolvedIsKeydownSkill);
             string skillName = skillNameParts != null && skillNameParts.Count > 0
                 ? string.Join(" ", skillNameParts)
                 : null;
@@ -1254,7 +1255,8 @@ namespace HaCreator.MapSimulator
                     PreparedSkillHudRules.ResolvePreparedGaugeDuration(
                         officialPreparePacket.SkillId,
                         officialPreparePacket.GaugeDurationMs,
-                        officialPreparePacket.DurationMs),
+                        officialPreparePacket.DurationMs,
+                        resolvedIsKeydownSkill),
                     Math.Max(0, officialPreparePacket.MaxHoldDurationMs),
                     PreparedSkillHudRules.ResolveTextVariant(officialPreparePacket.SkillId),
                     officialPreparePacket.ShowText && hudProfile.ShowText,
@@ -1806,7 +1808,8 @@ namespace HaCreator.MapSimulator
                         PreparedSkillHudRules.ResolvePreparedGaugeDuration(
                             preparePacket.SkillId,
                             preparePacket.GaugeDurationMs,
-                            preparePacket.DurationMs),
+                            preparePacket.DurationMs,
+                            resolvedIsKeydownSkill),
                         Math.Max(0, preparePacket.MaxHoldDurationMs),
                         PreparedSkillHudRules.ResolveTextVariant(preparePacket.SkillId),
                         preparePacket.ShowText && hudProfile.ShowText,
@@ -1895,6 +1898,22 @@ namespace HaCreator.MapSimulator
                         pickupActorName,
                         pickedByPet: dropPickupPacket.ActorKind == DropPickupActorKind.Pet,
                         pickupTargetPosition: pickupTargetPosition);
+                    if (!pickupApplied)
+                    {
+                        if (TrySurfaceRecentRemoteDropPickupNotice(
+                                dropPickupPacket.DropId,
+                                currentTime,
+                                dropPickupPacket.ActorKind,
+                                resolvedPickupActorId,
+                                pickupActorName,
+                                dropPickupPacket.FallbackOwnerId,
+                                pickupTargetPosition))
+                        {
+                            result = $"Applied {DescribeRemoteUserPacketType(packetType)} for recently picked drop {dropPickupPacket.DropId}.";
+                            return true;
+                        }
+                    }
+
                     result = pickupApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for drop {dropPickupPacket.DropId}."
                         : $"Remote drop pickup could not be applied for drop {dropPickupPacket.DropId}.";

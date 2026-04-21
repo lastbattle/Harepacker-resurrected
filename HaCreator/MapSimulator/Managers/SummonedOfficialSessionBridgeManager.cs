@@ -2472,6 +2472,15 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            if (!string.IsNullOrWhiteSpace(entry.DecodedSg88FirstUseDecodeDetail)
+                && PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityMismatchByteIndices(
+                    entry.DecodedSg88FirstUseDecodeDetail,
+                    out int[] parsedFromDetail)
+                && parsedFromDetail.Length > 0)
+            {
+                return parsedFromDetail;
+            }
+
             return entry.DecodedSg88FirstUseReplayMismatchByteIndex.HasValue
                 ? new[] { entry.DecodedSg88FirstUseReplayMismatchByteIndex.Value }
                 : Array.Empty<int>();

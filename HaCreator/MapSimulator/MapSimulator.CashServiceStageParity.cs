@@ -97,6 +97,7 @@ namespace HaCreator.MapSimulator
         private string PreviewCashAvatarWeatherAction()
         {
             int currTickCount = Environment.TickCount;
+            ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
             string restrictionMessage = FieldInteractionRestrictionEvaluator.GetCashWeatherRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
             if (!string.IsNullOrWhiteSpace(restrictionMessage))
             {
@@ -563,6 +564,8 @@ namespace HaCreator.MapSimulator
 
             int commoditySerialNumber = Math.Max(0, selectedEntry.CommoditySerialNumber);
             int itemId = Math.Max(0, selectedEntry.RewardItemId);
+            int quantity = Math.Max(1, selectedEntry.RewardQuantity);
+            bool commodityOnSale = selectedEntry.CommodityOnSale;
             int price = ParseCashServicePriceLabel(selectedEntry.PriceLabel);
             if (price <= 0
                 && commoditySerialNumber > 0
@@ -596,12 +599,15 @@ namespace HaCreator.MapSimulator
                     price.ToString(CultureInfo.InvariantCulture),
                     selectedEntry.StateLabel ?? string.Empty,
                     listingTitle,
-                    seller),
+                seller),
                 CommoditySerialNumber = commoditySerialNumber,
                 ItemId = itemId,
                 Price = price,
+                Quantity = quantity,
+                CommodityOnSale = commodityOnSale,
                 ListingTitle = listingTitle,
                 Seller = seller,
+                ListingSignature = $"{commoditySerialNumber}:{itemId}:{quantity}:{price}:{seller}:{selectedEntry.StateLabel}",
                 PacketSummary = packetSummary
             };
         }
@@ -2137,7 +2143,7 @@ namespace HaCreator.MapSimulator
                 },
                 footer: "Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000) at height-95, Prepaid Cash (1001) at height-80, Nexon Cash (1002) at height-65, and combo 1003 at (62,42,150,18) when the selected commodity exposes multiple packed entries.",
                 checkBoxes: BuildCashPurchasePaymentSelectorStates(stageWindow),
-                comboBox: BuildCashPurchaseVariantComboBoxState(selectedEntry, purchaseVariants));
+                comboBox: BuildCashPurchaseVariantComboBoxState(selectedEntry, purchaseVariants, stageWindow?.CashPurchaseDialogSelectedVariantSerialNumber ?? 0));
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog);
             return $"CConfirmPurchaseDlg opened for {selectedEntry.Title}.";
         }
@@ -2353,6 +2359,26 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<CashServiceModalOwnerWindow.CheckBoxState>();
             }
 
+            int preferredPaymentControlId = stageWindow.CashPurchaseDialogSelectedPaymentControlId;
+            bool maplePointEnabled = stageWindow.MaplePointBalance > 0;
+            bool prepaidEnabled = stageWindow.PrepaidCashBalance > 0;
+            bool nexonEnabled = stageWindow.NexonCashBalance > 0;
+            bool preferredEnabled = preferredPaymentControlId switch
+            {
+                1000 => maplePointEnabled,
+                1001 => prepaidEnabled,
+                1002 => nexonEnabled,
+                _ => false
+            };
+            int selectedPaymentControlId = preferredEnabled
+                ? preferredPaymentControlId
+                : maplePointEnabled
+                    ? 1000
+                    : prepaidEnabled
+                        ? 1001
+                        : nexonEnabled
+                            ? 1002
+                            : 0;
             return new[]
             {
                 new CashServiceModalOwnerWindow.CheckBoxState
@@ -2360,8 +2386,8 @@ namespace HaCreator.MapSimulator
                     ControlId = 1000,
                     Label = "Maple Point",
                     Detail = stageWindow.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture),
-                    IsChecked = stageWindow.MaplePointBalance > 0,
-                    IsEnabled = stageWindow.MaplePointBalance > 0,
+                    IsChecked = selectedPaymentControlId == 1000,
+                    IsEnabled = maplePointEnabled,
                     ClientX = 25,
                     ClientYFromBottom = 95,
                     ClientWidth = 160,
@@ -2372,8 +2398,8 @@ namespace HaCreator.MapSimulator
                     ControlId = 1001,
                     Label = "Prepaid Cash",
                     Detail = stageWindow.PrepaidCashBalance.ToString("N0", CultureInfo.InvariantCulture),
-                    IsChecked = stageWindow.MaplePointBalance <= 0 && stageWindow.PrepaidCashBalance > 0,
-                    IsEnabled = stageWindow.PrepaidCashBalance > 0,
+                    IsChecked = selectedPaymentControlId == 1001,
+                    IsEnabled = prepaidEnabled,
                     ClientX = 25,
                     ClientYFromBottom = 80,
                     ClientWidth = 230,
@@ -2384,8 +2410,8 @@ namespace HaCreator.MapSimulator
                     ControlId = 1002,
                     Label = "Nexon Cash",
                     Detail = stageWindow.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture),
-                    IsChecked = stageWindow.MaplePointBalance <= 0 && stageWindow.PrepaidCashBalance <= 0 && stageWindow.NexonCashBalance > 0,
-                    IsEnabled = stageWindow.NexonCashBalance > 0,
+                    IsChecked = selectedPaymentControlId == 1002,
+                    IsEnabled = nexonEnabled,
                     ClientX = 25,
                     ClientYFromBottom = 65,
                     ClientWidth = 230,
@@ -2396,7 +2422,8 @@ namespace HaCreator.MapSimulator
 
         private static CashServiceModalOwnerWindow.ComboBoxState BuildCashPurchaseVariantComboBoxState(
             AdminShopDialogUI.OwnerEntrySnapshot selectedEntry,
-            IReadOnlyList<AdminShopDialogUI.CommodityPurchaseVariantSnapshot> purchaseVariants)
+            IReadOnlyList<AdminShopDialogUI.CommodityPurchaseVariantSnapshot> purchaseVariants,
+            int preferredVariantSerialNumber)
         {
             if (selectedEntry == null || purchaseVariants == null || purchaseVariants.Count <= 1)
             {
@@ -2412,9 +2439,13 @@ namespace HaCreator.MapSimulator
                         : $"SN {variant.SerialNumber.ToString(CultureInfo.InvariantCulture)} | {variant.Label}"
                 })
                 .ToArray();
-            int selectedIndex = Math.Max(
-                0,
-                purchaseVariants.ToList().FindIndex(variant => variant.SerialNumber == selectedEntry.CommoditySerialNumber));
+            int selectedIndex = purchaseVariants.ToList().FindIndex(variant => variant.SerialNumber == preferredVariantSerialNumber);
+            if (selectedIndex < 0)
+            {
+                selectedIndex = purchaseVariants.ToList().FindIndex(variant => variant.SerialNumber == selectedEntry.CommoditySerialNumber);
+            }
+
+            selectedIndex = Math.Max(0, selectedIndex);
             return new CashServiceModalOwnerWindow.ComboBoxState
             {
                 ControlId = 1003,

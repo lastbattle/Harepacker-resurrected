@@ -26,7 +26,8 @@ namespace HaCreator.MapSimulator.Character
         Polymorph,
         StopPotion,
         Fear,
-        Burn
+        Burn,
+        Bomb
     }
 
     internal readonly struct PlayerMobStatusFrameState
@@ -324,6 +325,15 @@ namespace HaCreator.MapSimulator.Character
                         ResolveTickInterval(runtimeData, 1000),
                         runtimeData.Count);
                     return true;
+                case 171:
+                    ApplyPeriodicDamageStatus(
+                        PlayerMobStatusEffect.Bomb,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 1),
+                        ResolveBombTickInterval(runtimeData),
+                        runtimeData.Count > 0 ? runtimeData.Count : 1);
+                    return true;
                 case 172:
                 case 173:
                     return ApplyPolymorphStatus(runtimeData, currentTime);
@@ -458,7 +468,8 @@ namespace HaCreator.MapSimulator.Character
         {
             return effect == PlayerMobStatusEffect.Poison
                    || effect == PlayerMobStatusEffect.Burn
-                   || effect == PlayerMobStatusEffect.PainMark;
+                   || effect == PlayerMobStatusEffect.PainMark
+                   || effect == PlayerMobStatusEffect.Bomb;
         }
 
         public bool ClearStatus(PlayerMobStatusEffect effect)
@@ -580,6 +591,14 @@ namespace HaCreator.MapSimulator.Character
                         ResolveValue(runtimeData, 1),
                         ResolveTickInterval(runtimeData, 1000),
                         runtimeData.Count);
+                case 171:
+                    return WouldPeriodicStatusApplicationChangeState(
+                        PlayerMobStatusEffect.Bomb,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 1),
+                        ResolveBombTickInterval(runtimeData),
+                        runtimeData.Count > 0 ? runtimeData.Count : 1);
                 case 172:
                 case 173:
                     return WouldPolymorphApplicationChangeState(runtimeData, currentTime);
@@ -880,6 +899,21 @@ namespace HaCreator.MapSimulator.Character
         private static int ResolveTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)
         {
             return runtimeData.IntervalMs > 0 ? runtimeData.IntervalMs : fallbackMs;
+        }
+
+        private static int ResolveBombTickInterval(MobSkillRuntimeData runtimeData)
+        {
+            if (runtimeData == null)
+            {
+                return 1000;
+            }
+
+            if (runtimeData.BombDelayMs > 0)
+            {
+                return runtimeData.BombDelayMs;
+            }
+
+            return ResolveTickInterval(runtimeData, 1000);
         }
 
         private static int ResolveValue(MobSkillRuntimeData runtimeData, int fallbackValue)

@@ -2508,6 +2508,7 @@ namespace HaCreator.MapSimulator
             _isWhisperTargetPickerComboDropdownOpen = _whisperCandidates.Count > 0;
             if (_isWhisperTargetPickerComboDropdownOpen)
             {
+                SyncWhisperTargetPickerDropdownScrollFromSelection();
                 EnsureWhisperTargetPickerDropdownSelectionSeeded();
             }
         }
@@ -2525,6 +2526,7 @@ namespace HaCreator.MapSimulator
                 && _whisperCandidates.Count > 0;
             if (_isWhisperTargetPickerComboDropdownOpen)
             {
+                SyncWhisperTargetPickerDropdownScrollFromSelection();
                 EnsureWhisperTargetPickerDropdownSelectionSeeded();
             }
         }
@@ -2559,6 +2561,24 @@ namespace HaCreator.MapSimulator
                 0,
                 _whisperCandidates.Count - 1);
             EnsureWhisperTargetPickerSelectionVisible();
+        }
+
+        private void SyncWhisperTargetPickerDropdownScrollFromSelection()
+        {
+            if (_whisperTargetPickerSelectionIndex < 0
+                || _whisperTargetPickerSelectionIndex >= _whisperCandidates.Count)
+            {
+                _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                    _whisperTargetPickerFirstVisibleIndex,
+                    _whisperCandidates.Count,
+                    WhisperTargetPickerVisibleRowCount);
+                return;
+            }
+
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerSelectionIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
         }
 
         internal void ToggleWhisperTargetPickerModalFocusTarget()

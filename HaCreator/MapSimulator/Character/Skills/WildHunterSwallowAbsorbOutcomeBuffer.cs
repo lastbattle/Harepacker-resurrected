@@ -6,7 +6,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal sealed class WildHunterSwallowAbsorbOutcomeBuffer
     {
         private const int MaxPendingOutcomes = 8;
-        private readonly Queue<PendingOutcome> _pending = new();
+        private readonly List<PendingOutcome> _pending = new(MaxPendingOutcomes);
 
         public bool HasPending => _pending.Count > 0;
 
@@ -18,12 +18,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             PruneExpired(currentTime);
+            RemoveMatching(skillId, targetMobId);
             if (_pending.Count >= MaxPendingOutcomes)
             {
-                _pending.Dequeue();
+                _pending.RemoveAt(0);
             }
 
-            _pending.Enqueue(new PendingOutcome(
+            _pending.Add(new PendingOutcome(
                 skillId,
                 targetMobId,
                 success,
@@ -45,30 +46,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            Queue<PendingOutcome> retained = new();
-            bool consumed = false;
-
-            while (_pending.Count > 0)
+            for (int i = 0; i < _pending.Count; i++)
             {
-                PendingOutcome pending = _pending.Dequeue();
-                if (!consumed
-                    && pending.TargetMobId == targetMobId
+                PendingOutcome pending = _pending[i];
+                if (pending.TargetMobId == targetMobId
                     && (skillMatch?.Invoke(pending.SkillId) ?? false))
                 {
                     success = pending.Success;
-                    consumed = true;
-                    continue;
+                    _pending.RemoveAt(i);
+                    return true;
                 }
-
-                retained.Enqueue(pending);
             }
 
-            while (retained.Count > 0)
-            {
-                _pending.Enqueue(retained.Dequeue());
-            }
-
-            return consumed;
+            return false;
         }
 
         public void PruneExpired(int currentTime)
@@ -78,25 +68,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            Queue<PendingOutcome> retained = new();
-            while (_pending.Count > 0)
-            {
-                PendingOutcome pending = _pending.Dequeue();
-                if (!IsExpired(pending, currentTime))
-                {
-                    retained.Enqueue(pending);
-                }
-            }
-
-            while (retained.Count > 0)
-            {
-                _pending.Enqueue(retained.Dequeue());
-            }
+            _pending.RemoveAll(pending => IsExpired(pending, currentTime));
         }
 
         private static bool IsExpired(PendingOutcome pending, int currentTime)
         {
             return currentTime >= pending.ExpireTime;
+        }
+
+        private void RemoveMatching(int skillId, int targetMobId)
+        {
+            _pending.RemoveAll(pending =>
+                pending.SkillId == skillId &&
+                pending.TargetMobId == targetMobId);
         }
 
         private sealed record PendingOutcome(int SkillId, int TargetMobId, bool Success, int ExpireTime);

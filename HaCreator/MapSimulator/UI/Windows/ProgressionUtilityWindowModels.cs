@@ -191,9 +191,10 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionValueLaneLeft = ClientCollectionTextLaneWidthInt - ClientCollectionValueLaneWidth;
         private const int ClientCollectionLabelLaneLeft = ClientCollectionTextLaneLeft;
         private const int ClientCollectionLabelLaneWidth = ClientCollectionValueLaneLeft - ClientCollectionLabelLaneLeft - 6;
-        private const int ClientCollectionDetailPairLaneGap = 6;
-        private const int ClientCollectionDetailPairLaneWidth = (ClientCollectionTextLaneWidthInt - ClientCollectionDetailPairLaneGap) / 2;
-        private const int ClientCollectionDetailPairRightLaneLeft = ClientCollectionTextLaneWidthInt - ClientCollectionDetailPairLaneWidth;
+        private const int ClientCollectionDetailPairLeftLaneLeft = ClientCollectionLabelLaneLeft;
+        private const int ClientCollectionDetailPairLeftLaneWidth = ClientCollectionLabelLaneWidth;
+        private const int ClientCollectionDetailPairRightLaneLeft = ClientCollectionValueLaneLeft;
+        private const int ClientCollectionDetailPairRightLaneWidth = ClientCollectionValueLaneWidth;
         private const int BookFontObjectStringPoolId = 0x5AF;
         private const int BookFontFamilyStringPoolId = 0x1A25;
         private const int BookFontStyleStringPoolId = 0x5B0;
@@ -903,9 +904,9 @@ namespace HaCreator.MapSimulator.UI
                     AddWrappedTextRecords(
                         records,
                         leftClause,
-                        ClientCollectionTextLaneLeft,
+                        ClientCollectionDetailPairLeftLaneLeft,
                         rowTop,
-                        ClientCollectionDetailPairLaneWidth,
+                        ClientCollectionDetailPairLeftLaneWidth,
                         leftStyleIndex,
                         CollectionBookTextAlignment.Left,
                         CollectionBookRecordRole.Detail,
@@ -919,7 +920,7 @@ namespace HaCreator.MapSimulator.UI
                         rightClause,
                         ClientCollectionDetailPairRightLaneLeft,
                         rowTop,
-                        ClientCollectionDetailPairLaneWidth,
+                        ClientCollectionDetailPairRightLaneWidth,
                         rightStyleIndex,
                         CollectionBookTextAlignment.Right,
                         CollectionBookRecordRole.Detail,
@@ -927,10 +928,10 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 int leftBottom = hasLeftClause
-                    ? GetWrappedRecordBottom(leftClause, rowTop, ClientCollectionDetailPairLaneWidth, leftStyleIndex, measureTextWidth)
+                    ? GetWrappedRecordBottom(leftClause, rowTop, ClientCollectionDetailPairLeftLaneWidth, leftStyleIndex, measureTextWidth)
                     : rowTop;
                 int rightBottom = hasRightClause
-                    ? GetWrappedRecordBottom(rightClause, rowTop, ClientCollectionDetailPairLaneWidth, rightStyleIndex, measureTextWidth)
+                    ? GetWrappedRecordBottom(rightClause, rowTop, ClientCollectionDetailPairRightLaneWidth, rightStyleIndex, measureTextWidth)
                     : rowTop;
                 if (hasLeftClause || hasRightClause)
                 {
@@ -951,9 +952,9 @@ namespace HaCreator.MapSimulator.UI
                     AddWrappedTextRecords(
                         records,
                         spillClause,
-                        rightLaneSpill ? ClientCollectionDetailPairRightLaneLeft : ClientCollectionTextLaneLeft,
+                        rightLaneSpill ? ClientCollectionDetailPairRightLaneLeft : ClientCollectionDetailPairLeftLaneLeft,
                         spillTop,
-                        rightLaneSpill ? ClientCollectionDetailPairLaneWidth : ClientCollectionTextLaneWidthInt,
+                        rightLaneSpill ? ClientCollectionDetailPairRightLaneWidth : ClientCollectionDetailPairLeftLaneWidth,
                         rightLaneSpill ? rightStyleIndex : leftStyleIndex,
                         rightLaneSpill ? CollectionBookTextAlignment.Right : CollectionBookTextAlignment.Left,
                         CollectionBookRecordRole.Detail,
@@ -985,10 +986,10 @@ namespace HaCreator.MapSimulator.UI
                 bool hasLeftClause = !string.IsNullOrWhiteSpace(leftClause);
                 bool hasRightClause = !string.IsNullOrWhiteSpace(rightClause);
                 int leftBottom = hasLeftClause
-                    ? GetWrappedRecordBottom(leftClause, rowTop, ClientCollectionDetailPairLaneWidth, leftStyleIndex, measureTextWidth)
+                    ? GetWrappedRecordBottom(leftClause, rowTop, ClientCollectionDetailPairLeftLaneWidth, leftStyleIndex, measureTextWidth)
                     : rowTop;
                 int rightBottom = hasRightClause
-                    ? GetWrappedRecordBottom(rightClause, rowTop, ClientCollectionDetailPairLaneWidth, rightStyleIndex, measureTextWidth)
+                    ? GetWrappedRecordBottom(rightClause, rowTop, ClientCollectionDetailPairRightLaneWidth, rightStyleIndex, measureTextWidth)
                     : rowTop;
                 if (hasLeftClause || hasRightClause)
                 {
@@ -1010,7 +1011,7 @@ namespace HaCreator.MapSimulator.UI
                     int spillBottom = GetWrappedRecordBottom(
                         spillClause,
                         spillTop,
-                        rightLaneSpill ? ClientCollectionDetailPairLaneWidth : ClientCollectionTextLaneWidthInt,
+                        rightLaneSpill ? ClientCollectionDetailPairRightLaneWidth : ClientCollectionDetailPairLeftLaneWidth,
                         rightLaneSpill ? rightStyleIndex : leftStyleIndex,
                         measureTextWidth);
                     bottom = Math.Max(bottom, spillBottom);

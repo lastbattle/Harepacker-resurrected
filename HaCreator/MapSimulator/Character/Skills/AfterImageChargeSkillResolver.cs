@@ -549,6 +549,100 @@ namespace HaCreator.MapSimulator.Character.Skills
             return chargeSkillId > 0;
         }
 
+        internal static bool TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int metadataOffset,
+            int preferredSkillId,
+            out int chargeElement)
+        {
+            return TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                payload,
+                startOffset: 0,
+                metadataOffset,
+                preferredSkillId,
+                out chargeElement);
+        }
+
+        internal static bool TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int metadataOffset,
+            int preferredSkillId,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int)
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int)
+                || metadataOffset < 0
+                || metadataOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            if (alignedStartOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int nearestChargeElement = 0;
+            int nearestOffset = int.MaxValue;
+            long nearestDistance = long.MaxValue;
+            int preferredElement = 0;
+            if (preferredSkillId > 0)
+            {
+                TryGetChargeElement(preferredSkillId, out preferredElement);
+            }
+
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            {
+                int candidateElement = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                if (!IsKnownChargeElement(candidateElement))
+                {
+                    continue;
+                }
+
+                long distance = Math.Abs((long)offset - metadataOffset);
+                if (distance > nearestDistance)
+                {
+                    continue;
+                }
+
+                if (distance == nearestDistance)
+                {
+                    if (preferredElement > 0
+                        && candidateElement == preferredElement
+                        && nearestChargeElement != preferredElement)
+                    {
+                        nearestChargeElement = candidateElement;
+                        nearestOffset = offset;
+                        continue;
+                    }
+
+                    if (offset >= nearestOffset)
+                    {
+                        continue;
+                    }
+                }
+
+                nearestDistance = distance;
+                nearestOffset = offset;
+                nearestChargeElement = candidateElement;
+            }
+
+            chargeElement = nearestChargeElement;
+            return chargeElement > 0;
+        }
+
         private static bool TryResolveChargeElementByKnownPayloadCandidates(
             ReadOnlySpan<byte> payload,
             int startOffset,

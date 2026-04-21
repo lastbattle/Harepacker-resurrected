@@ -180,56 +180,15 @@ namespace HaCreator.MapSimulator.Character
                     "icePanic",
                     "icemanAttack"
                 },
-                ["explosion"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["meteor"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["blizzard"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["genesis"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
-                ["chainlightning"] = new[]
-                {
-                    "iceAttack1",
-                    "iceAttack2",
-                    "iceSmash",
-                    "iceTempest",
-                    "iceChop",
-                    "icePanic",
-                    "icemanAttack"
-                },
+                // Character/00002000.img keeps mage ultimate and chain rows on body-action
+                // redirects (`explosion`/`meteor`/`blizzard`/`genesis` -> `alert`,
+                // `chainlightning` -> `swingO3`, then `stabO2`) while checked Morph/*.img
+                // still publishes no verbatim roots for those names.
+                ["explosion"] = new[] { "alert" },
+                ["meteor"] = new[] { "alert" },
+                ["blizzard"] = new[] { "alert" },
+                ["genesis"] = new[] { "alert" },
+                ["chainlightning"] = new[] { "swingO3", "stabO2" },
                 // Character/00002000.img keeps `paralyze` on explicit body redirects
                 // (`swingO3`, then `stabO2`) and Morph/*.img still publishes no
                 // verbatim `paralyze` branch.
@@ -238,8 +197,8 @@ namespace HaCreator.MapSimulator.Character
                 // Skill/2218.img still publish these raw spell and dragon roots.
                 // Character/00002000.img keeps their body rows on explicit redirect
                 // families, while current Morph/*.img publishes no verbatim roots.
-                ["magicmissile"] = new[] { "walk", "move", "stand", "stabO1", "swingO3" },
-                ["fireCircle"] = new[] { "walk", "move", "stand", "stabO1", "swingO3", "alert" },
+                ["magicmissile"] = new[] { "walk1", "stabO1", "swingO3", "walk", "move", "stand" },
+                ["fireCircle"] = new[] { "walk1", "stabO1", "swingO3", "alert", "walk", "move", "stand" },
                 ["blaze"] = new[] { "alert", "stabO1" },
                 ["magicFlare"] = new[] { "alert", "stabO1", "swingO2" },
                 ["lightingBolt"] = new[] { "alert", "stabO1", "swingO2" },
@@ -250,7 +209,7 @@ namespace HaCreator.MapSimulator.Character
                 ["darkFog"] = new[] { "alert", "swingO2" },
                 ["illusion"] = new[] { "alert", "stabO1", "swingO3", "stabO2" },
                 ["flameWheel"] = new[] { "alert", "stabO1", "swingO3", "stabO2" },
-                ["killingWing"] = new[] { "stand", "walk", "swingO3", "stabO1", "swingO1", "swingO2", "alert" },
+                ["killingWing"] = new[] { "stand1", "swingO3", "stabO1", "swingO1", "swingO2", "alert", "stand", "walk" },
                 // Flame Gear rows under Skill/000.img, Skill/001.img, and Skill/1211.img
                 // still publish `flamegear`, while checked Morph/*.img publishes no
                 // verbatim branch.
@@ -624,12 +583,17 @@ namespace HaCreator.MapSimulator.Character
                 // Character/00002000.img, while Morph/*.img has no verbatim gather roots.
                 ["gather0"] = new[] { "swingT2", "swingT1" },
                 ["gather1"] = new[] { "swingT1" },
-                // The client raw table still exposes dual-blade swing-family names while
-                // archer morphs such as 1003/1103 only publish generic swingT branches.
-                ["swingC1"] = new[] { "swingT1", "swingT3" },
-                ["swingC2"] = new[] { "swingT1", "swingT3" },
-                ["swingDb1"] = new[] { "swingT1", "swingT3" },
-                ["swingDb2"] = new[] { "swingT1", "swingT3" }
+                // Character/00002000.img keeps the dual-blade C/Db tails on explicit body
+                // redirects:
+                // `swingC1 -> alert, swingT1`,
+                // `swingC2 -> swingT3`,
+                // `swingDb1 -> swingO2`,
+                // `swingDb2 -> stabO1`.
+                // Preserve those checked roots first before broader family fallback.
+                ["swingC1"] = new[] { "alert", "swingT1", "swingT3" },
+                ["swingC2"] = new[] { "swingT3", "swingT1" },
+                ["swingDb1"] = new[] { "swingO2", "swingT1", "swingT3" },
+                ["swingDb2"] = new[] { "stabO1", "swingT1", "swingT3" }
             };
 
         private static readonly string[] ClientPublishedMorphStabFallbackAliases =

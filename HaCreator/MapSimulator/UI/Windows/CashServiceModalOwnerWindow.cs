@@ -1051,7 +1051,7 @@ namespace HaCreator.MapSimulator.UI
             CheckBoxState selected = checkBoxes.FirstOrDefault(checkBox => checkBox.IsEnabled && checkBox.IsChecked)
                 ?? checkBoxes.FirstOrDefault(checkBox => checkBox.IsEnabled)
                 ?? checkBoxes[0];
-            return selected.ControlId;
+            return selected.IsEnabled ? selected.ControlId : 0;
         }
 
         private static int ResolveSelectedComboIndex(int selectedIndex, int count)

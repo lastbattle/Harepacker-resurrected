@@ -289,7 +289,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static uint? TryReadStageBackColor(WzImageProperty periodNode)
         {
-            return unchecked((uint)InfoTool.GetInt(GetChildProperty(periodNode, "backColor"), -1));
+            int rawColor = InfoTool.GetInt(GetChildProperty(periodNode, "backColor"), -1);
+            return rawColor == -1
+                ? null
+                : unchecked((uint)rawColor);
         }
 
         private static IReadOnlyList<ContextOwnedStageBackImageEntry> ParseStageBackImages(WzImageProperty periodNode)

@@ -245,6 +245,28 @@ namespace HaCreator.MapSimulator.Interaction
         Confirmed
     }
 
+    internal static class QuestRewardRaisePieceLifecycleStateResolver
+    {
+        internal static QuestRewardRaisePieceLifecycleState ResolveConfirmResultLifecycle(
+            QuestRewardRaisePieceLifecycleState currentState,
+            bool success)
+        {
+            if (success)
+            {
+                return currentState == QuestRewardRaisePieceLifecycleState.PendingReleaseAck
+                    ? QuestRewardRaisePieceLifecycleState.PendingReleaseAck
+                    : QuestRewardRaisePieceLifecycleState.Confirmed;
+            }
+
+            return currentState switch
+            {
+                QuestRewardRaisePieceLifecycleState.PendingReleaseAck => QuestRewardRaisePieceLifecycleState.PendingReleaseAck,
+                QuestRewardRaisePieceLifecycleState.Confirmed => QuestRewardRaisePieceLifecycleState.Confirmed,
+                _ => QuestRewardRaisePieceLifecycleState.Active
+            };
+        }
+    }
+
     internal sealed class QuestRewardRaisePlacedPiece
     {
         public int RequestId { get; set; }

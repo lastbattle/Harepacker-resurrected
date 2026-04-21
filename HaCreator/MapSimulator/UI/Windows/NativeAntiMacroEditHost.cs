@@ -955,7 +955,10 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldDeferDownKeyToIme(int virtualKey, bool controlHeld, bool shiftHeld, bool imeCompositionActive, bool imeCandidateWindowActive)
         {
-            return virtualKey == VkDown && !controlHeld && !shiftHeld && (imeCompositionActive || imeCandidateWindowActive);
+            // `CCtrlEdit::OnKey` routes VK_DOWN to `m_pIMECandWnd` without a
+            // Ctrl/Shift guard, so keep IME-owner deferral active even when
+            // modifier bits are present in the encoded lParam path.
+            return virtualKey == VkDown && (imeCompositionActive || imeCandidateWindowActive);
         }
 
         internal static bool ShouldDeferDownKeyToIme(bool controlHeld, bool shiftHeld, bool imeCompositionActive)

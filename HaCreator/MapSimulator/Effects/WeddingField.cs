@@ -531,7 +531,9 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             photoScenePresentationPacket = IsWeddingPhotoScenePresentationPacket(packetType);
-            return photoScenePresentationPacket;
+            // CField_WeddingPhoto keeps running inside CField::OnPacket even for families
+            // we do not decode yet; keep those packets on the owner trail as passthrough.
+            return true;
         }
 
         private static bool IsWeddingPhotoScenePresentationPacket(int packetType)

@@ -201,7 +201,9 @@ namespace HaCreator.MapSimulator.Interaction
         SocialListGuildSkillRecordPacket? GuildSkillRecord,
         int GuildQuestChannel = 0,
         int GuildQuestWaitStatus = 0,
-        string GuildBoardAuthKey = null);
+        string GuildBoardAuthKey = null,
+        byte RawSubtype = 0,
+        bool UsesSharedResultNoticeFallback = false);
 
     internal readonly record struct SocialListGuildSkillRecordPacket(
         int SkillId,
@@ -901,7 +903,8 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 PacketReader reader = new(payload);
-                SocialListClientGuildResultKind kind = (SocialListClientGuildResultKind)reader.ReadByte();
+                byte rawSubtype = reader.ReadByte();
+                SocialListClientGuildResultKind kind = (SocialListClientGuildResultKind)rawSubtype;
                 switch (kind)
                 {
                     case SocialListClientGuildResultKind.GradeChange:
@@ -927,7 +930,8 @@ namespace HaCreator.MapSimulator.Interaction
                             HasExplicitNotice: false,
                             null,
                             new SocialListGradeChangePacket(memberId, 0, absoluteGrade, null),
-                            null);
+                            null,
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -958,7 +962,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 IsPacketOwned: true));
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, HasExplicitNotice: false, null, default, null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -971,7 +975,7 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, HasExplicitNotice: false, null, default, null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, HasExplicitNotice: false, null, default, null, RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -990,7 +994,8 @@ namespace HaCreator.MapSimulator.Interaction
                             HasExplicitNotice: false,
                             null,
                             default,
-                            null);
+                            null,
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1015,7 +1020,8 @@ namespace HaCreator.MapSimulator.Interaction
                             HasExplicitNotice: false,
                             null,
                             default,
-                            null);
+                            null,
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1036,7 +1042,8 @@ namespace HaCreator.MapSimulator.Interaction
                             HasExplicitNotice: false,
                             null,
                             default,
-                            null);
+                            null,
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1078,7 +1085,8 @@ namespace HaCreator.MapSimulator.Interaction
                             HasExplicitNotice: false,
                             null,
                             default,
-                            new SocialListGuildSkillRecordPacket(skillId, skillLevel, expiration, buyCharacterName));
+                            new SocialListGuildSkillRecordPacket(skillId, skillLevel, expiration, buyCharacterName),
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1100,7 +1108,8 @@ namespace HaCreator.MapSimulator.Interaction
                             default,
                             null,
                             channel,
-                            waitStatus);
+                            waitStatus,
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1119,7 +1128,8 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             default,
                             null,
-                            GuildBoardAuthKey: reader.ReadString16().Trim());
+                            GuildBoardAuthKey: reader.ReadString16().Trim(),
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1138,7 +1148,8 @@ namespace HaCreator.MapSimulator.Interaction
                             HasExplicitNotice: false,
                             null,
                             default,
-                            null);
+                            null,
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
@@ -1160,11 +1171,14 @@ namespace HaCreator.MapSimulator.Interaction
                             hasExplicitNotice,
                             resultNotice,
                             default,
-                            null);
+                            null,
+                            RawSubtype: rawSubtype);
                         return true;
                     }
 
                     default:
+                    {
+                        bool usesSharedFallback = IsClientGuildResultSharedFallbackNoticeSubtype(rawSubtype);
                         packet = new SocialListClientGuildResultPacket(
                             kind,
                             0,
@@ -1177,8 +1191,11 @@ namespace HaCreator.MapSimulator.Interaction
                             HasExplicitNotice: false,
                             null,
                             default,
-                            null);
+                            null,
+                            RawSubtype: rawSubtype,
+                            UsesSharedResultNoticeFallback: usesSharedFallback);
                         return true;
+                    }
                 }
             }
             catch (InvalidOperationException ex)
@@ -1186,6 +1203,20 @@ namespace HaCreator.MapSimulator.Interaction
                 error = ex.Message;
                 return false;
             }
+        }
+
+        private static bool IsClientGuildResultSharedFallbackNoticeSubtype(byte subtype)
+        {
+            // CWvsContext::OnGuildResult uses shared StringPool 0x176 in the default switch branch.
+            // Verified jump-table defaults in MapleStory v95 at 0xA0D41B.
+            return subtype > 82 || subtype switch
+            {
+                2 or 4 or 6 or 7 or 8 or 9 or 10 or 11 or 12 or 13 or 14 or 15 or 16
+                    or 18 or 19 or 20 or 21 or 22 or 23 or 24 or 25 or 26 or 27
+                    or 29 or 31 or 32 or 36 or 39 or 45 or 48 or 51 or 53 or 59
+                    or 65 or 67 or 68 or 70 or 72 or 73 or 74 => true,
+                _ => false
+            };
         }
 
         public static bool TryParseGuildSkillResult(ReadOnlySpan<byte> payload, out GuildSkillResultPacket packet, out string error)

@@ -32,9 +32,11 @@ namespace HaCreator.MapSimulator.UI
     {
         public int ServiceSessionId { get; init; } = -1;
         public int SearchSessionId { get; init; } = -1;
+        public int LocalSearchRequestId { get; init; } = -1;
         public string Query { get; init; } = string.Empty;
         public string CategoryKey { get; init; } = string.Empty;
         public int PriceRangeIndex { get; init; } = -1;
+        public bool UsedFallbackRequestContext { get; init; }
         public IReadOnlyList<int> ItemIds { get; init; } = Array.Empty<int>();
         public IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> ResultRows { get; init; }
             = Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();

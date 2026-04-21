@@ -91,10 +91,11 @@ namespace HaCreator.MapSimulator
                     characterId,
                     snapshot.TemporaryStatRevision))
                 {
+                    ushort temporaryStatDelay = ResolveWeddingTemporaryStatDelayForSharedPool(snapshot);
                     _remoteUserPool.TryApplyTemporaryStatSnapshot(
                         characterId,
                         snapshot.TemporaryStats,
-                        delay: 0,
+                        delay: temporaryStatDelay,
                         out _);
                     _weddingRemoteTemporaryStatRevisionByCharacterId[characterId] = snapshot.TemporaryStatRevision;
                 }
@@ -215,6 +216,14 @@ namespace HaCreator.MapSimulator
             return syncedTemporaryStatRevisionByCharacterId == null
                 || !syncedTemporaryStatRevisionByCharacterId.TryGetValue(characterId, out int syncedRevision)
                 || syncedRevision != participantTemporaryStatRevision;
+        }
+
+        internal static ushort ResolveWeddingTemporaryStatDelayForSharedPool(
+            WeddingRemoteParticipantSnapshot snapshot)
+        {
+            return snapshot.TemporaryStatRevision > 0
+                ? snapshot.TemporaryStatDelay
+                : (ushort)0;
         }
 
         internal static bool TryApplyWeddingRemoteProfileMetadata(

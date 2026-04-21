@@ -1324,8 +1324,7 @@ namespace HaCreator.MapSimulator.UI
             string tooltipText,
             Rectangle hoverBounds)
         {
-            return !isWithinMinimapImage
-                && showDirectionOverlay
+            return (isWithinMinimapImage || showDirectionOverlay)
                 && !hoverBounds.IsEmpty
                 && !string.IsNullOrWhiteSpace(tooltipText);
         }

@@ -658,7 +658,7 @@ namespace HaCreator.MapSimulator
             itemToken = 0;
             slotPosition = 0;
             updateTick = 0;
-            if (payload == null || payload.Length < ItemUpgradeOwnerRequestPayloadLength)
+            if (payload == null || payload.Length != ItemUpgradeOwnerRequestPayloadLength)
             {
                 return false;
             }
@@ -735,7 +735,7 @@ namespace HaCreator.MapSimulator
         {
             returnResultCode = 0;
             resultValue = 0;
-            if (payload == null || payload.Length < ItemUpgradeOwnerResultAckPayloadLength)
+            if (payload == null || payload.Length != ItemUpgradeOwnerResultAckPayloadLength)
             {
                 return false;
             }
@@ -760,7 +760,7 @@ namespace HaCreator.MapSimulator
             itemToken = 0;
             slotPosition = 0;
             updateTick = 0;
-            if (payload == null || payload.Length < ItemUpgradeOwnerConsumeCashRequestPayloadLength)
+            if (payload == null || payload.Length != ItemUpgradeOwnerConsumeCashRequestPayloadLength)
             {
                 return false;
             }

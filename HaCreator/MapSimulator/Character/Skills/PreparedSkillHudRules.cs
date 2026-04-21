@@ -275,10 +275,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        public static int ResolveGaugeDuration(int skillId, int authoredDurationMs = 0)
+        public static int ResolveGaugeDuration(int skillId, int authoredDurationMs = 0, bool isKeydownSkill = false)
         {
             PreparedSkillHudProfile profile = ResolveProfile(skillId);
-            bool resolvedAsKeyDownSkill = ResolveKeyDownSkillState(skillId, isKeydownSkill: true);
+            bool resolvedAsKeyDownSkill = ResolveKeyDownSkillState(skillId, isKeydownSkill);
             if (resolvedAsKeyDownSkill && ShouldPreferClientGaugeProfile(skillId, profile))
             {
                 return profile.GaugeDurationMs;
@@ -299,10 +299,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : 0;
         }
 
-        public static int ResolvePreparedGaugeDuration(int skillId, int explicitGaugeDurationMs = 0, int preparedDurationMs = 0)
+        public static int ResolvePreparedGaugeDuration(
+            int skillId,
+            int explicitGaugeDurationMs = 0,
+            int preparedDurationMs = 0,
+            bool isKeydownSkill = false)
         {
             PreparedSkillHudProfile profile = ResolveProfile(skillId);
-            bool resolvedAsKeyDownSkill = ResolveKeyDownSkillState(skillId, isKeydownSkill: true);
+            bool resolvedAsKeyDownSkill = ResolveKeyDownSkillState(skillId, isKeydownSkill);
             if (resolvedAsKeyDownSkill && ShouldPreferClientGaugeProfile(skillId, profile))
             {
                 return profile.GaugeDurationMs;
@@ -333,7 +337,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return preparedDurationMs;
             }
 
-            return ResolveGaugeDuration(skillId);
+            return ResolveGaugeDuration(skillId, isKeydownSkill: isKeydownSkill);
         }
 
         private static bool ShouldPreferClientGaugeProfile(int skillId, PreparedSkillHudProfile profile)

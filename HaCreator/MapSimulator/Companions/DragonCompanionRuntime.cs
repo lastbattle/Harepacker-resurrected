@@ -139,6 +139,7 @@ namespace HaCreator.MapSimulator.Companions
         private float _ownerPhaseActionAlpha = 1f;
         private Color _actionLayerColor = Color.White;
         private int _actionLayerZ = -1;
+        private int? _vecCtrlOwnedActionLayerOwnerZ;
         private float _dragonFuryAlpha;
         private float _questInfoAlpha;
         private int _lastUpdateTime = int.MinValue;
@@ -352,9 +353,10 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             int ownerLayerZ = owner.GetCurrentLayerZ(currentTime);
-            int resolvedOwnerLayerZ = ResolveClientDragonActionLayerOwnerZ(
+            int resolvedOwnerLayerZ = ResolveClientDragonActionLayerOwnerZWithPersistedVecCtrl(
                 ownerLayerZ,
-                _actionLayerOwnerZProvider?.Invoke(_visualAnchor));
+                _actionLayerOwnerZProvider?.Invoke(_visualAnchor),
+                ref _vecCtrlOwnedActionLayerOwnerZ);
             _actionLayerZ = ResolveClientDragonActionLayerZ(resolvedOwnerLayerZ);
             _alpha = ResolveClientLayerAlpha(!_isSuppressed);
             OwnerPhaseContext ownerPhaseContext = _ownerPhaseContextProvider?.Invoke() ?? OwnerPhaseContext.NoLocalUser;
@@ -454,6 +456,7 @@ namespace HaCreator.MapSimulator.Companions
             _ownerPhaseActionAlpha = 1f;
             _actionLayerColor = Color.White;
             _actionLayerZ = -1;
+            _vecCtrlOwnedActionLayerOwnerZ = null;
             _dragonFuryAlpha = 0f;
             _questInfoAlpha = 0f;
             _lastUpdateTime = int.MinValue;
@@ -1329,6 +1332,19 @@ namespace HaCreator.MapSimulator.Companions
         internal static int ResolveClientDragonActionLayerOwnerZ(int fallbackOwnerLayerZ, int? vecCtrlOwnerLayerZ)
         {
             return vecCtrlOwnerLayerZ ?? fallbackOwnerLayerZ;
+        }
+
+        internal static int ResolveClientDragonActionLayerOwnerZWithPersistedVecCtrl(
+            int fallbackOwnerLayerZ,
+            int? sampledVecCtrlOwnerLayerZ,
+            ref int? persistedVecCtrlOwnerLayerZ)
+        {
+            if (sampledVecCtrlOwnerLayerZ.HasValue)
+            {
+                persistedVecCtrlOwnerLayerZ = sampledVecCtrlOwnerLayerZ.Value;
+            }
+
+            return ResolveClientDragonActionLayerOwnerZ(fallbackOwnerLayerZ, persistedVecCtrlOwnerLayerZ);
         }
 
         internal static int? ResolveClientOwnerLayerZFromVecCtrlContext(int? layerPage, int? layerZMass, bool onLadderOrRope)

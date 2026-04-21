@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const int FollowRequestClientOptionId = 1014;
+        private const int MovePathRandomCounterClientOptionId = 2;
         private const int FollowRequestPromptStringPoolId = 0x16E6;
         private const int PacketOwnedBattleshipCooldownSentinel = 0x004FAE6F;
         private const int PacketOwnedBattleshipSkillId = 5221006;
@@ -4900,42 +4901,695 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedQuestAlarmTitleTooltipPayload(byte[] payload, out string message)
         {
             message = null;
-            if (payload == null || payload.Length < sizeof(ushort) + sizeof(short))
+            if (!TryDecodePacketOwnedQuestAlarmTitleTooltipPayload(
+                    payload,
+                    out bool clearRequested,
+                    out bool clearUnspecifiedTooltips,
+                    out KeyValuePair<int, string>[] tooltipEntries,
+                    out string summary,
+                    out string decodeMessage))
             {
-                message = "Quest-alarm title-tooltip payload must contain a quest id and Maple ASCII string.";
-                return false;
-            }
-
-            using var stream = new MemoryStream(payload, writable: false);
-            using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
-
-            int questId = reader.ReadUInt16();
-            if (!TryReadPacketOwnedAsciiString(reader, out string tooltipText))
-            {
-                message = "Quest-alarm title-tooltip payload is missing the title-tooltip string.";
-                return false;
-            }
-
-            if (stream.Position != stream.Length)
-            {
-                message = $"Quest-alarm title-tooltip payload has {stream.Length - stream.Position} trailing byte(s).";
+                message = decodeMessage ?? "Quest-alarm title-tooltip payload could not be decoded.";
                 return false;
             }
 
             StampPacketOwnedUtilityRequestState();
-            _questRuntime.SetPacketOwnedQuestAlarmTitleTooltip(questId, tooltipText);
-            _lastPacketOwnedQuestAlarmTooltipQuestId = questId;
-            _lastPacketOwnedQuestAlarmTooltipText = QuestAlarmOwnerStringPoolText.NormalizePacketEscapedText(tooltipText);
+            Dictionary<int, string> tooltipByQuestId = null;
+            if (tooltipEntries?.Length > 0)
+            {
+                tooltipByQuestId = new Dictionary<int, string>(tooltipEntries.Length);
+                for (int i = 0; i < tooltipEntries.Length; i++)
+                {
+                    KeyValuePair<int, string> entry = tooltipEntries[i];
+                    if (entry.Key > 0)
+                    {
+                        tooltipByQuestId[entry.Key] = entry.Value;
+                    }
+                }
+            }
+
+            bool shouldClearUnspecified = clearRequested || clearUnspecifiedTooltips;
+            int appliedCount = _questRuntime.ApplyPacketOwnedQuestAlarmTitleTooltipSnapshot(
+                tooltipByQuestId,
+                shouldClearUnspecified);
+
+            KeyValuePair<int, string>? lastEntry = null;
+            if (tooltipEntries?.Length > 0)
+            {
+                for (int i = tooltipEntries.Length - 1; i >= 0; i--)
+                {
+                    if (tooltipEntries[i].Key > 0)
+                    {
+                        lastEntry = tooltipEntries[i];
+                        break;
+                    }
+                }
+            }
+
+            if (lastEntry.HasValue)
+            {
+                _lastPacketOwnedQuestAlarmTooltipQuestId = lastEntry.Value.Key;
+                _lastPacketOwnedQuestAlarmTooltipText = QuestAlarmOwnerStringPoolText.NormalizePacketEscapedText(lastEntry.Value.Value);
+            }
+            else if (clearRequested)
+            {
+                _lastPacketOwnedQuestAlarmTooltipQuestId = 0;
+                _lastPacketOwnedQuestAlarmTooltipText = string.Empty;
+            }
+
             _lastPacketOwnedQuestAlarmTooltipTick = Environment.TickCount;
             RefreshQuestUiState();
 
-            string questName = _questRuntime.TryGetQuestName(questId, out string resolvedQuestName)
-                ? resolvedQuestName
-                : $"Quest #{questId}";
-            message = string.IsNullOrWhiteSpace(_lastPacketOwnedQuestAlarmTooltipText)
-                ? $"Cleared the packet-authored Quest Alarm title tooltip for {questName}."
-                : $"Stored packet-authored Quest Alarm title tooltip for {questName}: '{TruncatePacketOwnedUtilityText(_lastPacketOwnedQuestAlarmTooltipText, 60)}'.";
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                message = summary;
+                return true;
+            }
+
+            if (clearRequested && (tooltipEntries == null || tooltipEntries.Length == 0))
+            {
+                message = "Cleared packet-authored Quest Alarm title tooltips.";
+                return true;
+            }
+
+            if (tooltipEntries != null
+                && tooltipEntries.Length == 1
+                && !clearRequested
+                && !clearUnspecifiedTooltips)
+            {
+                int questId = tooltipEntries[0].Key;
+                string normalizedTooltipText = QuestAlarmOwnerStringPoolText.NormalizePacketEscapedText(tooltipEntries[0].Value);
+                string questName = _questRuntime.TryGetQuestName(questId, out string resolvedQuestName)
+                    ? resolvedQuestName
+                    : $"Quest #{questId}";
+                message = string.IsNullOrWhiteSpace(normalizedTooltipText)
+                    ? $"Cleared the packet-authored Quest Alarm title tooltip for {questName}."
+                    : $"Stored packet-authored Quest Alarm title tooltip for {questName}: '{TruncatePacketOwnedUtilityText(normalizedTooltipText, 60)}'.";
+                return true;
+            }
+
+            message = shouldClearUnspecified
+                ? $"Applied packet-authored Quest Alarm title-tooltip sync with {appliedCount.ToString(CultureInfo.InvariantCulture)} quest row(s) and cleared unspecified rows."
+                : $"Applied packet-authored Quest Alarm title-tooltip sync with {appliedCount.ToString(CultureInfo.InvariantCulture)} quest row(s).";
             return true;
+        }
+
+        internal static bool TryDecodePacketOwnedQuestAlarmTitleTooltipPayloadForTests(
+            byte[] payload,
+            out bool clearRequested,
+            out bool clearUnspecifiedTooltips,
+            out Dictionary<int, string> tooltipByQuestId,
+            out string summary,
+            out string message)
+        {
+            bool decoded = TryDecodePacketOwnedQuestAlarmTitleTooltipPayload(
+                payload,
+                out clearRequested,
+                out clearUnspecifiedTooltips,
+                out KeyValuePair<int, string>[] tooltipEntries,
+                out summary,
+                out message);
+
+            tooltipByQuestId = new Dictionary<int, string>();
+            if (!decoded || tooltipEntries == null)
+            {
+                return decoded;
+            }
+
+            for (int i = 0; i < tooltipEntries.Length; i++)
+            {
+                KeyValuePair<int, string> entry = tooltipEntries[i];
+                if (entry.Key > 0)
+                {
+                    tooltipByQuestId[entry.Key] = entry.Value;
+                }
+            }
+
+            return decoded;
+        }
+
+        private static bool TryDecodePacketOwnedQuestAlarmTitleTooltipPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out bool clearUnspecifiedTooltips,
+            out KeyValuePair<int, string>[] tooltipEntries,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            clearUnspecifiedTooltips = false;
+            tooltipEntries = Array.Empty<KeyValuePair<int, string>>();
+            summary = string.Empty;
+            message = "Quest-alarm title-tooltip payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            byte[] normalizedPayload = payload;
+            if (TryUnwrapPacketOwnedPayloadForType(
+                    payload,
+                    LocalUtilityPacketInboxManager.QuestAlarmTitleTooltipPacketType,
+                    out byte[] unwrappedPayload))
+            {
+                normalizedPayload = unwrappedPayload;
+            }
+
+            if (TryDecodePacketOwnedQuestAlarmTitleTooltipBinaryPayload(
+                    normalizedPayload,
+                    out clearRequested,
+                    out clearUnspecifiedTooltips,
+                    out tooltipEntries,
+                    out summary,
+                    out message))
+            {
+                return clearRequested || tooltipEntries.Length > 0;
+            }
+
+            bool hasLengthPrefixedPayload = TryResolvePacketOwnedLengthPrefixedPayload(normalizedPayload, out byte[] lengthPrefixedPayload);
+            if (hasLengthPrefixedPayload
+                && TryDecodePacketOwnedQuestAlarmTitleTooltipBinaryPayload(
+                    lengthPrefixedPayload,
+                    out clearRequested,
+                    out clearUnspecifiedTooltips,
+                    out tooltipEntries,
+                    out summary,
+                    out message))
+            {
+                return clearRequested || tooltipEntries.Length > 0;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(normalizedPayload, out string decodedText)
+                && (!hasLengthPrefixedPayload
+                    || !TryDecodePacketOwnedStringPayload(lengthPrefixedPayload, out decodedText)))
+            {
+                message = "Quest-alarm title-tooltip payload must decode to a MapleString, UTF-8 text, or a JSON text body.";
+                return false;
+            }
+
+            if (TryDecodePacketOwnedQuestAlarmTitleTooltipJsonPayload(
+                    decodedText,
+                    out clearRequested,
+                    out clearUnspecifiedTooltips,
+                    out tooltipEntries,
+                    out summary,
+                    out message))
+            {
+                return clearRequested || tooltipEntries.Length > 0;
+            }
+
+            string normalizedText = decodedText.Trim();
+            if (string.Equals(normalizedText, "clear", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedText, "reset", StringComparison.OrdinalIgnoreCase))
+            {
+                clearRequested = true;
+                clearUnspecifiedTooltips = true;
+                summary = "Cleared packet-authored Quest Alarm title tooltips.";
+                message = summary;
+                return true;
+            }
+
+            List<KeyValuePair<int, string>> parsedEntries = new();
+            string[] lines = normalizedText.Split(
+                new[] { "\r\n", "\n" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (TryParsePacketOwnedQuestAlarmTooltipTextEntry(lines[i], out int questId, out string tooltipText))
+                {
+                    UpsertPacketOwnedQuestAlarmTooltipEntry(parsedEntries, questId, tooltipText);
+                }
+            }
+
+            if (parsedEntries.Count == 0)
+            {
+                message = "Quest-alarm title-tooltip payload did not contain any usable quest-tooltip rows.";
+                return false;
+            }
+
+            tooltipEntries = parsedEntries.ToArray();
+            summary = $"Applied packet-authored Quest Alarm title-tooltip payload with {tooltipEntries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
+            message = summary;
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedQuestAlarmTitleTooltipBinaryPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out bool clearUnspecifiedTooltips,
+            out KeyValuePair<int, string>[] tooltipEntries,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            clearUnspecifiedTooltips = false;
+            tooltipEntries = Array.Empty<KeyValuePair<int, string>>();
+            summary = string.Empty;
+            message = "Quest-alarm title-tooltip binary payload did not match the supported packet format.";
+            if (payload == null || payload.Length < sizeof(ushort) + sizeof(short))
+            {
+                return false;
+            }
+
+            if (TryDecodePacketOwnedQuestAlarmTooltipLegacyBinaryPayload(
+                    payload,
+                    out int legacyQuestId,
+                    out string legacyTooltipText))
+            {
+                tooltipEntries = new[] { new KeyValuePair<int, string>(legacyQuestId, legacyTooltipText) };
+                summary = $"Applied packet-authored Quest Alarm title-tooltip row for quest {legacyQuestId.ToString(CultureInfo.InvariantCulture)}.";
+                message = summary;
+                return true;
+            }
+
+            return TryDecodePacketOwnedQuestAlarmTooltipEnvelopeBinaryPayload(
+                payload,
+                out clearRequested,
+                out clearUnspecifiedTooltips,
+                out tooltipEntries,
+                out summary,
+                out message);
+        }
+
+        private static bool TryDecodePacketOwnedQuestAlarmTooltipLegacyBinaryPayload(
+            byte[] payload,
+            out int questId,
+            out string tooltipText)
+        {
+            questId = 0;
+            tooltipText = string.Empty;
+            if (payload == null || payload.Length < sizeof(ushort) + sizeof(short))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
+                questId = reader.ReadUInt16();
+                if (!TryReadPacketOwnedAsciiString(reader, out tooltipText))
+                {
+                    return false;
+                }
+
+                if (stream.Position != stream.Length || questId <= 0)
+                {
+                    return false;
+                }
+
+                return true;
+            }
+            catch
+            {
+                questId = 0;
+                tooltipText = string.Empty;
+                return false;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedQuestAlarmTooltipEnvelopeBinaryPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out bool clearUnspecifiedTooltips,
+            out KeyValuePair<int, string>[] tooltipEntries,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            clearUnspecifiedTooltips = false;
+            tooltipEntries = Array.Empty<KeyValuePair<int, string>>();
+            summary = string.Empty;
+            message = "Quest-alarm title-tooltip binary payload did not match the QTT envelope.";
+            if (payload == null || payload.Length < 7)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                if (reader.ReadByte() != (byte)'Q'
+                    || reader.ReadByte() != (byte)'T'
+                    || reader.ReadByte() != (byte)'T')
+                {
+                    return false;
+                }
+
+                byte version = reader.ReadByte();
+                if (version != 1)
+                {
+                    message = $"Quest-alarm title-tooltip binary payload has unsupported QTT version {version}.";
+                    return false;
+                }
+
+                byte flags = reader.ReadByte();
+                clearRequested = (flags & 0x1) != 0;
+                clearUnspecifiedTooltips = (flags & 0x2) != 0;
+                int count = reader.ReadUInt16();
+                if (count < 0 || count > 100)
+                {
+                    message = "Quest-alarm title-tooltip QTT payload row count is out of range.";
+                    return false;
+                }
+
+                List<KeyValuePair<int, string>> parsedEntries = new(Math.Min(5, count));
+                for (int i = 0; i < count; i++)
+                {
+                    int questId = reader.ReadUInt16();
+                    string tooltipText = ReadPacketOwnedMapleString(reader)?.Trim() ?? string.Empty;
+                    if (questId > 0)
+                    {
+                        UpsertPacketOwnedQuestAlarmTooltipEntry(parsedEntries, questId, tooltipText);
+                    }
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    message = "Quest-alarm title-tooltip QTT payload has trailing bytes.";
+                    return false;
+                }
+
+                tooltipEntries = parsedEntries.ToArray();
+                summary = clearRequested
+                    ? $"Applied packet-authored Quest Alarm title-tooltip QTT sync with {tooltipEntries.Length.ToString(CultureInfo.InvariantCulture)} row(s) and a clear request."
+                    : $"Applied packet-authored Quest Alarm title-tooltip QTT sync with {tooltipEntries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
+                message = summary;
+                return clearRequested || tooltipEntries.Length > 0;
+            }
+            catch (Exception ex)
+            {
+                message = $"Quest-alarm title-tooltip QTT payload decode failed: {ex.Message}";
+                clearRequested = false;
+                clearUnspecifiedTooltips = false;
+                tooltipEntries = Array.Empty<KeyValuePair<int, string>>();
+                summary = string.Empty;
+                return false;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedQuestAlarmTitleTooltipJsonPayload(
+            string payloadText,
+            out bool clearRequested,
+            out bool clearUnspecifiedTooltips,
+            out KeyValuePair<int, string>[] tooltipEntries,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            clearUnspecifiedTooltips = false;
+            tooltipEntries = Array.Empty<KeyValuePair<int, string>>();
+            summary = string.Empty;
+            message = "Quest-alarm title-tooltip JSON payload did not contain any usable quest-tooltip rows.";
+            if (string.IsNullOrWhiteSpace(payloadText))
+            {
+                return false;
+            }
+
+            string trimmed = payloadText.Trim();
+            if (!trimmed.StartsWith("{", StringComparison.Ordinal)
+                && !trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(trimmed);
+                JsonElement root = document.RootElement;
+                List<KeyValuePair<int, string>> parsedEntries = new();
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (TryGetJsonBoolean(root, "clear", out bool parsedClear))
+                    {
+                        clearRequested = parsedClear;
+                    }
+
+                    if (TryGetJsonBoolean(root, "replace", out bool parsedReplace))
+                    {
+                        clearUnspecifiedTooltips = parsedReplace;
+                    }
+                    else if (TryGetJsonBoolean(root, "clearUnspecified", out bool parsedClearUnspecified))
+                    {
+                        clearUnspecifiedTooltips = parsedClearUnspecified;
+                    }
+
+                    if (TryGetJsonString(root, "summary", out string parsedSummary))
+                    {
+                        summary = parsedSummary;
+                    }
+
+                    if (TryGetJsonArrayProperty(
+                            root,
+                            out JsonElement tooltipArray,
+                            "tooltips",
+                            "titleTooltips",
+                            "questTooltips",
+                            "rows",
+                            "entries")
+                        || TryGetJsonNestedArrayProperty(
+                            root,
+                            out tooltipArray,
+                            new[] { "questAlarm", "cUIQuestAlarm", "payload", "data", "result", "body" },
+                            new[] { "tooltips", "titleTooltips", "questTooltips", "rows", "entries" }))
+                    {
+                        AppendPacketOwnedQuestAlarmTooltipEntriesFromJsonArray(tooltipArray, parsedEntries);
+                    }
+
+                    if (TryGetJsonObjectProperty(
+                            root,
+                            out JsonElement tooltipObject,
+                            "tooltipByQuestId",
+                            "titleTooltipByQuestId",
+                            "tooltipsByQuestId",
+                            "questIdToTooltip")
+                        || TryGetJsonNestedObjectProperty(
+                            root,
+                            out tooltipObject,
+                            new[] { "questAlarm", "cUIQuestAlarm", "payload", "data", "result", "body" },
+                            new[] { "tooltipByQuestId", "titleTooltipByQuestId", "tooltipsByQuestId", "questIdToTooltip" }))
+                    {
+                        AppendPacketOwnedQuestAlarmTooltipEntriesFromJsonObject(tooltipObject, parsedEntries);
+                    }
+
+                    if (TryResolvePacketOwnedQuestAlarmTooltipEntryFromJsonObject(root, out int questId, out string tooltipText))
+                    {
+                        UpsertPacketOwnedQuestAlarmTooltipEntry(parsedEntries, questId, tooltipText);
+                    }
+                }
+                else if (root.ValueKind == JsonValueKind.Array)
+                {
+                    AppendPacketOwnedQuestAlarmTooltipEntriesFromJsonArray(root, parsedEntries);
+                }
+
+                tooltipEntries = parsedEntries.ToArray();
+                if (string.IsNullOrWhiteSpace(summary))
+                {
+                    summary = clearRequested
+                        ? "Cleared packet-authored Quest Alarm title tooltips."
+                        : tooltipEntries.Length > 0
+                            ? $"Applied packet-authored Quest Alarm JSON title-tooltip payload with {tooltipEntries.Length.ToString(CultureInfo.InvariantCulture)} row(s)."
+                            : string.Empty;
+                }
+
+                message = summary;
+                return clearRequested || tooltipEntries.Length > 0;
+            }
+            catch (JsonException ex)
+            {
+                message = $"Quest-alarm title-tooltip JSON payload could not be parsed: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryGetJsonNestedObjectProperty(
+            JsonElement element,
+            out JsonElement value,
+            string[] objectPropertyNames,
+            string[] nestedObjectPropertyNames)
+        {
+            value = default;
+            if (element.ValueKind != JsonValueKind.Object
+                || objectPropertyNames == null
+                || nestedObjectPropertyNames == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < objectPropertyNames.Length; i++)
+            {
+                if (!TryGetJsonObjectProperty(element, out JsonElement nestedObject, objectPropertyNames[i]))
+                {
+                    continue;
+                }
+
+                if (TryGetJsonObjectProperty(nestedObject, out value, nestedObjectPropertyNames))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void AppendPacketOwnedQuestAlarmTooltipEntriesFromJsonArray(
+            JsonElement array,
+            List<KeyValuePair<int, string>> destination)
+        {
+            if (destination == null || array.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            foreach (JsonElement item in array.EnumerateArray())
+            {
+                switch (item.ValueKind)
+                {
+                    case JsonValueKind.Object:
+                        if (TryResolvePacketOwnedQuestAlarmTooltipEntryFromJsonObject(item, out int questId, out string tooltipText))
+                        {
+                            UpsertPacketOwnedQuestAlarmTooltipEntry(destination, questId, tooltipText);
+                        }
+                        break;
+                    case JsonValueKind.String:
+                        if (TryParsePacketOwnedQuestAlarmTooltipTextEntry(item.GetString(), out int parsedQuestId, out string parsedTooltipText))
+                        {
+                            UpsertPacketOwnedQuestAlarmTooltipEntry(destination, parsedQuestId, parsedTooltipText);
+                        }
+                        break;
+                }
+            }
+        }
+
+        private static void AppendPacketOwnedQuestAlarmTooltipEntriesFromJsonObject(
+            JsonElement objectElement,
+            List<KeyValuePair<int, string>> destination)
+        {
+            if (destination == null || objectElement.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            foreach (JsonProperty property in objectElement.EnumerateObject())
+            {
+                string keyText = property.Name?.Trim();
+                if (!int.TryParse(keyText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId)
+                    || questId <= 0)
+                {
+                    continue;
+                }
+
+                string tooltipText = property.Value.ValueKind switch
+                {
+                    JsonValueKind.String => property.Value.GetString(),
+                    JsonValueKind.Null => string.Empty,
+                    JsonValueKind.Undefined => string.Empty,
+                    _ => property.Value.ToString()
+                };
+
+                UpsertPacketOwnedQuestAlarmTooltipEntry(destination, questId, tooltipText);
+            }
+        }
+
+        private static bool TryResolvePacketOwnedQuestAlarmTooltipEntryFromJsonObject(
+            JsonElement element,
+            out int questId,
+            out string tooltipText)
+        {
+            questId = 0;
+            tooltipText = string.Empty;
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (!TryGetJsonInt32Property(element, out questId, "questId", "questID", "id", "quest", "qid")
+                || questId <= 0)
+            {
+                return false;
+            }
+
+            if (!TryGetJsonStringProperty(
+                    element,
+                    out tooltipText,
+                    "tooltip",
+                    "titleTooltip",
+                    "text",
+                    "message",
+                    "line"))
+            {
+                tooltipText = string.Empty;
+            }
+
+            return true;
+        }
+
+        private static bool TryParsePacketOwnedQuestAlarmTooltipTextEntry(
+            string text,
+            out int questId,
+            out string tooltipText)
+        {
+            questId = 0;
+            tooltipText = string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string line = text.Trim();
+            int separatorIndex = line.IndexOf('|');
+            if (separatorIndex < 0)
+            {
+                separatorIndex = line.IndexOf('\t');
+            }
+
+            if (separatorIndex < 0)
+            {
+                separatorIndex = line.IndexOf(':');
+            }
+
+            if (separatorIndex < 0)
+            {
+                separatorIndex = line.IndexOf('=');
+            }
+
+            if (separatorIndex <= 0)
+            {
+                return false;
+            }
+
+            string questIdText = line[..separatorIndex].Trim();
+            if (!int.TryParse(questIdText, NumberStyles.Integer, CultureInfo.InvariantCulture, out questId)
+                || questId <= 0)
+            {
+                return false;
+            }
+
+            tooltipText = line[(separatorIndex + 1)..].Trim();
+            return true;
+        }
+
+        private static void UpsertPacketOwnedQuestAlarmTooltipEntry(
+            List<KeyValuePair<int, string>> entries,
+            int questId,
+            string tooltipText)
+        {
+            if (entries == null || questId <= 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (entries[i].Key == questId)
+                {
+                    entries[i] = new KeyValuePair<int, string>(questId, tooltipText ?? string.Empty);
+                    return;
+                }
+            }
+
+            entries.Add(new KeyValuePair<int, string>(questId, tooltipText ?? string.Empty));
         }
 
         private bool TryApplyPacketOwnedQuestAlarmRegistrationSyncPayload(byte[] payload, out string message)
@@ -6146,17 +6800,26 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedParcelDialogPayload(byte[] payload, out string message)
         {
+            PacketOwnedSocialUtilityDialogDispatcher dispatcher = GetPacketOwnedSocialUtilityDialogDispatcher();
             bool parcelWindowWasVisible = uiWindowManager?.GetWindow(MapSimulatorWindowNames.MemoMailbox)?.IsVisible == true;
-            bool applied = GetPacketOwnedSocialUtilityDialogDispatcher().TryApplyParcelPacket(payload, out message);
-            if (applied
-                && (GetPacketOwnedSocialUtilityDialogDispatcher().ShouldShowParcelOwnerAfterLastPacket || parcelWindowWasVisible))
+            bool applied = dispatcher.TryApplyParcelPacket(payload, out message);
+            if (!applied)
+            {
+                return false;
+            }
+
+            if (dispatcher.ShouldShowParcelOwnerAfterLastPacket)
             {
                 TryOpenFieldRestrictedWindow(
                     MapSimulatorWindowNames.MemoMailbox,
                     inheritDirectionModeOwner: true);
             }
+            else if (dispatcher.ShouldHideParcelOwnerAfterLastPacket && parcelWindowWasVisible)
+            {
+                uiWindowManager?.HideWindow(MapSimulatorWindowNames.MemoMailbox);
+            }
 
-            return applied;
+            return true;
         }
 
         private bool TryApplyPacketOwnedTrunkDialogPayload(byte[] payload, out string message)
@@ -6429,6 +7092,44 @@ namespace HaCreator.MapSimulator
             return fromExitPrompt
                 ? _messengerRuntime.ConfirmExitPrompt()
                 : _messengerRuntime.TryDeleteMessenger();
+        }
+
+        private bool TryMirrorMessengerNativeClaimClientRequest(out string message, bool queueOnly = false)
+        {
+            if (!_messengerRuntime.TryBuildClientChatClaimRequestPayload(
+                    out byte[] payload,
+                    out string targetCharacterName,
+                    out byte claimType,
+                    out string context,
+                    out int chatLineCount,
+                    out message))
+            {
+                return false;
+            }
+
+            if (!TryDispatchMessengerOfficialSessionRequest(
+                    118,
+                    payload,
+                    $"CWvsContext::SendClaimRequest targeted {targetCharacterName}",
+                    out string dispatchStatus,
+                    queueOnly))
+            {
+                message = dispatchStatus;
+                return false;
+            }
+
+            string queueStatus = queueOnly
+                ? $"Queued CWvsContext::SendClaimRequest claim type {claimType} context '{context}' with {chatLineCount} Messenger line(s)."
+                : $"Mirrored CWvsContext::SendClaimRequest claim type {claimType} context '{context}' with {chatLineCount} Messenger line(s).";
+            message = $"{queueStatus} {dispatchStatus}";
+            return true;
+        }
+
+        private string TryHandleMessengerClaimActionThroughClientSeam()
+        {
+            return TryMirrorMessengerNativeClaimClientRequest(out string mirroredMessage)
+                ? mirroredMessage
+                : _messengerRuntime.SubmitClaim();
         }
 
         private bool TryMirrorMessengerClaimClientRequest(string claimArguments, out string message, bool queueOnly = false)
@@ -7975,6 +8676,31 @@ namespace HaCreator.MapSimulator
             }
 
             HashSet<string> yieldedDescriptors = new(StringComparer.OrdinalIgnoreCase);
+            if (strictClientSoundFamily)
+            {
+                // Client evidence:
+                // - CUserLocal::OnPlayEventSound => play_field_sound(DecodeStr)
+                // - CUserLocal::OnPlayMinigameSound => play_minigame_sound(DecodeStr)
+                // Those helpers always build the Sound/* path through StringPool template/prefix
+                // (0xA23 and 0x8C4), so strict client payloads must stay on that family.
+                if (TryBuildPacketOwnedClientSoundTemplateDescriptor(normalized, defaultImageName, out string templateDescriptor)
+                    && yieldedDescriptors.Add(templateDescriptor))
+                {
+                    yield return templateDescriptor;
+                }
+
+                if (!string.IsNullOrWhiteSpace(defaultImageName))
+                {
+                    string defaultDescriptor = $"{NormalizePacketOwnedSoundImageName(defaultImageName)}/{normalized}";
+                    if (yieldedDescriptors.Add(defaultDescriptor))
+                    {
+                        yield return defaultDescriptor;
+                    }
+                }
+
+                yield break;
+            }
+
             if (TrySplitPacketOwnedClientSoundDescriptor(normalized, out string imageName, out string propertyPath))
             {
                 string directDescriptor = $"{imageName}/{propertyPath}";
@@ -7984,13 +8710,6 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (strictClientSoundFamily
-                && TryBuildPacketOwnedClientSoundTemplateDescriptor(normalized, defaultImageName, out string templateDescriptor)
-                && yieldedDescriptors.Add(templateDescriptor))
-            {
-                yield return templateDescriptor;
-            }
-
             if (!string.IsNullOrWhiteSpace(defaultImageName))
             {
                 string defaultDescriptor = $"{NormalizePacketOwnedSoundImageName(defaultImageName)}/{normalized}";
@@ -7998,11 +8717,6 @@ namespace HaCreator.MapSimulator
                 {
                     yield return defaultDescriptor;
                 }
-            }
-
-            if (strictClientSoundFamily)
-            {
-                yield break;
             }
 
             string[] fallbackImages =
@@ -8279,12 +8993,6 @@ namespace HaCreator.MapSimulator
                 && !string.IsNullOrWhiteSpace(nameProperty.Value))
             {
                 return nameProperty.Value.Trim();
-            }
-
-            if (propertyContainer["Name"] is WzStringProperty clientNameProperty
-                && !string.IsNullOrWhiteSpace(clientNameProperty.Value))
-            {
-                return clientNameProperty.Value.Trim();
             }
 
             return normalizedFallback;
@@ -9397,6 +10105,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 _packetOwnedLocalUtilityContext.ResetRadioCreateLayerForCharacter(runtimeCharacterId);
+                PersistPacketOwnedRadioCreateLayerContextState(runtimeCharacterId);
                 ResetPacketOwnedRadioCreateLayerSessionState();
             }
 
@@ -15772,6 +16481,12 @@ namespace HaCreator.MapSimulator
                         out clearRequested,
                         out entries,
                         out hasOwnerState,
+                        out ownerState)
+                    && !TryDecodePacketOwnedRankingPageCompactBinaryWiderRowLengthVariants(
+                        payload,
+                        out clearRequested,
+                        out entries,
+                        out hasOwnerState,
                         out ownerState))
                 {
                     entries = Array.Empty<RankingEntrySnapshot>();
@@ -15788,6 +16503,49 @@ namespace HaCreator.MapSimulator
                 : $"Applied packet-authored compact binary CUIRanking page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
             message = summary;
             return clearRequested || entries.Length > 0 || hasOwnerState;
+        }
+
+        private static bool TryDecodePacketOwnedRankingPageCompactBinaryWiderRowLengthVariants(
+            byte[] payload,
+            out bool clearRequested,
+            out RankingEntrySnapshot[] entries,
+            out bool hasOwnerState,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState)
+        {
+            clearRequested = false;
+            entries = Array.Empty<RankingEntrySnapshot>();
+            hasOwnerState = false;
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            int[] rowCountWidths = { sizeof(byte), sizeof(ushort), sizeof(int) };
+            int[] rowByteCountWidths = { sizeof(ushort), sizeof(int) };
+            foreach (bool flagsBeforeRows in new[] { true, false })
+            {
+                foreach (int rowCountWidth in rowCountWidths)
+                {
+                    foreach (int rowByteCountWidth in rowByteCountWidths)
+                    {
+                        if (TryDecodePacketOwnedRankingPageCompactBinaryVariant(
+                                payload,
+                                flagsBeforeRows,
+                                rowCountWidth,
+                                rowByteCountWidth,
+                                out clearRequested,
+                                out entries,
+                                out hasOwnerState,
+                                out ownerState))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static bool TryDecodePacketOwnedRankingPageCompactBinaryVariant(
@@ -16722,6 +17480,14 @@ namespace HaCreator.MapSimulator
                         out entries,
                         out hasAlarmLines,
                         out replaceAlarmLines,
+                        out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryWiderRowLengthVariants(
+                        payload,
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
                         out alarmLines))
                 {
                     entries = Array.Empty<EventEntrySnapshot>();
@@ -16738,6 +17504,59 @@ namespace HaCreator.MapSimulator
                 : $"Applied packet-authored compact binary event-calendar payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s).";
             message = summary;
             return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactBinaryWiderRowLengthVariants(
+            byte[] payload,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines)
+        {
+            clearRequested = false;
+            replaceExistingEntries = true;
+            entries = Array.Empty<EventEntrySnapshot>();
+            hasAlarmLines = false;
+            replaceAlarmLines = true;
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            int[] rowCountWidths = { sizeof(byte), sizeof(ushort), sizeof(int) };
+            int[] rowByteCountWidths = { sizeof(ushort), sizeof(int) };
+            foreach (bool flagsBeforeCount in new[] { true, false })
+            {
+                foreach (bool usePackedDate in new[] { false, true })
+                {
+                    foreach (int rowCountWidth in rowCountWidths)
+                    {
+                        foreach (int rowByteCountWidth in rowByteCountWidths)
+                        {
+                            if (TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
+                                    payload,
+                                    flagsBeforeCount,
+                                    rowCountWidth,
+                                    usePackedDate,
+                                    rowByteCountWidth,
+                                    out clearRequested,
+                                    out replaceExistingEntries,
+                                    out entries,
+                                    out hasAlarmLines,
+                                    out replaceAlarmLines,
+                                    out alarmLines))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static bool TryDecodePacketOwnedEventCalendarCompactBinaryVariant(

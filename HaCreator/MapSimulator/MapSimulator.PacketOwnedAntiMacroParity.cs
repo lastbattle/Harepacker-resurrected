@@ -678,6 +678,16 @@ namespace HaCreator.MapSimulator
                 && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
         }
 
+        internal static bool ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+            bool wasAwaitingResult,
+            bool authoritativeRoundTrip,
+            bool hasPendingAuthoritativeSubmitTransport)
+        {
+            return wasAwaitingResult
+                && !authoritativeRoundTrip
+                && hasPendingAuthoritativeSubmitTransport;
+        }
+
         private bool HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(string resultSource)
         {
             if (_lastPacketOwnedAntiMacroSubmitTransportPath != PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
@@ -1229,9 +1239,10 @@ namespace HaCreator.MapSimulator
                         wasAwaitingResult,
                         resolvedSource,
                         hasAuthoritativeResultEvidence);
-                    bool shouldKeepAwaitingAuthoritativeResult = wasAwaitingResult
-                        && !authoritativeRoundTrip
-                        && HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport();
+                    bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+                        wasAwaitingResult,
+                        authoritativeRoundTrip,
+                        HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport());
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
                         ApplyPacketOwnedAntiMacroCloseResult(
                             mode,
@@ -1255,14 +1266,16 @@ namespace HaCreator.MapSimulator
                         wasAwaitingResult,
                         resolvedSource,
                         hasAuthoritativeResultEvidence);
+                    bool shouldKeepAwaitingAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+                        wasAwaitingResult,
+                        authoritativeRoundTrip,
+                        HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport());
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
                         ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName),
                         payload,
                         resolvedSource,
                         authoritativeRoundTrip,
-                        awaitingTerminalResult: IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
-                            && wasAwaitingResult
-                            && !authoritativeRoundTrip);
+                        awaitingTerminalResult: shouldKeepAwaitingAuthoritativeResult);
                     return true;
                 }
 
@@ -1272,14 +1285,23 @@ namespace HaCreator.MapSimulator
                     wasAwaitingResult,
                     resolvedSource,
                     hasNoticeAuthoritativeResultEvidence);
+                bool shouldKeepAwaitingNoticeAuthoritativeResult = ShouldKeepPacketOwnedAntiMacroAwaitingAuthoritativeResult(
+                    wasAwaitingResult,
+                    noticeAuthoritativeRoundTrip,
+                    HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport());
+                if (IsPacketOwnedAntiMacroSubmitTerminalMode(mode)
+                    && wasAwaitingResult
+                    && !shouldKeepAwaitingNoticeAuthoritativeResult)
+                {
+                    _packetOwnedAntiMacroAwaitingResult = false;
+                }
+
                 message = AppendPacketOwnedAntiMacroResultSourceSummary(
                     ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType),
                     payload,
                     resolvedSource,
                     noticeAuthoritativeRoundTrip,
-                    awaitingTerminalResult: IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
-                        && wasAwaitingResult
-                        && !noticeAuthoritativeRoundTrip);
+                    awaitingTerminalResult: shouldKeepAwaitingNoticeAuthoritativeResult);
                 return true;
             }
             catch (Exception ex)

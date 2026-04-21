@@ -2278,6 +2278,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int RepeatSkillSiegeId = 35111004;
         private static readonly HashSet<int> ClientShowSkillEffectMoveActionOwnedBLeftSkillIds = new()
         {
+            // `CUserLocal::DoActiveSkill_SummonMonster@0x93eff0` forwards `(m_nMoveAction & 1)`
+            // into `CUser::ShowSkillEffect` for mine-family owner casts.
+            MINE_SKILL_ID,
             1121001,
             1221001,
             1321001
@@ -2291,7 +2294,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             // fixed to `0` (right-facing) instead of deriving from move-action low-bit.
             3111002,
             3211002,
-            33101008,
             33111003,
             35111001,
             35111002,
@@ -2344,9 +2346,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             35001001,
             35101009
         };
-        private static readonly HashSet<int> ClientDoActiveSkillPrepareRangedWeaponValidationSkillIds = new()
+        private static readonly HashSet<int> ClientDoActiveSkillPrepareWeaponValidationSkillIds = new()
         {
-            // Recovered explicit prepare-family weapon/bullet rows from
+            // Recovered explicit prepare-family weapon validation rows from
             // `CUserLocal::DoActiveSkill_Prepare@0x941710`.
             3121004,
             3221001,
@@ -2354,9 +2356,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             33121009,
             35001001,
             35101009,
+            4341002,
             4341003,
             5201002,
-            14111006
+            5101004,
+            14111006,
+            15101003,
+            5221004,
+            13111002
+        };
+        private static readonly HashSet<int> ClientDoActiveSkillPrepareAmmoValidationSkillIds = new()
+        {
+            // Recovered prepare-family rows that emit ammo restriction strings
+            // (`0x0B4F`, `0x0B50`, `0x0B49`) when no compatible ammo is found.
+            3121004,
+            3221001,
+            33121009,
+            35001001,
+            35101009,
+            5221004,
+            13111002
         };
         private static readonly HashSet<int> ClientDoActiveSkillPrepareSilentCooldownSkillIds = new()
         {
@@ -2364,9 +2383,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             // cool-end map (silent reject) for this recovered subset before send.
             4341003,
             5201002,
-            14111006,
+            5101004,
             35001001,
             35101009
+        };
+        private static readonly HashSet<int> ClientDoActiveSkillPrepareRushCooldownSkillIds = new()
+        {
+            // `CUserLocal::DoActiveSkill_Prepare@0x941710` also applies a rush-state
+            // cool-end reject (`m_rush.nSkillID/tCoolTimeEnd`) on this subset.
+            4341002,
+            5101004,
+            15101003
         };
         private static readonly HashSet<int> ClientDoActiveSkillSummonFamilySkillIds = new()
         {
@@ -2908,6 +2935,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (ShouldRejectClientDoActivePrepareFamilyRushCooldownStateWithoutMessage(skill, currentTime))
+            {
+                return true;
+            }
+
             // `CUserLocal::DoActiveSkill_Prepare@0x941710` rejects 35101009 when
             // prerequisite skill 35001001 is not learned.
             return skill.SkillId == 35101009
@@ -2925,35 +2957,43 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (ResolveDoActiveSkillExecutionLane(skill) != ClientDoActiveSkillExecutionLane.Prepare
                 || skill?.SkillId <= 0
-                || !ClientDoActiveSkillPrepareRangedWeaponValidationSkillIds.Contains(skill.SkillId))
+                || !ClientDoActiveSkillPrepareWeaponValidationSkillIds.Contains(skill.SkillId))
             {
                 return null;
             }
 
+            int skillId = skill.SkillId;
             int weaponCode = GetEquippedWeaponCode();
-            if ((skill.SkillId == WildHunterSwallowSkillId || skill.SkillId == 33101005) && weaponCode <= 0)
+            int subWeaponCode = GetEquippedSubWeaponCode();
+
+            if (skillId == 33101005 && weaponCode <= 0)
             {
                 return MapleStoryStringPool.GetOrFallback(
                     ClientPrepareNoWeaponStringPoolId,
                     "A weapon is required to use this skill.");
             }
 
-            if (!IsValidShootingWeaponForSkill(skill.SkillId, weaponCode))
+            if (!IsClientPrepareSkillWeaponValid(skillId, weaponCode, subWeaponCode))
             {
                 return MapleStoryStringPool.GetOrFallback(
                     ClientPrepareIncorrectWeaponStringPoolId,
                     "This skill cannot be used with the current weapon.");
             }
 
+            if (!ClientDoActiveSkillPrepareAmmoValidationSkillIds.Contains(skillId))
+            {
+                return null;
+            }
+
             if (HasShootAmmoBypassTemporaryStat()
-                || skill.SkillId is 35001001 or 35101009)
+                || skillId is 35001001 or 35101009)
             {
                 return null;
             }
 
             SkillLevelData levelData = skill.GetLevel(GetSkillLevel(skill.SkillId));
             int requiredAmmoCount = ResolveRequiredShootAmmoCount(levelData);
-            if (HasCompatibleShootAmmo(skill.SkillId, levelData, weaponCode, requiredAmmoCount))
+            if (HasCompatibleShootAmmo(skillId, levelData, weaponCode, requiredAmmoCount))
             {
                 return null;
             }
@@ -2995,6 +3035,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             return GetCooldownRemaining(skill.SkillId, currentTime) > 0;
         }
 
+        private bool ShouldRejectClientDoActivePrepareFamilyRushCooldownStateWithoutMessage(SkillData skill, int currentTime)
+        {
+            if (skill?.SkillId <= 0
+                || !ClientDoActiveSkillPrepareRushCooldownSkillIds.Contains(skill.SkillId))
+            {
+                return false;
+            }
+
+            return GetCooldownRemaining(skill.SkillId, currentTime) > 0;
+        }
+
         private static bool IsClientPrepareSkillBlockedByJobTier(int skillId)
         {
             if (skillId <= 0)
@@ -3017,6 +3068,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             // mechanic pair before prepare admission; landing recovery is excluded.
             return _rocketBoosterState != null
                    && _rocketBoosterState.LandingAttackTime == int.MinValue;
+        }
+
+        private static bool IsClientPrepareSkillWeaponValid(int skillId, int weaponCode, int subWeaponCode)
+        {
+            return skillId switch
+            {
+                4341002 or 4341003 => weaponCode == 33 && subWeaponCode == 34,
+                5101004 or 14111006 or 15101003 => weaponCode is 39 or 48,
+                5201002 => weaponCode == 49,
+                _ => IsValidShootingWeaponForSkill(skillId, weaponCode)
+            };
         }
 
         /// <summary>
@@ -9722,10 +9784,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static int ResolvePreparedSkillHudGaugeDuration(SkillData skill, int prepareDurationMs, int explicitGaugeDurationMs)
         {
+            bool resolvedIsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(
+                skill?.SkillId ?? 0,
+                (skill?.IsKeydownSkill ?? false) || UsesReleaseTriggeredKeydownExecution(skill));
             return PreparedSkillHudRules.ResolvePreparedGaugeDuration(
                 skill?.SkillId ?? 0,
                 explicitGaugeDurationMs,
-                prepareDurationMs);
+                prepareDurationMs,
+                resolvedIsKeydownSkill);
         }
 
         private void ReleasePreparedSkill(int currentTime)
@@ -10742,48 +10808,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsConstrainedType40BoundJumpActionName(string actionName)
         {
-            // Keep non-explicit type-40 ownership on the rechecked WZ-authored
-            // bound-jump movement profile set.
-            return ActionTextContains(actionName, "doublejump")
-                   || ActionTextContains(actionName, "flash jump")
-                   || ActionTextContains(actionName, "archerdoublejump")
-                   || ActionTextContains(actionName, "icedoublejump")
-                   || ActionTextContains(actionName, "spiritjump")
-                   || ActionTextContains(actionName, "swiftphantom")
-                   || ActionTextContains(actionName, "demonjump")
-                   || ActionTextContains(actionName, "demonfly");
+            return BoundJumpParityProfile.IsConstrainedType40BoundJumpActionName(actionName);
         }
 
         private static bool IsConstrainedType40BoundJumpSkillId(int skillId)
         {
-            // Keep constrained type-40 ownership on the rechecked non-direct
-            // bound-jump profiles even when action rows are missing at runtime.
-            return IsConstrainedType40IceDoubleJumpSkillId(skillId)
-                   || skillId == 13101004
-                   || skillId is 3101003
-                       or 3201003
-                   || skillId is 23001002
-                       or 24001002
-                       or 30010183
-                       or 30010184
-                       or 30010186
-                       or 5081003
-                       or 51001003;
-        }
-
-        private static bool IsConstrainedType40IceDoubleJumpSkillId(int skillId)
-        {
-            // WZ-authoring keeps this family on type-40 `iceDoubleJump` rows across
-            // beginner/cygnus/aran/resistance starter variants.
-            return skillId is 1098
-                or 11098
-                or 10001098
-                or 20001098
-                or 20011098
-                or 20021098
-                or 30001098
-                or 30011098
-                or 50001098;
+            return BoundJumpParityProfile.IsConstrainedType40BoundJumpSkillId(skillId);
         }
 
         private static bool HasBoundJumpMovementProfile(
@@ -11168,6 +11198,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 isUserFlying,
                 townPortalFieldLimitBlocked,
                 townPortalPortalOverlapBlocked);
+        }
+
+        internal static bool IsClientPrepareSkillWeaponValidForTesting(int skillId, int weaponCode, int subWeaponCode = 0)
+        {
+            return IsClientPrepareSkillWeaponValid(skillId, weaponCode, subWeaponCode);
+        }
+
+        internal static bool UsesClientPrepareAmmoRestrictionMessageForTesting(int skillId)
+        {
+            return ClientDoActiveSkillPrepareAmmoValidationSkillIds.Contains(skillId);
+        }
+
+        internal static bool UsesClientPrepareSilentCooldownRejectForTesting(int skillId)
+        {
+            return ClientDoActiveSkillPrepareSilentCooldownSkillIds.Contains(skillId);
+        }
+
+        internal static bool UsesClientPrepareRushCooldownRejectForTesting(int skillId)
+        {
+            return ClientDoActiveSkillPrepareRushCooldownSkillIds.Contains(skillId);
         }
 
         internal static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
@@ -17227,12 +17277,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 currentTime);
             int repeatLayerObjectId = ResolveBulletAfterimageRepeatLayerObjectId(owner);
             int parentRepeatLayerObjectId = ResolveBulletAfterimageParentRepeatLayerObjectId(owner, previousLayer);
+            int sourceLayerObjectId = ResolveBulletAfterimageSourceLayerObjectId(owner, previousLayer);
             int repeatAnimationEndTime = ResolveBulletAfterimageRepeatAnimationEndTime(currentTime, updateInterval);
             owner.AfterimageLayers.Add(new ProjectileAfterimageLayer
             {
                 RepeatLayerObjectId = repeatLayerObjectId,
                 ParentRepeatLayerObjectId = parentRepeatLayerObjectId,
-                SourceLayerObjectId = owner.MainLayerObjectId,
+                SourceLayerObjectId = sourceLayerObjectId,
                 Frame = frameSnapshot,
                 Position = owner.CurrentPosition,
                 WorldBounds = worldBounds,
@@ -17280,6 +17331,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             // CAfterImageBullet::Update clones from the active bullet layer each repeat tick.
             // Keep parent identity anchored to the main layer when available.
+            if (owner?.MainLayerObjectId > 0)
+            {
+                return owner.MainLayerObjectId;
+            }
+
+            return previousLayer?.RepeatLayerObjectId > 0
+                ? previousLayer.RepeatLayerObjectId
+                : 0;
+        }
+
+        internal static int ResolveBulletAfterimageSourceLayerObjectId(
+            ActiveBulletAnimationOwner owner,
+            ProjectileAfterimageLayer previousLayer)
+        {
             if (owner?.MainLayerObjectId > 0)
             {
                 return owner.MainLayerObjectId;
@@ -18332,7 +18397,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (UsesClientFirstTargetHitAnimationSplit(skill.SkillId))
             {
-                int? splitIndex = TryResolveClientFirstTargetHitAnimationSplitIndex(targetOrder);
+                int? splitIndex = TryResolveClientFirstTargetHitAnimationSplitIndex(
+                    skill.SkillId,
+                    targetOrder);
                 if (!splitIndex.HasValue)
                 {
                     return null;
@@ -18378,19 +18445,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == 15101003;
         }
 
-        internal static int? TryResolveClientFirstTargetHitAnimationSplitIndex(int targetOrder)
+        internal static int? TryResolveClientFirstTargetHitAnimationSplitIndex(int skillId, int targetOrder)
         {
             // `CreateFirst` pre-fills `m_absHitAni[v3]` with `asHitUOL[v3 != 0]` for
             // `v3 < nMobCount`, and `operator()(nOrder)` then reads raw `nOrder`.
             // Keep client-owned raw-order sign/bounds explicit instead of normalizing
             // negative or far out-of-range orders into the first/last authored branch.
+            int populatedTargetCount = ResolveClientFirstTargetHitAnimationPopulatedTargetCount(skillId);
             return targetOrder switch
             {
                 < 0 => null,
                 0 => 0,
-                < 15 => 1,
+                _ when targetOrder < populatedTargetCount => 1,
                 _ => null
             };
+        }
+
+        private static int ResolveClientFirstTargetHitAnimationPopulatedTargetCount(int skillId)
+        {
+            // `CSkill_HitAni::CSkill_HitAni` dispatches `5101003` through
+            // `CreateFirst(pSkill, 2)` (literal push), while other recovered
+            // `CreateFirst` routes pass the live `nMobCount` (`m_absHitAni` has 15 slots).
+            return skillId == 5101003 ? 2 : 15;
         }
 
         internal static bool UsesClientMultipleLayerHitAnimation(int skillId)
@@ -19181,10 +19257,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool TryResolveSwallowAbsorbRequest(int skillId, int targetMobId, bool success, int currentTime)
         {
+            bool swallowFamilyOutcome = ShouldBufferWildHunterSwallowAbsorbOutcome(skillId);
             if (_swallowState == null)
             {
-                bool swallowFamilyOutcome = ShouldBufferWildHunterSwallowAbsorbOutcome(skillId);
-                if (ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(hasSwallowState: false, swallowFamilyOutcome))
+                if (ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
+                        hasSwallowState: false,
+                        hasPendingAbsorbOutcome: false,
+                        swallowFamilyOutcome,
+                        matchesPendingAbsorbRequest: false))
                 {
                     _swallowAbsorbOutcomeBuffer.Store(
                         skillId,
@@ -19197,14 +19277,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (!_swallowState.PendingAbsorbOutcome)
+            bool hasPendingAbsorbOutcome = _swallowState.PendingAbsorbOutcome;
+            bool matchesPendingAbsorbRequest = hasPendingAbsorbOutcome
+                                               && DoesSwallowSkillRequestMatchState(skillId)
+                                               && _swallowState.TargetMobId == targetMobId;
+            if (!matchesPendingAbsorbRequest)
             {
-                return false;
-            }
+                if (ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
+                        hasSwallowState: true,
+                        hasPendingAbsorbOutcome,
+                        swallowFamilyOutcome,
+                        matchesPendingAbsorbRequest: false))
+                {
+                    _swallowAbsorbOutcomeBuffer.Store(
+                        skillId,
+                        targetMobId,
+                        success,
+                        currentTime,
+                        WildHunterSwallowParity.ResolveBufferedAbsorbOutcomeLifetimeMs());
+                }
 
-            if (!DoesSwallowSkillRequestMatchState(skillId)
-                || _swallowState.TargetMobId != targetMobId)
-            {
                 return false;
             }
 
@@ -25979,6 +26071,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(label, DamageReductionBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, BoosterBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MasteryBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, MapleWarriorBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, StanceBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MaxHpBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MaxMpBuffLabel, StringComparison.OrdinalIgnoreCase);
@@ -27373,6 +27466,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             return matchesWeapon;
         }
 
+        internal static bool SkillMasteryAppliesToWeaponForTesting(
+            int skillId,
+            int weaponCode,
+            bool hasChargeBuff = true,
+            bool sourceMustBeActive = false,
+            string name = null,
+            string description = null,
+            string descriptionHints = null)
+        {
+            SkillData skill = new()
+            {
+                SkillId = skillId,
+                Name = name,
+                Description = description,
+                DescriptionHints = descriptionHints
+            };
+
+            return SkillMasteryAppliesToWeapon(skill, weaponCode, hasChargeBuff, sourceMustBeActive);
+        }
+
         private static bool ContainsMasteryTokenPhrase(string text, string token)
         {
             if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(token))
@@ -27403,6 +27516,25 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skillId switch
             {
+                // Legacy and Cygnus mastery books use broad or localized naming in
+                // `String/Skill.img` ("Weapon Mastery", etc.). Keep an ID-backed fallback
+                // keyed to their authored weapon families from `skill/*/common/mastery`.
+                1100000 => weaponCode is 30 or 31 or 40 or 41,
+                1200000 => weaponCode is 30 or 32 or 40 or 42,
+                1300000 => weaponCode is 43 or 44,
+                11100000 => weaponCode is 30 or 40,
+                12100007 => weaponCode is 37 or 38,
+                13100000 or 3100000 or 3120005 => weaponCode == 45,
+                14100000 or 4100000 => weaponCode == 47,
+                15100001 or 5100001 => weaponCode == 48,
+                2100006 or 2200006 or 2300006 or 22120002 or 22170001 or 2310008 => weaponCode is 37 or 38,
+                21100000 or 21120001 => weaponCode == 44,
+                3200000 or 3220004 => weaponCode == 46,
+                4200000 => weaponCode == 33,
+                4300000 => weaponCode == 34,
+                // Battle Mage `Weapon/Barricade Mastery` remains one-handed-only.
+                31100004 or 31120008 => weaponCode is 31 or 32,
+                1220010 => weaponCode is 30 or 32 or 40 or 42,
                 // Luminous mastery books are localized in some data sets (`27100005` name/h are
                 // Korean-only in the active v95 export), so keep a stable shining-rod fallback.
                 27100005 or 27120007 => weaponCode == 56,
@@ -28379,9 +28511,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
             bool hasSwallowState,
-            bool swallowFamilyOutcome)
+            bool hasPendingAbsorbOutcome,
+            bool swallowFamilyOutcome,
+            bool matchesPendingAbsorbRequest)
         {
-            return !hasSwallowState && swallowFamilyOutcome;
+            return swallowFamilyOutcome
+                   && (!hasSwallowState
+                       || (hasPendingAbsorbOutcome && !matchesPendingAbsorbRequest));
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)
@@ -31338,6 +31474,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         private int GetEquippedWeaponCode()
         {
             int itemId = _player.Build?.GetWeapon()?.ItemId ?? 0;
+            return GetWeaponCode(itemId);
+        }
+
+        private int GetEquippedSubWeaponCode()
+        {
+            int itemId = _player.Build?.GetSubWeapon()?.ItemId ?? 0;
             return GetWeaponCode(itemId);
         }
 

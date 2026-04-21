@@ -406,7 +406,8 @@ namespace HaCreator.MapSimulator.Pools
         int HpDelta,
         int? SkillId,
         byte[] RawTrailingPayload = null,
-        string HitString = null);
+        string HitString = null,
+        int? HitSecondaryInt32Value = null);
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
     public readonly record struct RemoteUserReceiveHpPacket(int CharacterId, int CurrentHp, int MaxHp);
@@ -576,7 +577,11 @@ namespace HaCreator.MapSimulator.Pools
         RemoteUserRelationshipRecord NewYearCardRecord,
         int CompletedSetItemId,
         bool AvatarLookModified = false);
-    public readonly record struct RemoteUserHelperPacket(int CharacterId, MinimapUI.HelperMarkerType? MarkerType, bool ShowDirectionOverlay);
+    public readonly record struct RemoteUserHelperPacket(
+        int CharacterId,
+        MinimapUI.HelperMarkerType? MarkerType,
+        bool ShowDirectionOverlay,
+        bool AppliesTrackedUserState = true);
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
     {
@@ -1373,10 +1378,11 @@ namespace HaCreator.MapSimulator.Pools
 
                 byte[] rawTrailingPayload = null;
                 string hitString = null;
+                int? hitSecondaryInt32Value = null;
                 if (reader.RemainingLength != 0)
                 {
                     rawTrailingPayload = reader.ReadRemainingBytes();
-                    hitString = TryParseOptionalHitString(rawTrailingPayload);
+                    hitString = TryParseOptionalHitString(rawTrailingPayload, out hitSecondaryInt32Value);
                 }
 
                 if (characterId <= 0)
@@ -1403,7 +1409,8 @@ namespace HaCreator.MapSimulator.Pools
                     hpDelta,
                     skillId,
                     rawTrailingPayload,
-                    hitString);
+                    hitString,
+                    hitSecondaryInt32Value);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1413,36 +1420,23 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private static string TryParseOptionalHitString(ReadOnlySpan<byte> payload)
+        private static string TryParseOptionalHitString(ReadOnlySpan<byte> payload, out int? secondaryInt32Value)
         {
+            secondaryInt32Value = null;
             if (payload.Length == 0)
             {
                 return null;
             }
 
-            if (TryDecodeMapleStringPayload(payload, out string strictMapleString))
+            if (TryParseMapleOrPlainStringPayloadWithOptionalBranchPrefix(
+                    payload,
+                    allowSecondaryInt32: true,
+                    maxBranchPrefixBytes: 2,
+                    out string parsedString,
+                    out int? parsedSecondaryInt32Value))
             {
-                return strictMapleString;
-            }
-
-            // CUserRemote::OnHit packets can include one-byte branch markers before the
-            // optional string tail. Preserve the authored hit node path when present.
-            if (payload.Length > sizeof(ushort) + 1
-                && IsOptionalStringBranchMarker(payload[0])
-                && TryDecodeMapleStringPayload(payload[1..], out string prefixedMapleString))
-            {
-                return prefixedMapleString;
-            }
-
-            string plainText = TryDecodePrintableText(payload);
-            if (!string.IsNullOrWhiteSpace(plainText))
-            {
-                return plainText;
-            }
-
-            if (payload.Length > 1 && IsOptionalStringBranchMarker(payload[0]))
-            {
-                return TryDecodePrintableText(payload[1..]);
+                secondaryInt32Value = parsedSecondaryInt32Value;
+                return parsedString;
             }
 
             return null;
@@ -1719,21 +1713,10 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (TryParseMapleOrPlainStringPayload(
+            if (TryParseMapleOrPlainStringPayloadWithOptionalBranchPrefix(
                     payload,
                     allowSecondaryInt32,
-                    out stringValue,
-                    out secondaryInt32Value))
-            {
-                return true;
-            }
-
-            // CUser::OnEffect branch families can carry a single-byte prefix before DecodeStr.
-            if (payload.Length > 1
-                && IsOptionalStringBranchMarker(payload[0])
-                && TryParseMapleOrPlainStringPayload(
-                    payload[1..],
-                    allowSecondaryInt32,
+                    maxBranchPrefixBytes: 2,
                     out stringValue,
                     out secondaryInt32Value))
             {
@@ -1774,6 +1757,44 @@ namespace HaCreator.MapSimulator.Pools
             return false;
         }
 
+        private static bool TryParseMapleOrPlainStringPayloadWithOptionalBranchPrefix(
+            ReadOnlySpan<byte> payload,
+            bool allowSecondaryInt32,
+            int maxBranchPrefixBytes,
+            out string stringValue,
+            out int? secondaryInt32Value)
+        {
+            stringValue = null;
+            secondaryInt32Value = null;
+
+            if (TryParseMapleOrPlainStringPayload(
+                    payload,
+                    allowSecondaryInt32,
+                    out stringValue,
+                    out secondaryInt32Value))
+            {
+                return true;
+            }
+
+            int consumedBranchBytes = 0;
+            while (consumedBranchBytes < maxBranchPrefixBytes
+                   && payload.Length > consumedBranchBytes + 1
+                   && IsOptionalStringBranchMarker(payload[consumedBranchBytes]))
+            {
+                consumedBranchBytes++;
+                if (TryParseMapleOrPlainStringPayload(
+                        payload[consumedBranchBytes..],
+                        allowSecondaryInt32,
+                        out stringValue,
+                        out secondaryInt32Value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static bool TryParseMapleStringPayloadWithOptionalSecondaryInt32(
             ReadOnlySpan<byte> payload,
             bool allowSecondaryInt32,
@@ -1792,18 +1813,17 @@ namespace HaCreator.MapSimulator.Pools
                 var payloadReader = new PacketReader(payload);
                 string parsed = payloadReader.ReadString16();
                 ReadOnlySpan<byte> remaining = payload[payloadReader.Offset..];
-                if (remaining.Length == 0 || IsAllZeroBytes(remaining))
+                if (TryParseTrailingSecondaryInt32Payload(
+                        remaining,
+                        allowSecondaryInt32,
+                        out secondaryInt32Value))
                 {
                     stringValue = string.IsNullOrWhiteSpace(parsed) ? null : parsed.Trim();
-                    return true;
-                }
+                    if (secondaryInt32Value.HasValue)
+                    {
+                        secondaryInt32Value = payloadReader.ReadInt32();
+                    }
 
-                if (allowSecondaryInt32
-                    && remaining.Length >= sizeof(int)
-                    && (remaining.Length == sizeof(int) || IsAllZeroBytes(remaining[sizeof(int)..])))
-                {
-                    secondaryInt32Value = payloadReader.ReadInt32();
-                    stringValue = string.IsNullOrWhiteSpace(parsed) ? null : parsed.Trim();
                     return true;
                 }
             }
@@ -1833,7 +1853,11 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!allowSecondaryInt32 || payload.Length <= sizeof(int))
             {
-                return false;
+                return TryParseNullTerminatedPlainTextPayloadWithOptionalSecondaryInt32(
+                    payload,
+                    allowSecondaryInt32,
+                    out stringValue,
+                    out secondaryInt32Value);
             }
 
             ReadOnlySpan<byte> textPayload = payload[..^sizeof(int)];
@@ -1846,6 +1870,62 @@ namespace HaCreator.MapSimulator.Pools
             secondaryInt32Value = BinaryPrimitives.ReadInt32LittleEndian(payload[^sizeof(int)..]);
             stringValue = textWithTrailingInt;
             return true;
+        }
+
+        private static bool TryParseNullTerminatedPlainTextPayloadWithOptionalSecondaryInt32(
+            ReadOnlySpan<byte> payload,
+            bool allowSecondaryInt32,
+            out string stringValue,
+            out int? secondaryInt32Value)
+        {
+            stringValue = null;
+            secondaryInt32Value = null;
+
+            int terminatorIndex = payload.IndexOf((byte)0);
+            if (terminatorIndex <= 0)
+            {
+                return false;
+            }
+
+            string plainText = TryDecodePrintableText(payload[..terminatorIndex]);
+            if (string.IsNullOrWhiteSpace(plainText))
+            {
+                return false;
+            }
+
+            ReadOnlySpan<byte> trailing = payload[(terminatorIndex + 1)..];
+            if (!TryParseTrailingSecondaryInt32Payload(
+                    trailing,
+                    allowSecondaryInt32,
+                    out secondaryInt32Value))
+            {
+                return false;
+            }
+
+            stringValue = plainText;
+            return true;
+        }
+
+        private static bool TryParseTrailingSecondaryInt32Payload(
+            ReadOnlySpan<byte> payload,
+            bool allowSecondaryInt32,
+            out int? secondaryInt32Value)
+        {
+            secondaryInt32Value = null;
+            if (payload.Length == 0 || IsAllZeroBytes(payload))
+            {
+                return true;
+            }
+
+            if (allowSecondaryInt32
+                && payload.Length >= sizeof(int)
+                && (payload.Length == sizeof(int) || IsAllZeroBytes(payload[sizeof(int)..])))
+            {
+                secondaryInt32Value = BinaryPrimitives.ReadInt32LittleEndian(payload);
+                return true;
+            }
+
+            return false;
         }
 
         public static bool TryParseUpgradeTombEffect(ReadOnlySpan<byte> payload, out RemoteUserUpgradeTombPacket packet, out string error)
@@ -2925,7 +3005,7 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                packet = new RemoteUserHelperPacket(characterId, markerType, payload[5] != 0);
+                packet = new RemoteUserHelperPacket(characterId, markerType, payload[5] != 0, AppliesTrackedUserState: true);
                 return true;
             }
 
@@ -3261,22 +3341,33 @@ namespace HaCreator.MapSimulator.Pools
             string markerName = nameLength == 0
                 ? "clear"
                 : Encoding.UTF8.GetString(payload.Slice(nameStartIndex, nameLength));
-            if (!TryResolveHelperMarkerName(markerName, out MinimapUI.HelperMarkerType? markerType)
-                && !TryResolveDefaultHelperAncillaryMarkerFallback(markerName, out markerType))
+            bool showDirectionOverlay = payload[^1] != 0;
+            if (TryResolveHelperMarkerName(markerName, out MinimapUI.HelperMarkerType? markerType))
             {
-                error = $"Remote user helper marker '{markerName}' is not recognized.";
-                return false;
+                packet = new RemoteUserHelperPacket(
+                    characterId,
+                    markerType,
+                    showDirectionOverlay,
+                    AppliesTrackedUserState: true);
+                return true;
             }
 
-            packet = new RemoteUserHelperPacket(characterId, markerType, payload[^1] != 0);
-            return true;
+            if (TryResolveDefaultHelperAncillaryMarkerFallback(markerName))
+            {
+                packet = new RemoteUserHelperPacket(
+                    characterId,
+                    MarkerType: null,
+                    showDirectionOverlay,
+                    AppliesTrackedUserState: false);
+                return true;
+            }
+
+            error = $"Remote user helper marker '{markerName}' is not recognized.";
+            return false;
         }
 
-        private static bool TryResolveDefaultHelperAncillaryMarkerFallback(
-            string markerName,
-            out MinimapUI.HelperMarkerType? markerType)
+        private static bool TryResolveDefaultHelperAncillaryMarkerFallback(string markerName)
         {
-            markerType = null;
             if (string.IsNullOrWhiteSpace(markerName))
             {
                 return false;
@@ -3301,10 +3392,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             // CUIMiniMap helper packets can still carry DefaultHelper family names
-            // outside tracked-user icons. Accept those payloads to preserve
-            // packet-authored helper ownership while avoiding a synthetic
-            // tracked-user marker promotion for non-user helper families.
-            markerType = null;
+            // outside tracked-user icons (npc/portal/arrow families). Accept those
+            // payloads while keeping tracked-user marker ownership unchanged.
             return true;
         }
 
@@ -3990,6 +4079,20 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int nearestMaskBaseChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    nearestMaskBaseChargeElement,
                     out chargeSkillId))
             {
                 return true;

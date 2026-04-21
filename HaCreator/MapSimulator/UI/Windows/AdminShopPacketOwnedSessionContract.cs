@@ -69,6 +69,13 @@ namespace HaCreator.MapSimulator.UI
         public bool HasPendingWishlistRegister => PendingWishlistRegisterItemId > 0
             || !string.IsNullOrWhiteSpace(PendingWishlistRegisterTitle)
             || !string.IsNullOrWhiteSpace(PendingWishlistRegisterCategoryLabel);
+        public int PendingWishlistSearchRequestId { get; private set; } = -1;
+        public string PendingWishlistSearchQuery { get; private set; } = string.Empty;
+        public string PendingWishlistSearchCategoryKey { get; private set; } = "all";
+        public int PendingWishlistSearchPriceRangeIndex { get; private set; } = -1;
+        public bool HasPendingWishlistSearch => PendingWishlistSearchRequestId >= 0
+            || !string.IsNullOrWhiteSpace(PendingWishlistSearchQuery)
+            || PendingWishlistSearchPriceRangeIndex >= 0;
         public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
             = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
 
@@ -102,6 +109,7 @@ namespace HaCreator.MapSimulator.UI
             LastOwnerState = ownerState ?? string.Empty;
             LastCloseOpenedWishlist = false;
             ClearPendingWishlistRegister();
+            ClearPendingWishlistSearch();
             TouchWishlistSearchStateToken();
         }
 
@@ -160,6 +168,7 @@ namespace HaCreator.MapSimulator.UI
             LastResultHadResultCode = false;
             LastNotice = noticeText ?? string.Empty;
             ClearPendingWishlistRegister();
+            ClearPendingWishlistSearch();
             if (!string.IsNullOrWhiteSpace(outboundSummary))
             {
                 LastOutboundSummary = outboundSummary;
@@ -188,6 +197,7 @@ namespace HaCreator.MapSimulator.UI
             LastCloseOpenedWishlist = openedWishlistBeforeClose;
             CloseCount++;
             ClearPendingWishlistRegister();
+            ClearPendingWishlistSearch();
             TouchWishlistSearchStateToken();
         }
 
@@ -218,6 +228,7 @@ namespace HaCreator.MapSimulator.UI
                 : $"Packet 367 was blocked by the visible {blockingOwner} unique-modeless owner.";
             LastCloseOpenedWishlist = false;
             ClearPendingWishlistRegister();
+            ClearPendingWishlistSearch();
             OpenCount++;
             BlockedByOwnerCount++;
             TouchWishlistSearchStateToken();
@@ -250,7 +261,8 @@ namespace HaCreator.MapSimulator.UI
             bool hasResultCode = true,
             string trailingPayloadSignature = null,
             bool keepSessionActive = false,
-            AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden)
+            AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden,
+            bool keepPendingRequestState = false)
         {
             ResultCount++;
             LastSubtype = subtype;
@@ -260,7 +272,7 @@ namespace HaCreator.MapSimulator.UI
             ResultTrailingPayloadSignature = trailingByteCount > 0
                 ? NormalizePayloadSignature(trailingPayloadSignature)
                 : "none";
-            IsWaitingForResult = false;
+            IsWaitingForResult = keepPendingRequestState && keepSessionActive;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
             IsActive = keepSessionActive && (IsActive || OpenCount > 0 || DecodedItemCount > 0 || NpcTemplateId > 0);
@@ -268,7 +280,12 @@ namespace HaCreator.MapSimulator.UI
                 ? preservedVisibilityState
                 : AdminShopPacketOwnedOwnerVisibilityState.Hidden;
             LastOwnerState = ownerState ?? string.Empty;
-            ClearPendingWishlistRegister();
+            if (!keepPendingRequestState)
+            {
+                ClearPendingWishlistRegister();
+                ClearPendingWishlistSearch();
+            }
+
             TouchWishlistSearchStateToken();
         }
 
@@ -344,6 +361,45 @@ namespace HaCreator.MapSimulator.UI
             PendingWishlistRegisterItemId = 0;
             PendingWishlistRegisterTitle = string.Empty;
             PendingWishlistRegisterCategoryLabel = string.Empty;
+            if (hadPending)
+            {
+                TouchWishlistSearchStateToken();
+            }
+        }
+
+        public void RecordPendingWishlistSearch(
+            int localSearchRequestId,
+            string query,
+            string categoryKey,
+            int priceRangeIndex)
+        {
+            int normalizedRequestId = localSearchRequestId < 0 ? -1 : localSearchRequestId;
+            string normalizedQuery = query ?? string.Empty;
+            string normalizedCategoryKey = string.IsNullOrWhiteSpace(categoryKey)
+                ? "all"
+                : categoryKey.Trim();
+            int normalizedPriceRangeIndex = Math.Max(-1, priceRangeIndex);
+            bool changed = PendingWishlistSearchRequestId != normalizedRequestId
+                || !string.Equals(PendingWishlistSearchQuery, normalizedQuery, StringComparison.Ordinal)
+                || !string.Equals(PendingWishlistSearchCategoryKey, normalizedCategoryKey, StringComparison.Ordinal)
+                || PendingWishlistSearchPriceRangeIndex != normalizedPriceRangeIndex;
+            PendingWishlistSearchRequestId = normalizedRequestId;
+            PendingWishlistSearchQuery = normalizedQuery;
+            PendingWishlistSearchCategoryKey = normalizedCategoryKey;
+            PendingWishlistSearchPriceRangeIndex = normalizedPriceRangeIndex;
+            if (changed)
+            {
+                TouchWishlistSearchStateToken();
+            }
+        }
+
+        public void ClearPendingWishlistSearch()
+        {
+            bool hadPending = HasPendingWishlistSearch;
+            PendingWishlistSearchRequestId = -1;
+            PendingWishlistSearchQuery = string.Empty;
+            PendingWishlistSearchCategoryKey = "all";
+            PendingWishlistSearchPriceRangeIndex = -1;
             if (hadPending)
             {
                 TouchWishlistSearchStateToken();
@@ -445,6 +501,10 @@ namespace HaCreator.MapSimulator.UI
                 PendingWishlistRegisterItemId,
                 PendingWishlistRegisterTitle ?? string.Empty,
                 PendingWishlistRegisterCategoryLabel ?? string.Empty,
+                PendingWishlistSearchRequestId,
+                PendingWishlistSearchQuery ?? string.Empty,
+                PendingWishlistSearchCategoryKey ?? "all",
+                PendingWishlistSearchPriceRangeIndex,
                 ((int)OwnerVisibilityState).ToString(),
                 LastNotice ?? string.Empty,
                 LastOutboundSummary ?? string.Empty,
@@ -486,7 +546,10 @@ namespace HaCreator.MapSimulator.UI
             string pendingText = HasPendingWishlistRegister
                 ? $", pending {DescribePendingWishlistRegister()}"
                 : string.Empty;
-            return $"token {WishlistSearchStateToken}, {packetText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}";
+            string pendingSearchText = HasPendingWishlistSearch
+                ? $", staged {DescribePendingWishlistSearch()}"
+                : string.Empty;
+            return $"token {WishlistSearchStateToken}, {packetText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}{pendingSearchText}";
         }
 
         public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
@@ -539,6 +602,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 lines.Add($"pending {DescribePendingWishlistRegister()}");
             }
+            else if (HasPendingWishlistSearch && lines.Count < 3)
+            {
+                lines.Add($"staged {DescribePendingWishlistSearch()}");
+            }
 
             return lines;
         }
@@ -573,6 +640,9 @@ namespace HaCreator.MapSimulator.UI
             string pendingWishlistText = HasPendingWishlistRegister
                 ? $", pending {DescribePendingWishlistRegister()}"
                 : string.Empty;
+            string pendingWishlistSearchText = HasPendingWishlistSearch
+                ? $", staged {DescribePendingWishlistSearch()}"
+                : string.Empty;
             string closeText = CloseCount > 0
                 ? $", close={CloseCount}{(LastCloseOpenedWishlist ? " via wishlist prompt" : string.Empty)}"
                 : string.Empty;
@@ -588,7 +658,7 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             string inboundSourceText = DescribeInboundSourceSummary();
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}{pendingWishlistSearchText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
         }
 
         private string DescribeLastResultState()
@@ -638,6 +708,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 return HasPendingWishlistRegister
                     ? $"awaiting packet 366 subtype 4 for {DescribePendingWishlistRegister()}"
+                    : HasPendingWishlistSearch
+                        ? $"awaiting packet 366 subtype 4 for {DescribePendingWishlistSearch()}"
                     : "awaiting packet 366 subtype 4";
             }
 
@@ -649,6 +721,7 @@ namespace HaCreator.MapSimulator.UI
                     1 => "trade request submitted",
                     2 => "close requested",
                     3 => "wishlist register submitted",
+                    4 => "wishlist search submitted",
                     _ => "service idle"
                 };
             }
@@ -714,6 +787,23 @@ namespace HaCreator.MapSimulator.UI
                 ? string.Empty
                 : $" in {PendingWishlistRegisterCategoryLabel}";
             return $"wishlist register {itemText}{titleText}{categoryText}";
+        }
+
+        private string DescribePendingWishlistSearch()
+        {
+            string requestText = PendingWishlistSearchRequestId >= 0
+                ? $"search#{PendingWishlistSearchRequestId}"
+                : "search";
+            string queryText = string.IsNullOrWhiteSpace(PendingWishlistSearchQuery)
+                ? "query <none>"
+                : $"query \"{PendingWishlistSearchQuery}\"";
+            string categoryText = string.IsNullOrWhiteSpace(PendingWishlistSearchCategoryKey)
+                ? "category all"
+                : $"category {PendingWishlistSearchCategoryKey}";
+            string priceText = PendingWishlistSearchPriceRangeIndex >= 0
+                ? $"price-band {PendingWishlistSearchPriceRangeIndex}"
+                : "price-band any";
+            return $"{requestText}, {queryText}, {categoryText}, {priceText}";
         }
 
         private void TouchWishlistSearchStateToken()

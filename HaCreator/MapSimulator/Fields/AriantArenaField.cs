@@ -806,7 +806,8 @@ namespace HaCreator.MapSimulator.Fields
                 PreparedSkillHudRules.ResolvePreparedGaugeDuration(
                     packet.SkillId,
                     packet.GaugeDurationMs,
-                    packet.DurationMs),
+                    packet.DurationMs,
+                    resolvedIsKeydownSkill),
                 Math.Max(0, packet.MaxHoldDurationMs),
                 PreparedSkillHudRules.ResolveTextVariant(packet.SkillId),
                 packet.ShowText && hudProfile.ShowText,

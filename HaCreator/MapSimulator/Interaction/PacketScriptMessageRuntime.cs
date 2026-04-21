@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.UI;
 using MapleLib.PacketLib;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
@@ -13,6 +14,9 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class PacketScriptMessageRuntime
     {
         private const short OutboundScriptAnswerOpcode = 65;
+        private static readonly object NpcStringImageLock = new();
+        private static readonly Dictionary<int, string> NpcNameByIdWzFallbackCache = new();
+        private static WzImage _npcStringImage;
         private string _statusMessage = "Packet-owned script-message idle.";
         private PacketScriptPromptContext _activePromptContext;
 
@@ -1366,16 +1370,17 @@ namespace HaCreator.MapSimulator.Interaction
         private static PacketScriptSpeaker CreateSpeakerFromNpc(NpcItem npc, int speakerTypeId, int templateId)
         {
             int npcId = int.TryParse(npc.NpcInstance?.NpcInfo?.ID, out int parsedNpcId) ? parsedNpcId : 0;
+            int authoritativeNpcId = npcId > 0 ? npcId : Math.Max(0, templateId);
             string displayName = npc.NpcInstance?.NpcInfo?.StringName;
-            if (string.IsNullOrWhiteSpace(displayName) && npcId > 0)
+            if (string.IsNullOrWhiteSpace(displayName) && authoritativeNpcId > 0)
             {
-                displayName = ResolveNpcNameFromCache(npcId);
+                displayName = ResolveNpcNameFromCache(authoritativeNpcId);
             }
 
             return new PacketScriptSpeaker(
                 speakerTypeId,
-                templateId > 0 ? templateId : npcId,
-                npcId,
+                templateId > 0 ? templateId : authoritativeNpcId,
+                authoritativeNpcId,
                 string.IsNullOrWhiteSpace(displayName) ? "NPC" : displayName);
         }
 
@@ -1388,7 +1393,41 @@ namespace HaCreator.MapSimulator.Interaction
                 return info?.Item1;
             }
 
+            string wzName = ResolveNpcNameFromStringWz(npcId);
+            if (!string.IsNullOrWhiteSpace(wzName))
+            {
+                return wzName;
+            }
+
             return null;
+        }
+
+        private static string ResolveNpcNameFromStringWz(int npcId)
+        {
+            if (npcId <= 0)
+            {
+                return null;
+            }
+
+            lock (NpcStringImageLock)
+            {
+                if (NpcNameByIdWzFallbackCache.TryGetValue(npcId, out string cachedName))
+                {
+                    return string.IsNullOrWhiteSpace(cachedName) ? null : cachedName;
+                }
+
+                _npcStringImage ??= global::HaCreator.Program.FindImage("String", "Npc.img");
+                if (_npcStringImage == null)
+                {
+                    return null;
+                }
+
+                _npcStringImage.ParseImage();
+                string lookupKey = npcId.ToString();
+                string resolvedName = (_npcStringImage[lookupKey]?["name"] as WzStringProperty)?.Value?.Trim();
+                NpcNameByIdWzFallbackCache[npcId] = resolvedName ?? string.Empty;
+                return string.IsNullOrWhiteSpace(resolvedName) ? null : resolvedName;
+            }
         }
 
         private static string BuildAvatarChoiceLabel(int itemId, int index)

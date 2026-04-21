@@ -1747,6 +1747,20 @@ namespace HaCreator.MapSimulator.Character
             "chargeBlow"
         };
 
+        private static readonly HashSet<string> ClientInitializedFallbackOnlyActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Mounted Character/00002000 helper rows are still loader-owned fallback
+            // inputs for these client-init raw actions even when they are not treated
+            // as attack-identity actions by the runtime state machine.
+            "fake",
+            "flashBang",
+            "timeleap",
+            "owlDead",
+            "homing",
+            "recovery",
+            "backstep"
+        };
+
         private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)
         {
             "alert2",
@@ -3066,6 +3080,71 @@ namespace HaCreator.MapSimulator.Character
             return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
         }
 
+        public static float ResolveFrameAlphaForPlayback(
+            SkillAnimation playbackAnimation,
+            SkillFrame frame,
+            int frameElapsedMs,
+            int actionElapsedMs)
+        {
+            SkillFrame alphaFrame = frame;
+            int alphaFrameElapsedMs = frameElapsedMs;
+            if (ShouldClampLoopedPlaybackAlphaEnvelope(playbackAnimation, actionElapsedMs)
+                && TryGetPlaybackFrameAtTime(
+                    playbackAnimation,
+                    ResolvePlaybackTotalDurationMs(playbackAnimation) - 1,
+                    out SkillFrame clampedFrame,
+                    out int clampedFrameElapsedMs))
+            {
+                alphaFrame = clampedFrame;
+                alphaFrameElapsedMs = clampedFrameElapsedMs;
+            }
+
+            return ResolveFrameAlpha(alphaFrame, alphaFrameElapsedMs);
+        }
+
+        private static bool ShouldClampLoopedPlaybackAlphaEnvelope(
+            SkillAnimation playbackAnimation,
+            int actionElapsedMs)
+        {
+            if (playbackAnimation?.Loop != true
+                || playbackAnimation.Frames == null
+                || playbackAnimation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            int totalDurationMs = ResolvePlaybackTotalDurationMs(playbackAnimation);
+            return totalDurationMs > 0
+                   && actionElapsedMs >= totalDurationMs
+                   && HasAuthoredFrameAlphaEnvelope(playbackAnimation);
+        }
+
+        private static bool HasAuthoredFrameAlphaEnvelope(SkillAnimation playbackAnimation)
+        {
+            if (playbackAnimation?.Frames == null)
+            {
+                return false;
+            }
+
+            foreach (SkillFrame frame in playbackAnimation.Frames)
+            {
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                if (frame.HasAlphaStart
+                    || frame.HasAlphaEnd
+                    || frame.AlphaStart != 255
+                    || frame.AlphaEnd != 255)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static int ResolvePlaybackTotalDurationMs(SkillAnimation animation)
         {
             if (animation?.Frames == null || animation.Frames.Count == 0)
@@ -3171,6 +3250,13 @@ namespace HaCreator.MapSimulator.Character
                    && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
                    && !string.Equals(rawActionName, actionName, StringComparison.OrdinalIgnoreCase)
                    && IsAttackAction(rawActionName);
+        }
+
+        internal static bool ShouldSynthesizeClientInitializedFallbackAction(string actionName)
+        {
+            return IsAttackAction(actionName)
+                   || (!string.IsNullOrWhiteSpace(actionName)
+                       && ClientInitializedFallbackOnlyActionNames.Contains(actionName));
         }
 
         public static bool ShouldUseAttackIdentityForObservation(string observedPlayerActionName, PlayerState state)

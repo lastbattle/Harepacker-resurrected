@@ -6068,7 +6068,12 @@ namespace HaCreator.MapSimulator.Character
             int horizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(animation);
             int anchorX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
             int anchorY = screenY + clientOffset.Y;
-            Color frameTint = ShadowPartnerTint * ResolveShadowPartnerFrameAlpha(frame, frameElapsedMs);
+            int actionElapsedMs = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
+            Color frameTint = ShadowPartnerTint * ResolveShadowPartnerFrameAlpha(
+                animation,
+                frame,
+                frameElapsedMs,
+                actionElapsedMs);
             if (ShadowPartnerClientActionResolver.TryResolveFrameDrawTransform(
                     frame,
                     anchorX,
@@ -7477,10 +7482,12 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            bool sourceIdentityMetadataMissing = sourcePartsObjectId <= 0
-                || lastInsertCanvasSourcePartsObjectId <= 0
-                || sourceSignature == 0
+            bool sourcePartsIdentityMetadataMissing = sourcePartsObjectId <= 0
+                || lastInsertCanvasSourcePartsObjectId <= 0;
+            bool sourceSignatureMetadataMissing = sourceSignature == 0
                 || lastInsertedSourceSignature == 0;
+            bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
+                && sourceSignatureMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;
@@ -7957,9 +7964,17 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
-        private static float ResolveShadowPartnerFrameAlpha(SkillFrame frame, int frameElapsedMs)
+        private static float ResolveShadowPartnerFrameAlpha(
+            SkillAnimation animation,
+            SkillFrame frame,
+            int frameElapsedMs,
+            int actionElapsedMs)
         {
-            return ShadowPartnerClientActionResolver.ResolveFrameAlpha(frame, frameElapsedMs);
+            return ShadowPartnerClientActionResolver.ResolveFrameAlphaForPlayback(
+                animation,
+                frame,
+                frameElapsedMs,
+                actionElapsedMs);
         }
 
         private int ResolveShadowPartnerHorizontalOffsetPx(SkillAnimation currentAnimation)

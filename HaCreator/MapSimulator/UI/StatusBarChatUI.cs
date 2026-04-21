@@ -442,6 +442,25 @@ namespace HaCreator.MapSimulator.UI
                 || pressedWhisperPickerComboToggle;
         }
 
+        internal static bool ShouldConsumeWhisperPickerDropdownChromePointerEvent(
+            bool dropdownHovered,
+            bool hasHoveredCandidate,
+            bool hasHoveredButton,
+            bool promptHovered,
+            bool comboHovered,
+            bool comboToggleHovered)
+        {
+            // Client combo/select ownership keeps pointer interaction inside the open
+            // dropdown chrome; blank in-window clicks are owner-internal and should
+            // not fall through to unrelated HUD buttons.
+            return dropdownHovered
+                && !hasHoveredCandidate
+                && !hasHoveredButton
+                && !promptHovered
+                && !comboHovered
+                && !comboToggleHovered;
+        }
+
         internal static int ResolveWhisperPickerClientComboSelectIndex(int firstVisibleIndex, int visibleRowIndex)
         {
             // Client CCtrlComboBoxSelect::OnMouseButton resolves select row index
@@ -2529,6 +2548,13 @@ namespace HaCreator.MapSimulator.UI
                 || comboHovered
                 || comboToggleHovered
                 || dropdownHovered;
+            bool consumeDropdownChromePointer = ShouldConsumeWhisperPickerDropdownChromePointerEvent(
+                dropdownHovered,
+                hasHoveredCandidate: hoveredPickerRegion != null,
+                hasHoveredButton: hoveredButtonRegion != null,
+                promptHovered,
+                comboHovered,
+                comboToggleHovered);
 
             if (dropdownHovered)
             {
@@ -2623,12 +2649,17 @@ namespace HaCreator.MapSimulator.UI
                 {
                     WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 }
+                else if (consumeDropdownChromePointer)
+                {
+                    WhisperTargetPickerModalComboFocusRequested?.Invoke();
+                }
 
                 return hoveredRegion != null
                     || hoveredPickerRegion != null
                     || hoveredButtonRegion != null
                     || promptHovered
-                    || comboHovered;
+                    || comboHovered
+                    || dropdownHovered;
             }
 
             if (!isRelease)
@@ -2691,6 +2722,13 @@ namespace HaCreator.MapSimulator.UI
                 {
                     WhisperTargetPickerCandidateRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
                 }
+                return true;
+            }
+
+            if (consumeDropdownChromePointer)
+            {
+                ResetWhisperPickerPointerCaptureState();
+                WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 return true;
             }
 

@@ -436,7 +436,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
+            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}; learnedTutorByBuild={DescribeLearnedTutorMappingsByBuild()}; pendingTutorInference={DescribePendingTutorInferenceMappings()}; tutorInferenceConflicts={DescribeTutorInferenceConflicts()}. {LastStatus}";
         }
 
         public string DescribePacketMappings()
@@ -475,6 +475,14 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 return DescribePendingTutorInferenceMappingsNoLock();
+            }
+        }
+
+        public string DescribeLearnedTutorMappingsByBuild()
+        {
+            lock (_sync)
+            {
+                return DescribeLearnedTutorMappingsByBuildNoLock();
             }
         }
 
@@ -615,6 +623,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 removed = _packetMap.Remove(opcode);
                 _learnedPacketMap.Remove(opcode);
+                RemoveLearnedTutorMappingByBuildNoLock(opcode);
                 _pendingTutorInferenceMap.Remove(opcode);
                 _tutorInferenceConflictMap.Remove(opcode);
             }
@@ -632,6 +641,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _packetMap.Clear();
                 _learnedPacketMap.Clear();
+                _learnedTutorPacketMapByBuild.Clear();
                 _pendingTutorInferenceMap.Clear();
                 _tutorInferenceConflictMap.Clear();
                 foreach (KeyValuePair<ushort, int> entry in DefaultPacketMap)
@@ -718,6 +728,19 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                    if (TryResolveBuildScopedLearnedTutorPacketTypeNoLock(
+                            opcode,
+                            source,
+                            inferencePayload,
+                            out packetType,
+                            out string buildScopedReason))
+                    {
+                        _packetMap[opcode] = packetType;
+                        string learnedEvidence = $"auto:{buildScopedReason}; {OfficialRemoteOwnerEvidence}";
+                        RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        LastStatus = $"Restored remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from build-scoped tutor evidence ({buildScopedReason}); {OfficialRemoteOwnerEvidence}";
+                    }
+                    else
                     if (trustV95LocalOwnerTable
                         && TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(opcode, out packetType, out string knownOwnerReason))
                     {
@@ -1116,10 +1139,76 @@ namespace HaCreator.MapSimulator.Managers
             if (_learnedPacketMap.TryGetValue(opcode, out LearnedOpcodeEntry existing))
             {
                 existing.Update(packetType, evidence, source, payload);
+                RememberLearnedTutorOpcodeByBuildNoLock(opcode, packetType, evidence, isManual, source, payload);
                 return;
             }
 
             _learnedPacketMap[opcode] = new LearnedOpcodeEntry(packetType, evidence, isManual, source, payload);
+            RememberLearnedTutorOpcodeByBuildNoLock(opcode, packetType, evidence, isManual, source, payload);
+        }
+
+        private void RememberLearnedTutorOpcodeByBuildNoLock(
+            ushort opcode,
+            int packetType,
+            string evidence,
+            bool isManual,
+            string source,
+            byte[] payload)
+        {
+            if (isManual
+                || (packetType != (int)Pools.RemoteUserPacketType.UserTutorHire
+                    && packetType != (int)Pools.RemoteUserPacketType.UserTutorMessage)
+                || !TryResolveOfficialSessionBuildTag(source, out string buildTag))
+            {
+                return;
+            }
+
+            if (!_learnedTutorPacketMapByBuild.TryGetValue(buildTag, out Dictionary<ushort, LearnedOpcodeEntry> learnedMap))
+            {
+                learnedMap = new Dictionary<ushort, LearnedOpcodeEntry>();
+                _learnedTutorPacketMapByBuild[buildTag] = learnedMap;
+            }
+
+            if (learnedMap.TryGetValue(opcode, out LearnedOpcodeEntry existing))
+            {
+                existing.Update(packetType, evidence, source, payload);
+                return;
+            }
+
+            learnedMap[opcode] = new LearnedOpcodeEntry(packetType, evidence, isManual: false, source, payload);
+        }
+
+        private bool TryResolveBuildScopedLearnedTutorPacketTypeNoLock(
+            ushort opcode,
+            string source,
+            byte[] payload,
+            out int packetType,
+            out string reason)
+        {
+            packetType = 0;
+            reason = string.Empty;
+            if (!TryResolveOfficialSessionBuildTag(source, out string buildTag)
+                || !_learnedTutorPacketMapByBuild.TryGetValue(buildTag, out Dictionary<ushort, LearnedOpcodeEntry> learnedMap)
+                || !learnedMap.TryGetValue(opcode, out LearnedOpcodeEntry learnedEntry))
+            {
+                return false;
+            }
+
+            if (learnedEntry.PacketType != (int)Pools.RemoteUserPacketType.UserTutorHire
+                && learnedEntry.PacketType != (int)Pools.RemoteUserPacketType.UserTutorMessage)
+            {
+                return false;
+            }
+
+            if (!TryValidateKnownTutorOwnerPayloadNoLock(opcode, payload, learnedEntry.PacketType, out string payloadReason))
+            {
+                reason = $"build {buildTag} cached tutor owner payload mismatch ({payloadReason})";
+                return false;
+            }
+
+            packetType = learnedEntry.PacketType;
+            reason = $"build {buildTag} learned proof ({payloadReason}; cachedProof={learnedEntry.ResolveOfficialSessionBuildProofCount(buildTag)})";
+            return true;
         }
 
         private static bool IsOfficialSessionSource(string source)
@@ -1392,8 +1481,33 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            _learnedTutorPacketMapByBuild.Clear();
             _pendingTutorInferenceMap.Clear();
             _tutorInferenceConflictMap.Clear();
+        }
+
+        private void RemoveLearnedTutorMappingByBuildNoLock(ushort opcode)
+        {
+            if (_learnedTutorPacketMapByBuild.Count == 0)
+            {
+                return;
+            }
+
+            string[] buildTags = _learnedTutorPacketMapByBuild.Keys.ToArray();
+            for (int i = 0; i < buildTags.Length; i++)
+            {
+                string buildTag = buildTags[i];
+                if (!_learnedTutorPacketMapByBuild.TryGetValue(buildTag, out Dictionary<ushort, LearnedOpcodeEntry> learnedMap))
+                {
+                    continue;
+                }
+
+                learnedMap.Remove(opcode);
+                if (learnedMap.Count == 0)
+                {
+                    _learnedTutorPacketMapByBuild.Remove(buildTag);
+                }
+            }
         }
 
         private string DescribePendingTutorInferenceMappingsNoLock()
@@ -1423,6 +1537,33 @@ namespace HaCreator.MapSimulator.Managers
                 _tutorInferenceConflictMap
                     .OrderBy(entry => entry.Key)
                     .Select(entry => $"{entry.Key} ({entry.Value})"));
+        }
+
+        private string DescribeLearnedTutorMappingsByBuildNoLock()
+        {
+            if (_learnedTutorPacketMapByBuild.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                ", ",
+                _learnedTutorPacketMapByBuild
+                    .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(entry =>
+                    {
+                        string buildTag = entry.Key;
+                        string mappings = string.Join(
+                            "|",
+                            entry.Value
+                                .OrderBy(mapEntry => mapEntry.Key)
+                                .Select(mapEntry =>
+                                {
+                                    LearnedOpcodeEntry learnedEntry = mapEntry.Value;
+                                    return $"{mapEntry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(learnedEntry.PacketType)}(count={learnedEntry.Count};proof={learnedEntry.ResolveOfficialSessionBuildProofCount(buildTag)})";
+                                }));
+                        return $"{buildTag}[{mappings}]";
+                    }));
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

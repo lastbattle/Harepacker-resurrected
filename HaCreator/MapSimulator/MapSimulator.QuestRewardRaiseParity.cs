@@ -725,9 +725,9 @@ namespace HaCreator.MapSimulator
                     observedRaise.AwaitingConfirmAck = false;
                     foreach (QuestRewardRaisePlacedPiece piece in observedRaise.PlacedPieces)
                     {
-                        piece.LifecycleState = packet.Success
-                            ? QuestRewardRaisePieceLifecycleState.Confirmed
-                            : QuestRewardRaisePieceLifecycleState.Active;
+                        piece.LifecycleState = QuestRewardRaisePieceLifecycleStateResolver.ResolveConfirmResultLifecycle(
+                            piece.LifecycleState,
+                            packet.Success);
                     }
                     break;
 

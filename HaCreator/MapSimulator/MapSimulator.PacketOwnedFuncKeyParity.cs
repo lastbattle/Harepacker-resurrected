@@ -121,10 +121,11 @@ namespace HaCreator.MapSimulator
             Expedition = 11,
             SpouseWhisper = 12,
             QuestAlarm = 13,
-            CashShop = 14,
-            Medal = 15,
-            ItemPot = 16,
-            MagicWheel = 17,
+            Sit = 14,
+            CashShop = 15,
+            Medal = 16,
+            ItemPot = 17,
+            MagicWheel = 18,
         }
 
         internal enum PacketOwnedRawChatOwner
@@ -1426,6 +1427,9 @@ namespace HaCreator.MapSimulator
                     TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.QuestAlarm, () =>
                         ShowUtilityWindow(MapSimulatorWindowNames.QuestAlarm, "packet-owned-funckey:20"));
                     return true;
+                case PacketOwnedRawFunctionOwner.Sit:
+                    TogglePacketOwnedSitOwner();
+                    return true;
                 case PacketOwnedRawFunctionOwner.CashShop:
                     ShowPacketOwnedCashShopWindow();
                     return true;
@@ -1564,6 +1568,29 @@ namespace HaCreator.MapSimulator
                 presentation: MapSimulatorChat.WhisperTargetPickerPresentation.Modal);
         }
 
+        private void TogglePacketOwnedSitOwner()
+        {
+            if (_playerManager?.Player is not PlayerCharacter player
+                || !player.IsAlive)
+            {
+                return;
+            }
+
+            if (player.Build?.ActivePortableChair != null
+                || player.State == PlayerState.Sitting)
+            {
+                player.ApplyPacketOwnedChairStandCorrection();
+                return;
+            }
+
+            if (player.Physics?.IsOnFoothold() != true)
+            {
+                return;
+            }
+
+            player.ApplyPacketOwnedSitPlacement(player.X, player.Y);
+        }
+
         private static bool WasPacketOwnedFuncKeyPressed(KeyboardState keyboardState, KeyboardState previousKeyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && !previousKeyboardState.IsKeyDown(key);
@@ -1661,6 +1688,7 @@ namespace HaCreator.MapSimulator
                 17 => PacketOwnedRawFunctionOwner.SocialListGuild,
                 19 => PacketOwnedRawFunctionOwner.SocialListParty,
                 20 => PacketOwnedRawFunctionOwner.QuestAlarm,
+                51 => PacketOwnedRawFunctionOwner.Sit,
                 14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
                 24 => PacketOwnedRawFunctionOwner.PartySearch,
                 25 => PacketOwnedRawFunctionOwner.Family,

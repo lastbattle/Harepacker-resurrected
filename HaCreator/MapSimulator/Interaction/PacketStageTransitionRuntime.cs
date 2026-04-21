@@ -520,13 +520,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int[] DecodeOpaqueAlignedInt32Values(byte[] bytes)
         {
-            if (bytes == null || bytes.Length == 0 || (bytes.Length % sizeof(int)) != 0)
+            if (bytes == null || bytes.Length < sizeof(int))
             {
                 return Array.Empty<int>();
             }
 
-            int[] values = new int[bytes.Length / sizeof(int)];
-            Buffer.BlockCopy(bytes, 0, values, 0, bytes.Length);
+            int alignedByteLength = bytes.Length - (bytes.Length % sizeof(int));
+            if (alignedByteLength < sizeof(int))
+            {
+                return Array.Empty<int>();
+            }
+
+            int startOffset = bytes.Length - alignedByteLength;
+            int[] values = new int[alignedByteLength / sizeof(int)];
+            Buffer.BlockCopy(bytes, startOffset, values, 0, alignedByteLength);
             return values;
         }
 
@@ -1169,7 +1176,9 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot = snapshot with
                 {
                     CombatOrders = combatOrders,
+                    CombatOrdersByteCount = sizeof(byte),
                     HasBackwardUpdate = hasBackwardUpdate,
+                    BackwardUpdateEnabledByteCount = sizeof(byte),
                     BackwardUpdatePreludeByteCount = backwardUpdatePreludeByteCount,
                     BackwardUpdateSubtype = backwardUpdateSubtype,
                     BackwardUpdateSubtypeByteCount = backwardUpdateSubtypeByteCount,
@@ -3531,7 +3540,9 @@ namespace HaCreator.MapSimulator.Interaction
         byte FriendMax,
         string LinkedCharacterName,
         byte CombatOrders = 0,
+        int CombatOrdersByteCount = 0,
         bool HasBackwardUpdate = false,
+        int BackwardUpdateEnabledByteCount = 0,
         int BackwardUpdatePreludeByteCount = 0,
         byte BackwardUpdateSubtype = 0,
         int BackwardUpdateSubtypeByteCount = 0,

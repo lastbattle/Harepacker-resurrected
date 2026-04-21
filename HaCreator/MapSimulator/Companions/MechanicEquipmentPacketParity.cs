@@ -601,6 +601,11 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (TryDecodeLegacyStatePayloadWithoutModePrefix(payload, out decodedPayload))
+            {
+                return true;
+            }
+
             try
             {
                 using MemoryStream stream = new(payload, writable: false);
@@ -883,6 +888,69 @@ namespace HaCreator.MapSimulator.Companions
                 errorMessage = $"Mechanic equipment payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        private static bool TryDecodeLegacyStatePayloadWithoutModePrefix(
+            byte[] payload,
+            out MechanicEquipPacketPayload decodedPayload)
+        {
+            decodedPayload = default;
+            if (payload == null)
+            {
+                return false;
+            }
+
+            if (payload.Length == sizeof(int) * 5)
+            {
+                using MemoryStream snapshotStream = new(payload, writable: false);
+                using BinaryReader snapshotReader = new(snapshotStream);
+                decodedPayload = new MechanicEquipPacketPayload(
+                    MechanicEquipPacketPayloadMode.Snapshot,
+                    null,
+                    0,
+                    ReadSnapshotItems(snapshotReader));
+                return true;
+            }
+
+            if (payload.Length == sizeof(int) * 2)
+            {
+                using MemoryStream slotMutationStream = new(payload, writable: false);
+                using BinaryReader slotMutationReader = new(slotMutationStream);
+                int bodyPart = slotMutationReader.ReadInt32();
+                if (!MechanicEquipmentSlotMap.TryResolveBodyPart(bodyPart, out MechanicEquipSlot slot))
+                {
+                    return false;
+                }
+
+                int itemId = slotMutationReader.ReadInt32();
+                decodedPayload = new MechanicEquipPacketPayload(
+                    MechanicEquipPacketPayloadMode.SlotMutation,
+                    slot,
+                    itemId,
+                    null);
+                return true;
+            }
+
+            if (payload.Length == sizeof(byte) + sizeof(int))
+            {
+                using MemoryStream legacySlotMutationStream = new(payload, writable: false);
+                using BinaryReader legacySlotMutationReader = new(legacySlotMutationStream);
+                byte legacySlotValue = legacySlotMutationReader.ReadByte();
+                if (!Enum.IsDefined(typeof(MechanicEquipSlot), (int)legacySlotValue))
+                {
+                    return false;
+                }
+
+                int itemId = legacySlotMutationReader.ReadInt32();
+                decodedPayload = new MechanicEquipPacketPayload(
+                    MechanicEquipPacketPayloadMode.SlotMutation,
+                    (MechanicEquipSlot)legacySlotValue,
+                    itemId,
+                    null);
+                return true;
+            }
+
+            return false;
         }
 
         internal static bool TryReadFinalItemIdForSlot(

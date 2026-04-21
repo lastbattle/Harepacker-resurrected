@@ -1196,14 +1196,19 @@ namespace HaCreator.MapSimulator.Managers
 
             if (!PacketStageTransitionRuntime.TryDecodeTrailingLogoutGiftConfigPayload(
                     trailingTail.ToArray(),
-                    out _,
-                    out _,
+                    out int predictQuitRawValue,
+                    out int[] commoditySerialNumbers,
                     out byte[] leadingOpaqueBytes,
                     out _,
                     out byte[] trailingOpaqueBytes,
                     out _,
                     out _,
                     out _))
+            {
+                return false;
+            }
+
+            if (!IsLikelyLogoutGiftConfig(predictQuitRawValue, commoditySerialNumbers))
             {
                 return false;
             }
@@ -1245,12 +1250,54 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (trailingTail.Length >= LogoutGiftConfigByteLength + SetFieldServerFileTimeByteLength &&
+                PacketStageTransitionRuntime.TryDecodeTrailingLogoutGiftConfigPayload(
+                    trailingTail.ToArray(),
+                    out int predictQuitRawValue,
+                    out int[] commoditySerialNumbers,
+                    out byte[] leadingOpaqueBytes,
+                    out _,
+                    out byte[] trailingOpaqueBytes,
+                    out _,
+                    out _,
+                    out _) &&
+                IsLikelyLogoutGiftConfig(predictQuitRawValue, commoditySerialNumbers))
+            {
+                int leadingOpaqueLength = leadingOpaqueBytes?.Length ?? 0;
+                if (!TryMatchTrailingServerFileTimeSuffix(trailingOpaqueBytes, out int opaqueBetweenLogoutGiftAndServerFileTimeLength) ||
+                    leadingOpaqueLength > MaximumOpaquePostMapTransferTailByteLength ||
+                    opaqueBetweenLogoutGiftAndServerFileTimeLength > MaximumOpaqueBetweenLogoutGiftAndServerFileTimeByteLength)
+                {
+                    return false;
+                }
+            }
+
             if (opaqueBeforeServerFileTimeLength > MaximumOpaqueBeforeServerFileTimeByteLength)
             {
                 return false;
             }
 
             matchedKnownTail = true;
+            return true;
+        }
+
+        private static bool IsLikelyLogoutGiftConfig(int predictQuitRawValue, IReadOnlyList<int> commoditySerialNumbers)
+        {
+            if (predictQuitRawValue is not 0 and not 1 ||
+                commoditySerialNumbers == null ||
+                commoditySerialNumbers.Count != PacketStageTransitionRuntime.LogoutGiftEntryCount)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < commoditySerialNumbers.Count; i++)
+            {
+                if (commoditySerialNumbers[i] < 0)
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 

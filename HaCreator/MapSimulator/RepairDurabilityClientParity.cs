@@ -855,21 +855,35 @@ namespace HaCreator.MapSimulator
         private static bool TryReadEncodedSlotPosition(byte[] payload, ref int offset, out int? encodedSlotPosition)
         {
             encodedSlotPosition = null;
-            if (payload == null || payload.Length - offset < sizeof(int))
+            if (payload == null || payload.Length - offset < sizeof(short))
             {
                 return false;
             }
 
-            int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
-            int remainingAfterSlot = payload.Length - (offset + sizeof(int));
-            if (!LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
-                || !ShouldTreatResultFirstIntAsEncodedSlot(success: true, candidateEncodedSlotPosition, remainingAfterSlot))
+            if (payload.Length - offset >= sizeof(int))
+            {
+                int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                int remainingAfterSlot = payload.Length - (offset + sizeof(int));
+                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
+                    && ShouldTreatResultFirstIntAsEncodedSlot(success: true, candidateEncodedSlotPosition, remainingAfterSlot))
+                {
+                    encodedSlotPosition = candidateEncodedSlotPosition;
+                    offset += sizeof(int);
+                    return true;
+                }
+            }
+
+            short candidateShortSlotPosition = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            int remainingAfterShortSlot = payload.Length - (offset + sizeof(short));
+            if (!LooksLikeEncodedSlotPosition(candidateShortSlotPosition)
+                || LooksLikeRepairOpcode(candidateShortSlotPosition)
+                || (remainingAfterShortSlot > 0 && remainingAfterShortSlot < sizeof(short)))
             {
                 return false;
             }
 
-            encodedSlotPosition = candidateEncodedSlotPosition;
-            offset += sizeof(int);
+            encodedSlotPosition = candidateShortSlotPosition;
+            offset += sizeof(short);
             return true;
         }
 
@@ -917,14 +931,33 @@ namespace HaCreator.MapSimulator
 
             if (reasonPayloadLength >= sizeof(int))
             {
-                reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int)));
-                int textOffset = reasonOffset + sizeof(int);
-                int textLength = payload.Length - textOffset;
-                if (textLength > 0)
+                int intReasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(reasonOffset, sizeof(int)));
+                int intTextOffset = reasonOffset + sizeof(int);
+                int intTextLength = payload.Length - intTextOffset;
+                string intStatusText = intTextLength > 0
+                    ? DecodeResultStatusText(payload.AsSpan(intTextOffset, intTextLength))
+                    : string.Empty;
+
+                short shortReasonCode = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(reasonOffset, sizeof(short)));
+                int shortTextOffset = reasonOffset + sizeof(short);
+                int shortTextLength = payload.Length - shortTextOffset;
+                string shortStatusText = shortTextLength > 0
+                    ? DecodeResultStatusText(payload.AsSpan(shortTextOffset, shortTextLength))
+                    : string.Empty;
+                bool preferShortReasonAndText = shortTextLength > 0
+                    && LooksLikeReasonCode(shortReasonCode)
+                    && !LooksLikeReasonCode(intReasonCode)
+                    && !string.IsNullOrWhiteSpace(shortStatusText);
+
+                if (preferShortReasonAndText)
                 {
-                    statusText = DecodeResultStatusText(payload.AsSpan(textOffset, textLength));
+                    reasonCode = shortReasonCode;
+                    statusText = shortStatusText;
+                    return true;
                 }
 
+                reasonCode = intReasonCode;
+                statusText = intStatusText;
                 return true;
             }
 
@@ -934,7 +967,13 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            error = "Repair-result payload reason segment must be Int16 or Int32 when present.";
+            if (reasonPayloadLength == sizeof(byte))
+            {
+                reasonCode = payload[reasonOffset];
+                return true;
+            }
+
+            error = "Repair-result payload reason segment must be Byte, Int16, or Int32 when present.";
             return false;
         }
 
@@ -1120,6 +1159,16 @@ namespace HaCreator.MapSimulator
         {
             return encodedSlotPosition is >= 0 and <= 255
                 || encodedSlotPosition is <= -1 and >= -255;
+        }
+
+        private static bool LooksLikeRepairOpcode(int candidateValue)
+        {
+            return candidateValue == 130 || candidateValue == 131;
+        }
+
+        private static bool LooksLikeReasonCode(int reasonCode)
+        {
+            return reasonCode is >= -32768 and <= 32767;
         }
 
         private static string DecodeResultStatusText(ReadOnlySpan<byte> payload)

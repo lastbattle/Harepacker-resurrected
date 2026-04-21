@@ -12,7 +12,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int _boundCharacterId;
         private int _lastObservedRuntimeCharacterId;
-        private int _expiresAtTick;
+        private int _ownerExpiresAtTick;
+        private int _contextExpiresAtTick;
         private string _title = string.Empty;
         private string _problemText = string.Empty;
         private string _hintText = string.Empty;
@@ -24,12 +25,23 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool IsActive(int currentTickCount)
         {
-            return GetRemainingMs(currentTickCount) > 0;
+            return GetContextRemainingMs(currentTickCount) > 0;
         }
 
         internal int GetRemainingMs(int currentTickCount)
         {
-            int remainingMs = _expiresAtTick - currentTickCount;
+            return GetContextRemainingMs(currentTickCount);
+        }
+
+        private int GetContextRemainingMs(int currentTickCount)
+        {
+            int remainingMs = _contextExpiresAtTick - currentTickCount;
+            return remainingMs > 0 ? remainingMs : 0;
+        }
+
+        private int GetOwnerRemainingMs(int currentTickCount)
+        {
+            int remainingMs = _ownerExpiresAtTick - currentTickCount;
             return remainingMs > 0 ? remainingMs : 0;
         }
 
@@ -53,20 +65,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryBuildOwnerSnapshot(int currentTickCount, out InitialQuizOwnerSnapshot snapshot)
         {
-            if (_expiresAtTick <= 0)
+            if (_ownerExpiresAtTick <= 0)
             {
                 snapshot = null;
                 return false;
             }
 
-            int remainingMs = GetRemainingMs(currentTickCount);
+            int remainingMs = GetOwnerRemainingMs(currentTickCount);
             snapshot = new InitialQuizOwnerSnapshot(
                 _title,
                 _problemText,
                 _hintText,
                 _minInputByteLength,
                 _maxInputByteLength,
-                GetDisplayRemainingSeconds(currentTickCount),
+                Math.Max(0, remainingMs / 1000),
                 remainingMs);
             return true;
         }
@@ -80,7 +92,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _boundCharacterId = 0;
             _lastObservedRuntimeCharacterId = 0;
-            _expiresAtTick = 0;
+            _ownerExpiresAtTick = 0;
+            _contextExpiresAtTick = 0;
             _title = string.Empty;
             _problemText = string.Empty;
             _hintText = string.Empty;
@@ -104,7 +117,9 @@ namespace HaCreator.MapSimulator.Interaction
             _hintText = hintText ?? string.Empty;
             _minInputByteLength = Math.Max(0, minInputLength) * 2;
             _maxInputByteLength = Math.Max(0, maxInputLength) * 2;
-            _expiresAtTick = currentTickCount + (Math.Max(0, remainingSeconds) * 1000);
+            int remainingMs = Math.Max(0, remainingSeconds) * 1000;
+            _ownerExpiresAtTick = currentTickCount + remainingMs;
+            _contextExpiresAtTick = currentTickCount + remainingMs;
             return
                 $"Synced context-owned initial quiz owner: inputBytes={_minInputByteLength}..{_maxInputByteLength}, {Math.Max(0, remainingSeconds)}s remaining, title={FormatQuotedValue(_title)}, {DescribeCharacterBinding()}";
         }
@@ -123,9 +138,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (HasCreatedOwner())
             {
+                BindRuntimeCharacter(runtimeCharacterId);
+                int refreshedRemainingMs = Math.Max(0, remainingSeconds) * 1000;
+                _contextExpiresAtTick = currentTickCount + refreshedRemainingMs;
                 disposition = InitialQuizOwnerApplyDisposition.IgnoredReopen;
                 message =
-                    $"Ignored context-owned initial quiz reopen while the existing owner is still alive: " +
+                    $"Ignored context-owned initial quiz reopen while the existing owner is still alive and refreshed context timer to {Math.Max(0, remainingSeconds)}s: " +
                     $"client `CWvsContext::OnInitialQuiz` only seeds `CUIInitialQuiz` during singleton creation.";
                 return true;
             }
@@ -227,7 +245,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool HasCreatedOwner()
         {
-            return _expiresAtTick > 0;
+            return _ownerExpiresAtTick > 0;
         }
 
         internal void ObserveRuntimeCharacterId(int runtimeCharacterId)

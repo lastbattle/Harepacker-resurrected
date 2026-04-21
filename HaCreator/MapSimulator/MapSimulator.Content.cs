@@ -1079,6 +1079,8 @@ namespace HaCreator.MapSimulator
                     equipBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipBigBang.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
+                    equipBigBang.CompanionDragCommitIngressRequested =
+                        () => ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
                     equipBigBang.SetPetController(_playerManager.Pets);
 
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
@@ -1927,6 +1929,8 @@ namespace HaCreator.MapSimulator
                     equipBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipBigBang.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
+                    equipBigBang.CompanionDragCommitIngressRequested =
+                        () => ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
                     equipBigBang.SetPetController(_playerManager.Pets);
 
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);

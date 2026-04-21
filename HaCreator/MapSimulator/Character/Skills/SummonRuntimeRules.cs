@@ -345,7 +345,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (normalizedAction == PacketSkillActionHealingRobotHeal
-                && HasSupportOwnedMinionAbilityCue(skill))
+                && (HasSupportOwnedMinionAbilityCue(skill)
+                    || HasExplicitSupportOwnedPacketSkillBranch(skill, normalizedAction)))
             {
                 return SummonAssistType.Support;
             }
@@ -406,7 +407,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (normalizedAction == PacketSkillActionHealingRobotHeal)
                 {
-                    if (!HasSupportOwnedMinionAbilityCue(skill))
+                    if (!HasSupportOwnedMinionAbilityCue(skill)
+                        && !HasExplicitSupportOwnedPacketSkillBranch(skill, normalizedAction))
                     {
                         return false;
                     }
@@ -520,6 +522,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                     "skill5",
                     "skill6",
                     "stand"));
+        }
+
+        private static bool HasExplicitSupportOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return false;
+            }
+
+            if (normalizedAction == PacketSkillActionHealingRobotHeal)
+            {
+                return !string.IsNullOrWhiteSpace(ResolveNamedSummonBranch(skill, "heal", "support"));
+            }
+
+            return false;
         }
 
         public static string ResolvePacketAttackBranch(SkillData skill, byte packetAction)

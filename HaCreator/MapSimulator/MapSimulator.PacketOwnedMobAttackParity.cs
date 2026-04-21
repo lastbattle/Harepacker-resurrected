@@ -111,7 +111,11 @@ namespace HaCreator.MapSimulator
             }
 
             var liveMob = _mobPool.GetMob(decodedPacket.MobId);
-            liveMob?.MovementInfo?.ApplyPacketMoveInterrupt(decodedPacket.NotForceLandingWhenDiscard);
+            liveMob?.MovementInfo?.ApplyPacketMoveInterrupt(
+                decodedPacket.NotForceLandingWhenDiscard,
+                currentTime,
+                decodedPacket.MoveAction,
+                decodedPacket.FacingLeft);
 
             if (!decodedPacket.NextAttackPossible)
             {

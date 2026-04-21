@@ -311,44 +311,46 @@ namespace HaCreator.MapSimulator
             evidence = string.Empty;
             payload ??= Array.Empty<byte>();
 
-            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                    payload,
-                    out int firstRelayPacketType,
-                    out byte[] firstRelayPayload,
-                    out _))
+            List<int> relayPrefixChain = new();
+            byte[] relayPayload = payload;
+            const int maxNestedRelayDepth = 8;
+            for (int depth = 0; depth < maxNestedRelayDepth; depth++)
             {
-                return false;
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        relayPayload,
+                        out int relayPacketType,
+                        out byte[] nestedPayload,
+                        out _))
+                {
+                    return false;
+                }
+
+                relayPrefixChain.Add(relayPacketType);
+                if (relayPacketType == SpecialFieldRuntimeCoordinator.FieldSpecificDataRelayOpcode
+                    && DojoField.TryDecodeFieldSpecificPacketPayload(
+                        nestedPayload,
+                        out packetType,
+                        out packetPayload,
+                        out _))
+                {
+                    evidence = $"nested-relay:{string.Join("->", relayPrefixChain)}";
+                    return true;
+                }
+
+                if (relayPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
+                    && relayPacketType != SpecialFieldRuntimeCoordinator.FieldSpecificDataRelayOpcode)
+                {
+                    return false;
+                }
+
+                relayPayload = nestedPayload;
+                if (relayPayload.Length < sizeof(ushort))
+                {
+                    break;
+                }
             }
 
-            if (firstRelayPacketType == 149
-                && DojoField.TryDecodeFieldSpecificPacketPayload(
-                    firstRelayPayload,
-                    out packetType,
-                    out packetPayload,
-                    out _))
-            {
-                evidence = "nested-relay:field-specific-prefix";
-                return true;
-            }
-
-            if (firstRelayPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
-                || !SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                    firstRelayPayload,
-                    out int secondRelayPacketType,
-                    out byte[] secondRelayPayload,
-                    out _)
-                || secondRelayPacketType != 149
-                || !DojoField.TryDecodeFieldSpecificPacketPayload(
-                    secondRelayPayload,
-                    out packetType,
-                    out packetPayload,
-                    out _))
-            {
-                return false;
-            }
-
-            evidence = "nested-relay:wrapper+field-specific-prefix";
-            return true;
+            return false;
         }
 
         private bool TryApplyStructuredFieldSpecificDataPayload(byte[] payload, int currentTick, out string message)

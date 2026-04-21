@@ -71,6 +71,7 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public sealed class SpecialFieldRuntimeCoordinator
     {
+        public const int FieldSpecificDataRelayOpcode = 149;
         public const int CurrentWrapperRelayOpcode = 163;
         private const int KillCountPacketType = 178;
         private const int ChaosZakumPortalSessionFallbackFieldId = 180000002;

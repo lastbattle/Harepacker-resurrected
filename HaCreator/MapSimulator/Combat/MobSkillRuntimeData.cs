@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator
         public int Hp { get; init; }
         public int DurationMs { get; init; }
         public int IntervalMs { get; init; }
+        public int BombDelayMs { get; init; }
         public int PropPercent { get; init; }
         public int Count { get; init; }
         public MobSkillTargetMobType TargetMobType { get; init; }

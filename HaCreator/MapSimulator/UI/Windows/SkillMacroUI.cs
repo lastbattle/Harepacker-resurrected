@@ -2601,8 +2601,8 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                bool wasForwarded = _forwardedNonFunctionPhysicalKeys.Remove(key);
-                if (wasForwarded)
+                _forwardedNonFunctionPhysicalKeys.Remove(key);
+                if (hasPhysicalKeyCallback)
                 {
                     OnClientForwardedNonFunctionPhysicalKeyStateChanged?.Invoke(
                         key,

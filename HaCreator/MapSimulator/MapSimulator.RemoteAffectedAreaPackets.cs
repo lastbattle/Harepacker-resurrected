@@ -67,7 +67,9 @@ namespace HaCreator.MapSimulator
                     packet.Phase);
                 if (applied)
                 {
+                    ResetRemoteAffectedAreaObjectRuntimeState(packet.ObjectId);
                     CacheRemoteAffectedAreaOwnerRuntimeState(ownerId);
+                    CacheRemoteAffectedAreaOwnerRuntimeState(packet.ObjectId, ownerId);
                 }
 
                 return applied;
@@ -97,17 +99,44 @@ namespace HaCreator.MapSimulator
                     packet.Phase);
             if (appliedPlayerOrMob)
             {
-                // Packet create for an object id starts a fresh per-area ownership/tick lifetime.
-                _remoteAffectedAreaOwnerNamesByAreaObjectId.Remove(packet.ObjectId);
-                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId.Remove(packet.ObjectId);
-                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId.Remove(packet.ObjectId);
-                _remoteAffectedAreaEnemyOwnersByAreaObjectId.Remove(packet.ObjectId);
-                _remoteAffectedAreaLocalPlayerTickTimes.Remove(packet.ObjectId);
+                ResetRemoteAffectedAreaObjectRuntimeState(packet.ObjectId);
                 CacheRemoteAffectedAreaOwnerRuntimeState(ownerId);
                 CacheRemoteAffectedAreaOwnerRuntimeState(packet.ObjectId, ownerId);
             }
 
             return appliedPlayerOrMob;
+        }
+
+        internal static void ResetRemoteAffectedAreaObjectRuntimeState(
+            int areaObjectId,
+            IDictionary<int, string> cachedOwnerNamesByAreaObjectId,
+            IDictionary<int, int> cachedBattlefieldOwnerTeamsByAreaObjectId,
+            IDictionary<int, Fields.MonsterCarnivalTeam> cachedMonsterCarnivalOwnerTeamsByAreaObjectId,
+            IDictionary<int, bool> cachedEnemyOwnersByAreaObjectId,
+            IDictionary<int, int> cachedLocalPlayerTickTimes)
+        {
+            if (areaObjectId <= 0)
+            {
+                return;
+            }
+
+            // Packet create for an object id starts a fresh per-area ownership/tick lifetime.
+            cachedOwnerNamesByAreaObjectId?.Remove(areaObjectId);
+            cachedBattlefieldOwnerTeamsByAreaObjectId?.Remove(areaObjectId);
+            cachedMonsterCarnivalOwnerTeamsByAreaObjectId?.Remove(areaObjectId);
+            cachedEnemyOwnersByAreaObjectId?.Remove(areaObjectId);
+            cachedLocalPlayerTickTimes?.Remove(areaObjectId);
+        }
+
+        private void ResetRemoteAffectedAreaObjectRuntimeState(int areaObjectId)
+        {
+            ResetRemoteAffectedAreaObjectRuntimeState(
+                areaObjectId,
+                _remoteAffectedAreaOwnerNamesByAreaObjectId,
+                _remoteAffectedAreaBattlefieldOwnerTeamsByAreaObjectId,
+                _remoteAffectedAreaMonsterCarnivalOwnerTeamsByAreaObjectId,
+                _remoteAffectedAreaEnemyOwnersByAreaObjectId,
+                _remoteAffectedAreaLocalPlayerTickTimes);
         }
 
         private string DescribeRemoteAffectedAreaStatus()
@@ -454,12 +483,7 @@ namespace HaCreator.MapSimulator
                 ? new System.Collections.Generic.HashSet<int>()
                 : null;
             var activeAreaIdsForRuntimePruning = new System.Collections.Generic.HashSet<int>();
-            var activeAreaOwnerIds =
-                _remoteAffectedAreaOwnerNames.Count > 0
-                || _remoteAffectedAreaBattlefieldOwnerTeams.Count > 0
-                || _remoteAffectedAreaMonsterCarnivalOwnerTeams.Count > 0
-                    ? new System.Collections.Generic.HashSet<int>()
-                    : null;
+            var activeAreaOwnerIds = new System.Collections.Generic.HashSet<int>();
 
             foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas.ToArray())
             {
@@ -471,7 +495,7 @@ namespace HaCreator.MapSimulator
                 activeAreaIdsForRuntimePruning.Add(area.ObjectId);
                 if (area.OwnerId > 0)
                 {
-                    activeAreaOwnerIds?.Add(area.OwnerId);
+                    activeAreaOwnerIds.Add(area.OwnerId);
                 }
 
                 CacheRemoteAffectedAreaOwnerRuntimeState(area.ObjectId, area.OwnerId);

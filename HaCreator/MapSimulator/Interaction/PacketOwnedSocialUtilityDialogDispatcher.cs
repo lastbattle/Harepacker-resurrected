@@ -72,6 +72,8 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal bool ShouldShowParcelOwnerAfterLastPacket => _parcelDialogRuntime.ShouldShowOwnerWindowAfterApply;
+        internal bool ShouldHideParcelOwnerAfterLastPacket => _parcelDialogRuntime.ShouldCloseOwnerWindowAfterApply;
+        internal bool IsPacketOwnedParcelDialogOpen => _parcelDialogRuntime.IsOpen;
 
         internal ParcelAlarmPromptSnapshot LastParcelAlarmPrompt => _parcelDialogRuntime.LastAlarmPrompt;
         internal IReadOnlyList<string> LastParcelArrivalNotices => _parcelDialogRuntime.LastArrivalNotices;
@@ -407,6 +409,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal int LastSubtype { get; private set; } = -1;
         internal string StatusMessage { get; private set; } = "CParcelDlg::OnPacket idle.";
         internal bool ShouldShowOwnerWindowAfterApply { get; private set; }
+        internal bool ShouldCloseOwnerWindowAfterApply { get; private set; }
         internal ParcelAlarmPromptSnapshot LastAlarmPrompt { get; private set; }
         internal IReadOnlyList<string> LastArrivalNotices => _lastArrivalNotices;
 
@@ -414,6 +417,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             message = null;
             ShouldShowOwnerWindowAfterApply = false;
+            ShouldCloseOwnerWindowAfterApply = false;
             LastAlarmPrompt = null;
             _lastArrivalNotices.Clear();
             if (payload == null || payload.Length == 0)
@@ -462,6 +466,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 break;
                             case 1:
                                 IsOpen = false;
+                                ShouldCloseOwnerWindowAfterApply = true;
                                 StatusMessage = "CParcelDlg result 18 closed the packet-owned quick-delivery owner.";
                                 break;
                             default:

@@ -1859,8 +1859,12 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
-            string effectPath = _animationSet.GetAngerGaugeEffectPath()
-                ?? MapleStoryStringPool.ResolveMobAngerGaugeBurstPath(_mobInstance?.MobInfo?.ID);
+            _angerGaugeBurstNextAllowedTick = tickCount + repeatIntervalMs;
+            AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
+
+            string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
+                _mobInstance?.MobInfo?.ID,
+                _animationSet.GetAngerGaugeEffectPath());
             if (string.IsNullOrWhiteSpace(effectPath))
             {
                 return;
@@ -1868,8 +1872,6 @@ namespace HaCreator.MapSimulator.Entities
 
             if (_animationEffects != null)
             {
-                _angerGaugeBurstNextAllowedTick = tickCount + repeatIntervalMs;
-                AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
                 Vector2 anchor = GetAngerGaugeBurstAnchor();
                 _animationEffects.AddFullChargedAngerGauge(
                     effectFrames,

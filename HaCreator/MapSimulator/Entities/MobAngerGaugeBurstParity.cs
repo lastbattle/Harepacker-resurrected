@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using HaCreator.MapSimulator.AI;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render.DX;
 
 namespace HaCreator.MapSimulator.Entities
@@ -79,6 +80,12 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return nextAllowedTick != int.MinValue && currentTick >= nextAllowedTick;
+        }
+
+        public static string ResolveOwnerEffectPath(string mobTemplateId, string loadedEffectPath)
+        {
+            string ownerPath = MapleStoryStringPool.ResolveMobAngerGaugeBurstPath(mobTemplateId);
+            return !string.IsNullOrWhiteSpace(ownerPath) ? ownerPath : loadedEffectPath;
         }
     }
 }

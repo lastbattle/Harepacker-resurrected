@@ -228,8 +228,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             string normalizedPath = canvasPath.Trim().Replace('\\', '/');
             string[] pathSegments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            return pathSegments.Length >= 2 &&
-                   pathSegments[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase);
+            if (pathSegments.Length < 3 ||
+                !string.Equals(pathSegments[0], "UI", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return pathSegments[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string PreserveQuestDetailStyleTag(Match match, string text)

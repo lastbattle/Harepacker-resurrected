@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator
         private int _pendingQuestDeliveryResultCommoditySn;
         private int _pendingQuestDeliveryResultRequestedAtTick = int.MinValue;
         private string _pendingQuestDeliveryResultSourceContext = string.Empty;
+        private bool _pendingQuestDeliveryResultStartQuestRequestSent;
         private int _pendingPacketOwnedStartQuestResponseQuestId;
         private int _pendingPacketOwnedStartQuestResponseSpeakerNpcId;
         private string _pendingPacketOwnedStartQuestResponseQuestName = string.Empty;
@@ -783,10 +784,10 @@ namespace HaCreator.MapSimulator
                 ? Convert.ToHexString(payload)
                 : "<empty>";
             string userPositionEncodingText = request.IncludesUserPosition
-                ? "Included live user position coordinates because the follow-up quest is not auto-alert-owned."
-                : "Omitted live user position coordinates because the follow-up quest is auto-alert-owned.";
+                ? "Included live user position coordinates because the quest is not auto-alert-owned."
+                : "Omitted live user position coordinates because the quest is auto-alert-owned.";
             string summary =
-                $"Mirrored CWvsContext::StartQuest(..., bAutoStart = 0) follow-up request as opcode {request.Opcode} [{payloadHex}] for {followUpQuestName}. {userPositionEncodingText}";
+                $"Mirrored CWvsContext::StartQuest(..., bAutoStart = 0) request as opcode {request.Opcode} [{payloadHex}] for {followUpQuestName}. {userPositionEncodingText}";
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                     request.Opcode,
                     payload,
@@ -1026,7 +1027,8 @@ namespace HaCreator.MapSimulator
             bool completionPhase,
             int cashItemId,
             int commoditySn,
-            string sourceContext)
+            string sourceContext,
+            bool startQuestRequestSent = false)
         {
             _pendingQuestDeliveryResultQuestId = Math.Max(0, questId);
             _pendingQuestDeliveryResultCompletionPhase = completionPhase;
@@ -1034,6 +1036,7 @@ namespace HaCreator.MapSimulator
             _pendingQuestDeliveryResultCommoditySn = Math.Max(0, commoditySn);
             _pendingQuestDeliveryResultRequestedAtTick = currTickCount;
             _pendingQuestDeliveryResultSourceContext = sourceContext ?? string.Empty;
+            _pendingQuestDeliveryResultStartQuestRequestSent = startQuestRequestSent;
         }
 
         private bool TryResolvePendingQuestDeliveryQuestResult(int questId, out string outcome)
@@ -1062,12 +1065,18 @@ namespace HaCreator.MapSimulator
                 $"Resolved pending {phaseText} delivery from {resultPrefix} via quest-result packet for quest #{questId} "
                 + $"(age {ageMs}ms;{cashItemText}{commodityText}).";
 
+            if (_pendingQuestDeliveryResultStartQuestRequestSent)
+            {
+                ClearPacketOwnedQuestResultStartQuestRequestLatch();
+            }
+
             _pendingQuestDeliveryResultQuestId = 0;
             _pendingQuestDeliveryResultCompletionPhase = false;
             _pendingQuestDeliveryResultCashItemId = 0;
             _pendingQuestDeliveryResultCommoditySn = 0;
             _pendingQuestDeliveryResultRequestedAtTick = int.MinValue;
             _pendingQuestDeliveryResultSourceContext = string.Empty;
+            _pendingQuestDeliveryResultStartQuestRequestSent = false;
             return true;
         }
 

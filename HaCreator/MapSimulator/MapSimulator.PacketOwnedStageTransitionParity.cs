@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator
                 && PacketStageTransitionRuntime.TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket setFieldPacket, out _))
             {
                 UpdateRemoteDropPacketServerClockFromSetField(setFieldPacket);
+                UpdatePacketOwnedMovePathRandomCounterOptionFromSetField(setFieldPacket);
                 UpdatePacketOwnedFollowRequestOptionFromSetField(setFieldPacket);
                 UpdatePacketOwnedAuthoritativeCharacterDataFromSetField(setFieldPacket);
                 UpdatePacketOwnedLogoutGiftConfigFromSetField(setFieldPacket);
@@ -202,6 +203,17 @@ namespace HaCreator.MapSimulator
             }
 
             optionMenuWindow.SetCommittedClientOptionValue(FollowRequestClientOptionId, rawValue != 0);
+        }
+
+        private void UpdatePacketOwnedMovePathRandomCounterOptionFromSetField(PacketSetFieldPacket packet)
+        {
+            if (packet.ClientOptions == null
+                || !packet.ClientOptions.TryGetValue(MovePathRandomCounterClientOptionId, out int rawValue))
+            {
+                return;
+            }
+
+            _packetOwnedMovePathRandomCounterOptionEnabled = rawValue != 0;
         }
 
         private void ApplyPacketOwnedCharacterDataSnapshot(CharacterBuild targetBuild, PacketCharacterDataSnapshot snapshot)

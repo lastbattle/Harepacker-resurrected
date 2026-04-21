@@ -3321,6 +3321,8 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class PacketOwnedBattleRecordRuntime
     {
         private const long BattleRecordOverflowThreshold = 0xE8D4A50FFF;
+        private const uint DamageAverageReuseThresholdMilliseconds = 6500;
+        private const uint DamageAverageExtendedThresholdMilliseconds = 7000;
 
         private readonly List<string> _recentNotes = new();
         private int _packetCount420;
@@ -3352,7 +3354,6 @@ namespace HaCreator.MapSimulator.Interaction
         private double _averageHitPerSecond;
         private double _totalAttackTimeSeconds;
         private uint _lastAttackTick;
-        private int _damageAttrRateSampleCount;
         private long _recoveryTotalHpIncApply;
         private long _recoveryTotalMpIncApply;
         private long _recoveryTotalHpIncReq;
@@ -3441,7 +3442,6 @@ namespace HaCreator.MapSimulator.Interaction
                     _averageHitPerSecond = 0d;
                     _totalAttackTimeSeconds = 0d;
                     _lastAttackTick = 0;
-                    _damageAttrRateSampleCount = 0;
                     StatusMessage = "CBattleRecordMan cleared damage and DOT summary counters.";
                     break;
                 case 1:
@@ -3676,7 +3676,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (damage >= 0)
             {
-                UpdateBattleDamageAverages(damage, attrRate);
+                UpdateBattleDamageAverages(damage, attrRate, isDot: false, isSummon: isSummon);
             }
 
             StatusMessage = damage < 0
@@ -3982,7 +3982,6 @@ namespace HaCreator.MapSimulator.Interaction
             _averageHitPerSecond = 0d;
             _totalAttackTimeSeconds = 0d;
             _lastAttackTick = 0;
-            _damageAttrRateSampleCount = 0;
             _recoveryTotalHpIncApply = 0;
             _recoveryTotalMpIncApply = 0;
             _recoveryTotalHpIncReq = 0;
@@ -4076,34 +4075,60 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void UpdateBattleDamageAverages(int damage, int? attrRate)
+        private void UpdateBattleDamageAverages(int damage, int? attrRate, bool isDot, bool isSummon)
         {
             _damageTotalAttackCount++;
             _damageTotalDamage += damage;
             if (attrRate.HasValue)
             {
                 _damageTotalAttrRate += attrRate.Value;
-                _damageAttrRateSampleCount++;
             }
 
-            uint nowTick = unchecked((uint)Environment.TickCount);
-            if (_lastAttackTick != 0)
-            {
-                uint elapsedTick = unchecked(nowTick - _lastAttackTick);
-                _totalAttackTimeSeconds += elapsedTick / 1000d;
-            }
-
-            _lastAttackTick = nowTick;
             _averageDamagePerHit = _damageTotalAttackCount > 0
                 ? (int)(_damageTotalDamage / _damageTotalAttackCount)
                 : 0;
-            _averageAttrRate = _damageAttrRateSampleCount > 0
-                ? (int)(_damageTotalAttrRate / _damageAttrRateSampleCount)
+            _averageAttrRate = _damageTotalAttackCount > 0
+                ? (int)(_damageTotalAttrRate / _damageTotalAttackCount)
                 : 0;
 
-            double elapsedSeconds = Math.Max(0.001d, _totalAttackTimeSeconds);
-            _averageHitPerSecond = _damageTotalAttackCount / elapsedSeconds;
-            _averageDamagePerSecond = (int)Math.Round(_damageTotalDamage / elapsedSeconds, MidpointRounding.AwayFromZero);
+            uint nowTick = unchecked((uint)Environment.TickCount);
+            if (_lastAttackTick == 0)
+            {
+                _lastAttackTick = nowTick;
+                _averageHitPerSecond = 1d;
+                _totalAttackTimeSeconds = 1d;
+                _averageDamagePerSecond = damage;
+                return;
+            }
+
+            uint elapsedTick = unchecked(nowTick - _lastAttackTick);
+            double elapsedSeconds;
+            if (elapsedTick < DamageAverageReuseThresholdMilliseconds
+                || (isDot && elapsedTick < DamageAverageExtendedThresholdMilliseconds)
+                || (isSummon && elapsedTick < DamageAverageExtendedThresholdMilliseconds))
+            {
+                elapsedSeconds = elapsedTick / 1000d;
+            }
+            else if (_averageHitPerSecond != 0d)
+            {
+                elapsedSeconds = 1d / _averageHitPerSecond;
+            }
+            else
+            {
+                elapsedSeconds = 0d;
+            }
+
+            if (elapsedSeconds > 0d)
+            {
+                _totalAttackTimeSeconds += elapsedSeconds;
+            }
+
+            if (_averageHitPerSecond != 0d)
+            {
+                _averageDamagePerSecond = (int)(_damageTotalDamage / _totalAttackTimeSeconds);
+                _averageHitPerSecond = _damageTotalAttackCount / _totalAttackTimeSeconds;
+                _lastAttackTick = nowTick;
+            }
         }
 
         private void IncrementRecoveryUseItemCounters(bool hasHpRecovery, bool hasMpRecovery, int currentTickCount)
@@ -4129,6 +4154,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _recoveryTotalUseMpItem++;
             }
+
+            UpdateRecoveryForecastUsePerHour(nowTick);
         }
 
         private void RecalculateRecoveryAverages()
@@ -4138,33 +4165,54 @@ namespace HaCreator.MapSimulator.Interaction
 
             _recoveryAverageHpIncReq = hpUseCount > 0
                 ? (int)(_recoveryTotalHpIncReq / hpUseCount)
-                : 0;
+                : (int)_recoveryTotalHpIncReq;
             _recoveryAverageMpIncReq = mpUseCount > 0
                 ? (int)(_recoveryTotalMpIncReq / mpUseCount)
-                : 0;
+                : (int)_recoveryTotalMpIncReq;
             _recoveryAverageHpIncApply = hpUseCount > 0
                 ? (int)(_recoveryTotalHpIncApply / hpUseCount)
-                : 0;
+                : (int)_recoveryTotalHpIncApply;
             _recoveryAverageMpIncApply = mpUseCount > 0
                 ? (int)(_recoveryTotalMpIncApply / mpUseCount)
-                : 0;
+                : (int)_recoveryTotalMpIncApply;
 
             _recoveryMeritRateHp = _recoveryTotalHpIncReq > 0
-                ? (int)Math.Round((_recoveryTotalHpIncApply * 100d) / _recoveryTotalHpIncReq, MidpointRounding.AwayFromZero)
+                ? (int)((_recoveryTotalHpIncApply * 100) / _recoveryTotalHpIncReq)
                 : 0;
             _recoveryMeritRateMp = _recoveryTotalMpIncReq > 0
-                ? (int)Math.Round((_recoveryTotalMpIncApply * 100d) / _recoveryTotalMpIncReq, MidpointRounding.AwayFromZero)
+                ? (int)((_recoveryTotalMpIncApply * 100) / _recoveryTotalMpIncReq)
                 : 0;
             _recoveryAverageMeritRateHp = _recoveryAverageHpIncReq > 0
-                ? (int)Math.Round((_recoveryAverageHpIncApply * 100d) / _recoveryAverageHpIncReq, MidpointRounding.AwayFromZero)
+                ? (int)((_recoveryAverageHpIncApply * 100) / _recoveryAverageHpIncReq)
                 : 0;
             _recoveryAverageMeritRateMp = _recoveryAverageMpIncReq > 0
-                ? (int)Math.Round((_recoveryAverageMpIncApply * 100d) / _recoveryAverageMpIncReq, MidpointRounding.AwayFromZero)
+                ? (int)((_recoveryAverageMpIncApply * 100) / _recoveryAverageMpIncReq)
                 : 0;
+        }
 
-            _recoveryForecastUsePerHour = (_recoveryTotalUseItem > 1 && _recoveryTotalUseItemSeconds > 0d)
-                ? (int)Math.Round((_recoveryTotalUseItem * 3600d) / _recoveryTotalUseItemSeconds, MidpointRounding.AwayFromZero)
-                : 0;
+        private void UpdateRecoveryForecastUsePerHour(uint nowTick)
+        {
+            if (_recoveryLastUseItemTick == 0)
+            {
+                _recoveryLastUseItemTick = nowTick;
+                _recoveryTotalUseItemSeconds = 1d;
+                _recoveryForecastUsePerHour = 1;
+                return;
+            }
+
+            uint elapsedTick = unchecked(nowTick - _recoveryLastUseItemTick);
+            if (elapsedTick == 0 || _recoveryTotalUseItem <= 0)
+            {
+                return;
+            }
+
+            _recoveryTotalUseItemSeconds += elapsedTick / 1000d;
+            if (_recoveryTotalUseItemSeconds > 0d)
+            {
+                _recoveryForecastUsePerHour = (int)((_recoveryTotalUseItem / _recoveryTotalUseItemSeconds) * 3600d);
+            }
+
+            _recoveryLastUseItemTick = nowTick;
         }
 
         private void CheckTotalRecoveryOverflow()

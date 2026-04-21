@@ -264,6 +264,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            // Client evidence: CUIEventAlarm::Update owns timeout-close.
+            if (_autoDismissTick != int.MinValue
+                && unchecked(Environment.TickCount - _autoDismissTick) >= 0)
+            {
+                Hide();
+                return;
+            }
+
             HandleOwnerInput();
         }
 
@@ -299,11 +307,7 @@ namespace HaCreator.MapSimulator.UI
 
             EventWindowSnapshot snapshot = RefreshSnapshot();
             SyncButtonStates(snapshot);
-            if (_autoDismissTick != int.MinValue && unchecked(TickCount - _autoDismissTick) >= 0)
-            {
-                Hide();
-                return;
-            }
+            int currentTick = Environment.TickCount;
 
             string subtitle = _showCalendar
                 ? $"Calendar view groups simulator event entries by day for {_calendarMonth:MMMM yyyy}."
@@ -324,7 +328,7 @@ namespace HaCreator.MapSimulator.UI
             string statusText = snapshot.StatusText;
             if (_autoDismissTick != int.MinValue)
             {
-                int remainingMs = Math.Max(0, _autoDismissTick - TickCount);
+                int remainingMs = Math.Max(0, _autoDismissTick - currentTick);
                 int remainingSeconds = Math.Max(1, (remainingMs + 999) / 1000);
                 statusText = string.IsNullOrWhiteSpace(statusText)
                     ? $"Alarm closes in {remainingSeconds}s unless you interact with it."

@@ -725,6 +725,26 @@ namespace HaCreator.MapSimulator.UI
             return ResolveItemCooldownSeconds(itemProperty?["info"] as WzSubProperty);
         }
 
+        public static int ResolveSetupUseLevelRequirement(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return 0;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return ResolveSetupUseLevelRequirement(
+                itemProperty?["spec"] as WzSubProperty,
+                itemProperty?["specEx"] as WzSubProperty);
+        }
+
+        internal static int ResolveSetupUseLevelRequirement(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            int specUseLevel = Math.Max(0, GetIntOrStringValue(specProperty?["useLevel"]));
+            int specExUseLevel = Math.Max(0, GetIntOrStringValue(specExProperty?["useLevel"]));
+            return Math.Max(specUseLevel, specExUseLevel);
+        }
+
         public static int ResolveItemCooldownSeconds(WzSubProperty infoProperty)
         {
             return Math.Max(0, GetIntOrStringValue(infoProperty?["cooltime"]));
@@ -995,6 +1015,11 @@ namespace HaCreator.MapSimulator.UI
         public static bool IsDeathMarkCureSpecForTests(WzSubProperty specProperty)
         {
             return IsDeathMarkCureSpec(specProperty);
+        }
+
+        public static int ResolveSetupUseLevelRequirementForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return ResolveSetupUseLevelRequirement(specProperty, specExProperty);
         }
 
         internal static bool TryResolveSpecScript(WzSubProperty specProperty, out string script)
@@ -1491,6 +1516,7 @@ namespace HaCreator.MapSimulator.UI
             AppendSpecExMobSkillEffectLines(effectLines, specExProperty);
             AppendMobSkillOwnershipEffectLines(effectLines, specProperty, specExProperty);
             AppendPickupTriggerEffectLines(effectLines, specProperty, specExProperty);
+            AppendScreenMessageEffectLines(effectLines, specProperty, specExProperty);
 
             int? durationMs = TryGetPositiveInt(effectSpecProperty["time"]);
             if (durationMs.HasValue)
@@ -1892,6 +1918,25 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendScreenMessageEffectLines(
+            List<string> effectLines,
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            string specMessage = NormalizeTooltipText((specProperty?["screenMsg"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(specMessage))
+            {
+                effectLines.Add($"Screen Message: {specMessage}");
+            }
+
+            string specExMessage = NormalizeTooltipText((specExProperty?["screenMsg"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(specExMessage)
+                && !string.Equals(specMessage, specExMessage, StringComparison.Ordinal))
+            {
+                effectLines.Add($"Screen Message: {specExMessage}");
+            }
+        }
+
         private static void AppendBuffItemEffectLines(List<string> effectLines, WzSubProperty buffProperty)
         {
             if (buffProperty?.WzProperties == null)
@@ -2185,6 +2230,7 @@ namespace HaCreator.MapSimulator.UI
             AppendCashRateScheduleMetadataLines(metadataLines, infoProperty);
             AppendPartyScaleMetadataLines(metadataLines, infoProperty);
             AppendAuthoredAssetPathMetadataLines(metadataLines, infoProperty);
+            AppendWeatherPresentationMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
 
@@ -2512,6 +2558,12 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add($"Target Mob HP: {targetMobHpValue.ToString("N0", CultureInfo.InvariantCulture)} or below");
             }
 
+            int attackIndex = GetIntOrStringValue(specProperty?["attackIndex"]);
+            if (attackIndex > 0)
+            {
+                metadataLines.Add($"Attack Index: {attackIndex.ToString(CultureInfo.InvariantCulture)}");
+            }
+
             AppendCaptureAreaMetadataLines(metadataLines, infoProperty);
             AppendCaptureChanceMetadataLines(metadataLines, infoProperty);
 
@@ -2559,6 +2611,12 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            targetMobId = GetIntOrStringValue(specProperty?["attackMobID"]);
+            if (targetMobId > 0)
+            {
+                return true;
+            }
+
             int infoMobId = GetIntOrStringValue(infoProperty?["mob"]);
             if (infoMobId <= 0 || !HasInfoOwnedTargetedMobTooltipMetadata(infoProperty, specProperty))
             {
@@ -2574,6 +2632,7 @@ namespace HaCreator.MapSimulator.UI
             WzSubProperty specProperty)
         {
             if (GetIntOrStringValue(specProperty?["mobID"]) > 0
+                || GetIntOrStringValue(specProperty?["attackMobID"]) > 0
                 || GetIntOrStringValue(specProperty?["mobHp"]) > 0
                 || GetIntOrStringValue(infoProperty?["mobHP"]) > 0
                 || GetIntOrStringValue(infoProperty?["useDelay"]) > 0
@@ -3261,6 +3320,36 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(bgmPath))
             {
                 metadataLines.Add($"BGM Path: {bgmPath}");
+            }
+        }
+
+        private static void AppendWeatherPresentationMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            if (infoProperty["direction"] != null)
+            {
+                int direction = GetIntOrStringValue(infoProperty["direction"]);
+                metadataLines.Add($"Weather Direction: {direction.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (infoProperty["floatType"] != null)
+            {
+                int floatType = GetIntOrStringValue(infoProperty["floatType"]);
+                metadataLines.Add($"Weather Float Type: {floatType.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (GetIntValue(infoProperty["isBgmOrEffect"]) == 1)
+            {
+                metadataLines.Add("Weather BGM/Effect broadcast");
+            }
+
+            if (GetIntValue(infoProperty["repeat"]) == 1)
+            {
+                metadataLines.Add("Weather effect repeats");
             }
         }
 

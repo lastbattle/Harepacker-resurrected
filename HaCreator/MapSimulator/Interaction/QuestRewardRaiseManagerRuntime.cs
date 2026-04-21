@@ -91,8 +91,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ActiveRaise.LastInboundSummary = snapshot?.LastInboundSummary ?? string.Empty;
             }
 
-            ActiveRaise.AwaitingConfirmAck = snapshot?.AwaitingConfirmAck ?? ActiveRaise.AwaitingConfirmAck;
-            ActiveRaise.AwaitingOwnerDestroyAck = snapshot?.AwaitingOwnerDestroyAck ?? ActiveRaise.AwaitingOwnerDestroyAck;
+            ActiveRaise.AwaitingConfirmAck = ActiveRaise.AwaitingConfirmAck || (snapshot?.AwaitingConfirmAck ?? false);
+            ActiveRaise.AwaitingOwnerDestroyAck = ActiveRaise.AwaitingOwnerDestroyAck || (snapshot?.AwaitingOwnerDestroyAck ?? false);
             ActiveRaise.IsWindowDismissedLocally = false;
             ActiveRaise.ReusedOwnerIdentityOnOpen = reusedOwnerIdentity;
 
@@ -372,9 +372,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
-                Math.Max(0, payload.ManagerSessionId),
-                Math.Max(0, payload.OwnerRequestId),
-                Math.Max(0, payload.OwnerItemId),
+                ResolvePositiveObservedValue(
+                    payload.ManagerSessionId,
+                    isActiveQuest ? ActiveRaise.ManagerSessionId : 0,
+                    retainedState?.ManagerSessionId ?? 0,
+                    snapshot?.ManagerSessionId ?? 0),
+                ResolvePositiveObservedValue(
+                    payload.OwnerRequestId,
+                    isActiveQuest ? ActiveRaise.RequestId : 0,
+                    retainedState?.RequestId ?? 0,
+                    snapshot?.OwnerRequestId ?? 0),
+                ResolvePositiveObservedValue(
+                    payload.OwnerItemId,
+                    isActiveQuest ? ActiveRaise.OwnerItemId : 0,
+                    retainedState?.OwnerItemId ?? 0,
+                    snapshot?.OwnerItemId ?? 0),
                 payload.QrData,
                 ResolveObservedMaxDropCount(isActiveQuest ? ActiveRaise : retainedState, snapshot, payload),
                 payload.WindowMode,
