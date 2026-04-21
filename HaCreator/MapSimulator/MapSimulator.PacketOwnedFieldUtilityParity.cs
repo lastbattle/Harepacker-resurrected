@@ -1435,20 +1435,44 @@ namespace HaCreator.MapSimulator
                 .Replace('\r', '\n');
         }
 
+        internal static string BuildPacketOwnedQuizStatusNoticeTextForPacketParity(
+            string quizDisplayText,
+            int quizTimerExpiresAt,
+            int currentTickCount)
+        {
+            if (quizDisplayText == null)
+            {
+                return null;
+            }
+
+            if (quizTimerExpiresAt > currentTickCount)
+            {
+                int remainingSeconds = Math.Max(0, (quizTimerExpiresAt - currentTickCount + 999) / 1000);
+                return quizDisplayText.Length == 0
+                    ? $"({remainingSeconds.ToString(CultureInfo.InvariantCulture)}s)"
+                    : $"{quizDisplayText} ({remainingSeconds.ToString(CultureInfo.InvariantCulture)}s)";
+            }
+
+            return quizDisplayText.Length == 0
+                ? null
+                : quizDisplayText;
+        }
+
         private void DrawPacketOwnedQuizNotice(int currentTickCount)
         {
-            if (string.IsNullOrWhiteSpace(_packetFieldUtilityQuizDisplayText)
-                || _fontChat == null
+            if (_fontChat == null
                 || currentTickCount >= _packetFieldUtilityQuizDisplayExpiresAt)
             {
                 return;
             }
 
-            string displayText = _packetFieldUtilityQuizDisplayText;
-            if (_packetFieldUtilityQuizTimerExpiresAt > currentTickCount)
+            string displayText = BuildPacketOwnedQuizStatusNoticeTextForPacketParity(
+                _packetFieldUtilityQuizDisplayText,
+                _packetFieldUtilityQuizTimerExpiresAt,
+                currentTickCount);
+            if (string.IsNullOrEmpty(displayText))
             {
-                int remainingSeconds = Math.Max(0, (_packetFieldUtilityQuizTimerExpiresAt - currentTickCount + 999) / 1000);
-                displayText = $"{displayText} ({remainingSeconds}s)";
+                return;
             }
 
             Vector2 textSize = _fontChat.MeasureString(displayText);

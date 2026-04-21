@@ -382,6 +382,7 @@ namespace HaCreator.MapSimulator
         private int _lastNpcClientActionSelectionContextStamp = int.MinValue;
         private const int NpcQuestAlertVerticalGap = 4;
         private readonly Random _npcIdleSpeechRandom = new();
+        private readonly Random _setupConsumeItemRandom = new();
         private int _nextNpcIdleSpeechTick;
         private int _lastObservedPetSpeechLevel = -1;
         private int _nextPetPreLevelSpeechTick;
@@ -980,6 +981,32 @@ namespace HaCreator.MapSimulator
         private int ResolveCurrentMorphTemplateIdForQuestDemand()
         {
             return Math.Max(0, _playerManager?.Player?.GetActiveMorphTemplateIdForQuestDemand() ?? 0);
+        }
+
+        private bool HasActiveBuffForQuestDemand(int buffSkillId)
+        {
+            return buffSkillId != 0 && _playerManager?.Skills?.HasBuff(buffSkillId) == true;
+        }
+
+        private int ResolveMonsterBookOwnedCardTypeCountForQuestDemand()
+        {
+            MonsterBookSnapshot snapshot = _monsterBookManager.GetSnapshot(_playerManager?.Player?.Build);
+            return Math.Max(0, snapshot?.OwnedCardTypes ?? 0);
+        }
+
+        private int ResolveMonsterBookCardCountByMobIdForQuestDemand(int mobId)
+        {
+            if (mobId <= 0)
+            {
+                return 0;
+            }
+
+            MonsterBookSnapshot snapshot = _monsterBookManager.GetSnapshot(_playerManager?.Player?.Build);
+            MonsterBookCardSnapshot matchedCard = snapshot?.Grades?
+                .SelectMany(grade => grade?.Pages ?? Array.Empty<MonsterBookPageSnapshot>())
+                .SelectMany(page => page?.Cards ?? Array.Empty<MonsterBookCardSnapshot>())
+                .FirstOrDefault(card => card?.MobId == mobId);
+            return Math.Max(0, matchedCard?.OwnedCopies ?? 0);
         }
 
         private void EnsureQuestWorldMapEntityIndex()
@@ -1633,8 +1660,12 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string registrationPreflightRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegisterPreflightRestrictionMessage(targetMapId);
-            if (!string.IsNullOrWhiteSpace(registrationPreflightRestriction))
+            MapleLib.WzLib.WzStructure.MapInfo targetMapInfo = ResolveMapTransferDestinationMapInfo(targetMapId);
+            string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
+                targetMapId,
+                targetMapInfo,
+                BuildFieldEntryRestrictionContext());
+            if (!string.IsNullOrWhiteSpace(registrationRestriction))
             {
                 _chat.AddMessage(MapTransferClientParityText.ResolveCannotSaveDestinationNotice(), new Color(255, 228, 151), Environment.TickCount);
                 RefreshMapTransferWindow();
@@ -4255,8 +4286,9 @@ namespace HaCreator.MapSimulator
                     out locationSummary,
                     out channel,
                     out string unavailableMessage);
+                string channelLabel = channel > 0 ? $"CH {channel}" : "CH ?";
                 handoffStatus = remotePresenceResolved
-                    ? $"Character-info BtSearch handoff preserved {locationSummary} (CH {Math.Max(1, channel)})."
+                    ? $"Character-info BtSearch handoff preserved {locationSummary} ({channelLabel})."
                     : unavailableMessage;
             }
 
@@ -5189,7 +5221,7 @@ namespace HaCreator.MapSimulator
 
                 channel = trackedEntry.Channel > 0
                     ? trackedEntry.Channel
-                    : Math.Max(channel, 1);
+                    : Math.Max(channel, 0);
                 return true;
             }
 
@@ -5202,7 +5234,7 @@ namespace HaCreator.MapSimulator
                 locationSummary = whisperLocation;
                 channel = whisperChannel > 0
                     ? whisperChannel
-                    : Math.Max(channel, 1);
+                    : Math.Max(channel, 0);
                 return true;
             }
 
@@ -5217,7 +5249,7 @@ namespace HaCreator.MapSimulator
                 locationSummary = fallbackLocation;
                 channel = fallbackResolvedChannel > 0
                     ? fallbackResolvedChannel
-                    : Math.Max(channel, 1);
+                    : Math.Max(channel, 0);
                 return true;
             }
 
@@ -5495,7 +5527,7 @@ namespace HaCreator.MapSimulator
                     locationSummary = string.IsNullOrWhiteSpace(snapshot.LocationSummary)
                         ? "Location unknown"
                         : snapshot.LocationSummary.Trim();
-                    channel = Math.Max(1, snapshot.Channel);
+                    channel = Math.Max(0, snapshot.Channel);
                     return true;
                 }
             }
@@ -23417,6 +23449,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            int currentTime = Environment.TickCount;
+            if (!TryReserveRemotePickupNotice(drop.PoolId, mobId, currentTime))
+            {
+                return;
+            }
 
             string mobName = ResolveMobPickupSourceName(mobId);
             string itemName = ResolvePickupResultItemName(drop);
@@ -23426,13 +23463,19 @@ namespace HaCreator.MapSimulator
                 itemName,
                 drop.Quantity,
                 drop.MesoAmount);
-            AddPickupFailureMessage(messages, Environment.TickCount);
+            AddPickupFailureMessage(messages, currentTime);
         }
 
 
         private void HandleDropPickedUpByRemotePlayer(DropItem drop, int playerId, string playerName)
         {
             if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
+            {
+                return;
+            }
+
+            int currentTime = Environment.TickCount;
+            if (!TryReserveRemotePickupNotice(drop.PoolId, playerId, currentTime))
             {
                 return;
             }
@@ -23449,12 +23492,18 @@ namespace HaCreator.MapSimulator
                 itemName,
                 drop.Quantity,
                 drop.MesoAmount);
-            AddPickupFailureMessage(messages, Environment.TickCount);
+            AddPickupFailureMessage(messages, currentTime);
         }
 
         private void HandleDropPickedUpByRemotePet(DropItem drop, int petId, string petName)
         {
             if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
+            {
+                return;
+            }
+
+            int currentTime = Environment.TickCount;
+            if (!TryReserveRemotePickupNotice(drop.PoolId, petId, currentTime))
             {
                 return;
             }
@@ -23471,12 +23520,18 @@ namespace HaCreator.MapSimulator
                 itemName,
                 drop.Quantity,
                 drop.MesoAmount);
-            AddPickupFailureMessage(messages, Environment.TickCount);
+            AddPickupFailureMessage(messages, currentTime);
         }
 
         private void HandleDropPickedUpByRemoteOther(DropItem drop, int actorId, string actorName)
         {
             if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
+            {
+                return;
+            }
+
+            int currentTime = Environment.TickCount;
+            if (!TryReserveRemotePickupNotice(drop.PoolId, actorId, currentTime))
             {
                 return;
             }
@@ -23493,7 +23548,7 @@ namespace HaCreator.MapSimulator
                 itemName,
                 drop.Quantity,
                 drop.MesoAmount);
-            AddPickupFailureMessage(messages, Environment.TickCount);
+            AddPickupFailureMessage(messages, currentTime);
         }
 
 
@@ -23656,9 +23711,7 @@ namespace HaCreator.MapSimulator
             }
 
             int noticeDropId = recentPickup.DropId > 0 ? recentPickup.DropId : dropId;
-            long noticeKey = ((long)noticeDropId << 32) ^ (uint)Math.Max(0, actorId);
-            if (_recentPickupRemoteNoticeTimes.TryGetValue(noticeKey, out int lastNoticeTime)
-                && currentTime - lastNoticeTime < 250)
+            if (!TryReserveRemotePickupNotice(noticeDropId, actorId, currentTime))
             {
                 return true;
             }
@@ -23681,6 +23734,42 @@ namespace HaCreator.MapSimulator
                 recentPickup.Quantity,
                 recentPickup.MesoAmount);
             AddPickupFailureMessage(messages, currentTime);
+            return true;
+        }
+
+        internal static long BuildPickupRemoteNoticeKey(int dropId, int actorId)
+        {
+            return ((long)Math.Max(0, dropId) << 32) ^ (uint)Math.Max(0, actorId);
+        }
+
+        internal static bool ShouldSuppressRemotePickupNotice(int lastNoticeTime, int currentTime, int suppressionWindowMs)
+        {
+            if (suppressionWindowMs <= 0)
+            {
+                return false;
+            }
+
+            int elapsed = unchecked(currentTime - lastNoticeTime);
+            return elapsed >= 0 && elapsed < suppressionWindowMs;
+        }
+
+        private bool TryReserveRemotePickupNotice(int dropId, int actorId, int currentTime)
+        {
+            if (dropId <= 0)
+            {
+                return true;
+            }
+
+            long noticeKey = BuildPickupRemoteNoticeKey(dropId, actorId);
+            if (_recentPickupRemoteNoticeTimes.TryGetValue(noticeKey, out int lastNoticeTime)
+                && ShouldSuppressRemotePickupNotice(
+                    lastNoticeTime,
+                    currentTime,
+                    PICKUP_REMOTE_NOTICE_SUPPRESSION_MS))
+            {
+                return false;
+            }
+
             _recentPickupRemoteNoticeTimes[noticeKey] = currentTime;
             return true;
         }
@@ -28068,10 +28157,12 @@ namespace HaCreator.MapSimulator
 
             {
 
-                bool allowLocalPreview = ShouldAllowLocalCoconutAttackPreview(
+                bool officialSessionBridgeHasOwnership = HasCoconutOfficialSessionBridgeOwnership(
                     _coconutOfficialSessionBridge.HasConnectedSession,
                     _coconutOfficialSessionBridge.HasAttachedClient,
-                    _coconutOfficialSessionBridge.HasPassiveEstablishedSocketPair,
+                    _coconutOfficialSessionBridge.HasPassiveEstablishedSocketPair);
+                bool allowLocalPreview = ShouldAllowLocalCoconutAttackPreview(
+                    officialSessionBridgeHasOwnership,
                     _coconutPacketInbox.HasConnectedClients);
                 if (coconut.TryHandleNormalAttack(worldHitbox, currentTick, skillId: skillId, allowLocalPreview: allowLocalPreview))
                 {
@@ -28103,16 +28194,27 @@ namespace HaCreator.MapSimulator
                 resolution.OwnerLane);
         }
 
-        internal static bool ShouldAllowLocalCoconutAttackPreview(
+        internal static bool HasCoconutOfficialSessionBridgeOwnership(
             bool officialSessionBridgeHasConnectedSession,
             bool officialSessionBridgeHasAttachedClient,
-            bool officialSessionBridgeHasPassiveEstablishedSocketPair,
+            bool officialSessionBridgeHasPassiveEstablishedSocketPair)
+        {
+            return officialSessionBridgeHasConnectedSession
+                || officialSessionBridgeHasAttachedClient
+                || officialSessionBridgeHasPassiveEstablishedSocketPair;
+        }
+
+        internal static bool ShouldAllowLocalCoconutAttackPreview(
+            bool officialSessionBridgeHasOwnership,
             bool transportHasConnectedClients)
         {
-            return !officialSessionBridgeHasConnectedSession
-                && !officialSessionBridgeHasAttachedClient
-                && !officialSessionBridgeHasPassiveEstablishedSocketPair
-                && !transportHasConnectedClients;
+            return !officialSessionBridgeHasOwnership && !transportHasConnectedClients;
+        }
+
+        internal static bool ShouldFallbackCoconutAttackTransport(
+            bool officialSessionBridgeHasOwnership)
+        {
+            return !officialSessionBridgeHasOwnership;
         }
 
         private void UpsertLocalOwnedAffectedAreaFromAttack(
@@ -28146,14 +28248,16 @@ namespace HaCreator.MapSimulator
                     startDelayUnits: createMetadata.StartDelayUnits,
                     elementAttribute: createMetadata.ElementAttribute,
                     phase: createMetadata.Phase,
-                    AffectedAreaSourceKind.PlayerSkill),
+                    AffectedAreaSourceKind.PlayerSkill,
+                    durationOverrideMs: createMetadata.DurationOverrideMs),
                 currentTime);
             if (!upserted)
             {
                 return;
             }
 
-            if (ResolveLocalOwnedAffectedAreaDurationSeconds(skill, levelData, skillLevel, ownerLane) <= 0)
+            if (createMetadata.DurationOverrideMs <= 0
+                && ResolveLocalOwnedAffectedAreaDurationSeconds(skill, levelData, skillLevel, ownerLane) <= 0)
             {
                 _affectedAreaPool.Remove(objectId, currentTime);
             }
@@ -28262,7 +28366,8 @@ namespace HaCreator.MapSimulator
             int Type,
             short StartDelayUnits,
             int ElementAttribute,
-            int Phase);
+            int Phase,
+            int DurationOverrideMs);
 
         internal static LocalOwnedAffectedAreaCreateMetadata ResolveLocalOwnedAffectedAreaCreateMetadata(
             SkillData skill,
@@ -28273,11 +28378,13 @@ namespace HaCreator.MapSimulator
             int phase = ResolveLocalOwnedAffectedAreaPhase(skill, ownerLane);
             int elementAttribute = ResolveLocalOwnedAffectedAreaElementAttribute(skill);
             short startDelayUnits = ResolveLocalOwnedAffectedAreaStartDelayUnits(skill, levelData, ownerLane);
+            int durationOverrideMs = ResolveLocalOwnedAffectedAreaDurationOverrideMs(skill, levelData, ownerLane);
             return new LocalOwnedAffectedAreaCreateMetadata(
                 type,
                 startDelayUnits,
                 ElementAttribute: elementAttribute,
-                Phase: phase);
+                Phase: phase,
+                DurationOverrideMs: durationOverrideMs);
         }
 
         internal static int ResolveLocalOwnedAffectedAreaType(
@@ -28890,12 +28997,43 @@ namespace HaCreator.MapSimulator
             int skillId,
             SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
+            int fallbackDurationMs = ResolveClientExplicitLocalOwnedAffectedAreaDurationOverrideMs(skillId, ownerLane);
+            return fallbackDurationMs <= 0
+                ? 0
+                : (fallbackDurationMs + 999) / 1000;
+        }
+
+        internal static int ResolveClientExplicitLocalOwnedAffectedAreaDurationOverrideMs(
+            int skillId,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
+        {
+            // IDA: TryDoingMagicAttack explicit area-owner fallback keeps mixed constants
+            // (`3000` and `2760`) across the recovered magic branch subset.
             return ownerLane switch
             {
-                SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack when skillId == 3111003 => 1,
-                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when IsClientMagicLaneExplicitAreaDurationFallbackSkillId(skillId) => 3,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack when skillId == 3111003 => 1000,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 12111003 => 3000,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2121007 => 3000,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2221007 => 2760,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2321008 => 2760,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 32121004 => 2760,
                 _ => 0
             };
+        }
+
+        internal static int ResolveLocalOwnedAffectedAreaDurationOverrideMs(
+            SkillData skill,
+            SkillLevelData levelData,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
+        {
+            if (skill == null || ResolveLocalOwnedAffectedAreaMetadataDurationSeconds(levelData) > 0)
+            {
+                return 0;
+            }
+
+            return ResolveClientExplicitLocalOwnedAffectedAreaDurationOverrideMs(
+                skill.SkillId,
+                ownerLane);
         }
 
         private int ResolveLocalOwnedAffectedAreaObjectId(int skillId)
@@ -29748,6 +29886,12 @@ namespace HaCreator.MapSimulator
                     return;
                 }
 
+                if (_monsterBookManager.TryResolveCardDropProbabilityPercent(killedMobId, out int probabilityPercent)
+                    && !ShouldSpawnSimulatorOwnedMonsterCardDropFromCatalogProb(probabilityPercent))
+                {
+                    return;
+                }
+
                 // Item/Consume/0238.img card entries are only=1 consume-on-pickup records, so keep
                 // simulator-authored Monster Card drops single-count as the fallback path while packet-
                 // owned drop enters keep ownership when they are active.
@@ -29784,6 +29928,11 @@ namespace HaCreator.MapSimulator
             const int packetDropSuppressionWindowMs = 2200;
             return recentPacketDropAgeMs >= 0
                 && recentPacketDropAgeMs <= packetDropSuppressionWindowMs;
+        }
+
+        internal static bool ShouldSpawnSimulatorOwnedMonsterCardDropFromCatalogProb(int probabilityPercent, int rollPercent = -1)
+        {
+            return MonsterBookManager.ShouldSpawnCardDropFromProbabilityPercent(probabilityPercent, rollPercent);
         }
 
         private void AwardMobKillExperience(MobItem mob)
@@ -30709,8 +30858,16 @@ namespace HaCreator.MapSimulator
             List<MovePathElement> path = physics.GetMovePathPacketSnapshot(currentTime);
             IReadOnlyList<MovePathElement> normalizedPath =
                 CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(path);
-            if (!CMovePathClientPacketCodec.TryEncode(
+            bool isTimeForFlush = physics.IsTimeForFlush(
+                currentTime,
+                isFlying: physics.IsFlying,
+                hasDynamicFoothold: false);
+            IReadOnlyList<MovePathElement> cadenceShapedPath =
+                CMovePathClientPacketCodec.ApplyPortalOwnedFlushCadenceHint(
                     normalizedPath,
+                    isTimeForFlush);
+            if (!CMovePathClientPacketCodec.TryEncode(
+                    cadenceShapedPath,
                     out byte[] payload,
                     out _,
                     includeClientRandomCounts))
@@ -33921,7 +34078,10 @@ namespace HaCreator.MapSimulator
                 mapId => ResolveMapTransferDisplayName(mapId, null),
                 ResolveQuestMobMapIds,
                 ResolveQuestNpcMapIds,
-                ResolveCurrentMorphTemplateIdForQuestDemand);
+                ResolveCurrentMorphTemplateIdForQuestDemand,
+                HasActiveBuffForQuestDemand,
+                ResolveMonsterBookOwnedCardTypeCountForQuestDemand,
+                ResolveMonsterBookCardCountByMobIdForQuestDemand);
 
 
 
@@ -36871,7 +37031,7 @@ namespace HaCreator.MapSimulator
             }
 
             int weightedRoll = totalEligibleRate > 0
-                ? Random.Shared.Next(1, totalEligibleRate + 1)
+                ? _setupConsumeItemRandom.Next(1, totalEligibleRate + 1)
                 : 1;
             if (InventoryItemMetadataResolver.TrySelectConsumeItemRequirement(
                     requirements,
@@ -37152,7 +37312,7 @@ namespace HaCreator.MapSimulator
                 renderData.IconTexture = skill?.IconTexture;
                 renderData.RemainingMs = cooldownState.RemainingMs;
                 renderData.DurationMs = cooldownState.DurationMs;
-                SkillManager.TryResolveCooldownMaskVisualState(
+                bool hasVisualState = SkillManager.TryResolveCooldownMaskVisualState(
                     cooldownState,
                     out int maskFrameIndex,
                     out string counterText,
@@ -37161,7 +37321,10 @@ namespace HaCreator.MapSimulator
                 renderData.MaskFrameIndex = maskFrameIndex;
                 renderData.MaskSurface = SkillManager.CooldownMaskSurface.StatusBarShortcutTray;
                 renderData.UseQuickSlotMaskSurface = true;
-                renderData.CounterText = counterText;
+                renderData.CounterText = SkillManager.ResolveCooldownCounterTextForSurface(
+                    hasVisualState,
+                    counterText,
+                    cooldownState);
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
                 renderData.TooltipCostLineMarkup = SkillCooldownTooltipText.BuildSkillTooltipMarkup(
                     levelData,
@@ -37213,7 +37376,9 @@ namespace HaCreator.MapSimulator
             }
 
 
-            IReadOnlyList<int> activeCooldownSkillIds = _playerManager.Skills.GetActiveCooldownSkillIds(currentTime);
+            IReadOnlyList<int> activeCooldownSkillIds = _playerManager.Skills.GetActiveCooldownUiSkillIdsForSurface(
+                currentTime,
+                SkillManager.CooldownMaskSurface.StatusBarOffBarTray);
             if (activeCooldownSkillIds.Count == 0)
             {
                 _statusBarOffBarCooldownSortBuffer.Clear();
@@ -37244,7 +37409,13 @@ namespace HaCreator.MapSimulator
                 }
 
 
-                _playerManager.Skills.TryGetCooldownStartTime(skillId, out int cooldownStartTime);
+                if (!_playerManager.Skills.TryGetCooldownStartTime(skillId, out int cooldownStartTime)
+                    && _playerManager.Skills.TryGetPassiveVehicleTemporaryStatStateForParity(
+                        skillId,
+                        out SkillManager.PassiveVehicleTemporaryStatState passiveState))
+                {
+                    cooldownStartTime = passiveState.StartTime;
+                }
                 StatusBarCooldownRenderData renderData = renderIndex < _statusBarOffBarCooldownRenderCache.Count
                     ? _statusBarOffBarCooldownRenderCache[renderIndex]
                     : CreateAndAppendStatusBarCooldownRenderData(_statusBarOffBarCooldownRenderCache);
@@ -37255,7 +37426,7 @@ namespace HaCreator.MapSimulator
                 renderData.IconTexture = skill?.IconTexture ?? skill?.Icon?.Texture;
                 renderData.RemainingMs = cooldownState.RemainingMs;
                 renderData.DurationMs = cooldownState.DurationMs;
-                SkillManager.TryResolveCooldownMaskVisualState(
+                bool hasVisualState = SkillManager.TryResolveCooldownMaskVisualState(
                     cooldownState,
                     out int maskFrameIndex,
                     out string counterText,
@@ -37264,7 +37435,10 @@ namespace HaCreator.MapSimulator
                 renderData.MaskFrameIndex = maskFrameIndex;
                 renderData.MaskSurface = SkillManager.CooldownMaskSurface.StatusBarOffBarTray;
                 renderData.UseQuickSlotMaskSurface = false;
-                renderData.CounterText = counterText;
+                renderData.CounterText = SkillManager.ResolveCooldownCounterTextForSurface(
+                    hasVisualState,
+                    counterText,
+                    cooldownState);
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
                 renderData.TooltipCostLineMarkup = SkillCooldownTooltipText.BuildSkillTooltipMarkup(
                     levelData,
@@ -39751,6 +39925,12 @@ namespace HaCreator.MapSimulator
             }
 
 
+            bool officialSessionBridgeHasOwnership = HasCoconutOfficialSessionBridgeOwnership(
+                _coconutOfficialSessionBridge.HasConnectedSession,
+                _coconutOfficialSessionBridge.HasAttachedClient,
+                _coconutOfficialSessionBridge.HasPassiveEstablishedSocketPair);
+            bool allowTransportFallback = ShouldFallbackCoconutAttackTransport(officialSessionBridgeHasOwnership);
+
             while (field.TryGetNextUndispatchedAttackPacketRequest(out CoconutField.AttackPacketRequest request))
             {
                 if (_coconutOfficialSessionBridge.HasConnectedSession)
@@ -39760,7 +39940,7 @@ namespace HaCreator.MapSimulator
                         break;
                     }
                 }
-                else if (_coconutPacketInbox.HasConnectedClients)
+                else if (allowTransportFallback && _coconutPacketInbox.HasConnectedClients)
                 {
                     if (!_coconutPacketInbox.TrySendAttackRequest(request, out _))
                     {

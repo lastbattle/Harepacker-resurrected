@@ -149,6 +149,11 @@ namespace HaCreator.MapSimulator.UI
                 && packetItemId <= 0;
         }
 
+        internal static int ResolvePacketOwnedSellTemplateSourceItemQuantity(int metadataCount)
+        {
+            return Math.Max(1, metadataCount);
+        }
+
         internal static int FindPacketOwnedCommodityRowIndexForGoToCommoditySerial(
             int commoditySerialNumber,
             IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> rows)

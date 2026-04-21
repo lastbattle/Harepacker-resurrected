@@ -168,6 +168,19 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildResultNoticeSummary(packet)),
+                SocialListClientGuildResultKind.Notice35
+                    or SocialListClientGuildResultKind.Notice37
+                    or SocialListClientGuildResultKind.Notice42
+                    or SocialListClientGuildResultKind.Notice43
+                    or SocialListClientGuildResultKind.Notice44
+                    or SocialListClientGuildResultKind.Notice47
+                    or SocialListClientGuildResultKind.Notice50
+                    or SocialListClientGuildResultKind.Notice55
+                    or SocialListClientGuildResultKind.Notice56
+                    or SocialListClientGuildResultKind.Notice57
+                    or SocialListClientGuildResultKind.Notice58 => SetPacketSyncSummary(
+                    SocialListTab.Guild,
+                    BuildClientGuildDirectNoticeSummary(packet)),
                 _ => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildResultFallbackNoticeSummary(packet))
@@ -222,6 +235,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             string notice = SocialListGuildResultClientText.GetSharedResultNoticeFallback();
             return $"Client OnGuildResult({(byte)packet.Kind}) fell back to shared StringPool 0x{SocialListGuildResultClientText.SharedResultNoticeStringPoolId:X} notice: {notice}.";
+        }
+
+        private static string BuildClientGuildDirectNoticeSummary(SocialListClientGuildResultPacket packet)
+        {
+            string notice = string.IsNullOrWhiteSpace(packet.DirectNotice)
+                ? $"Client OnGuildResult({packet.RawSubtype}) notice."
+                : packet.DirectNotice.Trim();
+            return $"Client OnGuildResult({packet.RawSubtype}) reported explicit notice: {notice}";
         }
 
         internal string ApplyClientFriendResultDelta(SocialListClientFriendResultPacket packet)

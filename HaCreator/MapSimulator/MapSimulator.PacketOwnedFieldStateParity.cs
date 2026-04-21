@@ -740,20 +740,10 @@ namespace HaCreator.MapSimulator
             error = null;
             payload ??= Array.Empty<byte>();
 
-            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            if (!TryUnwrapCurrentWrapperRelayPacketChain(packetType, payload, out packetType, out payload, out string relayEvidence, out string relayError))
             {
-                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                        payload,
-                        out int relayedPacketType,
-                        out byte[] relayedPayload,
-                        out string relayError))
-                {
-                    error = relayError;
-                    return false;
-                }
-
-                packetType = relayedPacketType;
-                payload = relayedPayload;
+                error = relayError;
+                return false;
             }
 
             if (packetType == PartyRaidField.ClientSessionValuePacketType
@@ -768,6 +758,11 @@ namespace HaCreator.MapSimulator
                     ? PacketFieldSpecificDataOwnerHint.Field
                     : PacketFieldSpecificDataOwnerHint.Session;
                 pairs = new[] { new PortalSessionValueImpactIngress(key, value, packetType, ownerHint) };
+                if (!string.IsNullOrWhiteSpace(relayEvidence))
+                {
+                    error = relayEvidence;
+                }
+
                 return true;
             }
 
@@ -777,7 +772,9 @@ namespace HaCreator.MapSimulator
                 // still honor the active wrapper owner seam before generic pair fallback.
                 if (TryDecodeFieldSpecificRelayPacketPairs(payload, out pairs, out string relayMessage))
                 {
-                    error = relayMessage;
+                    error = string.IsNullOrWhiteSpace(relayEvidence)
+                        ? relayMessage
+                        : $"{relayEvidence}. {relayMessage}";
                     return true;
                 }
 
@@ -793,7 +790,9 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                error = $"decoded field-specific packet header size {headerSize}";
+                error = string.IsNullOrWhiteSpace(relayEvidence)
+                    ? $"decoded field-specific packet header size {headerSize}"
+                    : $"{relayEvidence}. decoded field-specific packet header size {headerSize}";
                 return true;
             }
 
@@ -830,6 +829,53 @@ namespace HaCreator.MapSimulator
 
             error = $"decoded field-specific relay packet {relayedPacketType}. {relayedError}";
             return true;
+        }
+
+        private static bool TryUnwrapCurrentWrapperRelayPacketChain(
+            int packetType,
+            byte[] payload,
+            out int unwrappedPacketType,
+            out byte[] unwrappedPayload,
+            out string relayEvidence,
+            out string error)
+        {
+            unwrappedPacketType = packetType;
+            unwrappedPayload = payload ?? Array.Empty<byte>();
+            relayEvidence = string.Empty;
+            error = null;
+            if (unwrappedPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                return true;
+            }
+
+            List<int> relayPacketTypes = new();
+            const int maxNestedRelayDepth = 8;
+            for (int depth = 0; depth < maxNestedRelayDepth; depth++)
+            {
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        unwrappedPayload,
+                        out int relayedPacketType,
+                        out byte[] relayedPayload,
+                        out string relayDecodeError))
+                {
+                    error = relayDecodeError;
+                    return false;
+                }
+
+                relayPacketTypes.Add(relayedPacketType);
+                unwrappedPacketType = relayedPacketType;
+                unwrappedPayload = relayedPayload;
+                if (unwrappedPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+                {
+                    relayEvidence = $"decoded relay packet-id prefixes {string.Join("->", relayPacketTypes)}";
+                    return true;
+                }
+            }
+
+            relayEvidence = $"decoded relay packet-id prefixes {string.Join("->", relayPacketTypes)}";
+            error =
+                $"Portal session-value impact relay decode exceeded bounded depth while unwrapping nested packet id {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode}. {relayEvidence}.";
+            return false;
         }
 
         private static bool TryNormalizePortalSessionValueImpactPairs(

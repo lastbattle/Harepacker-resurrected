@@ -148,6 +148,18 @@ namespace HaCreator.MapSimulator.UI
             return bestGreaterOrEqual ?? bestSmaller;
         }
 
+        internal static int ResolveDisplayedBodyLineCount(int wrappedBodyLineCount, int resolvedFrameLineCount)
+        {
+            int normalizedWrappedLineCount = Math.Max(0, wrappedBodyLineCount);
+            if (normalizedWrappedLineCount == 0)
+            {
+                return 0;
+            }
+
+            int normalizedResolvedFrameLineCount = Math.Max(1, resolvedFrameLineCount);
+            return Math.Min(normalizedWrappedLineCount, normalizedResolvedFrameLineCount);
+        }
+
         public void Configure(string title, string body, bool autoSeparated = true, bool tightLine = false)
         {
             _title = title?.Trim() ?? string.Empty;
@@ -378,9 +390,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateLayout()
         {
-            _bodyLines = BuildBodyLines().ToArray();
-            int lineCount = Math.Max(1, _bodyLines.Count);
-            int resolvedFrameLineCount = ResolveAvailableFrameLineCount(_framesByLineCount?.Keys, lineCount);
+            IReadOnlyList<string> wrappedBodyLines = BuildBodyLines().ToArray();
+            int requestedLineCount = Math.Max(1, wrappedBodyLines.Count);
+            int resolvedFrameLineCount = ResolveAvailableFrameLineCount(_framesByLineCount?.Keys, requestedLineCount);
+            int displayedLineCount = ResolveDisplayedBodyLineCount(wrappedBodyLines.Count, resolvedFrameLineCount);
+            _bodyLines = displayedLineCount > 0
+                ? wrappedBodyLines.Take(displayedLineCount).ToArray()
+                : Array.Empty<string>();
             Frame = _framesByLineCount.TryGetValue(resolvedFrameLineCount, out IDXObject frame)
                 ? frame
                 : _defaultFrame;

@@ -1296,8 +1296,10 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            // CBookDlg::SetPage depends on analyzer and IWzFont integer widths for CT_INFO placement.
-            return Math.Max(0, (int)Math.Round(width, MidpointRounding.AwayFromZero));
+            // CBookDlg::SetPage consumes integer CT_INFO widths directly for center/right placement
+            // (`190 - lineWidth` and `(190 - lineWidth) / 2`), so preserve that integer lane behavior
+            // by flooring measured widths instead of rounding outward.
+            return Math.Max(0, (int)Math.Floor(width));
         }
 
         private static float MeasureApproximateCollectionTextWidth(string text)

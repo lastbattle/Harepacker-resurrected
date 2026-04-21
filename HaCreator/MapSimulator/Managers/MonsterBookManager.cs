@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Managers
             public int MobId { get; init; }
             public bool Only { get; init; }
             public bool ConsumeOnPickup { get; init; }
+            public int DropProbabilityPercent { get; init; }
             public bool IsClientConsumedOnPickupCard => Only && ConsumeOnPickup;
             public string Name { get; init; } = string.Empty;
             public int Level { get; init; }
@@ -379,6 +380,43 @@ namespace HaCreator.MapSimulator.Managers
                 && definition?.IsClientConsumedOnPickupCard == true;
         }
 
+        public bool TryResolveCardDropProbabilityPercent(int mobId, out int probabilityPercent)
+        {
+            probabilityPercent = 0;
+            if (mobId <= 0)
+            {
+                return false;
+            }
+
+            if (!EnsureCatalogByMobId().TryGetValue(mobId, out MonsterBookCardDefinition definition)
+                || definition == null)
+            {
+                return false;
+            }
+
+            probabilityPercent = Math.Clamp(definition.DropProbabilityPercent, 0, 100);
+            return definition.DropProbabilityPercent > 0;
+        }
+
+        internal static bool ShouldSpawnCardDropFromProbabilityPercent(int probabilityPercent, int rollPercent = -1)
+        {
+            int normalizedProbability = Math.Clamp(probabilityPercent, 0, 100);
+            if (normalizedProbability <= 0)
+            {
+                return true;
+            }
+
+            if (normalizedProbability >= 100)
+            {
+                return true;
+            }
+
+            int roll = rollPercent >= 0
+                ? Math.Clamp(rollPercent, 0, 99)
+                : Random.Shared.Next(100);
+            return roll < normalizedProbability;
+        }
+
         public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int mobId, bool registered, bool persistToDisk = true)
         {
             return SetRegisteredCard(build, build?.Id ?? 0, build?.Name, mobId, registered, persistToDisk);
@@ -603,6 +641,7 @@ namespace HaCreator.MapSimulator.Managers
                     WzSubProperty specProperty = cardProperty["spec"] as WzSubProperty;
                     bool only = ReadInt(infoProperty?["only"]) != 0;
                     bool consumeOnPickup = ReadInt(specProperty?["consumeOnPickup"]) != 0;
+                    int dropProbabilityPercent = Math.Clamp(ReadInt(specProperty?["prob"]), 0, 100);
                     int mobId = ReadInt(infoProperty?["mob"]);
                     if (mobId <= 0)
                     {
@@ -629,6 +668,7 @@ namespace HaCreator.MapSimulator.Managers
                         MobId = mobId,
                         Only = only,
                         ConsumeOnPickup = consumeOnPickup,
+                        DropProbabilityPercent = dropProbabilityPercent,
                         Name = string.IsNullOrWhiteSpace(mobName) ? $"Mob #{mobId}" : mobName,
                         Level = Math.Max(0, level),
                         MaxHp = Math.Max(0, maxHp),

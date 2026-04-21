@@ -2362,8 +2362,34 @@ namespace HaCreator.MapSimulator.UI
             int stateChangeItemId = GetIntOrStringValue(infoProperty?["stateChangeItem"]);
             if (stateChangeItemId > 0)
             {
-                metadataLines.Add($"Linked Cash Effect: {ResolveTooltipItemLabel(stateChangeItemId)}");
+                string stateChangeItemLabel = ResolveTooltipItemLabel(stateChangeItemId);
+                metadataLines.Add(HasWeatherPresentationInfo(infoProperty)
+                    ? $"Weather Trigger Item: {stateChangeItemLabel}"
+                    : $"Linked Cash Effect: {stateChangeItemLabel}");
             }
+        }
+
+        private static bool HasWeatherPresentationInfo(WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return false;
+            }
+
+            string effectPath = NormalizeTooltipText((infoProperty["path"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(effectPath)
+                && effectPath.StartsWith("Map/MapHelper.img/weather/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return infoProperty["type"] != null
+                   || infoProperty["direction"] != null
+                   || infoProperty["floatType"] != null
+                   || infoProperty["speed"] != null
+                   || infoProperty["rotateSpeed"] != null
+                   || infoProperty["isBgmOrEffect"] != null
+                   || infoProperty["NoCancel"] != null;
         }
 
         private static void AppendInfoNpcMetadataLines(

@@ -242,26 +242,32 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<byte, ContextOwnedStagePeriodCatalogEntry> periods = new();
             foreach ((byte mode, WzImageProperty periodNode) in EnumeratePeriodNodes(themeProperty))
             {
+                WzImageProperty[] keywordBranches = ResolveAliasBranches(
+                    periodNode,
+                    "stageKeyword",
+                    "keyword",
+                    "aKeyword");
+                WzImageProperty[] questBranches = ResolveAliasBranches(
+                    periodNode,
+                    "enabledQuest",
+                    "aEnabledQuest",
+                    "questID",
+                    "questId",
+                    "quest");
+                WzImageProperty[] affectedMapBranches = ResolveAliasBranches(
+                    periodNode,
+                    "affectedMap",
+                    "fieldID",
+                    "fieldId",
+                    "aAffectedMap");
                 periods[mode] = new ContextOwnedStagePeriodCatalogEntry(
                     themeProperty.Name,
                     mode,
                     TryReadStageBackColor(periodNode),
                     ParseStageBackImages(periodNode),
-                    ParseStringSet(
-                        GetChildProperty(periodNode, "stageKeyword"),
-                        GetChildProperty(periodNode, "keyword"),
-                        GetChildProperty(periodNode, "aKeyword")),
-                    ParseIntSet(
-                        GetChildProperty(periodNode, "enabledQuest"),
-                        GetChildProperty(periodNode, "aEnabledQuest"),
-                        GetChildProperty(periodNode, "questID"),
-                        GetChildProperty(periodNode, "questId"),
-                        GetChildProperty(periodNode, "quest")),
-                    ParseIntSet(
-                        GetChildProperty(periodNode, "affectedMap"),
-                        GetChildProperty(periodNode, "fieldID"),
-                        GetChildProperty(periodNode, "fieldId"),
-                        GetChildProperty(periodNode, "aAffectedMap")));
+                    ParseStringSet(keywordBranches),
+                    ParseIntSet(questBranches),
+                    ParseIntSet(affectedMapBranches));
             }
 
             return periods;
@@ -312,7 +318,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static uint? TryReadStageBackColor(WzImageProperty periodNode)
         {
-            int rawColor = InfoTool.GetInt(GetChildProperty(periodNode, "backColor"), -1);
+            int rawColor = -1;
+            foreach (WzImageProperty branch in ResolveAliasBranches(periodNode, "backColor"))
+            {
+                int? candidate = TryReadNestedInt(branch);
+                if (candidate.HasValue)
+                {
+                    rawColor = candidate.Value;
+                    break;
+                }
+            }
+
             return rawColor == -1
                 ? null
                 : unchecked((uint)rawColor);
@@ -321,12 +337,9 @@ namespace HaCreator.MapSimulator.Interaction
         private static IReadOnlyList<ContextOwnedStageBackImageEntry> ParseStageBackImages(WzImageProperty periodNode)
         {
             List<ContextOwnedStageBackImageEntry> entries = new();
-            WzImageProperty container = GetChildProperty(periodNode, "aStageBackImg")
-                ?? GetChildProperty(periodNode, "stageBackImg")
-                ?? GetChildProperty(periodNode, "backImg")
-                ?? GetChildProperty(periodNode, "back");
+            WzImageProperty[] containers = ResolveAliasBranches(periodNode, "aStageBackImg", "stageBackImg", "backImg", "back");
 
-            if (container == null)
+            if (containers.Length == 0)
             {
                 if (TryParseStageBackImageEntry(periodNode, out ContextOwnedStageBackImageEntry directEntry))
                 {
@@ -336,15 +349,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return entries;
             }
 
-            foreach (WzImageProperty child in container.WzProperties.OfType<WzImageProperty>())
+            foreach (WzImageProperty container in containers)
             {
-                if (TryParseStageBackImageEntry(child, out ContextOwnedStageBackImageEntry entry))
+                foreach (WzImageProperty child in container.WzProperties.OfType<WzImageProperty>())
                 {
-                    entries.Add(entry);
-                    continue;
-                }
+                    if (TryParseStageBackImageEntry(child, out ContextOwnedStageBackImageEntry entry))
+                    {
+                        entries.Add(entry);
+                        continue;
+                    }
 
-                AppendNativeStageBackImageEntries(child, entries);
+                    AppendNativeStageBackImageEntries(child, entries);
+                }
             }
 
             return entries;
@@ -635,6 +651,82 @@ namespace HaCreator.MapSimulator.Interaction
         private static string ResolveClientPropertyName(int stringPoolId, string fallbackName)
         {
             return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackName);
+        }
+
+        private static WzImageProperty[] ResolveAliasBranches(WzImageProperty root, params string[] aliases)
+        {
+            if (root == null || aliases == null || aliases.Length == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            HashSet<string> aliasSet = new(aliases.Where(static item => !string.IsNullOrWhiteSpace(item)), StringComparer.OrdinalIgnoreCase);
+            if (aliasSet.Count == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            List<WzImageProperty> matches = new();
+            HashSet<WzImageProperty> visited = new();
+            CollectAliasBranches(root, aliasSet, matches, visited);
+            return matches.ToArray();
+        }
+
+        private static void CollectAliasBranches(
+            WzImageProperty property,
+            IReadOnlySet<string> aliases,
+            List<WzImageProperty> matches,
+            ISet<WzImageProperty> visited)
+        {
+            if (property == null
+                || aliases == null
+                || matches == null
+                || visited == null
+                || !visited.Add(property))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(property.Name) && aliases.Contains(property.Name.Trim()))
+            {
+                matches.Add(property);
+                return;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
+            {
+                CollectAliasBranches(child, aliases, matches, visited);
+            }
+        }
+
+        private static int? TryReadNestedInt(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            if (property is WzIntProperty intProperty)
+            {
+                return intProperty.Value;
+            }
+
+            string valueText = InfoTool.GetString(property);
+            if (int.TryParse(valueText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            {
+                return parsed;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
+            {
+                int? nestedValue = TryReadNestedInt(child);
+                if (nestedValue.HasValue)
+                {
+                    return nestedValue;
+                }
+            }
+
+            return null;
         }
 
         private static HashSet<string> ParseStringSet(params WzImageProperty[] properties)

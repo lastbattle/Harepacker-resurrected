@@ -292,6 +292,13 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
+            if (isMiss && ResolveSpecialTextDigitSet() == null)
+            {
+                // CAnimationDisplayer owner seam: special-text variants belong to NoRed0.
+                // If the authored owner set is unavailable, no-op instead of falling back.
+                return;
+            }
+
             // Limit active numbers
             if (_activeNumbers.Count >= MAX_ACTIVE_NUMBERS)
             {

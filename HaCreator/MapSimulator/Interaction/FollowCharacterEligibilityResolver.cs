@@ -179,26 +179,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            if (tamingMobPart.AvailableAnimations != null
-                && tamingMobPart.AvailableAnimations.Count > 0
-                && !tamingMobPart.AvailableAnimations.Contains(actionName))
+            // Exact-root ownership checks must not resolve through action aliases
+            // (`sit -> stand1/stand2`) because client-owned vehicle ownership for this
+            // seam requires an authored root on the mounted asset.
+            if (tamingMobPart.AvailableAnimations == null
+                || tamingMobPart.AvailableAnimations.Count == 0)
             {
                 return false;
             }
 
-            if (tamingMobPart.AnimationResolver == null)
-            {
-                return false;
-            }
-
-            animation = tamingMobPart.AnimationResolver(actionName);
-            if (animation?.Frames?.Count > 0)
-            {
-                tamingMobPart.Animations[actionName] = animation;
-                return true;
-            }
-
-            return false;
+            return tamingMobPart.AvailableAnimations.Contains(actionName);
         }
     }
 }

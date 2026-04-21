@@ -931,11 +931,16 @@ namespace HaCreator.MapSimulator.UI
                 ClientButtonIdMinimapState => ResolveMinimapStateButtonTransition(
                     normalizedCurrentOption,
                     normalizedPreviousExpandedOption),
-                ClientButtonIdMinimapRestore => new ClientStateTransition(
-                    NormalizeRememberedExpandedOption(normalizedPreviousExpandedOption),
-                    normalizedPreviousExpandedOption,
-                    false),
-                ClientButtonIdOption when supportsExpandedOption => new ClientStateTransition(
+                ClientButtonIdMinimapRestore => normalizedCurrentOption == ClientOptionCollapsed
+                    ? new ClientStateTransition(
+                        NormalizeRememberedExpandedOption(normalizedPreviousExpandedOption),
+                        normalizedPreviousExpandedOption,
+                        false)
+                    : new ClientStateTransition(
+                        normalizedCurrentOption,
+                        normalizedPreviousExpandedOption,
+                        false),
+                ClientButtonIdOption when supportsExpandedOption && normalizedCurrentOption != ClientOptionCollapsed => new ClientStateTransition(
                     normalizedCurrentOption == ClientOptionExpanded
                         ? ClientOptionCompact
                         : ClientOptionExpanded,
@@ -952,18 +957,18 @@ namespace HaCreator.MapSimulator.UI
             int normalizedCurrentOption,
             int normalizedPreviousExpandedOption)
         {
-            int rememberedExpandedOption = normalizedCurrentOption == ClientOptionCollapsed
-                ? normalizedPreviousExpandedOption
-                : NormalizeRememberedExpandedOption(normalizedCurrentOption);
-
-            int nextOption = normalizedCurrentOption == ClientOptionExpanded
-                ? ClientOptionCollapsed
-                : (normalizedCurrentOption + 1) % 3;
+            if (normalizedCurrentOption == ClientOptionCollapsed)
+            {
+                return new ClientStateTransition(
+                    ClientOptionCollapsed,
+                    normalizedPreviousExpandedOption,
+                    true);
+            }
 
             return new ClientStateTransition(
-                nextOption,
-                rememberedExpandedOption,
-                nextOption == ClientOptionCollapsed);
+                ClientOptionCollapsed,
+                NormalizeRememberedExpandedOption(normalizedCurrentOption),
+                true);
         }
 
         internal static ClientStateTransition ResolveToggleMiniMapStateTransitionForTesting(

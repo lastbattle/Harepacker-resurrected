@@ -64,6 +64,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte ParcelStateClaimedFlag = 1 << 2;
         private const byte ParcelStateHasItemFlag = 1 << 3;
         private const byte ParcelStateHasMesoFlag = 1 << 4;
+        private static readonly Encoding ParcelTextEncoding = ResolveParcelTextEncoding();
 
         internal static bool TryDecodeSessionPayload(ReadOnlySpan<byte> payload, out PacketOwnedParcelSessionDecodeResult result, out string error)
         {
@@ -508,7 +509,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            value = Encoding.ASCII.GetString(reader.ReadBytes(length)).TrimEnd('\0', ' ');
+            value = DecodePacketText(reader.ReadBytes(length));
             return true;
         }
 
@@ -527,7 +528,7 @@ namespace HaCreator.MapSimulator.Interaction
                 slice = slice[..terminator];
             }
 
-            return Encoding.ASCII.GetString(slice).TrimEnd('\0', ' ');
+            return DecodePacketText(slice);
         }
 
         private static byte[] ReadFixedBytes(ReadOnlySpan<byte> bytes, int offset, int length)
@@ -640,12 +641,12 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 ReadOnlySpan<byte> slice = bytes.Slice(start, length);
-                if (!IsMostlyPrintableAscii(slice))
+                if (!IsLikelyReadablePacketText(slice))
                 {
                     continue;
                 }
 
-                string candidate = Encoding.ASCII.GetString(slice).TrimEnd('\0', ' ').Trim();
+                string candidate = DecodePacketText(slice);
                 if (string.IsNullOrWhiteSpace(candidate)
                     || string.Equals(candidate, sender, StringComparison.OrdinalIgnoreCase)
                     || candidate.All(character => char.IsDigit(character)))
@@ -662,24 +663,115 @@ namespace HaCreator.MapSimulator.Interaction
             return best;
         }
 
-        private static bool IsMostlyPrintableAscii(ReadOnlySpan<byte> bytes)
+        private static bool IsLikelyReadablePacketText(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length == 0)
             {
                 return false;
             }
 
-            int printableCount = 0;
-            for (int i = 0; i < bytes.Length; i++)
+            string decoded = DecodePacketText(bytes);
+            if (string.IsNullOrWhiteSpace(decoded))
             {
-                byte value = bytes[i];
-                if (value == 0 || IsPrintableAscii(value))
+                return false;
+            }
+
+            int visibleCharacters = 0;
+            int readableCharacters = 0;
+            foreach (char character in decoded)
+            {
+                if (char.IsControl(character))
                 {
-                    printableCount++;
+                    continue;
+                }
+
+                visibleCharacters++;
+                if (char.IsLetterOrDigit(character)
+                    || char.IsWhiteSpace(character)
+                    || char.IsPunctuation(character))
+                {
+                    readableCharacters++;
                 }
             }
 
-            return printableCount >= (bytes.Length * 3) / 4;
+            if (visibleCharacters < MinimumMemoCandidateLength)
+            {
+                return false;
+            }
+
+            return readableCharacters >= (visibleCharacters * 3) / 4;
+        }
+
+        private static string DecodePacketText(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            int nullTerminator = bytes.IndexOf((byte)0);
+            if (nullTerminator >= 0)
+            {
+                bytes = bytes[..nullTerminator];
+            }
+
+            if (bytes.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            string decoded;
+            try
+            {
+                decoded = ParcelTextEncoding.GetString(bytes);
+            }
+            catch (DecoderFallbackException)
+            {
+                decoded = Encoding.ASCII.GetString(bytes);
+            }
+
+            if (string.IsNullOrEmpty(decoded))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder sanitized = new(decoded.Length);
+            foreach (char character in decoded)
+            {
+                if (character == '\0')
+                {
+                    continue;
+                }
+
+                if (char.IsControl(character)
+                    && character != '\r'
+                    && character != '\n'
+                    && character != '\t')
+                {
+                    continue;
+                }
+
+                sanitized.Append(character);
+            }
+
+            return sanitized.ToString().Trim();
+        }
+
+        private static Encoding ResolveParcelTextEncoding()
+        {
+            try
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                return Encoding.GetEncoding(949);
+            }
+            catch (ArgumentException)
+            {
+                return Encoding.ASCII;
+            }
+            catch (NotSupportedException)
+            {
+                return Encoding.ASCII;
+            }
         }
 
         private static bool IsPrintableAscii(byte value)

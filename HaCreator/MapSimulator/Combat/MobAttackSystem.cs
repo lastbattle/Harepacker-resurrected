@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Combat
             int MobId,
             string AttackAction,
             string BallUol,
+            int AttackAfterMs,
             int AttackType,
             bool IsRangedAttack,
             bool HasClientMobActionFrames,
@@ -468,6 +469,7 @@ namespace HaCreator.MapSimulator.Combat
                     mobItem.MobId,
                     attack.AnimationName,
                     ballUol,
+                    attack?.AttackAfter ?? 0,
                     attack?.AttackType ?? -1,
                     attack?.IsRanged == true,
                     hasClientMobActionFrames,
@@ -2396,7 +2398,7 @@ namespace HaCreator.MapSimulator.Combat
             {
                 // CMob::DoAttack seeds MobBullet end time from range/r * 600 / nBulletSpeed
                 // instead of the raw clamped destination distance.
-                return Math.Max(1, (int)MathF.Round(rangeRadius * 600f / bulletSpeed));
+                return Math.Max(0, (int)(rangeRadius * 600f / bulletSpeed));
             }
 
             float resolvedSpeed = Math.Max(220f, bulletSpeed > 0 ? bulletSpeed : 320f);

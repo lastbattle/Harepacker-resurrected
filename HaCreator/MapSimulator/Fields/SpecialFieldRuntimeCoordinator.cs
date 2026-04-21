@@ -391,28 +391,17 @@ namespace HaCreator.MapSimulator.Fields
             out byte[] dojoPayload,
             out string evidence)
         {
-            dojoPacketType = -1;
-            dojoPayload = Array.Empty<byte>();
-            evidence = string.Empty;
-            wrapperPayload ??= Array.Empty<byte>();
-
-            if (wrapperPacketType == FieldSpecificDataRelayOpcode
-                && DojoField.TryDecodeFieldSpecificPacketPayload(wrapperPayload, out dojoPacketType, out dojoPayload, out _))
-            {
-                evidence = FieldSpecificDataRelayOpcode.ToString();
-                return true;
-            }
-
-            if (wrapperPacketType != CurrentWrapperRelayOpcode)
-            {
-                return false;
-            }
-
-            return TryDecodeNestedDojoPacketFromRelayPayload(wrapperPayload, out dojoPacketType, out dojoPayload, out evidence);
+            return TryDecodeDojoPacketFromRelayPrefixChain(
+                wrapperPacketType,
+                wrapperPayload,
+                out dojoPacketType,
+                out dojoPayload,
+                out evidence);
         }
 
-        private static bool TryDecodeNestedDojoPacketFromRelayPayload(
-            byte[] relayPayload,
+        internal static bool TryDecodeDojoPacketFromRelayPrefixChain(
+            int firstPacketType,
+            byte[] firstPayload,
             out int dojoPacketType,
             out byte[] dojoPayload,
             out string evidence)
@@ -420,26 +409,18 @@ namespace HaCreator.MapSimulator.Fields
             dojoPacketType = -1;
             dojoPayload = Array.Empty<byte>();
             evidence = string.Empty;
-            relayPayload ??= Array.Empty<byte>();
+            firstPayload ??= Array.Empty<byte>();
 
             const int maxNestedRelayDepth = 8;
             List<int> relayPrefixChain = new();
-            byte[] nestedRelayPayload = relayPayload;
+            int relayPacketType = firstPacketType;
+            byte[] relayPayload = firstPayload;
             for (int depth = 0; depth < maxNestedRelayDepth; depth++)
             {
-                if (!TryDecodeCurrentWrapperRelayPayload(
-                        nestedRelayPayload,
-                        out int nestedRelayPacketType,
-                        out byte[] nestedPayload,
-                        out _))
-                {
-                    return false;
-                }
-
-                relayPrefixChain.Add(nestedRelayPacketType);
-                if (nestedRelayPacketType == FieldSpecificDataRelayOpcode
+                relayPrefixChain.Add(relayPacketType);
+                if (relayPacketType == FieldSpecificDataRelayOpcode
                     && DojoField.TryDecodeFieldSpecificPacketPayload(
-                        nestedPayload,
+                        relayPayload,
                         out dojoPacketType,
                         out dojoPayload,
                         out _))
@@ -448,16 +429,24 @@ namespace HaCreator.MapSimulator.Fields
                     return true;
                 }
 
-                if (nestedRelayPacketType != CurrentWrapperRelayOpcode
-                    && nestedRelayPacketType != FieldSpecificDataRelayOpcode)
+                if (relayPacketType != CurrentWrapperRelayOpcode
+                    && relayPacketType != FieldSpecificDataRelayOpcode)
                 {
                     return false;
                 }
 
-                nestedRelayPayload = nestedPayload;
-                if (nestedRelayPayload.Length < sizeof(ushort))
+                if (relayPayload.Length < sizeof(ushort))
                 {
                     break;
+                }
+
+                if (!TryDecodeCurrentWrapperRelayPayload(
+                        relayPayload,
+                        out relayPacketType,
+                        out relayPayload,
+                        out _))
+                {
+                    return false;
                 }
             }
 

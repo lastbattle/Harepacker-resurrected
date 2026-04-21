@@ -1957,7 +1957,19 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryApplyOutgoingTieResponse(byte[] packetBytes, int tickCount, out string message)
         {
-            bool accepted = packetBytes.Length <= 1 || packetBytes[1] != 0;
+            if (packetBytes == null || packetBytes.Length <= 1)
+            {
+                message = "Tie-response packet (51) requires an explicit yes/no byte (0 or 1).";
+                return false;
+            }
+
+            if (packetBytes[1] > 1)
+            {
+                message = $"Tie-response packet (51) used invalid decision byte {packetBytes[1]}; expected 0 or 1.";
+                return false;
+            }
+
+            bool accepted = packetBytes[1] != 0;
             message = accepted
                 ? "Tie-response packet (51) sent with accept=1."
                 : "Tie-response packet (51) sent with accept=0.";

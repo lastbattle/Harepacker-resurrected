@@ -1539,14 +1539,19 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int lineLeft = Math.Max(0, lineSnapshot.Left);
-                int lineTop = Math.Max(0, lineSnapshot.Top);
-                if (lineTop >= stripHeight)
+                int lineLeft = lineSnapshot.Left;
+                int lineTop = lineSnapshot.Top;
+                if (!IsAlarmLineVisibleInClip(lineTop, _font.LineSpacing, stripHeight))
                 {
                     continue;
                 }
 
-                float maxWidth = Math.Max(40f, stripWidth - lineLeft);
+                float maxWidth = ResolveAlarmLineMaxTextWidth(stripWidth, lineLeft);
+                if (maxWidth <= 0f)
+                {
+                    continue;
+                }
+
                 string clippedLine = TrimTextToWidth(line, maxWidth);
                 int drawX = x + lineLeft;
                 int drawY = stripTop + lineTop;
@@ -1601,18 +1606,51 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int lineTop = Math.Max(0, line.Top);
-                if (lineTop >= stripHeight)
+                int lineTop = line.Top;
+                if (!IsAlarmLineVisibleInClip(lineTop, _font.LineSpacing, stripHeight))
                 {
                     continue;
                 }
 
                 int lineBottom = Math.Min(stripHeight, lineTop + _font.LineSpacing);
+                if (lineBottom <= 0)
+                {
+                    continue;
+                }
+
                 maxLineBottom = Math.Max(maxLineBottom, stripTop + lineBottom);
             }
 
             int clippedTop = (maxLineBottom - Position.Y) + 8;
             return Math.Max(baselineTop, clippedTop);
+        }
+
+        internal static bool IsAlarmLineVisibleInClipForTesting(int lineTop, int lineHeight, int clipHeight)
+        {
+            return IsAlarmLineVisibleInClip(lineTop, lineHeight, clipHeight);
+        }
+
+        internal static float ResolveAlarmLineMaxTextWidthForTesting(int stripWidth, int lineLeft)
+        {
+            return ResolveAlarmLineMaxTextWidth(stripWidth, lineLeft);
+        }
+
+        private static bool IsAlarmLineVisibleInClip(int lineTop, int lineHeight, int clipHeight)
+        {
+            return clipHeight > 0
+                && lineHeight > 0
+                && lineTop < clipHeight
+                && (lineTop + lineHeight) > 0;
+        }
+
+        private static float ResolveAlarmLineMaxTextWidth(int stripWidth, int lineLeft)
+        {
+            if (stripWidth <= 0 || lineLeft >= stripWidth)
+            {
+                return 0f;
+            }
+
+            return Math.Max(40f, stripWidth - lineLeft);
         }
 
         private string TrimTextToWidth(string text, float maxWidth)

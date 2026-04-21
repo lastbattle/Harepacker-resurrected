@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
         }
         public override string WindowName => MapSimulatorWindowNames.CashAvatarPreview;
         public override bool CapturesKeyboardInput => IsVisible;
+        public Action ClientCancelIngressRequested { get; set; }
         public Func<string> PersonalShopRequested { get; set; }
         public Func<string> EntrustedShopRequested { get; set; }
         public Func<string> TradingRoomRequested { get; set; }
@@ -246,6 +247,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleBuyAvatar()
         {
+            ClientCancelIngressRequested?.Invoke();
             RefreshSelectionState(force: true);
             if (_currentSelection == null)
             {
@@ -271,6 +273,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleDefaultAvatar()
         {
+            ClientCancelIngressRequested?.Invoke();
             if (CharacterBuild == null)
             {
                 _statusMessage = "CCSWnd_Char::OnDefaultAvatar is unavailable without a live character build.";
@@ -290,6 +293,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleTakeoffAvatar()
         {
+            ClientCancelIngressRequested?.Invoke();
             SyncPreviewBuild();
             if (_previewBuild == null || (!_lastPreviewedSlot.HasValue && !_lastPreviewedPet))
             {

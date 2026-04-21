@@ -1379,6 +1379,33 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        internal static int? ResolveAnimationDisplayerCatchSuccessHintFromPacketEffect(
+            RemoteUserActorPool.RemoteStringEffectPresentation presentation)
+        {
+            int? secondaryHint = presentation.SecondaryInt32Value;
+            if (ResolveAnimationDisplayerCatchSuccessHint(secondaryHint).HasValue)
+            {
+                return secondaryHint;
+            }
+
+            int[] trailingValues = presentation.TrailingInt32Values;
+            if (trailingValues == null || trailingValues.Length == 0)
+            {
+                return secondaryHint;
+            }
+
+            for (int i = 0; i < trailingValues.Length; i++)
+            {
+                int candidateHint = trailingValues[i];
+                if (ResolveAnimationDisplayerCatchSuccessHint(candidateHint).HasValue)
+                {
+                    return candidateHint;
+                }
+            }
+
+            return secondaryHint;
+        }
+
         internal static Vector2 ResolveAnimationDisplayerMobCatchAnchor(Vector2 mobHeadAnchor)
         {
             return new Vector2(
@@ -1958,6 +1985,9 @@ namespace HaCreator.MapSimulator
                 ? null
                 : () => !request.GetFacingRight();
             bool fallbackFlip = request.GetFacingRight != null && !request.GetFacingRight();
+            int registerTime = ResolveAnimationDisplayerMobProjectileRegistrationTime(
+                request.CurrentTime,
+                request.AttackAfterMs);
             _animationEffects.AddOneTimeAttached(
                 frames,
                 request.GetPosition,
@@ -1965,7 +1995,7 @@ namespace HaCreator.MapSimulator
                 fallbackPosition.X,
                 fallbackPosition.Y,
                 fallbackFlip,
-                request.CurrentTime);
+                registerTime);
 
             message = $"Registered {ownerName} animation-displayer owner frames from {resolvedEffectUol}.";
             return true;
@@ -2024,6 +2054,13 @@ namespace HaCreator.MapSimulator
             }
 
             candidates.Add(normalized);
+        }
+
+        internal static int ResolveAnimationDisplayerMobProjectileRegistrationTime(
+            int currentTime,
+            int attackAfterMs)
+        {
+            return unchecked(currentTime + Math.Max(0, attackAfterMs));
         }
 
         internal static bool TryResolveAnimationDisplayerCombatFeedbackColor(
@@ -3304,7 +3341,7 @@ namespace HaCreator.MapSimulator
 
             if (TryResolveAnimationDisplayerCatchSuccessFromEffectUol(
                     effectUol,
-                    presentation.SecondaryInt32Value,
+                    ResolveAnimationDisplayerCatchSuccessHintFromPacketEffect(presentation),
                     out bool catchSuccess))
             {
                 return TryRegisterAnimationDisplayerCatch(
@@ -3742,8 +3779,14 @@ namespace HaCreator.MapSimulator
         private void HandleRemoteMobAttackHitEffect(RemoteUserActorPool.RemoteMobAttackHitPresentation presentation)
         {
             if (_animationEffects == null
-                || string.IsNullOrWhiteSpace(presentation.EffectPath)
-                || !TryLoadRemotePacketOwnedStringEffectFrames(presentation.EffectPath, out List<IDXObject> frames))
+                || string.IsNullOrWhiteSpace(presentation.EffectPath))
+            {
+                return;
+            }
+
+            string effectUol = NormalizeRemotePacketOwnedStringEffectUol(presentation.EffectPath);
+            if (string.IsNullOrWhiteSpace(effectUol)
+                || !TryLoadRemotePacketOwnedStringEffectFrames(effectUol, out List<IDXObject> frames))
             {
                 return;
             }
@@ -3757,7 +3800,6 @@ namespace HaCreator.MapSimulator
                 ownerActionName = ResolveAnimationDisplayerRemotePacketOwnedActionName(actor);
             }
 
-            string effectUol = NormalizeRemotePacketOwnedStringEffectUol(presentation.EffectPath);
             int initialElapsedMs = ResolveAnimationDisplayerRemoteMobAttackHitInitialElapsed(
                 presentation.CharacterId,
                 presentation.MobTemplateId,
@@ -6726,7 +6768,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 WzImageProperty variantProperty = ResolveAnimationDisplayerLinkedRealProperty(childProperty);
-                if (variantProperty == null)
+                if (!IsAnimationDisplayerFollowEffectVariantPropertyLoadable(variantProperty))
                 {
                     continue;
                 }
@@ -6754,6 +6796,46 @@ namespace HaCreator.MapSimulator
             }
 
             return variantUols.ToArray();
+        }
+
+        private static bool IsAnimationDisplayerFollowEffectVariantPropertyLoadable(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return false;
+            }
+
+            return IsAnimationDisplayerFollowEffectVariantPropertyLoadable(
+                property,
+                new HashSet<WzImageProperty>());
+        }
+
+        private static bool IsAnimationDisplayerFollowEffectVariantPropertyLoadable(
+            WzImageProperty property,
+            HashSet<WzImageProperty> visited)
+        {
+            WzImageProperty resolvedProperty = ResolveAnimationDisplayerLinkedRealProperty(property);
+            if (resolvedProperty == null || !visited.Add(resolvedProperty))
+            {
+                return false;
+            }
+
+            if (resolvedProperty is WzCanvasProperty)
+            {
+                return true;
+            }
+
+            WzPropertyCollection children = resolvedProperty.WzProperties;
+            int childCount = children?.Count ?? 0;
+            for (int i = 0; i < childCount; i++)
+            {
+                if (IsAnimationDisplayerFollowEffectVariantPropertyLoadable(children[i], visited))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool TryParseAnimationDisplayerNonNegativeIndexSegment(string segment, out int index)

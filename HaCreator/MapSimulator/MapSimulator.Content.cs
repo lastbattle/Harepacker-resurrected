@@ -721,6 +721,8 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewReload.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewReload.SetFont(_fontChat);
                 cashAvatarPreviewReload.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
+                cashAvatarPreviewReload.ClientCancelIngressRequested =
+                    () => ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
                 cashAvatarPreviewReload.PersonalShopRequested = ShowCashAvatarPersonalShopAction;
                 cashAvatarPreviewReload.EntrustedShopRequested = ShowCashAvatarEntrustedShopAction;
                 cashAvatarPreviewReload.TradingRoomRequested = ShowCashAvatarTradingRoomAction;
@@ -1144,6 +1146,8 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewRebuild.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewRebuild.SetFont(_fontChat);
                 cashAvatarPreviewRebuild.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
+                cashAvatarPreviewRebuild.ClientCancelIngressRequested =
+                    () => ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
                 cashAvatarPreviewRebuild.PersonalShopRequested = ShowCashAvatarPersonalShopAction;
                 cashAvatarPreviewRebuild.EntrustedShopRequested = ShowCashAvatarEntrustedShopAction;
                 cashAvatarPreviewRebuild.TradingRoomRequested = ShowCashAvatarTradingRoomAction;
@@ -1968,6 +1972,8 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewWindow.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewWindow.SetFont(_fontChat);
                 cashAvatarPreviewWindow.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
+                cashAvatarPreviewWindow.ClientCancelIngressRequested =
+                    () => ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
                 cashAvatarPreviewWindow.PersonalShopRequested = ShowCashAvatarPersonalShopAction;
                 cashAvatarPreviewWindow.EntrustedShopRequested = ShowCashAvatarEntrustedShopAction;
                 cashAvatarPreviewWindow.TradingRoomRequested = ShowCashAvatarTradingRoomAction;

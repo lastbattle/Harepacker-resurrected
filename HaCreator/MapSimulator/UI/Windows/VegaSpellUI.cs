@@ -825,6 +825,7 @@ namespace HaCreator.MapSimulator.UI
             request = new VegaOwnerRequest(
                 selection.Key,
                 selectedPart?.ItemId ?? 0,
+                selectedPart?.ClientItemToken.GetValueOrDefault() ?? 0,
                 ResolveItemName(selectedPart),
                 _modifierItemId.Value,
                 ResolveModifierName(),
@@ -921,6 +922,7 @@ namespace HaCreator.MapSimulator.UI
             public VegaOwnerRequest(
                 EquipSlot slot,
                 int equipItemId,
+                int equipItemToken,
                 string equipName,
                 int modifierItemId,
                 string modifierName,
@@ -933,6 +935,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 Slot = slot;
                 EquipItemId = equipItemId;
+                EquipItemToken = equipItemToken;
                 EquipName = equipName ?? string.Empty;
                 ModifierItemId = modifierItemId;
                 ModifierName = modifierName ?? string.Empty;
@@ -946,6 +949,7 @@ namespace HaCreator.MapSimulator.UI
 
             public EquipSlot Slot { get; }
             public int EquipItemId { get; }
+            public int EquipItemToken { get; }
             public string EquipName { get; }
             public int ModifierItemId { get; }
             public string ModifierName { get; }

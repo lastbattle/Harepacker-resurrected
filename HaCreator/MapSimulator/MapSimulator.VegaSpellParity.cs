@@ -871,6 +871,7 @@ namespace HaCreator.MapSimulator
             CharacterPart equippedPart = null;
             _playerManager?.Player?.Build?.Equipment?.TryGetValue(request.Slot, out equippedPart);
             int equipItemToken = BuildVegaEquippedItemToken(
+                request.EquipItemToken,
                 request.Slot,
                 request.EquipItemId,
                 encodedEquipPosition,
@@ -1165,11 +1166,17 @@ namespace HaCreator.MapSimulator
         }
 
         private static int BuildVegaEquippedItemToken(
+            int preferredItemToken,
             EquipSlot slot,
             int itemId,
             int encodedEquipPosition,
             CharacterPart equippedPart)
         {
+            if (preferredItemToken != 0)
+            {
+                return preferredItemToken;
+            }
+
             if (TryResolveClientAuthoredVegaEquippedItemToken(equippedPart, out int itemToken))
             {
                 return itemToken;
@@ -1402,6 +1409,21 @@ namespace HaCreator.MapSimulator
             CharacterPart equippedPart = null)
         {
             return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition, equippedPart);
+        }
+
+        internal static int BuildVegaEquippedItemTokenForTests(
+            int preferredItemToken,
+            EquipSlot slot,
+            int itemId,
+            int encodedEquipPosition,
+            CharacterPart equippedPart = null)
+        {
+            return BuildVegaEquippedItemToken(
+                preferredItemToken,
+                slot,
+                itemId,
+                encodedEquipPosition,
+                equippedPart);
         }
 
         internal static int BuildSyntheticVegaInventoryItemTokenForTests(
@@ -1649,6 +1671,7 @@ namespace HaCreator.MapSimulator
             var request = new VegaSpellUI.VegaOwnerRequest(
                 EquipSlot.Weapon,
                 1302000,
+                0x2468ACE,
                 equipName,
                 5610000,
                 "Vega's Spell(10%)",
@@ -1767,6 +1790,14 @@ namespace HaCreator.MapSimulator
 
             if (!normalized.Contains('/', StringComparison.Ordinal))
             {
+                string aliasDescriptor = NormalizePacketOwnedClientSoundDescriptor(
+                    VegaOwnerStringPoolText.GetResultLoopSoundAliasDescriptor());
+                if (string.Equals(normalized, aliasDescriptor, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalized, "VegaTwinkling", StringComparison.OrdinalIgnoreCase))
+                {
+                    return fallback;
+                }
+
                 return normalized;
             }
 

@@ -287,6 +287,7 @@ namespace HaCreator.MapSimulator
         private float _clientOwnedLimitedViewMaskHeight = ClientOwnedLimitedViewFallbackMaskHeight;
         private float _clientOwnedLimitedViewOriginX = ClientOwnedLimitedViewFallbackOriginX;
         private float _clientOwnedLimitedViewOriginY = ClientOwnedLimitedViewFallbackOriginY;
+        private bool _clientOwnedLimitedViewShareView;
         private TutorialWrapperKind _activeTutorialWrapperKind;
         private WeddingPhotoSceneContract? _activeWeddingPhotoSceneContract;
         private bool _wrapperOwnedAranTutorActorApplied;
@@ -367,7 +368,78 @@ namespace HaCreator.MapSimulator
                 return applied;
             }
 
+            if (string.Equals(wrapperName, "limitedview", StringComparison.OrdinalIgnoreCase)
+                && TryApplyClientOwnedLimitedViewFieldValue(key, value, out message))
+            {
+                return true;
+            }
+
             return false;
+        }
+
+        private bool TryApplyClientOwnedLimitedViewFieldValue(string key, string value, out string message)
+        {
+            message = null;
+            if (!IsLimitedViewWrapperMap(_mapBoard?.MapInfo))
+            {
+                message = "limited-view wrapper is inactive.";
+                return false;
+            }
+
+            if (!string.Equals(key?.Trim(), "shareview", StringComparison.OrdinalIgnoreCase))
+            {
+                message = "limited-view field-value key is unsupported (expected shareview).";
+                return false;
+            }
+
+            if (!TryParseClientOwnedBooleanToken(value, out bool shareView))
+            {
+                message = "limited-view shareview value must be true/false, on/off, yes/no, or 1/0.";
+                return false;
+            }
+
+            _clientOwnedLimitedViewShareView = shareView;
+            _limitedViewField.SetClientOwnedShareView(shareView);
+            message = $"limited-view shareview set to {(shareView ? "on" : "off")} (CField_LimitedView::m_bShareView).";
+            return true;
+        }
+
+        private static bool TryParseClientOwnedBooleanToken(string token, out bool value)
+        {
+            value = false;
+            if (token == null)
+            {
+                return false;
+            }
+
+            string normalized = token.Trim();
+            if (normalized.Length == 0)
+            {
+                return false;
+            }
+
+            if (bool.TryParse(normalized, out value))
+            {
+                return true;
+            }
+
+            switch (normalized.ToLowerInvariant())
+            {
+                case "1":
+                case "on":
+                case "yes":
+                case "y":
+                    value = true;
+                    return true;
+                case "0":
+                case "off":
+                case "no":
+                case "n":
+                    value = false;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private bool TryApplyClientOwnedWrapperSessionValue(string wrapperName, string key, string value, out string message)
@@ -751,6 +823,7 @@ namespace HaCreator.MapSimulator
         {
             if (!IsLimitedViewWrapperMap(mapInfo))
             {
+                _clientOwnedLimitedViewShareView = false;
                 _limitedViewField.ClearClientOwnedMask();
                 _limitedViewField.DisableImmediate();
                 return;
@@ -767,6 +840,7 @@ namespace HaCreator.MapSimulator
             _limitedViewField.SetPulse(false);
             _limitedViewField.SetEdgeSoftness(0f);
             _limitedViewField.SetFogColor(LimitedViewField.ResolveClientOwnedDarkLayerColor());
+            _limitedViewField.SetClientOwnedShareView(_clientOwnedLimitedViewShareView);
             _limitedViewField.EnableClientOwnedCircleMask(
                 _clientOwnedLimitedViewRadius,
                 _clientOwnedLimitedViewMaskWidth,
@@ -1179,6 +1253,7 @@ namespace HaCreator.MapSimulator
                 EnsureClientOwnedLimitedViewMetadataLoaded();
                 activeWrappers.Add(
                     $"limited-view wrapper active (fieldType {(int)FieldType.FIELDTYPE_LIMITEDVIEW}): dark {ClientOwnedLimitedViewDarkCanvasWidth}x{ClientOwnedLimitedViewDarkCanvasHeight}, layer offset ({ClientOwnedLimitedViewDarkLayerOffsetX},{ClientOwnedLimitedViewDarkLayerOffsetY}), mask {_clientOwnedLimitedViewMaskWidth:F0}x{_clientOwnedLimitedViewMaskHeight:F0}, origin ({_clientOwnedLimitedViewOriginX:F0},{_clientOwnedLimitedViewOriginY:F0}), radius {_clientOwnedLimitedViewRadius:F0}, update mirrors CField::Update + DrawViewrange ownership, source Effect/MapEff.img/{ClientOwnedLimitedViewWzPath}.");
+                activeWrappers[^1] = activeWrappers[^1] + $" share-view {(_clientOwnedLimitedViewShareView ? "on" : "off")}.";
             }
 
             if (SuppressesDragonPresentation(mapInfo))

@@ -843,7 +843,13 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            byte[] payload = new byte[rawPacket.Length - sizeof(ushort) - sizeof(byte)];
+            int payloadLength = rawPacket.Length - sizeof(ushort) - sizeof(byte);
+            if (!RockPaperScissorsField.HasValidOwnerPacketPayloadShape(packetType, payloadLength))
+            {
+                return false;
+            }
+
+            byte[] payload = new byte[payloadLength];
             if (payload.Length > 0)
             {
                 Buffer.BlockCopy(rawPacket, sizeof(ushort) + sizeof(byte), payload, 0, payload.Length);
@@ -989,6 +995,11 @@ namespace HaCreator.MapSimulator.Managers
 
             int payloadOffset = sizeof(ushort) + sizeof(byte);
             int payloadLength = rawPacket.Length - payloadOffset;
+            if (!RockPaperScissorsField.HasValidOwnerPacketPayloadShape(packetType, payloadLength))
+            {
+                return false;
+            }
+
             byte[] payload = payloadLength == 0 ? Array.Empty<byte>() : rawPacket[payloadOffset..];
             string summary = $"opcode={RockPaperScissorsField.OwnerOpcode} subtype={packetType}";
             trace = new InboundPacketTrace(

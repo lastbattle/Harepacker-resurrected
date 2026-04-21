@@ -256,6 +256,15 @@ namespace HaCreator.MapSimulator
             RegisterPacketOwnedLogoutGiftWindow();
             _lastPacketOwnedLogoutGiftRefreshTick = Environment.TickCount;
 
+            if (!IsPacketOwnedLogoutGiftFieldStageActive())
+            {
+                message =
+                    "Ignored packet 432 because the client routes `CWvsContext::OnLogoutGift` only through `CField::OnPacket`, and the current simulator stage is not an active `CField` owner.";
+                _lastPacketOwnedLogoutGiftSummary = message;
+                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
+                return false;
+            }
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is not LogoutGiftWindow window)
             {
                 message = "CWvsContext::OnLogoutGift routed, but the simulator logout-gift owner is unavailable.";
@@ -826,6 +835,7 @@ namespace HaCreator.MapSimulator
             return ResolvePacketOwnedLogoutGiftFieldStageActive(
                 _gameState?.IsLoginMap == true,
                 _gameState?.IsCashShopMap == true,
+                ShouldRunCashServicePacketInbox(),
                 IsPacketOwnedLogoutGiftStageWindowVisible(MapSimulatorWindowNames.CashShopStage),
                 IsPacketOwnedLogoutGiftStageWindowVisible(MapSimulatorWindowNames.MtsStatus));
         }
@@ -1089,10 +1099,11 @@ namespace HaCreator.MapSimulator
         internal static bool ResolvePacketOwnedLogoutGiftFieldStageActive(
             bool isLoginMap,
             bool isCashShopMap,
+            bool hasVisibleCashServiceOwner,
             bool isCashShopStageVisible,
             bool isMtsStageVisible)
         {
-            if (isLoginMap || isCashShopMap)
+            if (isLoginMap || isCashShopMap || hasVisibleCashServiceOwner)
             {
                 return false;
             }

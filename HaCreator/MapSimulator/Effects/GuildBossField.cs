@@ -409,13 +409,13 @@ namespace HaCreator.MapSimulator.Effects
                 // BasicActionAttack still runs local normal-attack ownership before
                 // the pulley branch bails out on a hit reactor. Keep that short owner
                 // window active while suppressing pulley preview/request flow.
-                RegisterLocalBasicActionOwnership(currentTimeMs);
+                RegisterLocalBasicActionOwnership(currentTimeMs, includePulleyHitWindow: false);
                 return false;
             }
 
 
             TriggerPulleyHitAnimation(currentTimeMs);
-            RegisterLocalBasicActionOwnership(currentTimeMs);
+            RegisterLocalBasicActionOwnership(currentTimeMs, includePulleyHitWindow: true);
 
 
 
@@ -1018,13 +1018,15 @@ namespace HaCreator.MapSimulator.Effects
             return unchecked(currentTimeMs - _localBasicActionOwnerUntil) < 0;
         }
 
-        private void RegisterLocalBasicActionOwnership(int currentTimeMs)
+        private void RegisterLocalBasicActionOwnership(int currentTimeMs, bool includePulleyHitWindow)
         {
             // Client evidence: CField_GuildBoss::BasicActionAttack (0x5517d0) routes
             // the local normal attack through CUserLocal::TryDoingNormalAttack before
             // it sends the pulley packet when state == 0. Mirror that as a short local
             // ownership window instead of treating the whole pulley area/state as owned.
-            int ownerWindowMs = Math.Max(MinimumLocalBasicActionOwnershipWindowMs, GetPulleyHitAnimationDurationMs());
+            int ownerWindowMs = includePulleyHitWindow
+                ? Math.Max(MinimumLocalBasicActionOwnershipWindowMs, GetPulleyHitAnimationDurationMs())
+                : MinimumLocalBasicActionOwnershipWindowMs;
             _localBasicActionOwnerUntil = unchecked(currentTimeMs + ownerWindowMs);
         }
 

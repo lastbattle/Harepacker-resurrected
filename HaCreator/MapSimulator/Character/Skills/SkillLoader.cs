@@ -2931,7 +2931,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // action-specific helper row is missing from Character/00002000.img. Keep mounted
             // piece rows as first priority, then synthesize remapped attack aliases for any
             // remaining non-ghost client-initialized rows.
-            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedShadowPartnerRawActionNames())
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedFallbackActionNames())
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
@@ -7624,6 +7624,81 @@ namespace HaCreator.MapSimulator.Character.Skills
                     {
                         yield return linkedSkillId;
                     }
+                }
+            }
+
+            foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromNestedClientSummonedUolInfoBranchChildNames(
+                         infoProperty,
+                         resolvedPathParts))
+            {
+                if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
+                {
+                    yield return linkedSkillId;
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromNestedClientSummonedUolInfoBranchChildNames(
+            WzImageProperty infoProperty,
+            string[] resolvedPathParts)
+        {
+            if (infoProperty == null)
+            {
+                yield break;
+            }
+
+            int contextSkillId = ResolveClientSummonedUolFallbackContextSkillId(resolvedPathParts);
+            var yieldedSkillIds = new HashSet<int>();
+            foreach ((WzImageProperty Branch, string RelativePath) nestedBranch in EnumerateClientSummonedUolHeuristicInfoBranches(
+                         infoProperty,
+                         relativePathPrefix: "info",
+                         depthRemaining: ClientSummonedUolHeuristicInfoTraversalDepth))
+            {
+                if (!LooksLikeClientSummonedUolHeuristicOwnerPath(nestedBranch.RelativePath))
+                {
+                    continue;
+                }
+
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromNestedClientSummonedUolInfoBranch(
+                             nestedBranch.Branch,
+                             contextSkillId))
+                {
+                    if (linkedSkillId > 0
+                        && LooksLikeClientSummonedUolInferredSkillId(linkedSkillId)
+                        && yieldedSkillIds.Add(linkedSkillId))
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromNestedClientSummonedUolInfoBranch(
+            WzImageProperty branchProperty,
+            int contextSkillId)
+        {
+            if (branchProperty == null)
+            {
+                yield break;
+            }
+
+            if (TryParseRequiredSkillId(branchProperty.Name, out int branchSkillId))
+            {
+                foreach (int candidateSkillId in ExpandClientSummonedUolHeuristicLinkedSkillIdCandidates(
+                             branchSkillId,
+                             contextSkillId))
+                {
+                    yield return candidateSkillId;
+                }
+            }
+
+            foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNames(branchProperty))
+            {
+                foreach (int candidateSkillId in ExpandClientSummonedUolHeuristicLinkedSkillIdCandidates(
+                             linkedSkillId,
+                             contextSkillId))
+                {
+                    yield return candidateSkillId;
                 }
             }
         }

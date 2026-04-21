@@ -494,6 +494,29 @@ namespace HaCreator.MapSimulator
             return defaultMessage;
         }
 
+        private void RestorePacketOwnedAdminShopAfterUniqueModelessBlockerClears()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is not AdminShopDialogUI adminShopWindow
+                || adminShopWindow.IsVisible
+                || !adminShopWindow.ShouldRestorePacketOwnedAdminShopAfterUniqueModelessBlockerClears)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop)))
+            {
+                return;
+            }
+
+            string restoreSummary = ShowPacketOwnedAdminShopOwnerWindow(
+                adminShopWindow,
+                "CAdminShopDlg surfaced the staged packet 367 payload after the unique-modeless blocker cleared.");
+            if (!string.IsNullOrWhiteSpace(restoreSummary))
+            {
+                ShowUtilityFeedbackMessage(restoreSummary);
+            }
+        }
+
         private ChatCommandHandler.CommandResult HandlePacketOwnedNpcShopCommand(string[] args)
         {
             if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))

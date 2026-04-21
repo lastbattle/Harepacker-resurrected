@@ -1228,11 +1228,43 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                StepOneADayPlate(state, 1);
+                string actionKey = ResolveOneADayActionKeyFromMouse(state, absoluteBounds, mouseState.Position)
+                    ?? (mouseState.X < rowsBounds.Center.X ? "BtBuy" : "BtItemBox");
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
             }
 
             mouseCursor?.SetMouseCursorMovedToClickableItem();
             return true;
+        }
+
+        private static string ResolveOneADayActionKeyFromMouse(OneADayOwnerState state, Rectangle absoluteBounds, Point mousePosition)
+        {
+            if (state?.PlateButtons == null || state.PlateButtons.Count == 0)
+            {
+                return null;
+            }
+
+            OneADayOwnerState.PlateButtonState bestButton = null;
+            int bestDistance = int.MaxValue;
+            foreach (OneADayOwnerState.PlateButtonState button in state.PlateButtons)
+            {
+                if (button == null || !button.IsEnabled || string.IsNullOrWhiteSpace(button.CommandKey))
+                {
+                    continue;
+                }
+
+                int buttonCenterX = absoluteBounds.X + button.Position.X;
+                int buttonCenterY = absoluteBounds.Y + button.Position.Y;
+                int distance = Math.Abs(mousePosition.X - buttonCenterX) + Math.Abs(mousePosition.Y - buttonCenterY);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    bestButton = button;
+                }
+            }
+
+            return bestButton?.CommandKey;
         }
 
         private void ApplyLocalButtonState(string actionKey)

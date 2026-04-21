@@ -8804,7 +8804,7 @@ namespace HaCreator.MapSimulator
                     bool TrySendPersonalShopCloseRequest(out string packetMessage)
                     {
                         return TrySendMerchantSessionRequest(
-                            requestSubtype: 10,
+                            requestSubtype: SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeCloseRoom,
                             out packetMessage,
                             idaOwner: "CPersonalShopDlg::SetRet(nRet=2)");
                     }
@@ -8813,7 +8813,9 @@ namespace HaCreator.MapSimulator
                     {
                         bool ownerSeat = runtime.MiniRoomLocalSeatIndex <= 0;
                         return TrySendMerchantSessionRequest(
-                            requestSubtype: ownerSeat ? (byte)39 : (byte)10,
+                            requestSubtype: ownerSeat
+                                ? SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopGoOut
+                                : SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeCloseRoom,
                             out packetMessage,
                             idaOwner: ownerSeat
                                 ? "CEntrustedShopDlg::OnGoOut"
@@ -8823,9 +8825,37 @@ namespace HaCreator.MapSimulator
                     bool TrySendEntrustedShopWithdrawAllRequest(out string packetMessage)
                     {
                         return TrySendMerchantSessionRequest(
-                            requestSubtype: 41,
+                            requestSubtype: SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopWithdrawAll,
                             out packetMessage,
                             idaOwner: "CEntrustedShopDlg::SetRet(nRet=8)");
+                    }
+
+                    bool TrySendEntrustedShopVisitListRequest(out string packetMessage)
+                    {
+                        byte[] visitListPacket = SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopVisitListOutboundPacket();
+                        if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(visitListPacket, out string bridgeStatus))
+                        {
+                            packetMessage = bridgeStatus;
+                            return false;
+                        }
+
+                        packetMessage =
+                            $"{bridgeStatus} Mapped /socialroom entrustedshop packet visit to CEntrustedShopDlg::OnVisitList (opcode 144 subtype {SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopVisitList}).";
+                        return true;
+                    }
+
+                    bool TrySendEntrustedShopBlacklistRequest(out string packetMessage)
+                    {
+                        byte[] blacklistPacket = SocialRoomMerchantOfficialSessionBridgeManager.BuildEntrustedShopBlacklistOutboundPacket();
+                        if (!_socialRoomMerchantOfficialSessionBridge.TrySendOutboundRawPacket(blacklistPacket, out string bridgeStatus))
+                        {
+                            packetMessage = bridgeStatus;
+                            return false;
+                        }
+
+                        packetMessage =
+                            $"{bridgeStatus} Mapped /socialroom entrustedshop packet blacklist to CEntrustedShopDlg::OnBlackList (opcode 144 subtype {SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopBlacklist}).";
+                        return true;
                     }
 
                     bool TrySendMerchantBuyRequest(int requestedIndex, out string packetMessage)
@@ -9047,6 +9077,24 @@ namespace HaCreator.MapSimulator
                                     return Dispatch(SocialRoomPacketType.ToggleLedgerMode, out string ledgerMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(ledgerMessage)
                                         : ChatCommandHandler.CommandResult.Error(ledgerMessage);
+                                case "visit":
+                                    if (!packetMode)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Entrusted-shop visit-list is packet-owned. Use /socialroom entrustedshop packet visit.");
+                                    }
+
+                                    return TrySendEntrustedShopVisitListRequest(out string entrustedVisitPacketMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(entrustedVisitPacketMessage)
+                                        : ChatCommandHandler.CommandResult.Error(entrustedVisitPacketMessage);
+                                case "blacklist":
+                                    if (!packetMode)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Entrusted-shop blacklist is packet-owned. Use /socialroom entrustedshop packet blacklist.");
+                                    }
+
+                                    return TrySendEntrustedShopBlacklistRequest(out string entrustedBlacklistPacketMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(entrustedBlacklistPacketMessage)
+                                        : ChatCommandHandler.CommandResult.Error(entrustedBlacklistPacketMessage);
                                 case "list":
                                     if (args.Length <= actionIndex + 1 || !int.TryParse(args[actionIndex + 1], out int entrustedItemId))
                                     {
@@ -9067,7 +9115,7 @@ namespace HaCreator.MapSimulator
                                     if (packetMode)
                                     {
                                         return TrySendMerchantSessionRequest(
-                                                requestSubtype: 40,
+                                                requestSubtype: SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopArrange,
                                                 out string entrustedArrangePacketMessage,
                                                 idaOwner: "CEntrustedShopDlg::OnArrange")
                                             ? ChatCommandHandler.CommandResult.Ok(entrustedArrangePacketMessage)
@@ -9087,7 +9135,7 @@ namespace HaCreator.MapSimulator
                                         return (withdrawAll
                                                 ? TrySendEntrustedShopWithdrawAllRequest(out string entrustedClaimPacketMessage)
                                                 : TrySendMerchantSessionRequest(
-                                                    requestSubtype: 43,
+                                                    requestSubtype: SocialRoomMerchantOfficialSessionBridgeManager.RequestSubtypeEntrustedShopWithdrawMoney,
                                                     out entrustedClaimPacketMessage,
                                                     idaOwner: "CEntrustedShopDlg::OnWithdrawMoney"))
                                             ? ChatCommandHandler.CommandResult.Ok(entrustedClaimPacketMessage)
@@ -9133,7 +9181,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|mode|list <itemId> [qty] [price]|autolist|arrange|claim [meso|all]|withdrawall|close|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|mode|visit|blacklist|list <itemId> [qty] [price]|autolist|arrange|claim [meso|all]|withdrawall|close|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 
@@ -10377,12 +10425,12 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localoverlay",
                 "Inspect or drive packet-authored local overlays, damage-meter timing, and field-hazard notices",
-                "/localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]",
+                "/localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]",
                 HandlePacketOwnedLocalOverlayCommand);
             _chat.CommandHandler.RegisterCommand(
                 "localoverlaypacket",
                 "Inspect or inject packet-authored field-fade and balloon payloads through the dedicated overlay inbox",
-                "/localoverlaypacket [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
+                "/localoverlaypacket [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedLocalOverlayInboxCommand);
             _chat.CommandHandler.RegisterCommand(
                 "combopacket",

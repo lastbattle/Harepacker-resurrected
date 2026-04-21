@@ -93,6 +93,18 @@ namespace HaCreator.MapSimulator.Physics
             return normalized;
         }
 
+        internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedFlushCadenceHint(
+            IReadOnlyList<MovePathElement> path,
+            bool isTimeForFlush)
+        {
+            if (path == null || path.Count <= 1 || isTimeForFlush)
+            {
+                return path ?? Array.Empty<MovePathElement>();
+            }
+
+            return new[] { path[path.Count - 1] };
+        }
+
         private static void WriteElement(BinaryWriter writer, MovePathElement element, bool includeClientRandomCounts)
         {
             byte attribute = (byte)Math.Clamp(element.MovePathAttribute, byte.MinValue, byte.MaxValue);

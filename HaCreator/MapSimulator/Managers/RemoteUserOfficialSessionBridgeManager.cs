@@ -761,6 +761,12 @@ namespace HaCreator.MapSimulator.Managers
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: known recovered CUserLocal::OnPacket owner ({knownNonTutorReason}) is non-tutor. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
+                    else if (trustV95LocalOwnerTable
+                        && KnownNoHandlerLocalOwnerOpcodesV95.Contains(opcode))
+                    {
+                        LastStatus = $"Ignored CUserPool local-user opcode {opcode}: recovered v95 CUserLocal::OnPacket has no handler for this local-owner case, so tutor inference is disabled for this opcode. {OfficialRemoteOwnerEvidence}";
+                        return false;
+                    }
                     else if (!TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(
                                  opcode,
                                  inferencePayload,
@@ -899,8 +905,7 @@ namespace HaCreator.MapSimulator.Managers
             packetType = 0;
             reason = string.Empty;
             if (trustV95LocalOwnerTable
-                && !IsOfficialTutorLocalOpcodeCoveredByV95OwnerTable(opcode)
-                && !KnownNoHandlerLocalOwnerOpcodesV95.Contains(opcode))
+                && !IsOfficialTutorLocalOpcodeCoveredByV95OwnerTable(opcode))
             {
                 return false;
             }

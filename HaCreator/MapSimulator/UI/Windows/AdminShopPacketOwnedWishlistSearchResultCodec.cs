@@ -297,7 +297,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int expectedLength = LegacyHeaderSize + (itemCount * sizeof(int));
-            if (payload.Length != expectedLength)
+            if (payload.Length < expectedLength)
             {
                 return false;
             }
@@ -328,7 +328,7 @@ namespace HaCreator.MapSimulator.UI
                 PriceRangeIndex = -1,
                 ItemIds = rows.Select(row => row.ItemId).ToList(),
                 ResultRows = rows,
-                TrailingByteCount = 0
+                TrailingByteCount = payload.Length - expectedLength
             };
             return true;
         }

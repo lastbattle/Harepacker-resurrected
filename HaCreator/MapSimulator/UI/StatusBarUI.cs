@@ -1295,7 +1295,7 @@ namespace HaCreator.MapSimulator.UI {
                             cooldownEntry.MaskSurface);
                     }
 
-                if (!HasStatusBarTextRenderer() || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
+                if (!HasStatusBarTextRenderer() || !ShouldDrawCooldownCounterTextForClientParity(cooldownEntry))
                 {
                     continue;
                 }
@@ -1402,7 +1402,7 @@ namespace HaCreator.MapSimulator.UI {
                         cooldownEntry.MaskSurface);
                 }
 
-                    if (!HasStatusBarTextRenderer() || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
+                    if (!HasStatusBarTextRenderer() || !ShouldDrawCooldownCounterTextForClientParity(cooldownEntry))
                     {
                         continue;
                     }
@@ -2147,6 +2147,17 @@ namespace HaCreator.MapSimulator.UI {
         internal static string BuildCooldownTooltipSecondaryLineMarkup(StatusBarCooldownRenderData cooldownEntry)
         {
             return cooldownEntry?.TooltipCostLineMarkup ?? string.Empty;
+        }
+
+        internal static bool ShouldDrawCooldownCounterTextForClientParity(StatusBarCooldownRenderData cooldownEntry)
+        {
+            if (cooldownEntry == null || cooldownEntry.SuppressCounterText)
+            {
+                return false;
+            }
+
+            return cooldownEntry.RemainingMs > 0
+                   || !string.IsNullOrWhiteSpace(cooldownEntry.CounterText);
         }
 
         private string ClipTextToWidth(string text, float maxWidth, float scale, ClientTextRasterizer rasterizer = null)

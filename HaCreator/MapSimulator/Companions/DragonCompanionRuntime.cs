@@ -151,6 +151,7 @@ namespace HaCreator.MapSimulator.Companions
         private int _activeFollowReleaseStableFrames;
         private int _activeVerticalFollowState;
         private int _activeVerticalCheckCount;
+        private int _vecCtrlWorkStepCarryMilliseconds;
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
         private const float GroundSideOffset = 42f;
@@ -298,8 +299,7 @@ namespace HaCreator.MapSimulator.Companions
             ApplyQuestInfoState(_questInfoStateProvider?.Invoke());
 
             float deltaSeconds = GetDeltaSeconds(currentTime);
-            UpdateFollowState(owner);
-            FollowUpdateFlags followUpdate = UpdateVisualAnchor(deltaSeconds);
+            FollowUpdateFlags followUpdate = UpdateFollowStateAndVisualAnchor(owner, deltaSeconds);
             if ((followUpdate & FollowUpdateFlags.PassiveSettleEffect) != 0)
             {
                 TriggerBlink(owner, currentTime);
@@ -468,6 +468,7 @@ namespace HaCreator.MapSimulator.Companions
             _activeFollowReleaseStableFrames = 0;
             _activeVerticalFollowState = 0;
             _activeVerticalCheckCount = 0;
+            _vecCtrlWorkStepCarryMilliseconds = 0;
         }
 
         internal bool ClearClientOwnedOneTimeActionOnSkillCancel(PlayerCharacter owner, int currentTime)
@@ -787,6 +788,25 @@ namespace HaCreator.MapSimulator.Companions
             return MathHelper.Clamp(elapsedMs / 1000f, 1f / 240f, 0.1f);
         }
 
+        private FollowUpdateFlags UpdateFollowStateAndVisualAnchor(PlayerCharacter owner, float frameDeltaSeconds)
+        {
+            if (_visualAnchor == Vector2.Zero)
+            {
+                _visualAnchor = _worldAnchor;
+                _followVelocity = Vector2.Zero;
+            }
+
+            int workStepCount = ResolveClientVecCtrlWorkStepCount(frameDeltaSeconds, ref _vecCtrlWorkStepCarryMilliseconds);
+            FollowUpdateFlags followUpdate = FollowUpdateFlags.None;
+            for (int step = 0; step < workStepCount; step++)
+            {
+                UpdateFollowState(owner);
+                followUpdate |= UpdateVisualAnchor();
+            }
+
+            return followUpdate;
+        }
+
         private void UpdateFollowState(PlayerCharacter owner)
         {
             float horizontalDelta = Math.Abs(_worldAnchor.X - _visualAnchor.X);
@@ -827,15 +847,8 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
-        private FollowUpdateFlags UpdateVisualAnchor(float deltaSeconds)
+        private FollowUpdateFlags UpdateVisualAnchor()
         {
-            if (_visualAnchor == Vector2.Zero)
-            {
-                _visualAnchor = _worldAnchor;
-                _followVelocity = Vector2.Zero;
-                return FollowUpdateFlags.None;
-            }
-
             double velocityX = _followVelocity.X;
             double velocityY = _followVelocity.Y;
             FollowUpdateFlags result = FollowUpdateFlags.None;
@@ -846,7 +859,7 @@ namespace HaCreator.MapSimulator.Companions
             }
             else
             {
-                float passiveDeltaSeconds = ResolveClientPassiveFollowStepSeconds(deltaSeconds);
+                float passiveDeltaSeconds = ResolveClientPassiveFollowStepSeconds(0f);
                 bool hadPassiveTravel = HasPassiveTravel(
                     _visualAnchor,
                     _worldAnchor,
@@ -883,6 +896,32 @@ namespace HaCreator.MapSimulator.Companions
 
             _followVelocity = new Vector2((float)velocityX, (float)velocityY);
             return result;
+        }
+
+        internal static int ResolveClientVecCtrlWorkStepCount(float frameDeltaSeconds, ref int carriedMilliseconds)
+        {
+            int elapsedMilliseconds = (int)Math.Round(Math.Max(0f, frameDeltaSeconds) * 1000f);
+            return ResolveClientVecCtrlWorkStepCountFromElapsedMilliseconds(
+                elapsedMilliseconds,
+                ref carriedMilliseconds,
+                ClientVecCtrlPassiveStepMilliseconds);
+        }
+
+        internal static int ResolveClientVecCtrlWorkStepCountFromElapsedMilliseconds(
+            int elapsedMilliseconds,
+            ref int carriedMilliseconds,
+            int stepMilliseconds)
+        {
+            if (stepMilliseconds <= 0)
+            {
+                carriedMilliseconds = 0;
+                return 0;
+            }
+
+            long totalMilliseconds = Math.Max(0, elapsedMilliseconds) + Math.Max(0, carriedMilliseconds);
+            int workStepCount = (int)(totalMilliseconds / stepMilliseconds);
+            carriedMilliseconds = (int)(totalMilliseconds - (long)workStepCount * stepMilliseconds);
+            return workStepCount;
         }
 
         internal static float ResolveClientPassiveFollowStepSeconds(float frameDeltaSeconds)

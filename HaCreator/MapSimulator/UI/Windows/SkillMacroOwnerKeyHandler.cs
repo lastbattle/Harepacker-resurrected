@@ -119,10 +119,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+            bool suppressImeOwnedForwarding = ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
                     key,
                     imeCompositionActive,
-                    imeCandidateWindowActive))
+                    imeCandidateWindowActive);
+            if (suppressImeOwnedForwarding
+                && !ShouldForwardImeNavigationKeyToParent(key))
             {
                 return false;
             }
@@ -150,10 +152,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return !ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
+            bool suppressImeOwnedForwarding = ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
                 key,
                 imeCompositionActive,
                 imeCandidateWindowActive);
+            return !suppressImeOwnedForwarding
+                || ShouldForwardImeNavigationKeyToParent(key);
         }
 
         internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)
@@ -161,6 +165,13 @@ namespace HaCreator.MapSimulator.UI
             // `CCtrlEdit::OnKey` forwards Ctrl+Home/Ctrl+End to the parent owner path
             // instead of moving the local edit caret.
             return !controlHeld;
+        }
+
+        private static bool ShouldForwardImeNavigationKeyToParent(Keys key)
+        {
+            // `CCtrlEdit::OnKey` still forwards cursor-navigation arrows to the parent
+            // owner path while IME candidate ownership is active.
+            return key is Keys.Left or Keys.Right or Keys.Up or Keys.Down;
         }
     }
 }

@@ -479,6 +479,16 @@ namespace HaCreator.MapSimulator.Effects
                 errorMessage = "Wedding runtime inactive.";
                 return false;
             }
+            if (IsWeddingPhotoSceneOwnerActive
+                && !_isActive
+                && packetType != PacketTypeWeddingProgress
+                && packetType != PacketTypeWeddingCeremonyEnd)
+            {
+                RecordWeddingPhotoSceneUnhandledPacket(packetType, payload?.Length ?? 0, currentTimeMs);
+                errorMessage = $"CField_WeddingPhoto delegated packet {packetType} to base CField owner surface; simulator keeps packet trail only.";
+                return true;
+            }
+
             if (photoScenePresentationPacket)
             {
                 RecordWeddingPhotoScenePresentationPacket(packetType, payload?.Length ?? 0, currentTimeMs);
@@ -2847,11 +2857,6 @@ namespace HaCreator.MapSimulator.Effects
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             DismissCurrentDialog();
             SetCeremonyTextOverlay(active: false);
-            if (IsWeddingPhotoSceneOwnerActive && !_isActive && ResolveCeremonyNpcId(_mapId) == 0)
-            {
-                SetCeremonyCardOverlay(true);
-                SetCeremonyCelebration(active: true);
-            }
 
             SetBlessEffect(true, currentTimeMs);
             SyncWeddingPhotoScenePresentationStage(PacketTypeWeddingCeremonyEnd);
@@ -2910,7 +2915,7 @@ namespace HaCreator.MapSimulator.Effects
                         currentTimeMs);
                 }
             }
-            else if (ShouldSendParticipantAdvancePacket())
+            else if (accepted && ShouldSendParticipantAdvancePacket())
             {
                 packetResponse = new WeddingPacketResponse(
                     WeddingPacketOpcode.AdvanceStep,

@@ -2071,6 +2071,7 @@ namespace HaCreator.MapSimulator.Pools
                             {
                                 data.PacketAnimationEndTime = ResolvePacketLeaveNoHitLayerAnimationEndTime(
                                     currentTick,
+                                    data.PacketProperEventIndex,
                                     data.PacketAnimationEndTime,
                                     reactor?.GetRemainingStoppedAnimationDuration(currentTick) ?? 0);
                             }
@@ -3751,9 +3752,15 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolvePacketLeaveNoHitLayerAnimationEndTime(
             int currentTick,
+            int packetProperEventIndex,
             int currentAnimationEndTime,
             int remainingCurrentAnimationDuration)
         {
+            if (packetProperEventIndex == -2)
+            {
+                return 0;
+            }
+
             if (currentAnimationEndTime > currentTick)
             {
                 return currentAnimationEndTime;

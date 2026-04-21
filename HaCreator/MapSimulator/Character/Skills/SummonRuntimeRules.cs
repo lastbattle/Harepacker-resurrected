@@ -148,6 +148,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return SummonAssistType.SummonAction;
             }
 
+            SummonAssistType authoredFallbackAssistType =
+                ResolveAuthoredAssistTypeForRuntimeOwnershipWithoutActionFamily(
+                    skill,
+                    SummonAssistType.PeriodicAttack);
+            if (authoredFallbackAssistType != SummonAssistType.PeriodicAttack)
+            {
+                return authoredFallbackAssistType;
+            }
+
             return SummonAssistType.PeriodicAttack;
         }
 
@@ -411,6 +420,31 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return currentAssistType;
+        }
+
+        internal static SummonAssistType ResolveAuthoredAssistTypeForRuntimeOwnershipWithoutActionFamily(
+            SkillData skill,
+            SummonAssistType currentAssistType)
+        {
+            if (skill == null
+                || HasMinionAbilityToken(skill.MinionAbility, "summon")
+                || HasSupportOwnedMinionAbilityCue(skill))
+            {
+                return currentAssistType;
+            }
+
+            bool hasExplicitSummonCue =
+                HasExplicitSummonOwnedPacketSkillBranch(skill, PacketSkillActionSubsummon);
+            bool hasExplicitSupportCue =
+                HasExplicitSupportOwnedPacketSkillBranch(skill, PacketSkillActionHealingRobotHeal);
+            if (hasExplicitSummonCue == hasExplicitSupportCue)
+            {
+                return currentAssistType;
+            }
+
+            return hasExplicitSummonCue
+                ? SummonAssistType.SummonAction
+                : SummonAssistType.Support;
         }
 
         internal static bool HasAuthoredPacketSkillAssistOwnershipBranch(

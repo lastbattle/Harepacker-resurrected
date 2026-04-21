@@ -563,7 +563,7 @@ namespace HaCreator.MapSimulator
 
             SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
             SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel, preferPvpLevelData);
-            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, supportSkills);
+            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, area.SkillLevel, supportSkills);
             SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
             if (effectiveLevelData == null)
             {
@@ -1032,9 +1032,27 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static SkillLevelData ResolveRemoteAffectedAreaSupportLevelData(
+        internal static int ResolveRemoteAffectedAreaSupportSkillLevel(
+            int runtimeSkillLevel,
+            SkillLevelData primaryLevelData)
+        {
+            if (runtimeSkillLevel > 0)
+            {
+                return runtimeSkillLevel;
+            }
+
+            if (primaryLevelData?.Level > 0)
+            {
+                return primaryLevelData.Level;
+            }
+
+            return 1;
+        }
+
+        internal static SkillLevelData ResolveRemoteAffectedAreaSupportLevelData(
             SkillLevelData primaryLevelData,
             bool preferPvpLevelData,
+            int runtimeSkillLevel,
             params SkillData[] supportSkills)
         {
             if (supportSkills == null || supportSkills.Length == 0)
@@ -1079,9 +1097,10 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                int resolvedSupportSkillLevel = ResolveRemoteAffectedAreaSupportSkillLevel(runtimeSkillLevel, primaryLevelData);
                 SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(
                     supportSkill,
-                    primaryLevelData?.Level ?? 1,
+                    resolvedSupportSkillLevel,
                     preferPvpLevelData);
                 derivedDamageReductionRate = Math.Max(
                     derivedDamageReductionRate,
@@ -1248,7 +1267,7 @@ namespace HaCreator.MapSimulator
                 SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
                 SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
                 SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel, preferPvpLevelData);
-                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, supportSkills);
+                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, area.SkillLevel, supportSkills);
                 SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
                 if (!RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill, supportSkills)
                     || !RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
@@ -1477,7 +1496,7 @@ namespace HaCreator.MapSimulator
 
             SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
             SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel, preferPvpLevelData);
-            SkillLevelData effectiveLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, supportSkills);
+            SkillLevelData effectiveLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, area.SkillLevel, supportSkills);
             if (effectiveLevelData == null)
             {
                 return false;

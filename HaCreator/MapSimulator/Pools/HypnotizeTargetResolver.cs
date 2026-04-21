@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.Pools
     internal static class HypnotizeTargetResolver
     {
         private const float MinimumHypnotizeTargetRange = 320f;
+        private const float CurrentTargetRetentionRangeMultiplier = 1.5f;
 
         public static MobItem ResolveTarget(MobItem source, IReadOnlyList<MobItem> activeMobs)
         {
@@ -22,6 +23,7 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
             int? sourceTeam = source.MobInstance?.Team;
             float maxDistanceSq = maxDistance * maxDistance;
+            float retentionMaxDistanceSq = maxDistanceSq * CurrentTargetRetentionRangeMultiplier * CurrentTargetRetentionRangeMultiplier;
             MobItem bestTarget = null;
             int bestPriorityTier = int.MaxValue;
             float bestDistanceSq = maxDistanceSq;
@@ -37,7 +39,12 @@ namespace HaCreator.MapSimulator.Pools
                 float dx = candidate.CurrentX - source.CurrentX;
                 float dy = candidate.CurrentY - source.CurrentY;
                 float distanceSq = dx * dx + dy * dy;
-                if (distanceSq > maxDistanceSq)
+                if (!IsWithinResolutionDistance(
+                        candidate.PoolId,
+                        currentTargetId,
+                        distanceSq,
+                        maxDistanceSq,
+                        retentionMaxDistanceSq))
                 {
                     continue;
                 }
@@ -61,6 +68,23 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return bestTarget;
+        }
+
+        internal static bool IsWithinResolutionDistance(
+            int candidateId,
+            int currentTargetId,
+            float distanceSq,
+            float maxDistanceSq,
+            float retentionMaxDistanceSq)
+        {
+            if (distanceSq <= maxDistanceSq)
+            {
+                return true;
+            }
+
+            return currentTargetId > 0
+                   && candidateId == currentTargetId
+                   && distanceSq <= retentionMaxDistanceSq;
         }
 
         private static bool IsEligibleTarget(MobItem source, MobItem candidate, bool allowEncounterTargets)

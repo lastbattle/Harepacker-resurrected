@@ -744,7 +744,17 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            return TryResolveMapDisplayNameFromCache(mapId, out _);
+            if (ResolveMapTransferDestinationMapInfo(mapId) != null)
+            {
+                return true;
+            }
+
+            if (TryResolveMapDisplayNameFromCache(mapId, out _))
+            {
+                return true;
+            }
+
+            return TryGetMapImageForMetadataLookup(mapId) != null;
         }
 
         private void ShowPacketOwnedBossTimerClock(PacketFieldBossTimerVisualState state)

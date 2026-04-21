@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.Character
             public int TickIntervalMs { get; set; }
             public int NextTickTime { get; set; }
             public int RemainingCount { get; set; }
+            public int AppliedCount { get; set; }
         }
 
         private readonly Dictionary<PlayerMobStatusEffect, PlayerMobStatusEntry> _entries = new();
@@ -784,10 +785,13 @@ namespace HaCreator.MapSimulator.Character
                 existingEntry.Value = value;
                 existingEntry.TickIntervalMs = tickIntervalMs;
                 existingEntry.NextTickTime = tickIntervalMs > 0 ? currentTime + tickIntervalMs : 0;
-                existingEntry.RemainingCount = Math.Max(0, remainingCount);
+                int clampedCount = Math.Max(0, remainingCount);
+                existingEntry.RemainingCount = clampedCount;
+                existingEntry.AppliedCount = clampedCount;
                 return;
             }
 
+            int appliedCount = Math.Max(0, remainingCount);
             _entries[effect] = new PlayerMobStatusEntry
             {
                 Effect = effect,
@@ -795,7 +799,8 @@ namespace HaCreator.MapSimulator.Character
                 Value = value,
                 TickIntervalMs = tickIntervalMs,
                 NextTickTime = tickIntervalMs > 0 ? currentTime + tickIntervalMs : 0,
-                RemainingCount = Math.Max(0, remainingCount)
+                RemainingCount = appliedCount,
+                AppliedCount = appliedCount
             };
         }
 
@@ -913,8 +918,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            int expectedCount = Math.Max(0, remainingCount);
             return existingEntry.TickIntervalMs != tickIntervalMs
-                   || existingEntry.RemainingCount != Math.Max(0, remainingCount);
+                   || existingEntry.AppliedCount != expectedCount;
         }
 
         private bool WouldPolymorphApplicationChangeState(

@@ -711,6 +711,7 @@ namespace HaCreator.MapSimulator.Pools
             SummonAssistType assistType = Enum.IsDefined(typeof(SummonAssistType), (int)packet.AssistType)
                 ? (SummonAssistType)packet.AssistType
                 : ResolveSummonAssistType(skill);
+            assistType = ResolvePacketOwnedCreatedAssistTypeForRuntimeOwnership(skill, assistType);
 
             var summon = new ActiveSummon
             {
@@ -6164,7 +6165,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (string.IsNullOrWhiteSpace(previousNormalizedSourcePath))
                     {
-                        return null;
+                        continue;
                     }
 
                     string relativeToken = NormalizePacketMobAttackGeneralEffectColonPathSeparators(token) ?? token;
@@ -6198,13 +6199,25 @@ namespace HaCreator.MapSimulator.Pools
                                 defaultCategory,
                                 out normalizedSourcePath))
                         {
-                            return null;
+                            continue;
                         }
                     }
                 }
 
+                if (!TryExtractPacketMobAttackGeneralEffectSourceSequenceFrameRootPath(
+                        normalizedSourcePath,
+                        out _))
+                {
+                    continue;
+                }
+
                 normalizedSourcePaths.Add(normalizedSourcePath);
                 previousNormalizedSourcePath = normalizedSourcePath;
+            }
+
+            if (normalizedSourcePaths.Count == 0)
+            {
+                return null;
             }
 
             if (normalizedSourcePaths.Count == 1)
@@ -6215,21 +6228,13 @@ namespace HaCreator.MapSimulator.Pools
             string normalizedSequenceRootPath = null;
             for (int i = 0; i < normalizedSourcePaths.Count; i++)
             {
-                string[] segments = normalizedSourcePaths[i]
-                    .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-                segments = TrimPacketMobAttackGeneralEffectSourceLeafSuffixSegments(segments);
-
-                if (segments.Length < 4)
+                if (!TryExtractPacketMobAttackGeneralEffectSourceSequenceFrameRootPath(
+                        normalizedSourcePaths[i],
+                        out string currentRootPath))
                 {
-                    return null;
+                    continue;
                 }
 
-                if (!int.TryParse(segments[^1], out _))
-                {
-                    return null;
-                }
-
-                string currentRootPath = string.Join("/", segments.Take(segments.Length - 1));
                 if (string.IsNullOrWhiteSpace(normalizedSequenceRootPath))
                 {
                     normalizedSequenceRootPath = currentRootPath;
@@ -6243,7 +6248,9 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            return normalizedSequenceRootPath;
+            return string.IsNullOrWhiteSpace(normalizedSequenceRootPath)
+                ? normalizedSourcePaths[0]
+                : normalizedSequenceRootPath;
         }
 
         private static bool TryResolvePacketMobAttackGeneralEffectSignedSiblingFrameSourcePath(
@@ -6535,6 +6542,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string normalized = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(token);
+            normalized = string.Concat(normalized.Where(static ch => !char.IsWhiteSpace(ch)));
             if (string.IsNullOrWhiteSpace(normalized)
                 || normalized.Length < 2
                 || (normalized[0] != '+' && normalized[0] != '-'))
@@ -6684,7 +6692,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            string trimmedToken = token.Trim();
+            string trimmedToken = NormalizePacketMobAttackGeneralEffectNumericToken(token);
             if (trimmedToken.Length < 2
                 || (trimmedToken[0] != '+' && trimmedToken[0] != '-'))
             {
@@ -6832,9 +6840,10 @@ namespace HaCreator.MapSimulator.Pools
                    && IsPacketMobAttackSourcePropertySegment(
                        normalizedAliasToken.Substring(0, openDelimiterIndex).Trim())
                    && int.TryParse(
-                       normalizedAliasToken.Substring(
-                           openDelimiterIndex + 1,
-                           normalizedAliasToken.Length - openDelimiterIndex - 2),
+                       NormalizePacketMobAttackGeneralEffectNumericToken(
+                           normalizedAliasToken.Substring(
+                               openDelimiterIndex + 1,
+                               normalizedAliasToken.Length - openDelimiterIndex - 2)),
                        out frameIndex);
         }
 
@@ -6912,7 +6921,7 @@ namespace HaCreator.MapSimulator.Pools
                 string sourcePathToken = TryExtractPacketMobAttackSourcePathToken(frameProperty);
                 if (string.IsNullOrWhiteSpace(sourcePathToken))
                 {
-                    return null;
+                    continue;
                 }
 
                 if (!TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
@@ -6926,8 +6935,15 @@ namespace HaCreator.MapSimulator.Pools
                             defaultCategory,
                             out normalizedSourcePath))
                     {
-                        return null;
+                        continue;
                     }
+                }
+
+                if (!TryExtractPacketMobAttackGeneralEffectSourceSequenceFrameRootPath(
+                        normalizedSourcePath,
+                        out _))
+                {
+                    continue;
                 }
 
                 sourcePathTokens.Add(normalizedSourcePath);
@@ -6936,6 +6952,28 @@ namespace HaCreator.MapSimulator.Pools
             return sourcePathTokens.Count == 0
                 ? null
                 : TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(sourcePathTokens, defaultCategory);
+        }
+
+        private static bool TryExtractPacketMobAttackGeneralEffectSourceSequenceFrameRootPath(
+            string normalizedSourcePath,
+            out string normalizedSourceFrameRootPath)
+        {
+            normalizedSourceFrameRootPath = null;
+            if (string.IsNullOrWhiteSpace(normalizedSourcePath))
+            {
+                return false;
+            }
+
+            string[] segments = normalizedSourcePath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            segments = TrimPacketMobAttackGeneralEffectSourceLeafSuffixSegments(segments);
+            if (segments.Length < 4 || !int.TryParse(segments[^1], out _))
+            {
+                return false;
+            }
+
+            normalizedSourceFrameRootPath = string.Join("/", segments.Take(segments.Length - 1));
+            return !string.IsNullOrWhiteSpace(normalizedSourceFrameRootPath);
         }
 
         private static IEnumerable<WzImageProperty> EnumeratePacketMobAttackGeneralEffectNumericFrameProperties(
@@ -7498,7 +7536,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string secondPiece = NormalizePacketMobAttackGeneralEffectWhitespaceDelimitedTokenPiece(rawTokens[startIndex + 1]);
-            if (!int.TryParse(secondPiece, NumberStyles.Integer, CultureInfo.InvariantCulture, out int magnitude))
+            if (!int.TryParse(
+                    NormalizePacketMobAttackGeneralEffectNumericToken(secondPiece),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int magnitude))
             {
                 return false;
             }
@@ -7604,7 +7646,9 @@ namespace HaCreator.MapSimulator.Pools
         private static bool IsPacketMobAttackGeneralEffectAliasFrameToken(string token)
         {
             return !string.IsNullOrWhiteSpace(token)
-                   && int.TryParse(token, out _);
+                   && int.TryParse(
+                       NormalizePacketMobAttackGeneralEffectNumericToken(token),
+                       out _);
         }
 
         private static bool TryResolvePacketMobAttackGeneralEffectAliasWrapperPair(
@@ -7824,7 +7868,9 @@ namespace HaCreator.MapSimulator.Pools
             string assignmentSuffix = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(
                 token.Substring(assignmentIndex + assignmentDelimiterLength));
             assignmentSuffix = string.Concat(assignmentSuffix.Where(static ch => !char.IsWhiteSpace(ch)));
-            if (!int.TryParse(assignmentSuffix, out int frameIndex))
+            if (!int.TryParse(
+                    NormalizePacketMobAttackGeneralEffectNumericToken(assignmentSuffix),
+                    out int frameIndex))
             {
                 return false;
             }
@@ -8201,7 +8247,21 @@ namespace HaCreator.MapSimulator.Pools
             return delimiterIndex > 0
                    && delimiterIndex < aliasToken.Length - 1
                    && IsPacketMobAttackSourcePropertySegment(aliasToken.Substring(0, delimiterIndex))
-                   && int.TryParse(aliasToken.Substring(delimiterIndex + 1), out frameIndex);
+                   && int.TryParse(
+                       NormalizePacketMobAttackGeneralEffectNumericToken(aliasToken.Substring(delimiterIndex + 1)),
+                       out frameIndex);
+        }
+
+        private static string NormalizePacketMobAttackGeneralEffectNumericToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return string.Empty;
+            }
+
+            return token
+                .Trim()
+                .Trim('"', '\'');
         }
 
         private static bool IsPacketMobAttackSourcePropertySegment(string segment)
@@ -9574,6 +9634,15 @@ namespace HaCreator.MapSimulator.Pools
                 packetOwnedAssistType)
                 ? currentAssistType
                 : packetOwnedAssistType;
+        }
+
+        internal static SummonAssistType ResolvePacketOwnedCreatedAssistTypeForRuntimeOwnership(
+            SkillData skill,
+            SummonAssistType currentAssistType)
+        {
+            return SummonRuntimeRules.ResolveAuthoredAssistTypeForRuntimeOwnershipWithoutActionFamily(
+                skill,
+                currentAssistType);
         }
 
         internal static (string BranchName, int ActionCode) ResolvePacketOwnedExplicitSelfDestructPlayback(

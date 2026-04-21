@@ -22,13 +22,7 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<int> _pendingPacketOwnedQuestResultAvailableQuestIdsBeforePacket = Array.Empty<int>();
         private bool _hasPendingPacketOwnedQuestResultAvailabilityRefresh;
         private bool _deferPacketOwnedQuestAvailabilityRefreshForCurrentPayload;
-        private int _pendingQuestDeliveryResultQuestId;
-        private bool _pendingQuestDeliveryResultCompletionPhase;
-        private int _pendingQuestDeliveryResultCashItemId;
-        private int _pendingQuestDeliveryResultCommoditySn;
-        private int _pendingQuestDeliveryResultRequestedAtTick = int.MinValue;
-        private string _pendingQuestDeliveryResultSourceContext = string.Empty;
-        private bool _pendingQuestDeliveryResultStartQuestRequestSent;
+        private readonly List<PendingQuestDeliveryResultOwnership> _pendingQuestDeliveryResults = new();
         private int _pendingPacketOwnedStartQuestResponseQuestId;
         private int _pendingPacketOwnedStartQuestResponseSpeakerNpcId;
         private string _pendingPacketOwnedStartQuestResponseQuestName = string.Empty;
@@ -37,6 +31,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedQuestResultStartQuestRequestTick = int.MinValue;
         private readonly PacketQuestResultFadeWindowRuntime _packetQuestResultFadeWindowRuntime = new();
         private const int PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs = 500;
+        private const int MaxPendingQuestDeliveryResultOwnershipCount = 8;
 
         private bool TryApplyPacketOwnedQuestResultPayload(byte[] payload, out string message)
         {
@@ -1030,55 +1025,185 @@ namespace HaCreator.MapSimulator
             string sourceContext,
             bool startQuestRequestSent = false)
         {
-            _pendingQuestDeliveryResultQuestId = Math.Max(0, questId);
-            _pendingQuestDeliveryResultCompletionPhase = completionPhase;
-            _pendingQuestDeliveryResultCashItemId = Math.Max(0, cashItemId);
-            _pendingQuestDeliveryResultCommoditySn = Math.Max(0, commoditySn);
-            _pendingQuestDeliveryResultRequestedAtTick = currTickCount;
-            _pendingQuestDeliveryResultSourceContext = sourceContext ?? string.Empty;
-            _pendingQuestDeliveryResultStartQuestRequestSent = startQuestRequestSent;
+            int normalizedQuestId = Math.Max(0, questId);
+            if (normalizedQuestId <= 0)
+            {
+                return;
+            }
+
+            _pendingQuestDeliveryResults.Add(new PendingQuestDeliveryResultOwnership(
+                normalizedQuestId,
+                completionPhase,
+                Math.Max(0, cashItemId),
+                Math.Max(0, commoditySn),
+                currTickCount,
+                sourceContext ?? string.Empty,
+                startQuestRequestSent));
+            TrimPendingQuestDeliveryResultOwnershipQueue(
+                _pendingQuestDeliveryResults,
+                MaxPendingQuestDeliveryResultOwnershipCount);
         }
 
         private bool TryResolvePendingQuestDeliveryQuestResult(int questId, out string outcome)
         {
             outcome = string.Empty;
-            if (_pendingQuestDeliveryResultQuestId <= 0 || _pendingQuestDeliveryResultQuestId != questId)
+            int ownershipIndex = FindPendingQuestDeliveryResultOwnershipIndex(_pendingQuestDeliveryResults, questId);
+            if (ownershipIndex < 0)
             {
                 return false;
             }
 
-            int ageMs = _pendingQuestDeliveryResultRequestedAtTick == int.MinValue
+            PendingQuestDeliveryResultOwnership ownership = _pendingQuestDeliveryResults[ownershipIndex];
+            int ageMs = ownership.RequestedAtTick == int.MinValue
                 ? 0
-                : Math.Max(0, unchecked(currTickCount - _pendingQuestDeliveryResultRequestedAtTick));
-            string phaseText = _pendingQuestDeliveryResultCompletionPhase ? "completion" : "accept";
-            string resultPrefix = !string.IsNullOrWhiteSpace(_pendingQuestDeliveryResultSourceContext)
-                ? _pendingQuestDeliveryResultSourceContext
+                : Math.Max(0, unchecked(currTickCount - ownership.RequestedAtTick));
+            string phaseText = ownership.CompletionPhase ? "completion" : "accept";
+            string resultPrefix = !string.IsNullOrWhiteSpace(ownership.SourceContext)
+                ? ownership.SourceContext
                 : "quest-detail delivery action";
-            string commodityText = _pendingQuestDeliveryResultCommoditySn > 0
-                ? $" commodity SN {_pendingQuestDeliveryResultCommoditySn}"
+            string commodityText = ownership.CommoditySn > 0
+                ? $" commodity SN {ownership.CommoditySn}"
                 : string.Empty;
-            string cashItemText = _pendingQuestDeliveryResultCashItemId > 0
-                ? $" cash item {_pendingQuestDeliveryResultCashItemId}"
+            string cashItemText = ownership.CashItemId > 0
+                ? $" cash item {ownership.CashItemId}"
                 : string.Empty;
 
             outcome =
                 $"Resolved pending {phaseText} delivery from {resultPrefix} via quest-result packet for quest #{questId} "
                 + $"(age {ageMs}ms;{cashItemText}{commodityText}).";
 
-            if (_pendingQuestDeliveryResultStartQuestRequestSent)
+            if (ownership.StartQuestRequestSent)
             {
                 ClearPacketOwnedQuestResultStartQuestRequestLatch();
             }
 
-            _pendingQuestDeliveryResultQuestId = 0;
-            _pendingQuestDeliveryResultCompletionPhase = false;
-            _pendingQuestDeliveryResultCashItemId = 0;
-            _pendingQuestDeliveryResultCommoditySn = 0;
-            _pendingQuestDeliveryResultRequestedAtTick = int.MinValue;
-            _pendingQuestDeliveryResultSourceContext = string.Empty;
-            _pendingQuestDeliveryResultStartQuestRequestSent = false;
+            _pendingQuestDeliveryResults.RemoveAt(ownershipIndex);
             return true;
         }
+
+        private static int FindPendingQuestDeliveryResultOwnershipIndex(
+            IReadOnlyList<PendingQuestDeliveryResultOwnership> pendingResults,
+            int questId)
+        {
+            int normalizedQuestId = Math.Max(0, questId);
+            if (pendingResults == null || pendingResults.Count == 0 || normalizedQuestId <= 0)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < pendingResults.Count; i++)
+            {
+                if (pendingResults[i].QuestId == normalizedQuestId)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static void TrimPendingQuestDeliveryResultOwnershipQueue(
+            List<PendingQuestDeliveryResultOwnership> pendingResults,
+            int maxCount)
+        {
+            if (pendingResults == null || maxCount <= 0)
+            {
+                return;
+            }
+
+            while (pendingResults.Count > maxCount)
+            {
+                pendingResults.RemoveAt(0);
+            }
+        }
+
+        internal static IReadOnlyList<int> RegisterPendingQuestDeliveryQuestResultIdsForTesting(
+            IReadOnlyList<int> existingQuestIds,
+            int questId,
+            int maxCount = MaxPendingQuestDeliveryResultOwnershipCount)
+        {
+            var pending = new List<PendingQuestDeliveryResultOwnership>();
+            if (existingQuestIds != null)
+            {
+                for (int i = 0; i < existingQuestIds.Count; i++)
+                {
+                    int existingQuestId = Math.Max(0, existingQuestIds[i]);
+                    if (existingQuestId > 0)
+                    {
+                        pending.Add(new PendingQuestDeliveryResultOwnership(
+                            existingQuestId,
+                            false,
+                            0,
+                            0,
+                            int.MinValue,
+                            string.Empty,
+                            false));
+                    }
+                }
+            }
+
+            int normalizedQuestId = Math.Max(0, questId);
+            if (normalizedQuestId > 0)
+            {
+                pending.Add(new PendingQuestDeliveryResultOwnership(
+                    normalizedQuestId,
+                    false,
+                    0,
+                    0,
+                    int.MinValue,
+                    string.Empty,
+                    false));
+                TrimPendingQuestDeliveryResultOwnershipQueue(pending, Math.Max(1, maxCount));
+            }
+
+            var result = new int[pending.Count];
+            for (int i = 0; i < pending.Count; i++)
+            {
+                result[i] = pending[i].QuestId;
+            }
+
+            return result;
+        }
+
+        internal static int FindPendingQuestDeliveryQuestResultIndexForTesting(
+            IReadOnlyList<int> queuedQuestIds,
+            int questId)
+        {
+            if (queuedQuestIds == null || queuedQuestIds.Count == 0)
+            {
+                return -1;
+            }
+
+            var pending = new List<PendingQuestDeliveryResultOwnership>(queuedQuestIds.Count);
+            for (int i = 0; i < queuedQuestIds.Count; i++)
+            {
+                int queuedQuestId = Math.Max(0, queuedQuestIds[i]);
+                if (queuedQuestId <= 0)
+                {
+                    continue;
+                }
+
+                pending.Add(new PendingQuestDeliveryResultOwnership(
+                    queuedQuestId,
+                    false,
+                    0,
+                    0,
+                    int.MinValue,
+                    string.Empty,
+                    false));
+            }
+
+            return FindPendingQuestDeliveryResultOwnershipIndex(pending, questId);
+        }
+
+        private readonly record struct PendingQuestDeliveryResultOwnership(
+            int QuestId,
+            bool CompletionPhase,
+            int CashItemId,
+            int CommoditySn,
+            int RequestedAtTick,
+            string SourceContext,
+            bool StartQuestRequestSent);
 
         private static bool ApplyUnsupportedPacketOwnedQuestResult(int resultType, out string message)
         {

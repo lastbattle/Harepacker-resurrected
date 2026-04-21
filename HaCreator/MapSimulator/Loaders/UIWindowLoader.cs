@@ -9245,19 +9245,38 @@ namespace HaCreator.MapSimulator.Loaders
             string currentDirectoryPath = Program.DataSource?.VersionInfo?.DirectoryPath;
             IReadOnlyList<string> fallbackUiDirectories = AccountMoreInfoOwnerStringPoolText
                 .EnumerateFallbackUiDataSourceDirectories(currentDirectoryPath);
+            IReadOnlyList<string> countryAlignedFallbackUiDirectories = AccountMoreInfoOwnerStringPoolText
+                .PrioritizeUiFallbackDirectoriesForCountryNameParity(currentDirectoryPath, fallbackUiDirectories);
 
             foreach (AccountMoreInfoBackgroundResourceCandidate backgroundCandidate in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundProbeCandidates())
             {
-                IDXObject candidateFrame = LoadWindowCanvasLayerFromClientUiPath(
-                    backgroundCandidate.Path,
-                    uiWindow1Image,
-                    uiWindow2Image,
-                    device,
-                    out Point candidateOffset);
+                bool prefersCountryAlignedFallback = !backgroundCandidate.MirrorsClientSetBackgrnd
+                    && !AccountMoreInfoOwnerStringPoolText.HasCountryNameCatalogInDirectory(currentDirectoryPath);
+                IDXObject candidateFrame = null;
+                Point candidateOffset = Point.Zero;
                 string frameSourceDirectory = null;
-                if (candidateFrame?.Texture != null)
+                if (prefersCountryAlignedFallback)
                 {
-                    frameSourceDirectory = currentDirectoryPath;
+                    candidateFrame = TryLoadAccountMoreInfoBackgroundFromFallbackUiDataSources(
+                        backgroundCandidate.Path,
+                        countryAlignedFallbackUiDirectories,
+                        device,
+                        out candidateOffset,
+                        out frameSourceDirectory);
+                }
+
+                if (candidateFrame == null)
+                {
+                    candidateFrame = LoadWindowCanvasLayerFromClientUiPath(
+                        backgroundCandidate.Path,
+                        uiWindow1Image,
+                        uiWindow2Image,
+                        device,
+                        out candidateOffset);
+                    if (candidateFrame?.Texture != null)
+                    {
+                        frameSourceDirectory = currentDirectoryPath;
+                    }
                 }
 
                 if (candidateFrame == null)

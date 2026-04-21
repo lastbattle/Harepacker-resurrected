@@ -84,6 +84,8 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
         private readonly Dictionary<int, NameTagAssets> _cashEmployeeNameTagCache = new();
         private readonly HashSet<int> _cashEmployeeNameTagMissingTemplates = new();
+        private readonly Dictionary<int, EmployeeMiniRoomBoardAssets> _cashEmployeeMiniRoomBoardCache = new();
+        private readonly HashSet<int> _cashEmployeeMiniRoomBoardMissingTemplates = new();
         private readonly Dictionary<uint, EmployeeActionCacheEntry> _cashActionCache = new();
         private readonly Dictionary<string, uint> _cashActionKeyByName = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
@@ -91,6 +93,7 @@ namespace HaCreator.MapSimulator.Interaction
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
         private NameTagAssets _defaultNameTagAssets;
         private NameTagAssets _activeNameTagAssets;
+        private EmployeeMiniRoomBoardAssets _activeMiniRoomBoardAssets;
         private int _lastEmployeeCacheSweepTickMs;
 
         private NpcItem _activeActor;
@@ -115,6 +118,7 @@ namespace HaCreator.MapSimulator.Interaction
             _idleActionRemainingMs = 0;
             _temporaryActionRemainingMs = 0;
             _activeNameTagAssets = null;
+            _activeMiniRoomBoardAssets = null;
         }
 
         public void Update(
@@ -160,6 +164,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             EnsureMiniRoomBalloonAssets(device);
             _activeNameTagAssets = ResolveNameTagAssets(snapshot, device);
+            _activeMiniRoomBoardAssets = ResolveMiniRoomBoardAssets(snapshot, device);
             AdvanceActionState(_activeActorKey, actor, snapshot, profile, elapsedMs);
             SyncActorPosition(player, actor, snapshot);
 
@@ -204,7 +209,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             DrawEmployeeNameTag(spriteBatch, font, mapShiftX, mapShiftY, mapCenterX, mapCenterY);
 
-            if (_activeSnapshot.HasMiniRoomBalloon && DrawMiniRoomBalloon(spriteBatch, font, mapShiftX, mapShiftY, mapCenterX, mapCenterY))
+            if (_activeSnapshot.HasMiniRoomBalloon && DrawMiniRoomBalloon(spriteBatch, font, mapShiftX, mapShiftY, mapCenterX, mapCenterY, tickCount))
             {
                 return;
             }
@@ -848,6 +853,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _cashActionCatalogCache.Remove(templateId);
                 _cashEmployeeNameTagCache.Remove(templateId);
                 _cashEmployeeNameTagMissingTemplates.Remove(templateId);
+                _cashEmployeeMiniRoomBoardCache.Remove(templateId);
+                _cashEmployeeMiniRoomBoardMissingTemplates.Remove(templateId);
                 PurgeEmployeeActionCacheForTemplate(templateId);
             }
         }
@@ -917,6 +924,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _cashActionCatalogCache.Remove(templateId);
                 _cashEmployeeNameTagCache.Remove(templateId);
                 _cashEmployeeNameTagMissingTemplates.Remove(templateId);
+                _cashEmployeeMiniRoomBoardCache.Remove(templateId);
+                _cashEmployeeMiniRoomBoardMissingTemplates.Remove(templateId);
                 PurgeEmployeeActionCacheForTemplate(templateId);
             }
         }
@@ -1302,6 +1311,78 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
+        private EmployeeMiniRoomBoardAssets ResolveMiniRoomBoardAssets(SocialRoomFieldActorSnapshot snapshot, GraphicsDevice device)
+        {
+            if (snapshot?.Template != SocialRoomFieldActorTemplate.CashEmployee || snapshot.TemplateId <= 0)
+            {
+                return null;
+            }
+
+            return ResolveCashEmployeeMiniRoomBoardAssets(snapshot.TemplateId, device);
+        }
+
+        private EmployeeMiniRoomBoardAssets ResolveCashEmployeeMiniRoomBoardAssets(int templateId, GraphicsDevice device)
+        {
+            if (templateId <= 0 || device == null || device.IsDisposed)
+            {
+                return null;
+            }
+
+            if (_cashEmployeeMiniRoomBoardCache.TryGetValue(templateId, out EmployeeMiniRoomBoardAssets cachedAssets))
+            {
+                return cachedAssets;
+            }
+
+            if (_cashEmployeeMiniRoomBoardMissingTemplates.Contains(templateId))
+            {
+                return null;
+            }
+
+            EmployeeImageEntry employeeImgEntry = ResolveEmployeeImgEntry(templateId);
+            WzImageProperty templateRoot = employeeImgEntry?.TemplateRoot;
+            WzCanvasProperty signboardCanvas = ResolveCanvasProperty(templateRoot?["skin"]?["signboard"]);
+            Texture2D signboardTexture = LoadUiCanvasTexture(signboardCanvas, device);
+            if (signboardTexture == null)
+            {
+                _cashEmployeeMiniRoomBoardMissingTemplates.Add(templateId);
+                return null;
+            }
+
+            EmployeeMiniRoomBoardEffectFrame[] effectFrames = LoadMiniRoomBoardEffectFrames(templateRoot?["effect"], device);
+            EmployeeMiniRoomBoardAssets loadedAssets = new()
+            {
+                Signboard = signboardTexture,
+                EffectFrames = effectFrames,
+                TotalEffectDurationMs = effectFrames.Sum(frame => Math.Max(1, frame.DelayMs))
+            };
+            _cashEmployeeMiniRoomBoardCache[templateId] = loadedAssets;
+            return loadedAssets;
+        }
+
+        private static EmployeeMiniRoomBoardEffectFrame[] LoadMiniRoomBoardEffectFrames(WzImageProperty source, GraphicsDevice device)
+        {
+            if (source == null || device == null || device.IsDisposed)
+            {
+                return Array.Empty<EmployeeMiniRoomBoardEffectFrame>();
+            }
+
+            List<EmployeeMiniRoomBoardEffectFrame> frames = new();
+            foreach (WzImageProperty child in source.WzProperties.OrderBy(GetFrameOrder))
+            {
+                WzCanvasProperty canvas = ResolveCanvasProperty(child);
+                Texture2D texture = LoadUiCanvasTexture(canvas, device);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                int delayMs = Math.Max(1, GetIntValue(canvas?["delay"]) ?? ClientEmployeeDefaultFrameDelayMs);
+                frames.Add(new EmployeeMiniRoomBoardEffectFrame(texture, delayMs));
+            }
+
+            return frames.ToArray();
+        }
+
         private void EnsureDefaultEmployeeNameTagAssets(GraphicsDevice device)
         {
             if (_defaultNameTagAssets?.IsLoaded == true || device == null || device.IsDisposed)
@@ -1364,7 +1445,8 @@ namespace HaCreator.MapSimulator.Interaction
             int mapShiftX,
             int mapShiftY,
             int mapCenterX,
-            int mapCenterY)
+            int mapCenterY,
+            int tickCount)
         {
             MiniRoomBalloonAssets assets = _miniRoomBalloonAssets;
             if (_activeActor == null || _activeSnapshot == null || assets?.IsLoaded != true)
@@ -1372,7 +1454,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            Texture2D boardTexture = ResolveMiniRoomBalloonBoardTexture(_activeSnapshot, assets);
+            Texture2D boardTexture = ResolveMiniRoomBalloonBoardTexture(_activeSnapshot, assets, _activeMiniRoomBoardAssets);
             if (boardTexture == null)
             {
                 return false;
@@ -1390,6 +1472,7 @@ namespace HaCreator.MapSimulator.Interaction
             Vector2 boardPosition = new(boardX, boardY);
 
             spriteBatch.Draw(boardTexture, boardPosition, Color.White);
+            DrawTemplateMiniRoomBoardEffect(spriteBatch, boardPosition, _activeMiniRoomBoardAssets, tickCount);
 
             if (assets.PersonalShopIcon != null)
             {
@@ -1409,11 +1492,53 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static Texture2D ResolveMiniRoomBalloonBoardTexture(SocialRoomFieldActorSnapshot snapshot, MiniRoomBalloonAssets assets)
+        private static void DrawTemplateMiniRoomBoardEffect(
+            SpriteBatch spriteBatch,
+            Vector2 boardPosition,
+            EmployeeMiniRoomBoardAssets templateAssets,
+            int tickCount)
+        {
+            if (spriteBatch == null
+                || templateAssets?.EffectFrames == null
+                || templateAssets.EffectFrames.Length == 0)
+            {
+                return;
+            }
+
+            int totalDuration = Math.Max(1, templateAssets.TotalEffectDurationMs);
+            int localTick = (int)((uint)tickCount % (uint)totalDuration);
+            int elapsed = 0;
+            for (int i = 0; i < templateAssets.EffectFrames.Length; i++)
+            {
+                EmployeeMiniRoomBoardEffectFrame frame = templateAssets.EffectFrames[i];
+                elapsed += Math.Max(1, frame.DelayMs);
+                if (localTick >= elapsed)
+                {
+                    continue;
+                }
+
+                if (frame.Texture != null)
+                {
+                    spriteBatch.Draw(frame.Texture, boardPosition, Color.White);
+                }
+
+                break;
+            }
+        }
+
+        private static Texture2D ResolveMiniRoomBalloonBoardTexture(
+            SocialRoomFieldActorSnapshot snapshot,
+            MiniRoomBalloonAssets assets,
+            EmployeeMiniRoomBoardAssets templateAssets)
         {
             if (snapshot == null || assets == null)
             {
                 return null;
+            }
+
+            if (templateAssets?.Signboard != null)
+            {
+                return templateAssets.Signboard;
             }
 
             if (snapshot.MiniRoomType is 3 or 4 or 5)
@@ -2210,6 +2335,15 @@ namespace HaCreator.MapSimulator.Interaction
                 && Progress != null
                 && CurrentCountDigits.Length >= 5
                 && MaxCountDigits.Length >= 5;
+        }
+
+        private readonly record struct EmployeeMiniRoomBoardEffectFrame(Texture2D Texture, int DelayMs);
+
+        private sealed class EmployeeMiniRoomBoardAssets
+        {
+            public Texture2D Signboard { get; init; }
+            public EmployeeMiniRoomBoardEffectFrame[] EffectFrames { get; init; } = Array.Empty<EmployeeMiniRoomBoardEffectFrame>();
+            public int TotalEffectDurationMs { get; init; }
         }
 
         private sealed class NameTagAssets

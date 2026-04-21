@@ -978,8 +978,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldCancelImeCompositionOnFocusChange(bool hasFocus)
         {
-            // `CCtrlEdit::OnSetFocus` clears IME composition only on focus gain.
-            return hasFocus;
+            // `CCtrlEdit::OnSetFocus(false)` performs the composition teardown path.
+            return !hasFocus;
         }
 
         internal static bool ShouldForwardDeferredDownKeyToParentAfterIme(bool imeOwnedInputStateAfterKeyDown)

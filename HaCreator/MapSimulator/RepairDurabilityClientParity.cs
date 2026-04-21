@@ -171,8 +171,7 @@ namespace HaCreator.MapSimulator
         internal static bool TryEncodeEquippedPosition(EquipSlot slot, int itemId, out int encodedPosition)
         {
             if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out byte bodyPart)
-                && bodyPart > 0
-                && bodyPart <= 59)
+                && IsClientEncodableBodyPart(bodyPart))
             {
                 encodedPosition = -bodyPart;
                 return true;
@@ -189,6 +188,7 @@ namespace HaCreator.MapSimulator
             IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
             out int encodedPosition)
         {
+            encodedPosition = int.MinValue;
             if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out byte bodyPart)
                 && bodyPart > 0
                 && bodyPart <= 59)
@@ -215,6 +215,13 @@ namespace HaCreator.MapSimulator
                     hiddenEquipmentByBodyPart,
                     out encodedPosition))
             {
+                return true;
+            }
+
+            if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out bodyPart)
+                && IsClientEncodableBodyPart(bodyPart))
+            {
+                encodedPosition = -bodyPart;
                 return true;
             }
 
@@ -261,7 +268,7 @@ namespace HaCreator.MapSimulator
 
             int rawSlot = (int)slot;
             if (rawSlot > 0
-                && rawSlot <= 59
+                && rawSlot <= byte.MaxValue
                 && !candidates.Contains((byte)rawSlot))
             {
                 candidates.Add((byte)rawSlot);
@@ -289,7 +296,7 @@ namespace HaCreator.MapSimulator
             {
                 byte preferredBodyPart = preferredBodyParts[i];
                 if (preferredBodyPart == 0
-                    || preferredBodyPart > 59
+                    || !IsClientEncodableBodyPart(preferredBodyPart)
                     || !equipmentByBodyPart.TryGetValue(preferredBodyPart, out int preferredItemId)
                     || preferredItemId != itemId)
                 {
@@ -318,7 +325,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (legacySlotPosition > 0 && legacySlotPosition <= 59)
+            if (legacySlotPosition > 0 && legacySlotPosition <= byte.MaxValue)
             {
                 encodedPosition = -legacySlotPosition;
                 return true;
@@ -373,8 +380,7 @@ namespace HaCreator.MapSimulator
             foreach ((byte bodyPart, int equippedItemId) in equipmentByBodyPart)
             {
                 if (equippedItemId == itemId
-                    && bodyPart > 0
-                    && bodyPart <= 59)
+                    && IsClientEncodableBodyPart(bodyPart))
                 {
                     encodedPosition = -bodyPart;
                     return true;
@@ -414,9 +420,11 @@ namespace HaCreator.MapSimulator
                 EquipSlot.Pocket => 52,
                 EquipSlot.Badge => 53,
                 EquipSlot.Pendant2 => 59,
+                EquipSlot.Android => 166,
+                EquipSlot.AndroidHeart => 167,
                 _ => 0
             };
-            return bodyPart > 0 && bodyPart <= 59;
+            return IsClientEncodableBodyPart(bodyPart);
         }
 
         internal static IReadOnlyList<(string Key, bool Enabled)> ResolveRequiredJobBadgeStates(int requiredJobMask)
@@ -1159,6 +1167,11 @@ namespace HaCreator.MapSimulator
         {
             return encodedSlotPosition is >= 0 and <= 255
                 || encodedSlotPosition is <= -1 and >= -255;
+        }
+
+        private static bool IsClientEncodableBodyPart(int bodyPart)
+        {
+            return bodyPart is > 0 and <= byte.MaxValue;
         }
 
         private static bool LooksLikeRepairOpcode(int candidateValue)

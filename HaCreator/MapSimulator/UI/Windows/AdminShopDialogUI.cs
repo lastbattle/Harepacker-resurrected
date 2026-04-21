@@ -666,6 +666,10 @@ namespace HaCreator.MapSimulator.UI
 
         public bool HasPacketOwnedAdminShopCatalog => UsesPacketOwnedAdminShopCatalog(AdminShopServiceMode.CashShop);
 
+        internal bool ShouldRestorePacketOwnedAdminShopAfterUniqueModelessBlockerClears =>
+            _packetOwnedAdminShopSession.ShouldRestoreOwnerSurfaceAfterUniqueModelessBlockerClears
+            && _packetOwnedAdminShopRows.Count > 0;
+
         public IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> GetPacketOwnedCashShopStageCatalogEntries()
         {
             if (!UsesPacketOwnedAdminShopCatalog(AdminShopServiceMode.CashShop))
@@ -9240,6 +9244,16 @@ namespace HaCreator.MapSimulator.UI
             detail = string.IsNullOrWhiteSpace(detail)
                 ? packetSummary
                 : $"{detail} {packetSummary}";
+            int sourceItemQuantity = hasMetadata
+                ? AdminShopPacketOwnedSellTemplateParity.ResolvePacketOwnedSellTemplateSourceItemQuantity(resolvedCommodity.Count)
+                : 1;
+            if (hasMetadata)
+            {
+                detail = AppendPacketOwnedCommodityMetadataDetail(
+                    detail,
+                    sourceItemQuantity,
+                    resolvedCommodity.PeriodDays);
+            }
 
             bool available = commodity.SaleState == 0;
             return new AdminShopEntry
@@ -9263,7 +9277,7 @@ namespace HaCreator.MapSimulator.UI
                 SuccessMesoReward = mesoReward,
                 SourceInventoryType = inventoryType,
                 SourceItemId = resolvedItemId,
-                SourceItemQuantity = 1,
+                SourceItemQuantity = sourceItemQuantity,
                 PacketSerialNumber = commodity.SerialNumber,
                 PacketSaleState = commodity.SaleState,
                 IsPacketOwnedSnapshotRow = true

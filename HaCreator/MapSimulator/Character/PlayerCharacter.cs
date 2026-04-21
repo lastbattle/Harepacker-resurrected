@@ -7511,7 +7511,7 @@ namespace HaCreator.MapSimulator.Character
             bool sourceSignatureMetadataMissing = sourceSignature == 0
                 || lastInsertedSourceSignature == 0;
             bool sourceIdentityMetadataMissing = sourcePartsIdentityMetadataMissing
-                && sourceSignatureMetadataMissing;
+                || sourceSignatureMetadataMissing;
             if (sourceIdentityMetadataMissing)
             {
                 return true;

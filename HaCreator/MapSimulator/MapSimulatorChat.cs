@@ -2195,7 +2195,7 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
-            string trimmed = text.Trim();
+            string trimmed = TrimClientWhitespace(text);
             int validLength = 0;
             while (validLength < trimmed.Length)
             {
@@ -2256,7 +2256,7 @@ namespace HaCreator.MapSimulator
             out string normalizedTarget)
         {
             normalizedTarget = string.Empty;
-            string rawInput = (whisperTarget ?? string.Empty).Trim();
+            string rawInput = TrimClientWhitespace(whisperTarget ?? string.Empty);
             if (rawInput.Length == 0)
             {
                 return WhisperTargetValidationResult.Empty;
@@ -2279,6 +2279,38 @@ namespace HaCreator.MapSimulator
 
             normalizedTarget = extractedTarget;
             return WhisperTargetValidationResult.Valid;
+        }
+
+        private static string TrimClientWhitespace(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            int start = 0;
+            int end = text.Length - 1;
+            while (start <= end && IsClientWhitespace(text[start]))
+            {
+                start++;
+            }
+
+            while (end >= start && IsClientWhitespace(text[end]))
+            {
+                end--;
+            }
+
+            if (start > end)
+            {
+                return string.Empty;
+            }
+
+            return text.Substring(start, end - start + 1);
+        }
+
+        private static bool IsClientWhitespace(char value)
+        {
+            return value <= '\u0020';
         }
 
         private static bool IsPlausibleCharacterName(string characterName)

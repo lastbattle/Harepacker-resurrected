@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -11,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
@@ -27,8 +29,19 @@ namespace HaCreator.MapSimulator.Managers
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
         private const int CurrentWrapperRelayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+        private const int DefaultInboundSessionValueOpcode = 93;
         private const int PacketTypeIncGauge = 173;
         private const int PacketTypeResult = 174;
+        private const int MassacreCoolSessionKeyStringPoolId = 0x14F1;
+        private const int MassacreHitSessionKeyStringPoolId = 0x14F2;
+        private const int MassacreStageSessionKeyStringPoolId = 0x14F3;
+        private const int MassacreMissSessionKeyStringPoolId = 0x14F4;
+        private const int MassacreSkillSessionKeyStringPoolId = 0x14F6;
+        private const string MassacreCoolSessionKeyFallback = "massacre_cool";
+        private const string MassacreHitSessionKeyFallback = "massacre_hit";
+        private const string MassacreStageSessionKeyFallback = "massacre_laststage";
+        private const string MassacreMissSessionKeyFallback = "massacre_miss";
+        private const string MassacreSkillSessionKeyFallback = "massacre_skill";
         private const int MaxNestedRelayDepth = 8;
         private const int MaxRecentInboundPackets = 32;
         private const string DiscoverCommandUsage = "/massacre session discover <remotePort> [processName|pid] [localPort]";
@@ -40,6 +53,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Dictionary<int, MassacrePacketInboxMessageKind> _mappedInboundOpcodes = new();
         private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
         private readonly object _sync = new();
+        private readonly MassacreSessionValueInfoState _sessionValueInfoState = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -60,6 +74,65 @@ namespace HaCreator.MapSimulator.Managers
             string PayloadHex,
             string RawPacketHex,
             string Source);
+
+        internal sealed class MassacreSessionValueInfoState
+        {
+            public bool HasHit { get; private set; }
+            public bool HasMiss { get; private set; }
+            public bool HasCool { get; private set; }
+            public int Hit { get; private set; }
+            public int Miss { get; private set; }
+            public int Cool { get; private set; }
+            public int Skill { get; private set; }
+
+            public bool TryApply(string key, int value, out bool hasInfoBaseline)
+            {
+                hasInfoBaseline = false;
+                if (!TryMatchSessionValueKey(key, MassacreHitSessionKeyStringPoolId, MassacreHitSessionKeyFallback))
+                {
+                    if (!TryMatchSessionValueKey(key, MassacreMissSessionKeyStringPoolId, MassacreMissSessionKeyFallback))
+                    {
+                        if (!TryMatchSessionValueKey(key, MassacreCoolSessionKeyStringPoolId, MassacreCoolSessionKeyFallback))
+                        {
+                            if (!TryMatchSessionValueKey(key, MassacreSkillSessionKeyStringPoolId, MassacreSkillSessionKeyFallback))
+                            {
+                                return false;
+                            }
+
+                            Skill = value;
+                            hasInfoBaseline = HasHit && HasMiss && HasCool;
+                            return true;
+                        }
+
+                        Cool = value;
+                        HasCool = true;
+                        hasInfoBaseline = HasHit && HasMiss;
+                        return true;
+                    }
+
+                    Miss = value;
+                    HasMiss = true;
+                    hasInfoBaseline = HasHit && HasCool;
+                    return true;
+                }
+
+                Hit = value;
+                HasHit = true;
+                hasInfoBaseline = HasMiss && HasCool;
+                return true;
+            }
+
+            public void Clear()
+            {
+                HasHit = false;
+                HasMiss = false;
+                HasCool = false;
+                Hit = 0;
+                Miss = 0;
+                Cool = 0;
+                Skill = 0;
+            }
+        }
 
         private sealed class BridgePair
         {
@@ -499,6 +572,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             string packetLabel = packetType switch
             {
+                DefaultInboundSessionValueOpcode => "CWvsContext::OnSessionValue(93) Massacre payload",
                 CurrentWrapperRelayOpcode => $"CField::OnPacket relay {CurrentWrapperRelayOpcode}",
                 PacketTypeIncGauge => "Massacre inc gauge",
                 PacketTypeResult => "Massacre result",
@@ -515,9 +589,13 @@ namespace HaCreator.MapSimulator.Managers
             string packetLabel = message?.Kind switch
             {
                 MassacrePacketInboxMessageKind.ClockPayload => "Massacre clock payload",
+                MassacrePacketInboxMessageKind.Info => "Massacre context payload",
                 MassacrePacketInboxMessageKind.InfoPayload => "Massacre context payload",
+                MassacrePacketInboxMessageKind.Stage => "Massacre stage payload",
+                MassacrePacketInboxMessageKind.Bonus => "Massacre bonus payload",
                 MassacrePacketInboxMessageKind.Packet => message.PacketType switch
                 {
+                    DefaultInboundSessionValueOpcode => "CWvsContext::OnSessionValue(93) Massacre payload",
                     CurrentWrapperRelayOpcode => $"CField::OnPacket relay {CurrentWrapperRelayOpcode}",
                     PacketTypeIncGauge => "Massacre inc gauge",
                     PacketTypeResult => "Massacre result",
@@ -660,7 +738,12 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryDecodeInboundMassacrePacket(raw, $"official-session:{pair.RemoteEndpoint}", GetMappedInboundOpcodesSnapshot(), out MassacrePacketInboxMessage message))
+                if (!TryDecodeInboundMassacrePacket(
+                        raw,
+                        $"official-session:{pair.RemoteEndpoint}",
+                        GetMappedInboundOpcodesSnapshot(),
+                        _sessionValueInfoState,
+                        out MassacrePacketInboxMessage message))
                 {
                     return;
                 }
@@ -744,6 +827,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 ReceivedCount = 0;
                 _recentInboundPackets.Clear();
+                _sessionValueInfoState.Clear();
             }
         }
 
@@ -754,7 +838,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static bool TryDecodeInboundMassacrePacket(byte[] rawPacket, string source, out MassacrePacketInboxMessage message)
         {
-            return TryDecodeInboundMassacrePacket(rawPacket, source, null, out message);
+            return TryDecodeInboundMassacrePacket(rawPacket, source, null, null, out message);
         }
 
         internal static bool TryDecodeInboundMassacrePacket(
@@ -763,18 +847,34 @@ namespace HaCreator.MapSimulator.Managers
             IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
             out MassacrePacketInboxMessage message)
         {
+            return TryDecodeInboundMassacrePacket(rawPacket, source, mappedInboundOpcodes, null, out message);
+        }
+
+        internal static bool TryDecodeInboundMassacrePacket(
+            byte[] rawPacket,
+            string source,
+            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
+            MassacreSessionValueInfoState sessionValueInfoState,
+            out MassacrePacketInboxMessage message)
+        {
             message = null;
             if (rawPacket == null || rawPacket.Length < sizeof(short))
             {
                 return false;
             }
 
-            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            int opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)));
             byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
             if (mappedInboundOpcodes != null
                 && mappedInboundOpcodes.TryGetValue(opcode, out MassacrePacketInboxMessageKind mappedKind))
             {
                 return TryBuildMappedInboundMessage(opcode, mappedKind, payload, source, rawPacket, out message);
+            }
+
+            if (opcode == DefaultInboundSessionValueOpcode
+                && TryBuildSessionValueInboundMessage(payload, source, rawPacket, sessionValueInfoState, out message))
+            {
+                return true;
             }
 
             if (opcode != CurrentWrapperRelayOpcode
@@ -797,6 +897,91 @@ namespace HaCreator.MapSimulator.Managers
                 packetType: opcode,
                 payload: payload);
             return true;
+        }
+
+        private static bool TryBuildSessionValueInboundMessage(
+            byte[] payload,
+            string source,
+            byte[] rawPacket,
+            MassacreSessionValueInfoState sessionValueInfoState,
+            out MassacrePacketInboxMessage message)
+        {
+            message = null;
+            if (!TryDecodeSessionValueKeyValuePair(payload, out string key, out string value))
+            {
+                return false;
+            }
+
+            if (!int.TryParse(value, out int numericValue) || numericValue < 0)
+            {
+                return false;
+            }
+
+            if (TryMatchSessionValueKey(key, MassacreStageSessionKeyStringPoolId, MassacreStageSessionKeyFallback))
+            {
+                if (numericValue <= 0)
+                {
+                    return false;
+                }
+
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Stage,
+                    source,
+                    $"packetraw {Convert.ToHexString(rawPacket)}",
+                    value1: numericValue);
+                return true;
+            }
+
+            if (sessionValueInfoState == null
+                || !sessionValueInfoState.TryApply(key, numericValue, out bool hasInfoBaseline)
+                || !hasInfoBaseline)
+            {
+                return false;
+            }
+
+            message = new MassacrePacketInboxMessage(
+                MassacrePacketInboxMessageKind.Info,
+                source,
+                $"packetraw {Convert.ToHexString(rawPacket)}",
+                value1: sessionValueInfoState.Hit,
+                value2: sessionValueInfoState.Miss,
+                value3: sessionValueInfoState.Cool,
+                value4: sessionValueInfoState.Skill);
+            return true;
+        }
+
+        private static bool TryDecodeSessionValueKeyValuePair(byte[] payload, out string key, out string value)
+        {
+            key = string.Empty;
+            value = string.Empty;
+
+            try
+            {
+                PacketReader reader = new(payload ?? Array.Empty<byte>());
+                key = reader.ReadMapleString();
+                value = reader.ReadMapleString();
+                return !string.IsNullOrWhiteSpace(key) && reader.Remaining == 0;
+            }
+            catch (Exception ex) when (ex is ArgumentOutOfRangeException || ex is EndOfStreamException || ex is IOException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TryMatchSessionValueKey(string key, int stringPoolId, string fallbackKey)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            if (MapleStoryStringPool.TryGet(stringPoolId, out string recoveredKey)
+                && string.Equals(key, recoveredKey, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return string.Equals(key, fallbackKey, StringComparison.Ordinal);
         }
 
         private static bool TryDecodeNestedRelayMassacrePacket(
@@ -937,7 +1122,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int opcode = (rawPacket != null && rawPacket.Length >= sizeof(short))
-                ? BitConverter.ToUInt16(rawPacket, 0)
+                ? BinaryPrimitives.ReadUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)))
                 : 0;
             byte[] payload = rawPacket != null && rawPacket.Length > sizeof(short)
                 ? rawPacket.Skip(sizeof(short)).ToArray()

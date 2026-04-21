@@ -62,14 +62,17 @@ namespace HaCreator.MapSimulator.Fields
             WzImageProperty xProperty = shipObject["x"];
             WzImageProperty yProperty = shipObject["y"];
             WzImageProperty shipPathProperty = shipObject["shipObj"];
-            if (xProperty == null || yProperty == null || shipPathProperty == null)
+            if (xProperty == null || yProperty == null)
             {
                 return false;
             }
 
             int dockX = InfoTool.GetInt(xProperty);
             int dockY = InfoTool.GetInt(yProperty);
-            string shipPath = InfoTool.GetString(shipPathProperty);
+            // Client CShip::Init falls back to an empty ship path when this member is missing.
+            string shipPath = shipPathProperty == null
+                ? string.Empty
+                : InfoTool.GetString(shipPathProperty);
             int shipKind = GetInt(shipObject["shipKind"], 0);
             int flip = GetInt(shipObject["f"], 0);
             // CShip::Init uses default 0 for missing shipObj numeric members.

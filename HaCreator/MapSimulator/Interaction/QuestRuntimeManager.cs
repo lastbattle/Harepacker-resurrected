@@ -121,6 +121,13 @@ namespace HaCreator.MapSimulator.Interaction
             public bool IsSecret { get; init; }
         }
 
+        private sealed class QuestMonsterBookCardRequirement
+        {
+            public int MobId { get; init; }
+            public int? MinCount { get; init; }
+            public int? MaxCount { get; init; }
+        }
+
         private sealed class QuestPetRequirement
         {
             public int ItemId { get; init; }
@@ -327,7 +334,14 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndPetRecallLimit { get; init; }
             public int? EndPetTamenessMinimum { get; init; }
             public int? EndPetTamenessMaximum { get; init; }
+            public int? EndQuestCompleteCount { get; init; }
             public int EndMorphTemplateId { get; init; }
+            public IReadOnlyList<int> EndRequiredBuffIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> EndExcludedBuffIds { get; init; } = Array.Empty<int>();
+            public int? EndMonsterBookMinCardTypes { get; init; }
+            public int? EndMonsterBookMaxCardTypes { get; init; }
+            public IReadOnlyList<QuestMonsterBookCardRequirement> EndMonsterBookCardRequirements { get; init; } =
+                Array.Empty<QuestMonsterBookCardRequirement>();
             public int? EndInfoNumber { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> EndInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> EndInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
@@ -408,6 +422,9 @@ namespace HaCreator.MapSimulator.Interaction
         private Func<int, IReadOnlyList<int>> _mobMapIdsProvider;
         private Func<int, IReadOnlyList<int>> _npcMapIdsProvider;
         private Func<int> _currentMorphTemplateIdProvider;
+        private Func<int, bool> _hasActiveQuestDemandBuffProvider;
+        private Func<int> _monsterBookOwnedCardTypeCountProvider;
+        private Func<int, int> _monsterBookCardCountByMobIdProvider;
         private bool _definitionsLoaded;
         private const long QuestAlarmRecentUpdateWindowMs = 8000;
         private const long QuestAlarmAutoRegisterActiveWindowMs = 10L * 60L * 1000L;
@@ -775,7 +792,10 @@ namespace HaCreator.MapSimulator.Interaction
             Func<int, string> mapNameProvider,
             Func<int, IReadOnlyList<int>> mobMapIdsProvider = null,
             Func<int, IReadOnlyList<int>> npcMapIdsProvider = null,
-            Func<int> currentMorphTemplateIdProvider = null)
+            Func<int> currentMorphTemplateIdProvider = null,
+            Func<int, bool> hasActiveQuestDemandBuffProvider = null,
+            Func<int> monsterBookOwnedCardTypeCountProvider = null,
+            Func<int, int> monsterBookCardCountByMobIdProvider = null)
         {
             _applyQuestBuffItem = applyQuestBuffItem;
             _currentMapIdProvider = currentMapIdProvider;
@@ -783,6 +803,9 @@ namespace HaCreator.MapSimulator.Interaction
             _mobMapIdsProvider = mobMapIdsProvider;
             _npcMapIdsProvider = npcMapIdsProvider;
             _currentMorphTemplateIdProvider = currentMorphTemplateIdProvider;
+            _hasActiveQuestDemandBuffProvider = hasActiveQuestDemandBuffProvider;
+            _monsterBookOwnedCardTypeCountProvider = monsterBookOwnedCardTypeCountProvider;
+            _monsterBookCardCountByMobIdProvider = monsterBookCardCountByMobIdProvider;
         }
 
         public void SetPacketOwnedAutoStartQuestRegistration(int questId, bool registered)
@@ -947,11 +970,55 @@ namespace HaCreator.MapSimulator.Interaction
                 "complete");
             AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+            if (HasUnmetCompletionQuestCompleteCountDemand(
+                    definition.EndQuestCompleteCount,
+                    CountCompletedQuestsForCompletionDemand()))
+            {
+                issues.Add($"Complete at least {definition.EndQuestCompleteCount.Value} quest(s) before completing this quest.");
+            }
+
             if (HasUnmetCompletionMorphDemand(
                     definition.EndMorphTemplateId,
                     ResolveCurrentMorphTemplateIdForCompletionDemand(_currentMorphTemplateIdProvider)))
             {
                 issues.Add($"Morph demand requires template {definition.EndMorphTemplateId}.");
+            }
+
+            if (HasUnmetRequiredCompletionBuffDemand(
+                    definition.EndRequiredBuffIds,
+                    _hasActiveQuestDemandBuffProvider))
+            {
+                issues.Add("Completion demand requires an active buff owner.");
+            }
+
+            if (HasUnmetExcludedCompletionBuffDemand(
+                    definition.EndExcludedBuffIds,
+                    _hasActiveQuestDemandBuffProvider))
+            {
+                issues.Add("Completion demand blocks while one of the excluded buffs is active.");
+            }
+
+            int currentMonsterBookCardTypes =
+                ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(_monsterBookOwnedCardTypeCountProvider);
+            if (HasUnmetMonsterBookCardTypeMinimumDemand(
+                    definition.EndMonsterBookMinCardTypes,
+                    currentMonsterBookCardTypes))
+            {
+                issues.Add($"Monster Book demand requires at least {definition.EndMonsterBookMinCardTypes.Value} owned card type(s).");
+            }
+
+            if (HasUnmetMonsterBookCardTypeMaximumDemand(
+                    definition.EndMonsterBookMaxCardTypes,
+                    currentMonsterBookCardTypes))
+            {
+                issues.Add($"Monster Book demand requires at most {definition.EndMonsterBookMaxCardTypes.Value} owned card type(s).");
+            }
+
+            if (HasUnmetMonsterBookCardDemand(
+                    definition.EndMonsterBookCardRequirements,
+                    _monsterBookCardCountByMobIdProvider))
+            {
+                issues.Add("Monster Book card-count demand is still unmet.");
             }
 
             if (build == null &&
@@ -990,10 +1057,141 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Max(0, currentMorphTemplateIdProvider?.Invoke() ?? 0);
         }
 
+        private int CountCompletedQuestsForCompletionDemand()
+        {
+            return _progress.Count(entry => entry.Value?.State == QuestStateType.Completed);
+        }
+
         internal static bool HasUnmetCompletionMorphDemand(int requiredMorphTemplateId, int currentMorphTemplateId)
         {
             return requiredMorphTemplateId > 0
                    && currentMorphTemplateId != requiredMorphTemplateId;
+        }
+
+        internal static bool HasUnmetCompletionQuestCompleteCountDemand(
+            int? requiredCompletedQuestCount,
+            int currentCompletedQuestCount)
+        {
+            return requiredCompletedQuestCount.HasValue
+                   && requiredCompletedQuestCount.Value > Math.Max(0, currentCompletedQuestCount);
+        }
+
+        internal static bool HasUnmetRequiredCompletionBuffDemand(
+            IReadOnlyList<int> requiredBuffIds,
+            Func<int, bool> hasActiveBuffProvider)
+        {
+            if (requiredBuffIds == null || requiredBuffIds.Count == 0)
+            {
+                return false;
+            }
+
+            if (hasActiveBuffProvider == null)
+            {
+                return true;
+            }
+
+            for (int i = 0; i < requiredBuffIds.Count; i++)
+            {
+                int buffId = requiredBuffIds[i];
+                if (buffId == 0)
+                {
+                    continue;
+                }
+
+                if (!hasActiveBuffProvider(-Math.Abs(buffId)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool HasUnmetExcludedCompletionBuffDemand(
+            IReadOnlyList<int> excludedBuffIds,
+            Func<int, bool> hasActiveBuffProvider)
+        {
+            if (excludedBuffIds == null || excludedBuffIds.Count == 0 || hasActiveBuffProvider == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < excludedBuffIds.Count; i++)
+            {
+                int buffId = excludedBuffIds[i];
+                if (buffId == 0)
+                {
+                    continue;
+                }
+
+                if (hasActiveBuffProvider(-Math.Abs(buffId)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static int ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(
+            Func<int> ownedCardTypeCountProvider)
+        {
+            return Math.Max(0, ownedCardTypeCountProvider?.Invoke() ?? 0);
+        }
+
+        internal static bool HasUnmetMonsterBookCardTypeMinimumDemand(
+            int? minOwnedCardTypes,
+            int currentOwnedCardTypes)
+        {
+            return minOwnedCardTypes.HasValue
+                   && minOwnedCardTypes.Value >= 0
+                   && currentOwnedCardTypes < minOwnedCardTypes.Value;
+        }
+
+        internal static bool HasUnmetMonsterBookCardTypeMaximumDemand(
+            int? maxOwnedCardTypes,
+            int currentOwnedCardTypes)
+        {
+            return maxOwnedCardTypes.HasValue
+                   && maxOwnedCardTypes.Value >= 0
+                   && currentOwnedCardTypes > maxOwnedCardTypes.Value;
+        }
+
+        private static bool HasUnmetMonsterBookCardDemand(
+            IReadOnlyList<QuestMonsterBookCardRequirement> requirements,
+            Func<int, int> resolveCardCountByMobIdProvider)
+        {
+            if (requirements == null || requirements.Count == 0)
+            {
+                return false;
+            }
+
+            if (resolveCardCountByMobIdProvider == null)
+            {
+                return true;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestMonsterBookCardRequirement requirement = requirements[i];
+                if (requirement?.MobId <= 0)
+                {
+                    continue;
+                }
+
+                int currentCount = Math.Max(0, resolveCardCountByMobIdProvider(requirement.MobId));
+                if (requirement.MinCount.HasValue && requirement.MinCount.Value >= 0 && currentCount < requirement.MinCount.Value)
+                {
+                    return true;
+                }
+
+                if (requirement.MaxCount.HasValue && requirement.MaxCount.Value >= 0 && currentCount > requirement.MaxCount.Value)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool HasUnresolvedCompletionBuildContextDemand(
@@ -4066,7 +4264,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID") != null ||
                    GetConversationVariantMetadataProperty(property, "job", "jobId", "jobID") != null ||
-                   GetConversationVariantMetadataProperty(property, "quest") != null ||
+                   GetConversationVariantMetadataProperty(property, "quest", "questId", "questID", "questNo") != null ||
+                   GetConversationVariantMetadataProperty(property, "state", "questState", "quest_state") != null ||
                    GetConversationVariantMetadataProperty(property, "subJob", "subjob") != null ||
                    GetConversationVariantMetadataProperty(property, "subJobFlags", "subJobFlag", "subjobflags", "subjobflag") != null ||
                    GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin") != null ||
@@ -4172,8 +4371,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            IReadOnlyList<QuestStateRequirement> questRequirements = ParseQuestRequirements(
-                GetConversationVariantMetadataProperty(property, "quest"));
+            IReadOnlyList<QuestStateRequirement> questRequirements = ParseConversationVariantQuestRequirements(property);
             if (questRequirements.Count > 0)
             {
                 if (questStateResolver == null)
@@ -4192,6 +4390,45 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return HasConversationVariantMetadata(property);
+        }
+
+        private static IReadOnlyList<QuestStateRequirement> ParseConversationVariantQuestRequirements(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<QuestStateRequirement>();
+            }
+
+            WzImageProperty questProperty = GetConversationVariantMetadataProperty(
+                property,
+                "quest",
+                "questId",
+                "questID",
+                "questNo");
+            IReadOnlyList<QuestStateRequirement> nestedRequirements = ParseQuestRequirements(questProperty);
+            if (nestedRequirements.Count > 0)
+            {
+                return nestedRequirements;
+            }
+
+            int directQuestId = ParseInt(questProperty).GetValueOrDefault();
+            if (directQuestId <= 0)
+            {
+                return Array.Empty<QuestStateRequirement>();
+            }
+
+            int directQuestState = ParseInt(GetConversationVariantMetadataProperty(
+                property,
+                "state",
+                "questState",
+                "quest_state"))
+                .GetValueOrDefault();
+            if (TryBuildQuestStateRequirement(directQuestId, directQuestState, out QuestStateRequirement requirement))
+            {
+                return new[] { requirement };
+            }
+
+            return Array.Empty<QuestStateRequirement>();
         }
 
         private static WzImageProperty GetConversationVariantMetadataProperty(
@@ -7949,7 +8186,13 @@ namespace HaCreator.MapSimulator.Interaction
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
                 EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
+                EndQuestCompleteCount = ParseInt(endCheck?["questComplete"]),
                 EndMorphTemplateId = ParsePositiveInt(endCheck?["morph"]).GetValueOrDefault(),
+                EndRequiredBuffIds = ParseQuestDemandIntegerList(endCheck?["buff"]),
+                EndExcludedBuffIds = ParseQuestDemandIntegerList(endCheck?["exceptbuff"]),
+                EndMonsterBookMinCardTypes = ParseInt(endCheck?["mbmin"]),
+                EndMonsterBookMaxCardTypes = ParseInt(endCheck?["mbmax"]),
+                EndMonsterBookCardRequirements = ParseMonsterBookCardRequirements(endCheck?["mbcard"]),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndInfoRequirements = ParseQuestRecordTextRequirements(endCheck?["info"]),
                 EndInfoExRequirements = ParseQuestRecordValueRequirements(endCheck?["infoex"]),
@@ -8805,6 +9048,100 @@ namespace HaCreator.MapSimulator.Interaction
             var jobs = new List<int>();
             CollectJobIds(property, jobs);
             return jobs.Count == 0 ? Array.Empty<int>() : jobs;
+        }
+
+        private static IReadOnlyList<int> ParseQuestDemandIntegerList(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            var values = new HashSet<int>();
+            CollectQuestDemandIntegers(property, values);
+            return values.Count == 0 ? Array.Empty<int>() : values.ToArray();
+        }
+
+        private static void CollectQuestDemandIntegers(WzImageProperty property, ISet<int> values)
+        {
+            if (property == null || values == null)
+            {
+                return;
+            }
+
+            int? scalarValue = ParseInt(property);
+            if (scalarValue.HasValue && scalarValue.Value != 0)
+            {
+                values.Add(scalarValue.Value);
+            }
+
+            if (property is WzStringProperty stringProperty &&
+                !string.IsNullOrWhiteSpace(stringProperty.Value))
+            {
+                string[] tokens = stringProperty.Value.Split(
+                    new[] { ',', ';', '|', ' ', '\t', '\r', '\n' },
+                    StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < tokens.Length; i++)
+                {
+                    if (int.TryParse(tokens[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue)
+                        && parsedValue != 0)
+                    {
+                        values.Add(parsedValue);
+                    }
+                }
+            }
+
+            if (property.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                CollectQuestDemandIntegers(property.WzProperties[i], values);
+            }
+        }
+
+        private static IReadOnlyList<QuestMonsterBookCardRequirement> ParseMonsterBookCardRequirements(
+            WzImageProperty property)
+        {
+            if (property?.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return Array.Empty<QuestMonsterBookCardRequirement>();
+            }
+
+            var requirements = new List<QuestMonsterBookCardRequirement>();
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty child = property.WzProperties[i];
+                if (child == null)
+                {
+                    continue;
+                }
+
+                int mobId = ParseInt(child["id"])
+                    ?? ParseInt(child["mob"])
+                    ?? (int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedMobId)
+                        ? parsedMobId
+                        : 0);
+                int? minCount = ParseInt(child["min"]);
+                int? maxCount = ParseInt(child["max"]);
+                if (mobId <= 0 || (!minCount.HasValue && !maxCount.HasValue))
+                {
+                    continue;
+                }
+
+                requirements.Add(new QuestMonsterBookCardRequirement
+                {
+                    MobId = mobId,
+                    MinCount = minCount,
+                    MaxCount = maxCount
+                });
+            }
+
+            return requirements.Count == 0
+                ? Array.Empty<QuestMonsterBookCardRequirement>()
+                : requirements;
         }
 
         private static void CollectJobIds(WzImageProperty property, ICollection<int> jobs)
@@ -10890,9 +11227,14 @@ namespace HaCreator.MapSimulator.Interaction
             string normalized = NormalizeConversationMetadataKey(propertyName);
             return normalized == "npc" ||
                    normalized == "npcid" ||
+                   normalized == "npcno" ||
                    normalized == "job" ||
                    normalized == "jobid" ||
                    normalized == "quest" ||
+                   normalized == "questid" ||
+                   normalized == "questno" ||
+                   normalized == "state" ||
+                   normalized == "queststate" ||
                    normalized == "subjob" ||
                    normalized == "subjobflag" ||
                    normalized == "subjobflags" ||

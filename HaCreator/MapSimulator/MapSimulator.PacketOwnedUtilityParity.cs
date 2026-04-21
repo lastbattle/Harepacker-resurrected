@@ -352,6 +352,8 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedRadioSchedulePacketType = -1;
         private string _lastPacketOwnedRadioScheduleSource = "none";
         private bool _lastPacketOwnedRadioScheduleFromOfficialSession;
+        private bool _packetOwnedRadioOfficialScheduleMutationObserved;
+        private bool _packetOwnedRadioOfficialCreateLayerMutationObserved;
         private bool _packetOwnedRadioSessionCreateLayerLeft;
         private int _packetOwnedRadioSessionCreateLayerMutationSequence = -1;
         private string _packetOwnedRadioSessionCreateLayerSource = "uninitialized";
@@ -2094,14 +2096,6 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedClassCompetitionAuthPayload(byte[] payload, out string message)
         {
             message = null;
-            if (TryDecodeClassCompetitionAuthKeyPayload(payload, out string authKey, out string decodeDetail))
-            {
-                StampPacketOwnedUtilityRequestState();
-                ApplyClassCompetitionAuthCache(authKey, "packet opcode 291 auth cache");
-                message = $"Applied packet-authored class-competition auth cache from opcode {PacketOwnedClassCompetitionAuthRequestOpcode} and {(string.IsNullOrWhiteSpace(_lastClassCompetitionUrl) ? "kept the owner waiting for navigation." : "updated the cached auth token without resetting an already navigated page.")}";
-                return true;
-            }
-
             if (TryDecodePacketOwnedClassCompetitionAuthCacheRemotePagePayload(
                     payload,
                     out ClassCompetitionRemotePagePayload remotePayload,
@@ -2109,6 +2103,14 @@ namespace HaCreator.MapSimulator
             {
                 StampPacketOwnedUtilityRequestState();
                 ApplyClassCompetitionRemotePagePayload(remotePayload, out message);
+                return true;
+            }
+
+            if (TryDecodeClassCompetitionAuthKeyPayload(payload, out string authKey, out string decodeDetail))
+            {
+                StampPacketOwnedUtilityRequestState();
+                ApplyClassCompetitionAuthCache(authKey, "packet opcode 291 auth cache");
+                message = $"Applied packet-authored class-competition auth cache from opcode {PacketOwnedClassCompetitionAuthRequestOpcode} and {(string.IsNullOrWhiteSpace(_lastClassCompetitionUrl) ? "kept the owner waiting for navigation." : "updated the cached auth token without resetting an already navigated page.")}";
                 return true;
             }
 
@@ -2375,12 +2377,12 @@ namespace HaCreator.MapSimulator
             remotePayload = null;
             detail = null;
 
-            if (TryDecodeClassCompetitionAuthKeyPayload(payload, out authKey, out detail))
+            if (TryDecodePacketOwnedClassCompetitionAuthCacheRemotePagePayload(payload, out remotePayload, out detail))
             {
                 return true;
             }
 
-            if (TryDecodePacketOwnedClassCompetitionAuthCacheRemotePagePayload(payload, out remotePayload, out detail))
+            if (TryDecodeClassCompetitionAuthKeyPayload(payload, out authKey, out detail))
             {
                 return true;
             }
@@ -2570,10 +2572,14 @@ namespace HaCreator.MapSimulator
             {
                 string line = lines[i];
                 if (line.StartsWith("auth=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("key=", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("url=", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("navigate=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("line=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("page=", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("source=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("ladder:", StringComparison.OrdinalIgnoreCase))
+                    || line.StartsWith("ladder:", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("ladder=", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
@@ -2662,6 +2668,12 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (line.StartsWith("key=", StringComparison.OrdinalIgnoreCase))
+                {
+                    authKey = line["key=".Length..].Trim();
+                    continue;
+                }
+
                 if (line.StartsWith("url=", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("navigate=", StringComparison.OrdinalIgnoreCase))
                 {
@@ -2680,9 +2692,27 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (line.StartsWith("line=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("page=", StringComparison.OrdinalIgnoreCase))
+                {
+                    int separator = line.IndexOf('=');
+                    if (separator >= 0 && separator < line.Length - 1)
+                    {
+                        pageLines.Add(line[(separator + 1)..].Trim());
+                    }
+
+                    continue;
+                }
+
                 if (line.StartsWith("ladder:", StringComparison.OrdinalIgnoreCase))
                 {
                     ladderLines.Add(line["ladder:".Length..].Trim());
+                    continue;
+                }
+
+                if (line.StartsWith("ladder=", StringComparison.OrdinalIgnoreCase))
+                {
+                    ladderLines.Add(line["ladder=".Length..].Trim());
                     continue;
                 }
 
@@ -4490,8 +4520,17 @@ namespace HaCreator.MapSimulator
             PlayerMovementSyncSnapshot passiveMoveSnapshot,
             int sampleTime)
         {
-            if (!TryResolvePacketOwnedActiveEffectMotionBlurPassiveSnapshotSampleTimeBounds(
-                    passiveMoveSnapshot,
+            return ShouldUsePacketOwnedActiveEffectMotionBlurSnapshot(
+                passiveMoveSnapshot,
+                sampleTime);
+        }
+
+        private static bool ShouldUsePacketOwnedActiveEffectMotionBlurSnapshot(
+            PlayerMovementSyncSnapshot movementSnapshot,
+            int sampleTime)
+        {
+            if (!TryResolvePacketOwnedActiveEffectMotionBlurSnapshotSampleTimeBounds(
+                    movementSnapshot,
                     out int startTime,
                     out int endTime))
             {
@@ -4501,21 +4540,21 @@ namespace HaCreator.MapSimulator
             return sampleTime >= startTime && sampleTime <= endTime;
         }
 
-        private static bool TryResolvePacketOwnedActiveEffectMotionBlurPassiveSnapshotSampleTimeBounds(
-            PlayerMovementSyncSnapshot passiveMoveSnapshot,
+        private static bool TryResolvePacketOwnedActiveEffectMotionBlurSnapshotSampleTimeBounds(
+            PlayerMovementSyncSnapshot movementSnapshot,
             out int startTime,
             out int endTime)
         {
             startTime = 0;
             endTime = 0;
-            if (passiveMoveSnapshot == null)
+            if (movementSnapshot == null)
             {
                 return false;
             }
 
-            startTime = passiveMoveSnapshot.PassivePosition.TimeStamp;
-            endTime = passiveMoveSnapshot.PassivePosition.TimeStamp;
-            List<MovePathElement> movePath = passiveMoveSnapshot.MovePath;
+            startTime = movementSnapshot.PassivePosition.TimeStamp;
+            endTime = movementSnapshot.PassivePosition.TimeStamp;
+            List<MovePathElement> movePath = movementSnapshot.MovePath;
             if (movePath == null || movePath.Count == 0)
             {
                 return true;
@@ -4544,7 +4583,7 @@ namespace HaCreator.MapSimulator
             bool fallbackFacingRight,
             int sampleTime)
         {
-            if (movementSnapshot != null)
+            if (ShouldUsePacketOwnedActiveEffectMotionBlurSnapshot(movementSnapshot, sampleTime))
             {
                 PassivePositionSnapshot sample = movementSnapshot.SampleAtTime(sampleTime);
                 return new PacketOwnedActiveEffectMotionBlurOwnerSample(
@@ -8184,20 +8223,22 @@ namespace HaCreator.MapSimulator
 
             bool hasRequestedTab = TryResolvePacketOwnedSocialListTab(option, out SocialListTab requestedTab);
             SocialListTab targetTab = hasRequestedTab ? requestedTab : _socialListRuntime.CurrentTab;
-            if (socialListWindow.IsVisible && hasRequestedTab && _socialListRuntime.CurrentTab == targetTab)
+            bool wasVisible = socialListWindow.IsVisible;
+            if (wasVisible)
             {
                 uiWindowManager.HideWindow(MapSimulatorWindowNames.SocialList);
-                string closedMessage = $"Closed packet-owned Social List ({DescribePacketOwnedSocialListTab(targetTab)} tab).";
-                ShowUtilityFeedbackMessage(closedMessage);
-                return closedMessage;
             }
 
             _socialListRuntime.SelectTab(targetTab);
             ShowWindow(MapSimulatorWindowNames.SocialList, socialListWindow, trackDirectionModeOwner: true);
 
             string message = hasRequestedTab
-                ? $"Opened packet-owned Social List on the {DescribePacketOwnedSocialListTab(targetTab)} tab."
-                : $"Opened packet-owned Social List and preserved unmapped tab option {option} on the existing simulator tab seam.";
+                ? wasVisible
+                    ? $"Refreshed packet-owned Social List through the recovered UI_Close(7)+UI_Toggle(7,{option}) seam on the {DescribePacketOwnedSocialListTab(targetTab)} tab."
+                    : $"Opened packet-owned Social List on the {DescribePacketOwnedSocialListTab(targetTab)} tab."
+                : wasVisible
+                    ? $"Refreshed packet-owned Social List through the recovered UI_Close(7)+UI_Toggle(7,{option}) seam and preserved the unmapped tab option on the existing simulator tab."
+                    : $"Opened packet-owned Social List and preserved unmapped tab option {option} on the existing simulator tab seam.";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -8327,6 +8368,21 @@ namespace HaCreator.MapSimulator
                     out int timeValue,
                     out message))
             {
+                bool mutationFromOfficialSession = IsPacketOwnedRadioScheduleOfficialSessionSource(source);
+                if (!ShouldApplyPacketOwnedRadioMutationWithOfficialHistory(
+                        _packetOwnedRadioOfficialScheduleMutationObserved,
+                        mutationFromOfficialSession))
+                {
+                    message =
+                        $"Ignored packet-owned radio schedule from {ResolvePacketOwnedRadioScheduleSourceLabel(packetType, source)} because official-session radio schedule mutation history is already active for the current runtime owner.";
+                    return false;
+                }
+
+                if (mutationFromOfficialSession)
+                {
+                    _packetOwnedRadioOfficialScheduleMutationObserved = true;
+                }
+
                 message = ApplyPacketOwnedRadioSchedule(
                     trackDescriptor,
                     timeValue,
@@ -8353,6 +8409,21 @@ namespace HaCreator.MapSimulator
                 packetType,
                 source,
                 clearMutation: !hasOverride);
+            bool mutationFromOfficialSession = IsPacketOwnedRadioScheduleOfficialSessionSource(source);
+            if (!ShouldApplyPacketOwnedRadioMutationWithOfficialHistory(
+                    _packetOwnedRadioOfficialCreateLayerMutationObserved,
+                    mutationFromOfficialSession))
+            {
+                message =
+                    $"Ignored packet-owned CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] radio bLeft mutation from {mutationSource} because official-session context mutation history is already active for the current runtime owner.";
+                return false;
+            }
+
+            if (mutationFromOfficialSession)
+            {
+                _packetOwnedRadioOfficialCreateLayerMutationObserved = true;
+            }
+
             message = hasOverride
                 ? SetPacketOwnedRadioCreateLayerContext(bLeft, mutationSource)
                 : ClearPacketOwnedRadioCreateLayerContext(mutationSource);
@@ -9041,6 +9112,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioResolvedDescriptor));
             lines.Add(DescribePacketOwnedRadioAudioPipeline());
             lines.Add(DescribePacketOwnedRadioUpdateScheduleState());
+            lines.Add(DescribePacketOwnedRadioMutationAuthorshipState());
             lines.Add("Field BGM is temporarily muted while the radio session owns playback.");
             return lines;
         }
@@ -9103,6 +9175,13 @@ namespace HaCreator.MapSimulator
         {
             return !string.IsNullOrWhiteSpace(source)
                 && source.Trim().StartsWith("official-session", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool ShouldApplyPacketOwnedRadioMutationWithOfficialHistory(
+            bool officialMutationHistoryObserved,
+            bool mutationFromOfficialSession)
+        {
+            return !officialMutationHistoryObserved || mutationFromOfficialSession;
         }
 
         internal static bool ShouldRequireExactPacketOwnedRadioSchedulePayload(int packetType)
@@ -9204,6 +9283,17 @@ namespace HaCreator.MapSimulator
                 ? "immediate fallback"
                 : $"{Math.Max(0, unchecked(ResolvePacketOwnedRadioFirstCompletionPollTick(_lastPacketOwnedRadioExpectedStopTick) - _lastPacketOwnedRadioStartTick)) / 1000f:0.000}s from session start";
             return $"Update cadence: CRadioManager seeds m_tLastUpdate from get_update_time() - ms_position + ms_length, then checks status once tCur-m_tLastUpdate > {PacketOwnedRadioUpdatePollIntervalMs} ms; simulator now mirrors that remaining-runtime schedule ({expectedStop} stop, first poll at {firstPoll}) and treats the expected-stop cadence as the completion fallback if the MonoGame backend state lags.";
+        }
+
+        private string DescribePacketOwnedRadioMutationAuthorshipState()
+        {
+            string scheduleState = _packetOwnedRadioOfficialScheduleMutationObserved
+                ? "official-session-locked"
+                : "simulator-or-official";
+            string createLayerState = _packetOwnedRadioOfficialCreateLayerMutationObserved
+                ? "official-session-locked"
+                : "simulator-or-official";
+            return $"Packet authorship lock: OnRadioSchedule={scheduleState}, CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}]={createLayerState}.";
         }
 
         private static string FormatStringPoolId(int stringPoolId)
@@ -9731,6 +9821,14 @@ namespace HaCreator.MapSimulator
                 && !string.IsNullOrWhiteSpace(nameProperty.Value))
             {
                 return nameProperty.Value.Trim();
+            }
+
+            // Client evidence: CRadioManager::Play checks lowercase "name" first,
+            // then falls back to "Name" if the lowercase property is absent.
+            if (propertyContainer["Name"] is WzStringProperty upperNameProperty
+                && !string.IsNullOrWhiteSpace(upperNameProperty.Value))
+            {
+                return upperNameProperty.Value.Trim();
             }
 
             return normalizedFallback;
@@ -10848,6 +10946,7 @@ namespace HaCreator.MapSimulator
 
                 _packetOwnedLocalUtilityContext.ResetRadioCreateLayerForCharacter(runtimeCharacterId);
                 PersistPacketOwnedRadioCreateLayerContextState(runtimeCharacterId);
+                _packetOwnedRadioOfficialCreateLayerMutationObserved = false;
                 ResetPacketOwnedRadioCreateLayerSessionState();
             }
 
@@ -10884,6 +10983,7 @@ namespace HaCreator.MapSimulator
 
                 _packetOwnedLocalUtilityContext.ResetRadioScheduleForCharacter(runtimeCharacterId);
                 PersistPacketOwnedRadioScheduleContextState(runtimeCharacterId);
+                _packetOwnedRadioOfficialScheduleMutationObserved = false;
             }
 
             _packetOwnedLocalUtilityContext.EnsureRadioScheduleInitializedFromRuntime(runtimeCharacterId);
@@ -16648,11 +16748,24 @@ namespace HaCreator.MapSimulator
                     Text = lineText.Trim(),
                     Left = TryGetJsonInt32(item, "left", out int left) ? left : 0,
                     Top = TryGetJsonInt32(item, "top", out int top) ? top : index * 13,
+                    FontIndex = TryGetPacketOwnedEventAlarmLineFontIndex(item, out int fontIndex) ? fontIndex : null,
                     IsHighlighted = TryGetJsonBoolean(item, "highlight", out bool highlight) && highlight,
                     TextColorArgb = TryGetPacketOwnedEventAlarmLineColor(item, out int colorArgb) ? colorArgb : null
                 });
                 index++;
             }
+        }
+
+        private static bool TryGetPacketOwnedEventAlarmLineFontIndex(JsonElement element, out int fontIndex)
+        {
+            return TryGetJsonInt32Property(
+                       element,
+                       out fontIndex,
+                       "fontIndex",
+                       "font",
+                       "fontId",
+                       "fontType")
+                   && fontIndex >= 0;
         }
 
         private static bool TryGetPacketOwnedEventAlarmLineColor(JsonElement element, out int colorArgb)
@@ -18036,6 +18149,7 @@ namespace HaCreator.MapSimulator
                             Text = text,
                             Left = left,
                             Top = top,
+                            FontIndex = ResolvePacketOwnedEventAlarmLineFontIndex(lineFlags),
                             IsHighlighted = (lineFlags & 0x1) != 0,
                             TextColorArgb = colorArgb == 0 ? null : colorArgb
                         });
@@ -18284,6 +18398,14 @@ namespace HaCreator.MapSimulator
                         out hasAlarmLines,
                         out replaceAlarmLines,
                         out alarmLines)
+                    && !TryDecodePacketOwnedEventCalendarCompactBinaryTrailingFlagVariants(
+                        payload,
+                        out clearRequested,
+                        out replaceExistingEntries,
+                        out entries,
+                        out hasAlarmLines,
+                        out replaceAlarmLines,
+                        out alarmLines)
                     && !TryDecodePacketOwnedEventCalendarCompactBinaryWiderRowLengthVariants(
                         payload,
                         out clearRequested,
@@ -18360,6 +18482,217 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactBinaryTrailingFlagVariants(
+            byte[] payload,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines)
+        {
+            clearRequested = false;
+            replaceExistingEntries = true;
+            entries = Array.Empty<EventEntrySnapshot>();
+            hasAlarmLines = false;
+            replaceAlarmLines = true;
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            int[] rowCountWidths = { sizeof(byte), sizeof(ushort), sizeof(int) };
+            int[] rowByteCountWidths = { 0, sizeof(byte), sizeof(ushort), sizeof(int) };
+            foreach (bool usePackedDate in new[] { false, true })
+            {
+                foreach (int rowCountWidth in rowCountWidths)
+                {
+                    foreach (int rowByteCountWidth in rowByteCountWidths)
+                    {
+                        if (TryDecodePacketOwnedEventCalendarCompactBinaryVariantWithTrailingFlags(
+                                payload,
+                                rowCountWidth,
+                                usePackedDate,
+                                rowByteCountWidth,
+                                out clearRequested,
+                                out replaceExistingEntries,
+                                out entries,
+                                out hasAlarmLines,
+                                out replaceAlarmLines,
+                                out alarmLines))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactBinaryVariantWithTrailingFlags(
+            byte[] payload,
+            int rowCountByteWidth,
+            bool usePackedDate,
+            int rowByteCountByteWidth,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines)
+        {
+            clearRequested = false;
+            replaceExistingEntries = true;
+            entries = Array.Empty<EventEntrySnapshot>();
+            hasAlarmLines = false;
+            replaceAlarmLines = true;
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                if (!TryReadPacketOwnedCompactRowCount(reader, rowCountByteWidth, out int rowCount)
+                    || rowCount < 0
+                    || rowCount > 100)
+                {
+                    return false;
+                }
+
+                List<EventEntrySnapshot> parsedEntries = new(rowCount);
+                for (int i = 0; i < rowCount; i++)
+                {
+                    EventEntrySnapshot entry;
+                    if (rowByteCountByteWidth > 0)
+                    {
+                        if (!TryReadPacketOwnedCompactRowCount(reader, rowByteCountByteWidth, out int rowByteCount)
+                            || rowByteCount <= 0
+                            || reader.BaseStream.Length - reader.BaseStream.Position < rowByteCount)
+                        {
+                            return false;
+                        }
+
+                        byte[] rowPayload = reader.ReadBytes(rowByteCount);
+                        if (!TryDecodePacketOwnedEventCalendarCompactRow(rowPayload, usePackedDate, out entry))
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (!TryDecodePacketOwnedEventCalendarCompactRow(reader, usePackedDate, out entry))
+                        {
+                            return false;
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(entry.Title))
+                    {
+                        parsedEntries.Add(entry);
+                    }
+                }
+
+                byte flags = 0;
+                if (reader.BaseStream.Position < reader.BaseStream.Length)
+                {
+                    flags = reader.ReadByte();
+                    if ((flags & 0xE0) != 0)
+                    {
+                        return false;
+                    }
+                }
+
+                clearRequested = (flags & 0x1) != 0;
+                replaceExistingEntries = (flags & 0x2) != 0;
+                bool includesAlarmLines = (flags & 0x4) != 0;
+                replaceAlarmLines = (flags & 0x8) != 0;
+                bool includesInlineAlarmText = (flags & 0x10) != 0;
+
+                EventEntrySnapshot[] parsedEntryArray = parsedEntries.ToArray();
+                if (!includesInlineAlarmText)
+                {
+                    for (int i = 0; i < parsedEntryArray.Length; i++)
+                    {
+                        EventEntrySnapshot entry = parsedEntryArray[i];
+                        parsedEntryArray[i] = CreatePacketOwnedEventCalendarEntry(
+                            entry.ScheduledAt,
+                            entry.Title,
+                            entry.Detail,
+                            entry.Status,
+                            entry.StatusText,
+                            entry.SourceTick,
+                            entry.SortPriority,
+                            entry.SortOrder,
+                            alarmText: string.Empty);
+                    }
+                }
+
+                if (includesAlarmLines)
+                {
+                    if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(ushort))
+                    {
+                        return false;
+                    }
+
+                    int lineCount = reader.ReadUInt16();
+                    if (lineCount < 0 || lineCount > EventAlarmOwnerMaxVisibleLines)
+                    {
+                        return false;
+                    }
+
+                    List<EventAlarmLineSnapshot> parsedLines = new(lineCount);
+                    for (int i = 0; i < lineCount; i++)
+                    {
+                        string text = ReadPacketOwnedMapleString(reader)?.Trim();
+                        int left = reader.ReadInt16();
+                        int top = reader.ReadInt16();
+                        byte lineFlags = reader.ReadByte();
+                        int colorArgb = reader.ReadInt32();
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            continue;
+                        }
+
+                        parsedLines.Add(new EventAlarmLineSnapshot
+                        {
+                            Text = text,
+                            Left = left,
+                            Top = top,
+                            IsHighlighted = (lineFlags & 0x1) != 0,
+                            TextColorArgb = colorArgb == 0 ? null : colorArgb
+                        });
+                    }
+
+                    alarmLines = parsedLines.ToArray();
+                    hasAlarmLines = alarmLines.Length > 0;
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                entries = parsedEntryArray;
+                if (!clearRequested && !hasAlarmLines && entries.Length > 0)
+                {
+                    alarmLines = BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+                    hasAlarmLines = alarmLines.Length > 0;
+                }
+
+                return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static bool TryDecodePacketOwnedEventCalendarCompactBinaryVariant(
@@ -18529,6 +18862,7 @@ namespace HaCreator.MapSimulator
                             Text = text,
                             Left = left,
                             Top = top,
+                            FontIndex = ResolvePacketOwnedEventAlarmLineFontIndex(lineFlags),
                             IsHighlighted = (lineFlags & 0x1) != 0,
                             TextColorArgb = colorArgb == 0 ? null : colorArgb
                         });
@@ -18844,6 +19178,12 @@ namespace HaCreator.MapSimulator
             }
 
             return lines.ToArray();
+        }
+
+        private static int? ResolvePacketOwnedEventAlarmLineFontIndex(byte lineFlags)
+        {
+            int fontIndex = lineFlags >> 1;
+            return fontIndex > 0 ? fontIndex : null;
         }
 
         internal static EventAlarmLineSnapshot[] BuildFallbackPacketOwnedEventCalendarAlarmLinesForTests(IReadOnlyList<EventEntrySnapshot> entries)

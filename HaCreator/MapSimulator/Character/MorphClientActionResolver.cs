@@ -1852,7 +1852,15 @@ namespace HaCreator.MapSimulator.Character
         {
             // `shot` is the one currently evidenced cross-family request: pirate morphs
             // publish `doublefire`, while archer morphs publish `windshot`.
-            return !string.Equals(actionName, "shot", StringComparison.OrdinalIgnoreCase);
+            //
+            // WZ-first recheck also keeps `edgeSpiral` as a skill-authored action value
+            // (`Skill/2312.img/skill/23121003/action/0`) with no direct
+            // `Character/00002000.img/edgeSpiral/0/action` redirect row. Keep the
+            // explicit mapped aliases first when present, but let the resolver continue
+            // into the published combat fallback surface when none of those aliases are
+            // authored on the active morph template.
+            return !string.Equals(actionName, "shot", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "edgeSpiral", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsGenericMeleeAttackAction(string actionName)

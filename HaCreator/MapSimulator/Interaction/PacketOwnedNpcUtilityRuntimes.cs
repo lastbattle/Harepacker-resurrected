@@ -3348,6 +3348,7 @@ namespace HaCreator.MapSimulator.Interaction
         private long _damageTotalDamage;
         private int _damageTotalAttackCount;
         private long _damageTotalAttrRate;
+        private int _damageTotalAttrRateCount;
         private int _averageAttrRate;
         private int _averageDamagePerHit;
         private int _averageDamagePerSecond;
@@ -3467,6 +3468,7 @@ namespace HaCreator.MapSimulator.Interaction
             _damageTotalDamage = 0;
             _damageTotalAttackCount = 0;
             _damageTotalAttrRate = 0;
+            _damageTotalAttrRateCount = 0;
             _averageAttrRate = 0;
             _averageDamagePerHit = 0;
             _averageDamagePerSecond = 0;
@@ -3681,7 +3683,14 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastDecodedAttrRate = attrRate.Value;
             }
 
-            UpdateBattleDamageAverages(damage, attrRate, isDot: false, isSummon: isSummon);
+            UpdateBattleDamageAverages(
+                damageDelta: damage,
+                attackCountDelta: 1,
+                attrRate,
+                attrRateCountDelta: attrRate.HasValue ? 1 : 0,
+                damagePerSecondSeed: damage,
+                isDot: false,
+                isSummon: isSummon);
             CheckTotalDamageOverflow();
 
             StatusMessage = $"CBattleRecordMan::SetBattleDamageInfo applied nDamage={damage.ToString(CultureInfo.InvariantCulture)}, critical={isCritical}, summon={isSummon}, attrRate={(attrRate.HasValue ? attrRate.Value.ToString(CultureInfo.InvariantCulture) : "none")} under the recovered manager gate.";
@@ -3938,17 +3947,19 @@ namespace HaCreator.MapSimulator.Interaction
                 TotalDamage += dotDamage * hitCount;
                 MaxDamage = Math.Max(MaxDamage, dotDamage);
                 MinDamage = MinDamage == 0 ? dotDamage : Math.Min(MinDamage, dotDamage);
-                for (int i = 0; i < hitCount; i++)
-                {
-                    UpdateBattleDamageAverages(dotDamage, attrRate, isDot: true, isSummon: false);
-                }
             }
-            else
+            UpdateBattleDamageAverages(
+                damageDelta: dotDamage * hitCount,
+                attackCountDelta: Math.Max(0, hitCount),
+                attrRate,
+                attrRateCountDelta: attrRate.HasValue ? Math.Max(0, hitCount) : 0,
+                damagePerSecondSeed: dotDamage,
+                isDot: true,
+                isSummon: false);
+            if (attrRate.HasValue)
             {
-                UpdateBattleDamageAverages(dotDamage * hitCount, attrRate, isDot: true, isSummon: false);
+                LastAttrRate = attrRate;
             }
-
-            LastAttrRate = attrRate;
             CheckTotalDamageOverflow();
             StatusMessage = $"CBattleRecordMan applied DOT damage info: {dotDamage.ToString(CultureInfo.InvariantCulture)} x {hitCount.ToString(CultureInfo.InvariantCulture)}.";
             message = StatusMessage;
@@ -3989,6 +4000,7 @@ namespace HaCreator.MapSimulator.Interaction
             _damageTotalDamage = 0;
             _damageTotalAttackCount = 0;
             _damageTotalAttrRate = 0;
+            _damageTotalAttrRateCount = 0;
             _averageAttrRate = 0;
             _averageDamagePerHit = 0;
             _averageDamagePerSecond = 0;
@@ -4088,20 +4100,28 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void UpdateBattleDamageAverages(int damage, int? attrRate, bool isDot, bool isSummon)
+        private void UpdateBattleDamageAverages(
+            int damageDelta,
+            int attackCountDelta,
+            int? attrRate,
+            int attrRateCountDelta,
+            int damagePerSecondSeed,
+            bool isDot,
+            bool isSummon)
         {
-            _damageTotalAttackCount++;
-            _damageTotalDamage += damage;
-            if (attrRate.HasValue)
+            _damageTotalAttackCount += Math.Max(0, attackCountDelta);
+            _damageTotalDamage += damageDelta;
+            if (attrRate.HasValue && attrRateCountDelta > 0)
             {
-                _damageTotalAttrRate += attrRate.Value;
+                _damageTotalAttrRate += (long)attrRate.Value * attrRateCountDelta;
+                _damageTotalAttrRateCount += attrRateCountDelta;
             }
 
             _averageDamagePerHit = _damageTotalAttackCount > 0
                 ? (int)(_damageTotalDamage / _damageTotalAttackCount)
                 : 0;
-            _averageAttrRate = _damageTotalAttackCount > 0
-                ? (int)(_damageTotalAttrRate / _damageTotalAttackCount)
+            _averageAttrRate = _damageTotalAttrRateCount > 0
+                ? (int)(_damageTotalAttrRate / _damageTotalAttrRateCount)
                 : 0;
 
             uint nowTick = unchecked((uint)Environment.TickCount);
@@ -4110,7 +4130,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastAttackTick = nowTick;
                 _averageHitPerSecond = 1d;
                 _totalAttackTimeSeconds = 1d;
-                _averageDamagePerSecond = damage;
+                _averageDamagePerSecond = damagePerSecondSeed;
                 return;
             }
 

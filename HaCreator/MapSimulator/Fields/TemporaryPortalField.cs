@@ -697,7 +697,7 @@ namespace HaCreator.MapSimulator.Fields
             RemoteOpenGateState? existingState,
             int currentTime)
         {
-            if (!existingState.HasValue || existingState.Value.Phase == RemoteOpenGateVisualPhase.Removing)
+            if (!existingState.HasValue)
             {
                 return packetState == 0
                     ? (packetState, RemoteOpenGateVisualPhase.Opening, currentTime)
@@ -705,6 +705,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             RemoteOpenGateState existing = existingState.Value;
+            if (existing.Phase == RemoteOpenGateVisualPhase.Removing)
+            {
+                if (packetState == 0 && existing.State != 0)
+                {
+                    byte stableState = existing.State == 0 ? (byte)1 : existing.State;
+                    return (stableState, RemoteOpenGateVisualPhase.Stable, existing.PhaseStartedAt);
+                }
+
+                return packetState == 0
+                    ? (packetState, RemoteOpenGateVisualPhase.Opening, currentTime)
+                    : (packetState, RemoteOpenGateVisualPhase.Stable, currentTime);
+            }
+
             if (packetState == 0)
             {
                 if (existing.Phase == RemoteOpenGateVisualPhase.Stable || existing.State != 0)

@@ -172,6 +172,10 @@ namespace HaCreator.MapSimulator.Fields
         MonsterCarnivalTeam Team,
         bool CountAlreadyApplied);
 
+    internal readonly record struct PendingLocalRequestToken(
+        MonsterCarnivalTab Tab,
+        int EntryIndex);
+
     public sealed class MonsterCarnivalUiDataRowState
     {
         public MonsterCarnivalUiDataRowState(MonsterCarnivalTab tab, int index, int clientOrdinal, int id, int cost, string name, string description)
@@ -1267,6 +1271,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private const int StatusDurationMs = 4500;
         private const int VariantActionTrailCapacity = 4;
+        private const int VariantTransportTrailCapacity = 6;
 
         private readonly Dictionary<int, int> _mobSpellCounts = new();
         private readonly Dictionary<int, int> _skillUseCounts = new();
@@ -1289,8 +1294,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _nextMobSpawnPointIndex;
         private int _lastRequestTab;
         private int _lastRequestIndex;
-        private int _pendingLocalRequestTab;
-        private int _pendingLocalRequestIndex;
+        private readonly Queue<PendingLocalRequestToken> _pendingLocalRequests = new();
         private string _lastRequestFailureChatRoute;
         private string _lastMemberOutChatRoute;
         private string _lastResultChatRoute;
@@ -1301,6 +1305,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _lastClientOwnerAction;
         private int[] _lastClientOwnerStringPoolIds = Array.Empty<int>();
         private readonly Queue<string> _variantActionTrail = new();
+        private readonly Queue<string> _variantTransportTrail = new();
         private readonly MonsterCarnivalUiWindowState _uiWindowState = new();
         private MonsterCarnivalVariantSessionPhase _variantSessionPhase;
         private string _variantSessionSummary;
@@ -1400,8 +1405,12 @@ namespace HaCreator.MapSimulator.Fields
 
         public void MarkPendingLocalRequest(MonsterCarnivalTab tab, int entryIndex)
         {
-            _pendingLocalRequestTab = (int)tab;
-            _pendingLocalRequestIndex = entryIndex;
+            if (entryIndex < 0)
+            {
+                return;
+            }
+
+            _pendingLocalRequests.Enqueue(new PendingLocalRequestToken(tab, entryIndex));
         }
 
         public bool TryResolveCharacterTeam(string characterName, out MonsterCarnivalTeam team)
@@ -1656,7 +1665,7 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalTab tab = TryParseTab(tabCode, out MonsterCarnivalTab parsedTab)
                 ? parsedTab
                 : _activeTab;
-            bool pendingLocalRequestMatch = IsPendingLocalRequest(tab, entryIndex);
+            bool pendingLocalRequestMatch = TryConsumePendingLocalRequest(tab, entryIndex);
             MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
             if (entry == null)
             {
@@ -1667,7 +1676,6 @@ namespace HaCreator.MapSimulator.Fields
                 if (pendingLocalRequestMatch)
                 {
                     _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "success", (int)tab, entryIndex);
-                    ClearPendingLocalRequest();
                 }
                 return;
             }
@@ -1697,20 +1705,20 @@ namespace HaCreator.MapSimulator.Fields
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult accepted tab {(int)tab}, index {entryIndex}, and reset the local request timer state.",
                 successDefinition.HasValue ? new[] { successDefinition.Value.StringPoolId } : Array.Empty<int>());
             UpdateSeason2SubDialogOnRequest(entry, success: true, reasonCode: null, tickCount);
-            if (pendingLocalRequestMatch)
-            {
-                ClearPendingLocalRequest();
-            }
         }
 
         public void OnRequestFailure(int reasonCode, int tickCount)
         {
             ShowStatus(DescribeRequestFailure(reasonCode), tickCount);
             MonsterCarnivalStringPoolMessage? definition = GetRequestFailureMessage(reasonCode);
-            int requestTab = _pendingLocalRequestTab >= 0 ? _pendingLocalRequestTab : _lastRequestTab;
-            int requestIndex = _pendingLocalRequestIndex >= 0 ? _pendingLocalRequestIndex : _lastRequestIndex;
+            int requestTab = _lastRequestTab;
+            int requestIndex = _lastRequestIndex;
+            if (TryConsumeNextPendingLocalRequest(out PendingLocalRequestToken pendingToken))
+            {
+                requestTab = (int)pendingToken.Tab;
+                requestIndex = pendingToken.EntryIndex;
+            }
             _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "failure", requestTab, requestIndex);
-            ClearPendingLocalRequest();
             if (definition.HasValue)
             {
                 _lastRequestFailureChatRoute =
@@ -2401,6 +2409,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastClientOwnerAction = null;
             _lastClientOwnerStringPoolIds = Array.Empty<int>();
             _variantActionTrail.Clear();
+            _variantTransportTrail.Clear();
             _uiWindowState.Reset();
             _variantSessionPhase = MonsterCarnivalVariantSessionPhase.None;
             _variantSessionSummary = null;
@@ -2445,12 +2454,12 @@ namespace HaCreator.MapSimulator.Fields
             _selectedEntryIndex = 0;
             _lastRequestTab = -1;
             _lastRequestIndex = -1;
-            _pendingLocalRequestTab = -1;
-            _pendingLocalRequestIndex = -1;
+            _pendingLocalRequests.Clear();
             _lastRequestFailureChatRoute = null;
             _lastMemberOutChatRoute = null;
             _lastResultChatRoute = null;
             _lastDeathChatRoute = null;
+            _variantTransportTrail.Clear();
             _variantTransportPacketCount = 0;
             _variantEnterPacketCount = 0;
             _variantRequestPacketCount = 0;
@@ -3199,15 +3208,46 @@ namespace HaCreator.MapSimulator.Fields
                 && string.Equals(characterName.Trim(), _localCharacterName, StringComparison.OrdinalIgnoreCase);
         }
 
-        private bool IsPendingLocalRequest(MonsterCarnivalTab tab, int entryIndex)
+        private bool TryConsumePendingLocalRequest(MonsterCarnivalTab tab, int entryIndex)
         {
-            return _pendingLocalRequestTab == (int)tab && _pendingLocalRequestIndex == entryIndex;
+            if (_pendingLocalRequests.Count <= 0)
+            {
+                return false;
+            }
+
+            int pendingCount = _pendingLocalRequests.Count;
+            bool consumed = false;
+            List<PendingLocalRequestToken> unmatched = new(pendingCount);
+            for (int i = 0; i < pendingCount; i++)
+            {
+                PendingLocalRequestToken pending = _pendingLocalRequests.Dequeue();
+                if (!consumed && pending.Tab == tab && pending.EntryIndex == entryIndex)
+                {
+                    consumed = true;
+                    continue;
+                }
+
+                unmatched.Add(pending);
+            }
+
+            foreach (PendingLocalRequestToken pending in unmatched)
+            {
+                _pendingLocalRequests.Enqueue(pending);
+            }
+
+            return consumed;
         }
 
-        private void ClearPendingLocalRequest()
+        private bool TryConsumeNextPendingLocalRequest(out PendingLocalRequestToken token)
         {
-            _pendingLocalRequestTab = -1;
-            _pendingLocalRequestIndex = -1;
+            token = default;
+            if (_pendingLocalRequests.Count <= 0)
+            {
+                return false;
+            }
+
+            token = _pendingLocalRequests.Dequeue();
+            return true;
         }
 
         private void ApplySuccessfulRequest(MonsterCarnivalEntry entry, MonsterCarnivalTeam ownerTeam, bool spendLocalCp, bool ownerTeamKnown)
@@ -3966,55 +4006,70 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _variantTransportPacketCount++;
+            string packetBucket = "other";
             if (packetType is 1 or 346)
             {
                 _variantEnterPacketCount++;
+                packetBucket = "enter";
             }
             else if (packetType is 2 or 3 or 349 or 350)
             {
                 _variantRequestPacketCount++;
+                packetBucket = "request";
             }
             else if (packetType is 4 or 353)
             {
                 _variantResultPacketCount++;
+                packetBucket = "result";
             }
             else if (packetType is 5 or 351)
             {
                 _variantDeathPacketCount++;
+                packetBucket = "death";
             }
             else if (packetType == 352)
             {
                 _variantMemberPacketCount++;
+                packetBucket = "member";
             }
             else if (packetType is 6 or 7 or 8 or 347 or 348)
             {
                 _variantLiveHudPacketCount++;
+                packetBucket = "hud";
             }
 
             string packetLabel = rawPacket ? "raw" : "packet";
-            _variantTransportLastRoute = $"{packetLabel} {packetType} -> {delegatedOwner}";
+            string reviveRoute = null;
 
-            if (_definition?.IsReviveMode != true)
+            if (_definition?.IsReviveMode == true)
             {
-                return;
+                bool isDirectReviveOwnerPacket = packetType is 1 or 346 or 4 or 353;
+                if (isDirectReviveOwnerPacket)
+                {
+                    _reviveDirectPacketCount++;
+                    reviveRoute = "direct";
+                    if (packetType is 1 or 346)
+                    {
+                        _reviveRoundSequence++;
+                    }
+                    else if (packetType is 4 or 353)
+                    {
+                        _reviveResultSequence++;
+                    }
+                }
+                else
+                {
+                    _reviveForwardedPacketCount++;
+                    reviveRoute = "forwarded";
+                }
             }
 
-            bool isDirectReviveOwnerPacket = packetType is 1 or 346 or 4 or 353;
-            if (isDirectReviveOwnerPacket)
+            string reviveDetail = string.IsNullOrWhiteSpace(reviveRoute) ? string.Empty : $" ({reviveRoute})";
+            _variantTransportLastRoute = $"{packetLabel} {packetType} [{packetBucket}] -> {delegatedOwner}{reviveDetail}";
+            _variantTransportTrail.Enqueue(_variantTransportLastRoute);
+            while (_variantTransportTrail.Count > VariantTransportTrailCapacity)
             {
-                _reviveDirectPacketCount++;
-                if (packetType is 1 or 346)
-                {
-                    _reviveRoundSequence++;
-                }
-                else if (packetType is 4 or 353)
-                {
-                    _reviveResultSequence++;
-                }
-            }
-            else
-            {
-                _reviveForwardedPacketCount++;
+                _variantTransportTrail.Dequeue();
             }
         }
 
@@ -4587,13 +4642,23 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string summary =
-                $"packets={_variantTransportPacketCount},enter={_variantEnterPacketCount},request={_variantRequestPacketCount},hud={_variantLiveHudPacketCount},member={_variantMemberPacketCount},death={_variantDeathPacketCount},result={_variantResultPacketCount},last={_variantTransportLastRoute ?? "none"}";
+                $"packets={_variantTransportPacketCount},enter={_variantEnterPacketCount},request={_variantRequestPacketCount},hud={_variantLiveHudPacketCount},member={_variantMemberPacketCount},death={_variantDeathPacketCount},result={_variantResultPacketCount},last={_variantTransportLastRoute ?? "none"},trail={BuildVariantTransportTrailSummary()}";
             if (_definition?.IsReviveMode == true)
             {
                 summary += $",reviveDirect={_reviveDirectPacketCount},reviveForwarded={_reviveForwardedPacketCount},reviveRounds={_reviveRoundSequence},reviveResults={_reviveResultSequence}";
             }
 
             return summary;
+        }
+
+        private string BuildVariantTransportTrailSummary()
+        {
+            if (_variantTransportTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _variantTransportTrail.Select(entry => TrimVariantActionText(entry, 44)));
         }
 
         private string BuildInitialVariantSessionSummary(MonsterCarnivalFieldDefinition definition)

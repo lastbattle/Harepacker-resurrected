@@ -1293,16 +1293,24 @@ namespace HaCreator.MapSimulator.UI
                         ? MeasureCategoryText(renderedCountText, countScale, emphasized: true).X
                         : MeasureClientText(renderedCountText, countScale).X;
                     float countX = bounds.X + ResolveClientCategoryCountLeft(countWidth);
-                    float labelRight = textX + labelMeasure.X;
-                    float leaderLeft = labelRight + ClientCategoryTrailingTextGap;
-                    float leaderWidth = Math.Max(0f, countX - leaderLeft);
-                    DrawCategoryLeaderText(
+                    float labelLaneWidth = Math.Max(0f, countX - textX);
+                    string truncationSuffix = MapleStoryStringPool.GetOrFallback(
+                        ClientFormatStringTruncationSuffixStringPoolId,
+                        "..");
+                    string labelWithLeaderText = ComposeClientCategoryLabelAndLeaderText(
+                        slot.Entry.AreaName,
+                        labelLaneWidth,
+                        candidate => MeasureCategoryText(candidate, labelScale, emphasized: false).X,
+                        truncationSuffix);
+
+                    DrawCategoryText(
                         sprite,
-                        leaderLeft,
-                        textY,
-                        leaderWidth,
-                        leaderColor,
-                        countScale);
+                        labelWithLeaderText,
+                        new Vector2(textX, textY),
+                        labelColor,
+                        labelScale,
+                        emphasized: false,
+                        maxWidth: Math.Max(0f, labelLaneWidth));
 
                     if (!string.IsNullOrEmpty(renderedCountText))
                     {
@@ -1805,6 +1813,61 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return measureText(formatted) <= maxWidth ? formatted : string.Empty;
+        }
+
+        internal static string ComposeClientCategoryLabelAndLeaderText(
+            string categoryLabel,
+            float maxWidth,
+            Func<string, float> measureText,
+            string truncationSuffix)
+        {
+            if (maxWidth <= 0f || measureText == null)
+            {
+                return string.Empty;
+            }
+
+            string fittedLabel = FormatClientCategoryLabelTextForWidth(
+                categoryLabel,
+                maxWidth,
+                candidate => measureText(candidate),
+                truncationSuffix);
+            if (string.IsNullOrEmpty(fittedLabel))
+            {
+                return string.Empty;
+            }
+
+            float labelWidth = measureText(fittedLabel);
+            if (labelWidth <= 0f)
+            {
+                return fittedLabel;
+            }
+
+            float leaderWidth = Math.Max(0f, maxWidth - labelWidth);
+            string leaderText = BuildCategoryLeaderTextForWidth(leaderWidth, measureText);
+            return string.Concat(fittedLabel, leaderText);
+        }
+
+        internal static string BuildCategoryLeaderTextForWidth(float width, Func<string, float> measureText)
+        {
+            if (width <= 0f || measureText == null)
+            {
+                return string.Empty;
+            }
+
+            const string leaderUnit = ".";
+            float unitWidth = measureText(leaderUnit);
+            if (unitWidth <= 0f)
+            {
+                return string.Empty;
+            }
+
+            int repeatCount = Math.Max(0, (int)Math.Floor(width / unitWidth));
+            while (repeatCount > 0 && measureText(new string('.', repeatCount)) > width)
+            {
+                repeatCount--;
+            }
+
+            return repeatCount > 0 ? new string('.', repeatCount) : string.Empty;
         }
 
         private static int FindCategorySlotIndex(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)

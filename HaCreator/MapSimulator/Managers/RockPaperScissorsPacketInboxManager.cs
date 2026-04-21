@@ -153,6 +153,12 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 payload = Convert.FromHexString(compactHex);
+                if (!RockPaperScissorsField.HasValidOwnerPacketPayloadShape(packetType, payload.Length))
+                {
+                    error = $"Invalid Rock-Paper-Scissors payload length for subtype {packetType}.";
+                    return false;
+                }
+
                 return true;
             }
             catch (FormatException)
@@ -207,6 +213,12 @@ namespace HaCreator.MapSimulator.Managers
                 if (payload.Length > 0)
                 {
                     Buffer.BlockCopy(rawPacket, sizeof(ushort) + sizeof(byte), payload, 0, payload.Length);
+                }
+
+                if (!RockPaperScissorsField.HasValidOwnerPacketPayloadShape(packetType, payload.Length))
+                {
+                    error = $"Invalid Rock-Paper-Scissors packetraw payload length for subtype {packetType}.";
+                    return false;
                 }
 
                 return true;

@@ -2346,6 +2346,14 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
+            foreach (string actionName in ClientInitializedFallbackOnlyActionNames)
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
             foreach (string actionName in GenericHelperSurfaceActionNames)
             {
                 if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
@@ -3121,6 +3129,15 @@ namespace HaCreator.MapSimulator.Character
                 alphaFrame = clampedFrame;
                 alphaFrameElapsedMs = clampedFrameElapsedMs;
             }
+            else if (ShouldClampCompletedOneShotPlaybackAlphaEnvelope(playbackAnimation, actionElapsedMs)
+                     && TryResolvePlaybackTerminalFrameEndState(
+                         playbackAnimation,
+                         out SkillFrame terminalFrame,
+                         out int terminalFrameElapsedMs))
+            {
+                alphaFrame = terminalFrame;
+                alphaFrameElapsedMs = terminalFrameElapsedMs;
+            }
 
             return ResolveFrameAlpha(alphaFrame, alphaFrameElapsedMs);
         }
@@ -3157,6 +3174,40 @@ namespace HaCreator.MapSimulator.Character
             return totalDurationMs > 0
                    && actionElapsedMs >= totalDurationMs
                    && HasAuthoredFrameAlphaEnvelope(playbackAnimation);
+        }
+
+        private static bool ShouldClampCompletedOneShotPlaybackAlphaEnvelope(
+            SkillAnimation playbackAnimation,
+            int actionElapsedMs)
+        {
+            if (playbackAnimation?.Loop != false
+                || playbackAnimation.Frames == null
+                || playbackAnimation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            int totalDurationMs = ResolvePlaybackTotalDurationMs(playbackAnimation);
+            return totalDurationMs > 0
+                   && actionElapsedMs >= totalDurationMs
+                   && HasAuthoredFrameAlphaEnvelope(playbackAnimation);
+        }
+
+        private static bool TryResolvePlaybackTerminalFrameEndState(
+            SkillAnimation playbackAnimation,
+            out SkillFrame frame,
+            out int frameElapsedMs)
+        {
+            frame = null;
+            frameElapsedMs = 0;
+            if (playbackAnimation?.Frames == null || playbackAnimation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            frame = playbackAnimation.Frames[^1];
+            frameElapsedMs = ResolvePlaybackFrameDurationMs(frame?.Delay ?? 0);
+            return true;
         }
 
         private static bool HasAuthoredFrameAlphaEnvelope(SkillAnimation playbackAnimation)

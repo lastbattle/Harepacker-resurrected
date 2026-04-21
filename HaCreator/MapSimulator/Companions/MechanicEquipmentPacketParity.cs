@@ -1476,13 +1476,21 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _ = reader.ReadInt64(); // dateExpire
-            if (TryMatchesMechanicInventoryOperationAdd(
+            bool matchedMechanicAddByHeader = TryMatchesMechanicInventoryOperationAdd(
                     request,
                     operationContext,
                     inventoryType,
                     targetPosition,
                     itemId,
-                    out _))
+                    out _);
+            if (matchedMechanicAddByHeader
+                && slotType != ItemSlotTypeEquip)
+            {
+                rejectReason = $"Mechanic inventory-operation add entry used non-equip GW_ItemSlotBase type {slotType}.";
+                return false;
+            }
+
+            if (matchedMechanicAddByHeader)
             {
                 matchedByHeader = true;
             }
@@ -1549,6 +1557,7 @@ namespace HaCreator.MapSimulator.Companions
             _ = reader.ReadInt64(); // dateExpire
             if (inventoryType == ClientEquipInventoryType
                 && TryResolveMechanicSlotFromClientPosition(targetPosition, out MechanicEquipSlot mechanicSlot)
+                && slotType == ItemSlotTypeEquip
                 && itemId > 0)
             {
                 mutation = new MechanicInventoryOperationMutation(mechanicSlot, itemId);

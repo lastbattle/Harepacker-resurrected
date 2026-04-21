@@ -138,7 +138,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (HasCreatedOwner())
             {
-                BindRuntimeCharacter(runtimeCharacterId);
+                ObserveRuntimeCharacterId(runtimeCharacterId);
+                if (_boundCharacterId <= 0 && _lastObservedRuntimeCharacterId > 0)
+                {
+                    _boundCharacterId = _lastObservedRuntimeCharacterId;
+                }
+
                 int refreshedRemainingMs = Math.Max(0, remainingSeconds) * 1000;
                 _contextExpiresAtTick = currentTickCount + refreshedRemainingMs;
                 disposition = InitialQuizOwnerApplyDisposition.IgnoredReopen;

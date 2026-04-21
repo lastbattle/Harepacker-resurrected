@@ -79,15 +79,26 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly ConcurrentDictionary<string, Lazy<MobImgEntry>> _cachedMobImgEntries = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, byte> _missingMobSoundIds = new(StringComparer.Ordinal);
         private const int MobClientActionSlotCount = 43;
+        private const int MobClientAttackActionSlotStart = 13;
+        private const int MobClientAttackActionSlotEnd = 21;
+        private const int MobClientSkillActionSlotStart = 22;
+        private const int MobClientSkillActionSlotEnd = 38;
 
         // Recovered client-owned slot surface from CActionMan/CMob seams:
         // - CMob::CMob allocates 43 action slots (0x2B)
         // - CUIMonsterBook::LoadMobAction loads attack 13..21 and skill 22..38 buckets
+        // - CUIMonsterBook::LoadMobAction also explicitly probes 7..12 buckets
         // Unknown slots remain explicit null entries until fully recovered.
         private static readonly IReadOnlyDictionary<int, string> _mobClientCanonicalActionNamesBySlot =
             BuildMobClientCanonicalActionNamesBySlot();
 
         private static readonly string[] _mobClientActionNamesBySlot = BuildMobClientActionNamesBySlot();
+
+        // These slots are explicitly client-owned by the 43-slot contract, but native names are not yet recovered.
+        private static readonly IReadOnlyCollection<int> _mobClientUnresolvedActionSlots = new HashSet<int>
+        {
+            6, 7, 8, 11, 12, 40, 41, 42
+        };
 
         private static readonly Dictionary<string, int> _mobClientActionSlotsByName =
             _mobClientCanonicalActionNamesBySlot
@@ -123,14 +134,16 @@ namespace HaCreator.MapSimulator.Loaders
                 [39] = "moveaction16"
             };
 
-            for (int attackIndex = 1; attackIndex <= 9; attackIndex++)
+            for (int attackSlot = MobClientAttackActionSlotStart; attackSlot <= MobClientAttackActionSlotEnd; attackSlot++)
             {
-                mapping[12 + attackIndex] = $"attack{attackIndex}";
+                int attackIndex = attackSlot - MobClientAttackActionSlotStart + 1;
+                mapping[attackSlot] = $"attack{attackIndex}";
             }
 
-            for (int skillIndex = 1; skillIndex <= 17; skillIndex++)
+            for (int skillSlot = MobClientSkillActionSlotStart; skillSlot <= MobClientSkillActionSlotEnd; skillSlot++)
             {
-                mapping[21 + skillIndex] = $"skill{skillIndex}";
+                int skillIndex = skillSlot - MobClientSkillActionSlotStart + 1;
+                mapping[skillSlot] = $"skill{skillIndex}";
             }
 
             return mapping;
@@ -546,6 +559,20 @@ namespace HaCreator.MapSimulator.Loaders
                         || resolvedEntry.SourcePriority >= existingEntry.SourcePriority)
                     {
                         cached.ActionEntriesByClientSlot[clientActionSlot] = resolvedEntry;
+                    }
+
+                    // Keep authored-name lookups available even when canonical slot naming differs (e.g. hit -> hit1).
+                    if (!string.Equals(authoredActionName, resolvedActionName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        cached.ActionEntriesByAuthoredName[authoredActionName] = new CachedMobActionEntry
+                        {
+                            ActionName = authoredActionName,
+                            ClientActionSlot = clientActionSlot,
+                            SourcePriority = resolvedEntry.SourcePriority,
+                            FrameCanvases = frameCanvases,
+                            FrameDelays = frameDelays,
+                            FrameMetadata = frameMetadata
+                        };
                     }
 
                     continue;
@@ -1265,6 +1292,11 @@ namespace HaCreator.MapSimulator.Loaders
         internal static IReadOnlyList<string> GetMobClientActionNamesBySlotForTests()
         {
             return _mobClientActionNamesBySlot;
+        }
+
+        internal static IReadOnlyCollection<int> GetMobClientUnresolvedActionSlotsForTests()
+        {
+            return _mobClientUnresolvedActionSlots;
         }
 
         private static string ResolveMobClientActionNameOrAuthored(string actionName)

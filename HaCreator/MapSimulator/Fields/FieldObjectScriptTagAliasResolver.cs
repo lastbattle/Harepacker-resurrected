@@ -20,6 +20,10 @@ namespace HaCreator.MapSimulator.Fields
             @"\[\s*[""'](?<name>[A-Za-z_][A-Za-z0-9_]*)[""']\s*\]",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex BracketMemberAliasVariablePattern = new(
+            @"\[\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\]",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex BracketMemberAliasInvocationPattern = new(
             @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\[\s*[""'](?<name>[A-Za-z_][A-Za-z0-9_]*)[""']\s*\]\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -225,7 +229,7 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                string resolvedAlias = ResolveAssignmentAliasCandidate(rightValue);
+                string resolvedAlias = ResolveAssignmentAliasCandidate(rightValue, localAliasMap);
                 if (string.IsNullOrWhiteSpace(resolvedAlias))
                 {
                     continue;
@@ -237,12 +241,19 @@ namespace HaCreator.MapSimulator.Fields
             return localAliasMap;
         }
 
-        private static string ResolveAssignmentAliasCandidate(string value)
+        private static string ResolveAssignmentAliasCandidate(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap)
         {
             string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
             if (string.IsNullOrWhiteSpace(normalizedValue))
             {
                 return string.Empty;
+            }
+
+            if (TryResolveBracketVariableAliasCandidate(normalizedValue, localAliasMap, out string variableAlias))
+            {
+                return variableAlias;
             }
 
             if (IsFunctionExpressionText(normalizedValue))
@@ -275,6 +286,41 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Empty;
+        }
+
+        private static bool TryResolveBracketVariableAliasCandidate(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            out string aliasName)
+        {
+            aliasName = string.Empty;
+            if (string.IsNullOrWhiteSpace(value)
+                || localAliasMap == null
+                || localAliasMap.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (Match match in BracketMemberAliasVariablePattern.Matches(value))
+            {
+                string variableName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (string.IsNullOrWhiteSpace(variableName)
+                    || !localAliasMap.TryGetValue(variableName, out string mappedAlias))
+                {
+                    continue;
+                }
+
+                string normalizedAlias = NormalizeFunctionAliasArgument(mappedAlias).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(normalizedAlias))
+                {
+                    continue;
+                }
+
+                aliasName = normalizedAlias;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool IsFunctionExpressionText(string value)
@@ -739,7 +785,7 @@ namespace HaCreator.MapSimulator.Fields
                         string untimedArgument = RemoveNestedTimerCallbackCalls(canonicalArgument);
                         if (!string.IsNullOrWhiteSpace(untimedArgument))
                         {
-                            AddPublication(untimedArgument, dueDelayMs, publications, seen);
+                            AddPublication(untimedArgument, dueDelayMs, publications, seen, localAliasMap);
                         }
 
                         CollectTimerCallbackPublications(
@@ -808,7 +854,8 @@ namespace HaCreator.MapSimulator.Fields
             string scriptName,
             int delayMs,
             ICollection<ScriptAliasPublication> publications,
-            ISet<(string ScriptName, int DelayMs)> seen)
+            ISet<(string ScriptName, int DelayMs)> seen,
+            IReadOnlyDictionary<string, string> localAliasMap)
         {
             string normalizedScriptName = scriptName?.Trim();
             if (string.IsNullOrWhiteSpace(normalizedScriptName))
@@ -833,9 +880,17 @@ namespace HaCreator.MapSimulator.Fields
                     for (int i = 0; i < parsedScriptNames.Count; i++)
                     {
                         string parsedName = parsedScriptNames[i]?.Trim();
-                        if (IsPotentialAliasArgument(parsedName, argumentIndex: 0))
+                        if (!IsPotentialAliasArgument(parsedName, argumentIndex: 0))
                         {
-                            aliasCandidates.Add(parsedName);
+                            continue;
+                        }
+
+                        foreach (string canonicalCandidate in EnumerateCanonicalAliasCandidates(parsedName, localAliasMap))
+                        {
+                            if (IsPotentialAliasArgument(canonicalCandidate, argumentIndex: 0))
+                            {
+                                aliasCandidates.Add(canonicalCandidate);
+                            }
                         }
                     }
 
@@ -843,9 +898,17 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 string normalizedCandidate = candidate.Trim();
-                if (IsPotentialAliasArgument(normalizedCandidate, argumentIndex: 0))
+                if (!IsPotentialAliasArgument(normalizedCandidate, argumentIndex: 0))
                 {
-                    aliasCandidates.Add(normalizedCandidate);
+                    continue;
+                }
+
+                foreach (string canonicalCandidate in EnumerateCanonicalAliasCandidates(normalizedCandidate, localAliasMap))
+                {
+                    if (IsPotentialAliasArgument(canonicalCandidate, argumentIndex: 0))
+                    {
+                        aliasCandidates.Add(canonicalCandidate);
+                    }
                 }
             }
 

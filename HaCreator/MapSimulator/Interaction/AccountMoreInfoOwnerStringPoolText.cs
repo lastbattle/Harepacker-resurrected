@@ -290,6 +290,84 @@ namespace HaCreator.MapSimulator.Interaction
                     || File.Exists(Path.Combine(directory.FullName, "UI", "UIWindow2.img")));
         }
 
+        internal static bool HasCountryNameCatalogInDirectory(string directoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(directoryPath))
+            {
+                return false;
+            }
+
+            string normalizedPath;
+            try
+            {
+                normalizedPath = Path.GetFullPath(directoryPath);
+            }
+            catch
+            {
+                return false;
+            }
+
+            return File.Exists(Path.Combine(normalizedPath, "Etc", "CountryName.img"));
+        }
+
+        internal static IReadOnlyList<string> PrioritizeUiFallbackDirectoriesForCountryNameParity(
+            string currentDirectoryPath,
+            IReadOnlyList<string> fallbackUiDirectories)
+        {
+            if (fallbackUiDirectories == null || fallbackUiDirectories.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> distinctDirectories = new(fallbackUiDirectories.Count);
+            foreach (string directory in fallbackUiDirectories)
+            {
+                if (string.IsNullOrWhiteSpace(directory))
+                {
+                    continue;
+                }
+
+                if (distinctDirectories.Any(existing => string.Equals(existing, directory, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                distinctDirectories.Add(directory);
+            }
+
+            if (distinctDirectories.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            if (HasCountryNameCatalogInDirectory(currentDirectoryPath))
+            {
+                return distinctDirectories;
+            }
+
+            List<string> countryNameCompatibleDirectories = new(distinctDirectories.Count);
+            List<string> incompatibleDirectories = new(distinctDirectories.Count);
+            foreach (string directory in distinctDirectories)
+            {
+                if (HasCountryNameCatalogInDirectory(directory))
+                {
+                    countryNameCompatibleDirectories.Add(directory);
+                }
+                else
+                {
+                    incompatibleDirectories.Add(directory);
+                }
+            }
+
+            if (countryNameCompatibleDirectories.Count == 0)
+            {
+                return distinctDirectories;
+            }
+
+            countryNameCompatibleDirectories.AddRange(incompatibleDirectories);
+            return countryNameCompatibleDirectories;
+        }
+
         private static IReadOnlyList<string> EnumerateComparableFallbackDataSourceDirectories(
             string currentDirectoryPath,
             Func<DirectoryInfo, bool> includeDirectory)

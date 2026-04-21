@@ -496,9 +496,11 @@ namespace HaCreator.MapSimulator.Interaction
             return snapshot != null
                 && snapshot.ManagerSessionId > 0
                 && snapshot.OwnerRequestId > 0
-                && (snapshot.AwaitingConfirmAck
+                && ((snapshot.OwnerItemId > 0
+                     && snapshot.WindowMode == QuestRewardRaiseWindowMode.PiecePlacement)
+                    || snapshot.AwaitingConfirmAck
                     || snapshot.AwaitingOwnerDestroyAck
-                || !string.IsNullOrWhiteSpace(snapshot.LastInboundSummary));
+                    || !string.IsNullOrWhiteSpace(snapshot.LastInboundSummary));
         }
 
         private static QuestRewardChoicePrompt BuildSyntheticPromptForQuest(int questId)

@@ -777,6 +777,10 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte TrunkGetItemMode = 4;
         private const byte TrunkPutItemMode = 5;
         private const byte TrunkCloseMode = 8;
+        private const int TrunkSendPutSharableOnceBlockedStringPoolId = 0x169E;
+        private const int TrunkSendPutSharableOnceConfirmStringPoolId = 0x169D;
+        private const int TrunkSendPutConfirmStringPoolId = 0x1245;
+        private const int TrunkSendGetConfirmStringPoolId = 0x1246;
         private const int TrunkDefaultNoticeStringPoolId = 0x0369;
         private const int TrunkResult10NoticeStringPoolId = 0x0366;
         private const int TrunkResult11And16NoticeStringPoolId = 0x1A8B;
@@ -917,7 +921,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!TryResolveStorageRowPosition(ownerRowIndex, slotData, out byte trunkRow))
             {
-                StatusMessage = "CTrunkDlg ignored SendGetItemRequest because the selected storage row does not carry a native nIdx token.";
+                StatusMessage = "CTrunkDlg ignored SendGetItemRequest because the selected storage row does not carry the packet-authored native nIdx token.";
+                message = StatusMessage;
+                return false;
+            }
+
+            if (IsSharableOnceCashOwnershipBlocked(slotData))
+            {
+                string blockedMessage = ResolveStringPoolNoticeText(
+                    TrunkSendPutSharableOnceBlockedStringPoolId,
+                    "This sharable-once item cannot be moved because ownership is already locked.");
+                StatusMessage = $"CTrunkDlg blocked SendGetItemRequest on the sharable-once ownership branch: {blockedMessage}";
                 message = StatusMessage;
                 return false;
             }
@@ -927,7 +941,7 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildGetItemRequestPayload(itemType, trunkRow),
                 $"Mirrored CTrunkDlg::SendGetItemRequest (opcode 67, mode 4, itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}).");
             _requestInFlight = true;
-            StatusMessage = $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}).";
+            StatusMessage = $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}). Pre-send confirm branch follows {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)}.";
             message = StatusMessage;
             return true;
         }
@@ -982,9 +996,19 @@ namespace HaCreator.MapSimulator.Interaction
                 normalizedQuantity = requestedQuantity;
             }
 
+            if (IsSharableOnceCashOwnershipBlocked(slotData))
+            {
+                string blockedMessage = ResolveStringPoolNoticeText(
+                    TrunkSendPutSharableOnceBlockedStringPoolId,
+                    "This sharable-once item can no longer be moved.");
+                StatusMessage = $"CTrunkDlg blocked SendPutItemRequest on the sharable-once ownership branch via {FormatStringPoolId(TrunkSendPutSharableOnceBlockedStringPoolId)}: {blockedMessage}";
+                message = StatusMessage;
+                return false;
+            }
+
             if (!TryResolveInventoryPosition(inventoryRowIndex, slotData, out short inventoryPosition))
             {
-                StatusMessage = "CTrunkDlg ignored SendPutItemRequest because the selected inventory row does not carry a native inventory position token.";
+                StatusMessage = "CTrunkDlg ignored SendPutItemRequest because the selected inventory row does not carry the packet-authored native inventory position token.";
                 message = StatusMessage;
                 return false;
             }
@@ -995,8 +1019,8 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Mirrored CTrunkDlg::SendPutItemRequest (opcode 67, mode 5, pos {inventoryPosition.ToString(CultureInfo.InvariantCulture)}, item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)}, count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}).");
             _requestInFlight = true;
             StatusMessage = normalizedQuantity == availableQuantity
-                ? $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}."
-                : $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}.";
+                ? $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}. Confirm branches follow {FormatStringPoolId(TrunkSendPutConfirmStringPoolId)} / {FormatStringPoolId(TrunkSendPutSharableOnceConfirmStringPoolId)} when applicable."
+                : $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}. Confirm branches follow {FormatStringPoolId(TrunkSendPutConfirmStringPoolId)} / {FormatStringPoolId(TrunkSendPutSharableOnceConfirmStringPoolId)} when applicable.";
             message = StatusMessage;
             return true;
         }
@@ -1243,12 +1267,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            if (ownerRowIndex >= 0 && ownerRowIndex < byte.MaxValue)
-            {
-                trunkRow = unchecked((byte)(ownerRowIndex + 1));
-                return true;
-            }
-
             trunkRow = 0;
             return false;
         }
@@ -1263,14 +1281,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            if (inventoryRowIndex >= 0 && inventoryRowIndex < short.MaxValue)
+            inventoryPosition = 0;
+            return false;
+        }
+
+        private static bool IsSharableOnceCashOwnershipBlocked(InventorySlotData slotData)
+        {
+            if (slotData == null)
             {
-                inventoryPosition = unchecked((short)(inventoryRowIndex + 1));
+                return false;
+            }
+
+            if (slotData.IsCashOwnershipLocked)
+            {
                 return true;
             }
 
-            inventoryPosition = 0;
-            return false;
+            return slotData.CashItemSerialNumber.GetValueOrDefault() > 0
+                && slotData.OwnerAccountId.GetValueOrDefault() > 0;
         }
     }
 }

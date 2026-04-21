@@ -103,13 +103,13 @@ namespace HaCreator.MapSimulator.Fields
         public static bool ShouldKeepQueuedRetryPending(PassiveTransferFieldQueuedRetryState state)
         {
             // `TryPassiveTransferField` clears pending ownership only after it can admit the
-            // interface gate again. Keep pending while readiness is unresolved, even if local
-            // owner bindings (player bound/active) are transiently unavailable in that window.
-            return !state.HasPendingMapChange
-                   && (!state.HasReadyFieldInterface
-                       || !state.HasBoundPlayer
-                       || !state.IsPlayerActive
-                       || !state.HasLiveFieldInterface);
+            // interface gate again. Keep pending while readiness is unresolved, even if map
+            // transitions or local owner bindings (player bound/active) are transiently
+            // unavailable in that window.
+            return !state.HasReadyFieldInterface
+                   || !state.HasBoundPlayer
+                   || !state.IsPlayerActive
+                   || !state.HasLiveFieldInterface;
         }
 
         public static QueuedRetryDecision EvaluateQueuedRetryDecision(PassiveTransferFieldQueuedRetryDecisionState state)

@@ -2176,17 +2176,29 @@ namespace HaCreator.MapSimulator.UI
         private static Buttons StepClientJoypadComboBinding(JoypadSessionSnapshot session, InputAction action, Buttons current, int direction)
         {
             IReadOnlyList<Buttons> allowedButtons = GetClientComboAllowedButtons(session, action);
-            if (allowedButtons.Count == 0)
+            return StepClientJoypadComboBindingCore(allowedButtons, current, direction);
+        }
+
+        internal static Buttons StepClientJoypadComboBindingForTests(
+            IReadOnlyList<Buttons> allowedButtons,
+            Buttons current,
+            int direction)
+        {
+            return StepClientJoypadComboBindingCore(allowedButtons, current, direction);
+        }
+
+        private static Buttons StepClientJoypadComboBindingCore(
+            IReadOnlyList<Buttons> allowedButtons,
+            Buttons current,
+            int direction)
+        {
+            if (allowedButtons == null || allowedButtons.Count == 0)
             {
                 return current;
             }
 
-            List<Buttons> orderedButtons = new(allowedButtons.Count + 1)
-            {
-                0,
-            };
-            orderedButtons.AddRange(allowedButtons);
-            return GetSteppedValue(orderedButtons, current, direction);
+            // Keep CUIJoyPad core combo cycling inside detected Button 1..N candidates.
+            return GetSteppedValue(allowedButtons, current, direction);
         }
 
         private static IReadOnlyList<Buttons> GetClientComboAllowedButtons(JoypadSessionSnapshot session, InputAction action)

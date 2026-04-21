@@ -82,13 +82,27 @@ namespace HaCreator.MapSimulator
 
         private bool HandleItemUpgradeOwnerStartRequested(ItemUpgradeUI.ItemUpgradeOwnerRequest request)
         {
-            if (HasActiveItemUpgradeOwnerRequestBlock(currTickCount))
+            if (IsItemUpgradeOwnerDuplicateSendBlocked(
+                    _itemUpgradeOwnerRequestSent,
+                    IsItemUpgradeOwnerRequestAwaitingPacketResult(_pendingItemUpgradeOwnerRequest)))
             {
                 string busyNotice = ResolveItemUpgradeBusyNotice(ItemUpgradeClientDuplicateRequestBusyResultValue);
                 ShowUtilityFeedbackMessage(busyNotice);
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
                 {
                     itemUpgradeWindow.SetOwnerStatusMessage(busyNotice, success: false);
+                }
+
+                return true;
+            }
+
+            if (HasActiveItemUpgradeOwnerRequestBlock(currTickCount))
+            {
+                string blockedNotice = ResolveItemUpgradeBlockedStateNotice();
+                ShowUtilityFeedbackMessage(blockedNotice);
+                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
+                {
+                    itemUpgradeWindow.SetOwnerStatusMessage(blockedNotice, success: false);
                 }
 
                 return true;
@@ -384,7 +398,7 @@ namespace HaCreator.MapSimulator
         private bool HasActiveItemUpgradeOwnerRequestBlock(int currentTick)
         {
             return IsItemUpgradeOwnerRequestBlocked(
-                _itemUpgradeOwnerRequestSent || _pendingItemUpgradeOwnerRequest != null,
+                _pendingItemUpgradeOwnerRequest != null,
                 _itemUpgradeOwnerRequestSentTick,
                 _packetOwnedUtilityRequestTick,
                 currentTick,
@@ -416,6 +430,22 @@ namespace HaCreator.MapSimulator
                 isLocalCharacterAlive);
         }
 
+        internal static bool IsItemUpgradeOwnerRequestAwaitingPacketResultForTests(bool hasPendingRequest, bool packetOwnedResultObserved)
+        {
+            PendingItemUpgradeOwnerRequestState pendingRequest = hasPendingRequest
+                ? new PendingItemUpgradeOwnerRequestState
+                {
+                    PacketOwnedResultObserved = packetOwnedResultObserved
+                }
+                : null;
+            return IsItemUpgradeOwnerRequestAwaitingPacketResult(pendingRequest);
+        }
+
+        internal static bool IsItemUpgradeOwnerDuplicateSendBlockedForTests(bool requestSent, bool awaitingPacketResult)
+        {
+            return IsItemUpgradeOwnerDuplicateSendBlocked(requestSent, awaitingPacketResult);
+        }
+
         private static bool IsItemUpgradeOwnerRequestBlocked(
             bool requestSent,
             int lastRequestTick,
@@ -426,6 +456,8 @@ namespace HaCreator.MapSimulator
             // CUIItemUpgrade::OnButtonClicked denies upgrade send while the shared
             // exclusive-request latch is active or the local character is blocked
             // by the same dead-state gate used by CWvsContext::CanSendExclRequest.
+            // Duplicate-send request-in-flight gating is handled separately by
+            // the m_bRequestSent branch before this shared exclusive gate.
             if (requestSent)
             {
                 return true;
@@ -444,6 +476,18 @@ namespace HaCreator.MapSimulator
 
             return sharedUtilityRequestTick != int.MinValue &&
                    unchecked(currentTick - sharedUtilityRequestTick) < ItemUpgradeOwnerExclusiveRequestCooldownMs;
+        }
+
+        private static bool IsItemUpgradeOwnerRequestAwaitingPacketResult(PendingItemUpgradeOwnerRequestState pendingRequest)
+        {
+            return pendingRequest != null && !pendingRequest.PacketOwnedResultObserved;
+        }
+
+        private static bool IsItemUpgradeOwnerDuplicateSendBlocked(
+            bool requestSent,
+            bool awaitingPacketResult)
+        {
+            return requestSent || awaitingPacketResult;
         }
 
         private static bool TryDecodeItemUpgradeResultPayload(byte[] payload, out byte resultCode)

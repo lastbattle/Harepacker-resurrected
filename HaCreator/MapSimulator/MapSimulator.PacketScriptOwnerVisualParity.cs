@@ -22,8 +22,6 @@ namespace HaCreator.MapSimulator
         private PacketScriptButtonVisuals _packetScriptSpeedQuizOkButtonVisuals;
         private PacketScriptButtonVisuals _packetScriptSpeedQuizNextButtonVisuals;
         private PacketScriptButtonVisuals _packetScriptSpeedQuizGiveUpButtonVisuals;
-        private PacketScriptDigitStrip _packetScriptInitialQuizDigits;
-        private PacketScriptDigitStrip _packetScriptInitialQuizHeaderDigits;
         private PacketScriptDigitStrip _packetScriptSpeedQuizDigits;
 
         private sealed record PacketScriptDigitStrip(Texture2D[] Digits, Texture2D CommaTexture);

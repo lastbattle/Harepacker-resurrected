@@ -412,11 +412,28 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        internal static bool HasValidOwnerPacketPayloadShape(int packetType, int payloadLength)
+        {
+            return packetType switch
+            {
+                8 => payloadLength == sizeof(uint),
+                11 => payloadLength == sizeof(byte) + sizeof(sbyte),
+                6 or 7 or 9 or 10 or 12 or 13 or 14 => payloadLength == 0,
+                _ => false
+            };
+        }
+
         public bool TryApplyRawPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
             payload ??= Array.Empty<byte>();
             LastPacketType = packetType;
+
+            if (!HasValidOwnerPacketPayloadShape(packetType, payload.Length))
+            {
+                errorMessage = $"Invalid RPS subtype {packetType} payload length: expected the client-owned shape for opcode {OwnerOpcode}.";
+                return false;
+            }
 
             try
             {

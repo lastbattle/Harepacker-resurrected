@@ -164,6 +164,8 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewWindow.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewWindow.SetFont(_fontChat);
                 cashAvatarPreviewWindow.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
+                cashAvatarPreviewWindow.ClientCancelIngressRequested =
+                    () => ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
                 cashAvatarPreviewWindow.PersonalShopRequested = ShowCashAvatarPersonalShopAction;
                 cashAvatarPreviewWindow.EntrustedShopRequested = ShowCashAvatarEntrustedShopAction;
                 cashAvatarPreviewWindow.TradingRoomRequested = ShowCashAvatarTradingRoomAction;
@@ -394,9 +396,15 @@ namespace HaCreator.MapSimulator
                         ? "CCSWnd_OneADay moved owner focus through the dedicated item-box lane."
                         : summary;
                 });
-                oneADayWindow.SetExternalAction("BtJoin", () => "CCSWnd_OneADay joined the packet-armed reward session preview.");
-                oneADayWindow.SetExternalAction("BtShortcut", () => "CCSWnd_OneADay switched focus to the shortcut-help plate owner.");
-                oneADayWindow.SetExternalAction("BtClose", () => "CCSWnd_OneADay dismissed the current reward plate preview.");
+                oneADayWindow.SetExternalAction("BtJoin", () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
+                    ? "CCSWnd_OneADay joined the packet-armed reward session preview."
+                    : oneADayWindow.CurrentOwnerStatusMessage);
+                oneADayWindow.SetExternalAction("BtShortcut", () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
+                    ? "CCSWnd_OneADay switched focus to the shortcut-help plate owner."
+                    : oneADayWindow.CurrentOwnerStatusMessage);
+                oneADayWindow.SetExternalAction("BtClose", () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
+                    ? "CCSWnd_OneADay dismissed the current reward plate preview."
+                    : oneADayWindow.CurrentOwnerStatusMessage);
             }
         }
 
@@ -2117,19 +2125,7 @@ namespace HaCreator.MapSimulator
                     _chat?.AddSystemMessage(summary, currTickCount);
                 }
 
-                if (accepted)
-                {
-                    ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, summary);
-                    return;
-                }
-
-                bool receiveGiftDialogVisible = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashReceiveGiftDialog)?.IsVisible == true;
-                if (!receiveGiftDialogVisible
-                    && nextGiftIndex >= 0
-                    && nextGiftIndex < stageWindow.CashGiftPacketEntries.Count)
-                {
-                    ShowCashReceiveGiftDialog(stageWindow, nextGiftIndex);
-                }
+                ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, summary, accepted);
             }
         }
 
@@ -2305,7 +2301,8 @@ namespace HaCreator.MapSimulator
             CashServiceStageWindow stageWindow,
             int nextGiftIndex,
             string ownerNotice,
-            string acceptanceSummary)
+            string acceptanceSummary,
+            bool accepted)
         {
             if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, out CashServiceModalOwnerWindow modalWindow))
             {
@@ -2323,6 +2320,9 @@ namespace HaCreator.MapSimulator
                 {
                     ownerNotice,
                     acceptanceSummary,
+                    accepted
+                        ? "Client subtype 107 branch: the accepted row was consumed before the next DoModal owner turn."
+                        : "Client subtype 108 branch: the current row remains queued and returns through another DoModal owner turn.",
                     $"Decoded queue still has {remainingRows.ToString(CultureInfo.InvariantCulture)} row(s) after this accept branch."
                 },
                 new[]
@@ -2336,7 +2336,9 @@ namespace HaCreator.MapSimulator
                     }
                 },
                 footer: hasNextGiftRow
-                    ? "Follow-up notice acknowledged: the next packet-owned gift row will open on OK."
+                    ? accepted
+                        ? "Follow-up notice acknowledged: the next packet-owned gift row will open on OK."
+                        : "Follow-up notice acknowledged: the same packet-owned gift row will reopen on OK for another accept attempt."
                     : "Follow-up notice acknowledged: no additional packet-owned gift rows remain.");
             _cashReceiveGiftFollowUpNoticePending = true;
             _cashReceiveGiftFollowUpNoticeNextIndex = nextGiftIndex;

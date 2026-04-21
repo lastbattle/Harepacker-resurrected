@@ -4098,27 +4098,83 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryApplyItcSuccessBidInfoResult(byte[] payload, out string message)
         {
-            int winningPrice = 0;
-            int itemCount = 0;
-            if (payload?.Length >= 1 + (sizeof(int) * 2))
+            message = null;
+            if (payload == null || payload.Length < 1 + (sizeof(int) * 2))
             {
-                using MemoryStream stream = new(payload, writable: false);
-                using BinaryReader reader = new(stream);
-                _ = reader.ReadByte();
-                winningPrice = Math.Max(0, reader.ReadInt32());
-                itemCount = Math.Max(0, reader.ReadInt32());
+                return false;
             }
 
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            _ = reader.ReadByte();
+            int winningPrice = Math.Max(0, reader.ReadInt32());
+            int itemCount = Math.Max(0, reader.ReadInt32());
+            int listingIdHint = 0;
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(reader, Math.Max(1, Math.Min(itemCount, 4)));
+            int updatedRows = 0;
+            foreach (PacketCatalogEntry decodedRow in decodedRows)
+            {
+                PacketCatalogEntry purchaseRow = ClonePacketCatalogEntry(decodedRow, "Bid success");
+                if (winningPrice > 0 && purchaseRow.Price <= 0)
+                {
+                    purchaseRow.Price = winningPrice;
+                    purchaseRow.PriceLabel = winningPrice.ToString("N0", CultureInfo.InvariantCulture);
+                }
+
+                purchaseRow.StateLabel = string.IsNullOrWhiteSpace(purchaseRow.StateLabel)
+                    ? "Bid success"
+                    : $"{purchaseRow.StateLabel} / Bid success";
+                UpsertWishEntry(_itcPurchasePacketEntries, purchaseRow);
+                if (purchaseRow.ListingId > 0)
+                {
+                    RemoveEntryByListingId(_itcPacketCatalogEntries, purchaseRow.ListingId);
+                }
+
+                updatedRows++;
+            }
+
+            if (updatedRows == 0)
+            {
+                int fallbackListingId = listingIdHint > 0
+                    ? listingIdHint
+                    : Math.Max(0, _itcNormalItemSelectedListingId);
+                PacketCatalogEntry snapshotEntry = new()
+                {
+                    Title = "Success bid",
+                    Detail = winningPrice > 0
+                        ? $"Success-bid info resolved at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s)."
+                        : $"Success-bid info resolved for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) without an explicit winning price.",
+                    Seller = "CITC purchase owner",
+                    PriceLabel = winningPrice > 0 ? winningPrice.ToString("N0", CultureInfo.InvariantCulture) : string.Empty,
+                    StateLabel = "Bid success",
+                    ListingId = fallbackListingId,
+                    Price = winningPrice
+                };
+                UpsertWishEntry(_itcPurchasePacketEntries, snapshotEntry);
+                if (fallbackListingId > 0)
+                {
+                    RemoveEntryByListingId(_itcPacketCatalogEntries, fallbackListingId);
+                }
+            }
+
+            _itcPurchaseItemCount = Math.Max(0, _itcPurchasePacketEntries.Count);
             _noticeState = winningPrice > 0
-                ? $"Success-bid info resolved at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s)."
-                : "Success-bid info arrived without an explicit winning price.";
-            message = $"CITC::OnSuccessBidInfoResult applied bid info for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos.";
+                ? $"Success-bid info resolved at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s), updating {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} purchase owner row(s)."
+                : $"Success-bid info arrived without an explicit winning price and refreshed {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} purchase owner row(s).";
+            message =
+                $"CITC::OnSuccessBidInfoResult updated {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} packet-owned purchase row(s) from bid info ({updatedRows.ToString(CultureInfo.InvariantCulture)} decoded ITC row(s), listing hint {listingIdHint.ToString(CultureInfo.InvariantCulture)}).";
+            UpdateItcSelectionFromPrimaryList(_itcPurchasePacketEntries);
             return true;
         }
 
         private bool TryApplyItcCancelWishNotification(byte[] payload, out string message)
         {
             message = null;
+            if (payload == null)
+            {
+                return false;
+            }
+
             using MemoryStream stream = new(payload, writable: false);
             using BinaryReader reader = new(stream);
             if (stream.Length < 1 + (sizeof(int) * 2))
@@ -4129,9 +4185,76 @@ namespace HaCreator.MapSimulator.UI
             _ = reader.ReadByte();
             int reason = reader.ReadInt32();
             int itemCount = reader.ReadInt32();
-            _noticeState = $"Wish cancellation notice reported reason {reason.ToString(CultureInfo.InvariantCulture)} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) still pending.";
-            message = $"CITC::OnNotifyCancelWishResult surfaced reason {reason.ToString(CultureInfo.InvariantCulture)} for {itemCount.ToString(CultureInfo.InvariantCulture)} packet-owned item(s).";
+            int listingIdHint = 0;
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(reader, Math.Max(1, Math.Min(itemCount, 4)));
+            int removedCount = 0;
+            if (reason == 0)
+            {
+                if (decodedRows.Count > 0)
+                {
+                    foreach (PacketCatalogEntry row in decodedRows)
+                    {
+                        int before = _itcWishPacketEntries.Count;
+                        RemoveEntryByListingId(_itcWishPacketEntries, row.ListingId);
+                        if (_itcWishPacketEntries.Count < before)
+                        {
+                            removedCount++;
+                        }
+                    }
+                }
+                else if (listingIdHint > 0)
+                {
+                    int before = _itcWishPacketEntries.Count;
+                    RemoveEntryByListingId(_itcWishPacketEntries, listingIdHint);
+                    if (_itcWishPacketEntries.Count < before)
+                    {
+                        removedCount = 1;
+                    }
+                }
+                else
+                {
+                    int removeBudget = Math.Min(itemCount, _itcWishPacketEntries.Count);
+                    for (int i = 0; i < removeBudget; i++)
+                    {
+                        RemovePrimaryEntry(_itcWishPacketEntries, out _);
+                        removedCount++;
+                    }
+                }
+            }
+
+            _noticeState = reason == 0
+                ? $"Wish cancellation notice removed {removedCount.ToString(CultureInfo.InvariantCulture)} row(s) from the packet-owned wish owner (requested {itemCount.ToString(CultureInfo.InvariantCulture)})."
+                : $"Wish cancellation notice reported reason {reason.ToString(CultureInfo.InvariantCulture)} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) still pending.";
+            message =
+                $"CITC::OnNotifyCancelWishResult surfaced reason {reason.ToString(CultureInfo.InvariantCulture)} for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) and decoded {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s) (listing hint {listingIdHint.ToString(CultureInfo.InvariantCulture)}, removed {removedCount.ToString(CultureInfo.InvariantCulture)}).";
+            UpdateItcSelectionFromPrimaryList(_itcWishPacketEntries);
             return true;
+        }
+
+        private List<PacketCatalogEntry> TryDecodeTrailingItcItemEntries(BinaryReader reader, int maxCount)
+        {
+            List<PacketCatalogEntry> rows = new();
+            if (reader?.BaseStream == null || maxCount <= 0)
+            {
+                return rows;
+            }
+
+            Stream stream = reader.BaseStream;
+            int decodeLimit = Math.Max(1, maxCount);
+            while (rows.Count < decodeLimit
+                && stream.Length - stream.Position >= sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long))
+            {
+                long rowStart = stream.Position;
+                if (!TryReadItcItemEntry(reader, out PacketCatalogEntry row))
+                {
+                    stream.Position = rowStart;
+                    break;
+                }
+
+                rows.Add(row);
+            }
+
+            return rows;
         }
 
         private bool TryReadItcItemEntry(BinaryReader reader, out PacketCatalogEntry entry)

@@ -172,6 +172,17 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal enum SocialListClientGuildResultKind : byte
     {
+        Notice35 = 35,
+        Notice37 = 37,
+        Notice42 = 42,
+        Notice43 = 43,
+        Notice44 = 44,
+        Notice47 = 47,
+        Notice50 = 50,
+        Notice55 = 55,
+        Notice56 = 56,
+        Notice57 = 57,
+        Notice58 = 58,
         GradeChange = 66,
         Ranking = 76,
         GuildQuestNotEnoughMembers = 77,
@@ -202,6 +213,7 @@ namespace HaCreator.MapSimulator.Interaction
         int GuildQuestChannel = 0,
         int GuildQuestWaitStatus = 0,
         string GuildBoardAuthKey = null,
+        string DirectNotice = null,
         byte RawSubtype = 0,
         bool UsesSharedResultNoticeFallback = false);
 
@@ -907,6 +919,66 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind kind = (SocialListClientGuildResultKind)rawSubtype;
                 switch (kind)
                 {
+                    case SocialListClientGuildResultKind.Notice35:
+                    case SocialListClientGuildResultKind.Notice37:
+                    case SocialListClientGuildResultKind.Notice42:
+                    case SocialListClientGuildResultKind.Notice43:
+                    case SocialListClientGuildResultKind.Notice44:
+                    case SocialListClientGuildResultKind.Notice47:
+                    case SocialListClientGuildResultKind.Notice50:
+                    case SocialListClientGuildResultKind.Notice58:
+                    {
+                        int stringPoolId = ResolveClientGuildResultNoticeStringPoolId(rawSubtype);
+                        string directNotice = ResolveClientGuildResultDirectNoticeText(stringPoolId, rawSubtype);
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            0,
+                            0,
+                            null,
+                            directNotice,
+                            RawSubtype: rawSubtype);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.Notice55:
+                    case SocialListClientGuildResultKind.Notice56:
+                    case SocialListClientGuildResultKind.Notice57:
+                    {
+                        string decodedName = reader.ReadString16().Trim();
+                        int stringPoolId = ResolveClientGuildResultNoticeStringPoolId(rawSubtype);
+                        string directNotice = ResolveClientGuildResultNamedNoticeText(stringPoolId, decodedName, rawSubtype);
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            0,
+                            0,
+                            null,
+                            directNotice,
+                            RawSubtype: rawSubtype);
+                        return true;
+                    }
+
                     case SocialListClientGuildResultKind.GradeChange:
                     {
                         int guildId = reader.ReadInt32();
@@ -1217,6 +1289,50 @@ namespace HaCreator.MapSimulator.Interaction
                     or 65 or 67 or 68 or 70 or 72 or 73 or 74 => true,
                 _ => false
             };
+        }
+
+        private static int ResolveClientGuildResultNoticeStringPoolId(byte subtype)
+        {
+            return subtype switch
+            {
+                35 => 0x0169,
+                37 => 0x016A,
+                42 => 0x0169,
+                43 => 0x016D,
+                44 => 0x0177,
+                47 => 0x016B,
+                50 => 0x016B,
+                55 => 0x015B,
+                56 => 0x0ACF,
+                57 => 0x015C,
+                58 => 0x0174,
+                _ => 0
+            };
+        }
+
+        private static string ResolveClientGuildResultDirectNoticeText(int stringPoolId, byte subtype)
+        {
+            if (stringPoolId <= 0)
+            {
+                return $"Client OnGuildResult({subtype}) notice.";
+            }
+
+            return MapleStoryStringPool.GetOrFallback(
+                stringPoolId,
+                $"Client OnGuildResult({subtype}) notice.",
+                appendFallbackSuffix: true,
+                minimumHexWidth: 3);
+        }
+
+        private static string ResolveClientGuildResultNamedNoticeText(int stringPoolId, string name, byte subtype)
+        {
+            string fallbackFormat = "User: %s";
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                1,
+                out _);
+            return FormatSingleStringArgument(format, name);
         }
 
         public static bool TryParseGuildSkillResult(ReadOnlySpan<byte> payload, out GuildSkillResultPacket packet, out string error)

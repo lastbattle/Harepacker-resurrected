@@ -18,6 +18,8 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientWhisperPickerModalComboDropdownCenterSliceWidth = 5;
         internal const int ClientWhisperPickerModalComboDropdownRightSliceWidth = 18;
         internal const int ClientWhisperPickerModalComboBottomOffset = 63;
+        internal const int ClientWhisperPickerModalComboTextLeftInset = 6;
+        internal const int ClientWhisperPickerModalComboTextTopInset = 3;
         internal const int ClientWhisperPickerModalListGap = 6;
         internal const int ClientWhisperPickerModalOkButtonLeft = 157;
         internal const int ClientWhisperPickerModalCloseButtonLeft = 198;
@@ -294,7 +296,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int safeScrollbarWidth = Math.Max(1, scrollbarWidth);
-            int contentWidth = Math.Max(1, listBounds.Width - safeScrollbarWidth - 1);
+            // CCtrlComboBoxSelect::Draw computes inner row width as m_width - 2 - scrollbarWidth
+            // when the select window owns a scrollbar lane.
+            int contentWidth = Math.Max(1, listBounds.Width - safeScrollbarWidth - 2);
             return new Rectangle(listBounds.X, listBounds.Y, contentWidth, listBounds.Height);
         }
 

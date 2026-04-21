@@ -364,7 +364,8 @@ namespace HaCreator.MapSimulator.Pools
         byte? SkillLevel = null,
         string StringValue = null,
         int? SecondaryInt32Value = null,
-        int[] TrailingInt32Values = null)
+        int[] TrailingInt32Values = null,
+        byte[] StringBranchPrefixBytes = null)
     {
         public RemoteUserEffectSubtype? KnownSubtype => EffectType switch
         {
@@ -409,7 +410,8 @@ namespace HaCreator.MapSimulator.Pools
         byte[] RawTrailingPayload = null,
         string HitString = null,
         int? HitSecondaryInt32Value = null,
-        int[] HitTrailingInt32Values = null);
+        int[] HitTrailingInt32Values = null,
+        byte[] HitStringBranchPrefixBytes = null);
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
     public readonly record struct RemoteUserReceiveHpPacket(int CharacterId, int CurrentHp, int MaxHp);
@@ -1401,13 +1403,15 @@ namespace HaCreator.MapSimulator.Pools
                 string hitString = null;
                 int? hitSecondaryInt32Value = null;
                 int[] hitTrailingInt32Values = null;
+                byte[] hitStringBranchPrefixBytes = null;
                 if (reader.RemainingLength != 0)
                 {
                     rawTrailingPayload = reader.ReadRemainingBytes();
                     hitString = TryParseOptionalHitString(
                         rawTrailingPayload,
                         out hitSecondaryInt32Value,
-                        out hitTrailingInt32Values);
+                        out hitTrailingInt32Values,
+                        out hitStringBranchPrefixBytes);
                 }
 
                 if (characterId <= 0)
@@ -1436,7 +1440,8 @@ namespace HaCreator.MapSimulator.Pools
                     rawTrailingPayload,
                     hitString,
                     hitSecondaryInt32Value,
-                    hitTrailingInt32Values);
+                    hitTrailingInt32Values,
+                    hitStringBranchPrefixBytes);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1449,10 +1454,12 @@ namespace HaCreator.MapSimulator.Pools
         private static string TryParseOptionalHitString(
             ReadOnlySpan<byte> payload,
             out int? secondaryInt32Value,
-            out int[] trailingInt32Values)
+            out int[] trailingInt32Values,
+            out byte[] branchPrefixBytes)
         {
             secondaryInt32Value = null;
             trailingInt32Values = null;
+            branchPrefixBytes = null;
             if (payload.Length == 0)
             {
                 return null;
@@ -1464,10 +1471,16 @@ namespace HaCreator.MapSimulator.Pools
                     maxBranchPrefixBytes: 2,
                     out string parsedString,
                     out int? parsedSecondaryInt32Value,
-                    out int[] parsedTrailingInt32Values))
+                    out int[] parsedTrailingInt32Values,
+                    out int consumedBranchPrefixBytes))
             {
                 secondaryInt32Value = parsedSecondaryInt32Value;
                 trailingInt32Values = parsedTrailingInt32Values;
+                if (consumedBranchPrefixBytes > 0)
+                {
+                    branchPrefixBytes = payload[..consumedBranchPrefixBytes].ToArray();
+                }
+
                 return parsedString;
             }
 
@@ -1584,6 +1597,7 @@ namespace HaCreator.MapSimulator.Pools
                 string stringValue = null;
                 int? secondaryInt32Value = null;
                 int[] trailingInt32Values = null;
+                byte[] stringBranchPrefixBytes = null;
                 switch ((RemoteUserEffectSubtype)effectType)
                 {
                     case RemoteUserEffectSubtype.GenericUserState:
@@ -1623,6 +1637,7 @@ namespace HaCreator.MapSimulator.Pools
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
+                                    out stringBranchPrefixBytes,
                                     out error))
                             {
                                 return false;
@@ -1663,6 +1678,7 @@ namespace HaCreator.MapSimulator.Pools
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
+                                    out stringBranchPrefixBytes,
                                     out error))
                             {
                                 return false;
@@ -1688,6 +1704,7 @@ namespace HaCreator.MapSimulator.Pools
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
+                                    out stringBranchPrefixBytes,
                                     out error))
                             {
                                 return false;
@@ -1707,7 +1724,8 @@ namespace HaCreator.MapSimulator.Pools
                     skillLevel,
                     stringValue,
                     secondaryInt32Value,
-                    trailingInt32Values);
+                    trailingInt32Values,
+                    stringBranchPrefixBytes);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1740,11 +1758,13 @@ namespace HaCreator.MapSimulator.Pools
             out string stringValue,
             out int? secondaryInt32Value,
             out int[] trailingInt32Values,
+            out byte[] stringBranchPrefixBytes,
             out string error)
         {
             stringValue = null;
             secondaryInt32Value = null;
             trailingInt32Values = null;
+            stringBranchPrefixBytes = null;
             error = null;
 
             if (payload.Length == 0)
@@ -1758,8 +1778,14 @@ namespace HaCreator.MapSimulator.Pools
                     maxBranchPrefixBytes: 2,
                     out stringValue,
                     out secondaryInt32Value,
-                    out trailingInt32Values))
+                    out trailingInt32Values,
+                    out int consumedBranchPrefixBytes))
             {
+                if (consumedBranchPrefixBytes > 0)
+                {
+                    stringBranchPrefixBytes = payload[..consumedBranchPrefixBytes].ToArray();
+                }
+
                 return true;
             }
 
@@ -1807,11 +1833,13 @@ namespace HaCreator.MapSimulator.Pools
             int maxBranchPrefixBytes,
             out string stringValue,
             out int? secondaryInt32Value,
-            out int[] trailingInt32Values)
+            out int[] trailingInt32Values,
+            out int consumedBranchPrefixBytes)
         {
             stringValue = null;
             secondaryInt32Value = null;
             trailingInt32Values = null;
+            consumedBranchPrefixBytes = 0;
 
             if (TryParseMapleOrPlainStringPayload(
                     payload,
@@ -1820,6 +1848,7 @@ namespace HaCreator.MapSimulator.Pools
                     out secondaryInt32Value,
                     out trailingInt32Values))
             {
+                consumedBranchPrefixBytes = 0;
                 return true;
             }
 
@@ -1836,6 +1865,7 @@ namespace HaCreator.MapSimulator.Pools
                         out secondaryInt32Value,
                         out trailingInt32Values))
                 {
+                    consumedBranchPrefixBytes = consumedBranchBytes;
                     return true;
                 }
             }
@@ -3216,6 +3246,16 @@ namespace HaCreator.MapSimulator.Pools
                 return string.Empty;
             }
 
+            if (TryResolveMinimapIconDirectionMarkerSegment(segments, out string directionMarkerName))
+            {
+                return directionMarkerName;
+            }
+
+            if (TryResolveMinimapIconNpcMarkerSegment(segments, out string npcMarkerName))
+            {
+                return npcMarkerName;
+            }
+
             int defaultHelperSegmentIndex = -1;
             for (int i = segments.Length - 1; i >= 0; i--)
             {
@@ -3288,6 +3328,68 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return string.Empty;
+        }
+
+        private static bool TryResolveMinimapIconDirectionMarkerSegment(
+            string[] segments,
+            out string directionMarkerName)
+        {
+            directionMarkerName = null;
+            int directionSegmentIndex = -1;
+            for (int i = segments.Length - 1; i >= 0; i--)
+            {
+                if (string.Equals(segments[i], "iconDirection", StringComparison.OrdinalIgnoreCase))
+                {
+                    directionSegmentIndex = i;
+                    break;
+                }
+            }
+
+            if (directionSegmentIndex < 0)
+            {
+                return false;
+            }
+
+            for (int i = directionSegmentIndex + 1; i < segments.Length; i++)
+            {
+                string candidate = NormalizeHelperMarkerNameSegment(segments[i]);
+                if (candidate.Length == 0 || IsNumericHelperMarkerPathSegment(candidate))
+                {
+                    continue;
+                }
+
+                if (KnownMinimapIconDirectionAncillaryMarkerNames.Contains(candidate))
+                {
+                    directionMarkerName = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveMinimapIconNpcMarkerSegment(
+            string[] segments,
+            out string npcMarkerName)
+        {
+            npcMarkerName = null;
+            int iconNpcSegmentIndex = -1;
+            for (int i = segments.Length - 1; i >= 0; i--)
+            {
+                if (string.Equals(segments[i], "iconNpc", StringComparison.OrdinalIgnoreCase))
+                {
+                    iconNpcSegmentIndex = i;
+                    break;
+                }
+            }
+
+            if (iconNpcSegmentIndex < 0)
+            {
+                return false;
+            }
+
+            npcMarkerName = "iconnpc";
+            return true;
         }
 
         private static string NormalizeHelperMarkerNameSegment(string segment)
@@ -4125,9 +4227,10 @@ namespace HaCreator.MapSimulator.Pools
             int effectivePreferredSkillId = AfterImageChargeSkillResolver.ResolvePreferredChargeSkillIdFromWeaponChargeValue(
                 preferredSkillId,
                 weaponChargeValue);
+            bool hasValidMetadataOffset = weaponChargeMetadataOffset >= 0
+                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int);
 
-            if (weaponChargeMetadataOffset >= 0
-                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatMetadata(
                     rawPayload,
                     weaponChargeMetadataOffset,
@@ -4136,8 +4239,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (weaponChargeMetadataOffset >= 0
-                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     rawPayload,
                     weaponChargeMetadataOffset,
@@ -4148,8 +4250,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (weaponChargeMetadataOffset >= 0
-                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
                     rawPayload,
                     sizeof(int) * 4,
@@ -4160,8 +4261,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (weaponChargeMetadataOffset >= 0
-                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
                     rawPayload,
                     sizeof(int) * 4,
@@ -4196,6 +4296,21 @@ namespace HaCreator.MapSimulator.Pools
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,
                     scopedMaskBaseChargeElement,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int metadataMissingNearestMaskBaseChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    metadataMissingNearestMaskBaseChargeElement,
                     out chargeSkillId))
             {
                 return true;

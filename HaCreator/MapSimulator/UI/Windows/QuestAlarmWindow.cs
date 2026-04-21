@@ -313,10 +313,12 @@ namespace HaCreator.MapSimulator.UI
             if (!_isMinimized && ContainsPoint(mouseState.X, mouseState.Y))
             {
                 _hoveredDeleteQuestId = GetDeleteQuestIdAtPoint(mouseState.X, mouseState.Y);
+                int titleQuestId = GetTitleQuestIdAtPoint(mouseState.X, mouseState.Y);
                 if (leftPressed)
                 {
                     _pressedDeleteAll = _deleteAllBounds.Contains(mouseState.X, mouseState.Y);
                     _pressedDeleteQuestId = _hoveredDeleteQuestId;
+                    HandleTitleMouseDown(titleQuestId, ref snapshot);
                 }
 
                 if (leftReleased)
@@ -331,7 +333,7 @@ namespace HaCreator.MapSimulator.UI
                     }
                     else
                     {
-                        HandleRowSelection(mouseState.X, mouseState.Y);
+                        HandleTitleSelection(titleQuestId);
                     }
 
                     _pressedDeleteQuestId = -1;
@@ -473,8 +475,7 @@ namespace HaCreator.MapSimulator.UI
         {
             int titleQuestId = !_isMinimized ? GetTitleQuestIdAtPoint(mouseState.X, mouseState.Y) : -1;
             bool titleHovered = titleQuestId > 0;
-            bool rowActionHovered = !_isMinimized && GetRowQuestIdAtPoint(mouseState.X, mouseState.Y) > 0;
-            bool localActionHovered = !_isMinimized && (rowActionHovered || GetDeleteQuestIdAtPoint(mouseState.X, mouseState.Y) > 0 || _deleteAllBounds.Contains(mouseState.X, mouseState.Y));
+            bool localActionHovered = !_isMinimized && (titleHovered || GetDeleteQuestIdAtPoint(mouseState.X, mouseState.Y) > 0 || _deleteAllBounds.Contains(mouseState.X, mouseState.Y));
             if (localActionHovered)
             {
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -500,7 +501,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override bool CanStartDragAt(int x, int y)
         {
-            if (!_isMinimized && (GetRowQuestIdAtPoint(x, y) > 0 || GetDeleteQuestIdAtPoint(x, y) > 0 || _deleteAllBounds.Contains(x, y)))
+            if (!_isMinimized && (GetTitleQuestIdAtPoint(x, y) > 0 || GetDeleteQuestIdAtPoint(x, y) > 0 || _deleteAllBounds.Contains(x, y)))
             {
                 return false;
             }
@@ -748,26 +749,32 @@ namespace HaCreator.MapSimulator.UI
             return _trackedQuestIds.Count;
         }
 
-        private void HandleRowSelection(int mouseX, int mouseY)
+        private void HandleTitleMouseDown(int questId, ref QuestAlarmSnapshot snapshot)
         {
-            QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
-            for (int i = 0; i < _rowLayouts.Count; i++)
+            // Recovered CUIQuestAlarm::OnMouseButton(513) clears recent-title state on down-click.
+            if (questId <= 0)
             {
-                RowLayout row = _rowLayouts[i];
-                if (!row.Bounds.Contains(mouseX, mouseY) || row.DeleteBounds.Contains(mouseX, mouseY))
-                {
-                    continue;
-                }
-
-                _selectedQuestId = row.QuestId;
-                EnsureSelectionVisible(snapshot);
-                UpdateButtonStates();
-
-                AcknowledgeQuestAlertStateForInteraction(row.QuestId, ref snapshot);
-
-                QuestRequested?.Invoke(row.QuestId);
                 return;
             }
+
+            AcknowledgeQuestAlertStateForInteraction(questId, ref snapshot);
+        }
+
+        private void HandleTitleSelection(int questId)
+        {
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
+            _selectedQuestId = questId;
+            EnsureSelectionVisible(snapshot);
+            UpdateButtonStates();
+
+            AcknowledgeQuestAlertStateForInteraction(questId, ref snapshot);
+
+            QuestRequested?.Invoke(questId);
         }
 
         private void AcknowledgeQuestAlertStateForInteraction(int questId, ref QuestAlarmSnapshot snapshot)
@@ -1581,20 +1588,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 RowLayout row = _rowLayouts[i];
                 if (row.TitleBounds.Contains(mouseX, mouseY) && !row.DeleteBounds.Contains(mouseX, mouseY))
-                {
-                    return row.QuestId;
-                }
-            }
-
-            return -1;
-        }
-
-        private int GetRowQuestIdAtPoint(int mouseX, int mouseY)
-        {
-            for (int i = 0; i < _rowLayouts.Count; i++)
-            {
-                RowLayout row = _rowLayouts[i];
-                if (row.Bounds.Contains(mouseX, mouseY) && !row.DeleteBounds.Contains(mouseX, mouseY))
                 {
                     return row.QuestId;
                 }

@@ -135,6 +135,7 @@ namespace HaCreator.MapSimulator.Fields
         private float _centerX, _centerY;           // Fixed center if not following
         private bool _clientOwnedImmediateMode;
         private bool _clientOwnedUpdateParityMode;
+        private bool _clientOwnedShareView;
         private float _clientOwnedMaskWidth;
         private float _clientOwnedMaskHeight;
         private float _clientOwnedMaskOriginX;
@@ -369,6 +370,11 @@ namespace HaCreator.MapSimulator.Fields
             EnableCircle(radius);
         }
 
+        public void SetClientOwnedShareView(bool shareView)
+        {
+            _clientOwnedShareView = shareView;
+        }
+
         public void SetClientOwnedViewrangeTexture(SD.Bitmap bitmap)
         {
             _clientOwnedViewrangeTexture?.Dispose();
@@ -415,6 +421,7 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedDarkLayerOffsetY = 0;
             _clientOwnedImmediateMode = false;
             _clientOwnedUpdateParityMode = false;
+            _clientOwnedShareView = false;
             _clientOwnedFocusWorldPositionValid = false;
             _clientOwnedRemoteFocusWorldPositions.Clear();
             _clientOwnedScreenMaskCentersBuffer.Clear();
@@ -948,9 +955,12 @@ namespace HaCreator.MapSimulator.Fields
 
             _clientOwnedScreenMaskCentersBuffer.Add(GetClientOwnedUpdateParityScreenMaskCenter(mapShiftX, mapShiftY, centerX, centerY));
 
-            foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
+            if (_clientOwnedShareView)
             {
-                _clientOwnedScreenMaskCentersBuffer.Add(GetClientOwnedUpdateParityScreenPosition(worldPosition, mapShiftX, mapShiftY, centerX, centerY));
+                foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
+                {
+                    _clientOwnedScreenMaskCentersBuffer.Add(GetClientOwnedUpdateParityScreenPosition(worldPosition, mapShiftX, mapShiftY, centerX, centerY));
+                }
             }
 
             return _clientOwnedScreenMaskCentersBuffer;
@@ -974,17 +984,20 @@ namespace HaCreator.MapSimulator.Fields
                 _clientOwnedMaskOriginX,
                 _clientOwnedMaskOriginY));
 
-            foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
+            if (_clientOwnedShareView)
             {
-                _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
-                    worldPosition.X,
-                    worldPosition.Y,
-                    mapShiftX,
-                    mapShiftY,
-                    centerX,
-                    centerY,
-                    _clientOwnedMaskOriginX,
-                    _clientOwnedMaskOriginY));
+                foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
+                {
+                    _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
+                        worldPosition.X,
+                        worldPosition.Y,
+                        mapShiftX,
+                        mapShiftY,
+                        centerX,
+                        centerY,
+                        _clientOwnedMaskOriginX,
+                        _clientOwnedMaskOriginY));
+                }
             }
 
             return _clientOwnedMaskTopLeftsBuffer;

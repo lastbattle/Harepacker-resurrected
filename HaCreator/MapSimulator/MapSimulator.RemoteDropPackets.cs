@@ -43,6 +43,8 @@ namespace HaCreator.MapSimulator
 
         private bool ApplyRemoteDropPacketLeave(RemoteDropLeavePacket packet, int currentTime)
         {
+            ObserveRemoteDropPacketLeavePartyLink(packet);
+
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             bool applied = _dropPool?.ApplyPacketLeave(
                 packet,
@@ -81,6 +83,32 @@ namespace HaCreator.MapSimulator
                 ResolveRemoteDropPacketActorName(packet.Reason, packet),
                 fallbackOwnerId,
                 ResolveRemoteDropPacketTargetPosition(packet.Reason, packet));
+        }
+
+        private void ObserveRemoteDropPacketLeavePartyLink(RemoteDropLeavePacket packet)
+        {
+            DropItem drop = _dropPool?.GetDrop(packet.DropId);
+            if (drop?.IsPacketControlled != true
+                || drop.OwnershipType != DropOwnershipType.Party
+                || drop.OwnerId <= 0)
+            {
+                return;
+            }
+
+            int resolvedActorId = packet.Reason == PacketDropLeaveReason.PetPickup
+                ? ResolveRemoteDropPacketPetActorId(packet)
+                : packet.ActorId;
+            int resolvedOwnerCharacterId = ResolveRemoteDropPacketLeaveOwnerCharacterId(packet, resolvedActorId);
+            foreach (int linkedActorId in ResolveRemoteDropPacketLeavePartyLinkActorIds(packet, resolvedActorId, resolvedOwnerCharacterId))
+            {
+                RegisterObservedDropPartyActorLink(drop.OwnerId, linkedActorId);
+            }
+
+            if (resolvedOwnerCharacterId > 0)
+            {
+                RememberObservedDropPartyActorOwner(packet.ActorId, resolvedOwnerCharacterId);
+                RememberObservedDropPartyActorOwner(resolvedActorId, resolvedOwnerCharacterId);
+            }
         }
 
         private void HandlePacketOwnedLocalPetPickup(RemoteDropLeavePacket packet)
@@ -532,6 +560,61 @@ namespace HaCreator.MapSimulator
         private static bool HasUsableDropPartyActorId(int actorId, int normalizedActorId)
         {
             return actorId != 0 || normalizedActorId != 0;
+        }
+
+        internal static int ResolveRemoteDropPacketLeaveOwnerCharacterId(RemoteDropLeavePacket packet, int resolvedActorId)
+        {
+            if (packet.Reason != PacketDropLeaveReason.PetPickup)
+            {
+                return packet.ActorId > 0 ? packet.ActorId : 0;
+            }
+
+            if (packet.ActorId > 0)
+            {
+                return packet.ActorId;
+            }
+
+            if (TryDecodeRemotePetPickupActorId(packet.ActorId, out int packetOwnerCharacterId, out _))
+            {
+                return packetOwnerCharacterId;
+            }
+
+            if (TryDecodeRemotePetPickupActorId(resolvedActorId, out int resolvedOwnerCharacterId, out _))
+            {
+                return resolvedOwnerCharacterId;
+            }
+
+            return 0;
+        }
+
+        internal static int[] ResolveRemoteDropPacketLeavePartyLinkActorIds(
+            RemoteDropLeavePacket packet,
+            int resolvedActorId,
+            int resolvedOwnerCharacterId)
+        {
+            HashSet<int> linkedActorIds = new();
+            if (packet.ActorId != 0)
+            {
+                linkedActorIds.Add(packet.ActorId);
+            }
+
+            if (resolvedActorId != 0)
+            {
+                linkedActorIds.Add(resolvedActorId);
+            }
+
+            if (resolvedOwnerCharacterId > 0)
+            {
+                linkedActorIds.Add(resolvedOwnerCharacterId);
+            }
+
+            if (packet.Reason == PacketDropLeaveReason.PetPickup && resolvedOwnerCharacterId > 0)
+            {
+                // Keep packet leave-party linking aligned with the packet-owned synthetic owner-slot anchor seam.
+                linkedActorIds.Add(BuildRemotePetPickupActorId(resolvedOwnerCharacterId, slotIndex: 0));
+            }
+
+            return linkedActorIds.ToArray();
         }
 
         private int ResolveDropPartyActorOwnerId(int actorId)

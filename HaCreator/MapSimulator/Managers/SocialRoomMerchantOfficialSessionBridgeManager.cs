@@ -22,6 +22,15 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18490;
         public const ushort DefaultInboundMiniRoomOpcode = 373;
         public const ushort OutboundMiniRoomOpcode = 144;
+        public const byte RequestSubtypeCloseRoom = 10;
+        public const byte RequestSubtypePersonalShopBuy = 23;
+        public const byte RequestSubtypeEntrustedShopBuy = 34;
+        public const byte RequestSubtypeEntrustedShopGoOut = 39;
+        public const byte RequestSubtypeEntrustedShopArrange = 40;
+        public const byte RequestSubtypeEntrustedShopWithdrawAll = 41;
+        public const byte RequestSubtypeEntrustedShopWithdrawMoney = 43;
+        public const byte RequestSubtypeEntrustedShopVisitList = 46;
+        public const byte RequestSubtypeEntrustedShopBlacklist = 47;
         private const int MaxRecentOutboundPackets = 32;
 
         private readonly ConcurrentQueue<SocialRoomMerchantPacketInboxMessage> _pendingMessages = new();
@@ -111,12 +120,22 @@ namespace HaCreator.MapSimulator.Managers
 
         public static byte[] BuildPersonalShopBuyOutboundPacket(bool buyFromEntrustedShop, byte itemIndex, short bundleCount, uint itemCrc)
         {
-            byte requestSubtype = buyFromEntrustedShop ? (byte)34 : (byte)23;
+            byte requestSubtype = buyFromEntrustedShop ? RequestSubtypeEntrustedShopBuy : RequestSubtypePersonalShopBuy;
             byte[] requestBody = new byte[1 + sizeof(short) + sizeof(uint)];
             requestBody[0] = itemIndex;
             BinaryPrimitives.WriteInt16LittleEndian(requestBody.AsSpan(1, sizeof(short)), Math.Max((short)1, bundleCount));
             BinaryPrimitives.WriteUInt32LittleEndian(requestBody.AsSpan(3, sizeof(uint)), itemCrc);
             return BuildMerchantOutboundPacket(requestSubtype, requestBody);
+        }
+
+        public static byte[] BuildEntrustedShopVisitListOutboundPacket()
+        {
+            return BuildMerchantOutboundPacket(RequestSubtypeEntrustedShopVisitList);
+        }
+
+        public static byte[] BuildEntrustedShopBlacklistOutboundPacket()
+        {
+            return BuildMerchantOutboundPacket(RequestSubtypeEntrustedShopBlacklist);
         }
 
         public string DescribeStatus()

@@ -2280,9 +2280,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int RepeatSkillSiegeId = 35111004;
         private static readonly HashSet<int> ClientShowSkillEffectMoveActionOwnedBLeftSkillIds = new()
         {
-            // `CUserLocal::DoActiveSkill_SummonMonster@0x93eff0` forwards `(m_nMoveAction & 1)`
-            // into `CUser::ShowSkillEffect` for mine-family owner casts.
-            MINE_SKILL_ID,
+            // `CUserLocal::TryDoingMonsterMagnet` forwards `(m_nMoveAction & 1)` as `bLeft`
+            // when issuing caller-owned `CUser::ShowSkillEffect`.
             1121001,
             1221001,
             1321001
@@ -2297,6 +2296,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             // `CUserLocal::DoActiveSkill_RepeatSkill@0x93fc10` routes `35121003`
             // through `DoActiveSkill_Summon`, so it shares the same fixed `bLeft=0`
             // owner behavior on this `ShowSkillEffect` seam.
+            // `CUserLocal::DoActiveSkill_Summon@0x93c0f0` includes mine-family ids
+            // and still calls `CUser::ShowSkillEffect(..., nActionSpeed=6, bLeft=0,
+            // nLast=0x7FFFFFFF, pPtOffset=0)`, so mine-facing ownership also remains fixed.
+            MINE_VISIBLE_SKILL_ID,
+            MINE_SKILL_ID,
             35121003,
             3111002,
             3211002,
@@ -2314,14 +2318,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private static readonly HashSet<int> ClientShowSkillEffectNegativeLastSkillIds = new()
         {
-            MINE_SKILL_ID
+            // Known local summon-owner rows in this seam resolve through
+            // `DoActiveSkill_Summon` (`nLast = 0x7FFFFFFF`). Keep this empty until
+            // additional `DoActiveSkill_SummonMonster` rows are recovered by id.
         };
         private static readonly HashSet<int> ClientShowSkillEffectPlacementOwnedPointOffsetSkillIds = new()
         {
             3111002,
             3211002,
-            MINE_VISIBLE_SKILL_ID,
-            MINE_SKILL_ID,
             33111003,
             35111001,
             35111002,
@@ -2336,8 +2340,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             // WZ anchors: `Skill/3510.img/skill/35101009` (`action/0=flamethrower2`, `keydown/*`)
             // and `Skill/3310.img/skill/33101005` (`info/type=98`) map to prepare family ownership.
+            // Additional recovered `DoActiveSkill_Prepare` rows stay explicit here so
+            // lane ownership does not regress when metadata is sparse or missing.
+            35001001,
             35101009,
-            33101005
+            33101005,
+            4341002,
+            4341003,
+            5201002,
+            5101004,
+            14111006,
+            15101003,
+            5221004,
+            13111002,
+            4211001
         };
         private static readonly HashSet<int> ClientDoActiveSkillPrepareBombSkillIds = new()
         {
@@ -2433,10 +2449,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private static readonly Dictionary<int, int> ClientShowSkillEffectPointOffsetXBySkillId = new()
         {
-            // `CUserLocal::DoActiveSkill_Summon` keeps a mine-family placement distance table
-            // with explicit caller-owned offsets for the visible and hidden mine ids.
-            [MINE_VISIBLE_SKILL_ID] = -50,
-            [MINE_SKILL_ID] = -30
+            // Recovered local summon-owner mine ids (`33101004`, `33101008`) now route
+            // through `DoActiveSkill_Summon` with `pPtOffset = 0`.
         };
         private const int SIEGE_REPEAT_ATTACK_DELAY_MS = 180;
         private const int TANK_REPEAT_ATTACK_DELAY_MS = 420;
@@ -4128,6 +4142,58 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return activeSkillIds;
+        }
+
+        internal IReadOnlyList<int> GetActiveCooldownUiSkillIdsForSurface(int currentTime, CooldownMaskSurface maskSurface)
+        {
+            if (_cooldowns.Count == 0 && _cooldownUiPresentations.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            HashSet<int> uniqueSkillIds = new();
+            foreach (int skillId in _cooldowns.Keys)
+            {
+                if (TryGetCooldownUiState(skillId, currentTime, maskSurface, out CooldownUiState state)
+                    && state.DisplayInCooldownUi)
+                {
+                    uniqueSkillIds.Add(skillId);
+                }
+            }
+
+            foreach (int skillId in _cooldownUiPresentations.Keys)
+            {
+                if (TryGetCooldownUiState(skillId, currentTime, maskSurface, out CooldownUiState state)
+                    && state.DisplayInCooldownUi)
+                {
+                    uniqueSkillIds.Add(skillId);
+                }
+            }
+
+            if (uniqueSkillIds.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return uniqueSkillIds.ToArray();
+        }
+
+        internal static string ResolveCooldownCounterTextForSurface(
+            bool hasVisualState,
+            string visualCounterText,
+            CooldownUiState cooldownState)
+        {
+            if (hasVisualState)
+            {
+                return visualCounterText;
+            }
+
+            if (cooldownState.SuppressCounterText || string.IsNullOrWhiteSpace(cooldownState.CounterText))
+            {
+                return string.Empty;
+            }
+
+            return cooldownState.CounterText;
         }
 
         public void SetServerCooldownRemaining(int skillId, int remainingMs, int currentTime)
@@ -8082,6 +8148,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             int equippedMountItemId,
             int activeAvatarTransformSkillId)
         {
+            if (string.IsNullOrWhiteSpace(currentActionName)
+                && ClientShootAttackFamilyResolver.IsClientFallbackShootAttackVehicle(mountedStateMountItemId))
+            {
+                // Keep fire-time shoot offsets anchored to the currently rendered mounted
+                // state when action names are temporarily blank.
+                return mountedStateMountItemId;
+            }
+
             int currentActionMountItemId = ResolveClientOwnedVehicleCurrentActionMountItemId(
                 currentActionName,
                 activeSkillMountItemId,
@@ -13074,6 +13148,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (IsExplicitBoundJumpSkill(skill))
+            {
+                // `DoActiveSkill_BoundJump` keeps direct non-grounded owners on the
+                // airborne-start branch by skill id. Do not fall back to metadata
+                // availability for these rows when runtime skill surfaces are sparse.
+                return true;
+            }
+
             if (HasBoundJumpMovementProfile(skill))
             {
                 return skill.AvailableInJumpingState;
@@ -15456,7 +15538,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             BulletAnimationPresentation presentation,
             Vector2 projectilePosition)
         {
-            return presentation?.SourcePoint ?? projectilePosition;
+            if (presentation != null
+                && TryResolveFiniteBulletAnimationPosition(presentation.SourcePoint, out Vector2 sourcePoint))
+            {
+                return sourcePoint;
+            }
+
+            if (presentation != null
+                && TryResolveFiniteBulletAnimationPosition(presentation.DestinationPoint, out Vector2 destinationPoint))
+            {
+                return destinationPoint;
+            }
+
+            return TryResolveFiniteBulletAnimationPosition(projectilePosition, out Vector2 livePosition)
+                ? livePosition
+                : Vector2.Zero;
         }
 
         internal static int ResolveBulletAnimationPresentationDurationMs(
@@ -17345,7 +17441,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (owner?.Presentation == null)
             {
-                return owner?.PreviousPosition ?? Vector2.Zero;
+                return TryResolveFiniteBulletAnimationPosition(owner?.PreviousPosition ?? Vector2.Zero, out Vector2 previousPosition)
+                    ? previousPosition
+                    : Vector2.Zero;
             }
 
             if (projectile != null)
@@ -17360,12 +17458,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return liveProjectilePosition;
                 }
 
-                return owner.PreviousPosition;
+                if (TryResolveFiniteBulletAnimationPosition(owner.PreviousPosition, out Vector2 finitePreviousPosition))
+                {
+                    return finitePreviousPosition;
+                }
+
+                return ResolveBulletAnimationInterpolatedPosition(owner.Presentation, currentTime);
             }
 
             return ShouldUseRegisteredBulletAnimationTimelinePosition(owner.Presentation, projectile: null)
                 ? ResolveBulletAnimationInterpolatedPosition(owner.Presentation, currentTime)
-                : owner.PreviousPosition;
+                : (TryResolveFiniteBulletAnimationPosition(owner.PreviousPosition, out Vector2 detachedPreviousPosition)
+                    ? detachedPreviousPosition
+                    : ResolveBulletAnimationInterpolatedPosition(owner.Presentation, currentTime));
+        }
+
+        internal static bool TryResolveFiniteBulletAnimationPosition(Vector2 position, out Vector2 finitePosition)
+        {
+            finitePosition = Vector2.Zero;
+            if (!float.IsFinite(position.X) || !float.IsFinite(position.Y))
+            {
+                return false;
+            }
+
+            finitePosition = position;
+            return true;
         }
 
         internal static bool ShouldUseRegisteredBulletAnimationTimelinePosition(
@@ -26254,6 +26371,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(label, BoosterBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MasteryBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MapleWarriorBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, DebuffResistanceBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, AllStatsBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, StrengthBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, DexterityBuffLabel, StringComparison.OrdinalIgnoreCase)
@@ -28791,8 +28909,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasPendingSwallowAbsorb,
             bool swallowFamilyOutcome)
         {
-            return swallowFamilyOutcome
-                   && (!hasSwallowState || hasPendingSwallowAbsorb);
+            _ = hasPendingSwallowAbsorb;
+            return swallowFamilyOutcome && !hasSwallowState;
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

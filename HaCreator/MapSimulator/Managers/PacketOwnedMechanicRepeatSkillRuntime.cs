@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.Managers
     internal static class PacketOwnedMechanicRepeatSkillRuntime
     {
         private static readonly char[] Sg88MismatchByteListSeparators = { ',', ';', '|', ' ', '/', '+' };
+        private static readonly char[] Sg88MismatchFieldListSeparators = { ',', ';', '|', '/', '+' };
         private static readonly Regex Sg88MismatchPairRegex = new(
             @"byte\s*(?<index>\d+)\s*:\s*0x(?<observed>[0-9A-Fa-f]{1,2})\s*->\s*0x(?<rebuilt>[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -921,7 +922,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string[] tokens = normalizedSegment.Split(
-                Sg88MismatchByteListSeparators,
+                Sg88MismatchFieldListSeparators,
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             foreach (string rawToken in tokens)
             {
@@ -948,6 +949,35 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            if (parsedByteIndices.Count == 0
+                && normalizedSegment.IndexOf(' ', StringComparison.Ordinal) >= 0)
+            {
+                string[] fallbackWhitespaceTokens = normalizedSegment.Split(
+                    ' ',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (string rawToken in fallbackWhitespaceTokens)
+                {
+                    string token = NormalizeSg88MismatchByteToken(rawToken).Trim().Trim('"', '\'');
+                    if (token.StartsWith("field", StringComparison.OrdinalIgnoreCase))
+                    {
+                        token = token.Substring("field".Length).TrimStart(':', '=', '_', '-').Trim();
+                    }
+
+                    if (!TryParseSg88ReplayParityMismatchFieldToken(token, out int[] fieldByteIndices))
+                    {
+                        continue;
+                    }
+
+                    foreach (int byteIndex in fieldByteIndices)
+                    {
+                        if (byteIndex >= 0)
+                        {
+                            parsedByteIndices.Add(byteIndex);
+                        }
+                    }
+                }
+            }
+
             return parsedByteIndices
                 .OrderBy(index => index)
                 .ToArray();
@@ -959,6 +989,12 @@ namespace HaCreator.MapSimulator.Managers
             if (string.IsNullOrWhiteSpace(token))
             {
                 return false;
+            }
+
+            if (TryParseSg88ReplayParityMismatchFieldAssignmentToken(token, out int[] assignmentByteIndices))
+            {
+                byteIndices = assignmentByteIndices;
+                return true;
             }
 
             string[] candidateTokens = BuildSg88MismatchFieldTokenCandidates(token);
@@ -974,6 +1010,59 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        private static bool TryParseSg88ReplayParityMismatchFieldAssignmentToken(string token, out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string trimmedToken = token.Trim();
+            int separatorIndex = trimmedToken.IndexOfAny(new[] { ':', '=' });
+            if (separatorIndex <= 0 || separatorIndex >= trimmedToken.Length - 1)
+            {
+                return false;
+            }
+
+            string left = trimmedToken.Substring(0, separatorIndex).Trim();
+            string right = trimmedToken.Substring(separatorIndex + 1).Trim();
+            if (IsSg88MismatchFalseLikeValueToken(right))
+            {
+                return false;
+            }
+
+            if (TryMapSg88MismatchFieldTokenToByteIndices(left, out int[] mappedLeft))
+            {
+                byteIndices = mappedLeft;
+                return true;
+            }
+
+            if (TryMapSg88MismatchFieldTokenToByteIndices(right, out int[] mappedRight))
+            {
+                byteIndices = mappedRight;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsSg88MismatchFalseLikeValueToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return true;
+            }
+
+            string normalized = token.Trim()
+                .Trim('"', '\'')
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized is "0" or "false" or "no" or "none" or "null" or "na" or "n/a";
         }
 
         private static string[] BuildSg88MismatchFieldTokenCandidates(string token)

@@ -100,11 +100,12 @@ namespace HaCreator.MapSimulator.UI
                             short toPosition = reader.ReadInt16();
                             requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
                                 || ShouldRequireSecondaryStatChangedPointTrailer(inventoryType, fromPosition, toPosition);
-                            operationContext = ObserveCharacterInventoryOperationRemove(
+                            operationContext = ObserveCharacterInventoryOperationSwap(
                                 request,
                                 operationContext,
                                 inventoryType,
-                                fromPosition);
+                                fromPosition,
+                                toPosition);
                             if (TryMatchesCharacterInventoryOperationSwap(
                                     request,
                                     inventoryType,
@@ -422,6 +423,25 @@ namespace HaCreator.MapSimulator.UI
                 sawExpectedNegativeCashRemove,
                 sawExpectedTargetEquipRemove,
                 sawExpectedTargetCashRemove);
+        }
+
+        private static CharacterInventoryOperationContext ObserveCharacterInventoryOperationSwap(
+            EquipmentChangeRequest request,
+            CharacterInventoryOperationContext context,
+            byte inventoryType,
+            short sourcePosition,
+            short targetPosition)
+        {
+            CharacterInventoryOperationContext observedSource = ObserveCharacterInventoryOperationRemove(
+                request,
+                context,
+                inventoryType,
+                sourcePosition);
+            return ObserveCharacterInventoryOperationRemove(
+                request,
+                observedSource,
+                inventoryType,
+                targetPosition);
         }
 
         private static bool TryValidateCharacterAddEntrySourceEvidence(

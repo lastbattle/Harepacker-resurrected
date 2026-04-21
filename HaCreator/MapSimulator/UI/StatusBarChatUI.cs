@@ -1620,15 +1620,16 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_pixelTexture, comboToggleBounds, new Color(186, 186, 186, 240));
             }
 
+            float comboTextX = comboBounds.X + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset;
             DrawTextWithShadow(
                 sprite,
                 ResolveWhisperPickerModalComboDisplayText(
                     chatState.InputText,
-                    Math.Max(1f, comboToggleBounds.Left - (comboBounds.X + WhisperPickerFramePadding + 1) - WhisperPickerFramePadding),
+                    Math.Max(1f, comboToggleBounds.Left - comboTextX),
                     value => MeasureChatText(value).X),
                 new Vector2(
-                    comboBounds.X + WhisperPickerFramePadding + 1,
-                    comboBounds.Y + Math.Max(0f, (comboBounds.Height - MeasureChatText("Ag").Y) * 0.5f)),
+                    comboTextX,
+                    comboBounds.Y + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextTopInset),
                 new Color(24, 24, 24),
                 new Color(255, 255, 255, 160));
         }
@@ -1677,15 +1678,15 @@ namespace HaCreator.MapSimulator.UI
             string clippedRowText = ResolveWhisperPickerModalDropdownDisplayText(
                 text,
                 rowBounds.Width,
-                WhisperPickerFramePadding + 1,
-                WhisperPickerFramePadding,
+                StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset,
+                rightPadding: 0,
                 value => MeasureChatText(value).X);
             DrawTextWithShadow(
                 sprite,
                 clippedRowText,
                 new Vector2(
-                    rowBounds.X + WhisperPickerFramePadding + 1,
-                    rowBounds.Y + Math.Max(0f, (rowBounds.Height - MeasureChatText("Ag").Y) * 0.5f)),
+                    rowBounds.X + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset,
+                    rowBounds.Y + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextTopInset),
                 textColor,
                 isSelected || pressed ? Color.Black : new Color(255, 255, 255, 160));
 
@@ -1933,12 +1934,12 @@ namespace HaCreator.MapSimulator.UI
                 ResolveWhisperPickerModalDropdownDisplayText(
                     text,
                     Math.Max(1, width - Math.Max(0, rowOriginDelta.X)),
-                    WhisperPickerFramePadding + 1,
-                    WhisperPickerFramePadding,
+                    StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset,
+                    rightPadding: 0,
                     value => MeasureChatText(value).X),
                 new Vector2(
-                    x + WhisperPickerFramePadding + 1 + rowOriginDelta.X,
-                    y + rowOriginDelta.Y + Math.Max(0f, (height - MeasureChatText("Ag").Y) * 0.5f)),
+                    x + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset + rowOriginDelta.X,
+                    y + rowOriginDelta.Y + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextTopInset),
                 isSelected ? Color.White : new Color(244, 240, 227),
                 Color.Black);
 

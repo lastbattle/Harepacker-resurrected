@@ -774,22 +774,63 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             subtype = payload[0];
+            bool supported = IsSupportedMirroredClientSubtype(subtype);
+            return supported && IsValidMirroredClientPayloadShape(payload, subtype);
+        }
+
+        private static bool IsSupportedMirroredClientSubtype(byte subtype)
+        {
+            return subtype is 10 or 50 or 51 or 52 or 56 or 57 or 58 or 59 or 60 or 61;
+        }
+
+        private static bool IsValidMirroredClientPayloadShape(byte[] payload, byte subtype)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
             return subtype switch
             {
-                10 or 50 or 51 or 52 or 56 or 57 or 58 or 59 or 61 => true,
-                60 => payload.Length >= 1,
+                10 or 50 or 52 or 56 or 57 or 58 or 59 or 61 => payload.Length == 1,
+                51 => payload.Length == 2 && payload[1] <= 1,
+                60 => payload.Length == 1 || payload.Length == 2,
                 _ => false
+            };
+        }
+
+        private static string BuildInvalidMirroredPayloadShapeMessage(byte[] payload, byte subtype)
+        {
+            int payloadLength = payload?.Length ?? 0;
+            return subtype switch
+            {
+                51 => $"Memory Game client subtype 51 requires two bytes (51 <0|1>), but received {payloadLength} byte(s).",
+                60 => $"Memory Game client subtype 60 requires one byte (ban) or two bytes (turn-up card), but received {payloadLength} byte(s).",
+                10 or 50 or 52 or 56 or 57 or 58 or 59 or 61 => $"Memory Game client subtype {subtype} requires a single-byte payload, but received {payloadLength} byte(s).",
+                _ => $"Unsupported Memory Game client subtype {subtype}."
             };
         }
 
         private static bool TryValidateClientMiniRoomRequest(byte[] payload, out byte subtype, out string status)
         {
             status = null;
-            if (!TryClassifyMirroredClientSubtype(payload, out subtype))
+            subtype = 0;
+            if (payload == null || payload.Length == 0)
             {
-                status = payload == null || payload.Length == 0
-                    ? "Memory Game client request payload is empty."
-                    : $"Unsupported Memory Game client subtype {payload[0]}.";
+                status = "Memory Game client request payload is empty.";
+                return false;
+            }
+
+            subtype = payload[0];
+            if (!IsSupportedMirroredClientSubtype(subtype))
+            {
+                status = $"Unsupported Memory Game client subtype {subtype}.";
+                return false;
+            }
+
+            if (!IsValidMirroredClientPayloadShape(payload, subtype))
+            {
+                status = BuildInvalidMirroredPayloadShapeMessage(payload, subtype);
                 return false;
             }
 
@@ -820,11 +861,9 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (!TryClassifyMirroredClientSubtype(decodedPayload, out byte subtype))
+            if (!TryValidateClientMiniRoomRequest(decodedPayload, out _, out string validationError))
             {
-                error = decodedPayload.Length == 0
-                    ? "Memory Game client packet payload is empty."
-                    : $"Unsupported Memory Game client subtype {decodedPayload[0]}.";
+                error = validationError;
                 return false;
             }
 

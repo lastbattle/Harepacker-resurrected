@@ -515,6 +515,7 @@ namespace HaCreator.MapSimulator.Managers
                 return 0;
             }
 
+            PendingTouchRequest previousHead = _pendingOutboundPackets.Peek();
             int removedCount = 0;
             int pendingCount = _pendingOutboundPackets.Count;
             for (int i = 0; i < pendingCount; i++)
@@ -533,6 +534,17 @@ namespace HaCreator.MapSimulator.Managers
             if (_pendingOutboundPackets.Count == 0)
             {
                 ResetDeferredTouchFlushScheduleUnsafe();
+            }
+            else
+            {
+                PendingTouchRequest nextHead = _pendingOutboundPackets.Peek();
+                if (_deferredTouchFlushTickInitialized
+                    && removedCount > 0
+                    && !ReferenceEquals(previousHead, nextHead))
+                {
+                    int replayDelay = ComputeDeferredTouchReplayDelayMs(previousHead.SourceTick, nextHead.SourceTick);
+                    _nextDeferredTouchFlushTick = unchecked(_nextDeferredTouchFlushTick + replayDelay);
+                }
             }
 
             return removedCount;

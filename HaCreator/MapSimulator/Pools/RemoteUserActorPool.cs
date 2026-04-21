@@ -106,7 +106,9 @@ namespace HaCreator.MapSimulator.Pools
             int CurrentTime,
             bool UseOwnerFacing,
             bool AttachToOwner = true,
-            int? SecondaryInt32Value = null);
+            int? SecondaryInt32Value = null,
+            int[] TrailingInt32Values = null,
+            byte[] StringBranchPrefixBytes = null);
         public readonly record struct RemoteChatLogMessagePresentation(
             int CharacterId,
             byte EffectType,
@@ -249,6 +251,7 @@ namespace HaCreator.MapSimulator.Pools
             public string HitString { get; init; }
             public int? HitSecondaryInt32Value { get; init; }
             public int[] HitTrailingInt32Values { get; init; }
+            public byte[] HitStringBranchPrefixBytes { get; init; }
             public int PacketTime { get; init; }
         }
 
@@ -2710,6 +2713,7 @@ namespace HaCreator.MapSimulator.Pools
                 HitString = packet.HitString,
                 HitSecondaryInt32Value = packet.HitSecondaryInt32Value,
                 HitTrailingInt32Values = packet.HitTrailingInt32Values,
+                HitStringBranchPrefixBytes = packet.HitStringBranchPrefixBytes,
                 PacketTime = currentTime
             };
 
@@ -3825,7 +3829,9 @@ namespace HaCreator.MapSimulator.Pools
                         currentTime,
                         UseOwnerFacing: false,
                         AttachToOwner: true,
-                        SecondaryInt32Value: packet.SecondaryInt32Value));
+                        SecondaryInt32Value: packet.SecondaryInt32Value,
+                        TrailingInt32Values: packet.TrailingInt32Values,
+                        StringBranchPrefixBytes: packet.StringBranchPrefixBytes));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered maker-skill fixed effect {makerSkillEffectPath}.";
                     return true;
 
@@ -3895,7 +3901,9 @@ namespace HaCreator.MapSimulator.Pools
                         currentTime,
                         packet.KnownSubtype == RemoteUserEffectSubtype.CarnivalReservedEffect,
                         ShouldAttachRemotePacketOwnedStringEffectForParity(packet.KnownSubtype),
-                        packet.SecondaryInt32Value));
+                        packet.SecondaryInt32Value,
+                        packet.TrailingInt32Values,
+                        packet.StringBranchPrefixBytes));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered packet-owned string effect {packet.StringValue}.";
                     return true;
 
@@ -4304,7 +4312,7 @@ namespace HaCreator.MapSimulator.Pools
                     LimitTimeMs: MonsterBombLimitTimeMs);
             }
 
-            int impactMagnitude = (int)(clampedKeyDownTime / 1000d * GenericGrenadeImpactScale);
+            int impactMagnitude = ResolveRemoteGenericGrenadeImpactMagnitudeForParity(clampedKeyDownTime);
             return new RemoteGrenadePresentation(
                 characterId,
                 skillId,
@@ -4469,6 +4477,14 @@ namespace HaCreator.MapSimulator.Pools
             return skillId == MonsterBombSkillId
                 ? Math.Max(MonsterBombMinimumKeyDownMs, keyDownTime)
                 : keyDownTime;
+        }
+
+        private static int ResolveRemoteGenericGrenadeImpactMagnitudeForParity(int keyDownTimeMs)
+        {
+            // Client CUser::ThrowGrenade keeps integer quotient semantics:
+            // (tKeyDown / 1000) * 600 for non-4341003 throws.
+            int keyDownSeconds = keyDownTimeMs / 1000;
+            return keyDownSeconds * GenericGrenadeImpactScale;
         }
 
         private static int ResolveRemoteGrenadeBallAngleDegreesForParity(RemoteGrenadePresentation presentation)
@@ -8461,12 +8477,8 @@ namespace HaCreator.MapSimulator.Pools
             IEnumerable<PortableChairPairRecord> pairRecords,
             bool preferVisibleOnly)
         {
-            List<PortableChairPairRecord> orderedSourceRecords = pairRecords?
-                .Where(static record => record.CharacterId > 0 && record.ItemId > 0)
-                .GroupBy(static record => record.CharacterId)
-                .Select(static group => group.Last())
-                .ToList()
-                ?? new List<PortableChairPairRecord>();
+            List<PortableChairPairRecord> orderedSourceRecords =
+                BuildPortableChairSourceRecordsInClientOrder(pairRecords);
             IReadOnlyDictionary<int, PortableChairPairRecord> sourceRecordMap = orderedSourceRecords
                 .ToDictionary(static record => record.CharacterId);
             IReadOnlyDictionary<int, PortableChairPairParticipant> participantMap = participants?
@@ -8563,6 +8575,36 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return resolvedRecords;
+        }
+
+        private static List<PortableChairPairRecord> BuildPortableChairSourceRecordsInClientOrder(
+            IEnumerable<PortableChairPairRecord> pairRecords)
+        {
+            if (pairRecords == null)
+            {
+                return new List<PortableChairPairRecord>();
+            }
+
+            // CUserPool::OnCoupleChairRecordAdd removes any existing owner entry
+            // before appending the fresh record to the couple-chair list.
+            LinkedList<PortableChairPairRecord> orderedRecords = new();
+            Dictionary<int, LinkedListNode<PortableChairPairRecord>> nodeByCharacterId = new();
+            foreach (PortableChairPairRecord record in pairRecords)
+            {
+                if (record.CharacterId <= 0 || record.ItemId <= 0)
+                {
+                    continue;
+                }
+
+                if (nodeByCharacterId.TryGetValue(record.CharacterId, out LinkedListNode<PortableChairPairRecord> existingNode))
+                {
+                    orderedRecords.Remove(existingNode);
+                }
+
+                nodeByCharacterId[record.CharacterId] = orderedRecords.AddLast(record);
+            }
+
+            return orderedRecords.ToList();
         }
 
         private static int? ResolvePortableChairExistingPairCharacterIdForParity(
@@ -11002,7 +11044,8 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         private static RemoteTemporaryStatAvatarEffectState ResolveLatestRemoteTemporaryStatAuraTailState(
-            IReadOnlyList<RemoteTemporaryStatAvatarEffectState> tailStates)
+            IReadOnlyList<RemoteTemporaryStatAvatarEffectState> tailStates,
+            int currentTime)
         {
             if (tailStates == null || tailStates.Count == 0)
             {
@@ -11011,9 +11054,11 @@ namespace HaCreator.MapSimulator.Pools
 
             for (int i = tailStates.Count - 1; i >= 0; i--)
             {
-                if (tailStates[i] != null)
+                RemoteTemporaryStatAvatarEffectState candidate = tailStates[i];
+                if (candidate != null
+                    && !IsRemoteTemporaryStatAvatarEffectTransitionExpired(candidate, currentTime))
                 {
-                    return tailStates[i];
+                    return candidate;
                 }
             }
 
@@ -11192,7 +11237,8 @@ namespace HaCreator.MapSimulator.Pools
             RemoteTemporaryStatAvatarEffectState blessingArmorState,
             RemoteTemporaryStatAvatarEffectState repeatState,
             RemoteTemporaryStatAvatarEffectState magicShieldState,
-            RemoteTemporaryStatAvatarEffectState finalCutState)
+            RemoteTemporaryStatAvatarEffectState finalCutState,
+            int currentTime = int.MinValue)
         {
             IReadOnlyList<RemoteTemporaryStatAvatarEffectState> orderedStates =
                 BuildRemoteTemporaryStatAvatarEffectDrawStates(
@@ -11205,7 +11251,8 @@ namespace HaCreator.MapSimulator.Pools
                     blessingArmorState,
                     repeatState,
                     magicShieldState,
-                    finalCutState);
+                    finalCutState,
+                    currentTime);
 
             var orderedSkillIds = new List<int>(orderedStates.Count);
             for (int i = 0; i < orderedStates.Count; i++)
@@ -11600,7 +11647,8 @@ namespace HaCreator.MapSimulator.Pools
                     actor?.TemporaryStatBlessingArmorEffect,
                     actor?.TemporaryStatRepeatEffect,
                     actor?.TemporaryStatMagicShieldEffect,
-                    actor?.TemporaryStatFinalCutEffect);
+                    actor?.TemporaryStatFinalCutEffect,
+                    currentTime);
             for (int i = 0; i < drawStates.Count; i++)
             {
                 DrawRemoteTemporaryStatAvatarEffectState(
@@ -11626,7 +11674,8 @@ namespace HaCreator.MapSimulator.Pools
             RemoteTemporaryStatAvatarEffectState blessingArmorState,
             RemoteTemporaryStatAvatarEffectState repeatState,
             RemoteTemporaryStatAvatarEffectState magicShieldState,
-            RemoteTemporaryStatAvatarEffectState finalCutState)
+            RemoteTemporaryStatAvatarEffectState finalCutState,
+            int currentTime)
         {
             var orderedStates = new List<RemoteTemporaryStatAvatarEffectState>(11);
 
@@ -11643,7 +11692,7 @@ namespace HaCreator.MapSimulator.Pools
             // -> BlessingArmor -> Repeat -> MagicShield -> FinalCut.
             AddState(soulArrowState);
             AddState(weaponChargeState);
-            AddState(ResolveLatestRemoteTemporaryStatAuraTailState(auraTailStates));
+            AddState(ResolveLatestRemoteTemporaryStatAuraTailState(auraTailStates, currentTime));
 
             AddState(auraState);
             AddState(moreWildState);
@@ -13321,9 +13370,10 @@ namespace HaCreator.MapSimulator.Pools
             {
                 return null;
             }
+            bool hasValidMetadataOffset = snapshot.WeaponChargePayloadOffset >= 0
+                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int);
 
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatMetadata(
                     snapshot.RawPayload,
                     snapshot.WeaponChargePayloadOffset,
@@ -13332,8 +13382,7 @@ namespace HaCreator.MapSimulator.Pools
                 return scopedMetadataChargeSkillId;
             }
 
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     snapshot.WeaponChargePayloadOffset,
@@ -13344,8 +13393,7 @@ namespace HaCreator.MapSimulator.Pools
                 return scopedWindowChargeSkillId;
             }
 
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     sizeof(int) * 4,
@@ -13356,8 +13404,7 @@ namespace HaCreator.MapSimulator.Pools
                 return nearestMetadataChargeSkillId;
             }
 
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     sizeof(int) * 4,
@@ -13395,6 +13442,21 @@ namespace HaCreator.MapSimulator.Pools
                     out int scopedMaskBaseElementChargeSkillId))
             {
                 return scopedMaskBaseElementChargeSkillId;
+            }
+
+            if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int metadataMissingNearestMaskBaseChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    metadataMissingNearestMaskBaseChargeElement,
+                    out int metadataMissingNearestMaskBaseElementChargeSkillId))
+            {
+                return metadataMissingNearestMaskBaseElementChargeSkillId;
             }
 
             if (AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
@@ -13459,9 +13521,10 @@ namespace HaCreator.MapSimulator.Pools
             {
                 return false;
             }
+            bool hasValidMetadataOffset = snapshot.WeaponChargePayloadOffset >= 0
+                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int);
 
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatMetadata(
                     snapshot.RawPayload,
                     snapshot.WeaponChargePayloadOffset,
@@ -13470,8 +13533,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     snapshot.WeaponChargePayloadOffset,
@@ -13482,8 +13544,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     sizeof(int) * 4,
@@ -13495,8 +13556,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (snapshot.WeaponChargePayloadOffset >= 0
-                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+            if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     sizeof(int) * 4,
@@ -13523,6 +13583,17 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
                     AfterImageChargeSkillResolver.ChargeMetadataScopedScanBytes,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
                     out chargeElement))
             {
                 return true;

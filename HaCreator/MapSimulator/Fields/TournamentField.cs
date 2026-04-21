@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Fields
         private const string MatchTableDialogOwner = "CMatchTableDlg";
         private const string TournamentContractSummary = "32-player bracket, resting period between rounds, prize podium after finals, five-minute exit grace.";
         private const int PacketTrailCapacity = 6;
+        private const int ForwardedRawPacketTrailCapacity = 6;
 
         private int _mapId;
         private bool _isActive;
@@ -73,6 +74,8 @@ namespace HaCreator.MapSimulator.Fields
         private bool _clientTournamentFlagBitContext;
         private bool _clientTournamentRegistrationContext;
         private readonly TournamentMatchTableDialogState _matchTableDialog = new();
+        private int _forwardedRawPacketCount;
+        private readonly Queue<int> _forwardedRawPacketTrail = new();
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
@@ -90,6 +93,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool ClientTournamentRegistrationContext => _clientTournamentRegistrationContext;
         public TournamentMatchTableDialogState MatchTableDialog => _matchTableDialog;
         public IReadOnlyList<string> PacketActionTrail => _packetActionTrail.ToArray();
+        public int ForwardedRawPacketCount => _forwardedRawPacketCount;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -293,6 +297,7 @@ namespace HaCreator.MapSimulator.Fields
                     Array.Empty<int>(),
                     $"forwarded raw packet {packetType}",
                     "CField::OnPacket(raw)");
+                RecordForwardedRawPacket(packetType);
                 SetSessionPhase(
                     TournamentSessionPhase.Forwarded,
                     $"CField_Tournament::OnPacket forwarded raw packet {packetType} to CField::OnPacket(raw).");
@@ -319,7 +324,7 @@ namespace HaCreator.MapSimulator.Fields
             string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
             string matchTableText = _matchTableDialog.DescribeStatus();
             string phaseText = BuildLifecycleStatusText(Environment.TickCount);
-            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | context={DescribeParticipationContext()} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
+            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | context={DescribeParticipationContext()} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()} | forwardedRaw={_forwardedRawPacketCount} | forwardedTrail={BuildForwardedRawPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
         }
 
         public string DescribeMatchTableDialog()
@@ -370,6 +375,8 @@ namespace HaCreator.MapSimulator.Fields
             _clientTournamentFlagBitContext = true;
             _clientTournamentRegistrationContext = true;
             _matchTableDialog.Reset();
+            _forwardedRawPacketCount = 0;
+            _forwardedRawPacketTrail.Clear();
         }
 
         private void ApplyTournamentNotice(BinaryReader reader, int currentTimeMs)
@@ -682,6 +689,26 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Join(" => ", _packetActionTrail.Select(entry => TrimForDisplay(entry, 44)));
+        }
+
+        private void RecordForwardedRawPacket(int packetType)
+        {
+            _forwardedRawPacketCount++;
+            _forwardedRawPacketTrail.Enqueue(packetType);
+            while (_forwardedRawPacketTrail.Count > ForwardedRawPacketTrailCapacity)
+            {
+                _forwardedRawPacketTrail.Dequeue();
+            }
+        }
+
+        private string BuildForwardedRawPacketTrailSummary()
+        {
+            if (_forwardedRawPacketTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join("->", _forwardedRawPacketTrail.Select(id => id.ToString(CultureInfo.InvariantCulture)));
         }
 
         private static string FormatSummaryItemList(IEnumerable<int> itemIds)

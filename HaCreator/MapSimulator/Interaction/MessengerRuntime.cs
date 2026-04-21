@@ -441,7 +441,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!_contacts.TryGetValue(pendingInvite.ContactName, out MessengerContactState contact))
             {
-                return $"Invite target {pendingInvite.ContactName} is no longer available.";
+                _lastActionSummary = $"Invite target {pendingInvite.ContactName} is no longer available.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary($"Pending Messenger invite for {pendingInvite.ContactName} collapsed because the contact profile was unavailable.");
+                TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the pending invite target became unavailable.");
+                return _lastActionSummary;
             }
 
             if (!accepted)
@@ -454,10 +458,13 @@ namespace HaCreator.MapSimulator.Interaction
                 RecordPacketSummary(packetDriven
                     ? $"Applied simulated Messenger invite-result packet: {contact.Name} rejected."
                     : $"Messenger invite to {contact.Name} was rejected.");
+                TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the pending invite was rejected.");
                 return _lastActionSummary;
             }
 
-            return JoinContact(contact, packetDriven, joinedViaIncomingInvite: false);
+            string joinResult = JoinContact(contact, packetDriven, joinedViaIncomingInvite: false);
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the pending invite resolved.");
+            return joinResult;
         }
 
         public string ResolvePendingInvitePacket(string contactName, bool accepted)

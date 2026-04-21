@@ -897,6 +897,7 @@ namespace HaCreator.MapSimulator
                         Text = line.Text,
                         Left = line.Left,
                         Top = line.Top,
+                        FontIndex = line.FontIndex,
                         IsHighlighted = line.IsHighlighted,
                         TextColorArgb = line.TextColorArgb
                     })
