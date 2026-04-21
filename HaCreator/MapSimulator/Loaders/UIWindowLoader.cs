@@ -9372,7 +9372,8 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             if (sourceTexture.Width == clientOwnerWidth
-                && sourceTexture.Height == clientOwnerHeight)
+                && sourceTexture.Height == clientOwnerHeight
+                && sourceOffset == Point.Zero)
             {
                 return sourceTexture;
             }
@@ -9429,7 +9430,8 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             if (composedWidth == sourceTexture.Width
-                && composedHeight == sourceTexture.Height)
+                && composedHeight == sourceTexture.Height
+                && sourceOffset == Point.Zero)
             {
                 return sourceTexture;
             }

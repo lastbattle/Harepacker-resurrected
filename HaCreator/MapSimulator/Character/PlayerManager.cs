@@ -725,21 +725,16 @@ namespace HaCreator.MapSimulator.Character
             int? fallStartLayerZMass,
             bool onLadderOrRope)
         {
+            _ = currentLayerPage;
+            _ = currentLayerZMass;
+            _ = fallStartLayerPage;
+            _ = fallStartLayerZMass;
+
             int? dragonAnchorLayerZ = DragonCompanionRuntime.ResolveClientOwnerLayerZFromVecCtrlContext(
                 dragonAnchorLayerPage,
                 dragonAnchorLayerZMass,
                 onLadderOrRope);
-            if (dragonAnchorLayerZ.HasValue)
-            {
-                return dragonAnchorLayerZ.Value;
-            }
-
-            return ResolveDragonOwnerLayerZFromVecCtrlState(
-                currentLayerPage,
-                currentLayerZMass,
-                fallStartLayerPage,
-                fallStartLayerZMass,
-                onLadderOrRope);
+            return dragonAnchorLayerZ;
         }
 
         private void InitializePlayer(PlayerCharacter player)
@@ -866,10 +861,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             MobSkillRuntimeData runtimeData = _mobSkillRuntimeResolver?.Invoke(skillId, Math.Max(1, skillLevel));
-            bool runtimeApplied = !applyRuntimeStatus;
+            bool runtimeApplied;
             if (applyRuntimeStatus)
             {
                 runtimeApplied = TryApplyMobSkillStatus(skillId, runtimeData, currentTime, sourceX);
+            }
+            else
+            {
+                runtimeApplied = _mobStatusController?.HasAppliedMobSkillState(skillId, currentTime) == true;
             }
 
             if (!runtimeApplied)

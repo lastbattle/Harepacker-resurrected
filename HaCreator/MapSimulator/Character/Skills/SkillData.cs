@@ -1171,6 +1171,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         public string ClientTileUolPath { get; set; }
         public string ClientBallUolPath { get; set; }
         public string ClientFlipBallUolPath { get; set; }
+        public SortedDictionary<int, string> ClientCharacterLevelTileUolPaths { get; set; } = new();
+        public Dictionary<int, string> ClientLevelTileUolPaths { get; set; } = new();
+        public SortedDictionary<int, string> ClientCharacterLevelBallUolPaths { get; set; } = new();
+        public Dictionary<int, string> ClientLevelBallUolPaths { get; set; } = new();
+        public SortedDictionary<int, string> ClientCharacterLevelFlipBallUolPaths { get; set; } = new();
+        public Dictionary<int, string> ClientLevelFlipBallUolPaths { get; set; } = new();
         public string ResolvedSummonAssetPath { get; set; }
         public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
         public List<string> SummonProjectileAnimationPaths { get; set; } = new();

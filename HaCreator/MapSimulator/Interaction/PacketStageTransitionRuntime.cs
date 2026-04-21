@@ -1709,14 +1709,18 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.InventoryItemsByType;
             Dictionary<InventoryType, int> primaryMatchedCountsByType = new();
             Dictionary<InventoryType, int> secondaryMatchedCountsByType = new();
+            Dictionary<InventoryType, int> totalMatchedCountsByType = new();
             Dictionary<InventoryType, int> primaryMatchedByteCountsByType = new();
             Dictionary<InventoryType, int> secondaryMatchedByteCountsByType = new();
+            Dictionary<InventoryType, int> totalMatchedByteCountsByType = new();
             foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
             {
                 primaryMatchedCountsByType[inventoryType] = 0;
                 secondaryMatchedCountsByType[inventoryType] = 0;
+                totalMatchedCountsByType[inventoryType] = 0;
                 primaryMatchedByteCountsByType[inventoryType] = 0;
                 secondaryMatchedByteCountsByType[inventoryType] = 0;
+                totalMatchedByteCountsByType[inventoryType] = 0;
             }
 
             BuildBackwardUpdateRemovedSerialNumberMatchSummary(
@@ -1738,6 +1742,15 @@ namespace HaCreator.MapSimulator.Interaction
                 out int secondaryMatchedCount,
                 out int secondaryUnmatchedCount,
                 out int secondaryMatchedByteCount);
+            int primaryUnmatchedByteCount = checked(primaryUnmatchedCount * sizeof(long));
+            int secondaryUnmatchedByteCount = checked(secondaryUnmatchedCount * sizeof(long));
+            int totalUnmatchedByteCount = checked(primaryUnmatchedByteCount + secondaryUnmatchedByteCount);
+            foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+            {
+                totalMatchedCountsByType[inventoryType] = checked(primaryMatchedCountsByType[inventoryType] + secondaryMatchedCountsByType[inventoryType]);
+                totalMatchedByteCountsByType[inventoryType] = checked(primaryMatchedByteCountsByType[inventoryType] + secondaryMatchedByteCountsByType[inventoryType]);
+            }
+
             BuildBackwardUpdateCashPositionAssignmentSummary(
                 inventoryItemsByType,
                 snapshot.InventorySlotLimits,
@@ -1774,8 +1787,10 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 BackwardUpdatePrimaryMatchedSerialNumberCountsByType = primaryMatchedCountsByType,
                 BackwardUpdateSecondaryMatchedSerialNumberCountsByType = secondaryMatchedCountsByType,
+                BackwardUpdateTotalMatchedSerialNumberCountsByType = totalMatchedCountsByType,
                 BackwardUpdatePrimaryMatchedSerialNumberByteCountsByType = primaryMatchedByteCountsByType,
                 BackwardUpdateSecondaryMatchedSerialNumberByteCountsByType = secondaryMatchedByteCountsByType,
+                BackwardUpdateTotalMatchedSerialNumberByteCountsByType = totalMatchedByteCountsByType,
                 BackwardUpdatePrimaryMatchedSerialNumberCount = primaryMatchedCount,
                 BackwardUpdatePrimaryUnmatchedSerialNumberCount = primaryUnmatchedCount,
                 BackwardUpdateSecondaryMatchedSerialNumberCount = secondaryMatchedCount,
@@ -1784,6 +1799,9 @@ namespace HaCreator.MapSimulator.Interaction
                 BackwardUpdatePrimaryMatchedSerialNumberByteCount = primaryMatchedByteCount,
                 BackwardUpdateSecondaryMatchedSerialNumberByteCount = secondaryMatchedByteCount,
                 BackwardUpdateTotalMatchedSerialNumberByteCount = primaryMatchedByteCount + secondaryMatchedByteCount,
+                BackwardUpdatePrimaryUnmatchedSerialNumberByteCount = primaryUnmatchedByteCount,
+                BackwardUpdateSecondaryUnmatchedSerialNumberByteCount = secondaryUnmatchedByteCount,
+                BackwardUpdateTotalUnmatchedSerialNumberByteCount = totalUnmatchedByteCount,
                 BackwardUpdatePositionValidatedCashItemCountsByType = positionValidatedCountsByType,
                 BackwardUpdatePositionFallbackCashItemCountsByType = positionFallbackCountsByType,
                 BackwardUpdatePositionValidatedCashItemByteCountsByType = positionValidatedByteCountsByType,
@@ -3556,8 +3574,10 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyList<long> BackwardUpdateSecondaryRemovedSerialNumbers = null,
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePrimaryMatchedSerialNumberCountsByType = null,
         IReadOnlyDictionary<InventoryType, int> BackwardUpdateSecondaryMatchedSerialNumberCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdateTotalMatchedSerialNumberCountsByType = null,
         IReadOnlyDictionary<InventoryType, int> BackwardUpdatePrimaryMatchedSerialNumberByteCountsByType = null,
         IReadOnlyDictionary<InventoryType, int> BackwardUpdateSecondaryMatchedSerialNumberByteCountsByType = null,
+        IReadOnlyDictionary<InventoryType, int> BackwardUpdateTotalMatchedSerialNumberByteCountsByType = null,
         int BackwardUpdatePrimaryMatchedSerialNumberCount = 0,
         int BackwardUpdatePrimaryUnmatchedSerialNumberCount = 0,
         int BackwardUpdateSecondaryMatchedSerialNumberCount = 0,
@@ -3566,6 +3586,9 @@ namespace HaCreator.MapSimulator.Interaction
         int BackwardUpdatePrimaryMatchedSerialNumberByteCount = 0,
         int BackwardUpdateSecondaryMatchedSerialNumberByteCount = 0,
         int BackwardUpdateTotalMatchedSerialNumberByteCount = 0,
+        int BackwardUpdatePrimaryUnmatchedSerialNumberByteCount = 0,
+        int BackwardUpdateSecondaryUnmatchedSerialNumberByteCount = 0,
+        int BackwardUpdateTotalUnmatchedSerialNumberByteCount = 0,
         int? Meso = null,
         PacketCharacterDataTwoIntValueRecord? TwoIntValueRecord = null,
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,

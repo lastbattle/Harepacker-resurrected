@@ -48,6 +48,8 @@ namespace HaCreator.MapSimulator.UI
         public int InboundFromAdminShopInboxCount { get; private set; }
         public int LastInboundPacketType { get; private set; } = -1;
         public int WishlistSearchStateToken { get; private set; }
+        public int ServiceSessionId { get; private set; } = -1;
+        public int WishlistSearchSessionId { get; private set; } = -1;
         public int LastSubtype { get; private set; } = -1;
         public int LastResultCode { get; private set; } = -1;
         public bool LastResultHadResultCode { get; private set; }
@@ -102,6 +104,8 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
+            ServiceSessionId = AdvanceSessionId(ServiceSessionId);
+            WishlistSearchSessionId = -1;
             LastOutboundOpcode = -1;
             LastOutboundPayload = Array.Empty<byte>();
             LastNotice = string.Empty;
@@ -166,6 +170,8 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
+            ServiceSessionId = -1;
+            WishlistSearchSessionId = -1;
             LastNotice = noticeText ?? string.Empty;
             ClearPendingWishlistRegister();
             ClearPendingWishlistSearch();
@@ -191,6 +197,7 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
+            WishlistSearchSessionId = -1;
             LastNotice = string.Empty;
             LastOutboundSummary = outboundSummary ?? string.Empty;
             LastOwnerState = ownerState ?? string.Empty;
@@ -219,6 +226,8 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastResultHadResultCode = false;
+            ServiceSessionId = AdvanceSessionId(ServiceSessionId);
+            WishlistSearchSessionId = -1;
             LastOutboundOpcode = -1;
             LastOutboundPayload = Array.Empty<byte>();
             LastNotice = string.Empty;
@@ -249,6 +258,10 @@ namespace HaCreator.MapSimulator.UI
             ResultTrailingPayloadSignature = trailingByteCount > 0
                 ? NormalizePayloadSignature(trailingPayloadSignature)
                 : "none";
+            if (subtype == 4 && hasResultCode && resultCode == 0)
+            {
+                WishlistSearchSessionId = AdvanceSessionId(WishlistSearchSessionId);
+            }
             WouldDisconnect = false;
             TouchWishlistSearchStateToken();
         }
@@ -472,6 +485,8 @@ namespace HaCreator.MapSimulator.UI
         {
             return string.Join("|",
                 WishlistSearchStateToken,
+                ServiceSessionId,
+                WishlistSearchSessionId,
                 IsActive ? "1" : "0",
                 IsWaitingForResult ? "1" : "0",
                 WouldDisconnect ? "1" : "0",
@@ -521,6 +536,12 @@ namespace HaCreator.MapSimulator.UI
             string packetText = OpenCount > 0
                 ? $"pkt open {OpenCount}"
                 : "pkt idle";
+            string sessionText = ServiceSessionId >= 0
+                ? $"session {ServiceSessionId}"
+                : "session unresolved";
+            string searchSessionText = WishlistSearchSessionId >= 0
+                ? $"search-session {WishlistSearchSessionId}"
+                : "search-session unresolved";
             string resultText = ResultCount > 0
                 ? $"result {ResultCount}"
                 : "result 0";
@@ -549,7 +570,7 @@ namespace HaCreator.MapSimulator.UI
             string pendingSearchText = HasPendingWishlistSearch
                 ? $", staged {DescribePendingWishlistSearch()}"
                 : string.Empty;
-            return $"token {WishlistSearchStateToken}, {packetText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}{pendingSearchText}";
+            return $"token {WishlistSearchStateToken}, {packetText}, {sessionText}, {searchSessionText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}{pendingSearchText}";
         }
 
         public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
@@ -773,6 +794,16 @@ namespace HaCreator.MapSimulator.UI
                 _ => "packet unresolved"
             };
             return $"last ingress {packetLabel} from {LastInboundSource}.";
+        }
+
+        private static int AdvanceSessionId(int current)
+        {
+            if (current < 1 || current == int.MaxValue)
+            {
+                return 1;
+            }
+
+            return current + 1;
         }
 
         private string DescribePendingWishlistRegister()

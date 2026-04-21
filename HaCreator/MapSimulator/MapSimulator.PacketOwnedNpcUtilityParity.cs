@@ -379,22 +379,21 @@ namespace HaCreator.MapSimulator
                 int itemCount = BitConverter.ToUInt16(payload, sizeof(int));
                 if (itemCount > 0)
                 {
+                    if (!AdminShopPacketOwnedOpenCodec.TryDecode(payload, out AdminShopPacketOwnedOpenPayloadSnapshot snapshot))
+                    {
+                        message = "Admin-shop packet 367 payload could not be decoded with the recovered CAdminShopDlg::SetAdminShopDlg layout.";
+                        return false;
+                    }
+
                     string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
                     if (AdminShopPacketOwnedOwnerGateParity.ShouldIgnoreOpenAtOwnerGate(
                             hasBlockingUniqueModelessOwner: !string.IsNullOrWhiteSpace(blockingOwner),
                             commodityCount: itemCount))
                     {
-                        message = adminShopWindow.ApplyPacketOwnedAdminShopOpenIgnoredByUniqueModelessOwner(
+                        message = adminShopWindow.ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(
                             blockingOwner,
-                            npcTemplateId,
-                            itemCount);
+                            snapshot);
                         return true;
-                    }
-
-                    if (!AdminShopPacketOwnedOpenCodec.TryDecode(payload, out AdminShopPacketOwnedOpenPayloadSnapshot snapshot))
-                    {
-                        message = "Admin-shop packet 367 payload could not be decoded with the recovered CAdminShopDlg::SetAdminShopDlg layout.";
-                        return false;
                     }
 
                     if (!adminShopWindow.TryBeginPacketOwnedAdminShopSession(snapshot, out message))
@@ -414,19 +413,25 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (!AdminShopPacketOwnedResultCodec.TryDecode(payload, out AdminShopPacketOwnedResultPayloadSnapshot resultSnapshot))
+            {
+                message = "Admin-shop packet 366 requires the subtype byte.";
+                return false;
+            }
+
             string resultBlockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
             if (AdminShopPacketOwnedOwnerGateParity.ShouldIgnoreResultAtOwnerGate(
                     hasBlockingUniqueModelessOwner: !string.IsNullOrWhiteSpace(resultBlockingOwner),
                     acceptsResultAtOwnerGate: adminShopWindow.ShouldAcceptPacketOwnedAdminShopResultAtOwnerGate))
             {
-                message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredAtOwnerGate(resultBlockingOwner);
+                message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
+                    resultSnapshot.Subtype,
+                    resultSnapshot.ResultCode,
+                    resultSnapshot.TrailingByteCount,
+                    resultSnapshot.TrailingPayloadSignature,
+                    resultSnapshot.HasResultCode,
+                    resultBlockingOwner);
                 return true;
-            }
-
-            if (!AdminShopPacketOwnedResultCodec.TryDecode(payload, out AdminShopPacketOwnedResultPayloadSnapshot resultSnapshot))
-            {
-                message = "Admin-shop packet 366 requires the subtype byte.";
-                return false;
             }
 
             bool applied = adminShopWindow.TryApplyPacketOwnedAdminShopResult(

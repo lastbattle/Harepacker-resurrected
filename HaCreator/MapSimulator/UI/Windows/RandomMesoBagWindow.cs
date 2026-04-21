@@ -149,12 +149,7 @@ namespace HaCreator.MapSimulator.UI
 
             Vector2 size = MeasureWindowText(null, text);
             Vector2 position = ResolveAmountPosition(size.X);
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                WindowFont,
-                text,
-                position,
-                color);
+            DrawText(sprite, text, position, color);
         }
 
         private void ApplyButtonLayout()
@@ -238,7 +233,7 @@ namespace HaCreator.MapSimulator.UI
         {
             // CUIRandomMesoBag::Draw uses IWzFont::CalcTextWidth as an integer and draws at 200 - width - 5.
             int clientTextWidth = Math.Max(0, (int)measuredWidth);
-            return Math.Max(0, AmountTextBoxRightEdgeX - clientTextWidth - AmountTextRightPadding);
+            return AmountTextBoxRightEdgeX - clientTextWidth - AmountTextRightPadding;
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

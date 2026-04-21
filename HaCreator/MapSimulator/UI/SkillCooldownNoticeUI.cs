@@ -13,8 +13,24 @@ namespace HaCreator.MapSimulator.UI
         Ready
     }
 
+    internal enum StatusBarNoticeOwnerKind
+    {
+        QuizPanel = 0,
+        FloatNotice = 1,
+        ItemMsg = 2
+    }
+
     internal sealed class SkillCooldownNoticeUI
     {
+        internal readonly record struct StatusBarNoticeOwnerState(
+            StatusBarNoticeOwnerKind OwnerKind,
+            int OwnerIdentity,
+            int OwnerExpiresAtTick,
+            WeatherMessageOwnerSourceKind OwnerSourceKind,
+            int OwnerSkillId,
+            bool IsPresent,
+            bool IsExpired);
+
         internal readonly record struct NoticeFrameCandidate(
             string Name,
             bool HasTop,
@@ -567,38 +583,88 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            List<StatusBarNoticeOwnerState> owners = new(weatherMessages.Count);
             for (int i = 0; i < weatherMessages.Count; i++)
             {
-                WeatherMessageInfo message = weatherMessages[i];
-                if (message == null)
+                if (!TryCreateStatusBarItemMsgOwnerForClientParity(weatherMessages[i], currentTime, out StatusBarNoticeOwnerState owner))
                 {
                     continue;
                 }
 
-                if (message.OwnerKind != WeatherMessageOwnerKind.StatusBarItemMsg)
+                owners.Add(owner);
+            }
+
+            return HasBlockingStatusNoticeOwnerForClientParity(owners, incomingSkillId);
+        }
+
+        internal static bool HasBlockingStatusNoticeOwnerForClientParity(
+            IReadOnlyList<StatusBarNoticeOwnerState> owners,
+            int incomingSkillId = 0)
+        {
+            if (owners == null || owners.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < owners.Count; i++)
+            {
+                StatusBarNoticeOwnerState owner = owners[i];
+                if (!owner.IsPresent)
                 {
                     continue;
                 }
 
                 if (incomingSkillId > 0
-                    && message.OwnerSourceKind == WeatherMessageOwnerSourceKind.SkillCooldownNotice
-                    && message.OwnerSkillId == incomingSkillId)
+                    && owner.OwnerKind == StatusBarNoticeOwnerKind.ItemMsg
+                    && owner.OwnerSourceKind == WeatherMessageOwnerSourceKind.SkillCooldownNotice
+                    && owner.OwnerSkillId == incomingSkillId)
                 {
-                    // Keep same-skill cooldown owner refreshes on the current row
-                    // while still blocking cross-skill or non-cooldown itemMsg owners.
+                    // Keep same-skill cooldown owner refreshes on the current row while still
+                    // blocking cross-skill or non-cooldown status-bar notice owners.
                     continue;
                 }
 
                 // Client parity seam:
-                // CUIStatusBar::SetItemMsg blocks while itemMsg owner objects exist.
+                // CUIStatusBar::SetItemMsg blocks while quizPanel/floatNotice/itemMsg owner
+                // objects exist.
                 // Timer expiry is processed in CUIStatusBar::Update, so expired-yet-uncollected
                 // entries can still block admission before cleanup runs.
-                // Mirror that owner-identity gate by treating any valid StatusBarItemMsg owner
+                // Mirror that owner-identity gate by treating any valid owner
                 // row still present in the runtime list as blocking.
                 return true;
             }
 
             return false;
+        }
+
+        internal static bool TryCreateStatusBarItemMsgOwnerForClientParity(
+            WeatherMessageInfo message,
+            int currentTime,
+            out StatusBarNoticeOwnerState owner)
+        {
+            owner = default;
+            if (message == null || message.OwnerKind != WeatherMessageOwnerKind.StatusBarItemMsg)
+            {
+                return false;
+            }
+
+            int ownerExpiresAtTick = int.MinValue;
+            bool isExpired = false;
+            if (message.StartTime != int.MinValue && message.Duration > 0)
+            {
+                ownerExpiresAtTick = message.StartTime + message.Duration;
+                isExpired = unchecked(currentTime - ownerExpiresAtTick) >= 0;
+            }
+
+            owner = new StatusBarNoticeOwnerState(
+                StatusBarNoticeOwnerKind.ItemMsg,
+                OwnerIdentity: message.GetHashCode(),
+                OwnerExpiresAtTick: ownerExpiresAtTick,
+                OwnerSourceKind: message.OwnerSourceKind,
+                OwnerSkillId: message.OwnerSkillId,
+                IsPresent: true,
+                IsExpired: isExpired);
+            return true;
         }
 
         private static bool ShouldAcceptIncomingNoticeForClientParity(

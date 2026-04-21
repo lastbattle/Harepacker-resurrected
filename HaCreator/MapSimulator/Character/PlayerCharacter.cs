@@ -7541,11 +7541,22 @@ namespace HaCreator.MapSimulator.Character
                 signature.Add(part.OffsetY);
                 signature.Add(part.ZIndex);
                 signature.Add(part.IsVisible);
+                signature.Add(part.VisibilityPriority);
                 signature.Add(part.Tint.PackedValue);
                 signature.Add((int)part.PartType);
                 signature.Add((int)part.RenderLayer);
                 signature.Add(part.ZLayer, StringComparer.Ordinal);
                 signature.Add(RuntimeHelpers.GetHashCode(part.SourcePortableChairLayer));
+                signature.Add(RuntimeHelpers.GetHashCode(part.SourcePart));
+                IReadOnlyList<string> visibilityTokens = part.VisibilityTokens;
+                signature.Add(visibilityTokens?.Count ?? 0);
+                if (visibilityTokens != null)
+                {
+                    for (int tokenIndex = 0; tokenIndex < visibilityTokens.Count; tokenIndex++)
+                    {
+                        signature.Add(visibilityTokens[tokenIndex], StringComparer.Ordinal);
+                    }
+                }
             }
 
             return signature.ToHashCode();
@@ -10202,14 +10213,7 @@ namespace HaCreator.MapSimulator.Character
         internal int TryGetCurrentBodyRelMoveY(int currentTime, int mountedVehicleId)
         {
             string actionName = CurrentActionName;
-            if (string.IsNullOrWhiteSpace(actionName))
-            {
-                return 0;
-            }
-
-            int animationTime = GetRenderAnimationTime(currentTime);
             CharacterPart mountedStatePart = ResolveMountedStateTamingMobPart();
-
             CharacterPart mountedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(mountedVehicleId);
             if (mountedPart?.Slot == EquipSlot.TamingMob)
             {
@@ -10224,38 +10228,50 @@ namespace HaCreator.MapSimulator.Character
                     return mountedBodyRelMoveY;
                 }
 
-                if (canReuseActiveMountedStateBodyRelMove
-                    && TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out mountedBodyRelMoveY))
+                if (!string.IsNullOrWhiteSpace(actionName))
                 {
-                    return mountedBodyRelMoveY;
-                }
+                    int animationTime = GetRenderAnimationTime(currentTime);
 
-                if (TryResolveCurrentMountedClientBodyRelMoveYFromRawFrames(
-                        actionName,
-                        animationTime,
-                        mountedPart,
-                        out mountedBodyRelMoveY))
-                {
-                    return mountedBodyRelMoveY;
-                }
+                    if (canReuseActiveMountedStateBodyRelMove
+                        && TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out mountedBodyRelMoveY))
+                    {
+                        return mountedBodyRelMoveY;
+                    }
 
-                if (TryResolveCurrentMountedClientBodyRelMoveYFromAssembledFrames(
-                        actionName,
-                        animationTime,
-                        mountedPart,
-                        out mountedBodyRelMoveY))
-                {
-                    return mountedBodyRelMoveY;
-                }
+                    if (TryResolveCurrentMountedClientBodyRelMoveYFromRawFrames(
+                            actionName,
+                            animationTime,
+                            mountedPart,
+                            out mountedBodyRelMoveY))
+                    {
+                        return mountedBodyRelMoveY;
+                    }
 
-                CharacterAnimation mountedAnimation = CharacterAssembler.GetPartAnimation(mountedPart, actionName);
-                if (mountedAnimation?.Frames?.Count > 0)
-                {
-                    int mountedFrameIndex;
-                    mountedAnimation.GetFrameAtTime(animationTime, out mountedFrameIndex);
-                    return ResolveClientBodyRelMoveY(mountedAnimation.Frames, mountedFrameIndex);
+                    if (TryResolveCurrentMountedClientBodyRelMoveYFromAssembledFrames(
+                            actionName,
+                            animationTime,
+                            mountedPart,
+                            out mountedBodyRelMoveY))
+                    {
+                        return mountedBodyRelMoveY;
+                    }
+
+                    CharacterAnimation mountedAnimation = CharacterAssembler.GetPartAnimation(mountedPart, actionName);
+                    if (mountedAnimation?.Frames?.Count > 0)
+                    {
+                        int mountedFrameIndex;
+                        mountedAnimation.GetFrameAtTime(animationTime, out mountedFrameIndex);
+                        return ResolveClientBodyRelMoveY(mountedAnimation.Frames, mountedFrameIndex);
+                    }
                 }
             }
+
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return 0;
+            }
+
+            int resolvedAnimationTime = GetRenderAnimationTime(currentTime);
 
             if (Assembler == null)
             {
@@ -10268,7 +10284,7 @@ namespace HaCreator.MapSimulator.Character
                 return 0;
             }
 
-            int frameIndex = Assembler.GetFrameIndexAtTime(actionName, animationTime);
+            int frameIndex = Assembler.GetFrameIndexAtTime(actionName, resolvedAnimationTime);
             return ResolveClientBodyRelMoveY(frames, frameIndex);
         }
 

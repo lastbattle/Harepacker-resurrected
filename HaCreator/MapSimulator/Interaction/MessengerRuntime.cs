@@ -2420,6 +2420,9 @@ namespace HaCreator.MapSimulator.Interaction
             RecordPacketSummary(packet.AvatarLook != null
                 ? $"Decoded Messenger enter packet for {resolvedName}, slot {packet.SlotIndex}, CH {packet.Channel}, with AvatarLook."
                 : $"Decoded Messenger enter packet for {resolvedName}, slot {packet.SlotIndex}, CH {packet.Channel}.");
+            TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
+                "CUIMessenger::OnDestroy leave request completed after OnEnter mutated the room roster.");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the packet-owned room roster mutation.");
             return _lastActionSummary;
         }
 
@@ -2451,6 +2454,9 @@ namespace HaCreator.MapSimulator.Interaction
             int participantIndex = FindParticipantIndexBySlot(targetSlot);
             if (participantIndex < 0)
             {
+                TryResolveSessionOwnedLeaveRequestAfterRoomMutation(
+                    $"CUIMessenger::OnDestroy leave request completed after OnLeave slot {packet.SlotIndex} was already retired.");
+                TryResolveDeleteGateAfterStateChange("Messenger close gate passed after packet-owned leave observed a collapsed room state.");
                 return $"Messenger leave packet slot {packet.SlotIndex} is not active.";
             }
 

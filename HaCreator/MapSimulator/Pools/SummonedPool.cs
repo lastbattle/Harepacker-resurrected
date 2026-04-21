@@ -6561,9 +6561,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            return TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '+', out frameOffset)
-                   || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '-', out frameOffset)
-                   || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '.', out frameOffset)
+            return TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '.', out frameOffset)
                    || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, ':', out frameOffset)
                    || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '=', out frameOffset)
                    || TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffsetByDelimiter(normalizedAliasToken, '_', out frameOffset);

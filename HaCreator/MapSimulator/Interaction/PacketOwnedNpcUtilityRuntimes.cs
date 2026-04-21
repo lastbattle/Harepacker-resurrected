@@ -3417,72 +3417,87 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ClearInfo(int option)
         {
-            switch (option)
+            bool clearDamageInfo = option == 0 || option == 3;
+            bool clearRecoveryInfo = option == 1 || option == 3;
+            if (!clearDamageInfo && !clearRecoveryInfo)
             {
-                case 0:
-                    TotalDamage = 0;
-                    TotalHits = 0;
-                    MaxDamage = 0;
-                    MinDamage = 0;
-                    LastDotDamage = 0;
-                    LastDotHitCount = 0;
-                    LastAttrRate = null;
-                    _directDamageTotal = 0;
-                    _directAttackCount = 0;
-                    _directCriticalCount = 0;
-                    _directMissCount = 0;
-                    _directMaxCriticalDamage = 0;
-                    _directMinCriticalDamage = 0;
-                    _damageTotalDamage = 0;
-                    _damageTotalAttackCount = 0;
-                    _damageTotalAttrRate = 0;
-                    _averageAttrRate = 0;
-                    _averageDamagePerHit = 0;
-                    _averageDamagePerSecond = 0;
-                    _averageHitPerSecond = 0d;
-                    _totalAttackTimeSeconds = 0d;
-                    _lastAttackTick = 0;
-                    StatusMessage = "CBattleRecordMan cleared damage and DOT summary counters.";
-                    break;
-                case 1:
-                    LastDotDamage = 0;
-                    LastDotHitCount = 0;
-                    LastAttrRate = null;
-                    _recoveryTotal = 0;
-                    _recoveryCount = 0;
-                    _recoveryTotalHpIncApply = 0;
-                    _recoveryTotalMpIncApply = 0;
-                    _recoveryTotalHpIncReq = 0;
-                    _recoveryTotalMpIncReq = 0;
-                    _recoveryMeritRateHp = 0;
-                    _recoveryMeritRateMp = 0;
-                    _recoveryAverageMeritRateHp = 0;
-                    _recoveryAverageMeritRateMp = 0;
-                    _recoveryTotalUseItem = 0;
-                    _recoveryTotalUseHpItem = 0;
-                    _recoveryTotalUseMpItem = 0;
-                    _recoveryTotalUseHpMpItem = 0;
-                    _recoveryAverageHpIncApply = 0;
-                    _recoveryAverageMpIncApply = 0;
-                    _recoveryAverageHpIncReq = 0;
-                    _recoveryAverageMpIncReq = 0;
-                    _recoveryLastUseItemTick = 0;
-                    _recoveryForecastUsePerHour = 0;
-                    _recoveryTotalUseItemSeconds = 0d;
-                    StatusMessage = "CBattleRecordMan cleared recovery and DOT-only summary counters.";
-                    break;
-                case 2:
-                case 3:
-                    ResetSession(clearNotes: false);
-                    StatusMessage = "CBattleRecordMan cleared all battle-record counters.";
-                    break;
-                default:
-                    StatusMessage = $"CBattleRecordMan ignored unsupported clear option {option.ToString(CultureInfo.InvariantCulture)}.";
-                    break;
+                StatusMessage = $"CBattleRecordMan ignored unsupported clear option {option.ToString(CultureInfo.InvariantCulture)}.";
+                AppendNote(StatusMessage);
+                return StatusMessage;
             }
+
+            if (clearDamageInfo)
+            {
+                ClearDamageInfoValues();
+            }
+
+            if (clearRecoveryInfo)
+            {
+                ClearRecoveryInfoValues();
+            }
+
+            StatusMessage = clearDamageInfo && clearRecoveryInfo
+                ? "CBattleRecordMan::ClearInfo(3) cleared both DamageInfo and RecoveryItemInfo counters."
+                : clearDamageInfo
+                    ? "CBattleRecordMan::ClearInfo(0) cleared DamageInfo counters."
+                    : "CBattleRecordMan::ClearInfo(1) cleared RecoveryItemInfo counters.";
 
             AppendNote(StatusMessage);
             return StatusMessage;
+        }
+
+        private void ClearDamageInfoValues()
+        {
+            TotalDamage = 0;
+            TotalHits = 0;
+            MaxDamage = 0;
+            MinDamage = 0;
+            LastDotDamage = 0;
+            LastDotHitCount = 0;
+            LastAttrRate = null;
+            _lastDecodedDotDamage = 0;
+            _lastDecodedDotHitCount = 0;
+            _lastDecodedAttrRate = null;
+            _directDamageTotal = 0;
+            _directAttackCount = 0;
+            _directCriticalCount = 0;
+            _directMissCount = 0;
+            _directMaxCriticalDamage = 0;
+            _directMinCriticalDamage = 0;
+            _damageTotalDamage = 0;
+            _damageTotalAttackCount = 0;
+            _damageTotalAttrRate = 0;
+            _averageAttrRate = 0;
+            _averageDamagePerHit = 0;
+            _averageDamagePerSecond = 0;
+            _averageHitPerSecond = 0d;
+            _totalAttackTimeSeconds = 0d;
+            _lastAttackTick = 0;
+        }
+
+        private void ClearRecoveryInfoValues()
+        {
+            _recoveryTotal = 0;
+            _recoveryCount = 0;
+            _recoveryTotalHpIncApply = 0;
+            _recoveryTotalMpIncApply = 0;
+            _recoveryTotalHpIncReq = 0;
+            _recoveryTotalMpIncReq = 0;
+            _recoveryMeritRateHp = 0;
+            _recoveryMeritRateMp = 0;
+            _recoveryAverageMeritRateHp = 0;
+            _recoveryAverageMeritRateMp = 0;
+            _recoveryTotalUseItem = 0;
+            _recoveryTotalUseHpItem = 0;
+            _recoveryTotalUseMpItem = 0;
+            _recoveryTotalUseHpMpItem = 0;
+            _recoveryAverageHpIncApply = 0;
+            _recoveryAverageMpIncApply = 0;
+            _recoveryAverageHpIncReq = 0;
+            _recoveryAverageMpIncReq = 0;
+            _recoveryLastUseItemTick = 0;
+            _recoveryForecastUsePerHour = 0;
+            _recoveryTotalUseItemSeconds = 0d;
         }
 
         internal bool TryBuildOwnerOpenOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
@@ -3644,28 +3659,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return StatusMessage;
             }
 
-            if (damage < 0)
+            _directAttackCount++;
+            _directDamageTotal += damage;
+            if (damage == 0)
             {
-                _recoveryCount++;
-                _recoveryTotal += Math.Abs(damage);
+                _directMissCount++;
             }
-            else
-            {
-                _directAttackCount++;
-                _directDamageTotal += damage;
-                if (damage == 0)
-                {
-                    _directMissCount++;
-                }
 
-                MaxDamage = Math.Max(MaxDamage, damage);
-                MinDamage = MinDamage == 0 ? damage : Math.Min(MinDamage, damage);
-                if (isCritical)
-                {
-                    _directCriticalCount++;
-                    _directMaxCriticalDamage = Math.Max(_directMaxCriticalDamage, damage);
-                    _directMinCriticalDamage = _directMinCriticalDamage == 0 ? damage : Math.Min(_directMinCriticalDamage, damage);
-                }
+            MaxDamage = Math.Max(MaxDamage, damage);
+            MinDamage = MinDamage == 0 ? damage : Math.Min(MinDamage, damage);
+            if (isCritical)
+            {
+                _directCriticalCount++;
+                _directMaxCriticalDamage = Math.Max(_directMaxCriticalDamage, damage);
+                _directMinCriticalDamage = _directMinCriticalDamage == 0 ? damage : Math.Min(_directMinCriticalDamage, damage);
             }
 
             if (attrRate.HasValue)
@@ -3674,14 +3681,10 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastDecodedAttrRate = attrRate.Value;
             }
 
-            if (damage >= 0)
-            {
-                UpdateBattleDamageAverages(damage, attrRate, isDot: false, isSummon: isSummon);
-            }
+            UpdateBattleDamageAverages(damage, attrRate, isDot: false, isSummon: isSummon);
+            CheckTotalDamageOverflow();
 
-            StatusMessage = damage < 0
-                ? $"CBattleRecordMan::SetBattleDamageInfo applied recovery={Math.Abs(damage).ToString(CultureInfo.InvariantCulture)} (summon={isSummon}) under the recovered manager gate."
-                : $"CBattleRecordMan::SetBattleDamageInfo applied nDamage={damage.ToString(CultureInfo.InvariantCulture)}, critical={isCritical}, summon={isSummon}, attrRate={(attrRate.HasValue ? attrRate.Value.ToString(CultureInfo.InvariantCulture) : "none")} under the recovered manager gate.";
+            StatusMessage = $"CBattleRecordMan::SetBattleDamageInfo applied nDamage={damage.ToString(CultureInfo.InvariantCulture)}, critical={isCritical}, summon={isSummon}, attrRate={(attrRate.HasValue ? attrRate.Value.ToString(CultureInfo.InvariantCulture) : "none")} under the recovered manager gate.";
             AppendNote(StatusMessage);
             return StatusMessage;
         }
@@ -3702,14 +3705,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return StatusMessage;
             }
 
-            int requestedHp = Math.Max(0, hpRecovery);
-            int requestedMp = Math.Max(0, mpRecovery);
+            int requestedHp = hpRecovery;
+            int requestedMp = mpRecovery;
             int resolvedCurrentHp = currentHp ?? checked(beforeHp + requestedHp);
             int resolvedCurrentMp = currentMp ?? checked(beforeMp + requestedMp);
             int hpIncreaseApplied = Math.Max(0, resolvedCurrentHp - beforeHp);
             int mpIncreaseApplied = Math.Max(0, resolvedCurrentMp - beforeMp);
-            int appliedHp = Math.Min(requestedHp, hpIncreaseApplied);
-            int appliedMp = Math.Min(requestedMp, mpIncreaseApplied);
+            int appliedHp = hpIncreaseApplied < requestedHp ? hpIncreaseApplied : requestedHp;
+            int appliedMp = mpIncreaseApplied < requestedMp ? mpIncreaseApplied : requestedMp;
 
             _recoveryTotalHpIncReq += requestedHp;
             _recoveryTotalMpIncReq += requestedMp;
@@ -3718,9 +3721,9 @@ namespace HaCreator.MapSimulator.Interaction
             _recoveryCount += (appliedHp > 0 || appliedMp > 0) ? 1 : 0;
             _recoveryTotal += appliedHp + appliedMp;
 
-            if (requestedHp > 0 || requestedMp > 0)
+            if (requestedHp != 0 || requestedMp != 0)
             {
-                IncrementRecoveryUseItemCounters(requestedHp > 0, requestedMp > 0, currentTickCount);
+                IncrementRecoveryUseItemCounters(requestedHp != 0, requestedMp != 0, currentTickCount);
             }
 
             RecalculateRecoveryAverages();
@@ -3934,9 +3937,18 @@ namespace HaCreator.MapSimulator.Interaction
                 TotalDamage += dotDamage * hitCount;
                 MaxDamage = Math.Max(MaxDamage, dotDamage);
                 MinDamage = MinDamage == 0 ? dotDamage : Math.Min(MinDamage, dotDamage);
+                for (int i = 0; i < hitCount; i++)
+                {
+                    UpdateBattleDamageAverages(dotDamage, attrRate, isDot: true, isSummon: false);
+                }
+            }
+            else
+            {
+                UpdateBattleDamageAverages(dotDamage * hitCount, attrRate, isDot: true, isSummon: false);
             }
 
             LastAttrRate = attrRate;
+            CheckTotalDamageOverflow();
             StatusMessage = $"CBattleRecordMan applied DOT damage info: {dotDamage.ToString(CultureInfo.InvariantCulture)} x {hitCount.ToString(CultureInfo.InvariantCulture)}.";
             message = StatusMessage;
             return true;
@@ -4213,6 +4225,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _recoveryLastUseItemTick = nowTick;
+        }
+
+        private void CheckTotalDamageOverflow()
+        {
+            if (_damageTotalDamage > BattleRecordOverflowThreshold)
+            {
+                _damageTotalDamage = BattleRecordOverflowThreshold;
+            }
+            else if (_damageTotalDamage < -BattleRecordOverflowThreshold)
+            {
+                _damageTotalDamage = -BattleRecordOverflowThreshold;
+            }
         }
 
         private void CheckTotalRecoveryOverflow()

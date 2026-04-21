@@ -267,6 +267,7 @@ namespace HaCreator.MapSimulator.UI
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
             _clientOwnedKeyDowns.Clear();
+            TryReleaseMouseCapture();
             SetFocus(_parentHandle);
         }
 
@@ -377,6 +378,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void Dispose()
         {
+            TryReleaseMouseCapture();
             if (_editHandle != IntPtr.Zero)
             {
                 lock (HostMapLock)
@@ -754,6 +756,9 @@ namespace HaCreator.MapSimulator.UI
             else if (msg == WmKillFocus)
             {
                 _clientOwnedKeyDowns.Clear();
+                _mouseSelecting = false;
+                _mouseSelectionAnchor = -1;
+                TryReleaseMouseCapture();
                 if (ShouldCancelImeCompositionOnFocusChange(hasFocus: false))
                 {
                     CancelImeComposition();
@@ -993,6 +998,12 @@ namespace HaCreator.MapSimulator.UI
             return hasFocus;
         }
 
+        internal static bool ShouldReleaseClientOwnedMouseCaptureOnFocusChange(IntPtr captureHandle, IntPtr editHandle)
+        {
+            // Keep capture release narrow to the hosted anti-macro edit itself.
+            return editHandle != IntPtr.Zero && captureHandle == editHandle;
+        }
+
         internal static bool IsClientEncodedKeyUp(int clientLParam)
         {
             return clientLParam < 0;
@@ -1082,6 +1093,19 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsShiftKeyDown()
         {
             return (GetKeyState(VkShift) & 0x8000) != 0;
+        }
+
+        private void TryReleaseMouseCapture()
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            if (ShouldReleaseClientOwnedMouseCaptureOnFocusChange(GetCapture(), _editHandle))
+            {
+                ReleaseCapture();
+            }
         }
 
         private bool HasImeOwnedInputState()
@@ -1651,6 +1675,9 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetFocus();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetCapture();
 
         [DllImport("user32.dll")]
         private static extern short GetKeyState(int nVirtKey);

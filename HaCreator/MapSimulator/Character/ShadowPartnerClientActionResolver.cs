@@ -1752,6 +1752,9 @@ namespace HaCreator.MapSimulator.Character
             // Mounted Character/00002000 helper rows are still loader-owned fallback
             // inputs for these client-init raw actions even when they are not treated
             // as attack-identity actions by the runtime state machine.
+            "ladder2",
+            "rope2",
+            "smokeshell",
             "fake",
             "flashBang",
             "timeleap",

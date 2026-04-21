@@ -461,6 +461,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int WildHunterSwallowSkillId = 33101005;
         private const int WildHunterSwallowBuffSkillId = 33101006;
         private const int WildHunterSwallowAttackSkillId = 33101007;
+        private const int ClientPrepareHalfHpRequirementSkillId = 4211001;
+        private const int ClientPrepareSwallowTargetAdmissionSkillId = 33101005;
         private const int WildHunterSwallowMaxQueuedFollowUpRequests = 8;
         private const int WindWalkSkillId = 11101005;
         private const int NightLordFlashJumpSkillId = 4111006;
@@ -2292,6 +2294,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             // `CUser::ShowSkillEffect(..., nActionSpeed=6, bLeft=0, nLast=0x7FFFFFFF, pPtOffset=0)`
             // for this recovered local summon family, so local seam shaping keeps `bLeft`
             // fixed to `0` (right-facing) instead of deriving from move-action low-bit.
+            // `CUserLocal::DoActiveSkill_RepeatSkill@0x93fc10` routes `35121003`
+            // through `DoActiveSkill_Summon`, so it shares the same fixed `bLeft=0`
+            // owner behavior on this `ShowSkillEffect` seam.
+            35121003,
             3111002,
             3211002,
             33111003,
@@ -2398,6 +2404,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly HashSet<int> ClientDoActiveSkillSummonFamilySkillIds = new()
         {
             // Representative summon-owner callers recovered from `CUserLocal::DoActiveSkill_Summon`.
+            35121003,
             3111002,
             3211002,
             33101008,
@@ -2749,6 +2756,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (ShouldRejectClientDoActivePrepareFamilyBusyStateWithoutMessage(skill))
+            {
+                return false;
+            }
+
             string stateRestrictionMessage = GetStateRestrictionMessage(skill, currentTime);
             if (!string.IsNullOrWhiteSpace(stateRestrictionMessage))
             {
@@ -2930,12 +2942,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (ShouldRejectClientDoActivePrepareFamilyPrepareOccupancyStateWithoutMessage())
+            {
+                return true;
+            }
+
             if (ShouldRejectClientDoActivePrepareFamilyCooldownStateWithoutMessage(skill, currentTime))
             {
                 return true;
             }
 
             if (ShouldRejectClientDoActivePrepareFamilyRushCooldownStateWithoutMessage(skill, currentTime))
+            {
+                return true;
+            }
+
+            if (ShouldRejectClientDoActivePrepareFamilyHalfHpStateWithoutMessage(skill))
+            {
+                return true;
+            }
+
+            if (ShouldRejectClientDoActivePrepareFamilySwallowTargetStateWithoutMessage(skill, currentTime))
             {
                 return true;
             }
@@ -2951,6 +2978,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ShouldRejectClientDoActiveSummonFamilyStateWithoutMessage(skill)
                    || ShouldRejectClientDoActiveTownPortalFamilyStateWithoutMessage(skill)
                    || ShouldRejectClientDoActivePrepareFamilyStateWithoutMessage(skill, currentTime);
+        }
+
+        private bool ShouldRejectClientDoActivePrepareFamilyBusyStateWithoutMessage(SkillData skill)
+        {
+            return ResolveDoActiveSkillExecutionLane(skill) == ClientDoActiveSkillExecutionLane.Prepare
+                   && ShouldRejectClientDoActivePrepareFamilyPrepareOccupancyStateWithoutMessage();
         }
 
         private string ResolveClientDoActivePrepareFamilyRestrictionMessage(SkillData skill)
@@ -3044,6 +3077,63 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return GetCooldownRemaining(skill.SkillId, currentTime) > 0;
+        }
+
+        private bool ShouldRejectClientDoActivePrepareFamilyPrepareOccupancyStateWithoutMessage()
+        {
+            // `CUserLocal::DoActiveSkill_Prepare@0x941710` silently rejects when a
+            // one-time action is active or another prepare slot is occupied.
+            return _player?.IsPlayingClientOwnedOneTimeAction == true
+                   || _preparedSkill != null;
+        }
+
+        private bool ShouldRejectClientDoActivePrepareFamilyHalfHpStateWithoutMessage(SkillData skill)
+        {
+            if (skill?.SkillId != ClientPrepareHalfHpRequirementSkillId
+                || _player == null
+                || _player.MaxHP <= 0)
+            {
+                return false;
+            }
+
+            long hpPercent = (long)_player.HP * 100L / _player.MaxHP;
+            return hpPercent >= 50L;
+        }
+
+        private bool ShouldRejectClientDoActivePrepareFamilySwallowTargetStateWithoutMessage(SkillData skill, int currentTime)
+        {
+            if (skill?.SkillId != ClientPrepareSwallowTargetAdmissionSkillId)
+            {
+                return false;
+            }
+
+            if (_player == null)
+            {
+                return true;
+            }
+
+            int skillLevel = GetSkillLevel(skill.SkillId);
+            SkillLevelData levelData = skill.GetLevel(skillLevel);
+            if (levelData == null)
+            {
+                return true;
+            }
+
+            Rectangle worldHitbox = GetWorldAttackHitbox(skill, skillLevel, levelData, AttackResolutionMode.Melee, _player.FacingRight);
+            if (worldHitbox.Width <= 0 || worldHitbox.Height <= 0)
+            {
+                return true;
+            }
+
+            MobItem swallowTarget = ResolveTargetsInHitbox(
+                    worldHitbox,
+                    currentTime,
+                    maxTargets: 1,
+                    AttackResolutionMode.Melee,
+                    _player.FacingRight,
+                    preferredTargetMobId: null)
+                .FirstOrDefault();
+            return swallowTarget == null;
         }
 
         private static bool IsClientPrepareSkillBlockedByJobTier(int skillId)
@@ -3380,6 +3470,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
 
             if (!IsSkillAllowedForCurrentJob(skill))
+                return false;
+
+            if (ShouldRejectClientDoActivePrepareFamilyBusyStateWithoutMessage(skill))
                 return false;
 
             if (!string.IsNullOrWhiteSpace(GetStateRestrictionMessage(skill, currentTime)))
@@ -11220,6 +11313,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ClientDoActiveSkillPrepareRushCooldownSkillIds.Contains(skillId);
         }
 
+        internal static bool UsesClientPrepareHalfHpRejectForTesting(int skillId)
+        {
+            return skillId == ClientPrepareHalfHpRequirementSkillId;
+        }
+
+        internal static bool UsesClientPrepareSwallowTargetAdmissionForTesting(int skillId)
+        {
+            return skillId == ClientPrepareSwallowTargetAdmissionSkillId;
+        }
+
         internal static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
         {
             if (skill == null)
@@ -12910,12 +13013,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             // `DoActiveSkill_BoundJump` still directly owns these Flash Jump rows
             // even when WZ does not publish an authored `action/0` surface.
             return skill != null
-                   && (skill.SkillId == WindWalkSkillId
-                       || skill.SkillId == WildHunterJaguarJumpSkillId
-                       || skill.SkillId == NightLordFlashJumpSkillId
-                       || skill.SkillId == ShadowerFlashJumpSkillId
-                       || skill.SkillId == DualBladeFlashJumpSkillId
-                       || skill.SkillId == NightWalkerFlashJumpSkillId);
+                   && BoundJumpParityProfile.IsDirectBoundJumpSkillId(
+                       skill.SkillId,
+                       includeRocketBoosterSkillId: false);
         }
 
         internal static bool RequiresAirborneBoundJumpStart(SkillData skill)
@@ -12925,8 +13025,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (skill.SkillId == WindWalkSkillId
-                || skill.SkillId == ROCKET_BOOSTER_SKILL_ID)
+            if (BoundJumpParityProfile.IsGroundedStartDirectBoundJumpSkillId(skill.SkillId))
             {
                 return false;
             }
@@ -15744,6 +15843,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Vector2.Zero;
             }
 
+            bool hasFiniteSource = float.IsFinite(presentation.SourcePoint.X)
+                                   && float.IsFinite(presentation.SourcePoint.Y);
+            bool hasFiniteDestination = float.IsFinite(presentation.DestinationPoint.X)
+                                        && float.IsFinite(presentation.DestinationPoint.Y);
+            if (!hasFiniteSource && !hasFiniteDestination)
+            {
+                return Vector2.Zero;
+            }
+
+            if (!hasFiniteSource)
+            {
+                return presentation.DestinationPoint;
+            }
+
+            if (!hasFiniteDestination)
+            {
+                return presentation.SourcePoint;
+            }
+
             int duration = Math.Max(1, presentation.EndTime - presentation.StartTime);
             float progress = MathHelper.Clamp(
                 (currentTime - presentation.StartTime) / (float)duration,
@@ -15769,14 +15887,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return interpolated;
             }
 
+            Vector2 resolvedStopPosition = stopPosition.Value;
+            if (!float.IsFinite(resolvedStopPosition.X) || !float.IsFinite(resolvedStopPosition.Y))
+            {
+                resolvedStopPosition = interpolated;
+            }
+
+            bool hasFiniteDestination = float.IsFinite(presentation.DestinationPoint.X)
+                                        && float.IsFinite(presentation.DestinationPoint.Y);
             int registeredStart = presentation.StartTime;
             int registeredEnd = presentation.EndTime;
             int stop = Math.Clamp(stopTime.Value, registeredStart, registeredEnd);
             if (currentTime <= stop || stop >= registeredEnd)
             {
                 return currentTime >= registeredEnd
-                    ? presentation.DestinationPoint
-                    : stopPosition.Value;
+                    ? (hasFiniteDestination ? presentation.DestinationPoint : resolvedStopPosition)
+                    : resolvedStopPosition;
+            }
+
+            if (!hasFiniteDestination)
+            {
+                return resolvedStopPosition;
             }
 
             float postStopProgress = MathHelper.Clamp(
@@ -15784,7 +15915,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 0f,
                 1f);
             return Vector2.Lerp(
-                stopPosition.Value,
+                resolvedStopPosition,
                 presentation.DestinationPoint,
                 postStopProgress);
         }
@@ -17322,7 +17453,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            return owner.NextAfterimageRepeatLayerId++;
+            int localRepeatId = Math.Max(1, owner.NextAfterimageRepeatLayerId++);
+            if (owner.MainLayerObjectId > 0)
+            {
+                // CAfterImageBullet repeat layers are COM objects distinct from the active layer.
+                // Keep IDs globally unique while preserving owner-local monotonic ordering.
+                return owner.MainLayerObjectId * 100000 + localRepeatId;
+            }
+
+            return localRepeatId;
         }
 
         internal static int ResolveBulletAfterimageParentRepeatLayerObjectId(
@@ -19262,9 +19401,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
                         hasSwallowState: false,
-                        hasPendingAbsorbOutcome: false,
-                        swallowFamilyOutcome,
-                        matchesPendingAbsorbRequest: false))
+                        swallowFamilyOutcome))
                 {
                     _swallowAbsorbOutcomeBuffer.Store(
                         skillId,
@@ -19285,9 +19422,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
                         hasSwallowState: true,
-                        hasPendingAbsorbOutcome,
-                        swallowFamilyOutcome,
-                        matchesPendingAbsorbRequest: false))
+                        swallowFamilyOutcome))
                 {
                     _swallowAbsorbOutcomeBuffer.Store(
                         skillId,
@@ -26072,6 +26207,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(label, BoosterBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MasteryBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MapleWarriorBuffLabel, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(label, AllStatsBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, StanceBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MaxHpBuffLabel, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(label, MaxMpBuffLabel, StringComparison.OrdinalIgnoreCase);
@@ -27524,12 +27660,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 1300000 => weaponCode is 43 or 44,
                 11100000 => weaponCode is 30 or 40,
                 12100007 => weaponCode is 37 or 38,
-                13100000 or 3100000 or 3120005 => weaponCode == 45,
+                // WZ also carries Wind Archer's advanced bow expert book on this seam:
+                // `skill/1311.img/skill/13110003/common/mastery = 55+u(x/2)`.
+                13100000 or 13110003 or 3100000 or 3120005 => weaponCode == 45,
                 14100000 or 4100000 => weaponCode == 47,
                 15100001 or 5100001 => weaponCode == 48,
                 2100006 or 2200006 or 2300006 or 22120002 or 22170001 or 2310008 => weaponCode is 37 or 38,
                 21100000 or 21120001 => weaponCode == 44,
                 3200000 or 3220004 => weaponCode == 46,
+                // WZ `skill/3210.img/skill/32100006/common/mastery = 10+2*x` keeps
+                // Battle Mage staff mastery explicit even when localized strings are generic.
+                32100006 => weaponCode == 38,
                 4200000 => weaponCode == 33,
                 4300000 => weaponCode == 34,
                 // Battle Mage `Weapon/Barricade Mastery` remains one-handed-only.
@@ -28511,13 +28652,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool ShouldStoreBufferedWildHunterSwallowAbsorbOutcome(
             bool hasSwallowState,
-            bool hasPendingAbsorbOutcome,
-            bool swallowFamilyOutcome,
-            bool matchesPendingAbsorbRequest)
+            bool swallowFamilyOutcome)
         {
-            return swallowFamilyOutcome
-                   && (!hasSwallowState
-                       || (hasPendingAbsorbOutcome && !matchesPendingAbsorbRequest));
+            return swallowFamilyOutcome && !hasSwallowState;
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

@@ -2301,6 +2301,13 @@ namespace HaCreator.MapSimulator.Managers
                     out byte observed,
                     out byte rebuilt))
             {
+                if (PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityMoveActionMismatchClass(
+                        entry.DecodedSg88FirstUseDecodeDetail,
+                        out string moveActionMismatchClass))
+                {
+                    return moveActionMismatchClass;
+                }
+
                 return "unknown";
             }
 
@@ -2385,13 +2392,15 @@ namespace HaCreator.MapSimulator.Managers
             return ClassifySg88FirstUseReplayParity(
                 entry.DecodedSg88FirstUseReplayParityMatched,
                 ResolveSg88ReplayMismatchByteIndices(entry),
-                entry.DecodedSg88FirstUseReplayMismatchPairs);
+                entry.DecodedSg88FirstUseReplayMismatchPairs,
+                entry.DecodedSg88FirstUseDecodeDetail);
         }
 
         internal static string ClassifySg88FirstUseReplayParity(
             bool? replayParityMatched,
             IReadOnlyCollection<int> mismatchByteIndices,
-            IReadOnlyList<string> mismatchPairs = null)
+            IReadOnlyList<string> mismatchPairs = null,
+            string decodeDetail = null)
         {
             if (!replayParityMatched.HasValue)
             {
@@ -2433,6 +2442,15 @@ namespace HaCreator.MapSimulator.Managers
                         out byte observedMoveAction,
                         out byte rebuiltMoveAction)
                     && (observedMoveAction & 1) == (rebuiltMoveAction & 1))
+                {
+                    return "mismatch:moveActionHighBitsOnly";
+                }
+
+                if (mismatchByteIndices.Count == 1
+                    && PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityMoveActionMismatchClass(
+                        decodeDetail,
+                        out string moveActionMismatchClass)
+                    && string.Equals(moveActionMismatchClass, "highBitsOnly", StringComparison.Ordinal))
                 {
                     return "mismatch:moveActionHighBitsOnly";
                 }

@@ -341,12 +341,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             byte normalizedAction = (byte)(packetAction & 0x7F);
             if (normalizedAction == PacketSkillActionSubsummon)
             {
-                return SummonAssistType.SummonAction;
+                return HasAuthoredSummonOwnedPacketSkillBranch(skill, normalizedAction)
+                    ? SummonAssistType.SummonAction
+                    : currentAssistType;
             }
 
             if (normalizedAction == PacketSkillActionHealingRobotHeal
                 && (HasSupportOwnedMinionAbilityCue(skill)
-                    || HasExplicitSupportOwnedPacketSkillBranch(skill, normalizedAction)))
+                    || HasExplicitSupportOwnedPacketSkillBranch(skill, normalizedAction))
+                && HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction))
             {
                 return SummonAssistType.Support;
             }
@@ -354,6 +357,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (IsBeholderSupportPacketSkillAction(normalizedAction))
             {
                 return skill.SkillId == BeholderSummonSkillId
+                       && HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction)
                     ? SummonAssistType.Support
                     : currentAssistType;
             }
@@ -363,14 +367,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (HasMinionAbilityToken(skill.MinionAbility, "summon"))
                 {
-                    return SummonAssistType.SummonAction;
+                    return HasAuthoredSummonOwnedPacketSkillBranch(skill, normalizedAction)
+                        ? SummonAssistType.SummonAction
+                        : currentAssistType;
                 }
 
                 if (HasMinionAbilityToken(skill.MinionAbility, "heal")
                     || HasMinionAbilityToken(skill.MinionAbility, "mes")
                     || HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage"))
                 {
-                    return SummonAssistType.Support;
+                    return HasAuthoredSupportOwnedPacketSkillBranch(skill, normalizedAction)
+                        ? SummonAssistType.Support
+                        : currentAssistType;
                 }
             }
 

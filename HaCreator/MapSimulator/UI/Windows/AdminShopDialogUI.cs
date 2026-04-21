@@ -1621,19 +1621,22 @@ namespace HaCreator.MapSimulator.UI
 
             if (!hasResultCode
                 || resultCode != 0
-                || trailingPayload == null
-                || trailingPayload.Length == 0)
+                || (_packetOwnedAdminShopSession.WishlistSearchSessionId < 0
+                    && (_packetOwnedWishlistPendingSearchRequestId < 0
+                        || string.IsNullOrWhiteSpace(_packetOwnedWishlistPendingSearchQuery))))
             {
                 ClearPendingPacketOwnedWishlistSearchRequest();
                 ClearPacketOwnedWishlistSearchSnapshot();
                 return;
             }
 
-            if (!AdminShopPacketOwnedWishlistSearchResultCodec.TryDecode(trailingPayload, out AdminShopPacketOwnedWishlistSearchSnapshot snapshot))
+            trailingPayload ??= Array.Empty<byte>();
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot = BuildStateOnlyPacketOwnedWishlistSearchSnapshot(trailingPayload.Length);
+            bool decodedPayload = trailingPayload.Length > 0
+                && AdminShopPacketOwnedWishlistSearchResultCodec.TryDecode(trailingPayload, out snapshot);
+            if (!decodedPayload)
             {
-                ClearPendingPacketOwnedWishlistSearchRequest();
-                ClearPacketOwnedWishlistSearchSnapshot();
-                return;
+                snapshot = BuildStateOnlyPacketOwnedWishlistSearchSnapshot(trailingPayload.Length);
             }
 
             snapshot = ApplyPendingWishlistSearchContext(snapshot);
@@ -1651,6 +1654,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClearPendingPacketOwnedWishlistSearchRequest();
+        }
+
+        private AdminShopPacketOwnedWishlistSearchSnapshot BuildStateOnlyPacketOwnedWishlistSearchSnapshot(int trailingByteCount)
+        {
+            int contractServiceSessionId = _packetOwnedAdminShopSession?.ServiceSessionId ?? -1;
+            int contractSearchSessionId = _packetOwnedAdminShopSession?.WishlistSearchSessionId ?? -1;
+            return new AdminShopPacketOwnedWishlistSearchSnapshot
+            {
+                ServiceSessionId = contractServiceSessionId,
+                SearchSessionId = contractSearchSessionId,
+                LocalSearchRequestId = _packetOwnedWishlistPendingSearchRequestId,
+                Query = _packetOwnedWishlistPendingSearchQuery ?? string.Empty,
+                CategoryKey = _packetOwnedWishlistPendingSearchCategoryKey ?? "all",
+                PriceRangeIndex = _packetOwnedWishlistPendingSearchPriceRangeIndex,
+                UsedFallbackRequestContext = true,
+                ItemIds = Array.Empty<int>(),
+                ResultRows = Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>(),
+                IsStateOnlySessionSnapshot = true,
+                TrailingByteCount = Math.Max(0, trailingByteCount)
+            };
         }
 
         private void ClearPacketOwnedWishlistSearchSnapshot()
@@ -1721,6 +1744,7 @@ namespace HaCreator.MapSimulator.UI
                 UsedFallbackRequestContext = true,
                 ItemIds = snapshot.ItemIds ?? Array.Empty<int>(),
                 ResultRows = snapshot.ResultRows ?? Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>(),
+                IsStateOnlySessionSnapshot = snapshot.IsStateOnlySessionSnapshot,
                 TrailingByteCount = snapshot.TrailingByteCount
             };
         }
@@ -2242,6 +2266,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (TryResolvePacketOwnedGoToCommodityEntry(commoditySerialNumber, out AdminShopEntry packetOwnedEntry))
+            {
+                return TryFocusResolvedCommodityEntry(packetOwnedEntry, commoditySerialNumber);
+            }
+
             if (!TryGetCommodityBySerialNumber(commoditySerialNumber, out AdminShopCommodityData commodity))
             {
                 _footerMessage = $"Commodity SN {commoditySerialNumber} does not resolve to a loaded Cash Shop sample row.";
@@ -2264,6 +2293,72 @@ namespace HaCreator.MapSimulator.UI
                 RestoreEntryFlags(new[] { matchedEntry }, _currentMode);
                 RestoreEntryStates(new[] { matchedEntry }, _currentMode);
                 PopulateEntryIcons(new[] { matchedEntry });
+            }
+
+            return TryFocusResolvedCommodityEntry(matchedEntry, commoditySerialNumber);
+        }
+
+        private bool TryResolvePacketOwnedGoToCommodityEntry(int commoditySerialNumber, out AdminShopEntry entry)
+        {
+            entry = null;
+            if (!UsesPacketOwnedAdminShopCatalog(_currentMode) || _packetOwnedAdminShopRows.Count <= 0)
+            {
+                return false;
+            }
+
+            int packetRowIndex = AdminShopPacketOwnedSellTemplateParity.FindPacketOwnedCommodityRowIndexForGoToCommoditySerial(
+                commoditySerialNumber,
+                _packetOwnedAdminShopRows);
+            if (packetRowIndex < 0 || packetRowIndex >= _packetOwnedAdminShopRows.Count)
+            {
+                return false;
+            }
+
+            PacketOwnedAdminShopCommoditySnapshot packetRow = _packetOwnedAdminShopRows[packetRowIndex];
+            entry = ResolveExistingPacketOwnedCommodityEntry(commoditySerialNumber);
+            if (entry != null)
+            {
+                return true;
+            }
+
+            entry = packetRow.Price > 0
+                ? CreatePacketOwnedCommodityEntry(packetRow, packetRowIndex)
+                : CreatePacketOwnedSellTemplateEntry(packetRow, packetRowIndex);
+            if (entry == null)
+            {
+                return false;
+            }
+
+            _paneStates[AdminShopPane.Npc].SourceEntries.Add(entry);
+            RestoreEntryFlags(new[] { entry }, _currentMode);
+            RestoreEntryStates(new[] { entry }, _currentMode);
+            PopulateEntryIcons(new[] { entry });
+            return true;
+        }
+
+        private AdminShopEntry ResolveExistingPacketOwnedCommodityEntry(int commoditySerialNumber)
+        {
+            for (int index = 0; index < _paneStates[AdminShopPane.Npc].SourceEntries.Count; index++)
+            {
+                AdminShopEntry candidate = _paneStates[AdminShopPane.Npc].SourceEntries[index];
+                if (candidate != null
+                    && candidate.IsPacketOwnedSnapshotRow
+                    && candidate.PacketSerialNumber == commoditySerialNumber)
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        private bool TryFocusResolvedCommodityEntry(AdminShopEntry matchedEntry, int commoditySerialNumber)
+        {
+            if (matchedEntry == null)
+            {
+                _footerMessage = $"Commodity SN {commoditySerialNumber} resolved, but the simulator could not build a focusable catalog row.";
+                UpdateActionButtonStates();
+                return false;
             }
 
             _activeBrowseMode = AdminShopBrowseMode.All;
@@ -4632,7 +4727,9 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<int> packetItemIds = snapshot.ItemIds;
             if (packetItemIds.Count <= 0)
             {
-                summary = $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; the packet-authored payload reported no result rows.";
+                summary = snapshot.IsStateOnlySessionSnapshot
+                    ? $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; the packet-owned owner advanced the search session without a decodable row payload."
+                    : $"SearchItemName staged 0 packet-authored result row(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using wishlist session {sessionLabel}; the packet-authored payload reported no result rows.";
                 return true;
             }
 
@@ -5091,6 +5188,7 @@ namespace HaCreator.MapSimulator.UI
                 || left.LocalSearchRequestId != right.LocalSearchRequestId
                 || left.PriceRangeIndex != right.PriceRangeIndex
                 || left.TrailingByteCount != right.TrailingByteCount
+                || left.IsStateOnlySessionSnapshot != right.IsStateOnlySessionSnapshot
                 || left.UsedFallbackRequestContext != right.UsedFallbackRequestContext
                 || !string.Equals(left.Query, right.Query, StringComparison.Ordinal)
                 || !string.Equals(left.CategoryKey, right.CategoryKey, StringComparison.Ordinal))
@@ -5179,10 +5277,13 @@ namespace HaCreator.MapSimulator.UI
             string fallbackLabel = snapshot.UsedFallbackRequestContext
                 ? "fallback staged-request context"
                 : "payload-authored context";
+            string sourceLabel = snapshot.IsStateOnlySessionSnapshot
+                ? "state-only search session"
+                : "decoded row payload";
             string tailLabel = snapshot.TrailingByteCount > 0
                 ? $"tail {snapshot.TrailingByteCount.ToString(CultureInfo.InvariantCulture)} byte(s)"
                 : "tail 0 byte";
-            return $"wishlist packet snapshot: {sessionLabel}, {requestLabel}, rows {snapshot.ItemIds.Count.ToString(CultureInfo.InvariantCulture)}, {queryLabel}, {categoryLabel}, {priceBandLabel}, {fallbackLabel}, {tailLabel}, sig {_packetOwnedWishlistSearchSnapshotSignature}.";
+            return $"wishlist packet snapshot: {sessionLabel}, {requestLabel}, rows {snapshot.ItemIds.Count.ToString(CultureInfo.InvariantCulture)}, {queryLabel}, {categoryLabel}, {priceBandLabel}, {fallbackLabel}, {sourceLabel}, {tailLabel}, sig {_packetOwnedWishlistSearchSnapshotSignature}.";
         }
 
         private WishlistSearchResult BuildWishlistSearchResult(AdminShopEntry entry, int score)

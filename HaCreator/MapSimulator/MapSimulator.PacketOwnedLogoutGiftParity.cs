@@ -1132,8 +1132,7 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<PacketOwnedLogoutGiftContextField>();
             }
 
-            int mappedValueCount = Math.Min(PacketOwnedLogoutGiftPrecursorContextSlotCount, leadingOpaqueInt32Values.Length);
-            int mappedStartIndex = leadingOpaqueInt32Values.Length - mappedValueCount;
+            int mappedValueCount = leadingOpaqueInt32Values.Length;
             int firstDwordIndex = PacketOwnedLogoutGiftPrecursorContextDwordIndex - (mappedValueCount - 1);
             PacketOwnedLogoutGiftContextField[] fields = new PacketOwnedLogoutGiftContextField[mappedValueCount];
             for (int i = 0; i < mappedValueCount; i++)
@@ -1142,7 +1141,7 @@ namespace HaCreator.MapSimulator
                 fields[i] = new PacketOwnedLogoutGiftContextField(
                     dwordIndex,
                     ResolvePacketOwnedLogoutGiftContextByteOffset(dwordIndex),
-                    leadingOpaqueInt32Values[mappedStartIndex + i],
+                    leadingOpaqueInt32Values[i],
                     ResolvePacketOwnedLogoutGiftLeadingContextSemanticName(dwordIndex));
             }
 
@@ -1253,25 +1252,13 @@ namespace HaCreator.MapSimulator
 
         private static string ResolvePacketOwnedLogoutGiftLeadingContextSemanticName(int dwordIndex)
         {
-            if (dwordIndex < PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex
-                || dwordIndex > PacketOwnedLogoutGiftPrecursorLastContextDwordIndex)
-            {
-                return null;
-            }
-
             int byteOffset = ResolvePacketOwnedLogoutGiftContextByteOffset(dwordIndex);
-            if (byteOffset < PacketOwnedLogoutGiftPrecursorFirstContextByteOffset
-                || byteOffset > PacketOwnedLogoutGiftPrecursorLastContextByteOffset)
-            {
-                return $"CWvsContext::dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}] (pre-`m_bPredictQuit`)";
-            }
-
             return dwordIndex switch
             {
                 PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex => $"{PacketOwnedLogoutGiftPrecursorFirstContextSymbol} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)",
                 PacketOwnedLogoutGiftPrecursorFirstContextDwordIndex + 1 => $"{PacketOwnedLogoutGiftPrecursorSecondContextSymbol} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)",
                 PacketOwnedLogoutGiftPrecursorLastContextDwordIndex => $"{PacketOwnedLogoutGiftPrecursorThirdContextSymbol} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)",
-                _ => $"CWvsContext::dword_{byteOffset.ToString("X4", CultureInfo.InvariantCulture)} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`)",
+                _ => $"CWvsContext::dword_{byteOffset.ToString("X4", CultureInfo.InvariantCulture)} (dword[{dwordIndex.ToString(CultureInfo.InvariantCulture)}], pre-`m_bPredictQuit`, unresolved semantic)",
             };
         }
 

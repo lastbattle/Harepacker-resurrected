@@ -57,6 +57,11 @@ namespace HaCreator.MapSimulator.UI
         private const float ClientHeaderScale = 0.58f;
         private const float ClientDetailScale = 0.58f;
         private const float ClientNavigationScale = 0.52f;
+        private const int ClientQuestDetailFontFamilyStringPoolId = 0x05AF; // CUIQuestInfoDetail::OnCreate
+        private const int ClientQuestDetailFontStyleStringPoolId = 0x05B0;  // CUIQuestInfoDetail::OnCreate
+        private const string ClientQuestDetailFontAlias = "Canvas#Font";
+        private const string ClientQuestDetailFontFallbackFamily = "Arial";
+        private const string ClientQuestDetailFontBoldStyleFallbackToken = "BA";
         private const int TOOLTIP_PADDING = 8;
         private const int TOOLTIP_ICON_SIZE = 28;
         private const int TOOLTIP_GAP = 8;
@@ -77,6 +82,16 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<string, Texture2D> _inlineUiCanvasTextures = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Point> _inlineUiCanvasOrigins = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, ClientTextRasterizer> _customDetailTextRasterizers = new(StringComparer.Ordinal);
+        private static readonly string[] ClientQuestDetailFontFamilyCandidates =
+        {
+            ClientQuestDetailFontFallbackFamily,
+            "Arial Narrow",
+            "Tahoma",
+            "DotumChe",
+            "Dotum",
+            "GulimChe",
+            "Gulim",
+        };
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
 
@@ -136,6 +151,8 @@ namespace HaCreator.MapSimulator.UI
         private ClientTextRasterizer _clientDetailBoldTextRasterizer;
         private ClientTextRasterizer _clientNavigationTextRasterizer;
         private ClientTextRasterizer _clientButtonTextRasterizer;
+        private string _resolvedClientQuestDetailFontFamily;
+        private SD.FontStyle? _resolvedClientQuestDetailBoldFontStyle;
 
         public QuestDetailWindow(IDXObject frame, string windowName)
             : base(frame)
@@ -1514,6 +1531,16 @@ namespace HaCreator.MapSimulator.UI
             return TryParseQuestInlineReferenceToken(payload, out reference);
         }
 
+        internal static string NormalizeQuestDetailFontFamilyOverrideForTesting(string fontFamilyOverride, string defaultFontFamily)
+        {
+            return NormalizeQuestDetailFontFamilyOverride(fontFamilyOverride, defaultFontFamily);
+        }
+
+        internal static SD.FontStyle ResolveQuestDetailBoldFontStyleForTesting(string styleToken)
+        {
+            return ResolveQuestDetailBoldFontStyle(styleToken);
+        }
+
         private static bool TryParseQuestInlineReferenceToken(string payload, out QuestDetailInlineReference reference)
         {
             reference = default;
@@ -2502,6 +2529,11 @@ namespace HaCreator.MapSimulator.UI
             string normalizedFontFamilyOverride = fontFamilyOverride?.Trim();
             bool hasFontFamilyOverride = !string.IsNullOrWhiteSpace(normalizedFontFamilyOverride);
             bool hasFontSizeOverride = fontPixelSizeOverride.HasValue && fontPixelSizeOverride.Value > 0f;
+            string resolvedDefaultFontFamily = ResolveClientQuestDetailFontFamily();
+            SD.FontStyle resolvedBoldStyle = ResolveClientQuestDetailBoldFontStyle();
+            string resolvedFontFamilyOverride = hasFontFamilyOverride
+                ? NormalizeQuestDetailFontFamilyOverride(normalizedFontFamilyOverride, resolvedDefaultFontFamily)
+                : null;
             if (hasFontFamilyOverride || hasFontSizeOverride)
             {
                 float basePointSize = hasFontSizeOverride
@@ -2509,7 +2541,7 @@ namespace HaCreator.MapSimulator.UI
                     : GetLaneBasePointSize(lane);
                 string customKey = string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{(int)lane}|{(useBold ? 1 : 0)}|{basePointSize:F2}|{normalizedFontFamilyOverride ?? string.Empty}");
+                    $"{(int)lane}|{(useBold ? 1 : 0)}|{basePointSize:F2}|{resolvedFontFamilyOverride ?? string.Empty}");
                 if (_customDetailTextRasterizers.TryGetValue(customKey, out ClientTextRasterizer customRasterizer))
                 {
                     return customRasterizer;
@@ -2517,37 +2549,129 @@ namespace HaCreator.MapSimulator.UI
 
                 customRasterizer = new ClientTextRasterizer(
                     graphicsDevice,
-                    fontFamily: hasFontFamilyOverride ? normalizedFontFamilyOverride : null,
+                    fontFamily: resolvedFontFamilyOverride ?? resolvedDefaultFontFamily,
                     basePointSize: basePointSize,
-                    fontStyle: useBold ? SD.FontStyle.Bold : SD.FontStyle.Regular);
+                    fontStyle: useBold ? resolvedBoldStyle : SD.FontStyle.Regular,
+                    preferEmbeddedPrivateFontSources: true);
                 _customDetailTextRasterizers[customKey] = customRasterizer;
                 return customRasterizer;
             }
 
             if (useBold)
             {
-                _clientDetailBoldTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, basePointSize: 11f, fontStyle: SD.FontStyle.Bold);
+                _clientDetailBoldTextRasterizer ??= new ClientTextRasterizer(
+                    graphicsDevice,
+                    fontFamily: resolvedDefaultFontFamily,
+                    basePointSize: 11f,
+                    fontStyle: resolvedBoldStyle,
+                    preferEmbeddedPrivateFontSources: true);
                 return _clientDetailBoldTextRasterizer;
             }
 
             switch (lane)
             {
                 case QuestDetailTextLane.Title:
-                    _clientTitleTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, basePointSize: 13f);
+                    _clientTitleTextRasterizer ??= new ClientTextRasterizer(
+                        graphicsDevice,
+                        fontFamily: resolvedDefaultFontFamily,
+                        basePointSize: 13f,
+                        preferEmbeddedPrivateFontSources: true);
                     return _clientTitleTextRasterizer;
                 case QuestDetailTextLane.Header:
-                    _clientHeaderTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, basePointSize: 11f);
+                    _clientHeaderTextRasterizer ??= new ClientTextRasterizer(
+                        graphicsDevice,
+                        fontFamily: resolvedDefaultFontFamily,
+                        basePointSize: 11f,
+                        preferEmbeddedPrivateFontSources: true);
                     return _clientHeaderTextRasterizer;
                 case QuestDetailTextLane.Navigation:
-                    _clientNavigationTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, basePointSize: 10f);
+                    _clientNavigationTextRasterizer ??= new ClientTextRasterizer(
+                        graphicsDevice,
+                        fontFamily: resolvedDefaultFontFamily,
+                        basePointSize: 10f,
+                        preferEmbeddedPrivateFontSources: true);
                     return _clientNavigationTextRasterizer;
                 case QuestDetailTextLane.Button:
-                    _clientButtonTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, basePointSize: 11f);
+                    _clientButtonTextRasterizer ??= new ClientTextRasterizer(
+                        graphicsDevice,
+                        fontFamily: resolvedDefaultFontFamily,
+                        basePointSize: 11f,
+                        preferEmbeddedPrivateFontSources: true);
                     return _clientButtonTextRasterizer;
                 default:
-                    _clientDetailTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, basePointSize: 11f);
+                    _clientDetailTextRasterizer ??= new ClientTextRasterizer(
+                        graphicsDevice,
+                        fontFamily: resolvedDefaultFontFamily,
+                        basePointSize: 11f,
+                        preferEmbeddedPrivateFontSources: true);
                     return _clientDetailTextRasterizer;
             }
+        }
+
+        private string ResolveClientQuestDetailFontFamily()
+        {
+            if (!string.IsNullOrWhiteSpace(_resolvedClientQuestDetailFontFamily))
+            {
+                return _resolvedClientQuestDetailFontFamily;
+            }
+
+            string requestedFontFamily = MapleStoryStringPool.GetOrFallback(
+                ClientQuestDetailFontFamilyStringPoolId,
+                ClientQuestDetailFontFallbackFamily);
+            _ = MapleStoryStringPool.GetOrNull(ClientQuestDetailFontStyleStringPoolId);
+            _resolvedClientQuestDetailFontFamily = NormalizeQuestDetailFontFamilyOverride(
+                requestedFontFamily,
+                ClientQuestDetailFontFallbackFamily);
+            _resolvedClientQuestDetailFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                _resolvedClientQuestDetailFontFamily,
+                preferredPrivateFontFamilyCandidates: ClientQuestDetailFontFamilyCandidates,
+                preferEmbeddedPrivateFontSources: true);
+            return _resolvedClientQuestDetailFontFamily;
+        }
+
+        private SD.FontStyle ResolveClientQuestDetailBoldFontStyle()
+        {
+            if (_resolvedClientQuestDetailBoldFontStyle.HasValue)
+            {
+                return _resolvedClientQuestDetailBoldFontStyle.Value;
+            }
+
+            string styleToken = MapleStoryStringPool.GetOrFallback(
+                ClientQuestDetailFontStyleStringPoolId,
+                ClientQuestDetailFontBoldStyleFallbackToken);
+            _resolvedClientQuestDetailBoldFontStyle = ResolveQuestDetailBoldFontStyle(styleToken);
+            return _resolvedClientQuestDetailBoldFontStyle.Value;
+        }
+
+        private static string NormalizeQuestDetailFontFamilyOverride(string fontFamilyOverride, string defaultFontFamily)
+        {
+            string normalizedOverride = fontFamilyOverride?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedOverride))
+            {
+                return defaultFontFamily;
+            }
+
+            if (string.Equals(normalizedOverride, ClientQuestDetailFontAlias, StringComparison.OrdinalIgnoreCase))
+            {
+                return string.IsNullOrWhiteSpace(defaultFontFamily)
+                    ? ClientQuestDetailFontFallbackFamily
+                    : defaultFontFamily;
+            }
+
+            return normalizedOverride;
+        }
+
+        private static SD.FontStyle ResolveQuestDetailBoldFontStyle(string styleToken)
+        {
+            string normalizedStyleToken = styleToken?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedStyleToken))
+            {
+                return SD.FontStyle.Bold;
+            }
+
+            return normalizedStyleToken.StartsWith("B", StringComparison.OrdinalIgnoreCase)
+                ? SD.FontStyle.Bold
+                : SD.FontStyle.Regular;
         }
 
         private static float GetLaneBasePointSize(QuestDetailTextLane lane)

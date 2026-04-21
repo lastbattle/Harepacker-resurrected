@@ -105,7 +105,8 @@ namespace HaCreator.MapSimulator.Pools
             string EffectPath,
             int CurrentTime,
             bool UseOwnerFacing,
-            bool AttachToOwner = true);
+            bool AttachToOwner = true,
+            int? SecondaryInt32Value = null);
         public readonly record struct RemoteChatLogMessagePresentation(
             int CharacterId,
             byte EffectType,
@@ -246,6 +247,7 @@ namespace HaCreator.MapSimulator.Pools
             public int? SkillId { get; init; }
             public byte[] RawTrailingPayload { get; init; }
             public string HitString { get; init; }
+            public int? HitSecondaryInt32Value { get; init; }
             public int PacketTime { get; init; }
         }
 
@@ -2703,6 +2705,7 @@ namespace HaCreator.MapSimulator.Pools
                 SkillId = packet.SkillId,
                 RawTrailingPayload = packet.RawTrailingPayload,
                 HitString = packet.HitString,
+                HitSecondaryInt32Value = packet.HitSecondaryInt32Value,
                 PacketTime = currentTime
             };
 
@@ -3793,7 +3796,8 @@ namespace HaCreator.MapSimulator.Pools
                         makerSkillEffectPath,
                         currentTime,
                         UseOwnerFacing: false,
-                        AttachToOwner: true));
+                        AttachToOwner: true,
+                        SecondaryInt32Value: packet.SecondaryInt32Value));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered maker-skill fixed effect {makerSkillEffectPath}.";
                     return true;
 
@@ -3862,7 +3866,8 @@ namespace HaCreator.MapSimulator.Pools
                         packet.StringValue,
                         currentTime,
                         packet.KnownSubtype == RemoteUserEffectSubtype.CarnivalReservedEffect,
-                        ShouldAttachRemotePacketOwnedStringEffectForParity(packet.KnownSubtype)));
+                        ShouldAttachRemotePacketOwnedStringEffectForParity(packet.KnownSubtype),
+                        packet.SecondaryInt32Value));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered packet-owned string effect {packet.StringValue}.";
                     return true;
 
@@ -4398,18 +4403,15 @@ namespace HaCreator.MapSimulator.Pools
 
             // CGrenade::PrepareAnimationLayer offsets the loaded bullet layer for
             // Monster Bomb after optional rotate-layer collision-offset correction.
-            bool bFlip = !presentation.FacingRight;
-            if (!bFlip)
-            {
-                return new Vector2(-MonsterBombAnimationLayerOffsetX, 0f);
-            }
-
             int angle = ResolveRemoteGrenadeBallAngleDegreesForParity(presentation);
             double radians = angle * (Math.PI / 180d);
             int collisionOffsetX = (int)(Math.Cos(radians) * MonsterBombCollisionRadius);
             int collisionOffsetY = (int)(Math.Sin(radians) * MonsterBombCollisionRadius);
+            int horizontalShift = presentation.FacingRight
+                ? -MonsterBombAnimationLayerOffsetX
+                : MonsterBombAnimationLayerOffsetX;
             return new Vector2(
-                MonsterBombAnimationLayerOffsetX - collisionOffsetX,
+                horizontalShift - collisionOffsetX,
                 -collisionOffsetY);
         }
 
@@ -4701,12 +4703,17 @@ namespace HaCreator.MapSimulator.Pools
         private static bool ShouldIncludePreparedSkillWorldOverlay(RemoteUserActor actor)
         {
             return actor?.IsVisibleInWorld == true
+                && !actor.HiddenLikeClient
                 && actor.PreparedSkill != null;
         }
 
-        internal static bool ShouldIncludePreparedSkillWorldOverlayForTesting(bool isVisibleInWorld, RemotePreparedSkillState prepared)
+        internal static bool ShouldIncludePreparedSkillWorldOverlayForTesting(
+            bool isVisibleInWorld,
+            bool hiddenLikeClient,
+            RemotePreparedSkillState prepared)
         {
             return isVisibleInWorld
+                && !hiddenLikeClient
                 && prepared != null;
         }
 
@@ -5808,24 +5815,6 @@ namespace HaCreator.MapSimulator.Pools
                     centerX,
                     centerY,
                     tickCount);
-                if (statusBarUi != null
-                    && actor.PreparedSkill != null
-                    && PreparedSkillHudRules.IsDragonOverlaySkill(actor.PreparedSkill.SkillId))
-                {
-                    StatusBarPreparedSkillRenderData preparedOverlay = BuildPreparedSkillWorldOverlay(actor, tickCount, 0);
-                    if (preparedOverlay != null)
-                    {
-                    statusBarUi.DrawPreparedSkillWorldOverlay(
-                        spriteBatch,
-                        mapShiftX,
-                        mapShiftY,
-                        centerX,
-                        centerY,
-                        tickCount,
-                        preparedOverlay);
-                    }
-                }
-
                 DrawRemoteActorFrame(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -8505,10 +8494,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             PortableChairPairParticipant owner = participants[ownerIndex];
-            int existingPairCandidateIndex = -1;
             int preferredPairCandidateIndex = -1;
-            int reciprocalExistingPairCandidateIndex = -1;
-            int reciprocalPreferredPairCandidateIndex = -1;
             int fallbackCandidateIndex = -1;
             for (int index = ownerIndex + 1; index < participants.Count; index++)
             {
@@ -8520,47 +8506,23 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (owner.ExistingPairCharacterId == candidate.CharacterId)
-                {
-                    existingPairCandidateIndex = index;
-                    continue;
-                }
-
-                if (owner.PreferredPairCharacterId == candidate.CharacterId)
+                if (owner.PreferredPairCharacterId == candidate.CharacterId
+                    && preferredPairCandidateIndex < 0)
                 {
                     preferredPairCandidateIndex = index;
-                    continue;
-                }
-
-                if (candidate.ExistingPairCharacterId == owner.CharacterId
-                    && reciprocalExistingPairCandidateIndex < 0)
-                {
-                    reciprocalExistingPairCandidateIndex = index;
-                    continue;
-                }
-
-                if (candidate.PreferredPairCharacterId == owner.CharacterId
-                    && reciprocalPreferredPairCandidateIndex < 0)
-                {
-                    reciprocalPreferredPairCandidateIndex = index;
-                    continue;
                 }
 
                 if (fallbackCandidateIndex < 0)
                 {
+                    // CUserPool::Update scans the couple-chair list in order and keeps
+                    // the first viable partner unless an explicit pair target is valid.
                     fallbackCandidateIndex = index;
                 }
             }
 
-            candidateIndex = existingPairCandidateIndex >= 0
-                ? existingPairCandidateIndex
-                : preferredPairCandidateIndex >= 0
-                    ? preferredPairCandidateIndex
-                    : reciprocalExistingPairCandidateIndex >= 0
-                        ? reciprocalExistingPairCandidateIndex
-                        : reciprocalPreferredPairCandidateIndex >= 0
-                            ? reciprocalPreferredPairCandidateIndex
-                            : fallbackCandidateIndex;
+            candidateIndex = preferredPairCandidateIndex >= 0
+                ? preferredPairCandidateIndex
+                : fallbackCandidateIndex;
             return candidateIndex >= 0;
         }
 
@@ -9712,7 +9674,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             CharacterPart mountPart = null;
-            actor.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out mountPart);
+            if (actor.Build?.Equipment != null)
+            {
+                actor.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out mountPart);
+            }
             CharacterPart activeMountedRenderOwner = actor.ResolveMountedStateTamingMobPart();
             return ResolveRemoteRidingVehicleIdForTesting(
                 mountPart,
@@ -10919,6 +10884,25 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private static RemoteTemporaryStatAvatarEffectState ResolveLatestRemoteTemporaryStatAuraTailState(
+            IReadOnlyList<RemoteTemporaryStatAvatarEffectState> tailStates)
+        {
+            if (tailStates == null || tailStates.Count == 0)
+            {
+                return null;
+            }
+
+            for (int i = tailStates.Count - 1; i >= 0; i--)
+            {
+                if (tailStates[i] != null)
+                {
+                    return tailStates[i];
+                }
+            }
+
+            return null;
+        }
+
         private static void AccumulateRemoteTemporaryStatAvatarEffectLeadFrameDelayMs(
             SkillAnimation animation,
             ref int minimumDelayMs)
@@ -11401,6 +11385,29 @@ namespace HaCreator.MapSimulator.Pools
                 previousReplayTriggerTime);
         }
 
+        internal static (int CurrentActionStartTime, bool CurrentFacingRight)
+            ApplyRemoteShadowPartnerSameActionPresentationTransitionForTesting(
+                int currentActionStartTime,
+                bool currentFacingRight,
+                int currentTime,
+                bool facingRight,
+                bool preserveTimingWhenOnlyFacingChanges,
+                bool forceRestartWhenSameAction)
+        {
+            var presentation = new RemoteShadowPartnerPresentationState
+            {
+                CurrentActionStartTime = currentActionStartTime,
+                CurrentFacingRight = currentFacingRight
+            };
+            ApplyRemoteShadowPartnerSameActionPresentationTransition(
+                presentation,
+                currentTime,
+                facingRight,
+                preserveTimingWhenOnlyFacingChanges,
+                forceRestartWhenSameAction);
+            return (presentation.CurrentActionStartTime, presentation.CurrentFacingRight);
+        }
+
         private static bool ShouldRefreshRemoteShadowPartnerObservation(
             string observedPlayerActionName,
             PlayerState observedState,
@@ -11517,13 +11524,7 @@ namespace HaCreator.MapSimulator.Pools
             // -> BlessingArmor -> Repeat -> MagicShield -> FinalCut.
             AddState(soulArrowState);
             AddState(weaponChargeState);
-            if (auraTailStates != null)
-            {
-                for (int i = 0; i < auraTailStates.Count; i++)
-                {
-                    AddState(auraTailStates[i]);
-                }
-            }
+            AddState(ResolveLatestRemoteTemporaryStatAuraTailState(auraTailStates));
 
             AddState(auraState);
             AddState(moreWildState);
@@ -12417,19 +12418,13 @@ namespace HaCreator.MapSimulator.Pools
                         presentation.ObservedPlayerActionName,
                         presentation.ObservedRawActionCode.GetValueOrDefault(-1),
                         actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames);
-                if (forceRestartWhenSameAction)
-                {
-                    presentation.CurrentActionStartTime = currentTime;
-                    presentation.CurrentFacingRight = facingRight;
-                    return;
-                }
 
-                if (!preserveTimingWhenOnlyFacingChanges || presentation.CurrentFacingRight == facingRight)
-                {
-                    return;
-                }
-
-                presentation.CurrentFacingRight = facingRight;
+                ApplyRemoteShadowPartnerSameActionPresentationTransition(
+                    presentation,
+                    currentTime,
+                    facingRight,
+                    preserveTimingWhenOnlyFacingChanges,
+                    forceRestartWhenSameAction);
                 return;
             }
 
@@ -12443,6 +12438,39 @@ namespace HaCreator.MapSimulator.Pools
                     actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames);
             presentation.CurrentActionStartTime = currentTime;
             presentation.CurrentFacingRight = facingRight;
+        }
+
+        private static void ApplyRemoteShadowPartnerSameActionPresentationTransition(
+            RemoteShadowPartnerPresentationState presentation,
+            int currentTime,
+            bool facingRight,
+            bool preserveTimingWhenOnlyFacingChanges,
+            bool forceRestartWhenSameAction)
+        {
+            if (presentation == null)
+            {
+                return;
+            }
+
+            if (forceRestartWhenSameAction)
+            {
+                presentation.CurrentActionStartTime = currentTime;
+                presentation.CurrentFacingRight = facingRight;
+                return;
+            }
+
+            if (presentation.CurrentFacingRight == facingRight)
+            {
+                return;
+            }
+
+            presentation.CurrentFacingRight = facingRight;
+            if (preserveTimingWhenOnlyFacingChanges)
+            {
+                return;
+            }
+
+            presentation.CurrentActionStartTime = currentTime;
         }
 
         private static bool ShouldHoldRemoteShadowPartnerCurrentAction(RemoteUserActor actor, int currentTime)
@@ -13205,6 +13233,22 @@ namespace HaCreator.MapSimulator.Pools
                 return nearestMetadataChargeSkillId;
             }
 
+            if (snapshot.WeaponChargePayloadOffset >= 0
+                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    sizeof(int) * 4,
+                    snapshot.WeaponChargePayloadOffset,
+                    effectivePreferredSkillId,
+                    out int nearestMetadataChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    nearestMetadataChargeElement,
+                    out int nearestMetadataElementChargeSkillId))
+            {
+                return nearestMetadataElementChargeSkillId;
+            }
+
             int payloadMaskBaseOffset = sizeof(int) * 4;
             if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
@@ -13324,6 +13368,18 @@ namespace HaCreator.MapSimulator.Pools
                     effectivePreferredSkillId,
                     out int nearestMetadataChargeSkillId)
                 && AfterImageChargeSkillResolver.TryGetChargeElement(nearestMetadataChargeSkillId, out chargeElement))
+            {
+                return true;
+            }
+
+            if (snapshot.WeaponChargePayloadOffset >= 0
+                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    sizeof(int) * 4,
+                    snapshot.WeaponChargePayloadOffset,
+                    effectivePreferredSkillId,
+                    out chargeElement))
             {
                 return true;
             }
@@ -13827,7 +13883,7 @@ namespace HaCreator.MapSimulator.Pools
         public int TemporaryStatAffectedLayerShiftCadenceUpdateCount { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatAuraEffectTail
         {
-            get => TemporaryStatAuraEffectTails.Count > 0 ? TemporaryStatAuraEffectTails[0] : null;
+            get => TemporaryStatAuraEffectTails.Count > 0 ? TemporaryStatAuraEffectTails[^1] : null;
             set
             {
                 TemporaryStatAuraEffectTails.Clear();
@@ -13900,7 +13956,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             CharacterPart equippedMountPart = null;
-            Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out equippedMountPart);
+            if (Build?.Equipment != null)
+            {
+                Build.Equipment.TryGetValue(EquipSlot.TamingMob, out equippedMountPart);
+            }
             return equippedMountPart;
         }
 

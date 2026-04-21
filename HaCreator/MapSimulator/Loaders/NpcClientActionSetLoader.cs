@@ -163,7 +163,26 @@ namespace HaCreator.MapSimulator.Loaders
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
         {
             List<NpcClientActionSetDefinition> actionSets = GetClientActionSets(source);
-            if (actionSets.Count <= 0)
+            return ResolveClientActionSetIndexForPreferredActions(
+                actionSets,
+                preferredActionNames,
+                localPlayerGender,
+                hasQuestCheckContext,
+                questStateProvider,
+                questRecordValueProvider,
+                requestedClientActionSetIndex);
+        }
+
+        internal static int ResolveClientActionSetIndexForPreferredActions(
+            IReadOnlyList<NpcClientActionSetDefinition> actionSets,
+            IEnumerable<string> preferredActionNames,
+            CharacterGender? localPlayerGender = null,
+            bool hasQuestCheckContext = false,
+            Func<int, QuestStateType> questStateProvider = null,
+            Func<int, string> questRecordValueProvider = null,
+            int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
+        {
+            if (actionSets == null || actionSets.Count <= 0)
             {
                 return RootClientActionSetIndex;
             }

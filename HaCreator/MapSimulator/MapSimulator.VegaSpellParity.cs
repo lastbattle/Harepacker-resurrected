@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator
         private const int VegaOwnerExclusiveRequestCooldownMs = 500;
         private const int VegaOwnerExternalResultFallbackDelayMs = 3000;
         private const int VegaResultPreludeLoopSoundStringPoolId = 0x1534;
+        private const string VegaResultPreludeLoopSoundOwnerImage = "UI.img";
         private const string VegaResultPreludeLoopSoundFallback = "Sound/UI.img/EnchantDelay";
         private const byte VegaPacketOwnedSuccessPreludeCode = 68;
         private const byte VegaPacketOwnedSuccessTerminalCode = 69;
@@ -645,6 +646,7 @@ namespace HaCreator.MapSimulator
         {
             _vegaExclusiveRequestSent = false;
             _vegaExclusiveRequestSentTick = currentTick;
+            TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
         }
 
         private bool TryQueueVegaOutboundPacket(
@@ -1768,12 +1770,19 @@ namespace HaCreator.MapSimulator
                 return normalized;
             }
 
-            if (!TrySplitPacketOwnedClientSoundDescriptor(normalized, out _, out string propertyPath)
+            if (!TrySplitPacketOwnedClientSoundDescriptor(normalized, out string imageName, out string propertyPath)
                 || string.IsNullOrWhiteSpace(propertyPath)
                 || propertyPath.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
                 || propertyPath.Contains(".img/", StringComparison.OrdinalIgnoreCase))
             {
                 return fallback;
+            }
+
+            // CUIVega::OnVegaResult resolves this through play_ui_sound_loop, so keep
+            // the descriptor on the UI sound owner even when string-pool text drifts.
+            if (!string.Equals(imageName, VegaResultPreludeLoopSoundOwnerImage, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"{VegaResultPreludeLoopSoundOwnerImage}/{propertyPath}";
             }
 
             return normalized;

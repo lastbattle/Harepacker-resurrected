@@ -52,20 +52,63 @@ namespace HaCreator.MapSimulator.UI
         {
             packetMessage = default;
             message = "Drop-pickup message payload is missing.";
-            if (payload == null || payload.Length < 2)
+            if (payload == null || payload.Length < 1)
             {
                 return false;
             }
 
-            int offset = 0;
-            byte messageKind = payload[offset++];
-            if (messageKind != DropPickupMessageKind)
+            // Primary path: context-owned envelope [messageKind][pickupType]...
+            if (payload.Length >= 2
+                && payload[0] == DropPickupMessageKind
+                && TryDecodePickupMessageBody(
+                    payload,
+                    offset: 1,
+                    pickupMessageType: unchecked((sbyte)payload[1]),
+                    itemNameResolver,
+                    itemTypeNameResolver,
+                    measureTextWidth,
+                    out packetMessage,
+                    out _))
             {
-                message = $"Context message kind {messageKind} is not OnDropPickUpMessage(0).";
+                message = "Applied packet-owned drop-pickup message.";
+                return true;
+            }
+
+            // Fallback producer path: direct OnDropPickUpMessage body [pickupType]...
+            if (TryDecodePickupMessageBody(
+                    payload,
+                    offset: 1,
+                    pickupMessageType: unchecked((sbyte)payload[0]),
+                    itemNameResolver,
+                    itemTypeNameResolver,
+                    measureTextWidth,
+                    out packetMessage,
+                    out _))
+            {
+                message = "Applied packet-owned drop-pickup message from direct OnDropPickUpMessage payload.";
+                return true;
+            }
+
+            if (payload[0] != DropPickupMessageKind)
+            {
+                message = $"Context message kind {payload[0]} is not OnDropPickUpMessage(0), and direct OnDropPickUpMessage decoding failed.";
                 return false;
             }
 
-            sbyte pickupMessageType = unchecked((sbyte)payload[offset++]);
+            message = "Drop-pickup message payload could not be decoded as either context envelope or direct OnDropPickUpMessage body.";
+            return false;
+        }
+
+        private static bool TryDecodePickupMessageBody(
+            byte[] payload,
+            int offset,
+            sbyte pickupMessageType,
+            Func<int, string> itemNameResolver,
+            Func<int, string> itemTypeNameResolver,
+            Func<string, float> measureTextWidth,
+            out PickupNoticePacketMessage packetMessage,
+            out string message)
+        {
             return pickupMessageType switch
             {
                 1 => TryDecodeMesoPickup(payload, offset, out packetMessage, out message),

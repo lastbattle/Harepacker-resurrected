@@ -222,7 +222,8 @@ namespace HaCreator.MapSimulator.Managers
                 out matchedOffset,
                 out matchedKnownLeadingCharacterDataTail,
                 out matchedOpaquePreMapTransferByteCount,
-                out matchedKnownCharacterDataTail))
+                out matchedKnownCharacterDataTail,
+                out _))
             {
                 return false;
             }
@@ -268,6 +269,13 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            int bestTailCandidateScore = int.MinValue;
+            int bestMatchedOffset = -1;
+            int[] bestRegularFields = null;
+            int[] bestContinentFields = null;
+            bool bestMatchedKnownLeadingCharacterDataTail = false;
+            int bestMatchedOpaquePreMapTransferByteCount = -1;
+            bool bestMatchedKnownCharacterDataTail = false;
             for (int offset = payload.Length - BootstrapBookByteLength; offset >= 0; offset--)
             {
                 if (TryReadBootstrapBooksAtOffset(
@@ -277,18 +285,41 @@ namespace HaCreator.MapSimulator.Managers
                         characterJobId,
                         isPlausibleMapId,
                         requireRealMap,
-                        out regularFields,
-                        out continentFields,
-                        out matchedOffset,
-                        out matchedKnownLeadingCharacterDataTail,
-                        out matchedOpaquePreMapTransferByteCount,
-                        out matchedKnownCharacterDataTail))
+                        out int[] candidateRegularFields,
+                        out int[] candidateContinentFields,
+                        out int candidateMatchedOffset,
+                        out bool candidateMatchedKnownLeadingCharacterDataTail,
+                        out int candidateMatchedOpaquePreMapTransferByteCount,
+                        out bool candidateMatchedKnownCharacterDataTail,
+                        out int tailCandidateScore))
                 {
-                    return true;
+                    if (tailCandidateScore > bestTailCandidateScore ||
+                        (tailCandidateScore == bestTailCandidateScore &&
+                         candidateMatchedOffset > bestMatchedOffset))
+                    {
+                        bestTailCandidateScore = tailCandidateScore;
+                        bestMatchedOffset = candidateMatchedOffset;
+                        bestRegularFields = candidateRegularFields;
+                        bestContinentFields = candidateContinentFields;
+                        bestMatchedKnownLeadingCharacterDataTail = candidateMatchedKnownLeadingCharacterDataTail;
+                        bestMatchedOpaquePreMapTransferByteCount = candidateMatchedOpaquePreMapTransferByteCount;
+                        bestMatchedKnownCharacterDataTail = candidateMatchedKnownCharacterDataTail;
+                    }
                 }
             }
 
-            return false;
+            if (bestMatchedOffset < 0 || bestRegularFields == null || bestContinentFields == null)
+            {
+                return false;
+            }
+
+            regularFields = bestRegularFields;
+            continentFields = bestContinentFields;
+            matchedOffset = bestMatchedOffset;
+            matchedKnownLeadingCharacterDataTail = bestMatchedKnownLeadingCharacterDataTail;
+            matchedOpaquePreMapTransferByteCount = bestMatchedOpaquePreMapTransferByteCount;
+            matchedKnownCharacterDataTail = bestMatchedKnownCharacterDataTail;
+            return true;
         }
 
         private static bool TryReadBootstrapBooksAtOffset(
@@ -303,7 +334,8 @@ namespace HaCreator.MapSimulator.Managers
             out int matchedOffset,
             out bool matchedKnownLeadingCharacterDataTail,
             out int matchedOpaquePreMapTransferByteCount,
-            out bool matchedKnownCharacterDataTail)
+            out bool matchedKnownCharacterDataTail,
+            out int tailCandidateScore)
         {
             regularFields = null;
             continentFields = null;
@@ -311,6 +343,7 @@ namespace HaCreator.MapSimulator.Managers
             matchedKnownLeadingCharacterDataTail = false;
             matchedOpaquePreMapTransferByteCount = -1;
             matchedKnownCharacterDataTail = false;
+            tailCandidateScore = int.MinValue;
 
             int slotCount = MapTransferRuntimeManager.RegularCapacity + MapTransferRuntimeManager.ContinentCapacity;
             if (offset < 0 || payload.Length - offset < BootstrapBookByteLength || isPlausibleMapId == null)
@@ -354,7 +387,8 @@ namespace HaCreator.MapSimulator.Managers
                     payload[(offset + BootstrapBookByteLength)..],
                     characterDataFlags,
                     characterJobId,
-                    out bool matchedKnownTail))
+                    out bool matchedKnownTail,
+                    out tailCandidateScore))
             {
                 return false;
             }
@@ -414,7 +448,8 @@ namespace HaCreator.MapSimulator.Managers
                         out matchedOffset,
                         out _,
                         out _,
-                        out matchedKnownCharacterDataTail))
+                        out matchedKnownCharacterDataTail,
+                        out _))
                 {
                     matchedKnownLeadingCharacterDataTail = true;
                     matchedKnownLeadingSectionFlags = candidate.Value.MatchedSectionFlags;
@@ -1043,12 +1078,15 @@ namespace HaCreator.MapSimulator.Managers
             ReadOnlySpan<byte> payload,
             ulong characterDataFlags,
             short characterJobId,
-            out bool matchedKnownTail)
+            out bool matchedKnownTail,
+            out int tailCandidateScore)
         {
             matchedKnownTail = false;
+            tailCandidateScore = int.MinValue;
             if (payload.Length == 0)
             {
                 matchedKnownTail = true;
+                tailCandidateScore = GetKnownCharacterDataTailCandidateScore(0);
                 return true;
             }
 
@@ -1128,6 +1166,7 @@ namespace HaCreator.MapSimulator.Managers
                     trailingByteCount == LogoutGiftConfigByteLength + SetFieldServerFileTimeByteLength)
                 {
                     matchedKnownTail = true;
+                    tailCandidateScore = GetKnownCharacterDataTailCandidateScore(trailingByteCount);
                     return true;
                 }
 
@@ -1135,23 +1174,85 @@ namespace HaCreator.MapSimulator.Managers
                 if (TryValidateKnownTrailingLogoutGiftTail(trailingTail, out bool matchedKnownLogoutGiftTail))
                 {
                     matchedKnownTail = matchedKnownLogoutGiftTail;
+                    tailCandidateScore = matchedKnownLogoutGiftTail
+                        ? GetKnownCharacterDataTailCandidateScore(trailingByteCount)
+                        : GetRecognizedLogoutGiftTailCandidateScore(trailingByteCount);
                     return true;
                 }
 
                 if (TryValidateKnownTrailingServerFileTimeTail(trailingTail, out bool matchedKnownServerFileTimeTail))
                 {
                     matchedKnownTail = matchedKnownServerFileTimeTail;
+                    tailCandidateScore = matchedKnownServerFileTimeTail
+                        ? GetKnownCharacterDataTailCandidateScore(trailingByteCount)
+                        : GetBoundedOpaqueTailCandidateScore(trailingByteCount);
                     return true;
                 }
 
                 // Keep map-transfer bootstrap recovery resilient when additional
                 // CharacterData tail bytes follow known sections.
-                return trailingByteCount > 0 && trailingByteCount <= MaximumOpaquePostMapTransferTailByteLength;
+                if (trailingByteCount > 0 && trailingByteCount <= MaximumOpaquePostMapTransferTailByteLength)
+                {
+                    tailCandidateScore = GetBoundedOpaqueTailCandidateScore(trailingByteCount);
+                    return true;
+                }
+
+                return false;
             }
             catch (Exception) when (payload.Length > 0)
             {
                 return false;
             }
+        }
+
+        private static int GetKnownCharacterDataTailCandidateScore(long trailingByteCount)
+        {
+            if (trailingByteCount == LogoutGiftConfigByteLength + SetFieldServerFileTimeByteLength)
+            {
+                return int.MaxValue;
+            }
+
+            if (trailingByteCount == SetFieldServerFileTimeByteLength)
+            {
+                return int.MaxValue - 1;
+            }
+
+            if (trailingByteCount == LogoutGiftConfigByteLength)
+            {
+                return int.MaxValue - 2;
+            }
+
+            if (trailingByteCount == 0)
+            {
+                return int.MaxValue - 3;
+            }
+
+            return int.MaxValue - 4;
+        }
+
+        private static int GetRecognizedLogoutGiftTailCandidateScore(long trailingByteCount)
+        {
+            if (trailingByteCount <= 0)
+            {
+                return int.MaxValue - 5;
+            }
+
+            int boundedTrailing = trailingByteCount > int.MaxValue
+                ? int.MaxValue
+                : (int)trailingByteCount;
+            return int.MaxValue - 5 - boundedTrailing;
+        }
+
+        private static int GetBoundedOpaqueTailCandidateScore(long trailingByteCount)
+        {
+            if (trailingByteCount <= 0)
+            {
+                return int.MinValue + 1;
+            }
+
+            return trailingByteCount >= int.MaxValue
+                ? int.MinValue + 1
+                : -((int)trailingByteCount);
         }
 
         private static string ReadMapleString(BinaryReader reader)

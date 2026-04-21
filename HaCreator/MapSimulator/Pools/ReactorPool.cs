@@ -3805,6 +3805,7 @@ namespace HaCreator.MapSimulator.Pools
             int sourceStateBeforeFallback = sourceState;
             sourceState = ResolvePacketHitAnimationLoadSourceState(
                 sourceState,
+                fallbackAnimationOwnerState,
                 data,
                 sourceEventTypes,
                 reactor.GetExactAuthoredEventTypes);
@@ -3917,6 +3918,7 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolvePacketHitAnimationLoadSourceState(
             int sourceState,
+            int fallbackAnimationOwnerState,
             ReactorRuntimeData data,
             IReadOnlyList<int> sourceEventTypes,
             Func<int, IReadOnlyList<int>> getExactAuthoredEventTypes)
@@ -3932,9 +3934,23 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             IReadOnlyList<int> animationSourceEventTypes = getExactAuthoredEventTypes(data.PacketAnimationSourceState);
-            return animationSourceEventTypes is { Count: > 0 }
-                ? data.PacketAnimationSourceState
-                : sourceState;
+            if (animationSourceEventTypes is { Count: > 0 })
+            {
+                return data.PacketAnimationSourceState;
+            }
+
+            if (fallbackAnimationOwnerState >= 0
+                && fallbackAnimationOwnerState != sourceState
+                && fallbackAnimationOwnerState != data.PacketAnimationSourceState)
+            {
+                IReadOnlyList<int> continuityFallbackEventTypes = getExactAuthoredEventTypes(fallbackAnimationOwnerState);
+                if (continuityFallbackEventTypes is { Count: > 0 })
+                {
+                    return fallbackAnimationOwnerState;
+                }
+            }
+
+            return sourceState;
         }
 
         internal static int ResolvePacketMutationFallbackAnimationOwnerState(

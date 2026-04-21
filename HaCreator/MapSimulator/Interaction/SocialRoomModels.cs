@@ -342,6 +342,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int OmokSoundTimerStringPoolId = 0x648;
         private const int OmokSoundBlackStoneStringPoolId = 0x64B;
         private const int OmokSoundWhiteStoneStringPoolId = 0x64C;
+        private const int MiniRoomSubtype6EnvelopeMaxDepth = 3;
         private const byte MiniRoomBaseInvitePacketSubType = 2;
         private const byte MiniRoomBaseInviteResultPacketSubType = 3;
         private const byte MiniRoomBaseEnterPacketSubType = 4;
@@ -2814,17 +2815,33 @@ namespace HaCreator.MapSimulator.Interaction
             int stringFieldCount = 0;
             while (TryReadResidualTradePacketMapleString(leftover, ref offset, out string tailString) && stringFieldCount < 3)
             {
-                fields.Add(stringFieldCount == 0 ? $"sTailName {tailString}" : $"sTailName{stringFieldCount + 1} {tailString}");
+                int stringOffset = offset - (sizeof(short) + tailString.Length);
+                fields.Add(stringFieldCount == 0
+                    ? $"sTailName {tailString} @+{stringOffset}"
+                    : $"sTailName{stringFieldCount + 1} {tailString} @+{stringOffset}");
                 stringFieldCount++;
             }
 
             int longFieldCount = 0;
             while (leftover.Length - offset >= sizeof(long) && longFieldCount < 2)
             {
+                int valueOffset = offset;
                 long serialCandidate = BinaryPrimitives.ReadInt64LittleEndian(leftover.Slice(offset, sizeof(long)));
+                if (TryFormatResidualTradePacketFileTime(serialCandidate, out string fileTimeText))
+                {
+                    fields.Add(longFieldCount == 0
+                        ? $"ftTail {fileTimeText} @+{valueOffset}"
+                        : $"ftTail{longFieldCount + 1} {fileTimeText} @+{valueOffset}");
+                    offset += sizeof(long);
+                    longFieldCount++;
+                    continue;
+                }
+
                 if (serialCandidate > 0)
                 {
-                    fields.Add(longFieldCount == 0 ? $"liTailSN {serialCandidate}" : $"liTailSN{longFieldCount + 1} {serialCandidate}");
+                    fields.Add(longFieldCount == 0
+                        ? $"liTailSN {serialCandidate} @+{valueOffset}"
+                        : $"liTailSN{longFieldCount + 1} {serialCandidate} @+{valueOffset}");
                     offset += sizeof(long);
                     longFieldCount++;
                     continue;
@@ -2836,10 +2853,13 @@ namespace HaCreator.MapSimulator.Interaction
             int intFieldCount = 0;
             while (leftover.Length - offset >= sizeof(int) && intFieldCount < 8)
             {
+                int valueOffset = offset;
                 int intValue = BinaryPrimitives.ReadInt32LittleEndian(leftover.Slice(offset, sizeof(int)));
                 if (intValue != 0)
                 {
-                    fields.Add($"nTail{intFieldCount + 1} {intValue}");
+                    fields.Add(intValue >= 0
+                        ? $"nTail{intFieldCount + 1} {intValue} @+{valueOffset}"
+                        : $"nTail{intFieldCount + 1} {intValue} (u={unchecked((uint)intValue)}) @+{valueOffset}");
                 }
 
                 offset += sizeof(int);
@@ -2849,10 +2869,13 @@ namespace HaCreator.MapSimulator.Interaction
             int shortFieldCount = 0;
             while (leftover.Length - offset >= sizeof(short) && shortFieldCount < 8)
             {
+                int valueOffset = offset;
                 short shortValue = BinaryPrimitives.ReadInt16LittleEndian(leftover.Slice(offset, sizeof(short)));
                 if (shortValue != 0)
                 {
-                    fields.Add($"nTailS{shortFieldCount + 1} {shortValue}");
+                    fields.Add(shortValue >= 0
+                        ? $"nTailS{shortFieldCount + 1} {shortValue} @+{valueOffset}"
+                        : $"nTailS{shortFieldCount + 1} {shortValue} (u={unchecked((ushort)shortValue)}) @+{valueOffset}");
                 }
 
                 offset += sizeof(short);
@@ -2862,10 +2885,13 @@ namespace HaCreator.MapSimulator.Interaction
             int byteFieldCount = 0;
             while (leftover.Length - offset > 0 && byteFieldCount < 8)
             {
+                int valueOffset = offset;
                 byte byteValue = leftover[offset];
                 if (byteValue != 0)
                 {
-                    fields.Add(byteFieldCount == 0 ? $"nTailB {byteValue}" : $"nTailB{byteFieldCount + 1} {byteValue}");
+                    fields.Add(byteFieldCount == 0
+                        ? $"nTailB {byteValue} (0x{byteValue:X2}) @+{valueOffset}"
+                        : $"nTailB{byteFieldCount + 1} {byteValue} (0x{byteValue:X2}) @+{valueOffset}");
                 }
 
                 offset++;
@@ -2874,10 +2900,35 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (leftover.Length - offset > 0)
             {
-                fields.Add($"tailRemainder {leftover.Length - offset}B");
+                fields.Add($"tailRemainder {leftover.Length - offset}B @+{offset}");
             }
 
             return fields.Count == 0 ? string.Empty : $"{label} fields {string.Join(", ", fields)}";
+        }
+
+        private static bool TryFormatResidualTradePacketFileTime(long value, out string text)
+        {
+            text = string.Empty;
+            if (value <= 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                DateTime utc = DateTime.FromFileTimeUtc(value);
+                if (utc.Year is < 1990 or > 2300)
+                {
+                    return false;
+                }
+
+                text = $"{value} ({utc:yyyy-MM-dd HH:mm:ss}Z)";
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
         }
 
         private static string ResolveTradePacketDisplayName(int itemId, string title, string tailMetadataSummary)
@@ -2949,6 +3000,12 @@ namespace HaCreator.MapSimulator.Interaction
             int end = summary.IndexOfAny(new[] { ',', '|' }, start);
             string segment = end >= start ? summary[start..end] : summary[start..];
             segment = segment.Trim();
+            int offsetMarkerIndex = segment.IndexOf(" @+", StringComparison.Ordinal);
+            if (offsetMarkerIndex > 0)
+            {
+                segment = segment[..offsetMarkerIndex].TrimEnd();
+            }
+
             if (segment.Length == 0)
             {
                 return false;
@@ -4079,7 +4136,7 @@ namespace HaCreator.MapSimulator.Interaction
             string detail = handled
                 ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message} | payload={payloadPreview} | bytes={nestedPayload.Length} | remaining={nestedReader.Remaining}"
                 : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message} | payload={payloadPreview} | bytes={nestedPayload.Length} | remaining={nestedReader.Remaining}";
-            if (!handled && TryDispatchMiniRoomBaseEnvelopePayload(
+            if (!handled && TryDispatchMiniRoomSubtype6EnvelopePayloadRecursive(
                 nestedPayload,
                 tickCount,
                 out MiniRoomNestedEnvelopeDispatchResult envelopeDispatch))
@@ -4095,6 +4152,65 @@ namespace HaCreator.MapSimulator.Interaction
             message = detail;
             PersistState();
             return handled;
+        }
+
+        private bool TryDispatchMiniRoomSubtype6EnvelopePayloadRecursive(
+            byte[] nestedPayload,
+            int tickCount,
+            out MiniRoomNestedEnvelopeDispatchResult result)
+        {
+            result = default;
+            if (nestedPayload == null || nestedPayload.Length < 2)
+            {
+                return false;
+            }
+
+            byte[] currentPayload = nestedPayload;
+            MiniRoomNestedEnvelopeDispatchResult lastResult = default;
+            List<string> envelopeSummaries = new();
+            for (int depth = 0; depth < MiniRoomSubtype6EnvelopeMaxDepth; depth++)
+            {
+                if (!TryDispatchMiniRoomBaseEnvelopePayload(currentPayload, tickCount, out MiniRoomNestedEnvelopeDispatchResult envelopeResult))
+                {
+                    break;
+                }
+
+                lastResult = envelopeResult;
+                envelopeSummaries.Add(envelopeResult.EnvelopeSummary);
+                if (envelopeResult.Handled)
+                {
+                    result = envelopeResult with
+                    {
+                        EnvelopeSummary = string.Join(" -> ", envelopeSummaries)
+                    };
+                    return true;
+                }
+
+                if (envelopeResult.ForwardedPayload == null
+                    || envelopeResult.ForwardedPayload.Length == 0
+                    || envelopeResult.ForwardedPayload.Length >= currentPayload.Length
+                    || envelopeResult.ForwardedPayload.SequenceEqual(currentPayload))
+                {
+                    result = envelopeResult with
+                    {
+                        EnvelopeSummary = string.Join(" -> ", envelopeSummaries)
+                    };
+                    return true;
+                }
+
+                currentPayload = envelopeResult.ForwardedPayload;
+            }
+
+            if (envelopeSummaries.Count == 0)
+            {
+                return false;
+            }
+
+            result = lastResult with
+            {
+                EnvelopeSummary = string.Join(" -> ", envelopeSummaries)
+            };
+            return true;
         }
 
         private bool TryDispatchMiniRoomBaseEnvelopePayload(

@@ -3330,6 +3330,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (infoProperty["type"] != null)
+            {
+                int weatherType = GetIntOrStringValue(infoProperty["type"]);
+                metadataLines.Add($"Weather Type: {weatherType.ToString(CultureInfo.InvariantCulture)}");
+            }
+
             if (infoProperty["direction"] != null)
             {
                 int direction = GetIntOrStringValue(infoProperty["direction"]);
@@ -3342,6 +3348,18 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add($"Weather Float Type: {floatType.ToString(CultureInfo.InvariantCulture)}");
             }
 
+            if (infoProperty["speed"] != null)
+            {
+                int speed = GetIntOrStringValue(infoProperty["speed"]);
+                metadataLines.Add($"Weather Speed: {speed.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (infoProperty["rotateSpeed"] != null)
+            {
+                int rotateSpeed = GetIntOrStringValue(infoProperty["rotateSpeed"]);
+                metadataLines.Add($"Weather Rotation Speed: {rotateSpeed.ToString(CultureInfo.InvariantCulture)}");
+            }
+
             if (GetIntValue(infoProperty["isBgmOrEffect"]) == 1)
             {
                 metadataLines.Add("Weather BGM/Effect broadcast");
@@ -3350,6 +3368,11 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["repeat"]) == 1)
             {
                 metadataLines.Add("Weather effect repeats");
+            }
+
+            if (GetIntValue(infoProperty["NoCancel"]) == 1)
+            {
+                metadataLines.Add("Weather effect cannot be canceled manually");
             }
         }
 

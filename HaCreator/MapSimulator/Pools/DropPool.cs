@@ -761,6 +761,7 @@ namespace HaCreator.MapSimulator.Pools
         private int _lastUpdateTick = 0;
         private int _lastPacketEnterSoundTime = int.MinValue;
         private int _lastPacketExplodeSoundTime = int.MinValue;
+        private int _lastPacketEnterAppliedTime = int.MinValue;
         private Action<DropItem> _onDropSpawned;
         private Action<DropItem> _onDropPickedUp;
         private Action<DropItem> _onDropExpired;
@@ -795,6 +796,7 @@ namespace HaCreator.MapSimulator.Pools
 
         #region Public Properties
         public int ActiveDropCount => _activeDrops.Count;
+        public int LastPacketEnterAppliedTime => _lastPacketEnterAppliedTime;
         public IReadOnlyList<DropItem> ActiveDrops => _activeDrops;
         #endregion
 
@@ -880,6 +882,7 @@ namespace HaCreator.MapSimulator.Pools
             _nextDropId = 1;
             _lastPacketEnterSoundTime = int.MinValue;
             _lastPacketExplodeSoundTime = int.MinValue;
+            _lastPacketEnterAppliedTime = int.MinValue;
 
             // Clear new collections
             _petTargets.Clear();
@@ -2555,6 +2558,7 @@ namespace HaCreator.MapSimulator.Pools
                     PromoteClientFakeDrop(existingDrop, packet, currentTime);
                 }
 
+                _lastPacketEnterAppliedTime = currentTime;
                 return true;
             }
 
@@ -2634,6 +2638,7 @@ namespace HaCreator.MapSimulator.Pools
 
             _activeDrops.Add(drop);
             _dropById[drop.PoolId] = drop;
+            _lastPacketEnterAppliedTime = currentTime;
             _onDropSpawned?.Invoke(drop);
             return true;
         }

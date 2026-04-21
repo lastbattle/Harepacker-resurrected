@@ -119,6 +119,16 @@ namespace HaCreator.MapSimulator.Effects
         private const int RemoteDelayedLoadCooltimeMs = 1000;
         private const int WeddingPhotoScenePresentationTrailLimit = 16;
 
+        private enum WeddingPhotoScenePresentationStage
+        {
+            None,
+            PacketTrailOnly,
+            StepTextLayer,
+            StepCardLayer,
+            StepCelebrationLayer,
+            BlessEffect
+        }
+
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
         {
@@ -206,6 +216,8 @@ namespace HaCreator.MapSimulator.Effects
         private readonly List<WeddingPhotoScenePresentationPacketRecord> _weddingPhotoScenePresentationPacketTrail = new();
         private int _weddingPhotoSceneUnhandledPacketCount;
         private int? _lastWeddingPhotoSceneUnhandledPacketType;
+        private WeddingPhotoScenePresentationStage _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.None;
+        private int? _lastWeddingPhotoSceneStagePacketType;
         #endregion
 
 
@@ -326,6 +338,8 @@ namespace HaCreator.MapSimulator.Effects
             _weddingPhotoScenePresentationPacketTrail.Clear();
             _weddingPhotoSceneUnhandledPacketCount = 0;
             _lastWeddingPhotoSceneUnhandledPacketType = null;
+            _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.None;
+            _lastWeddingPhotoSceneStagePacketType = null;
 
 
             System.Diagnostics.Debug.WriteLine($"[WeddingField] Enabled for map {mapId}, NPC {_npcId}");
@@ -382,6 +396,8 @@ namespace HaCreator.MapSimulator.Effects
             _weddingPhotoScenePresentationPacketTrail.Clear();
             _weddingPhotoSceneUnhandledPacketCount = 0;
             _lastWeddingPhotoSceneUnhandledPacketType = null;
+            _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.None;
+            _lastWeddingPhotoSceneStagePacketType = null;
 
             if (!string.IsNullOrWhiteSpace(WeddingPhotoSceneBackgroundMusicPath))
             {
@@ -407,6 +423,8 @@ namespace HaCreator.MapSimulator.Effects
             _weddingPhotoScenePresentationPacketTrail.Clear();
             _weddingPhotoSceneUnhandledPacketCount = 0;
             _lastWeddingPhotoSceneUnhandledPacketType = null;
+            _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.None;
+            _lastWeddingPhotoSceneStagePacketType = null;
         }
 
 
@@ -585,6 +603,7 @@ namespace HaCreator.MapSimulator.Effects
                 ResolveWeddingPhotoScenePresentationOwnerName(packetType),
                 payloadLength,
                 currentTimeMs));
+            SyncWeddingPhotoScenePresentationStage(packetType);
         }
 
         private void RecordWeddingPhotoSceneUnhandledPacket(int packetType, int payloadLength, int currentTimeMs)
@@ -631,6 +650,8 @@ namespace HaCreator.MapSimulator.Effects
                 return string.Empty;
             }
 
+            SyncWeddingPhotoScenePresentationStage();
+
             string layerState = _ceremonyTextOverlayActive
                 ? "text overlay"
                 : _ceremonyCardOverlayActive
@@ -638,17 +659,18 @@ namespace HaCreator.MapSimulator.Effects
                     : _ceremonyCelebrationActive
                         ? "celebration particles"
                         : "no ceremony layer";
+            string stageSummary = $"stage {_weddingPhotoScenePresentationStage} (last stage packet {_lastWeddingPhotoSceneStagePacketType?.ToString(CultureInfo.InvariantCulture) ?? "none"})";
 
             if (_weddingPhotoScenePresentationPacketTrail.Count == 0)
             {
-                return $"wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets; active step {_currentStep}, layer state {layerState}, passthrough packets {_weddingPhotoSceneUnhandledPacketCount}.";
+                return $"wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets; active step {_currentStep}, layer state {layerState}, {stageSummary}, passthrough packets {_weddingPhotoSceneUnhandledPacketCount}.";
             }
 
             WeddingPhotoScenePresentationPacketRecord last = _weddingPhotoScenePresentationPacketTrail[^1];
             string passthroughSummary = _weddingPhotoSceneUnhandledPacketCount > 0
                 ? $", passthrough packets {_weddingPhotoSceneUnhandledPacketCount} (last type {_lastWeddingPhotoSceneUnhandledPacketType?.ToString(CultureInfo.InvariantCulture) ?? "none"})"
                 : ", passthrough packets 0";
-            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}; active step {_currentStep}, layer state {layerState}{passthroughSummary}.";
+            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}; active step {_currentStep}, layer state {layerState}, {stageSummary}{passthroughSummary}.";
         }
         public void SetParticipantPosition(int characterId, Vector2 worldPosition)
         {
@@ -2597,6 +2619,7 @@ namespace HaCreator.MapSimulator.Effects
 
 
             ApplyWeddingProgressLayerState(step, currentTimeMs, hasCeremonyNpc);
+            SyncWeddingPhotoScenePresentationStage(PacketTypeWeddingProgress);
 
 
             if (hasCeremonyNpc)
@@ -2629,6 +2652,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             SetBlessEffect(true, currentTimeMs);
+            SyncWeddingPhotoScenePresentationStage(PacketTypeWeddingCeremonyEnd);
         }
 
         private void ApplyWeddingProgressLayerState(int step, int currentTimeMs, bool hasCeremonyNpc)
@@ -4465,8 +4489,52 @@ namespace HaCreator.MapSimulator.Effects
             _localPlayerPosition = null;
             _localPlayerBuild = null;
             LocalParticipantRole = WeddingParticipantRole.Guest;
+            _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.None;
+            _lastWeddingPhotoSceneStagePacketType = null;
         }
         #endregion
+
+        private void SyncWeddingPhotoScenePresentationStage(int? stagePacketType = null)
+        {
+            if (stagePacketType.HasValue)
+            {
+                _lastWeddingPhotoSceneStagePacketType = stagePacketType.Value;
+            }
+
+            if (!IsWeddingPhotoSceneOwnerActive || _isActive)
+            {
+                _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.None;
+                return;
+            }
+
+            if (_blessEffectActive)
+            {
+                _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.BlessEffect;
+                return;
+            }
+
+            if (_ceremonyCelebrationActive)
+            {
+                _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.StepCelebrationLayer;
+                return;
+            }
+
+            if (_ceremonyCardOverlayActive)
+            {
+                _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.StepCardLayer;
+                return;
+            }
+
+            if (_ceremonyTextOverlayActive)
+            {
+                _weddingPhotoScenePresentationStage = WeddingPhotoScenePresentationStage.StepTextLayer;
+                return;
+            }
+
+            _weddingPhotoScenePresentationStage = _weddingPhotoScenePresentationPacketTrail.Count > 0
+                ? WeddingPhotoScenePresentationStage.PacketTrailOnly
+                : WeddingPhotoScenePresentationStage.None;
+        }
     }
 
 

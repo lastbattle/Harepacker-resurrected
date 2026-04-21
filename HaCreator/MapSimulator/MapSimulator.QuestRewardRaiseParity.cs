@@ -174,6 +174,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!activeRaise.CanDropItem(request.SlotData.ItemId, out int enabledDropItemIndex))
+            {
+                _chat?.AddSystemMessage("That item cannot be queued in this raise window.", currTickCount);
+                return;
+            }
+
             if (activeRaise.PlacedPieces.Any(piece =>
                     piece.InventoryType == request.SourceInventoryType &&
                     piece.SlotIndex == request.SourceSlotIndex))
@@ -194,7 +200,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            activeRaise.PlacedPieces.Add(new QuestRewardRaisePlacedPiece
+            QuestRewardRaisePlacedPiece placedPiece = new()
             {
                 RequestId = requestId,
                 InventoryType = request.SourceInventoryType,
@@ -205,9 +211,8 @@ namespace HaCreator.MapSimulator
                 Label = string.IsNullOrWhiteSpace(request.SlotData.ItemName)
                     ? ResolveQuestRewardRaiseItemName(request.SlotData.ItemId)
                     : request.SlotData.ItemName.Trim()
-            });
-
-            QuestRewardRaisePlacedPiece placedPiece = activeRaise.PlacedPieces[^1];
+            };
+            InsertQuestRewardRaisePlacedPiece(activeRaise, placedPiece, enabledDropItemIndex);
             DispatchQuestRewardRaisePieceRequest(
                 activeRaise,
                 placedPiece,
@@ -890,8 +895,41 @@ namespace HaCreator.MapSimulator
                     ? QuestRewardRaisePieceLifecycleState.PendingReleaseAck
                     : QuestRewardRaisePieceLifecycleState.PendingAddAck
             };
-            activeRaise.PlacedPieces.Add(placedPiece);
+            InsertQuestRewardRaisePlacedPiece(
+                activeRaise,
+                placedPiece,
+                activeRaise.GetEnableDropItemIndex(placedPiece.ItemId));
             return placedPiece;
+        }
+
+        private static void InsertQuestRewardRaisePlacedPiece(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePlacedPiece placedPiece,
+            int enabledDropItemIndex)
+        {
+            if (activeRaise?.PlacedPieces == null || placedPiece == null)
+            {
+                return;
+            }
+
+            if (!activeRaise.HasEnabledDropItemList || enabledDropItemIndex < 0)
+            {
+                activeRaise.PlacedPieces.Add(placedPiece);
+                return;
+            }
+
+            int insertIndex = activeRaise.PlacedPieces.Count;
+            for (int i = 0; i < activeRaise.PlacedPieces.Count; i++)
+            {
+                int existingDropIndex = activeRaise.GetEnableDropItemIndex(activeRaise.PlacedPieces[i].ItemId);
+                if (existingDropIndex >= 0 && existingDropIndex > enabledDropItemIndex)
+                {
+                    insertIndex = i;
+                    break;
+                }
+            }
+
+            activeRaise.PlacedPieces.Insert(insertIndex, placedPiece);
         }
 
         private bool EnsureQuestRewardRaisePieceRequestId(

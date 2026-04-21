@@ -64,6 +64,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedQuestGuideUnavailableNoticeStringPoolId = 0x19EA;
         private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
         private const int PacketOwnedSkillLearnFailureSoundStringPoolId = 0x0508;
+        private const int QuestAlarmRegistrationSyncMaxQuestCount = 5;
         private const int PacketOwnedSkillLearnMasteryBookLabelStringPoolId = 0x0F2F;
         private const int PacketOwnedSkillLearnSkillBookLabelStringPoolId = 0x0F30;
         private const int PacketOwnedSkillLearnCannotUseStringPoolId = 0x0F31;
@@ -1925,20 +1926,25 @@ namespace HaCreator.MapSimulator
             return $"{requestStamp}, {authStamp}, {cacheStamp}, source: {_lastClassCompetitionAuthSource}";
         }
 
-        private void RefreshClassCompetitionRuntimeState(bool forceAuthRequest = false)
+        private void UpdatePacketOwnedClassCompetitionRuntime(int currentTickCount)
         {
-            if (_lastClassCompetitionOpenTick == int.MinValue && !forceAuthRequest)
+            if (_lastClassCompetitionOpenTick == int.MinValue)
             {
                 return;
             }
 
+            RefreshClassCompetitionRuntimeState();
+        }
+
+        private void RefreshClassCompetitionRuntimeState(bool forceAuthRequest = false)
+        {
             int now = Environment.TickCount;
-            bool authExpired = _lastClassCompetitionAuthIssuedTick == int.MinValue
-                || Math.Max(0, unchecked(now - _lastClassCompetitionAuthIssuedTick)) >= PacketOwnedClassCompetitionAuthLifetimeMs;
-            bool shouldRequestAuth = forceAuthRequest
-                || _lastClassCompetitionAuthRequestTick == int.MinValue
-                || Math.Max(0, unchecked(now - _lastClassCompetitionAuthRequestTick)) >= PacketOwnedClassCompetitionAuthRefreshIntervalMs
-                || authExpired;
+            bool shouldRequestAuth = ShouldRequestClassCompetitionAuth(
+                _lastClassCompetitionOpenTick,
+                _lastClassCompetitionAuthRequestTick,
+                _lastClassCompetitionAuthIssuedTick,
+                forceAuthRequest,
+                now);
 
             if (shouldRequestAuth && !_lastClassCompetitionAuthPending)
             {
@@ -1961,6 +1967,41 @@ namespace HaCreator.MapSimulator
 
             // Keep auth strictly packet-owned: navigation remains pending until opcode 291
             // provides a real auth cache through CUserLocal::OnOpenClassCompetitionPage flow.
+        }
+
+        private static bool ShouldRequestClassCompetitionAuth(
+            int lastOpenTick,
+            int lastAuthRequestTick,
+            int lastAuthIssuedTick,
+            bool forceAuthRequest,
+            int now)
+        {
+            if (lastOpenTick == int.MinValue && !forceAuthRequest)
+            {
+                return false;
+            }
+
+            bool authExpired = lastAuthIssuedTick == int.MinValue
+                || Math.Max(0, unchecked(now - lastAuthIssuedTick)) >= PacketOwnedClassCompetitionAuthLifetimeMs;
+            return forceAuthRequest
+                || lastAuthRequestTick == int.MinValue
+                || Math.Max(0, unchecked(now - lastAuthRequestTick)) >= PacketOwnedClassCompetitionAuthRefreshIntervalMs
+                || authExpired;
+        }
+
+        internal static bool ShouldRequestClassCompetitionAuthForTests(
+            int lastOpenTick,
+            int lastAuthRequestTick,
+            int lastAuthIssuedTick,
+            bool forceAuthRequest,
+            int now)
+        {
+            return ShouldRequestClassCompetitionAuth(
+                lastOpenTick,
+                lastAuthRequestTick,
+                lastAuthIssuedTick,
+                forceAuthRequest,
+                now);
         }
 
         private string DispatchClassCompetitionAuthRequest()
@@ -3424,7 +3465,7 @@ namespace HaCreator.MapSimulator
                         payload,
                         LocalUtilityPacketInboxManager.RadioSchedulePacketType,
                         source,
-                        requireExactClientPayload: false,
+                        requireExactClientPayload: ShouldRequireExactPacketOwnedRadioSchedulePayload(LocalUtilityPacketInboxManager.RadioSchedulePacketType),
                         out message);
 
                 case LocalUtilityPacketInboxManager.RadioScheduleClientPacketType:
@@ -3432,7 +3473,7 @@ namespace HaCreator.MapSimulator
                         payload,
                         LocalUtilityPacketInboxManager.RadioScheduleClientPacketType,
                         source,
-                        requireExactClientPayload: true,
+                        requireExactClientPayload: ShouldRequireExactPacketOwnedRadioSchedulePayload(LocalUtilityPacketInboxManager.RadioScheduleClientPacketType),
                         out message);
 
                 case LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType:
@@ -4385,7 +4426,52 @@ namespace HaCreator.MapSimulator
             PlayerMovementSyncSnapshot passiveMoveSnapshot,
             int sampleTime)
         {
-            return passiveMoveSnapshot != null;
+            if (!TryResolvePacketOwnedActiveEffectMotionBlurPassiveSnapshotSampleTimeBounds(
+                    passiveMoveSnapshot,
+                    out int startTime,
+                    out int endTime))
+            {
+                return false;
+            }
+
+            return sampleTime >= startTime && sampleTime <= endTime;
+        }
+
+        private static bool TryResolvePacketOwnedActiveEffectMotionBlurPassiveSnapshotSampleTimeBounds(
+            PlayerMovementSyncSnapshot passiveMoveSnapshot,
+            out int startTime,
+            out int endTime)
+        {
+            startTime = 0;
+            endTime = 0;
+            if (passiveMoveSnapshot == null)
+            {
+                return false;
+            }
+
+            startTime = passiveMoveSnapshot.PassivePosition.TimeStamp;
+            endTime = passiveMoveSnapshot.PassivePosition.TimeStamp;
+            List<MovePathElement> movePath = passiveMoveSnapshot.MovePath;
+            if (movePath == null || movePath.Count == 0)
+            {
+                return true;
+            }
+
+            for (int i = 0; i < movePath.Count; i++)
+            {
+                int timeStamp = movePath[i].TimeStamp;
+                if (timeStamp < startTime)
+                {
+                    startTime = timeStamp;
+                }
+
+                if (timeStamp > endTime)
+                {
+                    endTime = timeStamp;
+                }
+            }
+
+            return true;
         }
 
         private static PacketOwnedActiveEffectMotionBlurOwnerSample ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(
@@ -5661,6 +5747,92 @@ namespace HaCreator.MapSimulator
             autoRegisterEnabled = false;
             clearHiddenAutoTombstones = false;
             questIds = Array.Empty<int>();
+            error = "Quest-alarm registration-sync payload is missing.";
+
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            byte[] normalizedPayload = payload;
+            if (TryUnwrapPacketOwnedPayloadForType(
+                    payload,
+                    LocalUtilityPacketInboxManager.QuestAlarmRegistrationSyncPacketType,
+                    out byte[] unwrappedPayload))
+            {
+                normalizedPayload = unwrappedPayload;
+            }
+
+            if (TryDecodeQuestAlarmRegistrationSyncBinaryPayload(
+                    normalizedPayload,
+                    out opened,
+                    out minimized,
+                    out autoRegisterEnabled,
+                    out clearHiddenAutoTombstones,
+                    out questIds,
+                    out error))
+            {
+                return true;
+            }
+
+            bool hasLengthPrefixedPayload = TryResolvePacketOwnedLengthPrefixedPayload(normalizedPayload, out byte[] lengthPrefixedPayload);
+            if (hasLengthPrefixedPayload
+                && TryDecodeQuestAlarmRegistrationSyncBinaryPayload(
+                    lengthPrefixedPayload,
+                    out opened,
+                    out minimized,
+                    out autoRegisterEnabled,
+                    out clearHiddenAutoTombstones,
+                    out questIds,
+                    out error))
+            {
+                return true;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(normalizedPayload, out string decodedText)
+                && (!hasLengthPrefixedPayload
+                    || !TryDecodePacketOwnedStringPayload(lengthPrefixedPayload, out decodedText)))
+            {
+                error = "Quest-alarm registration-sync payload must decode to a binary sync envelope, MapleString, UTF-8 text, or a JSON text body.";
+                return false;
+            }
+
+            if (TryDecodeQuestAlarmRegistrationSyncJsonPayload(
+                    decodedText,
+                    out opened,
+                    out minimized,
+                    out autoRegisterEnabled,
+                    out clearHiddenAutoTombstones,
+                    out questIds,
+                    out error))
+            {
+                return true;
+            }
+
+            return TryDecodeQuestAlarmRegistrationSyncTextPayload(
+                decodedText,
+                out opened,
+                out minimized,
+                out autoRegisterEnabled,
+                out clearHiddenAutoTombstones,
+                out questIds,
+                out error);
+        }
+
+        private static bool TryDecodeQuestAlarmRegistrationSyncBinaryPayload(
+            byte[] payload,
+            out bool opened,
+            out bool minimized,
+            out bool autoRegisterEnabled,
+            out bool clearHiddenAutoTombstones,
+            out int[] questIds,
+            out string error)
+        {
+            opened = false;
+            minimized = true;
+            autoRegisterEnabled = false;
+            clearHiddenAutoTombstones = false;
+            questIds = Array.Empty<int>();
             error = null;
 
             if (payload == null || payload.Length < 2)
@@ -5712,13 +5884,23 @@ namespace HaCreator.MapSimulator
 
             byte flags = reader.ReadByte();
             int count = reader.ReadByte();
-            if (count > 5)
+            if (count > QuestAlarmRegistrationSyncMaxQuestCount)
             {
                 error = "Quest-alarm registration-sync payload cannot register more than five quests.";
                 return false;
             }
 
-            if (stream.Length - stream.Position != count * sizeof(ushort))
+            long remainingBytes = stream.Length - stream.Position;
+            int questIdByteWidth;
+            if (remainingBytes == count * sizeof(ushort))
+            {
+                questIdByteWidth = sizeof(ushort);
+            }
+            else if (remainingBytes == count * sizeof(int))
+            {
+                questIdByteWidth = sizeof(int);
+            }
+            else
             {
                 error = "Quest-alarm registration-sync payload quest-id list length does not match its count.";
                 return false;
@@ -5728,7 +5910,7 @@ namespace HaCreator.MapSimulator
             minimized = (flags & 0x02) != 0;
             autoRegisterEnabled = (flags & 0x04) != 0;
             clearHiddenAutoTombstones = (flags & 0x08) != 0;
-            questIds = DecodeQuestAlarmRegistrationQuestIds(reader, count);
+            questIds = DecodeQuestAlarmRegistrationQuestIds(reader, count, questIdByteWidth);
             return true;
         }
 
@@ -5748,8 +5930,23 @@ namespace HaCreator.MapSimulator
             questIds = Array.Empty<int>();
             error = "Quest-alarm registration-sync payload quest-id list length does not match its count.";
 
-            int expectedLength = sizeof(byte) + (5 * sizeof(ushort));
-            if (payload == null || payload.Length != expectedLength)
+            int expectedUShortLength = sizeof(byte) + (QuestAlarmRegistrationSyncMaxQuestCount * sizeof(ushort));
+            int expectedInt32Length = sizeof(byte) + (QuestAlarmRegistrationSyncMaxQuestCount * sizeof(int));
+            int questIdByteWidth;
+            if (payload == null)
+            {
+                return false;
+            }
+
+            if (payload.Length == expectedUShortLength)
+            {
+                questIdByteWidth = sizeof(ushort);
+            }
+            else if (payload.Length == expectedInt32Length)
+            {
+                questIdByteWidth = sizeof(int);
+            }
+            else
             {
                 return false;
             }
@@ -5762,17 +5959,19 @@ namespace HaCreator.MapSimulator
             minimized = (flags & 0x02) != 0;
             autoRegisterEnabled = (flags & 0x04) != 0;
             clearHiddenAutoTombstones = (flags & 0x08) != 0;
-            questIds = DecodeQuestAlarmRegistrationQuestIds(reader, 5);
+            questIds = DecodeQuestAlarmRegistrationQuestIds(reader, QuestAlarmRegistrationSyncMaxQuestCount, questIdByteWidth);
             error = null;
             return true;
         }
 
-        private static int[] DecodeQuestAlarmRegistrationQuestIds(BinaryReader reader, int count)
+        private static int[] DecodeQuestAlarmRegistrationQuestIds(BinaryReader reader, int count, int questIdByteWidth)
         {
             List<int> decodedQuestIds = new(Math.Max(0, count));
             for (int i = 0; i < count; i++)
             {
-                int questId = reader.ReadUInt16();
+                int questId = questIdByteWidth == sizeof(int)
+                    ? reader.ReadInt32()
+                    : reader.ReadUInt16();
                 if (questId > 0 && !decodedQuestIds.Contains(questId))
                 {
                     decodedQuestIds.Add(questId);
@@ -5780,6 +5979,355 @@ namespace HaCreator.MapSimulator
             }
 
             return decodedQuestIds.ToArray();
+        }
+
+        private static bool TryDecodeQuestAlarmRegistrationSyncJsonPayload(
+            string payloadText,
+            out bool opened,
+            out bool minimized,
+            out bool autoRegisterEnabled,
+            out bool clearHiddenAutoTombstones,
+            out int[] questIds,
+            out string error)
+        {
+            opened = false;
+            minimized = true;
+            autoRegisterEnabled = false;
+            clearHiddenAutoTombstones = false;
+            questIds = Array.Empty<int>();
+            error = "Quest-alarm registration-sync JSON payload did not contain any usable quest registration rows.";
+            if (string.IsNullOrWhiteSpace(payloadText))
+            {
+                return false;
+            }
+
+            string trimmed = payloadText.Trim();
+            if (!trimmed.StartsWith("{", StringComparison.Ordinal)
+                && !trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(trimmed);
+                JsonElement root = document.RootElement;
+                JsonElement working = root;
+                if (root.ValueKind == JsonValueKind.Object
+                    && (TryGetJsonObjectProperty(root, out JsonElement nestedObject, "questAlarm", "cUIQuestAlarm", "payload", "data", "result", "body")
+                        || TryGetJsonNestedObjectProperty(
+                            root,
+                            out nestedObject,
+                            new[] { "questAlarm", "cUIQuestAlarm", "payload", "data", "result", "body" },
+                            new[] { "questAlarm", "cUIQuestAlarm", "payload", "data", "result", "body" })))
+                {
+                    working = nestedObject;
+                }
+
+                if (working.ValueKind == JsonValueKind.Object)
+                {
+                    if (TryGetJsonBoolean(working, "opened", out bool parsedOpened)
+                        || TryGetJsonBoolean(working, "open", out parsedOpened)
+                        || TryGetJsonBoolean(working, "isOpened", out parsedOpened))
+                    {
+                        opened = parsedOpened;
+                    }
+
+                    if (TryGetJsonBoolean(working, "minimized", out bool parsedMinimized)
+                        || TryGetJsonBoolean(working, "minimize", out parsedMinimized)
+                        || TryGetJsonBoolean(working, "isMinimized", out parsedMinimized))
+                    {
+                        minimized = parsedMinimized;
+                    }
+
+                    if (TryGetJsonBoolean(working, "autoRegisterEnabled", out bool parsedAutoRegisterEnabled)
+                        || TryGetJsonBoolean(working, "autoRegister", out parsedAutoRegisterEnabled)
+                        || TryGetJsonBoolean(working, "auto", out parsedAutoRegisterEnabled))
+                    {
+                        autoRegisterEnabled = parsedAutoRegisterEnabled;
+                    }
+
+                    if (TryGetJsonBoolean(working, "clearHiddenAutoTombstones", out bool parsedClearHiddenAutoTombstones)
+                        || TryGetJsonBoolean(working, "clearHidden", out parsedClearHiddenAutoTombstones)
+                        || TryGetJsonBoolean(working, "clearDeleted", out parsedClearHiddenAutoTombstones))
+                    {
+                        clearHiddenAutoTombstones = parsedClearHiddenAutoTombstones;
+                    }
+                    else if (TryGetJsonBoolean(working, "replace", out bool parsedReplace))
+                    {
+                        clearHiddenAutoTombstones = parsedReplace;
+                    }
+
+                    if (TryGetJsonArrayProperty(
+                            working,
+                            out JsonElement questArray,
+                            "questIds",
+                            "registeredQuestIds",
+                            "registered",
+                            "entries",
+                            "rows",
+                            "quests")
+                        || TryGetJsonNestedArrayProperty(
+                            working,
+                            out questArray,
+                            new[] { "registration", "sync", "tracker", "state" },
+                            new[] { "questIds", "registeredQuestIds", "registered", "entries", "rows", "quests" }))
+                    {
+                        questIds = DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(questArray);
+                    }
+                }
+                else if (working.ValueKind == JsonValueKind.Array)
+                {
+                    questIds = DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(working);
+                }
+
+                bool hasResetDirective = false;
+                if (working.ValueKind == JsonValueKind.Object
+                    && (TryGetJsonBoolean(working, "clear", out bool parsedClear)
+                        || TryGetJsonBoolean(working, "reset", out parsedClear)))
+                {
+                    hasResetDirective = parsedClear;
+                }
+
+                if (hasResetDirective)
+                {
+                    clearHiddenAutoTombstones = true;
+                    questIds = Array.Empty<int>();
+                    error = null;
+                    return true;
+                }
+
+                if (questIds.Length > 0)
+                {
+                    error = null;
+                    return true;
+                }
+
+                if (working.ValueKind == JsonValueKind.Object
+                    && (TryGetJsonBoolean(working, "opened", out _)
+                        || TryGetJsonBoolean(working, "open", out _)
+                        || TryGetJsonBoolean(working, "minimized", out _)
+                        || TryGetJsonBoolean(working, "minimize", out _)
+                        || TryGetJsonBoolean(working, "autoRegisterEnabled", out _)
+                        || TryGetJsonBoolean(working, "autoRegister", out _)
+                        || TryGetJsonBoolean(working, "auto", out _)))
+                {
+                    error = null;
+                    return true;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                error = $"Quest-alarm registration-sync JSON payload decode failed: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static int[] DecodeQuestAlarmRegistrationQuestIdsFromJsonArray(JsonElement questArray)
+        {
+            List<int> questIds = new();
+            if (questArray.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<int>();
+            }
+
+            foreach (JsonElement element in questArray.EnumerateArray())
+            {
+                if (questIds.Count >= QuestAlarmRegistrationSyncMaxQuestCount)
+                {
+                    break;
+                }
+
+                if (TryResolveQuestAlarmRegistrationQuestIdFromJsonElement(element, out int questId)
+                    && questId > 0
+                    && !questIds.Contains(questId))
+                {
+                    questIds.Add(questId);
+                }
+            }
+
+            return questIds.ToArray();
+        }
+
+        private static bool TryResolveQuestAlarmRegistrationQuestIdFromJsonElement(JsonElement element, out int questId)
+        {
+            questId = 0;
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Number:
+                    return element.TryGetInt32(out questId) && questId > 0;
+                case JsonValueKind.String:
+                    return int.TryParse(element.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out questId) && questId > 0;
+                case JsonValueKind.Object:
+                    return TryGetJsonInt32Property(
+                        element,
+                        out questId,
+                        "questId",
+                        "id",
+                        "q",
+                        "quest");
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryDecodeQuestAlarmRegistrationSyncTextPayload(
+            string payloadText,
+            out bool opened,
+            out bool minimized,
+            out bool autoRegisterEnabled,
+            out bool clearHiddenAutoTombstones,
+            out int[] questIds,
+            out string error)
+        {
+            opened = false;
+            minimized = true;
+            autoRegisterEnabled = false;
+            clearHiddenAutoTombstones = false;
+            questIds = Array.Empty<int>();
+            error = "Quest-alarm registration-sync payload did not contain any usable quest registration rows.";
+            if (string.IsNullOrWhiteSpace(payloadText))
+            {
+                return false;
+            }
+
+            string normalizedText = payloadText.Trim();
+            if (string.Equals(normalizedText, "clear", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedText, "reset", StringComparison.OrdinalIgnoreCase))
+            {
+                clearHiddenAutoTombstones = true;
+                error = null;
+                return true;
+            }
+
+            HashSet<int> parsedQuestIds = new();
+            bool sawDirective = false;
+            string[] segments = normalizedText.Split(
+                new[] { "\r\n", "\n", ",", ";" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                string segment = segments[i];
+                if (string.IsNullOrWhiteSpace(segment))
+                {
+                    continue;
+                }
+
+                if (TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "open", out bool parsedOpen)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "opened", out parsedOpen))
+                {
+                    opened = parsedOpen;
+                    sawDirective = true;
+                    continue;
+                }
+
+                if (TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "min", out bool parsedMinimized)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "minimize", out parsedMinimized)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "minimized", out parsedMinimized))
+                {
+                    minimized = parsedMinimized;
+                    sawDirective = true;
+                    continue;
+                }
+
+                if (TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "auto", out bool parsedAuto)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "autoregister", out parsedAuto))
+                {
+                    autoRegisterEnabled = parsedAuto;
+                    sawDirective = true;
+                    continue;
+                }
+
+                if (TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "clearhidden", out bool parsedClearHidden)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "clear", out parsedClearHidden)
+                    || TryParseQuestAlarmRegistrationSyncFlagDirective(segment, "replace", out parsedClearHidden))
+                {
+                    clearHiddenAutoTombstones = parsedClearHidden;
+                    sawDirective = true;
+                    continue;
+                }
+
+                if (int.TryParse(segment, NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId)
+                    && questId > 0
+                    && parsedQuestIds.Count < QuestAlarmRegistrationSyncMaxQuestCount)
+                {
+                    parsedQuestIds.Add(questId);
+                    continue;
+                }
+
+                string questToken = segment;
+                int equalsIndex = segment.IndexOf('=');
+                if (equalsIndex >= 0 && equalsIndex < segment.Length - 1)
+                {
+                    questToken = segment[(equalsIndex + 1)..].Trim();
+                }
+
+                if (int.TryParse(questToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out questId)
+                    && questId > 0
+                    && parsedQuestIds.Count < QuestAlarmRegistrationSyncMaxQuestCount)
+                {
+                    parsedQuestIds.Add(questId);
+                }
+            }
+
+            questIds = parsedQuestIds.ToArray();
+            if (questIds.Length > 0 || sawDirective)
+            {
+                error = null;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParseQuestAlarmRegistrationSyncFlagDirective(string text, string key, out bool value)
+        {
+            value = false;
+            if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            string normalized = text.Trim();
+            int separatorIndex = normalized.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                separatorIndex = normalized.IndexOf(':');
+            }
+
+            if (separatorIndex <= 0)
+            {
+                return false;
+            }
+
+            string candidateKey = normalized[..separatorIndex].Trim();
+            if (!string.Equals(candidateKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string candidateValue = normalized[(separatorIndex + 1)..].Trim();
+            if (string.Equals(candidateValue, "1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidateValue, "true", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidateValue, "yes", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidateValue, "on", StringComparison.OrdinalIgnoreCase))
+            {
+                value = true;
+                return true;
+            }
+
+            if (string.Equals(candidateValue, "0", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidateValue, "false", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidateValue, "no", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidateValue, "off", StringComparison.OrdinalIgnoreCase))
+            {
+                value = false;
+                return true;
+            }
+
+            return false;
         }
 
         private bool TryApplyPacketOwnedMakerResultPayload(byte[] payload, out string message)
@@ -7118,10 +7666,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string queueStatus = queueOnly
-                ? $"Queued CWvsContext::SendClaimRequest claim type {claimType} context '{context}' with {chatLineCount} Messenger line(s)."
-                : $"Mirrored CWvsContext::SendClaimRequest claim type {claimType} context '{context}' with {chatLineCount} Messenger line(s).";
-            message = $"{queueStatus} {dispatchStatus}";
+            string runtimeStatus = _messengerRuntime.QueueSessionOwnedChatClaimRequest(
+                targetCharacterName,
+                claimType,
+                context,
+                chatLineCount,
+                queueOnly);
+            message = $"{runtimeStatus} {dispatchStatus}";
             return true;
         }
 
@@ -7630,16 +8181,6 @@ namespace HaCreator.MapSimulator
                 message = ApplyPacketOwnedRadioSchedule(
                     trackDescriptor,
                     timeValue,
-                    packetType,
-                    ResolvePacketOwnedRadioScheduleSourceLabel(packetType, source));
-                return true;
-            }
-
-            if (!requireExactClientPayload && TryDecodePacketOwnedStringPayload(payload, out string descriptor))
-            {
-                message = ApplyPacketOwnedRadioSchedule(
-                    descriptor,
-                    0,
                     packetType,
                     ResolvePacketOwnedRadioScheduleSourceLabel(packetType, source));
                 return true;
@@ -8371,6 +8912,12 @@ namespace HaCreator.MapSimulator
         {
             return !string.IsNullOrWhiteSpace(source)
                 && source.Trim().StartsWith("official-session", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool ShouldRequireExactPacketOwnedRadioSchedulePayload(int packetType)
+        {
+            return packetType == LocalUtilityPacketInboxManager.RadioScheduleClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.RadioSchedulePacketType;
         }
 
         internal static string ResolvePacketOwnedRadioCreateLayerContextMutationSourceLabel(
@@ -9413,16 +9960,6 @@ namespace HaCreator.MapSimulator
             bool hasPassiveTemporaryStatObject =
                 TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool resolvedPassiveTemporaryStatObject)
                 && resolvedPassiveTemporaryStatObject;
-            if (!hasPassiveTemporaryStatObject
-                && hasPassiveTemporaryStatTrackingOwner
-                && isVehiclePresentationActive)
-            {
-                EnsurePacketOwnedBattleshipPassiveTemporaryStatObject(currTickCount);
-                hasPassiveTemporaryStatObject =
-                    TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out resolvedPassiveTemporaryStatObject)
-                    && resolvedPassiveTemporaryStatObject;
-            }
-
             if (!ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
                     hasPassiveTemporaryStatTrackingOwner,
                     hasPassiveTemporaryStatObject,
@@ -9505,21 +10042,6 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void EnsurePacketOwnedBattleshipPassiveTemporaryStatObject(int currentTick)
-        {
-            if (_playerManager?.Skills == null)
-            {
-                return;
-            }
-
-            // Client evidence: SetSkillCooltimeOver -> UpdatePassively mutates a TEMPORARY_STAT
-            // owner; the simulator mirrors that ownership gate by seeding a passive owner state
-            // on the first qualifying packet-owned Battleship update.
-            _playerManager.Skills.EnsurePassiveVehicleTemporaryStatOwnerForParity(
-                PacketOwnedBattleshipSkillId,
-                currentTick);
-        }
-
         private bool TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
         {
             currentValue = 0;
@@ -9576,7 +10098,8 @@ namespace HaCreator.MapSimulator
             // Client evidence: CWvsContext::SetSkillCooltimeOver only calls
             // CTemporaryStatView::UpdatePassively for the Battleship sentinel
             // when SecondaryStat::IsRidingSkillVehicle is true, and that
-            // routine only mutates an existing TEMPORARY_STAT node.
+            // routine only mutates an existing TEMPORARY_STAT node (no
+            // object creation when the node is missing).
             return hasPassiveTemporaryStatTrackingOwner
                 && isVehiclePresentationActive
                 && hasPassiveTemporaryStatObject;
@@ -10315,6 +10838,13 @@ namespace HaCreator.MapSimulator
                 && currentLevel > previousObservedLevel;
         }
 
+        internal static bool ShouldApplyPacketOwnedTutorLevelUpPetSpeaking(int previousObservedLevel, int currentLevel)
+        {
+            // Client evidence: CWvsContext::OnStatChanged always calls CUser::PetAutoSpeaking(0)
+            // in the level-up branch after the level-up sound.
+            return ShouldApplyPacketOwnedTutorAdjacentLevelUpEffects(previousObservedLevel, currentLevel);
+        }
+
         internal static bool ShouldApplyPacketOwnedTutorLevelTwoUiSideEffects(int previousObservedLevel, int currentLevel)
         {
             // Client evidence: CWvsContext::OnStatChanged checks the previous level value
@@ -10343,6 +10873,18 @@ namespace HaCreator.MapSimulator
             string levelUpSummary = playedLevelUpSound
                 ? $"packet-owned OnStatChanged level-up branch played {resolvedLevelUpSoundDescriptor}."
                 : "packet-owned OnStatChanged level-up branch could not resolve the client level-up sound.";
+
+            bool triggeredPetSpeaking = false;
+            if (ShouldApplyPacketOwnedTutorLevelUpPetSpeaking(previousObservedLevel, currentLevel))
+            {
+                triggeredPetSpeaking = TryTriggerPetSpeechEvent(PetAutoSpeechEvent.LevelUp, currTickCount);
+                _lastObservedPetSpeechLevel = Math.Max(_lastObservedPetSpeechLevel, currentLevel);
+            }
+
+            string petSpeakingSummary = triggeredPetSpeaking
+                ? "Triggered packet-owned level-up pet auto-speaking."
+                : "No active pet auto-speaking owner accepted the packet-owned level-up event.";
+            levelUpSummary = $"{levelUpSummary} {petSpeakingSummary}";
 
             if (!ShouldApplyPacketOwnedTutorLevelTwoUiSideEffects(previousObservedLevel, currentLevel))
             {
@@ -16696,15 +17238,20 @@ namespace HaCreator.MapSimulator
             {
                 using MemoryStream rowStream = new(rowPayload, writable: false);
                 using BinaryReader rowReader = new(rowStream);
-                string label = ReadPacketOwnedMapleString(rowReader)?.Trim();
-                string value = ReadPacketOwnedMapleString(rowReader)?.Trim();
-                string detail = ReadPacketOwnedMapleString(rowReader)?.Trim();
-                if (rowReader.BaseStream.Position != rowReader.BaseStream.Length)
+                if (!TryReadPacketOwnedOptionalMapleString(rowReader, out string label)
+                    || string.IsNullOrWhiteSpace(label))
                 {
                     return false;
                 }
 
-                rowEntry = CreatePacketOwnedRankingEntry(label, value, detail);
+                if (!TryReadPacketOwnedOptionalMapleString(rowReader, out string value)
+                    || !TryReadPacketOwnedOptionalMapleString(rowReader, out string detail)
+                    || rowReader.BaseStream.Position != rowReader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                rowEntry = CreatePacketOwnedRankingEntry(label.Trim(), value?.Trim() ?? string.Empty, detail?.Trim() ?? string.Empty);
                 return true;
             }
             catch
@@ -16890,6 +17437,43 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return false;
+            }
+        }
+
+        private static bool TryReadPacketOwnedOptionalMapleString(BinaryReader reader, out string value)
+        {
+            value = string.Empty;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long remaining = reader.BaseStream.Length - reader.BaseStream.Position;
+            if (remaining <= 0)
+            {
+                return true;
+            }
+
+            if (remaining < sizeof(ushort))
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                value = ReadPacketOwnedMapleString(reader);
+                return true;
+            }
+            catch
+            {
+                if (reader.BaseStream.CanSeek)
+                {
+                    reader.BaseStream.Position = startPosition;
+                }
+
+                value = string.Empty;
+                return false;
             }
         }
 
@@ -17814,10 +18398,18 @@ namespace HaCreator.MapSimulator
             }
 
             EventEntryStatus status = DecodePacketOwnedEventCalendarBinaryStatus(reader.ReadByte());
-            string title = ReadPacketOwnedMapleString(reader)?.Trim();
-            string detail = ReadPacketOwnedMapleString(reader)?.Trim();
-            string statusText = ReadPacketOwnedMapleString(reader)?.Trim();
-            string alarmText = ReadPacketOwnedMapleString(reader)?.Trim();
+            if (!TryReadPacketOwnedOptionalMapleString(reader, out string title)
+                || !TryReadPacketOwnedOptionalMapleString(reader, out string detail)
+                || !TryReadPacketOwnedOptionalMapleString(reader, out string statusText)
+                || !TryReadPacketOwnedOptionalMapleString(reader, out string alarmText))
+            {
+                return false;
+            }
+
+            title = title?.Trim();
+            detail = detail?.Trim() ?? string.Empty;
+            statusText = statusText?.Trim() ?? string.Empty;
+            alarmText = alarmText?.Trim() ?? string.Empty;
             if (!TryCreatePacketOwnedEventCalendarBinaryDate(year, month, day, out DateTime scheduledAt)
                 || string.IsNullOrWhiteSpace(title))
             {

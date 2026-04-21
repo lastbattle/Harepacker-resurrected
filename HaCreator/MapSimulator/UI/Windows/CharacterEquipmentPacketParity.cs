@@ -136,7 +136,7 @@ namespace HaCreator.MapSimulator.UI
                             break;
                         case 3:
                             requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
-                                || ShouldRequireSecondaryStatChangedPointTrailer(inventoryType, fromPosition);
+                                || ShouldRequireSecondaryStatChangedPointTrailerForRemove(inventoryType, fromPosition);
                             operationContext = ObserveCharacterInventoryOperationRemove(
                                 request,
                                 operationContext,
@@ -154,8 +154,6 @@ namespace HaCreator.MapSimulator.UI
                             break;
                         case 0:
                         {
-                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
-                                || ShouldRequireSecondaryStatChangedPointTrailer(inventoryType, fromPosition);
                             if (!TryReadClientInventoryOperationAddEntry(
                                     request,
                                     inventoryType,
@@ -258,7 +256,7 @@ namespace HaCreator.MapSimulator.UI
                    && (sourcePosition < 0 || targetPosition < 0);
         }
 
-        private static bool ShouldRequireSecondaryStatChangedPointTrailer(
+        private static bool ShouldRequireSecondaryStatChangedPointTrailerForRemove(
             byte inventoryType,
             short sourcePosition)
         {

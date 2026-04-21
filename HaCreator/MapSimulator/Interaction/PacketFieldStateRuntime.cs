@@ -603,7 +603,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     if (_packetObjectStateByTag.TryGetValue(normalizedTag, out int packetStateValue))
                     {
-                        bool packetEnabled = packetStateValue != 0;
+                        bool packetEnabled = ResolveObjectStateVisibilityBridge(packetStateValue);
                         bool replayedPacketState =
                             setDynamicObjectTagState?.Invoke(normalizedTag, packetEnabled, 0, currentTick) == true;
                         message = replayedPacketState
@@ -627,7 +627,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 _packetObjectStateByTag[normalizedTag] = stateValue;
-                bool isEnabled = stateValue != 0;
+                bool isEnabled = ResolveObjectStateVisibilityBridge(stateValue);
                 bool applied = setDynamicObjectTagState?.Invoke(normalizedTag, isEnabled, 0, currentTick) == true;
                 message = applied
                     ? $"Applied object-state packet for '{normalizedTag}' => state {stateValue} ({(isEnabled ? "on" : "off")} visibility bridge)."
@@ -640,6 +640,14 @@ namespace HaCreator.MapSimulator.Interaction
                 message = $"Object-state packet could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        private static bool ResolveObjectStateVisibilityBridge(int stateValue)
+        {
+            // Client `CMapLoadable::SetObjectState` treats non-negative values as
+            // concrete state indices (0..n), so keep all of them visible on the
+            // simulator's boolean tag bridge instead of collapsing state 0 to off.
+            return stateValue >= 0;
         }
 
         private bool TryApplyFieldSpecificData(

@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator
         private readonly RemoteUserOfficialSessionBridgeManager _remoteUserOfficialSessionBridge = new();
         private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
         private readonly PacketOwnedPortableChairRecordRuntime _packetOwnedPortableChairRecordRuntime = new();
+        private readonly Dictionary<int, RemoteUserProfilePacket> _pendingRemoteUserProfilesByCharacterId = new();
         private bool _remoteUserOfficialSessionBridgeEnabled;
         private bool _remoteUserOfficialSessionBridgeUseDiscovery;
         private int _remoteUserOfficialSessionBridgeConfiguredListenPort = RemoteUserOfficialSessionBridgeManager.DefaultListenPort;
@@ -207,6 +208,7 @@ namespace HaCreator.MapSimulator
             }
             _packetOwnedRelationshipRecordRuntime.Clear();
             _packetOwnedPortableChairRecordRuntime.Clear();
+            _pendingRemoteUserProfilesByCharacterId.Clear();
             _animationEffects.ClearUserStates();
             return ChatCommandHandler.CommandResult.Ok("Remote user pool cleared.");
         }
@@ -1292,7 +1294,19 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
+                if (!_remoteUserPool.TryGetActor(profilePacket.CharacterId, out _))
+                {
+                    _pendingRemoteUserProfilesByCharacterId[profilePacket.CharacterId] = profilePacket;
+                    result = $"Queued {DescribeRemoteUserPacketType(packetType)} for {profilePacket.CharacterId} until UserEnterField publishes the remote actor.";
+                    return true;
+                }
+
                 bool profileApplied = _remoteUserPool.TryApplyProfileMetadata(profilePacket, out string profileMessage);
+                if (profileApplied)
+                {
+                    _pendingRemoteUserProfilesByCharacterId.Remove(profilePacket.CharacterId);
+                }
+
                 result = profileApplied
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {profilePacket.CharacterId}."
                     : profileMessage;
@@ -1569,6 +1583,7 @@ namespace HaCreator.MapSimulator
                             enterPacket.GuildName,
                             enterPacket.JobId,
                             out _);
+                        TryApplyPendingRemoteUserProfile(enterPacket.CharacterId, out _);
                     }
 
                     if (applied)
@@ -1672,6 +1687,18 @@ namespace HaCreator.MapSimulator
                     {
                         result = helperError;
                         return false;
+                    }
+
+                    if (!ShouldApplyTrackedUserStateForRemoteHelperPacket(helperPacket))
+                    {
+                        if (!_remoteUserPool.TryGetActor(helperPacket.CharacterId, out _))
+                        {
+                            result = $"Remote character {helperPacket.CharacterId} does not exist.";
+                            return false;
+                        }
+
+                        result = $"Applied {DescribeRemoteUserPacketType(packetType)} for {helperPacket.CharacterId}.";
+                        return true;
                     }
 
                     bool helperApplied = _remoteUserPool.TrySetHelperMarker(helperPacket.CharacterId, helperPacket.MarkerType, helperPacket.ShowDirectionOverlay, out string helperMessage);
@@ -1873,6 +1900,7 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
+                    int pickupOwnerCharacterId = ResolveRemoteUserDropPickupOwnerCharacterId(dropPickupPacket);
                     string pickupActorName = ResolveRemoteUserDropPickupActorName(
                         dropPickupPacket,
                         _remoteUserPool,
@@ -1882,14 +1910,16 @@ namespace HaCreator.MapSimulator
                     if (dropPickupPacket.ActorKind == DropPickupActorKind.Pet
                         && pickupTargetPosition.HasValue)
                     {
-                        RememberObservedRemotePetPickupActorPosition(dropPickupPacket.ActorId, pickupTargetPosition.Value);
-                        if (resolvedPickupActorId != dropPickupPacket.ActorId)
+                        foreach (int observedPetActorId in ResolveRemoteUserDropPickupObservedPetActorIds(
+                            dropPickupPacket,
+                            resolvedPickupActorId,
+                            pickupOwnerCharacterId))
                         {
-                            RememberObservedRemotePetPickupActorPosition(resolvedPickupActorId, pickupTargetPosition.Value);
+                            RememberObservedRemotePetPickupActorPosition(observedPetActorId, pickupTargetPosition.Value);
                         }
                     }
 
-                    ObserveRemoteUserDropPickupPartyLink(drop, dropPickupPacket, resolvedPickupActorId);
+                    ObserveRemoteUserDropPickupPartyLink(drop, dropPickupPacket, resolvedPickupActorId, pickupOwnerCharacterId);
                     bool pickupApplied = _dropPool.ResolveRemotePickup(
                         drop,
                         resolvedPickupActorId,
@@ -2148,7 +2178,8 @@ namespace HaCreator.MapSimulator
         private void ObserveRemoteUserDropPickupPartyLink(
             DropItem drop,
             RemoteUserDropPickupPacket packet,
-            int resolvedActorId)
+            int resolvedActorId,
+            int resolvedOwnerCharacterId)
         {
             if (drop?.IsPacketControlled != true
                 || drop.OwnershipType != DropOwnershipType.Party
@@ -2158,11 +2189,73 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            RegisterObservedDropPartyActorLink(drop.OwnerId, packet.ActorId);
-            if (resolvedActorId != 0 && resolvedActorId != packet.ActorId)
+            foreach (int linkedActorId in ResolveRemoteUserDropPickupPartyLinkActorIds(
+                packet,
+                resolvedActorId,
+                resolvedOwnerCharacterId))
             {
-                RegisterObservedDropPartyActorLink(drop.OwnerId, resolvedActorId);
+                RegisterObservedDropPartyActorLink(drop.OwnerId, linkedActorId);
             }
+        }
+
+        internal static int[] ResolveRemoteUserDropPickupObservedPetActorIds(
+            RemoteUserDropPickupPacket packet,
+            int resolvedActorId,
+            int resolvedOwnerCharacterId)
+        {
+            if (packet.ActorKind != DropPickupActorKind.Pet)
+            {
+                return Array.Empty<int>();
+            }
+
+            HashSet<int> observedActorIds = new();
+            if (packet.ActorId != 0)
+            {
+                observedActorIds.Add(packet.ActorId);
+            }
+
+            if (resolvedActorId != 0)
+            {
+                observedActorIds.Add(resolvedActorId);
+            }
+
+            if (resolvedOwnerCharacterId > 0)
+            {
+                // Keep a bounded owner-slot synthetic anchor so later packet leave/source lookups
+                // can still recover pet-space motion when only owner identity is known.
+                observedActorIds.Add(BuildRemotePetPickupActorId(resolvedOwnerCharacterId, slotIndex: 0));
+            }
+
+            return observedActorIds.ToArray();
+        }
+
+        internal static int[] ResolveRemoteUserDropPickupPartyLinkActorIds(
+            RemoteUserDropPickupPacket packet,
+            int resolvedActorId,
+            int resolvedOwnerCharacterId)
+        {
+            HashSet<int> linkedActorIds = new();
+            if (packet.ActorId != 0)
+            {
+                linkedActorIds.Add(packet.ActorId);
+            }
+
+            if (resolvedActorId != 0)
+            {
+                linkedActorIds.Add(resolvedActorId);
+            }
+
+            if (resolvedOwnerCharacterId > 0)
+            {
+                linkedActorIds.Add(resolvedOwnerCharacterId);
+            }
+
+            if (packet.ActorKind == DropPickupActorKind.Pet && resolvedOwnerCharacterId > 0)
+            {
+                linkedActorIds.Add(BuildRemotePetPickupActorId(resolvedOwnerCharacterId, slotIndex: 0));
+            }
+
+            return linkedActorIds.ToArray();
         }
 
         internal static int ResolveRemoteUserDropPickupOwnerCharacterId(RemoteUserDropPickupPacket packet)
@@ -2316,6 +2409,12 @@ namespace HaCreator.MapSimulator
             return RemoteUserPacketCodec.TryResolveHelperMarkerName(text, out markerType);
         }
 
+        internal static bool ShouldApplyTrackedUserStateForRemoteHelperPacket(
+            RemoteUserHelperPacket helperPacket)
+        {
+            return helperPacket.AppliesTrackedUserState;
+        }
+
         internal static bool TryParseRemoteUserHelperMarkerForTesting(string text, out MinimapUI.HelperMarkerType? markerType)
         {
             return TryParseRemoteUserHelperMarker(text, out markerType);
@@ -2465,6 +2564,24 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserThrowGrenadeOfficial => "remote user official throw-grenade packet",
                 _ => $"remote user packet {packetType}"
             };
+        }
+
+        private bool TryApplyPendingRemoteUserProfile(int characterId, out string message)
+        {
+            message = null;
+            if (characterId <= 0
+                || !_pendingRemoteUserProfilesByCharacterId.TryGetValue(characterId, out RemoteUserProfilePacket pendingPacket))
+            {
+                return false;
+            }
+
+            if (!_remoteUserPool.TryApplyProfileMetadata(pendingPacket, out message))
+            {
+                return false;
+            }
+
+            _pendingRemoteUserProfilesByCharacterId.Remove(characterId);
+            return true;
         }
 
         private string ApplyRemoteUserChatPacket(RemoteUserChatPacket packet, bool fromOutsideOfMap)

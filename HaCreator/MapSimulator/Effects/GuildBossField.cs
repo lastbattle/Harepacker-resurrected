@@ -406,6 +406,10 @@ namespace HaCreator.MapSimulator.Effects
 
             if (hasHitReactor)
             {
+                // BasicActionAttack still runs local normal-attack ownership before
+                // the pulley branch bails out on a hit reactor. Keep that short owner
+                // window active while suppressing pulley preview/request flow.
+                RegisterLocalBasicActionOwnership(currentTimeMs);
                 return false;
             }
 

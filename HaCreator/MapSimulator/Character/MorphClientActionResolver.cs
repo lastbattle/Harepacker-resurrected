@@ -544,9 +544,12 @@ namespace HaCreator.MapSimulator.Character
                 // Skill/2312.img/skill/23121003/action/0 still publishes
                 // `edgeSpiral`, while Character/00002000.img keeps no verbatim
                 // `edgeSpiral` body branch and the client raw morph surface still
-                // omits that name. Keep it on the checked dual-shot surface:
-                // `jShot` redirects plus the nearby `shoot1` backstop.
-                ["edgeSpiral"] = new[] { "swingT2", "swingPF", "swingOF", "shoot1" },
+                // omits that name. Checked Morph/1003.img and Morph/1103.img
+                // continue to publish archer/ranged branches (`shoot1`,
+                // `windshot`, `arrowRain`) while other checked templates keep no
+                // dedicated `edgeSpiral` root. Prefer that published ranged
+                // surface first, then preserve the prior jShot-style backstops.
+                ["edgeSpiral"] = new[] { "shoot1", "shoot2", "shootF", "windshot", "arrowRain", "swingT2", "swingPF", "swingOF" },
                 ["multiSniping"] = new[] { "swingT1", "swingTF", "shoot1", "swingT2", "shoot2" },
                 // Character/00002000.img keeps the three pole-arm raw roots as body
                 // redirects (`swingT2PoleArm -> swingT2`, `swingP1PoleArm -> swingP1`,
@@ -568,10 +571,13 @@ namespace HaCreator.MapSimulator.Character
                 ["shotC1"] = new[] { "alert", "stabO1" },
                 // These dual-blade and resistance raw skill-side requests are absent
                 // from Morph/*.img, while Character/00002000.img resolves them onto
-                // ordinary swing/stab body surfaces.
-                ["flashBang"] = new[] { "swingO3", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["monsterBombPrepare"] = new[] { "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["monsterBombThrow"] = new[] { "swingOF", "swingO1", "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab", "alert" },
+                // narrower checked body redirects:
+                // `flashBang -> swingO3`,
+                // `monsterBombPrepare -> swingPF`,
+                // `monsterBombThrow -> swingOF, swingO1, swingPF, alert`.
+                ["flashBang"] = new[] { "swingO3" },
+                ["monsterBombPrepare"] = new[] { "swingPF" },
+                ["monsterBombThrow"] = new[] { "swingOF", "swingO1", "swingPF", "alert" },
                 // Battle Mage dark-chain body rows in Character/00002000.img still
                 // start on `swingO3 -> swingO2 -> stabO1`; keep that checked order
                 // first, then preserve broader stab/swing backstops for templates that
@@ -589,11 +595,12 @@ namespace HaCreator.MapSimulator.Character
                 // `swingC2 -> swingT3`,
                 // `swingDb1 -> swingO2`,
                 // `swingDb2 -> stabO1`.
-                // Preserve those checked roots first before broader family fallback.
-                ["swingC1"] = new[] { "alert", "swingT1", "swingT3" },
-                ["swingC2"] = new[] { "swingT3", "swingT1" },
-                ["swingDb1"] = new[] { "swingO2", "swingT1", "swingT3" },
-                ["swingDb2"] = new[] { "stabO1", "swingT1", "swingT3" }
+                // Keep this slice at the checked redirect roots to avoid widening C/Db
+                // tails beyond the currently verified body-action surface.
+                ["swingC1"] = new[] { "alert", "swingT1" },
+                ["swingC2"] = new[] { "swingT3" },
+                ["swingDb1"] = new[] { "swingO2" },
+                ["swingDb2"] = new[] { "stabO1" }
             };
 
         private static readonly string[] ClientPublishedMorphStabFallbackAliases =
@@ -625,15 +632,17 @@ namespace HaCreator.MapSimulator.Character
                 // `jump`, then `swingOF`, then `swingPF`.
                 ["spiritJump"] = new[] { "jump", "swingOF", "swingPF" },
                 // WZ skill rows also keep non-table flash-jump roots
-                // (`demonJump`, `demonJumpUpward`, `demonJumpFoward`,
-                // and `HTswiftPhantom`/`swiftPhantom`) while checked Morph/*.img and
-                // Character/00002000.img publish no verbatim branches for those names.
-                // Keep them on the same jump-first fallback surface as `spiritJump`.
-                ["demonJump"] = new[] { "jump", "swingOF", "swingPF" },
-                ["demonJumpUpward"] = new[] { "jump", "swingOF", "swingPF" },
-                ["demonJumpFoward"] = new[] { "jump", "swingOF", "swingPF" },
-                ["HTswiftPhantom"] = new[] { "jump", "swingOF", "swingPF" },
-                ["swiftPhantom"] = new[] { "jump", "swingOF", "swingPF" },
+                // (`demonJump`, `demonJumpUpward`, `demonJumpFoward` under
+                // Skill/3001.img and `HTswiftPhantom`/`swiftPhantom` under
+                // Skill/2400.img), while checked Morph/*.img and
+                // Character/00002000.img publish no verbatim branches for those
+                // names. Prefer published morph double-jump roots first, then
+                // fall back to plain jump and the checked swing-family redirects.
+                ["demonJump"] = new[] { "archerDoubleJump", "iceDoubleJump", "icemandoubleJump", "jump", "swingOF", "swingPF" },
+                ["demonJumpUpward"] = new[] { "archerDoubleJump", "iceDoubleJump", "icemandoubleJump", "jump", "swingOF", "swingPF" },
+                ["demonJumpFoward"] = new[] { "archerDoubleJump", "iceDoubleJump", "icemandoubleJump", "jump", "swingOF", "swingPF" },
+                ["HTswiftPhantom"] = new[] { "archerDoubleJump", "iceDoubleJump", "icemandoubleJump", "jump", "swingOF", "swingPF" },
+                ["swiftPhantom"] = new[] { "archerDoubleJump", "iceDoubleJump", "icemandoubleJump", "jump", "swingOF", "swingPF" },
                 // Character/00002000.img keeps `slayerDoubleJump` on `jump`, while
                 // Morph/*.img still has no verbatim slayer branch.
                 ["slayerDoubleJump"] = new[] { "jump" },
@@ -1620,7 +1629,12 @@ namespace HaCreator.MapSimulator.Character
             return string.Equals(actionName, "doubleJump", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "slayerDoubleJump", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "iceDoubleJump", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "archerDoubleJump", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(actionName, "archerDoubleJump", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "demonJump", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "demonJumpUpward", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "demonJumpFoward", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "HTswiftPhantom", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "swiftPhantom", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumerateDoubleJumpAliases(CharacterPart morphPart)

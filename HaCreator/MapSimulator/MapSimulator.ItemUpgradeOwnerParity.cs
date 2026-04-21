@@ -548,24 +548,17 @@ namespace HaCreator.MapSimulator
                 return request.EquipItemToken;
             }
 
-            if (uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryRuntime)
+            return ResolveItemUpgradeRequestItemTokenFallback(request.EquipItemId, request.ConsumableItemId);
+        }
+
+        private static int ResolveItemUpgradeRequestItemTokenFallback(int equipItemId, int consumableItemId)
+        {
+            if (equipItemId > 0)
             {
-                var slots = inventoryRuntime.GetSlots(request.ConsumableInventoryType);
-                if (slots != null
-                    && request.ConsumableSlotIndex >= 0
-                    && request.ConsumableSlotIndex < slots.Count)
-                {
-                    InventorySlotData slot = slots[request.ConsumableSlotIndex];
-                    if (slot != null
-                        && slot.ItemId == request.ConsumableItemId
-                        && slot.ClientItemToken.GetValueOrDefault() > 0)
-                    {
-                        return slot.ClientItemToken.Value;
-                    }
-                }
+                return equipItemId;
             }
 
-            return request.ConsumableItemId;
+            return consumableItemId;
         }
 
         private static byte[] BuildItemUpgradeRequestPayload(int itemToken, int slotPosition, int updateTick)
@@ -799,6 +792,11 @@ namespace HaCreator.MapSimulator
             out int updateTick)
         {
             return TryDecodeItemUpgradeRequestPayload(payload, out itemToken, out slotPosition, out updateTick);
+        }
+
+        internal static int ResolveItemUpgradeRequestItemTokenFallbackForTests(int equipItemId, int consumableItemId)
+        {
+            return ResolveItemUpgradeRequestItemTokenFallback(equipItemId, consumableItemId);
         }
 
         internal static byte[] BuildItemUpgradeConsumeCashRequestPayloadForTests(

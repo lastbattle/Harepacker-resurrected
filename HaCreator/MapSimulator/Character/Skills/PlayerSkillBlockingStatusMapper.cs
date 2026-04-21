@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     status = PlayerSkillBlockingStatus.Stun;
                     return true;
                 case 136:
+                case 170:
                     status = PlayerSkillBlockingStatus.StopMotion;
                     return true;
                 case 128:

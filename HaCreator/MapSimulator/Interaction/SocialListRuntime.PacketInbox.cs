@@ -204,6 +204,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string BuildClientGuildResultFallbackNoticeSummary(SocialListClientGuildResultPacket packet)
         {
+            if (!packet.UsesSharedResultNoticeFallback)
+            {
+                return $"Client OnGuildResult({packet.RawSubtype}) follows an explicit client branch that is not yet modeled by the packet summary seam.";
+            }
+
             string notice = SocialListGuildResultClientText.GetSharedResultNoticeFallback();
             return $"Client OnGuildResult({(byte)packet.Kind}) fell back to shared StringPool 0x{SocialListGuildResultClientText.SharedResultNoticeStringPoolId:X} notice: {notice}.";
         }

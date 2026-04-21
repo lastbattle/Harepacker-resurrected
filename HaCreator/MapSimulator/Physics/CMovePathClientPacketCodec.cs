@@ -45,6 +45,51 @@ namespace HaCreator.MapSimulator.Physics
             return true;
         }
 
+        internal static IReadOnlyList<MovePathElement> NormalizeForPortalOwnedClientMakeMovePath(
+            IReadOnlyList<MovePathElement> path)
+        {
+            if (path == null || path.Count <= 1)
+            {
+                return path ?? Array.Empty<MovePathElement>();
+            }
+
+            List<MovePathElement> normalized = new(path.Count);
+            for (int i = 0; i < path.Count; i++)
+            {
+                MovePathElement current = path[i];
+                if (normalized.Count == 0)
+                {
+                    normalized.Add(current);
+                    continue;
+                }
+
+                int tailIndex = normalized.Count - 1;
+                MovePathElement tail = normalized[tailIndex];
+                if (CanCoalesceClientMakeMovePathTail(tail, current))
+                {
+                    tail.Duration = ClampDurationToShort(tail.Duration + Math.Max(0, (int)current.Duration));
+                    tail.X = current.X;
+                    tail.Y = current.Y;
+                    tail.VelocityX = current.VelocityX;
+                    tail.VelocityY = current.VelocityY;
+                    tail.RandomCount = current.RandomCount;
+                    tail.ActualRandomCount = current.ActualRandomCount;
+                    normalized[tailIndex] = tail;
+                    continue;
+                }
+
+                if (CanReplacePlaceholderTailWithCurrent(tail))
+                {
+                    normalized[tailIndex] = current;
+                    continue;
+                }
+
+                normalized.Add(current);
+            }
+
+            return normalized;
+        }
+
         private static void WriteElement(BinaryWriter writer, MovePathElement element, bool includeClientRandomCounts)
         {
             byte attribute = (byte)Math.Clamp(element.MovePathAttribute, byte.MinValue, byte.MaxValue);
@@ -139,6 +184,47 @@ namespace HaCreator.MapSimulator.Physics
         private static short ClampToShort(int value)
         {
             return (short)Math.Clamp(value, short.MinValue, short.MaxValue);
+        }
+
+        private static short ClampDurationToShort(int duration)
+        {
+            return (short)Math.Clamp(duration, short.MinValue, short.MaxValue);
+        }
+
+        private static bool CanReplacePlaceholderTailWithCurrent(MovePathElement tail)
+        {
+            return tail.MovePathAttribute == 0 && tail.Duration == 0;
+        }
+
+        private static bool CanCoalesceClientMakeMovePathTail(MovePathElement tail, MovePathElement current)
+        {
+            if (!IsClientCoalesceAttribute(current.MovePathAttribute)
+                || tail.MovePathAttribute != current.MovePathAttribute
+                || tail.FootholdId != current.FootholdId
+                || tail.Action != current.Action
+                || tail.FacingRight != current.FacingRight)
+            {
+                return false;
+            }
+
+            return HasStableVelocityDirection(tail.VelocityX, current.VelocityX)
+                && HasStableVelocityDirection(tail.VelocityY, current.VelocityY);
+        }
+
+        private static bool IsClientCoalesceAttribute(int attribute)
+        {
+            return attribute == 0 || attribute == 12 || attribute == 14;
+        }
+
+        private static bool HasStableVelocityDirection(short previousVelocity, short currentVelocity)
+        {
+            if (previousVelocity == 0 || currentVelocity == 0)
+            {
+                return previousVelocity == currentVelocity;
+            }
+
+            return (previousVelocity < 0 && currentVelocity < 0)
+                || (previousVelocity > 0 && currentVelocity > 0);
         }
     }
 }

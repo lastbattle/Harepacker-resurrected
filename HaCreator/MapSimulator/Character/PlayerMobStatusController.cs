@@ -253,6 +253,13 @@ namespace HaCreator.MapSimulator.Character
 
             switch (skillId)
             {
+                case 170:
+                    ApplyStatus(
+                        PlayerMobStatusEffect.StopMotion,
+                        ResolveSkillStatusDurationMs(skillId, runtimeData),
+                        currentTime,
+                        1);
+                    return true;
                 case 120:
                     ApplyStatus(PlayerMobStatusEffect.Seal, runtimeData.DurationMs, currentTime, 1);
                     return true;
@@ -454,7 +461,7 @@ namespace HaCreator.MapSimulator.Character
         {
             return skillId switch
             {
-                120 or 121 or 122 or 123 or 124 or 125 or 126 or 128 or 129 or 131 or 132 or 133 or 135 or 136 or 137 or 138 => true,
+                120 or 121 or 122 or 123 or 124 or 125 or 126 or 128 or 129 or 131 or 132 or 133 or 135 or 136 or 137 or 138 or 170 => true,
                 _ => false
             };
         }
@@ -503,6 +510,17 @@ namespace HaCreator.MapSimulator.Character
             return HasStatus(effect);
         }
 
+        public bool HasAppliedMobSkillState(int skillId, int currentTime)
+        {
+            RemoveExpiredEffects(currentTime);
+            if (!TryMapMobSkillStatusEffect(skillId, out PlayerMobStatusEffect effect))
+            {
+                return skillId == 127;
+            }
+
+            return HasStatus(effect);
+        }
+
         public bool CanAutoSelectMobSkill(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
         {
             RemoveExpiredEffects(currentTime);
@@ -513,6 +531,12 @@ namespace HaCreator.MapSimulator.Character
 
             switch (skillId)
             {
+                case 170:
+                    return WouldStatusApplicationChangeState(
+                        PlayerMobStatusEffect.StopMotion,
+                        ResolveSkillStatusDurationMs(skillId, runtimeData),
+                        currentTime,
+                        1);
                 case 120:
                     return WouldStatusApplicationChangeState(PlayerMobStatusEffect.Seal, runtimeData.DurationMs, currentTime, 1);
                 case 121:
@@ -899,6 +923,97 @@ namespace HaCreator.MapSimulator.Character
         private static int ResolveTickInterval(MobSkillRuntimeData runtimeData, int fallbackMs)
         {
             return runtimeData.IntervalMs > 0 ? runtimeData.IntervalMs : fallbackMs;
+        }
+
+        internal static int ResolveSkillStatusDurationMs(int skillId, MobSkillRuntimeData runtimeData)
+        {
+            if (runtimeData == null)
+            {
+                return 0;
+            }
+
+            if (runtimeData.DurationMs > 0)
+            {
+                return runtimeData.DurationMs;
+            }
+
+            // `MobSkill.img/170` publishes `x` + `interval` and commonly omits `time`.
+            if (skillId == 170)
+            {
+                int xSeconds = Math.Max(0, runtimeData.X);
+                return xSeconds > 0 ? xSeconds * 1000 : 1000;
+            }
+
+            return 0;
+        }
+
+        private static bool TryMapMobSkillStatusEffect(int skillId, out PlayerMobStatusEffect effect)
+        {
+            switch (skillId)
+            {
+                case 120:
+                    effect = PlayerMobStatusEffect.Seal;
+                    return true;
+                case 121:
+                    effect = PlayerMobStatusEffect.Darkness;
+                    return true;
+                case 122:
+                    effect = PlayerMobStatusEffect.Weakness;
+                    return true;
+                case 123:
+                    effect = PlayerMobStatusEffect.Stun;
+                    return true;
+                case 124:
+                    effect = PlayerMobStatusEffect.Curse;
+                    return true;
+                case 125:
+                    effect = PlayerMobStatusEffect.Poison;
+                    return true;
+                case 126:
+                    effect = PlayerMobStatusEffect.Slow;
+                    return true;
+                case 128:
+                    effect = PlayerMobStatusEffect.Attract;
+                    return true;
+                case 129:
+                    effect = PlayerMobStatusEffect.Banish;
+                    return true;
+                case 131:
+                    effect = PlayerMobStatusEffect.Freeze;
+                    return true;
+                case 132:
+                    effect = PlayerMobStatusEffect.ReverseInput;
+                    return true;
+                case 133:
+                    effect = PlayerMobStatusEffect.Undead;
+                    return true;
+                case 134:
+                    effect = PlayerMobStatusEffect.PainMark;
+                    return true;
+                case 135:
+                    effect = PlayerMobStatusEffect.StopPotion;
+                    return true;
+                case 136:
+                case 170:
+                    effect = PlayerMobStatusEffect.StopMotion;
+                    return true;
+                case 137:
+                    effect = PlayerMobStatusEffect.Fear;
+                    return true;
+                case 138:
+                    effect = PlayerMobStatusEffect.Burn;
+                    return true;
+                case 171:
+                    effect = PlayerMobStatusEffect.Bomb;
+                    return true;
+                case 172:
+                case 173:
+                    effect = PlayerMobStatusEffect.Polymorph;
+                    return true;
+                default:
+                    effect = PlayerMobStatusEffect.None;
+                    return false;
+            }
         }
 
         private static int ResolveBombTickInterval(MobSkillRuntimeData runtimeData)

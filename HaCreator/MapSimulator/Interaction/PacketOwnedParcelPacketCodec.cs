@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsQuickDelivery { get; init; }
         public byte QuickDeliveryRawFlag { get; init; }
         public byte[] QuickDeliveryReservedBytes { get; init; } = Array.Empty<byte>();
+        public bool HasQuickDeliveryReservedState { get; init; }
         public DateTimeOffset? ExpirationTimestampUtc { get; init; }
         public bool IsRead { get; init; }
         public bool IsKept { get; init; }
@@ -44,8 +45,12 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ParcelSenderOffset = 4;
         private const int ParcelSenderLength = 13;
         private const int ParcelMesoOffset = 0x11;
+        // IDA: CTabReceive::Draw reads PARCEL::dateExpire_Parcel at +0x15.
         private const int ParcelExpiryTimestampOffset = 0x15;
+        // IDA: CTabReceive::Draw reads PARCEL::bQuickDelivery at +0x1D.
         private const int ParcelQuickDeliveryOffset = 0x1D;
+        // IDA: CTabReceive::Draw and CParcelDlg::SetMemo read PARCEL::sMemo at +0x21.
+        // The +0x1E..+0x20 gap remains an internal parcel byte seam.
         private const int ParcelQuickDeliveryReservedOffset = ParcelQuickDeliveryOffset + 1;
         private const int ParcelQuickDeliveryReservedLength = 3;
         private const int ParcelMemoOffset = 0x21;
@@ -198,6 +203,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : (byte)0;
             byte[] quickDeliveryReservedBytes = ReadFixedBytes(parcelBytes, ParcelQuickDeliveryReservedOffset, ParcelQuickDeliveryReservedLength);
             bool isQuickDelivery = quickDeliveryRawFlag != 0;
+            bool hasQuickDeliveryReservedState = quickDeliveryReservedBytes.Any(value => value != 0);
 
             entry = new PacketOwnedParcelDecodedEntry
             {
@@ -207,6 +213,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IsQuickDelivery = isQuickDelivery,
                 QuickDeliveryRawFlag = quickDeliveryRawFlag,
                 QuickDeliveryReservedBytes = quickDeliveryReservedBytes,
+                HasQuickDeliveryReservedState = hasQuickDeliveryReservedState,
                 ExpirationTimestampUtc = expirationTimestampUtc,
                 IsRead = postBodyState.IsRead,
                 IsKept = postBodyState.IsKept,

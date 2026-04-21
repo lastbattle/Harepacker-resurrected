@@ -1042,7 +1042,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTransportVoyageBalrogCommand(string[] args)
         {
-            const string usage = "Usage: /transport voyagebalrog [status|start [durationMs]|reset]";
+            const string usage = "Usage: /transport voyagebalrog [status|start [durationMs]|reset|auto [status|on [triggerMs] [durationMs]|off]]";
             string action = args.Length > 1 ? args[1] : "status";
             switch (action.ToLowerInvariant())
             {
@@ -1064,6 +1064,57 @@ namespace HaCreator.MapSimulator
                     return _transportField.TryResetVoyageBalrogAttack(out string resetMessage)
                         ? ChatCommandHandler.CommandResult.Ok($"{resetMessage}{Environment.NewLine}{_transportField.DescribeStatus()}")
                         : ChatCommandHandler.CommandResult.Error(resetMessage);
+
+                case "auto":
+                {
+                    string autoAction = args.Length > 2 ? args[2] : "status";
+                    switch (autoAction.ToLowerInvariant())
+                    {
+                        case "status":
+                            return ChatCommandHandler.CommandResult.Info(_transportField.DescribeStatus());
+
+                        case "on":
+                        {
+                            int? triggerMs = null;
+                            int? autoDurationMs = null;
+                            if (args.Length >= 4)
+                            {
+                                if (!int.TryParse(args[3], out int parsedTriggerMs) || parsedTriggerMs <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(usage);
+                                }
+
+                                triggerMs = parsedTriggerMs;
+                            }
+
+                            if (args.Length >= 5)
+                            {
+                                if (!int.TryParse(args[4], out int parsedDurationMs) || parsedDurationMs <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(usage);
+                                }
+
+                                autoDurationMs = parsedDurationMs;
+                            }
+
+                            return _transportField.TryConfigureVoyageBalrogAutoEvent(
+                                enabled: true,
+                                triggerOffsetMs: triggerMs,
+                                durationMs: autoDurationMs,
+                                out string armMessage)
+                                ? ChatCommandHandler.CommandResult.Ok($"{armMessage}{Environment.NewLine}{_transportField.DescribeStatus()}")
+                                : ChatCommandHandler.CommandResult.Error(armMessage);
+                        }
+
+                        case "off":
+                            return _transportField.TryConfigureVoyageBalrogAutoEvent(enabled: false, triggerOffsetMs: null, durationMs: null, out string disarmMessage)
+                                ? ChatCommandHandler.CommandResult.Ok($"{disarmMessage}{Environment.NewLine}{_transportField.DescribeStatus()}")
+                                : ChatCommandHandler.CommandResult.Error(disarmMessage);
+
+                        default:
+                            return ChatCommandHandler.CommandResult.Error(usage);
+                    }
+                }
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(usage);
@@ -4033,7 +4084,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "transport",
                 "Inspect or drive the transit/voyage transport packet inbox and official-session bridge",
-                    "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|voyagebalrog [status|start [durationMs]|reset]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]",
+                    "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|voyagebalrog [status|start [durationMs]|reset|auto [status|on [triggerMs] [durationMs]|off]]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     bool transportActive = IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) && _transportField.HasRouteConfiguration;
@@ -4195,7 +4246,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|voyagebalrog [status|start [durationMs]|reset]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|voyagebalrog [status|start [durationMs]|reset|auto [status|on [triggerMs] [durationMs]|off]]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]");
 
                 });
 
@@ -6963,7 +7014,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Massacre timerboard and gauge flow",
 
-                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result>|unmap <opcode|all>|recent [count]|clearrecent|stop]]",
+                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result|stage|bonus>|unmap <opcode|all>|recent [count]|clearrecent|stop]]",
                 args =>
                 {
                     MassacreField massacre = _specialFieldRuntime.SpecialEffects.Massacre;
@@ -7414,7 +7465,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result>|unmap <opcode|all>|recent [count]|clearrecent|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result|stage|bonus>|unmap <opcode|all>|recent [count]|clearrecent|stop]]");
                 });
 
 
@@ -8298,7 +8349,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error(clientPacketError ?? "Usage: /memorygame packetclientraw <hex bytes>");
                             }
 
-                            if (!field.TryDispatchOfficialClientPacket(clientPayload, currTickCount, out string clientPacketMessage))
+                            if (!field.TryDispatchOfficialClientPacket(clientPayload, currTickCount, out string clientPacketMessage, enforcePromptFlow: true))
                             {
                                 return ChatCommandHandler.CommandResult.Error(clientPacketMessage);
                             }

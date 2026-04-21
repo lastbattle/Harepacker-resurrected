@@ -1228,20 +1228,16 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryResolveTrunkItemType(int itemId, out int itemType)
         {
             itemType = itemId > 0 ? itemId / 1000000 : 0;
-            return itemType > 0 && itemType <= byte.MaxValue;
+            return itemType is >= 1 and <= 5;
         }
 
         private static bool TryResolveStorageRowPosition(int ownerRowIndex, InventorySlotData slotData, out byte trunkRow)
         {
-            if (slotData?.ClientItemToken is int clientRowToken && clientRowToken != 0)
+            if (slotData?.ClientItemToken is int clientRowToken
+                && clientRowToken > 0
+                && clientRowToken <= byte.MaxValue)
             {
                 trunkRow = unchecked((byte)clientRowToken);
-                return true;
-            }
-
-            if (ownerRowIndex >= 0)
-            {
-                trunkRow = unchecked((byte)(ownerRowIndex + 1));
                 return true;
             }
 
@@ -1251,15 +1247,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool TryResolveInventoryPosition(int inventoryRowIndex, InventorySlotData slotData, out short inventoryPosition)
         {
-            if (slotData?.ClientItemToken is int clientPositionToken && clientPositionToken != 0)
+            if (slotData?.ClientItemToken is int clientPositionToken
+                && clientPositionToken > 0
+                && clientPositionToken <= short.MaxValue)
             {
                 inventoryPosition = unchecked((short)clientPositionToken);
-                return true;
-            }
-
-            if (inventoryRowIndex >= 0)
-            {
-                inventoryPosition = unchecked((short)(inventoryRowIndex + 1));
                 return true;
             }
 

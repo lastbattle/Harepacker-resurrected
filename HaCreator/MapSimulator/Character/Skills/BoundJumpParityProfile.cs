@@ -4,6 +4,35 @@ namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class BoundJumpParityProfile
     {
+        private const int WindWalkSkillId = 11101005;
+        private const int WildHunterJaguarJumpSkillId = 33001002;
+        private const int NightLordFlashJumpSkillId = 4111006;
+        private const int ShadowerFlashJumpSkillId = 4211009;
+        private const int DualBladeFlashJumpSkillId = 4321003;
+        private const int NightWalkerFlashJumpSkillId = 14101004;
+        private const int RocketBoosterSkillId = 35101004;
+
+        internal static bool IsDirectBoundJumpSkillId(int skillId, bool includeRocketBoosterSkillId = true)
+        {
+            if (skillId == WindWalkSkillId
+                || skillId == WildHunterJaguarJumpSkillId
+                || skillId == NightLordFlashJumpSkillId
+                || skillId == ShadowerFlashJumpSkillId
+                || skillId == DualBladeFlashJumpSkillId
+                || skillId == NightWalkerFlashJumpSkillId)
+            {
+                return true;
+            }
+
+            return includeRocketBoosterSkillId && skillId == RocketBoosterSkillId;
+        }
+
+        internal static bool IsGroundedStartDirectBoundJumpSkillId(int skillId)
+        {
+            return skillId == WindWalkSkillId
+                   || skillId == RocketBoosterSkillId;
+        }
+
         internal static bool IsConstrainedType40BoundJumpActionName(string actionName)
         {
             // Keep non-explicit type-40 ownership on the rechecked WZ-authored

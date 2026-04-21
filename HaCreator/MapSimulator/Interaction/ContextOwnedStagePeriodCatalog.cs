@@ -202,16 +202,39 @@ namespace HaCreator.MapSimulator.Interaction
                 return themes;
             }
 
+            HashSet<WzImageProperty> visited = new();
             foreach (WzImageProperty themeProperty in themeProperties)
             {
-                Dictionary<byte, ContextOwnedStagePeriodCatalogEntry> periods = BuildPeriods(themeProperty);
-                if (periods.Count > 0)
-                {
-                    themes[themeProperty.Name] = new ContextOwnedStageThemeCatalogEntry(themeProperty.Name, periods);
-                }
+                AppendThemeEntries(themeProperty, themes, visited);
             }
 
             return themes;
+        }
+
+        private static void AppendThemeEntries(
+            WzImageProperty property,
+            IDictionary<string, ContextOwnedStageThemeCatalogEntry> themes,
+            ISet<WzImageProperty> visited)
+        {
+            if (property == null
+                || themes == null
+                || visited == null
+                || !visited.Add(property))
+            {
+                return;
+            }
+
+            Dictionary<byte, ContextOwnedStagePeriodCatalogEntry> periods = BuildPeriods(property);
+            if (periods.Count > 0
+                && !IsStructuralStageAliasName(property.Name))
+            {
+                themes[property.Name.Trim()] = new ContextOwnedStageThemeCatalogEntry(property.Name.Trim(), periods);
+            }
+
+            foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
+            {
+                AppendThemeEntries(child, themes, visited);
+            }
         }
 
         private static Dictionary<byte, ContextOwnedStagePeriodCatalogEntry> BuildPeriods(WzImageProperty themeProperty)
@@ -814,27 +837,88 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes,
             IEnumerable<WzImageProperty> stageKeywordRoots)
         {
-            foreach (WzImageProperty themeProperty in stageKeywordRoots ?? Enumerable.Empty<WzImageProperty>())
+            Dictionary<string, List<WzImageProperty>> lookup = BuildStageKeywordThemeLookup(
+                stageKeywordRoots,
+                themes?.Keys ?? Enumerable.Empty<string>());
+            foreach ((string themeName, ContextOwnedStageThemeCatalogEntry theme) in themes)
             {
-                if (!themes.TryGetValue(themeProperty.Name, out ContextOwnedStageThemeCatalogEntry theme))
+                if (!lookup.TryGetValue(themeName, out List<WzImageProperty> themeProperties))
                 {
                     continue;
                 }
 
-                HashSet<string> themeWideKeywords = ParseThemeWideKeywordAugmentations(themeProperty);
-                foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
+                foreach (WzImageProperty themeProperty in themeProperties)
                 {
-                    period.Keywords.UnionWith(themeWideKeywords);
-                }
-
-                Dictionary<byte, HashSet<string>> periodKeywords = BuildPeriodKeywordAugmentations(themeProperty);
-                foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
-                {
-                    if (periodKeywords.TryGetValue(period.Mode, out HashSet<string> extraKeywords))
+                    HashSet<string> themeWideKeywords = ParseThemeWideKeywordAugmentations(themeProperty);
+                    foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
                     {
-                        period.Keywords.UnionWith(extraKeywords);
+                        period.Keywords.UnionWith(themeWideKeywords);
+                    }
+
+                    Dictionary<byte, HashSet<string>> periodKeywords = BuildPeriodKeywordAugmentations(themeProperty);
+                    foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
+                    {
+                        if (periodKeywords.TryGetValue(period.Mode, out HashSet<string> extraKeywords))
+                        {
+                            period.Keywords.UnionWith(extraKeywords);
+                        }
                     }
                 }
+            }
+        }
+
+        private static Dictionary<string, List<WzImageProperty>> BuildStageKeywordThemeLookup(
+            IEnumerable<WzImageProperty> stageKeywordRoots,
+            IEnumerable<string> themeNames)
+        {
+            HashSet<string> themeNameSet = new(
+                themeNames ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, List<WzImageProperty>> lookup = new(StringComparer.OrdinalIgnoreCase);
+            if (themeNameSet.Count == 0)
+            {
+                return lookup;
+            }
+
+            HashSet<WzImageProperty> visited = new();
+            foreach (WzImageProperty root in stageKeywordRoots ?? Enumerable.Empty<WzImageProperty>())
+            {
+                AppendStageKeywordThemeLookupEntries(root, themeNameSet, lookup, visited);
+            }
+
+            return lookup;
+        }
+
+        private static void AppendStageKeywordThemeLookupEntries(
+            WzImageProperty property,
+            IReadOnlySet<string> themeNameSet,
+            Dictionary<string, List<WzImageProperty>> lookup,
+            ISet<WzImageProperty> visited)
+        {
+            if (property == null
+                || themeNameSet == null
+                || lookup == null
+                || visited == null
+                || !visited.Add(property))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(property.Name)
+                && themeNameSet.Contains(property.Name.Trim()))
+            {
+                if (!lookup.TryGetValue(property.Name.Trim(), out List<WzImageProperty> entries))
+                {
+                    entries = new List<WzImageProperty>();
+                    lookup[property.Name.Trim()] = entries;
+                }
+
+                entries.Add(property);
+            }
+
+            foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
+            {
+                AppendStageKeywordThemeLookupEntries(child, themeNameSet, lookup, visited);
             }
         }
 
@@ -1038,6 +1122,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private static bool IsStructuralStageAliasName(string name)
+        {
+            return string.IsNullOrWhiteSpace(name)
+                || string.Equals(name, "stage", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "stageList", StringComparison.OrdinalIgnoreCase)
+                || int.TryParse(name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
         }
 
         private static void ApplyThemeScopedEnableState<TKey>(

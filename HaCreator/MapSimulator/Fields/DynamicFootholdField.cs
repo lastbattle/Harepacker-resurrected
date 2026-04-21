@@ -647,14 +647,14 @@ namespace HaCreator.MapSimulator.Fields
                 return tag.Trim();
             }
 
-            if (TryResolveFirstTagToken(tags, out string resolvedTagToken))
-            {
-                return resolvedTagToken;
-            }
-
             if (!string.IsNullOrWhiteSpace(objectKeyName))
             {
                 return BuildCanonicalObjectKeyName(objectKeyName, piece, x, y);
+            }
+
+            if (TryResolveFirstTagToken(tags, out string resolvedTagToken))
+            {
+                return resolvedTagToken;
             }
 
             string fallbackLayerName = string.IsNullOrWhiteSpace(layerName) ? "layer" : layerName.Trim();

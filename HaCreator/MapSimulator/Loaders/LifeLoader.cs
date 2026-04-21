@@ -78,48 +78,67 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>> _cachedMobAttackAssetsByDevice = new();
         private static readonly ConcurrentDictionary<string, Lazy<MobImgEntry>> _cachedMobImgEntries = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, byte> _missingMobSoundIds = new(StringComparer.Ordinal);
-        private static readonly string[] _mobClientActionNamesBySlot =
-        {
-            "stand",
-            "move",
-            "fly",
-            "hit1",
-            "die1",
-            "regen",
-            "attack1",
-            "attack2",
-            "attack3",
-            "attack4",
-            "attack5",
-            "attack6",
-            "attack7",
-            "attack8",
-            "skill1",
-            "skill2",
-            "skill3",
-            "skill4",
-            "skill5",
-            "skill6",
-            "skill7",
-            "skill8",
-            "skill9",
-            "skill10",
-            "skill11",
-            "skill12",
-            "skill13",
-            "skill14",
-            "skill15",
-            "skill16"
-        };
+        private const int MobClientActionSlotCount = 43;
+
+        // Recovered client-owned slot surface from CActionMan/CMob seams:
+        // - CMob::CMob allocates 43 action slots (0x2B)
+        // - CUIMonsterBook::LoadMobAction loads attack 13..21 and skill 22..38 buckets
+        // Unknown slots remain explicit null entries until fully recovered.
+        private static readonly IReadOnlyDictionary<int, string> _mobClientCanonicalActionNamesBySlot =
+            BuildMobClientCanonicalActionNamesBySlot();
+
+        private static readonly string[] _mobClientActionNamesBySlot = BuildMobClientActionNamesBySlot();
 
         private static readonly Dictionary<string, int> _mobClientActionSlotsByName =
-            _mobClientActionNamesBySlot
-                .Select((name, index) => new { name, index })
-                .ToDictionary(pair => pair.name, pair => pair.index, StringComparer.OrdinalIgnoreCase);
+            _mobClientCanonicalActionNamesBySlot
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+                .ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
         private sealed class CachedDoomMobAssets
         {
             public MobAnimationSet AnimationSet { get; init; }
             public Rectangle Footprint { get; init; }
+        }
+
+        private static IReadOnlyDictionary<int, string> BuildMobClientCanonicalActionNamesBySlot()
+        {
+            var mapping = new Dictionary<int, string>
+            {
+                [0] = "stand",
+                [1] = "move",
+                [2] = "fly",
+                [3] = "hit1",
+                [4] = "die1",
+                [5] = "regen",
+                [9] = "hit2",
+                [10] = "die2",
+                [39] = "moveaction16"
+            };
+
+            for (int attackIndex = 1; attackIndex <= 9; attackIndex++)
+            {
+                mapping[12 + attackIndex] = $"attack{attackIndex}";
+            }
+
+            for (int skillIndex = 1; skillIndex <= 17; skillIndex++)
+            {
+                mapping[21 + skillIndex] = $"skill{skillIndex}";
+            }
+
+            return mapping;
+        }
+
+        private static string[] BuildMobClientActionNamesBySlot()
+        {
+            var namesBySlot = new string[MobClientActionSlotCount];
+            foreach (KeyValuePair<int, string> entry in _mobClientCanonicalActionNamesBySlot)
+            {
+                if (entry.Key >= 0 && entry.Key < namesBySlot.Length)
+                {
+                    namesBySlot[entry.Key] = entry.Value;
+                }
+            }
+
+            return namesBySlot;
         }
 
         private static readonly ConditionalWeakTable<GraphicsDevice, Lazy<CachedDoomMobAssets>> _cachedDoomMobAssetsByDevice = new();

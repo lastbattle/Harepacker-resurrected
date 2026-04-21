@@ -25,6 +25,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly record struct SummonSourceCandidate(int SkillId, SkillData Skill, WzImageProperty SkillNode);
         private readonly record struct ItemBulletAnimationCacheKey(int ItemId, int WeaponItemId, int WeaponCode);
         private readonly record struct ClientSummonedUolCandidateValue(string Value, string[] ContextPathParts);
+        private readonly record struct ClientSkillAssetUolPathResolution(
+            string RootPath,
+            SortedDictionary<int, string> CharacterLevelPaths,
+            Dictionary<int, string> LevelPaths);
 
         private static readonly string[] PreferredSummonAnimationBranches =
         {
@@ -644,9 +648,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.AffectedSkillId = skill.AffectedSkillIds.FirstOrDefault();
                 skill.PassiveLinkedSkillIds = ParseLinkedSkillIds(skillNode["psdSkill"]);
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
-                skill.ClientTileUolPath = ResolveClientTileUolPath(skillNode, infoNode);
-                skill.ClientBallUolPath = ResolveClientBallUolPath(skillNode, infoNode, flip: false);
-                skill.ClientFlipBallUolPath = ResolveClientBallUolPath(skillNode, infoNode, flip: true);
                 skill.DotType = GetString(infoNode, "dotType");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
                 skill.RequireHighestJump = GetInt(infoNode, "requireHighestJump") == 1;
@@ -670,16 +671,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             IReadOnlyList<string> clientSummonedUolPaths = ResolveClientSummonedUolPaths(skillNode, infoNode);
             skill.ClientSummonedUolCandidatePaths = clientSummonedUolPaths.ToList();
             skill.ClientSummonedUolPath = clientSummonedUolPaths.FirstOrDefault();
+            ClientSkillAssetUolPathResolution tileUolPathResolution = ResolveClientTileUolPathResolution(skillNode, infoNode);
+            skill.ClientTileUolPath = tileUolPathResolution.RootPath;
+            skill.ClientCharacterLevelTileUolPaths = tileUolPathResolution.CharacterLevelPaths;
+            skill.ClientLevelTileUolPaths = tileUolPathResolution.LevelPaths;
+            ClientSkillAssetUolPathResolution ballUolPathResolution = ResolveClientBallUolPathResolution(
+                skillNode,
+                infoNode,
+                flip: false);
+            skill.ClientBallUolPath = ballUolPathResolution.RootPath;
+            skill.ClientCharacterLevelBallUolPaths = ballUolPathResolution.CharacterLevelPaths;
+            skill.ClientLevelBallUolPaths = ballUolPathResolution.LevelPaths;
+            ClientSkillAssetUolPathResolution flipBallUolPathResolution = ResolveClientBallUolPathResolution(
+                skillNode,
+                infoNode,
+                flip: true);
+            skill.ClientFlipBallUolPath = flipBallUolPathResolution.RootPath;
+            skill.ClientCharacterLevelFlipBallUolPaths = flipBallUolPathResolution.CharacterLevelPaths;
+            skill.ClientLevelFlipBallUolPaths = flipBallUolPathResolution.LevelPaths;
 
             if (string.IsNullOrWhiteSpace(skill.ElementAttributeToken))
             {
                 skill.ElementAttributeToken = ResolveSkillElementAttributeToken(infoNode);
                 skill.Element = ResolvePrimarySkillElement(skill.ElementAttributeToken);
             }
-            skill.ClientTileUolPath ??= ResolveClientTileUolPath(skillNode, infoNode);
-            skill.ClientBallUolPath ??= ResolveClientBallUolPath(skillNode, infoNode, flip: false);
-            skill.ClientFlipBallUolPath ??= ResolveClientBallUolPath(skillNode, infoNode, flip: true);
-
             // Check common nodes
             var commonNode = skillNode["common"];
             var pvpCommonNode = skillNode["PVPcommon"];
@@ -1216,7 +1231,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             var tileNode = skillNode["tile"];
             if (tileNode != null || !string.IsNullOrWhiteSpace(skill.ClientTileUolPath))
             {
-                skill.ZoneEffect = LoadZoneEffect(tileNode, skillNode, skill.ClientTileUolPath);
+                skill.ZoneEffect = LoadZoneEffect(
+                    tileNode,
+                    skillNode,
+                    skill.ClientTileUolPath,
+                    skill.ClientCharacterLevelTileUolPaths,
+                    skill.ClientLevelTileUolPaths);
                 skill.ZoneAnimation = skill.ZoneEffect?.Animation;
             }
 
@@ -1231,7 +1251,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ballNode,
                     skillNode,
                     skill.ClientBallUolPath,
-                    skill.ClientFlipBallUolPath);
+                    skill.ClientFlipBallUolPath,
+                    skill.ClientCharacterLevelBallUolPaths,
+                    skill.ClientCharacterLevelFlipBallUolPaths,
+                    skill.ClientLevelBallUolPaths,
+                    skill.ClientLevelFlipBallUolPaths);
             }
         }
 
@@ -3349,7 +3373,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             ApplyBranchFlipToAnimationFrames(animation);
         }
 
-        private ZoneEffectData LoadZoneEffect(WzImageProperty tileNode, WzImageProperty skillNode, string explicitTileUolPath = null)
+        private ZoneEffectData LoadZoneEffect(
+            WzImageProperty tileNode,
+            WzImageProperty skillNode,
+            string explicitTileUolPath = null,
+            IReadOnlyDictionary<int, string> explicitCharacterLevelTileUolPaths = null,
+            IReadOnlyDictionary<int, string> explicitLevelTileUolPaths = null)
         {
             if (tileNode == null && string.IsNullOrWhiteSpace(explicitTileUolPath))
             {
@@ -3382,6 +3411,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             PopulateZoneCharacterLevelVariants(zoneEffect, skillNode?["CharLevel"]);
             PopulateZoneLevelVariants(zoneEffect, skillNode?["level"]);
+            ApplyClientSkillAssetUolVariantPaths(
+                zoneEffect.CharacterLevelTileUolPaths,
+                explicitCharacterLevelTileUolPaths);
+            ApplyClientSkillAssetUolVariantPaths(
+                zoneEffect.LevelTileUolPaths,
+                explicitLevelTileUolPaths);
 
             if (!string.IsNullOrWhiteSpace(explicitTileUolPath))
             {
@@ -5623,35 +5658,112 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static string ResolveClientTileUolPath(WzImageProperty skillNode, WzImageProperty infoNode)
         {
-            return ResolveClientSkillAssetUolPath(skillNode, infoNode, ClientTileUolPropertyNames);
+            return ResolveClientTileUolPathResolution(skillNode, infoNode).RootPath;
+        }
+
+        private static ClientSkillAssetUolPathResolution ResolveClientTileUolPathResolution(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode)
+        {
+            return ResolveClientSkillAssetUolPathResolution(skillNode, infoNode, ClientTileUolPropertyNames);
         }
 
         private static string ResolveClientBallUolPath(WzImageProperty skillNode, WzImageProperty infoNode, bool flip)
         {
-            return ResolveClientSkillAssetUolPath(
+            return ResolveClientBallUolPathResolution(skillNode, infoNode, flip).RootPath;
+        }
+
+        private static ClientSkillAssetUolPathResolution ResolveClientBallUolPathResolution(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode,
+            bool flip)
+        {
+            return ResolveClientSkillAssetUolPathResolution(
                 skillNode,
                 infoNode,
                 flip ? ClientFlipBallUolPropertyNames : ClientBallUolPropertyNames);
         }
 
-        private static string ResolveClientSkillAssetUolPath(
+        private static ClientSkillAssetUolPathResolution ResolveClientSkillAssetUolPathResolution(
             WzImageProperty skillNode,
             WzImageProperty infoNode,
             IReadOnlyList<string> propertyNames)
         {
+            string rootPath = null;
+            var characterLevelPaths = new SortedDictionary<int, string>();
+            var levelPaths = new Dictionary<int, string>();
             foreach (ClientSummonedUolCandidateValue candidate in EnumerateClientSummonedUolCandidateValues(
                          skillNode,
                          infoNode,
                          propertyNames))
             {
                 string normalizedPath = NormalizeClientSummonedUolCandidatePath(candidate.Value, candidate.ContextPathParts);
-                if (!string.IsNullOrWhiteSpace(normalizedPath))
+                if (string.IsNullOrWhiteSpace(normalizedPath))
                 {
-                    return normalizedPath;
+                    continue;
                 }
+
+                if (TryResolveClientSkillAssetUolVariantLevel(
+                        candidate.ContextPathParts,
+                        out bool isCharacterLevelVariant,
+                        out int variantLevel))
+                {
+                    IDictionary<int, string> target = isCharacterLevelVariant
+                        ? characterLevelPaths
+                        : levelPaths;
+                    if (!target.ContainsKey(variantLevel))
+                    {
+                        target[variantLevel] = normalizedPath;
+                    }
+
+                    continue;
+                }
+
+                rootPath ??= normalizedPath;
             }
 
-            return null;
+            return new ClientSkillAssetUolPathResolution(rootPath, characterLevelPaths, levelPaths);
+        }
+
+        private static bool TryResolveClientSkillAssetUolVariantLevel(
+            string[] contextPathParts,
+            out bool isCharacterLevelVariant,
+            out int variantLevel)
+        {
+            isCharacterLevelVariant = false;
+            variantLevel = 0;
+            if (contextPathParts == null || contextPathParts.Length < 2)
+            {
+                return false;
+            }
+
+            for (int i = contextPathParts.Length - 2; i >= 0; i--)
+            {
+                string segment = contextPathParts[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(segment))
+                {
+                    continue;
+                }
+
+                bool characterLevel = segment.Equals("CharLevel", StringComparison.OrdinalIgnoreCase);
+                bool level = segment.Equals("level", StringComparison.OrdinalIgnoreCase);
+                if (!characterLevel && !level)
+                {
+                    continue;
+                }
+
+                if (!int.TryParse(contextPathParts[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLevel)
+                    || parsedLevel <= 0)
+                {
+                    continue;
+                }
+
+                isCharacterLevelVariant = characterLevel;
+                variantLevel = parsedLevel;
+                return true;
+            }
+
+            return false;
         }
 
         private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolCandidateValues(
@@ -6601,6 +6713,59 @@ namespace HaCreator.MapSimulator.Character.Skills
             return NormalizeClientSummonedUolCandidatePath(candidateValue, contextPathParts);
         }
 
+        internal static (
+            string RootPath,
+            IReadOnlyDictionary<int, string> CharacterLevelPaths,
+            IReadOnlyDictionary<int, string> LevelPaths)
+            ResolveClientSkillAssetUolPathResolutionForTest(
+                IReadOnlyList<(string Value, string ContextPath)> candidates)
+        {
+            var resolution = new ClientSkillAssetUolPathResolution(
+                RootPath: null,
+                CharacterLevelPaths: new SortedDictionary<int, string>(),
+                LevelPaths: new Dictionary<int, string>());
+            if (candidates == null)
+            {
+                return (resolution.RootPath, resolution.CharacterLevelPaths, resolution.LevelPaths);
+            }
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                (string value, string contextPath) = candidates[i];
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                string[] contextPathParts = string.IsNullOrWhiteSpace(contextPath)
+                    ? Array.Empty<string>()
+                    : contextPath
+                        .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                string normalizedPath = NormalizeClientSummonedUolCandidatePath(value, contextPathParts);
+                if (string.IsNullOrWhiteSpace(normalizedPath))
+                {
+                    continue;
+                }
+
+                if (TryResolveClientSkillAssetUolVariantLevel(contextPathParts, out bool isCharacterLevelVariant, out int variantLevel))
+                {
+                    IDictionary<int, string> target = isCharacterLevelVariant
+                        ? resolution.CharacterLevelPaths
+                        : resolution.LevelPaths;
+                    if (!target.ContainsKey(variantLevel))
+                    {
+                        target[variantLevel] = normalizedPath;
+                    }
+                }
+                else if (string.IsNullOrWhiteSpace(resolution.RootPath))
+                {
+                    resolution = resolution with { RootPath = normalizedPath };
+                }
+            }
+
+            return (resolution.RootPath, resolution.CharacterLevelPaths, resolution.LevelPaths);
+        }
+
         internal static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPathForTest(
             string summonedUolPath,
             WzImageProperty resolvedProperty = null,
@@ -7001,6 +7166,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return linkedSkillId;
                 }
 
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromNestedClientSummonedUolInfoLeaves(
+                             resolvedProperty,
+                             parts))
+                {
+                    yield return linkedSkillId;
+                }
+
                 yield break;
             }
 
@@ -7372,6 +7544,84 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return linkedSkillId;
                 }
             }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromNestedClientSummonedUolInfoLeaves(
+            WzImageProperty infoProperty,
+            string[] resolvedPathParts)
+        {
+            if (infoProperty == null)
+            {
+                yield break;
+            }
+
+            var yieldedSkillIds = new HashSet<int>();
+            foreach ((WzImageProperty Property, string RelativePath) nestedLeaf in EnumerateClientSummonedUolHeuristicInfoLeaves(
+                         infoProperty,
+                         relativePathPrefix: "info",
+                         depthRemaining: ClientSummonedUolHeuristicInfoTraversalDepth))
+            {
+                if (!LooksLikeClientSummonedUolHeuristicOwnerPath(nestedLeaf.RelativePath))
+                {
+                    continue;
+                }
+
+                string[] nestedPathParts = BuildResolvedClientSummonedUolNestedPathParts(
+                    resolvedPathParts,
+                    nestedLeaf.RelativePath);
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromClientSummonedUolValueProperty(
+                             nestedLeaf.Property,
+                             nestedPathParts))
+                {
+                    if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+        }
+
+        private static string[] BuildResolvedClientSummonedUolNestedPathParts(
+            string[] resolvedPathParts,
+            string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                return resolvedPathParts;
+            }
+
+            string[] relativeParts = relativePath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (relativeParts.Length == 0)
+            {
+                return resolvedPathParts;
+            }
+
+            var nestedPathParts = new List<string>();
+            if (resolvedPathParts != null && resolvedPathParts.Length > 0)
+            {
+                nestedPathParts.AddRange(resolvedPathParts.Take(Math.Max(resolvedPathParts.Length - 1, 0)));
+
+                int relativePartStartIndex = 0;
+                string resolvedLeafSegment = resolvedPathParts[^1];
+                if (!string.IsNullOrWhiteSpace(resolvedLeafSegment)
+                    && relativeParts[0].Equals(resolvedLeafSegment, StringComparison.OrdinalIgnoreCase))
+                {
+                    relativePartStartIndex = 1;
+                }
+
+                for (int i = relativePartStartIndex; i < relativeParts.Length; i++)
+                {
+                    nestedPathParts.Add(relativeParts[i]);
+                }
+            }
+
+            if (nestedPathParts.Count == 0)
+            {
+                nestedPathParts.AddRange(relativeParts);
+            }
+
+            return nestedPathParts.ToArray();
         }
 
         private static bool TryParseNormalizedSkillAnimationPath(
@@ -8095,7 +8345,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             WzImageProperty ballNode,
             WzImageProperty skillNode,
             string explicitBallUolPath = null,
-            string explicitFlipBallUolPath = null)
+            string explicitFlipBallUolPath = null,
+            IReadOnlyDictionary<int, string> explicitCharacterLevelBallUolPaths = null,
+            IReadOnlyDictionary<int, string> explicitCharacterLevelFlipBallUolPaths = null,
+            IReadOnlyDictionary<int, string> explicitLevelBallUolPaths = null,
+            IReadOnlyDictionary<int, string> explicitLevelFlipBallUolPaths = null)
         {
             var projectile = new ProjectileData
             {
@@ -8137,6 +8391,18 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             PopulateProjectileCharacterLevelVariants(projectile, skillNode?["CharLevel"]);
             PopulateProjectileLevelVariants(projectile, skillNode?["level"]);
+            ApplyClientSkillAssetUolVariantPaths(
+                projectile.CharacterLevelBallUolPaths,
+                explicitCharacterLevelBallUolPaths);
+            ApplyClientSkillAssetUolVariantPaths(
+                projectile.CharacterLevelFlipBallUolPaths,
+                explicitCharacterLevelFlipBallUolPaths);
+            ApplyClientSkillAssetUolVariantPaths(
+                projectile.LevelBallUolPaths,
+                explicitLevelBallUolPaths);
+            ApplyClientSkillAssetUolVariantPaths(
+                projectile.LevelFlipBallUolPaths,
+                explicitLevelFlipBallUolPaths);
 
             // Load hit animation
             var hitNode = ballNode?["hit"] ?? skillNode["hit"];
@@ -8258,6 +8524,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             return normalizedPath.StartsWith("Skill/", StringComparison.OrdinalIgnoreCase)
                 ? normalizedPath
                 : $"Skill/{normalizedPath}";
+        }
+
+        private static void ApplyClientSkillAssetUolVariantPaths(
+            IDictionary<int, string> targetPaths,
+            IReadOnlyDictionary<int, string> sourcePaths)
+        {
+            if (targetPaths == null || sourcePaths == null || sourcePaths.Count == 0)
+            {
+                return;
+            }
+
+            foreach ((int variantLevel, string normalizedPath) in sourcePaths)
+            {
+                if (variantLevel <= 0 || string.IsNullOrWhiteSpace(normalizedPath))
+                {
+                    continue;
+                }
+
+                targetPaths[variantLevel] = normalizedPath;
+            }
         }
 
         private void LoadSkillIcon(SkillData skill, WzImageProperty skillNode)

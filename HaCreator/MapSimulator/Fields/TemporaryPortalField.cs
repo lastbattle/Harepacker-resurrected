@@ -665,18 +665,24 @@ namespace HaCreator.MapSimulator.Fields
         private void ApplyRemoteOpenGateCreate(RemoteOpenGateCreatedPacket packet, int currentMapId, int currentTime)
         {
             RemoteOpenGateKey key = new(packet.OwnerCharacterId, packet.IsFirstSlot);
-            RemoteOpenGateVisualPhase phase = packet.State == 0 ? RemoteOpenGateVisualPhase.Opening : RemoteOpenGateVisualPhase.Stable;
+            RemoteOpenGateState? existingState = _remoteOpenGates.TryGetValue(key, out RemoteOpenGateState existingStateValue)
+                ? existingStateValue
+                : null;
+            (byte resolvedState, RemoteOpenGateVisualPhase phase, int phaseStartedAt) = ResolveRemoteOpenGateCreateLifecycle(
+                packet.State,
+                existingState,
+                currentTime);
 
             _remoteOpenGates[key] = new RemoteOpenGateState(
                 packet.OwnerCharacterId,
-                packet.State,
+                resolvedState,
                 currentMapId,
                 packet.X,
                 packet.Y,
                 packet.IsFirstSlot,
                 packet.PartyId,
                 phase,
-                currentTime);
+                phaseStartedAt);
 
             if (phase == RemoteOpenGateVisualPhase.Stable)
             {
@@ -684,6 +690,35 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             SyncRemoteOpenGateVisuals();
+        }
+
+        private static (byte ResolvedState, RemoteOpenGateVisualPhase Phase, int PhaseStartedAt) ResolveRemoteOpenGateCreateLifecycle(
+            byte packetState,
+            RemoteOpenGateState? existingState,
+            int currentTime)
+        {
+            if (!existingState.HasValue || existingState.Value.Phase == RemoteOpenGateVisualPhase.Removing)
+            {
+                return packetState == 0
+                    ? (packetState, RemoteOpenGateVisualPhase.Opening, currentTime)
+                    : (packetState, RemoteOpenGateVisualPhase.Stable, currentTime);
+            }
+
+            RemoteOpenGateState existing = existingState.Value;
+            if (packetState == 0)
+            {
+                if (existing.Phase == RemoteOpenGateVisualPhase.Stable || existing.State != 0)
+                {
+                    byte stableState = existing.State == 0 ? (byte)1 : existing.State;
+                    return (stableState, RemoteOpenGateVisualPhase.Stable, existing.PhaseStartedAt);
+                }
+
+                return (packetState, RemoteOpenGateVisualPhase.Opening, existing.PhaseStartedAt);
+            }
+
+            return existing.Phase == RemoteOpenGateVisualPhase.Stable
+                ? (packetState, RemoteOpenGateVisualPhase.Stable, existing.PhaseStartedAt)
+                : (packetState, RemoteOpenGateVisualPhase.Stable, currentTime);
         }
 
         private bool ApplyRemoteOpenGateRemove(RemoteOpenGateRemovedPacket packet, int currentTime)
@@ -4195,6 +4230,29 @@ namespace HaCreator.MapSimulator.Fields
                 Phase: partnerPhase,
                 PhaseStartedAt: 0);
             return ResolveRemoteOpenGatePartnerPromotion(partner, currentTime: 0).Phase;
+        }
+
+        internal static (byte ResolvedState, RemoteOpenGateVisualPhase Phase, int PhaseStartedAt) ResolveRemoteOpenGateCreateLifecycleForTesting(
+            byte packetState,
+            bool hasExistingState,
+            byte existingState,
+            RemoteOpenGateVisualPhase existingPhase,
+            int existingPhaseStartedAt,
+            int currentTime)
+        {
+            RemoteOpenGateState? state = hasExistingState
+                ? new RemoteOpenGateState(
+                    OwnerCharacterId: 1,
+                    State: existingState,
+                    MapId: 1,
+                    X: 0,
+                    Y: 0,
+                    IsFirstSlot: true,
+                    PartyId: 0,
+                    Phase: existingPhase,
+                    PhaseStartedAt: existingPhaseStartedAt)
+                : null;
+            return ResolveRemoteOpenGateCreateLifecycle(packetState, state, currentTime);
         }
 
         internal static int ResolveRemoteOpenGatePartnerLossPhaseStartedAtForTesting(

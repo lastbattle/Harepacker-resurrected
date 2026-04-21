@@ -52,6 +52,12 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly Regex Sg88MismatchFieldListAssignmentRegex = new(
             @"[""']?(?<label>mismatchFields|mismatchField|mismatchFieldNames|mismatchFieldName|fieldNames|fieldName|fields|field)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^;\)\r\n]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex Sg88MoveActionMismatchClassAssignmentRegex = new(
+            @"[""']?(?<label>move[\s_\-]*action[\s_\-]*(?:mismatch|diff|parity)|move[\s_\-]*mismatch)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex Sg88MoveActionFieldValueRegex = new(
+            @"[""']?(?<label>(?:raw[\s_\-]*)?move[\s_\-]*action)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
         public const int Sg88ManualAttackConfirmPacketType = 1021;
@@ -756,6 +762,102 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        internal static bool TryExtractSg88ReplayParityMoveActionMismatchClass(
+            string decodeDetail,
+            out string mismatchClass)
+        {
+            mismatchClass = null;
+            if (string.IsNullOrWhiteSpace(decodeDetail))
+            {
+                return false;
+            }
+
+            if (TryExtractSg88ReplayParityMoveActionMismatchClassByRegex(
+                    decodeDetail,
+                    Sg88MoveActionMismatchClassAssignmentRegex,
+                    out mismatchClass)
+                || TryExtractSg88ReplayParityMoveActionMismatchClassByRegex(
+                    decodeDetail,
+                    Sg88MoveActionFieldValueRegex,
+                    out mismatchClass))
+            {
+                return true;
+            }
+
+            if (decodeDetail.IndexOf("moveActionHighBitsOnly", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                mismatchClass = "highBitsOnly";
+                return true;
+            }
+
+            if (decodeDetail.IndexOf("lowBitChanged", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                mismatchClass = "lowBitChanged";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryExtractSg88ReplayParityMoveActionMismatchClassByRegex(
+            string decodeDetail,
+            Regex matcher,
+            out string mismatchClass)
+        {
+            mismatchClass = null;
+            MatchCollection matches = matcher.Matches(decodeDetail);
+            foreach (Match match in matches.Cast<Match>())
+            {
+                Group valueGroup = match.Groups["value"];
+                if (!valueGroup.Success
+                    || !TryNormalizeSg88MoveActionMismatchClassToken(valueGroup.Value, out string normalizedClass))
+                {
+                    continue;
+                }
+
+                mismatchClass = normalizedClass;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryNormalizeSg88MoveActionMismatchClassToken(string token, out string mismatchClass)
+        {
+            mismatchClass = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalized = token.Trim()
+                .Trim('"', '\'')
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            switch (normalized)
+            {
+                case "highbitsonly":
+                case "moveactionhighbitsonly":
+                case "rawhighbitsonly":
+                case "samelowbit":
+                case "samelowbits":
+                    mismatchClass = "highBitsOnly";
+                    return true;
+                case "lowbitchanged":
+                case "differentlowbit":
+                case "differentlowbits":
+                case "changedlowbit":
+                case "changedlowbits":
+                case "moveactionlowbitchanged":
+                    mismatchClass = "lowBitChanged";
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static List<int> ParseSg88ReplayParityMismatchByteList(string rawSegment)

@@ -902,6 +902,7 @@ namespace HaCreator.MapSimulator.Managers
             out MassacrePacketInboxMessage message)
         {
             message = null;
+            payload ??= Array.Empty<byte>();
             if (!IsSupportedMappedKind(mappedKind) || !HasExpectedMappedPayloadLength(mappedKind, payload))
             {
                 return false;
@@ -918,11 +919,15 @@ namespace HaCreator.MapSimulator.Managers
                 MassacrePacketInboxMessageKind.IncGauge or MassacrePacketInboxMessageKind.Result => MassacrePacketInboxMessageKind.Packet,
                 _ => mappedKind
             };
+            int stageValue = mappedKind == MassacrePacketInboxMessageKind.Stage
+                ? BitConverter.ToInt32(payload, 0)
+                : 0;
 
             message = new MassacrePacketInboxMessage(
                 messageKind,
                 source,
                 $"packetraw {Convert.ToHexString(rawPacket)}",
+                value1: stageValue,
                 packetType: packetType,
                 payload: payload);
             return true;
@@ -968,6 +973,8 @@ namespace HaCreator.MapSimulator.Managers
                 MassacrePacketInboxMessageKind.InfoPayload => length >= sizeof(int) * 4,
                 MassacrePacketInboxMessageKind.IncGauge => length >= sizeof(int),
                 MassacrePacketInboxMessageKind.Result => length >= sizeof(byte) + sizeof(int),
+                MassacrePacketInboxMessageKind.Stage => length >= sizeof(int),
+                MassacrePacketInboxMessageKind.Bonus => true,
                 _ => false
             };
         }
@@ -977,7 +984,9 @@ namespace HaCreator.MapSimulator.Managers
             return kind is MassacrePacketInboxMessageKind.ClockPayload
                 or MassacrePacketInboxMessageKind.InfoPayload
                 or MassacrePacketInboxMessageKind.IncGauge
-                or MassacrePacketInboxMessageKind.Result;
+                or MassacrePacketInboxMessageKind.Result
+                or MassacrePacketInboxMessageKind.Stage
+                or MassacrePacketInboxMessageKind.Bonus;
         }
 
         private static string DescribeMappedKind(MassacrePacketInboxMessageKind kind)
@@ -988,6 +997,8 @@ namespace HaCreator.MapSimulator.Managers
                 MassacrePacketInboxMessageKind.InfoPayload => "context",
                 MassacrePacketInboxMessageKind.IncGauge => "inc-gauge",
                 MassacrePacketInboxMessageKind.Result => "result",
+                MassacrePacketInboxMessageKind.Stage => "stage",
+                MassacrePacketInboxMessageKind.Bonus => "bonus",
                 _ => kind.ToString()
             };
         }
@@ -1003,6 +1014,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 MassacrePacketInboxMessageKind.ClockPayload => "Massacre clock payload",
                 MassacrePacketInboxMessageKind.InfoPayload => "Massacre context payload",
+                MassacrePacketInboxMessageKind.Stage => "Massacre stage payload",
+                MassacrePacketInboxMessageKind.Bonus => "Massacre bonus trigger",
                 MassacrePacketInboxMessageKind.Packet => $"Massacre opcode {message.PacketType}",
                 _ => $"Massacre {message.Kind}"
             };

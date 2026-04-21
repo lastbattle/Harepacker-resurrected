@@ -1655,6 +1655,14 @@ namespace HaCreator.MapSimulator.Fields
 
             bool spendLocalCp = IsLocalRequestOwner(characterName) || pendingLocalRequestMatch;
             bool ownerTeamKnown = TryResolveKnownCharacterTeam(characterName, out MonsterCarnivalTeam ownerTeam);
+            if (!ownerTeamKnown
+                && !spendLocalCp
+                && tab == MonsterCarnivalTab.Guardian
+                && TryInferGuardianOwnerTeamFromSlotMetadata(entry, out MonsterCarnivalTeam inferredOwnerTeam))
+            {
+                ownerTeam = inferredOwnerTeam;
+                ownerTeamKnown = true;
+            }
             ApplySuccessfulRequest(entry, ownerTeamKnown ? ownerTeam : _localTeam, spendLocalCp, ownerTeamKnown);
             string successMessage = BuildRequestSuccessMessage(entry, characterName);
             ShowStatus(successMessage, tickCount);
@@ -2571,28 +2579,12 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryValidateClientOwnedPacket(MonsterCarnivalPacketType packetType, out string errorMessage)
         {
-            if (_definition?.IsReviveMode == true
-                && packetType != MonsterCarnivalPacketType.Enter
-                && packetType != MonsterCarnivalPacketType.GameResult)
-            {
-                errorMessage = $"{_definition.ClientOwnerLabel}::OnPacket only directly owns raw packet types 346 and 353 in the client; packet {(int)packetType} is forwarded to CField::OnPacket.";
-                return false;
-            }
-
             errorMessage = null;
             return true;
         }
 
         private bool TryValidateClientOwnedRawPacket(int packetType, out string errorMessage)
         {
-            if (_definition?.IsReviveMode == true
-                && packetType != (int)MonsterCarnivalRawPacketType.Enter
-                && packetType != (int)MonsterCarnivalRawPacketType.GameResult)
-            {
-                errorMessage = $"{_definition.ClientOwnerLabel}::OnPacket only directly owns raw packet types 346 and 353 in the client; packet {packetType} is forwarded to CField::OnPacket.";
-                return false;
-            }
-
             errorMessage = null;
             return true;
         }
@@ -2647,7 +2639,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom::Init calls CField::Init, reads monsterCarnival/mapType, and stays on a wrapper-only lobby seam while shared Carnival result packets still delegate through CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12, item=-1).",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game::Init calls CField_MonsterCarnival::Init, reads monsterCarnival/mapType, and now switches the simulator to the distinct UIWindow2-backed Monster Carnival surface while result packets still delegate through CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12, item=-1).",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive::OnPacket only owns raw packets 346 and 353; OnEnter decodes one team byte and redraws the local name tag without creating CUIMonsterCarnival, while OnShowGameResult routes codes 8-11 through 0x1020-0x1023 into CUIStatusBar::ChatLogAdd(type=12, item=-1).",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive::OnPacket keeps direct ownership of raw packets 346 and 353; non-direct packets are still visible through CField::OnPacket forwarding into shared CField_MonsterCarnival seams. OnEnter decodes one team byte and redraws the local name tag without creating CUIMonsterCarnival, while OnShowGameResult routes codes 8-11 through 0x1020-0x1023 into CUIStatusBar::ChatLogAdd(type=12, item=-1).",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE => "Legacy Carnival wrapper stays on the shared Monster Carnival packet family in this simulator seam.",
                 _ => "CField_MonsterCarnival owns the shared packet family while the simulator keeps map-backed summon, CP, and request seams live."
             };
@@ -2665,7 +2657,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | waiting-room wrapper panel only | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | UI/UIWindow2.img/MonsterCarnival/main+summonList+sub | subDialog={DescribeSeason2SubDialogState()} | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | revive owner packets raw 346/353 only | OnEnter team byte -> CUserLocal team slot + RedrawGuildNameTag | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | no CUIMonsterCarnival surface",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | revive direct packets raw 346/353 + forwarded shared packet seams via CField::OnPacket | OnEnter team byte -> CUserLocal team slot + RedrawGuildNameTag | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | no CUIMonsterCarnival surface",
                 _ => $"{mapLabel} | shared Carnival packet family 346-353 | UI 0x102B-0x1033"
             };
         }
@@ -3039,7 +3031,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | death route={_lastDeathChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result route={_lastResultChatRoute ?? "none"} | ui={_uiWindowState.DescribeStatus()} | subDialog={DescribeSeason2SubDialogState()} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | death route={_lastDeathChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | result route={_lastResultChatRoute ?? "none"} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} directPackets=346/353 + forwardedSharedRoutes | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | death route={_lastDeathChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | result route={_lastResultChatRoute ?? "none"} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
         }
@@ -3604,8 +3596,8 @@ namespace HaCreator.MapSimulator.Fields
             string normalizedName = NormalizeCharacterName(characterName);
             if (string.IsNullOrWhiteSpace(normalizedName))
             {
-                team = _localTeam;
-                return true;
+                team = default;
+                return false;
             }
 
             if (!string.IsNullOrWhiteSpace(_localCharacterName)
@@ -3616,6 +3608,41 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return _knownCharacterTeams.TryGetValue(normalizedName, out team);
+        }
+
+        private bool TryInferGuardianOwnerTeamFromSlotMetadata(MonsterCarnivalEntry entry, out MonsterCarnivalTeam team)
+        {
+            team = default;
+            if (entry?.Tab != MonsterCarnivalTab.Guardian)
+            {
+                return false;
+            }
+
+            if (_guardianPlacements.TryGetValue(entry.Index, out MonsterCarnivalGuardianPlacement existingPlacement)
+                && existingPlacement?.Entry != null)
+            {
+                team = existingPlacement.Team;
+                return true;
+            }
+
+            IReadOnlyList<MonsterCarnivalGuardianSpawnPoint> positions = _definition?.GuardianSpawnPositions;
+            if (positions == null || positions.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (MonsterCarnivalGuardianSpawnPoint candidate in EnumerateGuardianPlacementCandidates(positions, entry.Index))
+            {
+                if (!candidate.Team.HasValue)
+                {
+                    continue;
+                }
+
+                team = candidate.Team.Value;
+                return true;
+            }
+
+            return false;
         }
 
         private static string NormalizeCharacterName(string characterName)
@@ -4526,7 +4553,7 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     346 or 1 => $"{_definition.ClientOwnerLabel}::OnEnter",
                     353 or 4 => $"{_definition.ClientOwnerLabel}::OnShowGameResult",
-                    _ => "CField::OnPacket"
+                    _ => rawPacket ? "CField::OnPacket(raw)" : "CField::OnPacket"
                 };
             }
 

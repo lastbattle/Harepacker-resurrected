@@ -25,6 +25,20 @@ namespace HaCreator.MapSimulator.Fields
         bool IsPlayerActive,
         bool HasReadyFieldInterface);
 
+    public readonly record struct PassiveTransferFieldInterfaceGateState(
+        bool HasLiveFieldInterface,
+        bool HasPendingMapChange,
+        bool HasPlayerInputControl,
+        bool HasStandAloneControlOwner,
+        bool AllowsTransferField,
+        bool HasPendingSpecialTransfer,
+        bool HasPendingPacketOwnedTransfer,
+        bool HasPacketOwnedTeleportRegistrationCoolingDown,
+        bool HasPendingExclusiveTransferRequest,
+        bool HasAttachedPacketOwnedDriver,
+        bool HasPendingSameMapTransfer,
+        bool HasBlockingScriptedSequence);
+
     public readonly record struct PassiveTransferFieldQueuedRetryDecisionState(
         bool HasPendingRequest,
         bool HasOneTimeActionCompleted,
@@ -52,9 +66,27 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanRetryFromLiveFieldInterface(PassiveTransferFieldInterfaceState state)
         {
-            return state.HasLiveFieldInterface
-                   && state.HasCollidingTransferPortal
+            return state.HasCollidingTransferPortal
                    && state.HasActiveVectorControl
+                   && CanAdmitQueuedRetryInterfaceGate(
+                       new PassiveTransferFieldInterfaceGateState(
+                           state.HasLiveFieldInterface,
+                           state.HasPendingMapChange,
+                           state.HasPlayerInputControl,
+                           state.HasStandAloneControlOwner,
+                           state.AllowsTransferField,
+                           state.HasPendingSpecialTransfer,
+                           state.HasPendingPacketOwnedTransfer,
+                           state.HasPacketOwnedTeleportRegistrationCoolingDown,
+                           state.HasPendingExclusiveTransferRequest,
+                           state.HasAttachedPacketOwnedDriver,
+                           state.HasPendingSameMapTransfer,
+                           state.HasBlockingScriptedSequence));
+        }
+
+        public static bool CanAdmitQueuedRetryInterfaceGate(PassiveTransferFieldInterfaceGateState state)
+        {
+            return state.HasLiveFieldInterface
                    && !state.HasPendingMapChange
                    && state.HasPlayerInputControl
                    && !state.HasStandAloneControlOwner
@@ -75,7 +107,8 @@ namespace HaCreator.MapSimulator.Fields
             // owner bindings (player bound/active) are transiently unavailable in that window.
             return !state.HasPendingMapChange
                    && (!state.HasReadyFieldInterface
-                       || (state.HasBoundPlayer && state.IsPlayerActive)
+                       || !state.HasBoundPlayer
+                       || !state.IsPlayerActive
                        || !state.HasLiveFieldInterface);
         }
 
@@ -101,7 +134,9 @@ namespace HaCreator.MapSimulator.Fields
                     return QueuedRetryDecision.Clear;
                 }
 
-                return QueuedRetryDecision.ReplayHandleUpKeyDown;
+                return state.HasBoundPlayer && state.IsPlayerActive
+                    ? QueuedRetryDecision.ReplayHandleUpKeyDown
+                    : QueuedRetryDecision.KeepPending;
             }
 
             return shouldKeepPending

@@ -47,7 +47,7 @@ namespace HaCreator.MapSimulator
                     snapshot.FacingRight,
                     snapshot.ActionName,
                     WeddingRemoteUserSourceTag,
-                    isVisibleInWorld: true);
+                    isVisibleInWorld: IsWeddingRemoteSnapshotVisibleLikeClient(snapshot));
                 bool shouldSyncNameTag = ShouldSyncWeddingNameTagMetadata(
                     _weddingRemoteNameTagRevisionByCharacterId,
                     characterId,
@@ -224,6 +224,12 @@ namespace HaCreator.MapSimulator
             return snapshot.TemporaryStatRevision > 0
                 ? snapshot.TemporaryStatDelay
                 : (ushort)0;
+        }
+
+        internal static bool IsWeddingRemoteSnapshotVisibleLikeClient(
+            WeddingRemoteParticipantSnapshot snapshot)
+        {
+            return !snapshot.TemporaryStats.KnownState.IsHiddenLikeClient;
         }
 
         internal static bool TryApplyWeddingRemoteProfileMetadata(

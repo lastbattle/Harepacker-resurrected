@@ -86,7 +86,12 @@ namespace HaCreator.MapSimulator
 
         internal static bool IsPacketOwnedAntiMacroCloseResultMode(int mode)
         {
-            return mode is PacketOwnedAntiMacroDestroyMode or PacketOwnedAntiMacroResultMode;
+            // `CUIAntiMacroNotice::OnCreate` handles mode 11 as the same
+            // result-family notice owner path as 7/9, after the challenge
+            // owner has already been torn down.
+            return mode is PacketOwnedAntiMacroDestroyMode
+                or PacketOwnedAntiMacroResultMode
+                or PacketOwnedAntiMacroNoticeMode;
         }
 
         internal static bool IsPacketOwnedAntiMacroSubmitTerminalMode(int mode)

@@ -273,7 +273,12 @@ namespace HaCreator.MapSimulator.Interaction
                         entry.Sender,
                         resolvedSubject,
                         resolvedBody,
+                        entry.IsRead,
+                        entry.IsKept,
+                        entry.IsAttachmentClaimed,
+                        entry.StateFlags,
                         entry.IsQuickDelivery,
+                        entry.QuickDeliveryReservedBytes,
                         entry.AttachmentItemId,
                         entry.AttachmentQuantity,
                         attachmentMeso,
@@ -647,7 +652,12 @@ namespace HaCreator.MapSimulator.Interaction
                 sender,
                 resolvedSubject,
                 body,
+                isRead,
+                isKept,
+                isClaimed,
+                stateFlags: 0,
                 isQuickDelivery,
+                quickDeliveryReservedBytes: Array.Empty<byte>(),
                 attachmentItemId,
                 attachmentQuantity,
                 attachmentMeso,
@@ -1152,6 +1162,11 @@ namespace HaCreator.MapSimulator.Interaction
                 memoText += $"\n\nClaim deadline: {entry.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}.";
             }
 
+            if (entry.HasQuickDeliveryReservedState)
+            {
+                memoText += $"\n\nQuick-delivery internal bytes: {FormatByteHex(entry.QuickDeliveryReservedBytes)}.";
+            }
+
             return memoText;
         }
 
@@ -1515,7 +1530,12 @@ namespace HaCreator.MapSimulator.Interaction
             string sender,
             string subject,
             string body,
+            bool isRead,
+            bool isKept,
+            bool isAttachmentClaimed,
+            byte stateFlags,
             bool isQuickDelivery,
+            IReadOnlyList<byte> quickDeliveryReservedBytes,
             int attachmentItemId,
             int attachmentQuantity,
             int attachmentMeso,
@@ -1526,11 +1546,26 @@ namespace HaCreator.MapSimulator.Interaction
                 sender?.Trim() ?? string.Empty,
                 subject?.Trim() ?? string.Empty,
                 body?.Trim() ?? string.Empty,
+                isRead ? "1" : "0",
+                isKept ? "1" : "0",
+                isAttachmentClaimed ? "1" : "0",
+                stateFlags.ToString("X2"),
                 isQuickDelivery ? "1" : "0",
+                FormatByteHex(quickDeliveryReservedBytes),
                 attachmentItemId.ToString(),
                 attachmentQuantity.ToString(),
                 attachmentMeso.ToString(),
                 expirationTimestampUtc?.UtcTicks.ToString() ?? string.Empty);
+        }
+
+        private static string FormatByteHex(IReadOnlyList<byte> bytes)
+        {
+            if (bytes == null || bytes.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            return string.Join("-", bytes.Select(value => value.ToString("X2")));
         }
 
         private static string ResolveItemName(int itemId)

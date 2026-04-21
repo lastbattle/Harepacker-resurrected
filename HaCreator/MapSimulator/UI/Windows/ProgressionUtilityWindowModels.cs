@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
 
@@ -1254,10 +1255,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int lineWidth = MeasureCollectionTextWidth(line, styleIndex, measureTextWidth);
-            int analyzerLineOffset = alignment == CollectionBookTextAlignment.Center
-                ? Math.Max(0, (analyzerInnerWidth - lineWidth) / 2)
-                : Math.Max(0, analyzerInnerWidth - lineWidth);
-            return analyzerInnerLeft + analyzerLineOffset;
+            if (alignment == CollectionBookTextAlignment.Center)
+            {
+                return left + Math.Max(0, (width - lineWidth) / 2);
+            }
+
+            return left + Math.Max(0, width - lineWidth);
         }
 
         private static int MeasureCollectionTextWidth(string text, int styleIndex, Func<string, int, float> measureTextWidth = null)
@@ -1436,29 +1439,17 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<string>();
             }
 
-            string[] clauses = detail
-                .Split(new[] { "  " }, StringSplitOptions.None)
+            string[] clauses = Regex
+                .Split(detail.Trim(), @"\s{2,}", RegexOptions.CultureInvariant)
                 .Select(clause => clause.Trim())
+                .Where(clause => clause.Length > 0)
                 .ToArray();
             if (clauses.Length < 2)
             {
                 return Array.Empty<string>();
             }
 
-            int lastIndex = clauses.Length - 1;
-            while (lastIndex >= 0 && string.IsNullOrWhiteSpace(clauses[lastIndex]))
-            {
-                lastIndex--;
-            }
-
-            if (lastIndex < 1)
-            {
-                return Array.Empty<string>();
-            }
-
-            string[] compact = new string[lastIndex + 1];
-            Array.Copy(clauses, compact, compact.Length);
-            return compact;
+            return clauses;
         }
 
         private static CollectionBookOwnerContextSnapshot CreateDefaultOwnerContext(CharacterBuild build)

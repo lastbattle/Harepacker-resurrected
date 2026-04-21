@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator
         private const float InitialQuizOwnerSecondaryTextScale = 0.42f;
         private const float InitialQuizOwnerLabelTextScale = 0.39f;
         private const float InitialQuizOwnerInputTextScale = 0.38f;
+        private static readonly Point InitialQuizOwnerEditOrigin = new(109, 157);
 
         private bool _initialQuizOwnerVisualsLoaded;
         private ClientTextRasterizer _initialQuizOwnerInputTextRasterizer;
@@ -163,8 +164,8 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
             _initialQuizOwnerInput.Clear();
             _initialQuizOwnerCursorIndex = 0;
-            DestroyInitialQuizOwnerEditControl();
-            EnsureInitialQuizOwnerEditControl()?.Reset();
+            DestroyInitialQuizOwnerControlStack();
+            EnsureInitialQuizOwnerControlStackCreated();
             ResetInitialQuizOwnerHeldEditKey();
             _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
                 ownerActive: true,
@@ -180,7 +181,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
             _initialQuizOwnerInput.Clear();
             _initialQuizOwnerCursorIndex = 0;
-            DestroyInitialQuizOwnerEditControl();
+            DestroyInitialQuizOwnerControlStack();
             ClearInitialQuizOwnerCompositionText();
             ClearInitialQuizOwnerImeCandidateList();
             ResetInitialQuizOwnerHeldEditKey();
@@ -755,6 +756,53 @@ namespace HaCreator.MapSimulator
             return _initialQuizOwnerInputTextRasterizer;
         }
 
+        private ClientTextRasterizer CreateInitialQuizOwnerTransientLabelRasterizer()
+        {
+            if (GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                string requestedFontFamily = MapleStoryStringPool.GetOrFallback(AntiMacroEditControl.ClientFontStringPoolId, "Arial");
+                string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                    requestedFontFamily,
+                    preferredPrivateFontFamilyCandidates: InitialQuizOwnerInputFontFamilyCandidates,
+                    preferEmbeddedPrivateFontSources: true);
+                return new ClientTextRasterizer(
+                    GraphicsDevice,
+                    resolvedFontFamily,
+                    basePointSize: InitialQuizOwnerInputFontHeightPixels,
+                    preferEmbeddedPrivateFontSources: true);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private void EnsureInitialQuizOwnerControlStackCreated()
+        {
+            EnsureInitialQuizOwnerInputTextRasterizer();
+            EnsureInitialQuizOwnerEditControl()?.Reset();
+        }
+
+        private void DestroyInitialQuizOwnerControlStack()
+        {
+            DestroyInitialQuizOwnerEditControl();
+            if (_initialQuizOwnerInputTextRasterizer != null)
+            {
+                _initialQuizOwnerInputTextRasterizer.Dispose();
+                _initialQuizOwnerInputTextRasterizer = null;
+            }
+        }
+
+        private void DisposeInitialQuizOwnerParityResources()
+        {
+            DestroyInitialQuizOwnerControlStack();
+        }
+
         private AntiMacroEditControl EnsureInitialQuizOwnerEditControl()
         {
             if (_initialQuizOwnerEditControl != null || _packetScriptOwnerPixelTexture == null)
@@ -764,7 +812,7 @@ namespace HaCreator.MapSimulator
 
             _initialQuizOwnerEditControl = new AntiMacroEditControl(
                 _packetScriptOwnerPixelTexture,
-                new Point(109, 157),
+                InitialQuizOwnerEditOrigin,
                 150,
                 13,
                 InitialQuizOwnerInputMaxLength);
@@ -1665,9 +1713,23 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            displayText = FitInitialQuizOwnerTextToBounds(displayText, bounds.Width, scale);
+            using ClientTextRasterizer transientRasterizer = CreateInitialQuizOwnerTransientLabelRasterizer();
+            displayText = FitInitialQuizOwnerTextToBounds(displayText, bounds.Width, scale, transientRasterizer);
             if (string.IsNullOrEmpty(displayText))
             {
+                return;
+            }
+
+            if (transientRasterizer != null)
+            {
+                // `CUIInitialQuiz::Draw` acquires/releases draw resources per text call.
+                transientRasterizer.DrawString(
+                    _spriteBatch,
+                    displayText,
+                    new Vector2(bounds.X, bounds.Y),
+                    color,
+                    scale,
+                    bounds.Width);
                 return;
             }
 
@@ -1681,14 +1743,14 @@ namespace HaCreator.MapSimulator
                 bounds.Width);
         }
 
-        private string FitInitialQuizOwnerTextToBounds(string text, int maxWidth, float scale)
+        private string FitInitialQuizOwnerTextToBounds(string text, int maxWidth, float scale, ClientTextRasterizer rasterizer)
         {
-            if (_fontChat == null || string.IsNullOrEmpty(text) || maxWidth <= 0)
+            if ((rasterizer == null && _fontChat == null) || string.IsNullOrEmpty(text) || maxWidth <= 0)
             {
                 return string.Empty;
             }
 
-            if (_fontChat.MeasureString(text).X * scale <= maxWidth)
+            if (MeasureInitialQuizOwnerTextWidth(text, scale, rasterizer, _fontChat) <= maxWidth)
             {
                 return text;
             }
@@ -1697,7 +1759,7 @@ namespace HaCreator.MapSimulator
             while (length > 0)
             {
                 string candidate = text[..length];
-                if (_fontChat.MeasureString(candidate).X * scale <= maxWidth)
+                if (MeasureInitialQuizOwnerTextWidth(candidate, scale, rasterizer, _fontChat) <= maxWidth)
                 {
                     return candidate.TrimEnd();
                 }
@@ -1706,6 +1768,22 @@ namespace HaCreator.MapSimulator
             }
 
             return string.Empty;
+        }
+
+        private static float MeasureInitialQuizOwnerTextWidth(
+            string text,
+            float scale,
+            ClientTextRasterizer rasterizer,
+            SpriteFont fallbackFont)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0f;
+            }
+
+            return rasterizer != null
+                ? rasterizer.MeasureString(text, scale).X
+                : (fallbackFont?.MeasureString(text).X ?? 0f) * scale;
         }
 
         private void DrawInitialQuizOwnerDigitGlyph(Rectangle ownerBounds, char ch, int relativeX, int relativeY)

@@ -18,7 +18,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             PruneExpired(currentTime);
-            RemoveMatching(skillId, targetMobId);
             if (_pending.Count >= MaxPendingOutcomes)
             {
                 _pending.RemoveAt(0);
@@ -74,13 +73,6 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsExpired(PendingOutcome pending, int currentTime)
         {
             return currentTime >= pending.ExpireTime;
-        }
-
-        private void RemoveMatching(int skillId, int targetMobId)
-        {
-            _pending.RemoveAll(pending =>
-                pending.SkillId == skillId &&
-                pending.TargetMobId == targetMobId);
         }
 
         private sealed record PendingOutcome(int SkillId, int TargetMobId, bool Success, int ExpireTime);

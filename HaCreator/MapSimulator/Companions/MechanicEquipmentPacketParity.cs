@@ -321,6 +321,7 @@ namespace HaCreator.MapSimulator.Companions
                                     fromPosition,
                                     reader,
                                     out MechanicInventoryOperationMutation? passiveAddMutation,
+                                    out bool terminateAfterHeader,
                                     out rejectReason))
                             {
                                 return false;
@@ -329,6 +330,11 @@ namespace HaCreator.MapSimulator.Companions
                             if (passiveAddMutation.HasValue)
                             {
                                 recoveredMutations[passiveAddMutation.Value.Slot] = passiveAddMutation.Value.ItemId;
+                            }
+
+                            if (terminateAfterHeader)
+                            {
+                                i = operationCount;
                             }
 
                             break;
@@ -368,8 +374,10 @@ namespace HaCreator.MapSimulator.Companions
                             {
                                 if (!TryResolvePassiveEquipInventoryItemId(equipInventorySlots, fromPosition, out int sourceItemId))
                                 {
-                                    rejectReason = "Inventory-operation swap entry referenced an unavailable equip source slot.";
-                                    return false;
+                                    // Keep scanning in case this payload also carries a mode-0
+                                    // add entry for the same mechanic slot with the authoritative
+                                    // item id in the shared header.
+                                    break;
                                 }
 
                                 recoveredMutations[targetMechanicSlot] = sourceItemId;
@@ -1478,6 +1486,13 @@ namespace HaCreator.MapSimulator.Companions
 
             if (slotType is not 1 and not 2 and not 3)
             {
+                if (matchedByHeader)
+                {
+                    // Keep mechanic completion recoverable from the shared operation
+                    // header even when deeper GW_ItemSlotBase subtype decode is unknown.
+                    return true;
+                }
+
                 rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
                 return false;
             }
@@ -1496,9 +1511,11 @@ namespace HaCreator.MapSimulator.Companions
             short targetPosition,
             BinaryReader reader,
             out MechanicInventoryOperationMutation? mutation,
+            out bool terminateAfterHeader,
             out string rejectReason)
         {
             mutation = null;
+            terminateAfterHeader = false;
             rejectReason = null;
             if (reader == null)
             {
@@ -1535,6 +1552,14 @@ namespace HaCreator.MapSimulator.Companions
 
             if (slotType is not 1 and not 2 and not 3)
             {
+                if (mutation.HasValue)
+                {
+                    // Preserve the recovered mechanic mutation from the shared add-entry
+                    // header and stop scanning because subtype body length is unknown.
+                    terminateAfterHeader = true;
+                    return true;
+                }
+
                 rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
                 return false;
             }

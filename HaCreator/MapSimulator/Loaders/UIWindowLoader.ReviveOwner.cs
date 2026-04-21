@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -49,6 +50,30 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D progressBar = LoadCanvasTexture(utilDialogProperty, "bar", device);
             Texture2D inactiveDot = LoadCanvasTexture(utilDialogProperty, "dot0", device);
             Texture2D activeDot = LoadCanvasTexture(utilDialogProperty, "dot1", device);
+            Texture2D defaultBranchBackground = LoadReviveOwnerBranchBackground(
+                uiWindowImage,
+                uiWindow2Image,
+                utilDialogProperty,
+                ReviveOwnerRuntime.ResolveNativeBranchSpec(ReviveOwnerVariant.DefaultOnly).BackgroundUolSymbol,
+                device);
+            Texture2D premiumSafetyCharmBackground = LoadReviveOwnerBranchBackground(
+                uiWindowImage,
+                uiWindow2Image,
+                utilDialogProperty,
+                ReviveOwnerRuntime.ResolveNativeBranchSpec(ReviveOwnerVariant.PremiumSafetyCharmChoice).BackgroundUolSymbol,
+                device);
+            Texture2D upgradeTombBackground = LoadReviveOwnerBranchBackground(
+                uiWindowImage,
+                uiWindow2Image,
+                utilDialogProperty,
+                ReviveOwnerRuntime.ResolveNativeBranchSpec(ReviveOwnerVariant.UpgradeTombChoice).BackgroundUolSymbol,
+                device);
+            Texture2D soulStoneBackground = LoadReviveOwnerBranchBackground(
+                uiWindowImage,
+                uiWindow2Image,
+                utilDialogProperty,
+                ReviveOwnerRuntime.ResolveNativeBranchSpec(ReviveOwnerVariant.SoulStoneChoice).BackgroundUolSymbol,
+                device);
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
@@ -69,13 +94,63 @@ namespace HaCreator.MapSimulator.Loaders
                 separatorLine,
                 progressBar,
                 inactiveDot,
-                activeDot)
+                activeDot,
+                defaultBranchBackground,
+                premiumSafetyCharmBackground,
+                upgradeTombBackground,
+                soulStoneBackground)
             {
                 Position = position
             };
 
             window.InitializeButtons(premiumButton, declineButton, defaultButton, closeButton);
             return window;
+        }
+
+        private static Texture2D LoadReviveOwnerBranchBackground(
+            WzImage uiWindowImage,
+            WzImage uiWindow2Image,
+            WzSubProperty utilDialogProperty,
+            string backgroundSymbol,
+            GraphicsDevice device)
+        {
+            if (string.IsNullOrWhiteSpace(backgroundSymbol) || device == null)
+            {
+                return null;
+            }
+
+            return LoadReviveOwnerCanvasTexture(utilDialogProperty, backgroundSymbol, device)
+                ?? LoadReviveOwnerCanvasTexture(uiWindow2Image, backgroundSymbol, device)
+                ?? LoadReviveOwnerCanvasTexture(uiWindowImage, backgroundSymbol, device);
+        }
+
+        private static Texture2D LoadReviveOwnerCanvasTexture(WzObject owner, string propertyName, GraphicsDevice device)
+        {
+            if (owner == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            WzImageProperty property = owner switch
+            {
+                WzSubProperty subProperty => subProperty[propertyName],
+                WzImage image => image[propertyName] ?? image.GetFromPath(propertyName),
+                _ => null
+            };
+
+            if (property is WzCanvasProperty directCanvas)
+            {
+                return LoadCanvasTexture(directCanvas, device);
+            }
+
+            if (property is WzUOLProperty uolProperty)
+            {
+                return uolProperty.WzValue is WzCanvasProperty linkedCanvas
+                    ? LoadCanvasTexture(linkedCanvas, device)
+                    : null;
+            }
+
+            return null;
         }
     }
 }

@@ -15,13 +15,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int CrossbowWeaponType = 46;
         private const int ThrowingStarWeaponType = 47;
         private const int BulletWeaponType = 49;
-        private const int WindWalkSkillId = 11101005;
         private const int WildHunterJaguarJumpSkillId = 33001002;
-        private const int NightLordFlashJumpSkillId = 4111006;
-        private const int ShadowerFlashJumpSkillId = 4211009;
-        private const int DualBladeFlashJumpSkillId = 4321003;
-        private const int NightWalkerFlashJumpSkillId = 14101004;
-        private const int RocketBoosterSkillId = 35101004;
         private const int JaguarRiderSkillId = 33001001;
         private const int MechanicPrototypeSkillId = 35001002;
         private const int FlameLauncherSkillId = 35001001;
@@ -560,8 +554,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            return skill.SkillId == WindWalkSkillId
-                   || skill.SkillId == RocketBoosterSkillId;
+            return BoundJumpParityProfile.IsGroundedStartDirectBoundJumpSkillId(skill.SkillId);
         }
 
         private static bool UsesBoundJumpActionProfile(SkillData skill)
@@ -632,13 +625,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsExplicitBoundJumpSkill(int skillId)
         {
-            return skillId == WindWalkSkillId
-                   || skillId == WildHunterJaguarJumpSkillId
-                   || skillId == NightLordFlashJumpSkillId
-                   || skillId == ShadowerFlashJumpSkillId
-                   || skillId == DualBladeFlashJumpSkillId
-                   || skillId == NightWalkerFlashJumpSkillId
-                   || skillId == RocketBoosterSkillId;
+            return BoundJumpParityProfile.IsDirectBoundJumpSkillId(skillId);
         }
 
         private static bool IsConstrainedType40BoundJumpSkillId(int skillId)

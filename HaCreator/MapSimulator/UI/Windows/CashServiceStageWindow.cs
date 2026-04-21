@@ -2751,70 +2751,203 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildCashPurchaseExpResult(byte[] payload)
         {
-            int value = payload != null && payload.Length >= sizeof(int)
-                ? Math.Max(0, BitConverter.ToInt32(payload, 0))
-                : 0;
-            _noticeState = value > 0
-                ? $"Purchase-exp packet updated the dedicated Cash Shop stage with value {value.ToString(CultureInfo.InvariantCulture)}."
-                : "Purchase-exp update routed through Cash Shop packet ownership.";
-            AppendCashPacketCatalogEntry("Packet purchase", "Buy", new PacketCatalogEntry
-            {
-                Title = "Purchase EXP",
-                Detail = _noticeState,
-                Seller = "CCashShop",
-                PriceLabel = value > 0 ? value.ToString(CultureInfo.InvariantCulture) : string.Empty,
-                StateLabel = "Purchase EXP"
-            });
-            List<CashItemInfoPacketSnapshot> embeddedSnapshots = TryDecodeEmbeddedCashItemInfoSnapshots(payload, startOffset: sizeof(int), maxCount: 4);
-            string embeddedSummary = AppendEmbeddedCashItemInfoCatalogEntries(
-                embeddedSnapshots,
+            // Client evidence (CCashShop::OnPurchaseExpChanged @ 0x493f10):
+            // payload decodes one byte and writes it to CWvsContext state.
+            int stateByte = payload != null && payload.Length > 0
+                ? Math.Max(0, (int)payload[0])
+                : -1;
+            _noticeState = stateByte >= 0
+                ? $"Purchase-exp packet updated the dedicated Cash Shop stage byte-state to {stateByte.ToString(CultureInfo.InvariantCulture)}."
+                : "Purchase-exp packet reached the dedicated Cash Shop stage without a decodable byte-state.";
+            string trailingSummary = AppendTrailingCashItemInfoFromPayload(
+                payload,
+                startOffset: 1,
+                maxCount: 2,
                 paneLabel: "Packet purchase",
                 browseModeLabel: "Buy",
                 titlePrefix: "Purchase-exp body",
                 seller: "CCashShop",
                 stateLabel: "Purchase EXP body");
-            if (!string.IsNullOrWhiteSpace(embeddedSummary))
+            if (!string.IsNullOrWhiteSpace(trailingSummary))
             {
-                _noticeState += $" {embeddedSummary}";
+                _noticeState += $" {trailingSummary}";
             }
 
+            AppendCashPacketCatalogEntry("Packet purchase", "Buy", new PacketCatalogEntry
+            {
+                Title = "Purchase EXP",
+                Detail = _noticeState,
+                Seller = "CCashShop",
+                PriceLabel = stateByte >= 0 ? stateByte.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                StateLabel = "Purchase EXP"
+            });
             return _noticeState;
         }
 
         private string BuildCashGiftMateResult(byte[] payload)
         {
-            string accountName = TryReadUtf8Text(payload, out string decodedText)
-                ? SanitizePacketString(decodedText, "gift mate")
-                : string.Empty;
-            _noticeState = string.IsNullOrWhiteSpace(accountName)
-                ? "Gift-mate result stayed inside Cash Shop packet ownership."
-                : $"Gift-mate result refreshed the packet-owned recipient state for {accountName}.";
+            if (payload == null || payload.Length < sizeof(byte))
+            {
+                _noticeState = "Gift-mate result reached the dedicated Cash Shop stage without a decodable payload.";
+                AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
+                {
+                    Title = "Gift mate",
+                    Detail = _noticeState,
+                    Seller = "CCashShop",
+                    StateLabel = "Decode failed"
+                });
+                _cashGiftLastSummary = _noticeState;
+                return _noticeState;
+            }
+
+            // Client evidence (CCashShop::OnGiftMateInfoResult @ 0x48ffa0):
+            // payload starts with result byte and then carries request id/commodity SN plus recipient/message strings.
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            int resultByte = reader.ReadByte();
+            if (resultByte == 0)
+            {
+                _noticeState = "Gift-mate result reported an unavailable recipient for the dedicated gift-owner path.";
+                AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
+                {
+                    Title = "Gift mate",
+                    Detail = _noticeState,
+                    Seller = "CCashShop",
+                    PriceLabel = "Result 0",
+                    StateLabel = "Unavailable"
+                });
+                _cashGiftLastSummary = _noticeState;
+                return _noticeState;
+            }
+
+            if (stream.Length - stream.Position < sizeof(int) + sizeof(int))
+            {
+                _noticeState = "Gift-mate result reached the dedicated gift-owner path, but the request header could not be decoded.";
+                string headerHex = BuildCompactPayloadHex(payload, 1, payload.Length - 1);
+                if (!string.IsNullOrWhiteSpace(headerHex))
+                {
+                    _noticeState += $" Payload head: {headerHex}.";
+                }
+
+                AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
+                {
+                    Title = "Gift mate",
+                    Detail = _noticeState,
+                    Seller = "CCashShop",
+                    PriceLabel = $"Result {resultByte.ToString(CultureInfo.InvariantCulture)}",
+                    StateLabel = "Header decode failed"
+                });
+                _cashGiftLastSummary = _noticeState;
+                return _noticeState;
+            }
+
+            int requestId = Math.Max(0, reader.ReadInt32());
+            int commoditySerialNumber = Math.Max(0, reader.ReadInt32());
+            if (!TryReadMapleString(reader, out string recipientRaw)
+                || !TryReadMapleString(reader, out string messageRaw))
+            {
+                _noticeState =
+                    $"Gift-mate result decoded request {requestId.ToString(CultureInfo.InvariantCulture)} and commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, but recipient/message strings could not be decoded.";
+                AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
+                {
+                    Title = "Gift mate",
+                    Detail = _noticeState,
+                    Seller = "CCashShop",
+                    PriceLabel = commoditySerialNumber > 0
+                        ? $"SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                        : $"Req {requestId.ToString(CultureInfo.InvariantCulture)}",
+                    StateLabel = "String decode failed",
+                    ListingId = commoditySerialNumber
+                });
+                _cashGiftLastSummary = _noticeState;
+                return _noticeState;
+            }
+
+            string recipient = SanitizePacketString(recipientRaw, "gift recipient");
+            string giftMessage = SanitizePacketString(messageRaw, string.Empty);
+            int trailingByteCount = (int)Math.Max(0L, stream.Length - stream.Position);
+            string trailingHex = BuildCompactPayloadHex(payload, (int)stream.Position, trailingByteCount);
+            _noticeState = $"Gift-mate result refreshed recipient {recipient} for request {requestId.ToString(CultureInfo.InvariantCulture)} and commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}.";
+            if (!string.IsNullOrWhiteSpace(giftMessage))
+            {
+                _noticeState += $" Message: {giftMessage}.";
+            }
+
+            if (trailingByteCount > 0)
+            {
+                _noticeState += string.IsNullOrWhiteSpace(trailingHex)
+                    ? $" Trailing gift-mate body remained ({trailingByteCount.ToString(CultureInfo.InvariantCulture)} byte(s))."
+                    : $" Trailing gift-mate body remained ({trailingByteCount.ToString(CultureInfo.InvariantCulture)} byte(s), head {trailingHex}).";
+            }
+
             AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
             {
                 Title = "Gift mate",
                 Detail = _noticeState,
-                Seller = string.IsNullOrWhiteSpace(accountName) ? "CCashShop" : accountName,
-                PriceLabel = accountName,
-                StateLabel = "Recipient"
+                Seller = recipient,
+                PriceLabel = commoditySerialNumber > 0
+                    ? $"SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : $"Req {requestId.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Recipient",
+                ListingId = commoditySerialNumber,
+                Quantity = 1,
+                PacketMessage = giftMessage
             });
+            _cashGiftLastSummary = _noticeState;
             return _noticeState;
         }
 
         private string BuildCashDuplicateIdResult(byte[] payload)
         {
-            string duplicateId = TryReadUtf8Text(payload, out string decodedText)
-                ? SanitizePacketString(decodedText, "duplicate id")
-                : string.Empty;
-            _noticeState = string.IsNullOrWhiteSpace(duplicateId)
-                ? "Duplicate-id result stayed inside Cash Shop packet ownership."
-                : $"Duplicate-id result checked {duplicateId} inside the dedicated Cash Shop stage.";
+            if (payload == null || payload.Length < sizeof(short) + sizeof(byte))
+            {
+                _noticeState = "Duplicate-id result reached the dedicated Cash Shop stage without a decodable payload.";
+                _cashNameChangeLastSummary = _noticeState;
+                AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
+                {
+                    Title = "Duplicate ID check",
+                    Detail = _noticeState,
+                    Seller = "CCashShop",
+                    StateLabel = "Decode failed"
+                });
+                return _noticeState;
+            }
+
+            // Client evidence (CCashShop::OnCheckDuplicatedIDResult @ 0x497fb0):
+            // payload decodes candidate name first, then a one-byte result code.
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (!TryReadMapleString(reader, out string candidateRaw)
+                || stream.Length - stream.Position < sizeof(byte))
+            {
+                _noticeState = "Duplicate-id result reached the dedicated Cash Shop stage, but candidate-name decode failed.";
+                _cashNameChangeLastSummary = _noticeState;
+                AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
+                {
+                    Title = "Duplicate ID check",
+                    Detail = _noticeState,
+                    Seller = "CCashShop",
+                    StateLabel = "Decode failed"
+                });
+                return _noticeState;
+            }
+
+            string candidateName = SanitizePacketString(candidateRaw, "duplicate id");
+            int resultByte = reader.ReadByte();
+            _noticeState = resultByte switch
+            {
+                0 => $"Duplicate-id result accepted candidate name {candidateName}.",
+                > 0 => $"Duplicate-id result rejected candidate name {candidateName} as already in use.",
+                _ => $"Duplicate-id result checked {candidateName} with result {resultByte.ToString(CultureInfo.InvariantCulture)}."
+            };
+            _cashNameChangeLastSummary = _noticeState;
             AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
             {
                 Title = "Duplicate ID check",
                 Detail = _noticeState,
-                Seller = string.IsNullOrWhiteSpace(duplicateId) ? "CCashShop" : duplicateId,
-                PriceLabel = duplicateId,
-                StateLabel = "Checked"
+                Seller = candidateName,
+                PriceLabel = candidateName,
+                StateLabel = resultByte == 0 ? "Accepted" : "Rejected"
             });
             return _noticeState;
         }
@@ -3419,7 +3552,9 @@ namespace HaCreator.MapSimulator.UI
             _cashOneADayItemDate = state.CurrentDate;
             _cashOneADayItemSerialNumber = state.CurrentCommoditySerialNumber;
             bool packetOwnedPending = state.HasPacketRewardSessionByte && (state.PacketRewardSessionByte & 1) != 0;
-            _cashOneADayRewardPending = IsOneADayRewardPending(_cashOneADayItemSerialNumber) || packetOwnedPending;
+            _cashOneADayRewardPending = state.HasPacketRewardSessionByte
+                ? packetOwnedPending
+                : IsOneADayRewardPending(_cashOneADayItemSerialNumber);
             _cashOneADayPayloadLength = Math.Max(0, state.PayloadLength);
             _cashOneADayDecodedByteLength = Math.Max(0, state.DecodedByteLength);
             _cashOneADayTrailingByteCount = Math.Max(0, state.TrailingByteCount);

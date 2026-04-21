@@ -367,7 +367,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool MatchesAnyListedSkill(WzImageProperty noSkillProperty, int skillId)
         {
-            foreach (WzImageProperty property in EnumerateNamedDescendants(noSkillProperty, "skill"))
+            foreach (WzImageProperty property in EnumerateNamedChildren(noSkillProperty, "skill"))
             {
                 if (MatchesListedSkill(property, skillId))
                 {
@@ -380,7 +380,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool MatchesAnyListedSkillClass(WzImageProperty noSkillProperty, int currentJobId, SkillData skill)
         {
-            foreach (WzImageProperty property in EnumerateNamedDescendants(noSkillProperty, "class"))
+            foreach (WzImageProperty property in EnumerateNamedChildren(noSkillProperty, "class"))
             {
                 if (MatchesListedSkillClass(property, currentJobId, skill))
                 {
@@ -527,34 +527,25 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
-        private static IEnumerable<WzImageProperty> EnumerateNamedDescendants(WzImageProperty root, string propertyName)
+        private static IEnumerable<WzImageProperty> EnumerateNamedChildren(WzImageProperty root, string propertyName)
         {
             if (root == null || string.IsNullOrWhiteSpace(propertyName))
             {
                 yield break;
             }
 
-            Stack<WzImageProperty> pending = new Stack<WzImageProperty>();
-            pending.Push(root);
-            while (pending.Count > 0)
+            WzPropertyCollection children = root.WzProperties;
+            if (children == null)
             {
-                WzImageProperty current = pending.Pop();
-                if (string.Equals(current?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    yield return current;
-                }
+                yield break;
+            }
 
-                if (current?.WzProperties == null)
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (string.Equals(child?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
-                }
-
-                for (int i = 0; i < current.WzProperties.Count; i++)
-                {
-                    if (current.WzProperties[i] != null)
-                    {
-                        pending.Push(current.WzProperties[i]);
-                    }
+                    yield return child;
                 }
             }
         }

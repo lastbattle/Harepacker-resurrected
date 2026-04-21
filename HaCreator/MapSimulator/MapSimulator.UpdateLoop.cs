@@ -378,6 +378,7 @@ namespace HaCreator.MapSimulator
             SyncClientOwnedTutorialTutorOwner(currTickCount);
             UpdateItemUpgradeOwnerState();
             UpdateVegaSpellOwnerState();
+            UpdatePacketOwnedClassCompetitionRuntime(currTickCount);
             UpdatePacketOwnedRadioSchedule(currTickCount);
             UpdateUtilityAudioMix(currTickCount);
             DrainRockPaperScissorsPendingClientPackets();

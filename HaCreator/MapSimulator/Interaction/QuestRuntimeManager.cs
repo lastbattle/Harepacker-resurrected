@@ -943,6 +943,23 @@ namespace HaCreator.MapSimulator.Interaction
                 "complete");
             AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+            if (build == null &&
+                HasUnresolvedCompletionBuildContextDemand(
+                    definition.MinLevel,
+                    definition.MaxLevel,
+                    definition.EndActions?.ActionMinLevel,
+                    definition.EndActions?.ActionMaxLevel,
+                    definition.EndActions?.AllowedJobs))
+            {
+                issues.Add("Completion demand includes build-scoped level/job gates, but character build context is unavailable.");
+            }
+
+            if (build != null &&
+                HasUnmetCompletionActionJobDemand(definition.EndActions?.AllowedJobs, build.Job))
+            {
+                string requiredJobText = BuildAllowedJobDisplayText(definition.EndActions?.AllowedJobs ?? Array.Empty<int>());
+                issues.Add($"Required action job: {requiredJobText}.");
+            }
 
             if (build != null && HasUnmetCompletionLevelFloor(definition.MinLevel, build.Level))
             {
@@ -955,6 +972,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return issues.Count > 0;
+        }
+
+        internal static bool HasUnresolvedCompletionBuildContextDemand(
+            int? minLevel,
+            int? maxLevel,
+            int? actionMinLevel,
+            int? actionMaxLevel,
+            IReadOnlyList<int> actionAllowedJobs)
+        {
+            return minLevel.HasValue
+                   || maxLevel.HasValue
+                   || actionMinLevel.HasValue
+                   || actionMaxLevel.HasValue
+                   || (actionAllowedJobs?.Count ?? 0) > 0;
+        }
+
+        internal static bool HasUnmetCompletionActionJobDemand(IReadOnlyList<int> actionAllowedJobs, int currentJob)
+        {
+            return (actionAllowedJobs?.Count ?? 0) > 0
+                   && !MatchesAllowedJobs(currentJob, actionAllowedJobs);
         }
 
         internal static bool HasUnmetCompletionLevelFloor(int? minLevel, int currentLevel)
@@ -9451,6 +9488,17 @@ namespace HaCreator.MapSimulator.Interaction
                         rootStopProperty: selectedProperty?["stop"],
                         fallbackRootStopProperty: containerProperty?["stop"]);
                 }
+            }
+
+            List<WzImageProperty> selectedNumberedPages = CollectConversationNumberedPages(selectedProperty);
+            if (selectedNumberedPages.Count > 0)
+            {
+                return ParseConversationPageSequence(
+                    selectedNumberedPages,
+                    rootChoiceProperty: selectedProperty,
+                    fallbackRootChoiceProperty: containerProperty,
+                    rootStopProperty: selectedProperty?["stop"],
+                    fallbackRootStopProperty: containerProperty?["stop"]);
             }
 
             return ParseConversationPages(selectedProperty);

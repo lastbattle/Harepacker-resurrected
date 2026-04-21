@@ -686,6 +686,12 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Tie is only available during an active Match Cards round.";
+                return false;
+            }
+
             if (_localTieRequestSent)
             {
                 message = "A Match Cards tie request is already pending.";
@@ -799,6 +805,12 @@ namespace HaCreator.MapSimulator.Fields
             if (_stage == RoomStage.Hidden)
             {
                 message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Give Up is only available during an active Match Cards round.";
                 return false;
             }
 

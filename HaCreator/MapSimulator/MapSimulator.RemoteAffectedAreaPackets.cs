@@ -1422,6 +1422,7 @@ namespace HaCreator.MapSimulator
                 hasAreaOwnerEnemySnapshot,
                 areaOwnerIsEnemySnapshot,
                 hasExplicitHostileMetadata: HasExplicitHostileRemoteAffectedAreaMetadataForLocalPlayer(areaObjectId),
+                hasExplicitFriendlyMetadata: HasExplicitFriendlyRemoteAffectedAreaMetadataForLocalPlayer(areaObjectId),
                 ownerIsPartyMember: IsAffectedAreaOwnerPartyMember(areaObjectId, ownerId));
         }
 
@@ -1458,13 +1459,45 @@ namespace HaCreator.MapSimulator
             return FilterRemoteAffectedAreaLocalPlayerHostileSkillRuntimes(hostileSkillRuntimes).Length > 0;
         }
 
+        private bool HasExplicitFriendlyRemoteAffectedAreaMetadataForLocalPlayer(int areaObjectId)
+        {
+            if (areaObjectId <= 0
+                || _affectedAreaPool?.TryGetArea(areaObjectId, out ActiveAffectedArea area) != true
+                || area?.SourceKind != AffectedAreaSourceKind.PlayerSkill)
+            {
+                return false;
+            }
+
+            bool preferPvpLevelData = ShouldUseRemoteAffectedAreaPvpLevelData();
+            SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
+            if (skill == null)
+            {
+                return false;
+            }
+
+            SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
+            SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel, preferPvpLevelData);
+            SkillLevelData effectiveLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, supportSkills);
+            if (effectiveLevelData == null)
+            {
+                return false;
+            }
+
+            return RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(
+                skill,
+                supportSkills,
+                effectiveLevelData);
+        }
+
         internal static bool ShouldAssumeRemoteAffectedAreaOwnerIsEnemyFromHostileMetadata(
             bool hasResolvedOwnerTeam,
             bool hasExplicitHostileMetadata,
+            bool hasExplicitFriendlyMetadata = false,
             bool ownerIsPartyMember = false)
         {
             return !hasResolvedOwnerTeam
                    && hasExplicitHostileMetadata
+                   && !hasExplicitFriendlyMetadata
                    && !ownerIsPartyMember;
         }
 
@@ -1474,6 +1507,7 @@ namespace HaCreator.MapSimulator
             bool hasAreaOwnerEnemySnapshot,
             bool areaOwnerIsEnemySnapshot,
             bool hasExplicitHostileMetadata,
+            bool hasExplicitFriendlyMetadata = false,
             bool ownerIsPartyMember = false)
         {
             if (hasResolvedOwnerTeam)
@@ -1489,6 +1523,7 @@ namespace HaCreator.MapSimulator
             return ShouldAssumeRemoteAffectedAreaOwnerIsEnemyFromHostileMetadata(
                 hasResolvedOwnerTeam: false,
                 hasExplicitHostileMetadata,
+                hasExplicitFriendlyMetadata,
                 ownerIsPartyMember);
         }
 

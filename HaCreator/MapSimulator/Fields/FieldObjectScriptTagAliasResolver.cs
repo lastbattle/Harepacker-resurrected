@@ -16,6 +16,10 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[^A-Za-z0-9_\.])(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex BracketMemberAliasPattern = new(
+            @"\[\s*[""'](?<name>[A-Za-z_][A-Za-z0-9_]*)[""']\s*\]",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         internal readonly record struct PublishedTagMutation(
             IReadOnlyList<string> TagsToEnable,
             IReadOnlyList<string> TagsToDisable);
@@ -344,23 +348,73 @@ namespace HaCreator.MapSimulator.Fields
         private static IEnumerable<string> EnumerateScriptAliasCandidatesCore(string scriptName)
         {
             yield return scriptName;
+            foreach (string memberAliasCandidate in EnumerateMemberAliasCandidates(scriptName))
+            {
+                yield return memberAliasCandidate;
+            }
 
             string transportStem = TrimTransportSuffix(scriptName);
             if (!string.Equals(transportStem, scriptName, StringComparison.OrdinalIgnoreCase))
             {
                 yield return transportStem;
+                foreach (string memberAliasCandidate in EnumerateMemberAliasCandidates(transportStem))
+                {
+                    yield return memberAliasCandidate;
+                }
             }
 
             string fileName = TrimPathPrefix(transportStem);
             if (!string.Equals(fileName, scriptName, StringComparison.OrdinalIgnoreCase))
             {
                 yield return fileName;
+                foreach (string memberAliasCandidate in EnumerateMemberAliasCandidates(fileName))
+                {
+                    yield return memberAliasCandidate;
+                }
             }
 
             string fileStem = TrimFileExtension(fileName);
             if (!string.Equals(fileStem, fileName, StringComparison.OrdinalIgnoreCase))
             {
                 yield return fileStem;
+                foreach (string memberAliasCandidate in EnumerateMemberAliasCandidates(fileStem))
+                {
+                    yield return memberAliasCandidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateMemberAliasCandidates(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedValue))
+            {
+                yield break;
+            }
+
+            int memberSeparatorIndex = normalizedValue.LastIndexOf('.');
+            if (memberSeparatorIndex > 0 && memberSeparatorIndex < normalizedValue.Length - 1)
+            {
+                string memberLeafName = NormalizeFunctionAliasArgument(
+                    normalizedValue[(memberSeparatorIndex + 1)..]).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(memberLeafName))
+                {
+                    yield return memberLeafName;
+                }
+            }
+
+            foreach (Match match in BracketMemberAliasPattern.Matches(normalizedValue))
+            {
+                string bracketMemberName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(bracketMemberName))
+                {
+                    yield return bracketMemberName;
+                }
             }
         }
 

@@ -1622,7 +1622,10 @@ namespace HaCreator.MapSimulator.UI
 
             DrawTextWithShadow(
                 sprite,
-                chatState.InputText ?? string.Empty,
+                ResolveWhisperPickerModalComboDisplayText(
+                    chatState.InputText,
+                    Math.Max(1f, comboToggleBounds.Left - (comboBounds.X + WhisperPickerFramePadding + 1) - WhisperPickerFramePadding),
+                    value => MeasureChatText(value).X),
                 new Vector2(
                     comboBounds.X + WhisperPickerFramePadding + 1,
                     comboBounds.Y + Math.Max(0f, (comboBounds.Height - MeasureChatText("Ag").Y) * 0.5f)),
@@ -2368,6 +2371,48 @@ namespace HaCreator.MapSimulator.UI
             return _font?.MeasureString(text) ?? Vector2.Zero;
         }
 
+        internal static string ResolveWhisperPickerModalComboDisplayText(
+            string inputText,
+            float maxWidth,
+            Func<string, float> measureWidth)
+        {
+            if (measureWidth == null)
+            {
+                throw new ArgumentNullException(nameof(measureWidth));
+            }
+
+            string text = inputText ?? string.Empty;
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            float safeMaxWidth = Math.Max(1f, maxWidth);
+            if (measureWidth(text) <= safeMaxWidth)
+            {
+                return text;
+            }
+
+            int low = 0;
+            int high = text.Length;
+            int best = 0;
+            while (low <= high)
+            {
+                int mid = low + ((high - low) / 2);
+                if (measureWidth(text.Substring(0, mid)) <= safeMaxWidth)
+                {
+                    best = mid;
+                    low = mid + 1;
+                }
+                else
+                {
+                    high = mid - 1;
+                }
+            }
+
+            return best > 0 ? text.Substring(0, best) : string.Empty;
+        }
+
         private int ResolveFontLineSpacing()
         {
             if (_clientTextRasterizer != null)
@@ -2533,6 +2578,10 @@ namespace HaCreator.MapSimulator.UI
             bool comboHovered = _whisperPickerComboBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool comboToggleHovered = _whisperPickerComboToggleBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool dropdownHovered = _whisperPickerDropdownBounds?.Contains(mouseState.X, mouseState.Y) == true;
+            MapSimulatorChatRenderState chatState = _chatStateProvider?.Invoke();
+            bool modalWhisperPickerActive = chatState != null
+                && chatState.IsWhisperTargetPickerActive
+                && chatState.WhisperTargetPickerPresentation == MapSimulatorChat.WhisperTargetPickerPresentation.Modal;
             bool isPressStarted = mouseState.LeftButton == ButtonState.Pressed
                 && _previousLeftButtonState == ButtonState.Released;
             bool isRelease = mouseState.LeftButton == ButtonState.Released
@@ -2676,7 +2725,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 ResetWhisperPickerPointerCaptureState();
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
-                WhisperTargetPickerRequested?.Invoke();
+                if (!modalWhisperPickerActive)
+                {
+                    WhisperTargetPickerRequested?.Invoke();
+                }
                 return true;
             }
 

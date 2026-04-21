@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<int> ItemIds { get; init; } = Array.Empty<int>();
         public IReadOnlyList<AdminShopPacketOwnedWishlistSearchResultRow> ResultRows { get; init; }
             = Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>();
+        public bool IsStateOnlySessionSnapshot { get; init; }
         public int TrailingByteCount { get; init; }
     }
 

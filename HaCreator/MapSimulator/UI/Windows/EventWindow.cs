@@ -396,36 +396,52 @@ namespace HaCreator.MapSimulator.UI
                     _statusLaneMaxWidth);
                 DrawTrimmedText(sprite, entry.Title, textLayout.TitleX, textLayout.TitleY, textLayout.TitleMaxWidth, Color.White);
                 DrawTrimmedText(sprite, entry.StatusText, textLayout.StatusX, textLayout.StatusY, textLayout.StatusMaxWidth, new Color(255, 228, 151));
-                DrawWrappedText(
-                    sprite,
-                    ResolveEventRowDetailText(entry),
-                    textLayout.DetailX,
-                    textLayout.DetailY,
-                    textLayout.DetailWidth,
-                    new Color(224, 224, 224),
-                    maxLines: 2);
+                (string primaryDetail, string secondaryDetail) = ResolveEventRowDetailLines(entry);
+                if (!string.IsNullOrWhiteSpace(primaryDetail))
+                {
+                    DrawTrimmedText(
+                        sprite,
+                        primaryDetail,
+                        textLayout.DetailX,
+                        textLayout.DetailY,
+                        textLayout.DetailWidth,
+                        new Color(224, 224, 224));
+                }
+
+                if (!string.IsNullOrWhiteSpace(secondaryDetail))
+                {
+                    DrawTrimmedText(
+                        sprite,
+                        secondaryDetail,
+                        textLayout.DetailX,
+                        textLayout.DetailY + _font.LineSpacing,
+                        textLayout.DetailWidth,
+                        new Color(206, 206, 206));
+                }
             }
         }
 
-        private static string ResolveEventRowDetailText(EventEntrySnapshot entry)
+        internal static (string Primary, string Secondary) ResolveEventRowDetailLines(EventEntrySnapshot entry)
         {
             if (entry == null)
             {
-                return string.Empty;
+                return (string.Empty, string.Empty);
             }
 
             string alarmText = entry.AlarmText?.Trim() ?? string.Empty;
             string detailText = entry.Detail?.Trim() ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(alarmText) && !string.IsNullOrWhiteSpace(detailText))
+            if (string.IsNullOrWhiteSpace(alarmText))
             {
-                return string.Equals(alarmText, detailText, StringComparison.Ordinal)
-                    ? alarmText
-                    : string.Concat(alarmText, Environment.NewLine, detailText);
+                return (detailText, string.Empty);
             }
 
-            return !string.IsNullOrWhiteSpace(alarmText)
-                ? alarmText
-                : detailText;
+            if (string.IsNullOrWhiteSpace(detailText)
+                || string.Equals(alarmText, detailText, StringComparison.Ordinal))
+            {
+                return (alarmText, string.Empty);
+            }
+
+            return (alarmText, detailText);
         }
 
         private void DrawCalendar(SpriteBatch sprite, EventWindowSnapshot snapshot, int contentOffsetY)

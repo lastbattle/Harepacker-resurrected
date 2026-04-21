@@ -906,53 +906,112 @@ namespace HaCreator.MapSimulator.Managers
             out PacketOwnedItemMakerSession result,
             out string error)
         {
+            long startPosition = reader?.BaseStream?.Position ?? 0;
             result = null;
             error = null;
 
-            EnsureReadable(reader, sizeof(int), "Maker-session delta payload is missing its Int32 delta flags.");
-            PacketOwnedItemMakerSessionDeltaFlags deltaFlags = (PacketOwnedItemMakerSessionDeltaFlags)reader.ReadInt32();
-
-            List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions = null;
-            List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals = null;
-            List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions = null;
-            List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals = null;
-
-            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions))
+            if (reader == null)
             {
-                disassemblyTargetAdditions = ReadDisassemblyTargetAdditions(reader, "Maker-session delta disassembly target addition");
-            }
-
-            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetRemovals))
-            {
-                disassemblyTargetRemovals = ReadDisassemblyTargetRemovals(reader, "Maker-session delta disassembly target removal");
-            }
-
-            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions))
-            {
-                hiddenRecipeAdditions = ReadHiddenRecipeEntries(reader, "Maker-session delta hidden recipe addition");
-            }
-
-            if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals))
-            {
-                hiddenRecipeRemovals = ReadHiddenRecipeRemovalEntries(reader, "Maker-session delta hidden recipe removal");
-            }
-
-            if (reader.BaseStream.Position != reader.BaseStream.Length)
-            {
-                error = $"Maker-session payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
+                error = "Maker-session delta payload reader is missing.";
                 return false;
             }
 
-            result = new PacketOwnedItemMakerSession
+            string firstDecodeError = null;
+            if (TryDecodeDeltaPayloadWithCountWidth(
+                    reader,
+                    useCompactCountWidth: false,
+                    out result,
+                    out error))
             {
-                IsDeltaUpdate = true,
-                DeltaFlags = deltaFlags,
-                DisassemblyTargetAdditions = disassemblyTargetAdditions ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
-                DisassemblyTargetRemovals = disassemblyTargetRemovals ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
-                HiddenRecipeAdditions = hiddenRecipeAdditions ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>(),
-                HiddenRecipeRemovals = hiddenRecipeRemovals ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
-            };
-            return true;
+                return true;
+            }
+
+            firstDecodeError = error;
+            reader.BaseStream.Position = startPosition;
+            if (TryDecodeDeltaPayloadWithCountWidth(
+                    reader,
+                    useCompactCountWidth: true,
+                    out result,
+                    out error))
+            {
+                return true;
+            }
+
+            error = firstDecodeError ?? error ?? "Maker-session delta payload could not be decoded.";
+            return false;
+        }
+
+        private static bool TryDecodeDeltaPayloadWithCountWidth(
+            BinaryReader reader,
+            bool useCompactCountWidth,
+            out PacketOwnedItemMakerSession result,
+            out string error)
+        {
+            long startPosition = reader?.BaseStream?.Position ?? 0;
+            result = null;
+            error = null;
+            try
+            {
+                EnsureReadable(reader, sizeof(int), "Maker-session delta payload is missing its Int32 delta flags.");
+                PacketOwnedItemMakerSessionDeltaFlags deltaFlags = (PacketOwnedItemMakerSessionDeltaFlags)reader.ReadInt32();
+
+                List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions = null;
+                List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals = null;
+                List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions = null;
+                List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeRemovals = null;
+
+                if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetAdditions))
+                {
+                    disassemblyTargetAdditions = useCompactCountWidth
+                        ? ReadDisassemblyTargetAdditions16(reader, "Maker-session delta disassembly target addition")
+                        : ReadDisassemblyTargetAdditions(reader, "Maker-session delta disassembly target addition");
+                }
+
+                if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasDisassemblyTargetRemovals))
+                {
+                    disassemblyTargetRemovals = useCompactCountWidth
+                        ? ReadDisassemblyTargetRemovals16(reader, "Maker-session delta disassembly target removal")
+                        : ReadDisassemblyTargetRemovals(reader, "Maker-session delta disassembly target removal");
+                }
+
+                if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeAdditions))
+                {
+                    hiddenRecipeAdditions = useCompactCountWidth
+                        ? ReadHiddenRecipeEntries16(reader, "Maker-session delta hidden recipe addition")
+                        : ReadHiddenRecipeEntries(reader, "Maker-session delta hidden recipe addition");
+                }
+
+                if (deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals))
+                {
+                    hiddenRecipeRemovals = useCompactCountWidth
+                        ? ReadHiddenRecipeRemovalEntries16(reader, "Maker-session delta hidden recipe removal")
+                        : ReadHiddenRecipeRemovalEntries(reader, "Maker-session delta hidden recipe removal");
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    error = $"Maker-session payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                result = new PacketOwnedItemMakerSession
+                {
+                    IsDeltaUpdate = true,
+                    DeltaFlags = deltaFlags,
+                    DisassemblyTargetAdditions = disassemblyTargetAdditions ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                    DisassemblyTargetRemovals = disassemblyTargetRemovals ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                    HiddenRecipeAdditions = hiddenRecipeAdditions ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>(),
+                    HiddenRecipeRemovals = hiddenRecipeRemovals ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
+                };
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException)
+            {
+                error = $"Maker-session delta payload could not be decoded: {ex.Message}";
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
         }
 
         private static bool TryDecodeCompactHiddenTail(

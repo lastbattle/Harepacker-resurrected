@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             RestorePreviousSmallDarkPatch,
             ClearPreviousMaskHistory,
+            DrawDarkLayerFallback,
             CopyLocalViewrange,
             CopyRemoteViewrange,
             AppendPreviousMaskHistory
@@ -1025,8 +1026,12 @@ namespace HaCreator.MapSimulator.Fields
                 Vector2.Zero,
                 -1));
 
-            if (currentMaskTopLefts == null)
+            if (currentMaskTopLefts == null || currentMaskTopLefts.Count == 0)
             {
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.DrawDarkLayerFallback,
+                    Vector2.Zero,
+                    -1));
                 return operations;
             }
 
@@ -1230,6 +1235,9 @@ namespace HaCreator.MapSimulator.Fields
                     case ClientOwnedDrawViewrangeOperationKind.ClearPreviousMaskHistory:
                         ResetClientOwnedPreviousMaskTopLeftsForCurrentFrame();
                         break;
+                    case ClientOwnedDrawViewrangeOperationKind.DrawDarkLayerFallback:
+                        DrawClientOwnedDarkLayerFallback(spriteBatch, fogColor);
+                        break;
                     case ClientOwnedDrawViewrangeOperationKind.CopyLocalViewrange:
                     case ClientOwnedDrawViewrangeOperationKind.CopyRemoteViewrange:
                         DrawClientOwnedViewrangeFogAtTopLeft(
@@ -1251,6 +1259,22 @@ namespace HaCreator.MapSimulator.Fields
                         break;
                 }
             }
+        }
+
+        private void DrawClientOwnedDarkLayerFallback(SpriteBatch spriteBatch, Color fogColor)
+        {
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            Rectangle darkBounds = GetClientOwnedDarkLayerBounds();
+            if (darkBounds.Width <= 0 || darkBounds.Height <= 0)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(_pixelTexture, darkBounds, fogColor);
         }
 
         private void DrawClientOwnedSmallDarkPatch(SpriteBatch spriteBatch, Vector2 topLeft, Color fogColor)

@@ -2218,13 +2218,11 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
-            int excludedTargetId = primaryTargetInfo?.TargetType == MobTargetType.Summoned ? primaryTargetInfo.TargetId : 0;
             for (int i = 0; i < puppets.Count; i++)
             {
                 PuppetInfo puppet = puppets[i];
                 if (puppet == null ||
                     !puppet.IsActive ||
-                    puppet.ObjectId == excludedTargetId ||
                     !CanHitPuppetTarget(attack, puppet, requireGroundedForJumpAttack: false))
                 {
                     continue;
@@ -2276,11 +2274,10 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
-            int excludedTargetId = primaryTargetInfo?.TargetType == MobTargetType.Mob ? primaryTargetInfo.TargetId : 0;
             for (int i = 0; i < mobs.Count; i++)
             {
                 MobItem mob = mobs[i];
-                if (mob?.AI == null || mob.AI.IsDead || ReferenceEquals(mob, sourceMob) || mob.PoolId == excludedTargetId)
+                if (mob?.AI == null || mob.AI.IsDead || ReferenceEquals(mob, sourceMob))
                 {
                     continue;
                 }

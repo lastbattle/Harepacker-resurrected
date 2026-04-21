@@ -2874,11 +2874,15 @@ namespace HaCreator.MapSimulator.Loaders
             mapNameMarkStackPanel.AddRenderable(haUITextMapNameStreetName);
             fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
 
-            WzSubProperty collapsedMapButtonProperty = minimapFrameProperty["BtMap"] as WzSubProperty;
-            WzSubProperty collapsedMaximizeButtonProperty = bBigBang
-                ? minimapFrameProperty["BtMax"] as WzSubProperty
-                : uiBasicImage["BtMax"] as WzSubProperty;
             WzSubProperty collapsedBarProperty = minimapFrameProperty["Min"] as WzSubProperty;
+            WzSubProperty collapsedMapButtonProperty =
+                collapsedBarProperty?["BtMap"] as WzSubProperty
+                ?? minimapFrameProperty["BtMap"] as WzSubProperty;
+            WzSubProperty collapsedMaximizeButtonProperty =
+                collapsedBarProperty?["BtMax"] as WzSubProperty
+                ?? (bBigBang
+                    ? minimapFrameProperty["BtMax"] as WzSubProperty
+                    : uiBasicImage["BtMax"] as WzSubProperty);
             System.Drawing.Bitmap collapsedBarLeft = ((WzCanvasProperty)collapsedBarProperty?["w"])?.GetLinkedWzCanvasBitmap();
             System.Drawing.Bitmap collapsedBarCenter = ((WzCanvasProperty)collapsedBarProperty?["c"])?.GetLinkedWzCanvasBitmap();
             System.Drawing.Bitmap collapsedBarRight = ((WzCanvasProperty)collapsedBarProperty?["e"])?.GetLinkedWzCanvasBitmap();

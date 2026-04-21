@@ -303,11 +303,12 @@ namespace HaCreator.MapSimulator.UI
             int scrollbarWidth)
         {
             int safeScrollbarWidth = Math.Max(1, scrollbarWidth);
+            int verticalInset = listBounds.Height > 2 ? 1 : 0;
             return new Rectangle(
                 listBounds.Right - safeScrollbarWidth - 1,
-                listBounds.Y,
+                listBounds.Y + verticalInset,
                 safeScrollbarWidth,
-                listBounds.Height);
+                Math.Max(1, listBounds.Height - (verticalInset * 2)));
         }
 
         public static Rectangle ResolveWhisperPickerModalDropdownScrollPrevBounds(

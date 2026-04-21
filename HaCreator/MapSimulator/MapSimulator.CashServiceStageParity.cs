@@ -109,6 +109,29 @@ namespace HaCreator.MapSimulator
             return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
         }
 
+        private string ShowCashAvatarPersonalShopAction()
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(Environment.TickCount);
+            return ShowSocialRoomWindowForCallback(
+                SocialRoomKind.PersonalShop,
+                "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.");
+        }
+
+        private string ShowCashAvatarEntrustedShopAction()
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(Environment.TickCount);
+            return ShowSocialRoomWindowForCallback(
+                SocialRoomKind.EntrustedShop,
+                "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.");
+        }
+
+        private string ShowCashAvatarTradingRoomAction()
+        {
+            ReleaseActiveKeydownSkillForClientCancelIngress(Environment.TickCount);
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
+            return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
+        }
+
         private void WireCashServiceOwnerWindows()
         {
             IInventoryRuntime inventoryRuntime = uiWindowManager?.InventoryWindow as IInventoryRuntime;
@@ -141,17 +164,9 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewWindow.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewWindow.SetFont(_fontChat);
                 cashAvatarPreviewWindow.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
-                cashAvatarPreviewWindow.PersonalShopRequested = () => ShowSocialRoomWindowForCallback(
-                    SocialRoomKind.PersonalShop,
-                    "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.");
-                cashAvatarPreviewWindow.EntrustedShopRequested = () => ShowSocialRoomWindowForCallback(
-                    SocialRoomKind.EntrustedShop,
-                    "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.");
-                cashAvatarPreviewWindow.TradingRoomRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
-                    return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
-                };
+                cashAvatarPreviewWindow.PersonalShopRequested = ShowCashAvatarPersonalShopAction;
+                cashAvatarPreviewWindow.EntrustedShopRequested = ShowCashAvatarEntrustedShopAction;
+                cashAvatarPreviewWindow.TradingRoomRequested = ShowCashAvatarTradingRoomAction;
                 cashAvatarPreviewWindow.WeatherRequested = PreviewCashAvatarWeatherAction;
             }
 
@@ -207,8 +222,7 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.SetInventoryStateProvider(() => BuildCashShopInventoryOwnerState(cashShopWindow));
                 inventoryWindow.SetExternalAction("BtExTrunk", () =>
                 {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashShopLocker);
-                    return "CCSWnd_Inventory routed trunk access back to CCSWnd_Locker.";
+                    return cashShopWindow.ExecuteCashStageInventoryAction("BtExTrunk");
                 });
             }
 
@@ -279,6 +293,10 @@ namespace HaCreator.MapSimulator
                         BuildCashShopOneADayHistoryEntryStates(stageWindow);
                     bool packetOwnedRewardSessionByte = stageWindow.CashOneADayHasPacketRewardSessionByte;
                     int packetRewardSessionByte = stageWindow.CashOneADayPacketRewardSessionByte & 0xFF;
+                    bool packetOwnedPending = ResolveCashShopOneADayPendingState(
+                        packetOwnedRewardSessionByte,
+                        packetRewardSessionByte,
+                        stageWindow.IsOneADayPending);
                     bool previousLaneEnabled = IsCashShopOneADayPreviousLaneEnabled(
                         packetOwnedRewardSessionByte,
                         packetRewardSessionByte,
@@ -298,10 +316,11 @@ namespace HaCreator.MapSimulator
                         out int remainingSecond);
                     return new CashShopStageChildWindow.OneADayOwnerState
                     {
-                        IsPending = stageWindow.IsOneADayPending,
+                        IsPending = packetOwnedPending,
                         NoticeState = stageWindow.NoticeState,
                         SelectorIndex = selectorIndex,
                         SelectorControlId = 2001,
+                        SelectorInitArg = 1,
                         SelectorStartX = 2,
                         SelectorStartY = 2,
                         SelectorPosition = new Microsoft.Xna.Framework.Point(412, 406),
@@ -537,6 +556,16 @@ namespace HaCreator.MapSimulator
             return (historyEntries?.Count ?? 0) > 0;
         }
 
+        private static bool ResolveCashShopOneADayPendingState(
+            bool hasPacketRewardSessionByte,
+            int packetRewardSessionByte,
+            bool stagePendingFallback)
+        {
+            return hasPacketRewardSessionByte
+                ? (packetRewardSessionByte & 1) != 0
+                : stagePendingFallback;
+        }
+
         private CashTradingRoomWindow.PacketTradeSessionSnapshot BuildCashTradingRoomPacketSessionSnapshot()
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is not AdminShopDialogUI cashShopWindow)
@@ -683,8 +712,12 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
+            bool pending = ResolveCashShopOneADayPendingState(
+                stageWindow.CashOneADayHasPacketRewardSessionByte,
+                stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
+                stageWindow.IsOneADayPending);
             int approximatedRewardSessionByte = 0;
-            if (stageWindow.IsOneADayPending)
+            if (pending)
             {
                 approximatedRewardSessionByte |= 1;
             }
@@ -701,7 +734,7 @@ namespace HaCreator.MapSimulator
                 ? "packet-owned"
                 : "owner-approx";
 
-            string todayState = stageWindow.IsOneADayPending
+            string todayState = pending
                 ? $"today armed for SN {currentCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
                 : "today idle";
             bool previousLaneEnabled = IsCashShopOneADayPreviousLaneEnabled(
@@ -734,7 +767,10 @@ namespace HaCreator.MapSimulator
 
             List<string> parts = new()
             {
-                stageWindow.IsOneADayPending ? "1" : "0",
+                ResolveCashShopOneADayPendingState(
+                    stageWindow.CashOneADayHasPacketRewardSessionByte,
+                    stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
+                    stageWindow.IsOneADayPending) ? "1" : "0",
                 stageWindow.CashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture),
                 stageWindow.CashOneADayItemDate.ToString(CultureInfo.InvariantCulture),
                 stageWindow.CashOneADayHasPacketRewardSessionByte ? "packet-byte" : "no-packet-byte",
@@ -1234,9 +1270,13 @@ namespace HaCreator.MapSimulator
                 return "CCSWnd_OneADay is waiting for the parent Cash Shop stage.";
             }
 
+            bool pending = ResolveCashShopOneADayPendingState(
+                stageWindow.CashOneADayHasPacketRewardSessionByte,
+                stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
+                stageWindow.IsOneADayPending);
             int commoditySerialNumber = Math.Max(0, stageWindow.CashOneADayItemSerialNumber);
             string itemLabel = ResolveCashShopOneADayCommodityLabel(commoditySerialNumber);
-            if (!stageWindow.IsOneADayPending)
+            if (!pending)
             {
                 return $"CCSWnd_OneADay kept the dedicated buy lane idle because no packet-authored today reward is pending for {itemLabel}.";
             }
@@ -1253,9 +1293,13 @@ namespace HaCreator.MapSimulator
 
             IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries =
                 BuildCashShopOneADayHistoryEntryStates(stageWindow);
-            return historyEntries.Count > 0
+            bool previousLaneEnabled = IsCashShopOneADayPreviousLaneEnabled(
+                stageWindow.CashOneADayHasPacketRewardSessionByte,
+                stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
+                historyEntries);
+            return previousLaneEnabled
                 ? $"CCSWnd_OneADay switched the dedicated item-box lane to the packet-authored previous-reward history ({historyEntries.Count.ToString(CultureInfo.InvariantCulture)} row(s))."
-                : "CCSWnd_OneADay kept the item-box lane on the recovered previous selector, but no packet-authored history rows are loaded.";
+                : "CCSWnd_OneADay kept the item-box lane closed because packet reward-session state disabled previous history.";
         }
 
         private IReadOnlyList<string> BuildCashShopOneADayOwnerLines()
@@ -1270,9 +1314,13 @@ namespace HaCreator.MapSimulator
             }
 
             CashShopOneADayArtSnapshot artSnapshot = ResolveCashShopOneADayArtSnapshot();
+            bool pending = ResolveCashShopOneADayPendingState(
+                stageWindow.CashOneADayHasPacketRewardSessionByte,
+                stageWindow.CashOneADayPacketRewardSessionByte & 0xFF,
+                stageWindow.IsOneADayPending);
             List<string> lines = new()
             {
-                stageWindow.IsOneADayPending
+                pending
                     ? "Packet 395 has armed the dedicated one-a-day owner."
                     : "No one-a-day packet is currently pending.",
                 stageWindow.NoticeState
@@ -2194,11 +2242,16 @@ namespace HaCreator.MapSimulator
                 },
                 new[]
                 {
-                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "Accept", IsPrimary = true },
-                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
+                    new CashServiceModalOwnerWindow.ActionButtonState
+                    {
+                        Label = "OK",
+                        IsPrimary = true,
+                        ClientX = 203,
+                        ClientY = 220
+                    }
                 },
                 footer: totalGiftCount > 1
-                    ? $"{Math.Max(0, totalGiftCount - giftIndex - 1).ToString(CultureInfo.InvariantCulture)} later gift row(s) remain in this packet-owned modal sequence."
+                    ? $"{Math.Max(0, totalGiftCount - giftIndex - 1).ToString(CultureInfo.InvariantCulture)} later gift row(s) remain in this packet-owned modal sequence after this CDialog::DoModal return."
                     : "This is the last staged gift row in the current packet-owned modal sequence.",
                 inputPlaceholder: "Reply message",
                 inputActive: true,
@@ -2241,7 +2294,9 @@ namespace HaCreator.MapSimulator
                     new CashServiceModalOwnerWindow.ActionButtonState
                     {
                         Label = "OK",
-                        IsPrimary = true
+                        IsPrimary = true,
+                        ClientX = 203,
+                        ClientY = 220
                     }
                 },
                 footer: hasNextGiftRow
@@ -2578,36 +2633,33 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (buttonIndex != 0)
+            {
+                uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+                return;
+            }
+
             int selectedGiftIndex = Math.Clamp(modalWindow.SelectedGiftIndex, 0, Math.Max(0, stageWindow.CashGiftPacketEntries.Count - 1));
             CashServiceStageWindow.PacketCatalogEntry selectedGift = stageWindow.CashGiftPacketEntries.Count > 0
                 ? stageWindow.CashGiftPacketEntries[selectedGiftIndex]
                 : null;
             string normalizedReplyText = NormalizeCashReceiveGiftReplyText(modalWindow.InputValue);
-            if (buttonIndex == 0
-                && !TryValidateCashReceiveGiftReplyText(normalizedReplyText, out string replyNotice))
+            if (!TryValidateCashReceiveGiftReplyText(normalizedReplyText, out string replyNotice))
             {
                 _chat?.AddErrorMessage(replyNotice, currTickCount);
                 return;
             }
 
-            string dispatchSummary = buttonIndex == 0
-                ? DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText)
-                : string.Empty;
-            string message = buttonIndex == 0
-                ? stageWindow.StageReceiveGiftAcceptRequest(selectedGiftIndex, normalizedReplyText, dispatchSummary)
-                : "CUIReceiveGift skipped the current decoded gift row and advanced to the next modal-owner pass without sending the accept packet.";
+            string dispatchSummary = DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText);
+            string message = stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, normalizedReplyText, dispatchSummary);
+            string ownerNotice = stageWindow.BuildReceiveGiftAcceptOwnerNotice(selectedGift, normalizedReplyText);
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
             _chat?.AddSystemMessage(message, currTickCount);
-            if (buttonIndex == 0)
-            {
-                return;
-            }
 
-            int nextGiftIndex = buttonIndex == 0 ? selectedGiftIndex : selectedGiftIndex + 1;
-            if (nextGiftIndex < stageWindow.CashGiftPacketEntries.Count)
-            {
-                ShowCashReceiveGiftDialog(stageWindow, nextGiftIndex);
-            }
+            int nextGiftIndex = stageWindow.CashGiftPacketEntries.Count > 0
+                ? Math.Clamp(selectedGiftIndex, 0, stageWindow.CashGiftPacketEntries.Count - 1)
+                : -1;
+            ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, message);
         }
 
         private static IEnumerable<string> BuildCashReceiveGiftSpecialistMessages(

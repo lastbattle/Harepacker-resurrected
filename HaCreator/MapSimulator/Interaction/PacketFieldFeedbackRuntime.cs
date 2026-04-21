@@ -867,7 +867,6 @@ namespace HaCreator.MapSimulator.Interaction
                             return true;
                         }
 
-                        callbacks?.RememberWhisperTarget?.Invoke(target);
                         _lastWhisperTarget = target;
                         _statusMessage = $"Applied packet-owned whisper target update for {target}.";
                         message = _statusMessage;
@@ -927,7 +926,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 WhisperSentStringPoolId,
                                 WhisperSentFallback,
                                 target);
-                        callbacks?.AddClientChatMessage?.Invoke(text, disabled ? 12 : 14, disabled ? null : target);
+                        callbacks?.AddClientChatMessage?.Invoke(text, disabled ? 12 : 1, null);
                         _statusMessage = $"Applied packet-owned whisper availability notice for {target}.";
                         message = _statusMessage;
                         return true;
@@ -1674,8 +1673,8 @@ namespace HaCreator.MapSimulator.Interaction
                     OutgoingWhisperLogFallback,
                     resolvedTarget,
                     outgoingText.Trim()),
-                14,
-                resolvedTarget);
+                1,
+                null);
         }
 
         private static bool HasWhisperTransferTarget(int mapId, PacketFieldFeedbackCallbacks callbacks)

@@ -337,7 +337,7 @@ namespace HaCreator.MapSimulator.UI
                 StoreBankOwnerRowSnapshot row = rows[rowIndex];
                 DrawItemIcon(sprite, row, drawX, drawY);
 
-                string primary = TrimToWidth(row.PrimaryText, RowWidth - RowPrimaryTextX - 8f, 0.62f);
+                string primary = TrimToWidth(ClampClientPrimaryText(row.PrimaryText), RowWidth - RowPrimaryTextX - 8f, 0.62f);
                 InventoryRenderUtil.DrawOutlinedText(
                     sprite,
                     _font,
@@ -494,6 +494,14 @@ namespace HaCreator.MapSimulator.UI
         private static string FormatClientMoneyText(int money)
         {
             return Math.Max(0, money).ToString("N0", CultureInfo.InvariantCulture);
+        }
+
+        private static string ClampClientPrimaryText(string text)
+        {
+            string value = text ?? string.Empty;
+            return value.Length <= 160
+                ? value
+                : value[..160];
         }
 
         private void DrawRowSeparator(SpriteBatch sprite, int rowX, int rowY)
