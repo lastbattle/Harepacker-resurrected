@@ -1272,6 +1272,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int StatusDurationMs = 4500;
         private const int VariantActionTrailCapacity = 4;
         private const int VariantTransportTrailCapacity = 6;
+        private const int ReviveRouteTrailCapacity = 6;
         private const int Season2TimerTrailCapacity = 6;
         private const int Season2ChatRouteTrailCapacity = 6;
 
@@ -1308,6 +1309,8 @@ namespace HaCreator.MapSimulator.Fields
         private int[] _lastClientOwnerStringPoolIds = Array.Empty<int>();
         private readonly Queue<string> _variantActionTrail = new();
         private readonly Queue<string> _variantTransportTrail = new();
+        private readonly Queue<string> _reviveDirectRouteTrail = new();
+        private readonly Queue<string> _reviveForwardedRouteTrail = new();
         private readonly Queue<string> _season2SubDialogTimerTrail = new();
         private readonly Queue<string> _season2ChatRouteTrail = new();
         private readonly MonsterCarnivalUiWindowState _uiWindowState = new();
@@ -1374,6 +1377,8 @@ namespace HaCreator.MapSimulator.Fields
         public int ReviveForwardedPacketCount => _reviveForwardedPacketCount;
         public int ReviveRoundSequence => _reviveRoundSequence;
         public int ReviveResultSequence => _reviveResultSequence;
+        public string ReviveDirectRouteTrailSummary => BuildReviveDirectRouteTrailSummary();
+        public string ReviveForwardedRouteTrailSummary => BuildReviveForwardedRouteTrailSummary();
         public string VariantTransportSummary => BuildVariantTransportSummary();
         public string LastRequestFailureChatRoute => _lastRequestFailureChatRoute;
         public string LastMemberOutChatRoute => _lastMemberOutChatRoute;
@@ -2442,6 +2447,8 @@ namespace HaCreator.MapSimulator.Fields
             _lastClientOwnerStringPoolIds = Array.Empty<int>();
             _variantActionTrail.Clear();
             _variantTransportTrail.Clear();
+            _reviveDirectRouteTrail.Clear();
+            _reviveForwardedRouteTrail.Clear();
             _season2SubDialogTimerTrail.Clear();
             _season2ChatRouteTrail.Clear();
             _uiWindowState.Reset();
@@ -2496,6 +2503,8 @@ namespace HaCreator.MapSimulator.Fields
             _lastResultChatRoute = null;
             _lastDeathChatRoute = null;
             _variantTransportTrail.Clear();
+            _reviveDirectRouteTrail.Clear();
+            _reviveForwardedRouteTrail.Clear();
             _season2SubDialogTimerTrail.Clear();
             _season2ChatRouteTrail.Clear();
             _variantTransportPacketCount = 0;
@@ -3595,7 +3604,9 @@ namespace HaCreator.MapSimulator.Fields
 
             int expectedFacing = flip ? 1 : 0;
             int bestAvailableScore = int.MaxValue;
+            int bestAvailablePendingAffinity = -1;
             int bestOccupiedScore = int.MaxValue;
+            int bestOccupiedPendingAffinity = -1;
             int occupiedSlotIndex = -1;
             MonsterCarnivalGuardianSpawnPoint occupiedSpawnPoint = default;
             MonsterCarnivalTeam occupiedResolvedTeam = _localTeam;
@@ -3611,27 +3622,40 @@ namespace HaCreator.MapSimulator.Fields
                     int distance = Math.Abs(candidate.X - worldX) + Math.Abs(candidate.Y - worldY);
                     int facingPenalty = candidate.Facing == expectedFacing ? 0 : 8;
                     int score = distance + facingPenalty;
+                    int pendingAffinity = ResolvePendingGuardianPlacementAffinity(candidate.Index, candidateTeam);
 
                     if (_occupiedGuardianSlots.Contains(candidate.Index))
                     {
-                        if (score >= bestOccupiedScore)
+                        if (score > bestOccupiedScore)
+                        {
+                            continue;
+                        }
+
+                        if (score == bestOccupiedScore && pendingAffinity <= bestOccupiedPendingAffinity)
                         {
                             continue;
                         }
 
                         bestOccupiedScore = score;
+                        bestOccupiedPendingAffinity = pendingAffinity;
                         occupiedSlotIndex = candidate.Index;
                         occupiedSpawnPoint = candidate;
                         occupiedResolvedTeam = candidate.Team ?? candidateTeam;
                         continue;
                     }
 
-                    if (score >= bestAvailableScore)
+                    if (score > bestAvailableScore)
+                    {
+                        continue;
+                    }
+
+                    if (score == bestAvailableScore && pendingAffinity <= bestAvailablePendingAffinity)
                     {
                         continue;
                     }
 
                     bestAvailableScore = score;
+                    bestAvailablePendingAffinity = pendingAffinity;
                     slotIndex = candidate.Index;
                     spawnPoint = candidate;
                     resolvedTeam = candidate.Team ?? candidateTeam;
@@ -3652,6 +3676,43 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return slotIndex >= 0;
+        }
+
+        private int ResolvePendingGuardianPlacementAffinity(int slotIndex, MonsterCarnivalTeam team)
+        {
+            if (_pendingGuardianPlacements.Count <= 0)
+            {
+                return 0;
+            }
+
+            int bestAffinity = 0;
+            foreach (PendingGuardianPlacement pending in _pendingGuardianPlacements)
+            {
+                if (pending.Entry == null)
+                {
+                    continue;
+                }
+
+                bool slotMatches = pending.Entry.Index == slotIndex;
+                bool teamMatches = pending.Team == team;
+                if (slotMatches && teamMatches)
+                {
+                    return 3;
+                }
+
+                if (slotMatches)
+                {
+                    bestAffinity = Math.Max(bestAffinity, 2);
+                    continue;
+                }
+
+                if (teamMatches)
+                {
+                    bestAffinity = Math.Max(bestAffinity, 1);
+                }
+            }
+
+            return bestAffinity;
         }
 
         private MonsterCarnivalEntry ResolveGuardianEntryForSlot(int slotIndex)
@@ -4171,6 +4232,7 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     _reviveDirectPacketCount++;
                     reviveRoute = "direct";
+                    RecordReviveRouteTrail(_reviveDirectRouteTrail, packetType, delegatedOwner);
                     if (packetType == 346)
                     {
                         _reviveRoundSequence++;
@@ -4184,6 +4246,7 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     _reviveForwardedPacketCount++;
                     reviveRoute = "forwarded";
+                    RecordReviveRouteTrail(_reviveForwardedRouteTrail, packetType, delegatedOwner);
                 }
             }
 
@@ -4774,7 +4837,7 @@ namespace HaCreator.MapSimulator.Fields
                 $"packets={_variantTransportPacketCount},raw={_variantRawPacketCount},packet={_variantStructuredPacketCount},enter={_variantEnterPacketCount},request={_variantRequestPacketCount},hud={_variantLiveHudPacketCount},member={_variantMemberPacketCount},death={_variantDeathPacketCount},result={_variantResultPacketCount},last={_variantTransportLastRoute ?? "none"},trail={BuildVariantTransportTrailSummary()}";
             if (_definition?.IsReviveMode == true)
             {
-                summary += $",reviveDirect={_reviveDirectPacketCount},reviveForwarded={_reviveForwardedPacketCount},reviveRounds={_reviveRoundSequence},reviveResults={_reviveResultSequence}";
+                summary += $",reviveDirect={_reviveDirectPacketCount},reviveForwarded={_reviveForwardedPacketCount},reviveRounds={_reviveRoundSequence},reviveResults={_reviveResultSequence},reviveDirectTrail={BuildReviveDirectRouteTrailSummary()},reviveForwardedTrail={BuildReviveForwardedRouteTrailSummary()}";
             }
 
             return summary;
@@ -4788,6 +4851,40 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Join(" => ", _variantTransportTrail.Select(entry => TrimVariantActionText(entry, 44)));
+        }
+
+        private static void RecordReviveRouteTrail(Queue<string> trail, int packetType, string delegatedOwner)
+        {
+            if (trail == null)
+            {
+                return;
+            }
+
+            trail.Enqueue($"{packetType}->{delegatedOwner}");
+            while (trail.Count > ReviveRouteTrailCapacity)
+            {
+                trail.Dequeue();
+            }
+        }
+
+        private string BuildReviveDirectRouteTrailSummary()
+        {
+            if (_definition?.IsReviveMode != true || _reviveDirectRouteTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _reviveDirectRouteTrail.Select(entry => TrimVariantActionText(entry, 40)));
+        }
+
+        private string BuildReviveForwardedRouteTrailSummary()
+        {
+            if (_definition?.IsReviveMode != true || _reviveForwardedRouteTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _reviveForwardedRouteTrail.Select(entry => TrimVariantActionText(entry, 40)));
         }
 
         private string BuildSeason2SubDialogTimerTrailSummary()

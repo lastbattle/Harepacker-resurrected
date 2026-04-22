@@ -385,7 +385,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             foreach (WzImageProperty property in EnumerateNamedChildren(noSkillProperty, "class"))
             {
-                if (MatchesListedSkillClass(property, currentJobId, skill))
+                if (MatchesListedSkillClass(property, skill))
                 {
                     return true;
                 }
@@ -458,7 +458,7 @@ namespace HaCreator.MapSimulator.Fields
             return skillId > 0 && ContainsIntValue(property, skillId);
         }
 
-        private static bool MatchesListedSkillClass(WzImageProperty property, int currentJobId, SkillData skill)
+        private static bool MatchesListedSkillClass(WzImageProperty property, SkillData skill)
         {
             if (property == null)
             {
@@ -467,7 +467,7 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach (int listedClass in EnumerateIntValues(property))
             {
-                if (MatchesClientSkillClass(listedClass, Math.Abs(currentJobId), skill))
+                if (MatchesClientSkillClass(listedClass, skill))
                 {
                     return true;
                 }
@@ -590,7 +590,7 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private static bool MatchesClientSkillClass(int listedClass, int currentJobId, SkillData skill)
+        private static bool MatchesClientSkillClass(int listedClass, SkillData skill)
         {
             if (listedClass <= 0)
             {
@@ -600,28 +600,12 @@ namespace HaCreator.MapSimulator.Fields
             int skillId = Math.Abs(skill?.SkillId ?? 0);
             if (skillId <= 0)
             {
-                foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
-                {
-                    if (candidate == listedClass)
-                    {
-                        return true;
-                    }
-                }
-
                 return false;
             }
 
             int skillRoot = skillId / 10000;
             if (skillRoot <= 0)
             {
-                foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
-                {
-                    if (candidate == listedClass)
-                    {
-                        return true;
-                    }
-                }
-
                 return false;
             }
 
@@ -657,14 +641,6 @@ namespace HaCreator.MapSimulator.Fields
                 return listedClass == skillClass;
             }
 
-            foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
-            {
-                if (candidate == listedClass)
-                {
-                    return true;
-                }
-            }
-
             return false;
         }
 
@@ -676,15 +652,6 @@ namespace HaCreator.MapSimulator.Fields
         private static bool IsDualBladeSkillClassRoot(int jobId)
         {
             return jobId / 10 == 43;
-        }
-
-        private static IEnumerable<int> EnumerateClassCandidatesForJobId(int jobId)
-        {
-            int classGrade = GetClientJobClassGrade(jobId);
-            if (classGrade > 0)
-            {
-                yield return classGrade;
-            }
         }
 
         private static int GetClientJobClassGrade(int jobId)

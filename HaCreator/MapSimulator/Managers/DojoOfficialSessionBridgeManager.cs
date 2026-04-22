@@ -183,8 +183,8 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                _inferenceClearMapId = field.NextFloorMapId;
-                _inferenceClearPortalName = field.NextFloorPortalName ?? string.Empty;
+                _inferenceClearMapId = field.ClearTransferMapId;
+                _inferenceClearPortalName = field.ClearTransferPortalName ?? string.Empty;
                 _inferenceExitMapId = field.ExitMapId;
                 _inferencePendingTransferMapId = field.PendingTransferMapId;
                 _inferencePendingTransferPortalName = field.PendingTransferPortalName ?? string.Empty;

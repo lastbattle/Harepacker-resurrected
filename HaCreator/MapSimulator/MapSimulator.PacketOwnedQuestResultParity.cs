@@ -981,6 +981,15 @@ namespace HaCreator.MapSimulator
             return requestSent;
         }
 
+        internal static bool ShouldConsumePacketOwnedQuestResultStartQuestSharedExclusiveResetFromExternalFlag(
+            bool onExclusiveRequest)
+        {
+            // External packet seams that mirror CWvsContext::SetExclRequestSent expose
+            // bExclRequestSent after the owner branch runs. Only a cleared flag should
+            // consume shared StartQuest follow-up ownership.
+            return !onExclusiveRequest;
+        }
+
         private bool TryConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(byte[] payload)
         {
             if (!ShouldConsumePacketOwnedQuestResultStartQuestExclusiveResetFromInventoryOperationPayload(payload))
@@ -1059,11 +1068,13 @@ namespace HaCreator.MapSimulator
                 QuestDetailDeliveryType.Complete => true,
                 _ => null
             };
+            bool enforcePreferredPhaseMatch = deliveryTypeHint is QuestDetailDeliveryType.Accept or QuestDetailDeliveryType.Complete;
 
             int ownershipIndex = FindPendingQuestDeliveryResultOwnershipIndex(
                 _pendingQuestDeliveryResults,
                 questId,
-                preferredCompletionPhase);
+                preferredCompletionPhase,
+                enforcePreferredPhaseMatch);
             if (ownershipIndex < 0)
             {
                 return false;
@@ -1171,6 +1182,19 @@ namespace HaCreator.MapSimulator
             int questId,
             bool? preferredCompletionPhase)
         {
+            return FindPendingQuestDeliveryResultOwnershipIndex(
+                pendingResults,
+                questId,
+                preferredCompletionPhase,
+                enforcePreferredPhaseMatch: false);
+        }
+
+        private static int FindPendingQuestDeliveryResultOwnershipIndex(
+            IReadOnlyList<PendingQuestDeliveryResultOwnership> pendingResults,
+            int questId,
+            bool? preferredCompletionPhase,
+            bool enforcePreferredPhaseMatch)
+        {
             int normalizedQuestId = Math.Max(0, questId);
             if (pendingResults == null || pendingResults.Count == 0 || normalizedQuestId <= 0)
             {
@@ -1190,11 +1214,16 @@ namespace HaCreator.MapSimulator
                     latestQuestOwnershipIndex = i;
                 }
 
-                if (!preferredCompletionPhase.HasValue ||
+                if (preferredCompletionPhase.HasValue &&
                     pendingResults[i].CompletionPhase == preferredCompletionPhase.Value)
                 {
                     return i;
                 }
+            }
+
+            if (preferredCompletionPhase.HasValue && enforcePreferredPhaseMatch)
+            {
+                return -1;
             }
 
             return latestQuestOwnershipIndex;
@@ -1376,7 +1405,8 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<int> queuedQuestIds,
             IReadOnlyList<bool> queuedCompletionPhases,
             int questId,
-            bool? preferredCompletionPhase)
+            bool? preferredCompletionPhase,
+            bool enforcePreferredPhaseMatch = false)
         {
             if (queuedQuestIds == null || queuedQuestIds.Count == 0)
             {
@@ -1408,7 +1438,8 @@ namespace HaCreator.MapSimulator
             return FindPendingQuestDeliveryResultOwnershipIndex(
                 pending,
                 questId,
-                preferredCompletionPhase);
+                preferredCompletionPhase,
+                enforcePreferredPhaseMatch);
         }
 
         internal static IReadOnlyList<QuestDetailDeliveryType> RegisterPendingQuestDeliveryResultPhaseHintsForTesting(

@@ -155,6 +155,7 @@ namespace HaCreator.MapSimulator.Companions
         private int _vecCtrlEndUpdateActiveFlushCarryMilliseconds;
         private readonly Queue<byte[]> _pendingVecCtrlEndUpdateActiveFlushPayloads = new();
         private readonly List<MovePathElement> _clientVecCtrlMovePathBuffer = new();
+        private readonly List<byte> _clientVecCtrlMovePathKeyPadStates = new();
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
         private const float GroundSideOffset = 42f;
@@ -479,6 +480,7 @@ namespace HaCreator.MapSimulator.Companions
             _vecCtrlEndUpdateActiveFlushCarryMilliseconds = 0;
             _pendingVecCtrlEndUpdateActiveFlushPayloads.Clear();
             _clientVecCtrlMovePathBuffer.Clear();
+            _clientVecCtrlMovePathKeyPadStates.Clear();
         }
 
         internal bool ClearClientOwnedOneTimeActionOnSkillCancel(PlayerCharacter owner, int currentTime)
@@ -847,25 +849,44 @@ namespace HaCreator.MapSimulator.Companions
                 return;
             }
 
-            _clientVecCtrlMovePathBuffer.Add(CreateClientVecCtrlMovePathElement(owner, _visualAnchor, _followVelocity));
+            MovePathElement seed = CreateClientVecCtrlMovePathElement(owner, _visualAnchor, _followVelocity);
+            _clientVecCtrlMovePathBuffer.Add(seed);
+            _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner, seed));
         }
 
         private void RecordClientVecCtrlMovePathStep(PlayerCharacter owner, Vector2 previousAnchor)
         {
             if (_clientVecCtrlMovePathBuffer.Count <= 0)
             {
-                _clientVecCtrlMovePathBuffer.Add(CreateClientVecCtrlMovePathElement(owner, previousAnchor, _followVelocity));
+                MovePathElement seed = CreateClientVecCtrlMovePathElement(owner, previousAnchor, _followVelocity);
+                _clientVecCtrlMovePathBuffer.Add(seed);
+                _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner, seed));
             }
 
             int lastIndex = _clientVecCtrlMovePathBuffer.Count - 1;
             MovePathElement tail = _clientVecCtrlMovePathBuffer[lastIndex];
             tail.Duration = (short)ClientVecCtrlPassiveStepMilliseconds;
             _clientVecCtrlMovePathBuffer[lastIndex] = tail;
-            _clientVecCtrlMovePathBuffer.Add(CreateClientVecCtrlMovePathElement(owner, _visualAnchor, _followVelocity));
+            if (_clientVecCtrlMovePathKeyPadStates.Count <= lastIndex)
+            {
+                _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner, tail));
+            }
+            else
+            {
+                _clientVecCtrlMovePathKeyPadStates[lastIndex] = CreateClientVecCtrlPassiveKeyPadState(owner, tail);
+            }
+
+            MovePathElement next = CreateClientVecCtrlMovePathElement(owner, _visualAnchor, _followVelocity);
+            _clientVecCtrlMovePathBuffer.Add(next);
+            _clientVecCtrlMovePathKeyPadStates.Add(CreateClientVecCtrlPassiveKeyPadState(owner, next));
 
             while (_clientVecCtrlMovePathBuffer.Count > MaxClientVecCtrlMovePathElements)
             {
                 _clientVecCtrlMovePathBuffer.RemoveAt(0);
+                if (_clientVecCtrlMovePathKeyPadStates.Count > 0)
+                {
+                    _clientVecCtrlMovePathKeyPadStates.RemoveAt(0);
+                }
             }
         }
 
@@ -900,29 +921,79 @@ namespace HaCreator.MapSimulator.Companions
             };
         }
 
+        private static byte CreateClientVecCtrlPassiveKeyPadState(PlayerCharacter? owner, MovePathElement element)
+        {
+            const byte Up = 1 << 0;
+            const byte Down = 1 << 1;
+            const byte Left = 1 << 2;
+            const byte Right = 1 << 3;
+
+            byte state = 0;
+            if (element.VelocityX < 0)
+            {
+                state |= Left;
+            }
+            else if (element.VelocityX > 0)
+            {
+                state |= Right;
+            }
+
+            if (element.VelocityY < 0)
+            {
+                state |= Up;
+            }
+            else if (element.VelocityY > 0)
+            {
+                state |= Down;
+            }
+
+            if (state == 0
+                && owner?.State is PlayerState.Ladder or PlayerState.Rope
+                && element.VelocityY < 0)
+            {
+                state = Up;
+            }
+
+            return (byte)(state & 0x0F);
+        }
+
+        private void ApplyClientVecCtrlPostFlushRetainedElements(IReadOnlyList<MovePathElement> sourcePath)
+        {
+            List<MovePathElement> sourceElements = sourcePath?.ToList() ?? new List<MovePathElement>();
+            List<byte> sourceKeyPadStates = new(_clientVecCtrlMovePathKeyPadStates);
+            int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(sourceElements);
+            _clientVecCtrlMovePathBuffer.Clear();
+            _clientVecCtrlMovePathKeyPadStates.Clear();
+            if (retainedStartIndex < 0)
+            {
+                return;
+            }
+
+            for (int i = retainedStartIndex; i < sourceElements.Count; i++)
+            {
+                MovePathElement element = sourceElements[i];
+                _clientVecCtrlMovePathBuffer.Add(element);
+                byte keyPadState = (i >= 0 && i < sourceKeyPadStates.Count)
+                    ? sourceKeyPadStates[i]
+                    : CreateClientVecCtrlPassiveKeyPadState(owner: null, element);
+                _clientVecCtrlMovePathKeyPadStates.Add(keyPadState);
+            }
+        }
+
         private byte[] BuildClientVecCtrlEndUpdateActiveFlushPacketPayload()
         {
             EnsureClientVecCtrlMovePathSeed(owner: null);
             IReadOnlyList<MovePathElement> movePath = _clientVecCtrlMovePathBuffer;
             if (!TryEncodeClientDragonEndUpdateActiveFlushMovePathPayload(
                     movePath,
+                    _clientVecCtrlMovePathKeyPadStates,
                     out byte[] payload,
                     out _))
             {
                 payload = Array.Empty<byte>();
             }
 
-            if (movePath.Count > 0)
-            {
-                MovePathElement tail = movePath[movePath.Count - 1];
-                tail.Duration = 0;
-                _clientVecCtrlMovePathBuffer.Clear();
-                _clientVecCtrlMovePathBuffer.Add(tail);
-            }
-            else
-            {
-                _clientVecCtrlMovePathBuffer.Clear();
-            }
+            ApplyClientVecCtrlPostFlushRetainedElements(movePath);
 
             return payload ?? Array.Empty<byte>();
         }
@@ -1093,8 +1164,33 @@ namespace HaCreator.MapSimulator.Companions
             return flushPacketCount;
         }
 
+        internal static int ResolveClientDragonFlushRetainedStartIndex(IReadOnlyList<MovePathElement> movePath)
+        {
+            if (movePath == null || movePath.Count <= 0)
+            {
+                return -1;
+            }
+
+            int tailIndex = movePath.Count - 1;
+            while (tailIndex >= 0 && movePath[tailIndex].FootholdId <= 0)
+            {
+                tailIndex--;
+            }
+
+            if (tailIndex < 0)
+            {
+                return -1;
+            }
+
+            int retainedStartIndex = tailIndex + 1;
+            return retainedStartIndex < movePath.Count
+                ? retainedStartIndex
+                : -1;
+        }
+
         internal static bool TryEncodeClientDragonEndUpdateActiveFlushMovePathPayload(
             IReadOnlyList<MovePathElement> movePath,
+            IReadOnlyList<byte> passiveKeyPadStates,
             out byte[] payload,
             out string error)
         {
@@ -1105,7 +1201,8 @@ namespace HaCreator.MapSimulator.Companions
                 out payload,
                 out error,
                 includeClientRandomCounts: false,
-                includeClientFlushTail: true);
+                includeClientFlushTail: true,
+                passiveKeyPadStates: passiveKeyPadStates);
         }
 
         internal bool TryConsumeClientVecCtrlEndUpdateActiveFlushPacket(out int packetOpcode, out byte[] payload)

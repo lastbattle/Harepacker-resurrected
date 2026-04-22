@@ -4110,6 +4110,14 @@ namespace HaCreator.MapSimulator.Pools
                 return nearestVerticalComparison < 0;
             }
 
+            if (TryResolvePacketOwnedExpiryFacingFromOwnerReferenceX(
+                    summon,
+                    ownerReferenceX,
+                    out bool ownerReferenceFacingRight))
+            {
+                return ownerReferenceFacingRight;
+            }
+
             return summon.FacingRight;
         }
 
@@ -4143,7 +4151,38 @@ namespace HaCreator.MapSimulator.Pools
                 facingRight = hasRightHit;
                 return true;
             }
+
+            if (TryResolvePacketOwnedExpiryFacingFromOwnerReferenceX(
+                    summon,
+                    ownerReferenceX,
+                    out bool ownerReferenceFacingRight))
+            {
+                facingRight = ownerReferenceFacingRight;
+                return true;
+            }
+
             facingRight = summon.FacingRight;
+            return true;
+        }
+
+        private static bool TryResolvePacketOwnedExpiryFacingFromOwnerReferenceX(
+            ActiveSummon summon,
+            float? ownerReferenceX,
+            out bool facingRight)
+        {
+            facingRight = summon?.FacingRight ?? true;
+            if (summon == null || !ownerReferenceX.HasValue)
+            {
+                return false;
+            }
+
+            float summonToOwnerDeltaX = summon.PositionX - ownerReferenceX.Value;
+            if (MathF.Abs(summonToOwnerDeltaX) < 0.5f)
+            {
+                return false;
+            }
+
+            facingRight = summonToOwnerDeltaX >= 0f;
             return true;
         }
 
@@ -7849,6 +7888,12 @@ namespace HaCreator.MapSimulator.Pools
             {
                 normalized = normalizedSourceAliasAssignment;
             }
+            else if (IsPacketMobAttackGeneralEffectSourcePrefixedNestedAssignmentNoiseToken(normalized))
+            {
+                // Preserve source-prefixed nested assignment-noise tokens so sequence parsing can skip
+                // them as noise instead of collapsing them into sibling-frame aliases (for example "1").
+                return normalized.Trim('/');
+            }
 
             if (!hasNormalizedSourceAliasAssignment)
             {
@@ -8188,6 +8233,35 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return !string.IsNullOrWhiteSpace(assignmentSuffix);
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectSourcePrefixedNestedAssignmentNoiseToken(
+            string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalizedToken = NormalizePacketMobAttackGeneralEffectPathTokenShell(token);
+            int assignmentIndex = FindPacketMobAttackGeneralEffectPathAssignmentIndex(
+                normalizedToken,
+                out int assignmentDelimiterLength);
+            if (assignmentIndex <= 0 || assignmentIndex + assignmentDelimiterLength >= normalizedToken.Length)
+            {
+                return false;
+            }
+
+            string assignmentPrefix = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(
+                normalizedToken.Substring(0, assignmentIndex));
+            if (!IsPacketMobAttackSourceAliasSegment(assignmentPrefix))
+            {
+                return false;
+            }
+
+            string assignmentSuffix = NormalizePacketMobAttackGeneralEffectPathTokenShell(
+                normalizedToken.Substring(assignmentIndex + assignmentDelimiterLength));
+            return IsPacketMobAttackGeneralEffectNestedNonSourceAssignmentNoiseToken(assignmentSuffix);
         }
 
         private static bool IsPacketMobAttackGeneralEffectNestedNonSourceAssignmentNoiseToken(

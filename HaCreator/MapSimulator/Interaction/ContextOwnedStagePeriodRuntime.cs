@@ -129,7 +129,8 @@ namespace HaCreator.MapSimulator.Interaction
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
                 string stagePeriod = ReadMapleString(reader);
-                if (string.IsNullOrWhiteSpace(stagePeriod))
+                string normalizedStagePeriod = stagePeriod?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedStagePeriod))
                 {
                     error = "Stage-period payload decoded an empty Maple string.";
                     return false;
@@ -143,7 +144,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                packet = new PacketStagePeriodChangePacket(stagePeriod, mode);
+                packet = new PacketStagePeriodChangePacket(normalizedStagePeriod, mode);
                 return true;
             }
             catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is InvalidDataException)

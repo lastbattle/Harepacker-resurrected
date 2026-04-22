@@ -136,7 +136,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, AnimationDisplayerRemoteMakerSkillOwnerState> _animationDisplayerRemoteMakerSkillOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerRemoteItemMakeOwnerState> _animationDisplayerRemoteItemMakeOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerRemoteUpgradeTombOwnerState> _animationDisplayerRemoteUpgradeTombOwnerStates = new();
-        private readonly Dictionary<int, AnimationDisplayerRemotePacketOwnedStringEffectOwnerState> _animationDisplayerRemotePacketOwnedStringEffectOwnerStates = new();
+        private readonly Dictionary<int, Dictionary<string, AnimationDisplayerRemotePacketOwnedStringEffectOwnerState>> _animationDisplayerRemotePacketOwnedStringEffectOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerRemoteMobAttackHitOwnerState> _animationDisplayerRemoteMobAttackHitOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerReservedRemoteUtilityActionOwnerState> _animationDisplayerReservedRemoteUtilityActionOwnerStates = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
@@ -1051,6 +1051,7 @@ namespace HaCreator.MapSimulator
 
             string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
             string effectUol = ResolveAnimationDisplayerCombatFeedbackEffectUol(resolvedSpecialTextName, colorType);
+            string cacheKey = ResolveAnimationDisplayerCombatFeedbackFrameCacheKey(resolvedSpecialTextName, colorType);
             if (string.IsNullOrWhiteSpace(effectUol))
             {
                 message = $"Unsupported combat-feedback color type {(int)colorType}.";
@@ -1058,7 +1059,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (!TryGetAnimationDisplayerFrames(
-                    $"combatfeedback:{effectUol}",
+                    cacheKey,
                     effectUol,
                     out List<IDXObject> frames))
             {
@@ -1290,6 +1291,16 @@ namespace HaCreator.MapSimulator
             return CombineAnimationDisplayerEffectUol(
                 AnimationDisplayerRedCombatFeedbackEffectBaseUol,
                 resolvedSpecialTextName);
+        }
+
+        internal static string ResolveAnimationDisplayerCombatFeedbackFrameCacheKey(
+            string specialTextName,
+            DamageColorType colorType)
+        {
+            string effectUol = ResolveAnimationDisplayerCombatFeedbackEffectUol(specialTextName, colorType);
+            return string.IsNullOrWhiteSpace(effectUol)
+                ? null
+                : $"combatfeedback:{effectUol}";
         }
 
         internal static string ResolveAnimationDisplayerCatchEffectUol(bool success)
@@ -1812,6 +1823,15 @@ namespace HaCreator.MapSimulator
             return targetFieldId > 0
                 && targetFieldId != MapConstants.MaxMap
                 && targetFieldId != currentMapId;
+        }
+
+        internal static bool ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(
+            int effectCharacterId,
+            int localCharacterId)
+        {
+            return effectCharacterId > 0
+                && localCharacterId > 0
+                && effectCharacterId == localCharacterId;
         }
 
         internal static int ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreDelayMs(
@@ -2847,7 +2867,6 @@ namespace HaCreator.MapSimulator
                 int definitionKey = BuildAnimationDisplayerFollowRegistrationDefinitionKey(
                     followDefinition,
                     relativeEmission,
-                    definitionIndex,
                     resolvedFollowDefinition.CandidateIdentity);
 
                 if (TryDequeueAnimationDisplayerFollowRegistrationEntry(
@@ -3059,7 +3078,6 @@ namespace HaCreator.MapSimulator
         private static int BuildAnimationDisplayerFollowRegistrationDefinitionKey(
             AnimationDisplayerFollowEquipmentDefinition followDefinition,
             bool relativeEmission,
-            int registrationOrder,
             int candidateIdentity)
         {
             unchecked
@@ -3069,7 +3087,6 @@ namespace HaCreator.MapSimulator
                 key = (key * 31) + (int)(followDefinition?.SourceEquipSlot ?? 0);
                 key = (key * 31) + (followDefinition?.ClientEquipIndex ?? -1);
                 key = (key * 31) + (relativeEmission ? 1 : 0);
-                key = (key * 31) + registrationOrder;
                 key = (key * 31) + candidateIdentity;
                 return key;
             }
@@ -3083,6 +3100,7 @@ namespace HaCreator.MapSimulator
             int registrationOrder,
             int candidateIdentity)
         {
+            _ = registrationOrder;
             var followDefinition = new AnimationDisplayerFollowEquipmentDefinition
             {
                 ItemId = itemId,
@@ -3092,7 +3110,6 @@ namespace HaCreator.MapSimulator
             return BuildAnimationDisplayerFollowRegistrationDefinitionKey(
                 followDefinition,
                 relativeEmission,
-                registrationOrder,
                 candidateIdentity);
         }
 
@@ -3602,6 +3619,7 @@ namespace HaCreator.MapSimulator
         {
             bool consumed = false;
             bool consumeWithoutVisualFallback = ShouldConsumeAnimationDisplayerReservedTypeWithoutVisualFallback(metadata.Type);
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             if (metadata.Type == 2)
             {
                 consumed = true;
@@ -3627,11 +3645,18 @@ namespace HaCreator.MapSimulator
             if (metadata.Type == 4)
             {
                 consumed = true;
-                _ = TryApplyAnimationDisplayerReservedRemoteUtilityActionOwnerEffect(
-                    presentation.CharacterId,
-                    metadata.ActionName,
-                    metadata.DurationMs,
-                    registerTime);
+                // Client evidence (`RESERVEDINFO::Update`, case 4):
+                // one-time action is applied on CUserLocal.
+                if (ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(
+                        presentation.CharacterId,
+                        localCharacterId))
+                {
+                    _ = TryApplyAnimationDisplayerReservedRemoteUtilityActionOwnerEffect(
+                        presentation.CharacterId,
+                        metadata.ActionName,
+                        metadata.DurationMs,
+                        registerTime);
+                }
             }
 
             if (metadata.Type == 3)
@@ -3645,7 +3670,14 @@ namespace HaCreator.MapSimulator
             if (metadata.Type == 5)
             {
                 consumed = true;
-                _ = TryApplyAnimationDisplayerReservedBgmOwnerEffect(metadata.SoundEffectDescriptor);
+                // Client evidence (`RESERVEDINFO::Update`, case 5):
+                // BGM handoff is local-user owned.
+                if (ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(
+                        presentation.CharacterId,
+                        localCharacterId))
+                {
+                    _ = TryApplyAnimationDisplayerReservedBgmOwnerEffect(metadata.SoundEffectDescriptor);
+                }
             }
 
             if (consumeWithoutVisualFallback)
@@ -4693,9 +4725,27 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int initialElapsedMs = 0;
-            if (_animationDisplayerRemotePacketOwnedStringEffectOwnerStates.TryGetValue(
+            string ownerSlotKey = BuildAnimationDisplayerRemotePacketOwnedStringEffectOwnerSlotKey(
+                effectType,
+                effectUol);
+            if (string.IsNullOrWhiteSpace(ownerSlotKey))
+            {
+                return 0;
+            }
+
+            if (!_animationDisplayerRemotePacketOwnedStringEffectOwnerStates.TryGetValue(
                     characterId,
+                    out Dictionary<string, AnimationDisplayerRemotePacketOwnedStringEffectOwnerState> ownerStates)
+                || ownerStates == null)
+            {
+                ownerStates = new Dictionary<string, AnimationDisplayerRemotePacketOwnedStringEffectOwnerState>(
+                    StringComparer.OrdinalIgnoreCase);
+                _animationDisplayerRemotePacketOwnedStringEffectOwnerStates[characterId] = ownerStates;
+            }
+
+            int initialElapsedMs = 0;
+            if (ownerStates.TryGetValue(
+                    ownerSlotKey,
                     out AnimationDisplayerRemotePacketOwnedStringEffectOwnerState existingState)
                 && existingState != null)
             {
@@ -4713,7 +4763,7 @@ namespace HaCreator.MapSimulator
                     durationMs);
             }
 
-            _animationDisplayerRemotePacketOwnedStringEffectOwnerStates[characterId] =
+            ownerStates[ownerSlotKey] =
                 new AnimationDisplayerRemotePacketOwnedStringEffectOwnerState
                 {
                     EffectType = effectType,
@@ -4724,6 +4774,15 @@ namespace HaCreator.MapSimulator
                     DurationMs = durationMs
                 };
             return initialElapsedMs;
+        }
+
+        private static string BuildAnimationDisplayerRemotePacketOwnedStringEffectOwnerSlotKey(
+            byte effectType,
+            string effectUol)
+        {
+            return string.IsNullOrWhiteSpace(effectUol)
+                ? string.Empty
+                : $"{effectType}:{effectUol.Trim()}";
         }
 
         private static int ResolveAnimationDisplayerOneTimeFrameDurationMs(IReadOnlyList<IDXObject> frames)
@@ -5055,6 +5114,13 @@ namespace HaCreator.MapSimulator
                 currentFacingRight,
                 currentTime,
                 durationMs);
+        }
+
+        internal static string BuildAnimationDisplayerRemotePacketOwnedStringEffectOwnerSlotKeyForTesting(
+            byte effectType,
+            string effectUol)
+        {
+            return BuildAnimationDisplayerRemotePacketOwnedStringEffectOwnerSlotKey(effectType, effectUol);
         }
 
         private bool TryGetAnimationDisplayerFrames(string cacheKey, string effectUol, out List<IDXObject> frames)

@@ -300,6 +300,23 @@ namespace HaCreator.MapSimulator
                 _soundManager.RegisterSound(BookDialogLifecycleSoundKey, bookLifecycleSound);
             }
 
+            string miniGameSoundPrefix = MapleStoryStringPool.GetOrFallback(
+                MiniGameSoundPrefixStringPoolId,
+                "Sound/MiniGame.img/");
+            string miniGameReadySuffix = MapleStoryStringPool.GetOrFallback(
+                MemoryGameReadyClickSoundStringPoolId,
+                "Ready");
+            string miniGameReadyDescriptor = string.Concat(miniGameSoundPrefix, miniGameReadySuffix);
+            if (TryResolvePacketOwnedWzSound(
+                    miniGameReadyDescriptor,
+                    "MiniGame.img",
+                    out WzBinaryProperty miniGameReadySound,
+                    out _,
+                    strictClientSoundFamily: true))
+            {
+                _soundManager.RegisterSound(MemoryGameReadyClickSoundKey, miniGameReadySound);
+            }
+
 
             // Load meso icons from Item.wz/Special/0900.img
 
@@ -763,6 +780,7 @@ namespace HaCreator.MapSimulator
                 BuildAriantArenaRemoteCharacter,
                 BuildAriantArenaRemoteCharacter,
                 _playerManager?.Loader);
+            _specialFieldRuntime.Minigames.MemoryGame.SetReadyClickSoundCallback(PlayMemoryGameReadyClickSE);
 
             ///////////////////////////////////////////////
             ////// Default positioning for character //////
@@ -1400,7 +1418,7 @@ namespace HaCreator.MapSimulator
                 _lastCollisionCustomImpactMovePathAttribute = -1;
                 _lastCollisionCustomImpactMovePathPayload = Array.Empty<byte>();
                 _lastPortalOwnedMovePathFlushAdmissionTick = int.MinValue;
-                _hasPortalOwnedMovePathPostFlushCarry = false;
+                _portalOwnedMovePathPostFlushCarry.Clear();
                 _pendingMapSpawnTarget = null;
             }
             ClearPendingPortalSessionValueImpacts();

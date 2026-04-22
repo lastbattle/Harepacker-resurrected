@@ -1035,7 +1035,57 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsBuildTagKnownV95(string buildTag)
         {
             string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
-            return string.Equals(normalizedBuildTag, "v95", StringComparison.OrdinalIgnoreCase);
+            if (string.Equals(normalizedBuildTag, "v95", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedBuildTag, "build95", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return IsV95BuildAlias(normalizedBuildTag);
+        }
+
+        private static bool IsV95BuildAlias(string normalizedBuildTag)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedBuildTag)
+                || string.Equals(normalizedBuildTag, "unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (normalizedBuildTag.StartsWith("v95", StringComparison.OrdinalIgnoreCase))
+            {
+                return HasVersionDelimiterSuffix(normalizedBuildTag, prefixLength: 3);
+            }
+
+            if (normalizedBuildTag.StartsWith("build95", StringComparison.OrdinalIgnoreCase))
+            {
+                return HasVersionDelimiterSuffix(normalizedBuildTag, prefixLength: 7);
+            }
+
+            return false;
+        }
+
+        private static bool HasVersionDelimiterSuffix(string normalizedBuildTag, int prefixLength)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedBuildTag) || prefixLength < 0)
+            {
+                return false;
+            }
+
+            if (normalizedBuildTag.Length == prefixLength)
+            {
+                return true;
+            }
+
+            if (normalizedBuildTag.Length < prefixLength)
+            {
+                return false;
+            }
+
+            char delimiter = normalizedBuildTag[prefixLength];
+            return delimiter == '.'
+                || delimiter == '_'
+                || delimiter == '-';
         }
 
         private bool TryObserveTutorInferenceNoLock(

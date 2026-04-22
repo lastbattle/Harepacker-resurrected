@@ -343,6 +343,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int OmokSoundBlackStoneStringPoolId = 0x64B;
         private const int OmokSoundWhiteStoneStringPoolId = 0x64C;
         private const int MiniRoomSubtype6EnvelopeMaxDepth = 3;
+        private const int MiniRoomSubtype6OffsetEnvelopeMaxPrefixBytes = 16;
         private const byte MiniRoomBaseInvitePacketSubType = 2;
         private const byte MiniRoomBaseInviteResultPacketSubType = 3;
         private const byte MiniRoomBaseEnterPacketSubType = 4;
@@ -4532,7 +4533,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int maxOffset = Math.Min(8, nestedPayload.Length - 1);
+            int maxOffset = Math.Min(MiniRoomSubtype6OffsetEnvelopeMaxPrefixBytes, nestedPayload.Length - 1);
             for (int offset = 1; offset <= maxOffset; offset++)
             {
                 byte packetType = nestedPayload[offset];

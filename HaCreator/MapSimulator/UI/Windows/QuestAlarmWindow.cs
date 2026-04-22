@@ -696,6 +696,15 @@ namespace HaCreator.MapSimulator.UI
                         _trackedQuestIds.Add(questId);
                     }
                 }
+
+                int[] droppedVisibleQuestIds = ResolvePacketRegistrationSyncDroppedVisibleQuestIds(previousVisibleQuestIds, _trackedQuestIds);
+                if (droppedVisibleQuestIds.Length > 0)
+                {
+                    // Recovered registration-recreate flows can replace the tracked row set in one packet pass.
+                    // Suppress dropped rows through the same tombstone lane used by local DeleteQuestByIndex logic
+                    // so auto-register does not immediately repopulate rows the packet just removed.
+                    _hiddenAutoQuestIds.UnionWith(droppedVisibleQuestIds);
+                }
             }
 
             if (replaceRegistrations && previousTrackedQuestIds != null && previousTrackedQuestIds.Count > 0)
@@ -989,6 +998,32 @@ namespace HaCreator.MapSimulator.UI
                     yield return entry;
                 }
             }
+        }
+
+        internal static int[] ResolvePacketRegistrationSyncDroppedVisibleQuestIds(
+            IEnumerable<int> previousVisibleQuestIds,
+            IEnumerable<int> trackedQuestIds)
+        {
+            if (previousVisibleQuestIds == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            HashSet<int> trackedQuestSet = trackedQuestIds == null
+                ? new HashSet<int>()
+                : new HashSet<int>(trackedQuestIds.Where(static questId => questId > 0));
+            HashSet<int> droppedQuestIds = new();
+            foreach (int questId in previousVisibleQuestIds)
+            {
+                if (questId > 0 && !trackedQuestSet.Contains(questId))
+                {
+                    droppedQuestIds.Add(questId);
+                }
+            }
+
+            return droppedQuestIds.Count == 0
+                ? Array.Empty<int>()
+                : droppedQuestIds.ToArray();
         }
 
         private void EnsureSelection(QuestAlarmSnapshot snapshot)

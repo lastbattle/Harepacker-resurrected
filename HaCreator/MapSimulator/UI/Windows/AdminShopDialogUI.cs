@@ -515,6 +515,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _pendingPacketOwnedAdminShopResult;
         private AdminShopEntry _pendingPacketOwnedWishlistRegisterEntry;
         private AdminShopCategory _pendingPacketOwnedWishlistRegisterCategory = AdminShopCategory.All;
+        private int _pendingPacketOwnedWishlistRegisterSerialNumber;
         private int _pendingPacketOwnedWishlistRegisterItemId;
         private string _pendingPacketOwnedWishlistRegisterTitle = string.Empty;
         private AdminShopPacketOwnedWishlistSearchSnapshot _packetOwnedWishlistSearchSnapshot;
@@ -897,6 +898,10 @@ namespace HaCreator.MapSimulator.UI
                 || _pendingPacketOwnedAdminShopResult;
             bool keepSessionActive = _packetOwnedAdminShopSession.IsActive
                 && (_packetOwnedAdminShopRows.Count > 0 || _packetOwnedAdminShopSession.DecodedItemCount > 0);
+            bool shouldStageDeferredResult = AdminShopPacketOwnedOwnerGateParity.ShouldStageDeferredResultAtOwnerGate(
+                keepSessionActive: keepSessionActive,
+                hasPendingRequestState: hasPendingRequestState,
+                ownerVisibilityState: _packetOwnedAdminShopSession.OwnerVisibilityState);
             AdminShopPacketOwnedOwnerVisibilityState preservedVisibilityState = _packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible
                 ? AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
                 : _packetOwnedAdminShopSession.OwnerVisibilityState;
@@ -917,7 +922,7 @@ namespace HaCreator.MapSimulator.UI
                 keepSessionActive,
                 preservedVisibilityState,
                 keepPendingRequestState: hasPendingRequestState);
-            if (hasPendingRequestState && keepSessionActive)
+            if (shouldStageDeferredResult)
             {
                 _packetOwnedAdminShopSession.StageDeferredOwnerGatedResult(
                     subtype,
@@ -949,11 +954,15 @@ namespace HaCreator.MapSimulator.UI
                 ? keepSessionActive
                     ? hasPendingRequestState
                         ? "Packet 366 arrived without a live CAdminShopDlg unique-modeless owner, so the client OnPacket gate ignored it before the request-sent check and kept both the staged packet-owned session and pending request state."
+                        : shouldStageDeferredResult
+                            ? "Packet 366 arrived while the packet-owned session stayed hidden by the Cash Shop owner family, so the client OnPacket gate kept the packet staged until CAdminShopDlg visibility resumes."
                         : "Packet 366 arrived without a live CAdminShopDlg unique-modeless owner, so the client OnPacket gate ignored it before the request-sent check and kept the staged packet-owned session."
                     : "Packet 366 arrived without a live CAdminShopDlg unique-modeless owner, so the client OnPacket gate ignored it before the request-sent check."
                 : keepSessionActive
                     ? hasPendingRequestState
                         ? $"Packet 366 arrived while {blockingOwner} owned the unique-modeless slot, so the client OnPacket gate ignored it before the request-sent check and kept both the staged packet-owned session and pending request state."
+                        : shouldStageDeferredResult
+                            ? $"Packet 366 arrived while {blockingOwner} owned the unique-modeless slot and the packet-owned session stayed hidden by the Cash Shop owner family, so the packet remained staged until CAdminShopDlg visibility resumes."
                         : $"Packet 366 arrived while {blockingOwner} owned the unique-modeless slot, so the client OnPacket gate ignored it before the request-sent check and kept the staged packet-owned session."
                     : $"Packet 366 arrived while {blockingOwner} owned the unique-modeless slot, so the client OnPacket gate ignored it before the request-sent check.";
             UpdateActionButtonStates();
@@ -1775,9 +1784,14 @@ namespace HaCreator.MapSimulator.UI
                     snapshot))
             {
                 _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 wishlist search rows were ignored because payload service/search session ids did not match the active admin-shop session.");
+                int mismatchedSearchSessionId = AdminShopPacketOwnedWishlistSearchSessionParity.ResolveEffectiveSearchSessionId(
+                    snapshot.SearchSessionId,
+                    snapshot.LocalSearchRequestId);
                 return BuildStateOnlyPacketOwnedWishlistSearchSnapshot(
                     trailingByteCount,
-                    ignoredDueToSessionMismatch: true);
+                    ignoredDueToSessionMismatch: true,
+                    serviceSessionIdOverride: snapshot.ServiceSessionId,
+                    searchSessionIdOverride: mismatchedSearchSessionId);
             }
 
             int effectiveSearchSessionId = AdminShopPacketOwnedWishlistSearchSessionParity.ResolveEffectiveSearchSessionId(
@@ -1791,14 +1805,16 @@ namespace HaCreator.MapSimulator.UI
 
         private AdminShopPacketOwnedWishlistSearchSnapshot BuildStateOnlyPacketOwnedWishlistSearchSnapshot(
             int trailingByteCount,
-            bool ignoredDueToSessionMismatch = false)
+            bool ignoredDueToSessionMismatch = false,
+            int serviceSessionIdOverride = -1,
+            int searchSessionIdOverride = -1)
         {
             int contractServiceSessionId = _packetOwnedAdminShopSession?.ServiceSessionId ?? -1;
             int contractSearchSessionId = _packetOwnedAdminShopSession?.WishlistSearchSessionId ?? -1;
             return new AdminShopPacketOwnedWishlistSearchSnapshot
             {
-                ServiceSessionId = contractServiceSessionId,
-                SearchSessionId = contractSearchSessionId,
+                ServiceSessionId = serviceSessionIdOverride >= 0 ? serviceSessionIdOverride : contractServiceSessionId,
+                SearchSessionId = searchSessionIdOverride >= 0 ? searchSessionIdOverride : contractSearchSessionId,
                 LocalSearchRequestId = _packetOwnedWishlistPendingSearchRequestId,
                 Query = _packetOwnedWishlistPendingSearchQuery ?? string.Empty,
                 CategoryKey = _packetOwnedWishlistPendingSearchCategoryKey ?? "all",
@@ -1930,11 +1946,37 @@ namespace HaCreator.MapSimulator.UI
 
             AdminShopCategory requestedCategory = ResolveWishlistCategory(categoryKey);
             string requestedCategoryLabel = GetWishlistCategoryLabel(categoryKey);
-            string packetOwnedSessionSummary = BuildPacketOwnedWishlistSearchSessionOnlySummary(
-                trimmedQuery,
-                categoryKey,
-                priceRangeIndex,
-                requestedCategoryLabel);
+            string packetOwnedSessionSummary = string.Empty;
+            if (TryBuildPacketOwnedWishlistSearchResults(
+                    trimmedQuery,
+                    categoryKey,
+                    priceRangeIndex,
+                    requestedCategoryLabel,
+                    out List<WishlistSearchResult> packetOwnedResults,
+                    out string packetOwnedResultSummary))
+            {
+                AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
+                bool hasPacketRowPayload = Math.Max(snapshot?.ItemIds?.Count ?? 0, snapshot?.ResultRows?.Count ?? 0) > 0;
+                bool mustPreferPacketPath = hasPacketRowPayload || snapshot?.IgnoredDueToSessionMismatch == true;
+                if (packetOwnedResults.Count > 0 || mustPreferPacketPath)
+                {
+                    message = packetOwnedResultSummary;
+                    _footerMessage = message;
+                    UpdateActionButtonStates();
+                    return packetOwnedResults;
+                }
+
+                packetOwnedSessionSummary = packetOwnedResultSummary;
+            }
+
+            if (string.IsNullOrWhiteSpace(packetOwnedSessionSummary))
+            {
+                packetOwnedSessionSummary = BuildPacketOwnedWishlistSearchSessionOnlySummary(
+                    trimmedQuery,
+                    categoryKey,
+                    priceRangeIndex,
+                    requestedCategoryLabel);
+            }
 
             List<(AdminShopEntry Entry, int Score, int ClientListOrder, int SourceIndex)> matches = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
@@ -4697,11 +4739,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_packetOwnedAdminShopSession.IsActive && dispatchWishlistRegisterPacket)
                 {
-                    wishlistRegisterSummary = BeginPacketOwnedWishlistRegister(matchedEntry, requestedCategory);
-                    message = $"Wish-list search submitted {matchedEntry.Title} to the packet-owned register path. {wishlistRegisterSummary} Waiting for packet 366 subtype 4.";
-                    _footerMessage = message;
-                    UpdateActionButtonStates();
-                    return true;
+                    if (BeginPacketOwnedWishlistRegister(matchedEntry, requestedCategory, out wishlistRegisterSummary))
+                    {
+                        message = $"Wish-list search submitted {matchedEntry.Title} to the packet-owned register path. {wishlistRegisterSummary} Waiting for packet 366 subtype 4.";
+                        _footerMessage = message;
+                        UpdateActionButtonStates();
+                        return true;
+                    }
                 }
 
                 if (dispatchWishlistRegisterPacket)
@@ -4732,20 +4776,32 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private string BeginPacketOwnedWishlistRegister(AdminShopEntry entry, AdminShopCategory requestedCategory)
+        private bool BeginPacketOwnedWishlistRegister(AdminShopEntry entry, AdminShopCategory requestedCategory, out string registerSummary)
         {
+            registerSummary = string.Empty;
+            int registerItemId = ResolveWishlistRegisterItemId(entry);
+            if (registerItemId <= 0)
+            {
+                ClearPendingPacketOwnedWishlistRegister();
+                _packetOwnedAdminShopSession.SetWaitingForResult(false);
+                _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishListSearchResult::BtRegist could not mirror CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3 because the selected row has no item id, so the owner stayed on the local save seam.");
+                registerSummary = "CUIAdminShopWishList::SendRegisterPacket could not mirror opcode 74 mode 3 because the selected row has no item id.";
+                return false;
+            }
+
             _pendingPacketOwnedWishlistRegisterEntry = entry;
             _pendingPacketOwnedWishlistRegisterCategory = requestedCategory;
-            _pendingPacketOwnedWishlistRegisterItemId = ResolveWishlistRegisterItemId(entry);
+            _pendingPacketOwnedWishlistRegisterSerialNumber = ResolveWishlistRegisterSerialNumber(entry);
+            _pendingPacketOwnedWishlistRegisterItemId = registerItemId;
             _pendingPacketOwnedWishlistRegisterTitle = entry?.Title?.Trim() ?? string.Empty;
             _packetOwnedAdminShopSession.RecordPendingWishlistRegister(
                 _pendingPacketOwnedWishlistRegisterItemId,
                 entry?.Title ?? string.Empty,
                 GetCategoryLabel(requestedCategory));
-            string registerSummary = DispatchPacketOwnedAdminShopWishlistRegister(entry);
+            registerSummary = DispatchPacketOwnedAdminShopOutbound(PacketOwnedAdminShopWishlistRegisterMode, _pendingPacketOwnedWishlistRegisterItemId);
             _packetOwnedAdminShopSession.SetWaitingForResult(true);
             _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishListSearchResult::BtRegist confirmed the selected result, sent CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3, and closed the wishlist owner while waiting for packet 366 subtype 4.");
-            return registerSummary;
+            return true;
         }
 
         private bool TryApplyPacketOwnedWishlistRegisterResult(byte subtype, byte resultCode, out string message, out string noticeText, out bool reopenRequested)
@@ -4755,6 +4811,7 @@ namespace HaCreator.MapSimulator.UI
             reopenRequested = false;
             AdminShopEntry entry = _pendingPacketOwnedWishlistRegisterEntry;
             AdminShopCategory requestedCategory = _pendingPacketOwnedWishlistRegisterCategory;
+            int pendingSerialNumber = _pendingPacketOwnedWishlistRegisterSerialNumber;
             int pendingItemId = _pendingPacketOwnedWishlistRegisterItemId;
             string pendingTitle = _pendingPacketOwnedWishlistRegisterTitle;
 
@@ -4770,7 +4827,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (entry == null || !_paneStates[AdminShopPane.Npc].SourceEntries.Contains(entry))
             {
-                if (!TryResolvePendingPacketOwnedWishlistRegisterEntry(pendingItemId, pendingTitle, out entry))
+                if (!TryResolvePendingPacketOwnedWishlistRegisterEntry(pendingSerialNumber, pendingItemId, pendingTitle, out entry))
                 {
                     ClearPendingPacketOwnedWishlistRegister();
                     _packetOwnedAdminShopSession.MarkDisconnectHazard();
@@ -4837,12 +4894,13 @@ namespace HaCreator.MapSimulator.UI
         {
             _pendingPacketOwnedWishlistRegisterEntry = null;
             _pendingPacketOwnedWishlistRegisterCategory = AdminShopCategory.All;
+            _pendingPacketOwnedWishlistRegisterSerialNumber = 0;
             _pendingPacketOwnedWishlistRegisterItemId = 0;
             _pendingPacketOwnedWishlistRegisterTitle = string.Empty;
             _packetOwnedAdminShopSession.ClearPendingWishlistRegister();
         }
 
-        private bool TryResolvePendingPacketOwnedWishlistRegisterEntry(int pendingItemId, string pendingTitle, out AdminShopEntry entry)
+        private bool TryResolvePendingPacketOwnedWishlistRegisterEntry(int pendingSerialNumber, int pendingItemId, string pendingTitle, out AdminShopEntry entry)
         {
             entry = null;
             IReadOnlyList<AdminShopEntry> sourceEntries = _paneStates[AdminShopPane.Npc].SourceEntries;
@@ -4861,10 +4919,18 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                if (!candidate.SupportsWishlist)
+                {
+                    continue;
+                }
+
+                int candidateSerialNumber = ResolveWishlistRegisterSerialNumber(candidate);
                 int candidateItemId = ResolveWishlistRegisterItemId(candidate);
                 int score = AdminShopPacketOwnedSellTemplateParity.ComputePendingWishlistRegisterEntryIdentityScore(
+                    pendingSerialNumber,
                     pendingItemId,
                     pendingTitle,
+                    candidateSerialNumber,
                     candidateItemId,
                     candidate.Title);
                 if (score <= bestScore)
@@ -4874,7 +4940,7 @@ namespace HaCreator.MapSimulator.UI
 
                 bestScore = score;
                 bestEntry = candidate;
-                if (bestScore >= 3)
+                if (bestScore >= 4)
                 {
                     break;
                 }
@@ -4949,7 +5015,6 @@ namespace HaCreator.MapSimulator.UI
                         ? packetRow.ResultItemId
                         : packetRow.ItemId;
                 }
-                bool resolvedOutsideRequestedFilters = false;
                 if (!TryResolvePacketOwnedWishlistCandidate(
                         wishlistRowsByItemId,
                         itemCursorByItemId,
@@ -4966,7 +5031,6 @@ namespace HaCreator.MapSimulator.UI
                             itemId,
                             out candidate))
                     {
-                        resolvedOutsideRequestedFilters = true;
                         resolvedOutsideRequestedFilterCount++;
                     }
                 }
@@ -5517,7 +5581,7 @@ namespace HaCreator.MapSimulator.UI
                 return $"Packet 366 subtype 4 advanced wishlist session {sessionLabel}, and SearchItemName continued through the client CItemInfo lane for {requestedCategoryLabel}.";
             }
 
-            return $"Packet-authored SearchItemName row payloads are not consumed because CUIAdminShopWishList::SearchItemName (0x771B50) keeps result staging owner-local; session {sessionLabel} is tracked for packet-owned invalidation only.";
+            return $"Packet-authored SearchItemName rows were unavailable for this local query/session lane, so SearchItemName continued through the client CItemInfo scan path while packet-owned invalidation still tracks session {sessionLabel}.";
         }
 
         private WishlistSearchResult BuildWishlistSearchResult(AdminShopEntry entry, int score)
@@ -9779,6 +9843,21 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return entry.DisplayItemId > 0 ? entry.DisplayItemId : 0;
+        }
+
+        private static int ResolveWishlistRegisterSerialNumber(AdminShopEntry entry)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            if (entry.PacketSerialNumber > 0)
+            {
+                return entry.PacketSerialNumber;
+            }
+
+            return entry.CommoditySerialNumber > 0 ? entry.CommoditySerialNumber : 0;
         }
 
         internal static PacketOwnedNpcUtilityOutboundRequest BuildPacketOwnedAdminShopOutboundRequest(int mode, int value)

@@ -631,6 +631,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodePrefixedMonsterBookOwnershipSyncPayload(payload, out result, out detail))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(detail))
+            {
+                return false;
+            }
+
             if (TryDecodeMonsterBookOwnershipSyncJsonPayload(payload, out result, out detail))
             {
                 return true;
@@ -662,6 +672,44 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool TryDecodePrefixedMonsterBookOwnershipSyncPayload(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = default;
+            detail = null;
+            if (payload == null || payload.Length <= sizeof(short))
+            {
+                return false;
+            }
+
+            int prefixSize = 0;
+            if (payload.Length >= sizeof(int)
+                && BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))) == LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType)
+            {
+                prefixSize = sizeof(int);
+            }
+            else if (BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(0, sizeof(short))) == LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType)
+            {
+                prefixSize = sizeof(short);
+            }
+
+            if (prefixSize <= 0)
+            {
+                return false;
+            }
+
+            if (payload.Length <= prefixSize)
+            {
+                detail = "Monster Book ownership sync payload has a packet-type prefix but no body.";
+                return false;
+            }
+
+            byte[] body = payload[prefixSize..];
+            return TryDecodeMonsterBookOwnershipSyncPayload(body, out result, out detail);
         }
 
         private static bool TryDecodeMonsterBookOwnershipSyncJsonPayload(

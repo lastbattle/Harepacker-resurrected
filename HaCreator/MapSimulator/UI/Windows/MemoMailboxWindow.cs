@@ -1462,6 +1462,7 @@ namespace HaCreator.MapSimulator.UI
                 ParcelDialogKeyboardAction dialogAction = ParcelDialogKeyboardParity.ResolveAction(
                     snapshot.ActiveTab,
                     _softKeyboardActive && _activeInputField != ComposeInputField.None,
+                    draftSnapshot.AwaitingItemSelection,
                     dialogActionKey);
                 if (dialogAction != ParcelDialogKeyboardAction.None)
                 {
@@ -1551,12 +1552,18 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleDialogKeyboardAction(ParcelDialogKeyboardAction action)
         {
-            TryHandleDialogKeyboardAction(action, Hide, HandleReceiveAttachment, HandleDispatch);
+            TryHandleDialogKeyboardAction(
+                action,
+                Hide,
+                () => _draftAttachmentRequested?.Invoke(ParcelDialogTab.Send),
+                HandleReceiveAttachment,
+                HandleDispatch);
         }
 
         internal static bool TryHandleDialogKeyboardAction(
             ParcelDialogKeyboardAction action,
             Action closeDialog,
+            Action cancelArmedItemPicker,
             Action claimReceiveAttachment,
             Action dispatchSend)
         {
@@ -1564,6 +1571,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 case ParcelDialogKeyboardAction.CloseDialog:
                     closeDialog?.Invoke();
+                    return true;
+                case ParcelDialogKeyboardAction.CancelArmedItemPicker:
+                    cancelArmedItemPicker?.Invoke();
                     return true;
                 case ParcelDialogKeyboardAction.ClaimReceiveAttachment:
                     claimReceiveAttachment?.Invoke();

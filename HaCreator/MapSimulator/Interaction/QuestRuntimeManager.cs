@@ -1645,6 +1645,9 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestStateType.Completed => string.Empty,
                 _ => string.Empty
             };
+            string formattedSummaryText = NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(
+                summaryText,
+                CreateDialogueFormattingContext(questId: definition.QuestId));
 
             string rewardText = BuildRewardText(definition, build, preserveQuestDetailMarkers: true);
             string hintText = BuildHintText(definition, state, startIssues, completionIssues);
@@ -1664,6 +1667,8 @@ namespace HaCreator.MapSimulator.Interaction
                 GetTertiaryAction(definition, state);
             (QuestWindowActionKind quaternaryAction, bool quaternaryEnabled, string quaternaryLabel, int? targetMobId, string targetMobName) =
                 GetQuaternaryAction(definition, state, build);
+            IReadOnlyList<QuestDetailCtEntry> logCtEntries = BuildQuestDetailLogCtEntries(requirementText, requirementLines, rewardText, rewardLines, hintText);
+            IReadOnlyList<QuestDetailCtEntry> summaryCtEntries = BuildQuestDetailSummaryCtEntries(formattedSummaryText, totalProgress);
 
             return new QuestWindowDetailState
             {
@@ -1671,7 +1676,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Title = definition.Name,
                 HeaderNoteText = headerNoteText,
                 State = state,
-                SummaryText = NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(summaryText, CreateDialogueFormattingContext(questId: definition.QuestId)),
+                SummaryText = formattedSummaryText,
                 RequirementText = requirementText,
                 RewardText = rewardText,
                 HintText = hintText,
@@ -1707,8 +1712,182 @@ namespace HaCreator.MapSimulator.Interaction
                 DeliveryActionEnabled = deliveryMetadata.ActionEnabled,
                 DeliveryCashItemId = deliveryMetadata.CashItemId,
                 DeliveryCashItemName = deliveryMetadata.CashItemId.HasValue ? GetItemName(deliveryMetadata.CashItemId.Value) : string.Empty,
-                NpcButtonStyle = npcButtonStyle
+                NpcButtonStyle = npcButtonStyle,
+                LogCtEntries = logCtEntries,
+                SummaryCtEntries = summaryCtEntries
             };
+        }
+
+        private static IReadOnlyList<QuestDetailCtEntry> BuildQuestDetailLogCtEntries(
+            string requirementText,
+            IReadOnlyList<QuestLogLineSnapshot> requirementLines,
+            string rewardText,
+            IReadOnlyList<QuestLogLineSnapshot> rewardLines,
+            string hintText)
+        {
+            List<QuestDetailCtEntry> entries = new();
+            bool hasRequirementLines = requirementLines != null && requirementLines.Count > 0;
+            bool hasRewardLines = rewardLines != null && rewardLines.Count > 0;
+            bool hasRequirement = !string.IsNullOrWhiteSpace(requirementText) || hasRequirementLines;
+            bool hasReward = !string.IsNullOrWhiteSpace(rewardText) || hasRewardLines;
+
+            if (hasRequirement)
+            {
+                entries.Add(new QuestDetailCtEntry
+                {
+                    Section = QuestDetailCtSection.Log,
+                    Kind = QuestDetailCtEntryKind.SectionHeader,
+                    HeaderSurfaceKey = "basic",
+                    HeaderFallbackText = "Requirements",
+                    XOffset = 17
+                });
+
+                if (!string.IsNullOrWhiteSpace(requirementText))
+                {
+                    entries.Add(new QuestDetailCtEntry
+                    {
+                        Section = QuestDetailCtSection.Log,
+                        Kind = QuestDetailCtEntryKind.RichText,
+                        Text = requirementText,
+                        Palette = QuestDetailCtEntryPalette.Requirement,
+                        Source = QuestDetailInlineReferenceSource.RequirementText,
+                        XOffset = 17,
+                        VerticalGapAfter = hasRequirementLines ? 6 : 0
+                    });
+                }
+
+                if (hasRequirementLines)
+                {
+                    entries.Add(new QuestDetailCtEntry
+                    {
+                        Section = QuestDetailCtSection.Log,
+                        Kind = QuestDetailCtEntryKind.ConditionLines,
+                        Lines = requirementLines,
+                        Source = QuestDetailInlineReferenceSource.RequirementLine,
+                        XOffset = 17,
+                        RewardSection = false
+                    });
+                }
+            }
+
+            if (hasReward)
+            {
+                entries.Add(new QuestDetailCtEntry
+                {
+                    Section = QuestDetailCtSection.Log,
+                    Kind = QuestDetailCtEntryKind.SectionHeader,
+                    HeaderSurfaceKey = "reward",
+                    HeaderFallbackText = "Rewards",
+                    XOffset = 17
+                });
+
+                if (!string.IsNullOrWhiteSpace(rewardText))
+                {
+                    entries.Add(new QuestDetailCtEntry
+                    {
+                        Section = QuestDetailCtSection.Log,
+                        Kind = QuestDetailCtEntryKind.RichText,
+                        Text = rewardText,
+                        Palette = QuestDetailCtEntryPalette.Reward,
+                        Source = QuestDetailInlineReferenceSource.RewardText,
+                        XOffset = 17,
+                        VerticalGapAfter = hasRewardLines ? 6 : 0
+                    });
+                }
+
+                if (hasRewardLines)
+                {
+                    entries.Add(new QuestDetailCtEntry
+                    {
+                        Section = QuestDetailCtSection.Log,
+                        Kind = QuestDetailCtEntryKind.ConditionLines,
+                        Lines = rewardLines,
+                        Source = QuestDetailInlineReferenceSource.RewardLine,
+                        XOffset = 17,
+                        RewardSection = true
+                    });
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(hintText))
+            {
+                entries.Add(new QuestDetailCtEntry
+                {
+                    Section = QuestDetailCtSection.Log,
+                    Kind = QuestDetailCtEntryKind.RichText,
+                    Text = hintText,
+                    Palette = QuestDetailCtEntryPalette.Hint,
+                    Source = QuestDetailInlineReferenceSource.HintText,
+                    XOffset = 17
+                });
+            }
+
+            return entries;
+        }
+
+        private static IReadOnlyList<QuestDetailCtEntry> BuildQuestDetailSummaryCtEntries(
+            string summaryText,
+            int totalProgress)
+        {
+            bool hasSummaryText = !string.IsNullOrWhiteSpace(summaryText);
+            bool hasProgress = totalProgress > 0;
+            if (!hasSummaryText && !hasProgress)
+            {
+                return Array.Empty<QuestDetailCtEntry>();
+            }
+
+            List<QuestDetailCtEntry> entries = new();
+            entries.Add(new QuestDetailCtEntry
+            {
+                Section = QuestDetailCtSection.Summary,
+                Kind = QuestDetailCtEntryKind.SectionHeader,
+                HeaderSurfaceKey = "summary",
+                HeaderFallbackText = "Summary",
+                XOffset = 17
+            });
+
+            if (hasSummaryText)
+            {
+                entries.Add(new QuestDetailCtEntry
+                {
+                    Section = QuestDetailCtSection.Summary,
+                    Kind = QuestDetailCtEntryKind.RichText,
+                    Text = summaryText,
+                    Palette = QuestDetailCtEntryPalette.Summary,
+                    Source = QuestDetailInlineReferenceSource.SummaryText,
+                    XOffset = 17,
+                    VerticalGapAfter = hasProgress ? 8 : 0
+                });
+            }
+
+            if (hasProgress)
+            {
+                entries.Add(new QuestDetailCtEntry
+                {
+                    Section = QuestDetailCtSection.Summary,
+                    Kind = QuestDetailCtEntryKind.Progress,
+                    XOffset = 18
+                });
+            }
+
+            return entries;
+        }
+
+        internal static IReadOnlyList<QuestDetailCtEntry> BuildQuestDetailLogCtEntriesForTesting(
+            string requirementText,
+            IReadOnlyList<QuestLogLineSnapshot> requirementLines,
+            string rewardText,
+            IReadOnlyList<QuestLogLineSnapshot> rewardLines,
+            string hintText)
+        {
+            return BuildQuestDetailLogCtEntries(requirementText, requirementLines, rewardText, rewardLines, hintText);
+        }
+
+        internal static IReadOnlyList<QuestDetailCtEntry> BuildQuestDetailSummaryCtEntriesForTesting(
+            string summaryText,
+            int totalProgress)
+        {
+            return BuildQuestDetailSummaryCtEntries(summaryText, totalProgress);
         }
 
         public void SetPacketOwnedQuestMateName(int questId, string mateName)
@@ -4755,12 +4934,26 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<QuestStateRequirement> questRequirements = state == QuestStateType.Not_Started
                 ? definition.StartQuestRequirements
                 : definition.EndQuestRequirements;
-            bool hasUnmetJobRequirement = state == QuestStateType.Not_Started &&
-                HasUnmetStartJobRequirement(definition, build);
-            bool hasUnmetLevelRequirement = state == QuestStateType.Not_Started &&
-                HasUnmetStartLevelRequirement(definition, build);
-            bool hasUnmetFameRequirement = state == QuestStateType.Not_Started &&
-                HasUnmetStartFameRequirement(definition, build);
+            bool hasUnmetJobRequirement = (state == QuestStateType.Not_Started &&
+                HasUnmetStartJobRequirement(definition, build))
+                || (state == QuestStateType.Started &&
+                    build != null &&
+                    HasUnmetCompletionActionJobDemand(definition.EndActions?.AllowedJobs, build.Job));
+            QuestActionBundle actionBundle = state == QuestStateType.Not_Started
+                ? definition.StartActions
+                : definition.EndActions;
+            bool hasUnmetLevelRequirement = (state == QuestStateType.Not_Started &&
+                HasUnmetStartLevelRequirement(definition, build))
+                || (state == QuestStateType.Started &&
+                    build != null &&
+                    (HasUnmetCompletionLevelFloor(definition.MinLevel, build.Level) ||
+                     HasUnmetCompletionLevelCap(definition.MaxLevel, build.Level)))
+                || HasUnmetActionLevelRequirement(actionBundle, build);
+            bool hasUnmetFameRequirement = (state == QuestStateType.Not_Started &&
+                HasUnmetStartFameRequirement(definition, build))
+                || (state == QuestStateType.Started &&
+                    build != null &&
+                    HasUnmetCompletionFameDemand(definition.EndFameRequirement, GetCurrentFame(build)));
             int? infoNumber = state == QuestStateType.Not_Started
                 ? definition.StartInfoNumber
                 : definition.EndInfoNumber;
@@ -4793,8 +4986,10 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetPetRequirement = HasUnmetPetRequirement(petRequirementContext);
             bool hasUnmetMesoRequirement = state == QuestStateType.Started &&
                 definition.EndMesoRequirement > 0 &&
-                GetCurrentMesoCount() < definition.EndMesoRequirement;
-            bool hasUnmetAvailabilityRequirement = HasUnmetAvailabilityRequirement(definition, state);
+                GetCurrentMesoCount() < definition.EndMesoRequirement ||
+                HasUnmetActionMesoRequirement(actionBundle, GetCurrentMesoCount());
+            bool hasUnmetAvailabilityRequirement = HasUnmetAvailabilityRequirement(definition, state) ||
+                HasUnmetActionAvailabilityRequirement(actionBundle);
             bool hasUnmetEquipRequirement = state == QuestStateType.Not_Started &&
                 HasUnmetEquipRequirement(definition, build);
 
@@ -5111,6 +5306,40 @@ namespace HaCreator.MapSimulator.Interaction
             return allowedDays != null &&
                    allowedDays.Count > 0 &&
                    !allowedDays.Contains(now.DayOfWeek);
+        }
+
+        private static bool HasUnmetActionLevelRequirement(QuestActionBundle actions, CharacterBuild build)
+        {
+            if (actions == null || build == null)
+            {
+                return false;
+            }
+
+            return (actions.ActionMinLevel.HasValue && build.Level < actions.ActionMinLevel.Value)
+                || (actions.ActionMaxLevel.HasValue && build.Level > actions.ActionMaxLevel.Value);
+        }
+
+        private static bool HasUnmetActionAvailabilityRequirement(QuestActionBundle actions)
+        {
+            if (actions == null)
+            {
+                return false;
+            }
+
+            DateTime now = DateTime.Now;
+            return (actions.ActionAvailableFrom.HasValue && now < actions.ActionAvailableFrom.Value)
+                || (actions.ActionAvailableUntil.HasValue && now > actions.ActionAvailableUntil.Value);
+        }
+
+        private static bool HasUnmetActionMesoRequirement(QuestActionBundle actions, long currentMeso)
+        {
+            if (actions == null || actions.MesoReward >= 0)
+            {
+                return false;
+            }
+
+            long requiredMeso = Math.Abs((long)actions.MesoReward);
+            return currentMeso < requiredMeso;
         }
 
         private static bool HasUnmetEquipRequirement(QuestDefinition definition, CharacterBuild build)

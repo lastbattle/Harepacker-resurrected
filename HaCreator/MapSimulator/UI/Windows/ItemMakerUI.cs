@@ -376,6 +376,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 ClearPendingPacketOwnedRequest();
             }
+            bool clearedRevokedHiddenCraftRequest = PrunePendingPacketOwnedCraftRequest();
 
             RebuildVisiblePages();
 
@@ -402,6 +403,10 @@ namespace HaCreator.MapSimulator.UI
             if (clearedPendingRequest)
             {
                 parts.Add("stale pending request cleared");
+            }
+            else if (clearedRevokedHiddenCraftRequest)
+            {
+                parts.Add("revoked hidden pending craft request cleared");
             }
 
             message = $"Applied maker session: {string.Join("; ", parts)}.";
@@ -1943,6 +1948,66 @@ namespace HaCreator.MapSimulator.UI
                 .Select(static recipe => (recipe.SourceSlotIndex, recipe.OutputItemId))
                 .ToList();
             if (ShouldKeepPendingPacketOwnedDisassemblyRequest(pendingSlotIndex, pendingItemId, visibleTargets))
+            {
+                return false;
+            }
+
+            ClearPendingPacketOwnedRequest();
+            return true;
+        }
+
+        internal static bool ShouldKeepPendingPacketOwnedCraftRequest(
+            bool pendingRecipeIsHidden,
+            bool pendingRecipeUnlocked,
+            bool hasAuthoritativeHiddenRecipeList,
+            IReadOnlySet<(int BucketKey, int OutputItemId)> authoritativeRecipeEntries,
+            IReadOnlySet<string> authoritativeRecipeKeys,
+            IReadOnlySet<int> authoritativeRecipeIds,
+            int pendingBucketKey,
+            string pendingRecipeKey,
+            int pendingOutputItemId)
+        {
+            if (!pendingRecipeIsHidden || pendingRecipeUnlocked || !hasAuthoritativeHiddenRecipeList)
+            {
+                return true;
+            }
+
+            return IsVisibleInPacketOwnedHiddenSelector(
+                hasAuthoritativeHiddenRecipeList,
+                authoritativeRecipeEntries,
+                authoritativeRecipeKeys,
+                authoritativeRecipeIds,
+                pendingBucketKey,
+                pendingRecipeKey,
+                pendingOutputItemId,
+                pendingRecipeUnlocked);
+        }
+
+        private bool PrunePendingPacketOwnedCraftRequest()
+        {
+            if (_pendingPacketOwnedRequest == null || _pendingPacketOwnedRequest.IsDisassembly)
+            {
+                return false;
+            }
+
+            ItemMakerRecipe pendingRecipe = ResolvePendingPacketOwnedCraftRecipe();
+            if (pendingRecipe == null || pendingRecipe.Mode != ItemMakerRecipeMode.Craft)
+            {
+                ClearPendingPacketOwnedRequest();
+                return true;
+            }
+
+            bool keepPendingRequest = ShouldKeepPendingPacketOwnedCraftRequest(
+                pendingRecipeIsHidden: pendingRecipe.IsHidden,
+                pendingRecipeUnlocked: IsHiddenRecipeUnlocked(pendingRecipe),
+                hasAuthoritativeHiddenRecipeList: _packetOwnedHasAuthoritativeHiddenRecipeList,
+                authoritativeRecipeEntries: _packetOwnedAuthoritativeHiddenRecipeEntries,
+                authoritativeRecipeKeys: _packetOwnedAuthoritativeHiddenRecipeKeys,
+                authoritativeRecipeIds: _packetOwnedAuthoritativeHiddenRecipeIds,
+                pendingBucketKey: pendingRecipe.BucketKey,
+                pendingRecipeKey: pendingRecipe.RecipeKey,
+                pendingOutputItemId: pendingRecipe.OutputItemId);
+            if (keepPendingRequest)
             {
                 return false;
             }

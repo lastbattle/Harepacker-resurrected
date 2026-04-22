@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
@@ -2446,10 +2447,25 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return item.PacketGroupInventoryType is InventoryType.USE
-                or InventoryType.SETUP
-                or InventoryType.ETC
-                or InventoryType.CASH;
+            if (item.NativeItemTypeIndex is 2 or 3 or 4)
+            {
+                return true;
+            }
+
+            return item.NativeItemTypeIndex == 5
+                && IsStoreBankCashStockItemType(item.ItemId);
+        }
+
+        private static bool IsStoreBankCashStockItemType(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            return QuestDeliveryCashItemUseRequest.ResolveConsumeCashItemType(itemId) > 0
+                || SkillManager.ResolveClientCashSlotItemType(itemId) > 0
+                || SkillManager.ResolveClientEtcCashItemType(itemId) > 0;
         }
 
         private static bool IsCashItem(StoreBankItemEntry item)
@@ -3369,7 +3385,6 @@ namespace HaCreator.MapSimulator.Interaction
         private long _damageTotalDamage;
         private int _damageTotalAttackCount;
         private long _damageTotalAttrRate;
-        private int _damageTotalAttrRateCount;
         private int _averageAttrRate;
         private int _averageDamagePerHit;
         private int _averageDamagePerSecond;
@@ -3489,7 +3504,6 @@ namespace HaCreator.MapSimulator.Interaction
             _damageTotalDamage = 0;
             _damageTotalAttackCount = 0;
             _damageTotalAttrRate = 0;
-            _damageTotalAttrRateCount = 0;
             _averageAttrRate = 0;
             _averageDamagePerHit = 0;
             _averageDamagePerSecond = 0;
@@ -4021,7 +4035,6 @@ namespace HaCreator.MapSimulator.Interaction
             _damageTotalDamage = 0;
             _damageTotalAttackCount = 0;
             _damageTotalAttrRate = 0;
-            _damageTotalAttrRateCount = 0;
             _averageAttrRate = 0;
             _averageDamagePerHit = 0;
             _averageDamagePerSecond = 0;
@@ -4135,14 +4148,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (attrRate.HasValue && attrRateCountDelta > 0)
             {
                 _damageTotalAttrRate += (long)attrRate.Value * attrRateCountDelta;
-                _damageTotalAttrRateCount += attrRateCountDelta;
             }
 
             _averageDamagePerHit = _damageTotalAttackCount > 0
                 ? (int)(_damageTotalDamage / _damageTotalAttackCount)
                 : 0;
-            _averageAttrRate = _damageTotalAttrRateCount > 0
-                ? (int)(_damageTotalAttrRate / _damageTotalAttrRateCount)
+            _averageAttrRate = _damageTotalAttackCount > 0
+                ? (int)(_damageTotalAttrRate / _damageTotalAttackCount)
                 : 0;
 
             uint nowTick = unchecked((uint)Environment.TickCount);
@@ -4268,13 +4280,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void CheckTotalDamageOverflow()
         {
-            if (_damageTotalDamage > BattleRecordOverflowThreshold)
+            if (_damageTotalDamage > BattleRecordOverflowThreshold
+                || double.IsInfinity(_totalAttackTimeSeconds)
+                || double.IsNaN(_totalAttackTimeSeconds))
             {
-                _damageTotalDamage = BattleRecordOverflowThreshold;
-            }
-            else if (_damageTotalDamage < -BattleRecordOverflowThreshold)
-            {
-                _damageTotalDamage = -BattleRecordOverflowThreshold;
+                ClearDamageInfoValues();
             }
         }
 
@@ -4284,13 +4294,10 @@ namespace HaCreator.MapSimulator.Interaction
                 || _recoveryTotalMpIncReq > BattleRecordOverflowThreshold
                 || _recoveryTotalHpIncApply > BattleRecordOverflowThreshold
                 || _recoveryTotalMpIncApply > BattleRecordOverflowThreshold
-                || _damageTotalDamage > BattleRecordOverflowThreshold)
+                || double.IsInfinity(_recoveryTotalUseItemSeconds)
+                || double.IsNaN(_recoveryTotalUseItemSeconds))
             {
-                _recoveryTotalHpIncReq = Math.Min(_recoveryTotalHpIncReq, BattleRecordOverflowThreshold);
-                _recoveryTotalMpIncReq = Math.Min(_recoveryTotalMpIncReq, BattleRecordOverflowThreshold);
-                _recoveryTotalHpIncApply = Math.Min(_recoveryTotalHpIncApply, BattleRecordOverflowThreshold);
-                _recoveryTotalMpIncApply = Math.Min(_recoveryTotalMpIncApply, BattleRecordOverflowThreshold);
-                _damageTotalDamage = Math.Min(_damageTotalDamage, BattleRecordOverflowThreshold);
+                ClearRecoveryInfoValues();
             }
         }
     }

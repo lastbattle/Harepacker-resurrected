@@ -2249,31 +2249,18 @@ namespace HaCreator.MapSimulator.UI
             ReadOnlySpan<int> framePreference,
             out int tooltipFrameIndex)
         {
-            Rectangle bestRect = Rectangle.Empty;
-            int bestFrame = framePreference.Length > 0 ? framePreference[0] : 1;
-            int bestOverflow = int.MaxValue;
-
-            for (int i = 0; i < framePreference.Length; i++)
-            {
-                int frameIndex = framePreference[i];
-                Rectangle candidate = CreateTooltipRectFromAnchor(anchorPoint, tooltipWidth, tooltipHeight, frameIndex);
-                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
-                if (overflow == 0)
-                {
-                    tooltipFrameIndex = frameIndex;
-                    return candidate;
-                }
-
-                if (overflow < bestOverflow)
-                {
-                    bestOverflow = overflow;
-                    bestFrame = frameIndex;
-                    bestRect = candidate;
-                }
-            }
-
-            tooltipFrameIndex = bestFrame;
-            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
+            SkillTooltipFrameLayout.FrameGeometry[] frameGeometries =
+                SkillTooltipFrameLayout.BuildFrameGeometries(_tooltipFrames, _tooltipFrameOrigins);
+            return SkillTooltipFrameLayout.ResolveTooltipRect(
+                anchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight,
+                frameGeometries,
+                framePreference,
+                TOOLTIP_PADDING,
+                out tooltipFrameIndex);
         }
 
         private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)

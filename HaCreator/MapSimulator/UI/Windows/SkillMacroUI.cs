@@ -182,6 +182,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<Keys, int> _forwardedNonFunctionHotkeySlotsByPhysicalKey = new();
         private readonly HashSet<Keys> _forwardedNonFunctionPhysicalKeys = new();
         private readonly HashSet<Keys> _imeSuppressedNonFunctionHotkeyPhysicalKeys = new();
+        private readonly HashSet<int> _forwardedFunctionKeyIndices = new();
 
         // Buttons
         private UIObject _btnOK;
@@ -463,7 +464,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ResetEditingState()
         {
-            ReleaseForwardedNonFunctionOwnerKeys();
+            ReleaseForwardedOwnerKeys();
             _editingMacroIndex = -1;
             _editingMacroName = string.Empty;
             _notifyPartyMembers = false;
@@ -2080,7 +2081,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Hide()
         {
-            ReleaseForwardedNonFunctionOwnerKeys();
+            ReleaseForwardedOwnerKeys();
             HideSoftKeyboard();
             CancelDrag();
             ClearCompositionText();
@@ -2114,7 +2115,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!CapturesKeyboardInput)
             {
-                ReleaseForwardedNonFunctionOwnerKeys();
+                ReleaseForwardedOwnerKeys();
                 _previousKeyboardState = keyboardState;
                 return;
             }
@@ -2516,6 +2517,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (OnClientForwardedFunctionKeyStateChanged == null)
             {
+                _forwardedFunctionKeyIndices.Clear();
                 return;
             }
 
@@ -2531,6 +2533,15 @@ namespace HaCreator.MapSimulator.UI
 
                 if (SkillMacroOwnerKeyHandler.TryGetClientForwardedFunctionKeyIndex(key, out int functionKeyIndex))
                 {
+                    if (isDown)
+                    {
+                        _forwardedFunctionKeyIndices.Add(functionKeyIndex);
+                    }
+                    else
+                    {
+                        _forwardedFunctionKeyIndices.Remove(functionKeyIndex);
+                    }
+
                     OnClientForwardedFunctionKeyStateChanged(functionKeyIndex, isDown);
                 }
             }
@@ -2662,10 +2673,32 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void ReleaseForwardedNonFunctionOwnerKeys()
+        private void ReleaseForwardedOwnerKeys()
         {
+            ReleaseForwardedFunctionKeys();
             ReleaseForwardedNonFunctionHotkeys();
             ReleaseForwardedNonFunctionPhysicalKeys();
+        }
+
+        private void ReleaseForwardedFunctionKeys()
+        {
+            if (_forwardedFunctionKeyIndices.Count == 0)
+            {
+                return;
+            }
+
+            if (OnClientForwardedFunctionKeyStateChanged == null)
+            {
+                _forwardedFunctionKeyIndices.Clear();
+                return;
+            }
+
+            int[] indices = _forwardedFunctionKeyIndices.ToArray();
+            _forwardedFunctionKeyIndices.Clear();
+            for (int i = 0; i < indices.Length; i++)
+            {
+                OnClientForwardedFunctionKeyStateChanged(indices[i], false);
+            }
         }
 
         private void ReleaseForwardedNonFunctionHotkeys()

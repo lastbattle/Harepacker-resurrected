@@ -98,6 +98,8 @@ namespace HaCreator.MapSimulator.Effects
         private int _pendingTransferMapId = -1;
         private string _pendingTransferPortalName = string.Empty;
         private int _pendingTransferAtTick = int.MinValue;
+        private int _activeClearTransferMapId = -1;
+        private string _activeClearTransferPortalName = string.Empty;
         private int _playerHp;
         private int _playerMaxHp = 100;
         private bool _hasPlayerState;
@@ -388,6 +390,8 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTransferMapId = -1;
             _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
+            _activeClearTransferMapId = -1;
+            _activeClearTransferPortalName = string.Empty;
             _playerHp = 0;
             _playerMaxHp = 100;
             _hasPlayerState = false;
@@ -444,6 +448,8 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTransferMapId = -1;
             _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
+            _activeClearTransferMapId = -1;
+            _activeClearTransferPortalName = string.Empty;
         }
         public void SetRuntimeState(int? playerHp, int? playerMaxHp, float? bossHpPercent)
         {
@@ -587,17 +593,26 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTransferMapId = -1;
             _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
+            _activeClearTransferMapId = -1;
+            _activeClearTransferPortalName = string.Empty;
             _stageBannerStartTick = currentTimeMs;
         }
         public void ShowClearResult(int currentTimeMs, int nextMapId = -1, string nextPortalName = null)
         {
+            int resolvedClearTransferMapId = NormalizeTransferMapId(nextMapId);
+            string resolvedClearTransferPortalName = resolvedClearTransferMapId > 0 && !string.IsNullOrWhiteSpace(nextPortalName)
+                ? nextPortalName
+                : string.Empty;
+
             _resultEffect = DojoResultEffect.Clear;
             _resultEffectStartTick = currentTimeMs;
             _timeOverTick = int.MinValue;
             _timerDurationSec = 0;
             _lastClockUpdateTick = currentTimeMs;
             _pendingTimeOverFieldSound = false;
-            SchedulePresentationTransfer(nextMapId, nextPortalName, _clearFrames, currentTimeMs);
+            _activeClearTransferMapId = resolvedClearTransferMapId;
+            _activeClearTransferPortalName = resolvedClearTransferPortalName;
+            SchedulePresentationTransfer(resolvedClearTransferMapId, resolvedClearTransferPortalName, _clearFrames, currentTimeMs);
         }
         public void ShowClearResultForNextFloor(int currentTimeMs)
         {
@@ -610,6 +625,8 @@ namespace HaCreator.MapSimulator.Effects
             _timeOverTick = 0;
             _timerDurationSec = 0;
             _pendingTimeOverFieldSound = queueExpirySound;
+            _activeClearTransferMapId = -1;
+            _activeClearTransferPortalName = string.Empty;
             SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), null, _timeOverFrames, currentTimeMs);
         }
         public void Update(int currentTimeMs, float deltaSeconds)
@@ -693,6 +710,8 @@ namespace HaCreator.MapSimulator.Effects
             _pendingTransferMapId = -1;
             _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
+            _activeClearTransferMapId = -1;
+            _activeClearTransferPortalName = string.Empty;
             _playerHp = 0;
             _playerMaxHp = 100;
             _hasPlayerState = false;
@@ -774,6 +793,11 @@ namespace HaCreator.MapSimulator.Effects
                 return _pendingTransferMapId;
             }
 
+            if (_resultEffect == DojoResultEffect.Clear && _activeClearTransferMapId > 0)
+            {
+                return _activeClearTransferMapId;
+            }
+
             return ResolveNextFloorMapId();
         }
         private string ResolveClearTransferPortalName()
@@ -783,6 +807,13 @@ namespace HaCreator.MapSimulator.Effects
                 && !string.IsNullOrWhiteSpace(_pendingTransferPortalName))
             {
                 return _pendingTransferPortalName;
+            }
+
+            if (_resultEffect == DojoResultEffect.Clear
+                && _activeClearTransferMapId > 0
+                && !string.IsNullOrWhiteSpace(_activeClearTransferPortalName))
+            {
+                return _activeClearTransferPortalName;
             }
 
             return ResolveNextFloorPortalName();

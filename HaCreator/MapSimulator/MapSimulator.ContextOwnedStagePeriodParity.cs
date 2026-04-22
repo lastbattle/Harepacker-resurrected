@@ -60,8 +60,11 @@ namespace HaCreator.MapSimulator
 
         private bool IsContextOwnedStagePeriodAlreadyCurrent(PacketStagePeriodChangePacket packet)
         {
-            return packet.StagePeriod != null
-                && _contextOwnedStagePeriodCache.TryGetValue(packet.StagePeriod, out byte cachedMode)
+            string stagePeriod = string.IsNullOrWhiteSpace(packet.StagePeriod)
+                ? null
+                : packet.StagePeriod.Trim();
+            return stagePeriod != null
+                && _contextOwnedStagePeriodCache.TryGetValue(stagePeriod, out byte cachedMode)
                 && cachedMode == packet.Mode;
         }
 

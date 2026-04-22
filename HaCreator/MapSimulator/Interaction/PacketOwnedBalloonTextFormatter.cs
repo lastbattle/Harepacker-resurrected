@@ -232,7 +232,7 @@ namespace HaCreator.MapSimulator.Interaction
                 "basic" => 0,
                 "summary" => 0,
                 "default" => 0,
-                "black" => 0,
+                "black" => 10,
                 "red" => 2,
                 "green" => 4,
                 "blue" => 6,

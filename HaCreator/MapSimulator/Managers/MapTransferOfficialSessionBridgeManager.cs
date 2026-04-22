@@ -277,17 +277,10 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            request = SnapshotObservedOutboundRegisterMapId(request);
-
-            lock (_sync)
-            {
-                _observedOutboundRequests.Add(new ObservedOutboundRequest
-                {
-                    Request = request,
-                    Source = string.IsNullOrWhiteSpace(source) ? "official-session" : source,
-                    RawText = rawPacket == null ? string.Empty : Convert.ToHexString(rawPacket)
-                });
-            }
+            ObserveOutboundRequest(
+                request,
+                string.IsNullOrWhiteSpace(source) ? "official-session" : source,
+                rawPacket == null ? string.Empty : Convert.ToHexString(rawPacket));
 
             status = $"Observed map transfer opcode {MapTransferPacketCodec.OutboundRequestOpcode} from {source ?? "official-session"}.";
             LastStatus = status;
@@ -333,6 +326,81 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        internal void ObserveInjectedRequestForParity(MapTransferRuntimeRequest request, string source)
+        {
+            ObserveOutboundRequest(
+                request,
+                string.IsNullOrWhiteSpace(source) ? "maptransfer:inject" : source,
+                string.Empty);
+        }
+
+        internal void DropObservedRequest(MapTransferRuntimeRequest request)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                for (int i = 0; i < _observedOutboundRequests.Count; i++)
+                {
+                    if (!AreEquivalentRequests(_observedOutboundRequests[i]?.Request, request))
+                    {
+                        continue;
+                    }
+
+                    _observedOutboundRequests.RemoveAt(i);
+                    return;
+                }
+            }
+        }
+
+        private void ObserveOutboundRequest(MapTransferRuntimeRequest request, string source, string rawText)
+        {
+            MapTransferRuntimeRequest snapshot = SnapshotObservedOutboundRegisterMapId(request);
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                _observedOutboundRequests.Add(new ObservedOutboundRequest
+                {
+                    Request = CloneRequest(snapshot),
+                    Source = source ?? "official-session",
+                    RawText = rawText ?? string.Empty
+                });
+            }
+        }
+
+        private static MapTransferRuntimeRequest CloneRequest(MapTransferRuntimeRequest request)
+        {
+            return request == null
+                ? null
+                : new MapTransferRuntimeRequest
+                {
+                    Type = request.Type,
+                    Book = request.Book,
+                    MapId = request.MapId,
+                    SlotIndex = request.SlotIndex
+                };
+        }
+
+        private static bool AreEquivalentRequests(MapTransferRuntimeRequest left, MapTransferRuntimeRequest right)
+        {
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            return left.Type == right.Type &&
+                   left.Book == right.Book &&
+                   left.MapId == right.MapId &&
+                   left.SlotIndex == right.SlotIndex;
+        }
+
         public void RecordDispatchResult(string source, bool success, string detail)
         {
             string summary = string.IsNullOrWhiteSpace(detail) ? "map transfer result" : detail;
@@ -360,6 +428,7 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 pair.ServerSession.SendPacket(rawPacket);
+                ObserveInjectedRequestForParity(request, $"maptransfer:inject:{pair.RemoteEndpoint}");
                 SentCount++;
                 status = $"Injected map transfer request into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;

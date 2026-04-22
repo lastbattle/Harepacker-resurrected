@@ -43,7 +43,7 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly char[] Sg88MismatchByteListSeparators = { ',', ';', '|', ' ', '/', '+' };
         private static readonly char[] Sg88MismatchFieldListSeparators = { ',', ';', '|', '/', '+' };
         private static readonly Regex Sg88MismatchPairRegex = new(
-            @"byte\s*(?<index>\d+)\s*:\s*0x(?<observed>[0-9A-Fa-f]{1,2})\s*->\s*0x(?<rebuilt>[0-9A-Fa-f]{1,2})",
+            @"byte[\s_\-]*(?<index>\d+)\s*:\s*(?<observed>(?:0x)?[0-9A-Fa-f]{1,2}|\d{1,3})\s*->\s*(?<rebuilt>(?:0x)?[0-9A-Fa-f]{1,2}|\d{1,3})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex Sg88MismatchByteListAssignmentRegex = new(
             @"[""']?(?<label>mismatch[\s_\-]*bytes|mismatch[\s_\-]*byte[\s_\-]*indices|byte[\s_\-]*indices)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^\s;\)]+)",
@@ -2130,8 +2130,8 @@ namespace HaCreator.MapSimulator.Managers
             if (!match.Success
                 || !int.TryParse(match.Groups["index"].Value, out int parsedByteIndex)
                 || parsedByteIndex < 0
-                || !byte.TryParse(match.Groups["observed"].Value, System.Globalization.NumberStyles.HexNumber, null, out byte observedByte)
-                || !byte.TryParse(match.Groups["rebuilt"].Value, System.Globalization.NumberStyles.HexNumber, null, out byte rebuiltByte))
+                || !TryParseSg88MismatchPairByteValue(match.Groups["observed"].Value, out byte observedByte)
+                || !TryParseSg88MismatchPairByteValue(match.Groups["rebuilt"].Value, out byte rebuiltByte))
             {
                 return false;
             }
@@ -2139,6 +2139,42 @@ namespace HaCreator.MapSimulator.Managers
             byteIndex = parsedByteIndex;
             normalizedPair = $"byte{parsedByteIndex}:0x{observedByte:X2}->0x{rebuiltByte:X2}";
             return true;
+        }
+
+        private static bool TryParseSg88MismatchPairByteValue(string token, out byte value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalized = token.Trim()
+                .Trim('"', '\'');
+            if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                return byte.TryParse(
+                    normalized[2..],
+                    System.Globalization.NumberStyles.HexNumber,
+                    null,
+                    out value);
+            }
+
+            bool hasHexAlpha = normalized.Any(ch => (ch >= 'A' && ch <= 'F') || (ch >= 'a' && ch <= 'f'));
+            if (hasHexAlpha)
+            {
+                return byte.TryParse(
+                    normalized,
+                    System.Globalization.NumberStyles.HexNumber,
+                    null,
+                    out value);
+            }
+
+            return byte.TryParse(
+                normalized,
+                System.Globalization.NumberStyles.Integer,
+                null,
+                out value);
         }
 
         public static bool TryDecodeRepeatSkillModeEndAck(

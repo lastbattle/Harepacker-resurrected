@@ -892,11 +892,23 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            bool compactClientEcho = IsCompactQuestRewardRaiseClientPutItemEcho(packet);
             if (EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, packet.Payload, out int previousRequestId))
             {
                 TryRebindQuestRewardRaisePieceReservation(placedPiece, previousRequestId);
             }
             ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
+            if (compactClientEcho)
+            {
+                if (placedPiece.LifecycleState != QuestRewardRaisePieceLifecycleState.PendingReleaseAck
+                    && placedPiece.LifecycleState != QuestRewardRaisePieceLifecycleState.PendingConfirmAck)
+                {
+                    placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.PendingAddAck;
+                }
+
+                return;
+            }
+
             if (packet.Success)
             {
                 placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.Active;
@@ -919,11 +931,18 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            bool compactClientEcho = IsCompactQuestRewardRaiseClientPutItemEcho(packet);
             if (EnsureQuestRewardRaisePieceRequestId(activeRaise, placedPiece, packet.Payload, out int previousRequestId))
             {
                 TryRebindQuestRewardRaisePieceReservation(placedPiece, previousRequestId);
             }
             ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
+            if (compactClientEcho)
+            {
+                placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.PendingReleaseAck;
+                return;
+            }
+
             if (packet.Success)
             {
                 if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow)
@@ -1270,6 +1289,29 @@ namespace HaCreator.MapSimulator
             return Math.Max(0, matchedByItem?.RequestId ?? 0);
         }
 
+        private static bool IsCompactQuestRewardRaiseClientPutItemEcho(QuestRewardRaiseInboundPacket packet)
+        {
+            if (packet == null
+                || packet.Kind is not QuestRewardRaiseInboundPacketKind.PutItemAddResult
+                    and not QuestRewardRaiseInboundPacketKind.PutItemReleaseResult
+                || packet.Payload == null)
+            {
+                return false;
+            }
+
+            if (!QuestRewardRaiseInboundPacketCodec.TryDecodeClientCompactPutItemPayload(
+                    packet.RawPayload,
+                    out QuestRewardRaiseClientCompactPutItemPayload compactPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            return compactPayload.InventoryType == packet.Payload.InventoryType
+                && compactPayload.SlotIndex == packet.Payload.SlotIndex
+                && compactPayload.ItemId == packet.Payload.ItemId;
+        }
+
         private static void ApplyPacketOwnedQuestRewardRaisePieceInboundState(
             QuestRewardRaisePlacedPiece placedPiece,
             QuestRewardRaiseInboundPacket packet)
@@ -1390,12 +1432,17 @@ namespace HaCreator.MapSimulator
                 return "Raise inbound packet is unavailable.";
             }
 
+            bool compactClientEcho = IsCompactQuestRewardRaiseClientPutItemEcho(packet);
             string ownerSummary = $"owner #{Math.Max(0, payload.OwnerItemId)} quest #{Math.Max(0, payload.QuestId)} session #{Math.Max(0, payload.ManagerSessionId)} request #{Math.Max(0, payload.OwnerRequestId)}";
             return packet.Kind switch
             {
                 QuestRewardRaiseInboundPacketKind.OwnerSync => $"Packet-owned raise owner sync refreshed {ownerSummary} with QR {payload.QrData} in {payload.DisplayMode} mode.",
-                QuestRewardRaiseInboundPacketKind.PutItemAddResult => $"Packet-owned raise PutItem add {(packet.Success ? "accepted" : "rejected")} row #{Math.Max(0, payload.PieceRequestId)} for {ownerSummary}.",
-                QuestRewardRaiseInboundPacketKind.PutItemReleaseResult => $"Packet-owned raise PutItem release {(packet.Success ? "accepted" : "rejected")} row #{Math.Max(0, payload.PieceRequestId)} for {ownerSummary}.",
+                QuestRewardRaiseInboundPacketKind.PutItemAddResult => compactClientEcho
+                    ? $"Packet-owned raise compact PutItem add echo observed row #{Math.Max(0, payload.PieceRequestId)} for {ownerSummary}; the row remains pending add until an explicit owner result arrives."
+                    : $"Packet-owned raise PutItem add {(packet.Success ? "accepted" : "rejected")} row #{Math.Max(0, payload.PieceRequestId)} for {ownerSummary}.",
+                QuestRewardRaiseInboundPacketKind.PutItemReleaseResult => compactClientEcho
+                    ? $"Packet-owned raise compact PutItem release echo observed row #{Math.Max(0, payload.PieceRequestId)} for {ownerSummary}; the row remains pending release until an explicit owner result arrives."
+                    : $"Packet-owned raise PutItem release {(packet.Success ? "accepted" : "rejected")} row #{Math.Max(0, payload.PieceRequestId)} for {ownerSummary}.",
                 QuestRewardRaiseInboundPacketKind.PutItemConfirmResult => $"Packet-owned raise PutItem confirm {(packet.Success ? "accepted" : "rejected")} for {ownerSummary}.",
                 QuestRewardRaiseInboundPacketKind.OwnerDestroyResult => $"Packet-owned raise owner destroy acknowledged {ownerSummary}.",
                 _ => "Raise inbound packet was observed."

@@ -95,15 +95,10 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly string[] _mobClientActionNamesBySlot = BuildMobClientActionNamesBySlot();
 
         // These slots are explicitly client-owned by the 43-slot contract, but native names are not yet recovered.
-        private static readonly IReadOnlyCollection<int> _mobClientUnresolvedActionSlots = new HashSet<int>
-        {
-            7, 8, 11, 40, 41, 42
-        };
+        private static readonly IReadOnlyCollection<int> _mobClientUnresolvedActionSlots = Array.Empty<int>();
 
-        private static readonly Dictionary<string, int> _mobClientActionSlotsByName =
-            _mobClientCanonicalActionNamesBySlot
-                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
-                .ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
+        private static readonly IReadOnlyDictionary<string, int> _mobClientActionSlotsByName =
+            BuildMobClientActionSlotsByName();
 
         private static readonly IReadOnlyDictionary<string, int> _mobClientActionSlotAliasesByName =
             new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
@@ -133,8 +128,15 @@ namespace HaCreator.MapSimulator.Loaders
                 [5] = "regen",
                 // Recovered from `_dynamic_initializer_for__s_sMobAction__`: slot 6 uses StringPool id 0x0453.
                 [6] = "bomb",
+                // Recovered from `_dynamic_initializer_for__s_sMobAction__`:
+                // slot 7 -> StringPool id 0x0442 (`hit1`),
+                // slot 8 -> StringPool id 0x0443 (`hit2`),
+                // slot 11 -> StringPool id 0x0451 (`die2`).
+                [7] = "hit1",
+                [8] = "hit2",
                 [9] = "hit2",
                 [10] = "die2",
+                [11] = "die2",
                 // Recovered from `_dynamic_initializer_for__s_sMobAction__`: slot 12 uses StringPool id 0x0452.
                 [12] = "dieF",
                 // `CMob::MoveAction2RawAction` case 16 resolves to slot 39; WZ action roots use `chase`.
@@ -152,6 +154,14 @@ namespace HaCreator.MapSimulator.Loaders
                 int skillIndex = skillSlot - MobClientSkillActionSlotStart + 1;
                 mapping[skillSlot] = $"skill{skillIndex}";
             }
+
+            // Recovered from `_dynamic_initializer_for__s_sMobAction__`:
+            // slot 40 -> StringPool id 0x14F8 (`rollingSpin`)
+            // slot 41 -> StringPool id 0x1AD3 (`siege_pre`)
+            // slot 42 -> StringPool id 0x165D (`tornadoDashStop`)
+            mapping[40] = "rollingSpin";
+            mapping[41] = "siege_pre";
+            mapping[42] = "tornadoDashStop";
 
             return mapping;
         }
@@ -171,6 +181,36 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         private static readonly ConditionalWeakTable<GraphicsDevice, Lazy<CachedDoomMobAssets>> _cachedDoomMobAssetsByDevice = new();
+
+        private static IReadOnlyDictionary<string, int> BuildMobClientActionSlotsByName()
+        {
+            var slotsByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (KeyValuePair<int, string> pair in _mobClientCanonicalActionNamesBySlot.OrderBy(pair => pair.Key))
+            {
+                // Keep pre-existing primary-slot resolution stable for duplicated names.
+                if (pair.Key is 7 or 8 or 11)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(pair.Value))
+                {
+                    slotsByName.TryAdd(pair.Value, pair.Key);
+                }
+            }
+
+            foreach (int duplicateSlot in new[] { 7, 8, 11 })
+            {
+                if (_mobClientCanonicalActionNamesBySlot.TryGetValue(duplicateSlot, out string duplicateName) &&
+                    !string.IsNullOrWhiteSpace(duplicateName))
+                {
+                    slotsByName.TryAdd(duplicateName, duplicateSlot);
+                }
+            }
+
+            return slotsByName;
+        }
 
         #region Mob
         /// <summary>

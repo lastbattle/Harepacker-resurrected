@@ -6,6 +6,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         internal const int ChargeMetadataScopedScanBytes = sizeof(int) * 4;
         internal const int ChargeMetadataMissingMaskBaseNearestScanBytes = sizeof(int) * 16;
+        internal const int ChargeMetadataMissingConsensusMinimumMatches = 2;
         private const int PageFireChargeSkillId = 1211004;
         private const int PageIceChargeSkillId = 1211006;
         private const int PageLightningChargeSkillId = 1211008;
@@ -688,6 +689,126 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             chargeElement = nearestChargeElement;
             return chargeElement > 0;
+        }
+
+        internal static bool TryResolveChargeElementByKnownSkillConsensusFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int minimumMatches,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int)
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int)
+                || minimumMatches <= 1)
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            if (alignedStartOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int iceMatches = 0;
+            int fireMatches = 0;
+            int lightningMatches = 0;
+            int holyMatches = 0;
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            {
+                int candidateSkillId = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                if (!IsKnownChargeSkillId(candidateSkillId)
+                    || !TryGetChargeElement(candidateSkillId, out int candidateElement))
+                {
+                    continue;
+                }
+
+                switch (candidateElement)
+                {
+                    case 1:
+                        iceMatches++;
+                        break;
+                    case 2:
+                        fireMatches++;
+                        break;
+                    case 3:
+                        lightningMatches++;
+                        break;
+                    case 5:
+                        holyMatches++;
+                        break;
+                }
+            }
+
+            int maxMatches = Math.Max(Math.Max(iceMatches, fireMatches), Math.Max(lightningMatches, holyMatches));
+            if (maxMatches < minimumMatches)
+            {
+                return false;
+            }
+
+            int tiedElements = 0;
+            int resolvedElement = 0;
+            if (iceMatches == maxMatches)
+            {
+                tiedElements++;
+                resolvedElement = 1;
+            }
+
+            if (fireMatches == maxMatches)
+            {
+                tiedElements++;
+                resolvedElement = 2;
+            }
+
+            if (lightningMatches == maxMatches)
+            {
+                tiedElements++;
+                resolvedElement = 3;
+            }
+
+            if (holyMatches == maxMatches)
+            {
+                tiedElements++;
+                resolvedElement = 5;
+            }
+
+            if (tiedElements > 1
+                && TryGetChargeElement(preferredSkillId, out int preferredElement))
+            {
+                int preferredMatches = preferredElement switch
+                {
+                    1 => iceMatches,
+                    2 => fireMatches,
+                    3 => lightningMatches,
+                    5 => holyMatches,
+                    _ => 0
+                };
+
+                if (preferredMatches == maxMatches)
+                {
+                    chargeElement = preferredElement;
+                    return true;
+                }
+            }
+
+            if (tiedElements != 1)
+            {
+                return false;
+            }
+
+            chargeElement = resolvedElement;
+            return true;
         }
 
         private static bool TryResolveChargeElementByKnownPayloadCandidates(

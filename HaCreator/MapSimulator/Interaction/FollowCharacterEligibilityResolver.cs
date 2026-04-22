@@ -149,21 +149,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (!ShouldRequireExactPublishedActionForOwnership(tamingMobPart.ItemId, actionName))
+            int mountItemId = tamingMobPart.ItemId;
+            if (!ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleMountOwnerItemId(mountItemId))
             {
                 return CharacterAssembler.SupportsTamingMobAction(tamingMobPart, actionName);
             }
 
-            return HasPublishedExactTamingMobAction(tamingMobPart, actionName);
-        }
+            // Keep known client-gated vehicle current-action coverage owner-positive even when the
+            // root is owner-only in the client branch (for example, non-render roots admitted by
+            // vehicle-id families in LoadTamingMobAction).
+            if (ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                    mountItemId,
+                    actionName))
+            {
+                return true;
+            }
 
-        private static bool ShouldRequireExactPublishedActionForOwnership(int mountItemId, string actionName)
-        {
-            // Keep `sit` out client-owned mounted owner inference when the mount family does not
-            // publish a dedicated `sit` root in WZ. This still allows explicit `sit` ownership
-            // if an exact `sit` animation exists on the mounted asset.
-            return ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleMountOwnerItemId(mountItemId)
-                   && string.Equals(actionName, "sit", StringComparison.OrdinalIgnoreCase);
+            // Unknown action names must only keep ownership on truly authored exact roots.
+            return HasPublishedExactTamingMobAction(tamingMobPart, actionName);
         }
 
         private static bool HasPublishedExactTamingMobAction(CharacterPart tamingMobPart, string actionName)
@@ -176,13 +179,29 @@ namespace HaCreator.MapSimulator.Interaction
             if (tamingMobPart.AvailableAnimations != null
                 && tamingMobPart.AvailableAnimations.Count > 0)
             {
-                return tamingMobPart.AvailableAnimations.Contains(actionName);
+                if (!tamingMobPart.AvailableAnimations.Contains(actionName))
+                {
+                    return false;
+                }
+
+                return true;
             }
 
             if (!tamingMobPart.Animations.TryGetValue(actionName, out CharacterAnimation animation)
                 || animation?.Frames?.Count <= 0)
             {
-                return false;
+                if (tamingMobPart.AnimationResolver == null)
+                {
+                    return false;
+                }
+
+                animation = tamingMobPart.AnimationResolver(actionName);
+                if (animation?.Frames?.Count <= 0)
+                {
+                    return false;
+                }
+
+                tamingMobPart.Animations[actionName] = animation;
             }
 
             // Exact-root ownership checks must not treat cached alias frames as authored roots.

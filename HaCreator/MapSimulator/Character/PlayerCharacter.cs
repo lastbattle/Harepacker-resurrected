@@ -7592,6 +7592,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                signature.Add(RuntimeHelpers.GetHashCode(part));
                 signature.Add(RuntimeHelpers.GetHashCode(part.Texture));
                 signature.Add(part.OffsetX);
                 signature.Add(part.OffsetY);
@@ -10544,9 +10545,13 @@ namespace HaCreator.MapSimulator.Character
                                 ? clientOwnedVehicleMount
                                 : transformOwnedVehicleMount?.Slot == EquipSlot.TamingMob
                                     ? transformOwnedVehicleMount
-                                    : equippedMount?.Slot == EquipSlot.TamingMob
-                                        ? equippedMount
-                                        : null;
+                                    : observedMount?.Slot == EquipSlot.TamingMob
+                                        ? observedMount
+                                        : sharedMechanicMount?.Slot == EquipSlot.TamingMob
+                                            ? sharedMechanicMount
+                                            : equippedMount?.Slot == EquipSlot.TamingMob
+                                                ? equippedMount
+                                                : null;
             }
 
             return MatchesTamingMobItemId(mountedStatePart, mountedVehicleId)

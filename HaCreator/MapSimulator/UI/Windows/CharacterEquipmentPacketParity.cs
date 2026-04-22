@@ -1717,39 +1717,27 @@ namespace HaCreator.MapSimulator.UI
         {
             value = string.Empty;
             rejectReason = null;
-            if (!TryEnsureRemaining(reader.BaseStream, sizeof(short), out rejectReason))
+            if (!TryEnsureRemaining(reader.BaseStream, sizeof(ushort), out rejectReason))
             {
                 return false;
             }
 
-            short lengthToken = reader.ReadInt16();
+            // Client CInPacket::DecodeStr (via CIOBufferManipulator::DecodeStr) decodes
+            // a ushort byte length followed by raw bytes.
+            ushort lengthToken = reader.ReadUInt16();
             if (lengthToken == 0)
             {
                 value = string.Empty;
                 return true;
             }
 
-            if (lengthToken > 0)
+            int byteLength = lengthToken;
+            if (!TryEnsureRemaining(reader.BaseStream, byteLength, out rejectReason))
             {
-                int byteLength = lengthToken;
-                if (!TryEnsureRemaining(reader.BaseStream, byteLength, out rejectReason))
-                {
-                    return false;
-                }
-
-                value = Encoding.ASCII.GetString(reader.ReadBytes(byteLength));
-                return true;
-            }
-
-            int charLength = -lengthToken;
-            int unicodeByteLength = charLength * sizeof(char);
-            if (charLength <= 0 || !TryEnsureRemaining(reader.BaseStream, unicodeByteLength, out rejectReason))
-            {
-                rejectReason = "Inventory-operation add entry maple string length is invalid.";
                 return false;
             }
 
-            value = Encoding.Unicode.GetString(reader.ReadBytes(unicodeByteLength));
+            value = Encoding.ASCII.GetString(reader.ReadBytes(byteLength));
             return true;
         }
 

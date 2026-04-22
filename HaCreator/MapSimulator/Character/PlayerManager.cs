@@ -101,7 +101,6 @@ namespace HaCreator.MapSimulator.Character
         private readonly HashSet<int> _activeAffectedAreaAvatarEffectIds = new();
         private readonly Dictionary<int, int> _activeAffectedAreaAvatarEffectSignatures = new();
         private readonly Dictionary<int, AffectedAreaAvatarEffectCacheEntry> _affectedAreaAvatarEffectSkillCache = new();
-        private int _lastForcedHorizontalDirection;
 
         // Sound callbacks
         private Action _onJumpSound;
@@ -1566,6 +1565,17 @@ namespace HaCreator.MapSimulator.Character
             return state.MovementLocked || state.ForcedHorizontalDirection != 0;
         }
 
+        internal static bool ShouldPrepareForMobControlLockout(
+            PlayerMobStatusFrameState previousState,
+            PlayerMobStatusFrameState currentState)
+        {
+            bool enteredForcedHorizontalControl = currentState.ForcedHorizontalDirection != 0
+                                                 && previousState.ForcedHorizontalDirection == 0;
+            bool enteredMovementLock = currentState.MovementLocked
+                                       && !previousState.MovementLocked;
+            return enteredForcedHorizontalControl || enteredMovementLock;
+        }
+
         internal int AdjustMobAffectedExperienceReward(int baseAmount, int currentTime)
         {
             return _mobStatusController?.AdjustExperienceReward(baseAmount, currentTime) ?? Math.Max(0, baseAmount);
@@ -1812,14 +1822,13 @@ namespace HaCreator.MapSimulator.Character
 
         private void UpdateMobStatusState(int currentTime)
         {
+            PlayerMobStatusFrameState previousState = _currentMobStatusState;
             _currentMobStatusState = _mobStatusController?.Update(currentTime) ?? PlayerMobStatusFrameState.Default;
 
-            if (_currentMobStatusState.ForcedHorizontalDirection != 0 && _lastForcedHorizontalDirection == 0)
+            if (ShouldPrepareForMobControlLockout(previousState, _currentMobStatusState))
             {
                 Player?.PrepareForForcedHorizontalControl();
             }
-
-            _lastForcedHorizontalDirection = _currentMobStatusState.ForcedHorizontalDirection;
 
             Player?.ApplyMobRecoveryModifiers(
                 _currentMobStatusState.HpRecoveryReversed,

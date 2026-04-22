@@ -282,7 +282,17 @@ namespace HaCreator.MapSimulator.Companions
                         requiresSecondaryStatChangedPointTrailer,
                         out rejectReason))
                 {
-                    return false;
+                    if (!IsRecoverableInventoryOperationTrailerReason(rejectReason)
+                        || (!sawMatchingSwap && !sawMatchingAddEntry))
+                    {
+                        return false;
+                    }
+
+                    // Preserve completion ownership when a matching mechanic move
+                    // was already recovered and the trailing bytes stay outside the
+                    // decoded trailer contract in this local seam.
+                    rejectReason = null;
+                    return true;
                 }
 
                 if (sawMatchingSwap || sawMatchingAddEntry)
@@ -456,7 +466,15 @@ namespace HaCreator.MapSimulator.Companions
                         requiresSecondaryStatChangedPointTrailer,
                         out rejectReason))
                 {
-                    return false;
+                    if (!(recoveredMutations.Count > 0
+                          && IsRecoverableInventoryOperationTrailerReason(rejectReason)))
+                    {
+                        return false;
+                    }
+
+                    // Keep passive ownership recoverable when a mechanic mutation is
+                    // already known but the tail contains unrecovered extra bytes.
+                    rejectReason = null;
                 }
 
                 if (recoveredMutations.Count == 0)
@@ -1968,6 +1986,14 @@ namespace HaCreator.MapSimulator.Companions
             return string.Equals(reason, "Inventory-operation add entry is truncated.", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Inventory-operation add entry used unsupported GW_ItemSlotBase type ", StringComparison.OrdinalIgnoreCase)
                    || reason.StartsWith("Inventory-operation add entry maple string length is invalid.", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRecoverableInventoryOperationTrailerReason(string reason)
+        {
+            return string.Equals(
+                reason,
+                "Inventory-operation payload contained unsupported trailing bytes.",
+                StringComparison.OrdinalIgnoreCase);
         }
     }
 }

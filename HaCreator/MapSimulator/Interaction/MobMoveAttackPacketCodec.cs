@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Interaction
             public List<Point> MultiTargetForBall { get; init; }
             public List<int> RandTimeForAreaAttack { get; init; }
             public IReadOnlyList<MobPacketMovePathElement> MovePathElements { get; init; }
+            public DecodedMovePathTailInfo? MovePathTailInfo { get; init; }
         }
 
         internal readonly record struct DecodedLockedTargetInfo(
@@ -37,6 +38,10 @@ namespace HaCreator.MapSimulator.Interaction
             int EncodedEntityId,
             MobTargetType TargetType,
             int TargetSlotIndex);
+
+        internal readonly record struct DecodedMovePathTailInfo(
+            int PassiveKeyPadStateCount,
+            Rectangle PathBounds);
 
         internal static MobTargetInfo CreateLockedTargetOverride(DecodedLockedTargetInfo? lockedTargetInfo)
         {
@@ -127,9 +132,10 @@ namespace HaCreator.MapSimulator.Interaction
                     AttackId = TryResolveAttackId(moveAction, out int attackId) ? attackId : 0,
                     MultiTargetForBall = multiTargetForBall,
                     RandTimeForAreaAttack = randTimeForAreaAttack,
-                    MovePathElements = TryDecodeMovePathElements(reader, moveActionByte, out var movePathElements)
+                    MovePathElements = TryDecodeMovePathElements(reader, moveActionByte, out var movePathElements, out DecodedMovePathTailInfo? movePathTailInfo)
                         ? movePathElements
-                        : Array.Empty<MobPacketMovePathElement>()
+                        : Array.Empty<MobPacketMovePathElement>(),
+                    MovePathTailInfo = movePathTailInfo
                 };
                 return true;
             }
@@ -240,9 +246,11 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryDecodeMovePathElements(
             PacketReader reader,
             byte fallbackMoveActionByte,
-            out IReadOnlyList<MobPacketMovePathElement> movePathElements)
+            out IReadOnlyList<MobPacketMovePathElement> movePathElements,
+            out DecodedMovePathTailInfo? movePathTailInfo)
         {
             movePathElements = Array.Empty<MobPacketMovePathElement>();
+            movePathTailInfo = null;
             if (reader == null || reader.Remaining <= 0)
             {
                 return true;
@@ -258,24 +266,60 @@ namespace HaCreator.MapSimulator.Interaction
             if (TryDecodeMovePathElementsCore(
                     tail,
                     decodeClientOptionalRandomCounts: false,
+                    decodeClientFlushTail: false,
                     fallbackMoveActionByte,
                     out List<MobPacketMovePathElement> withoutRandomCounts,
+                    out DecodedMovePathTailInfo? withoutRandomCountsTailInfo,
                     out int consumedWithoutRandomCounts) &&
                 consumedWithoutRandomCounts == tail.Length)
             {
                 movePathElements = withoutRandomCounts;
+                movePathTailInfo = withoutRandomCountsTailInfo;
                 return true;
             }
 
             if (TryDecodeMovePathElementsCore(
                     tail,
                     decodeClientOptionalRandomCounts: true,
+                    decodeClientFlushTail: false,
                     fallbackMoveActionByte,
                     out List<MobPacketMovePathElement> withRandomCounts,
+                    out DecodedMovePathTailInfo? withRandomCountsTailInfo,
                     out int consumedWithRandomCounts) &&
                 consumedWithRandomCounts == tail.Length)
             {
                 movePathElements = withRandomCounts;
+                movePathTailInfo = withRandomCountsTailInfo;
+                return true;
+            }
+
+            if (TryDecodeMovePathElementsCore(
+                    tail,
+                    decodeClientOptionalRandomCounts: false,
+                    decodeClientFlushTail: true,
+                    fallbackMoveActionByte,
+                    out List<MobPacketMovePathElement> withFlushTail,
+                    out DecodedMovePathTailInfo? withFlushTailInfo,
+                    out int consumedWithFlushTail) &&
+                consumedWithFlushTail == tail.Length)
+            {
+                movePathElements = withFlushTail;
+                movePathTailInfo = withFlushTailInfo;
+                return true;
+            }
+
+            if (TryDecodeMovePathElementsCore(
+                    tail,
+                    decodeClientOptionalRandomCounts: true,
+                    decodeClientFlushTail: true,
+                    fallbackMoveActionByte,
+                    out List<MobPacketMovePathElement> withRandomCountsAndFlushTail,
+                    out DecodedMovePathTailInfo? withRandomCountsAndFlushTailInfo,
+                    out int consumedWithRandomCountsAndFlushTail) &&
+                consumedWithRandomCountsAndFlushTail == tail.Length)
+            {
+                movePathElements = withRandomCountsAndFlushTail;
+                movePathTailInfo = withRandomCountsAndFlushTailInfo;
                 return true;
             }
 
@@ -288,11 +332,14 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryDecodeMovePathElementsCore(
             byte[] tail,
             bool decodeClientOptionalRandomCounts,
+            bool decodeClientFlushTail,
             byte fallbackMoveActionByte,
             out List<MobPacketMovePathElement> movePathElements,
+            out DecodedMovePathTailInfo? movePathTailInfo,
             out int bytesConsumed)
         {
             movePathElements = new List<MobPacketMovePathElement>();
+            movePathTailInfo = null;
             bytesConsumed = 0;
             if (tail == null || tail.Length == 0)
             {
@@ -435,6 +482,18 @@ namespace HaCreator.MapSimulator.Interaction
                     currentVelocityY = elementVelocityY;
                 }
 
+                if (decodeClientFlushTail)
+                {
+                    if (!TryDecodeMovePathFlushTail(reader, out DecodedMovePathTailInfo tailInfo))
+                    {
+                        bytesConsumed = reader.Position;
+                        movePathElements.Clear();
+                        return false;
+                    }
+
+                    movePathTailInfo = tailInfo;
+                }
+
                 bytesConsumed = reader.Position;
                 return true;
             }
@@ -442,6 +501,41 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 bytesConsumed = reader.Position;
                 movePathElements.Clear();
+                return false;
+            }
+        }
+
+        private static bool TryDecodeMovePathFlushTail(PacketReader reader, out DecodedMovePathTailInfo movePathTailInfo)
+        {
+            movePathTailInfo = default;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                int passiveKeyPadStateCount = reader.ReadByte();
+                int packedStateCount = (passiveKeyPadStateCount + 1) / 2;
+                for (int i = 0; i < packedStateCount; i++)
+                {
+                    _ = reader.ReadByte();
+                }
+
+                short left = reader.ReadShort();
+                short top = reader.ReadShort();
+                short right = reader.ReadShort();
+                short bottom = reader.ReadShort();
+                int width = Math.Max(0, right - left);
+                int height = Math.Max(0, bottom - top);
+                movePathTailInfo = new DecodedMovePathTailInfo(
+                    passiveKeyPadStateCount,
+                    new Rectangle(left, top, width, height));
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is ArgumentOutOfRangeException || ex is OverflowException)
+            {
+                movePathTailInfo = default;
                 return false;
             }
         }

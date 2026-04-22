@@ -220,6 +220,7 @@ namespace HaCreator.MapSimulator.Fields
         private CharacterBuild _localMiniRoomAvatarBuild;
         private MemoryGamePromptState _pendingPrompt;
         private string _statusMessageBeforePrompt;
+        private Action _readyClickSoundCallback;
         private bool _localTieRequestSent;
         private bool _localTieRequestSentThisTurn;
         private bool _localGiveUpRequestSent;
@@ -424,6 +425,11 @@ namespace HaCreator.MapSimulator.Fields
 
             SyncMiniRoomRuntime();
 
+        }
+
+        public void SetReadyClickSoundCallback(Action callback)
+        {
+            _readyClickSoundCallback = callback;
         }
 
 
@@ -2005,6 +2011,7 @@ namespace HaCreator.MapSimulator.Fields
             message = isReady
                 ? "Ready request packet (58) sent."
                 : "Ready-cancel request packet (59) sent.";
+            _readyClickSoundCallback?.Invoke();
             return true;
         }
 

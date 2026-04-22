@@ -1,8 +1,10 @@
+using HaSharedLibrary.Wz;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using System;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Fields
@@ -134,7 +136,8 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryResolveShipObject(MapInfo mapInfo, out WzSubProperty shipObject)
         {
             shipObject = TryResolveShipObjectFromAdditionalNonInfoProps(mapInfo)
-                ?? TryResolveShipObjectFromMapImage(mapInfo?.Image);
+                ?? TryResolveShipObjectFromMapImage(mapInfo?.Image)
+                ?? TryResolveShipObjectFromLinkedMapImage(mapInfo);
             return shipObject != null;
         }
 
@@ -160,6 +163,67 @@ namespace HaCreator.MapSimulator.Fields
             return mapImage.WzProperties
                 .OfType<WzSubProperty>()
                 .FirstOrDefault(prop => string.Equals(prop.Name, "shipObj", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static WzSubProperty TryResolveShipObjectFromLinkedMapImage(MapInfo mapInfo)
+        {
+            int linkedMapId = TryResolveLinkedMapId(mapInfo?.Image);
+            if (linkedMapId <= 0)
+            {
+                return null;
+            }
+
+            WzImage linkedMapImage = TryResolveLinkedMapImage(mapInfo, linkedMapId);
+            return TryResolveShipObjectFromMapImage(linkedMapImage);
+        }
+
+        private static int TryResolveLinkedMapId(WzImage mapImage)
+        {
+            if (mapImage == null)
+            {
+                return 0;
+            }
+
+            if (!mapImage.Parsed)
+            {
+                mapImage.ParseImage();
+            }
+
+            WzImageProperty linkProperty = mapImage["info"]?["link"];
+            if (linkProperty == null)
+            {
+                return 0;
+            }
+
+            if (linkProperty is WzIntProperty intProperty)
+            {
+                int linkedMapId = intProperty.GetInt();
+                return linkedMapId > 0 ? linkedMapId : 0;
+            }
+
+            string linkedMapToken = InfoTool.GetString(linkProperty);
+            return int.TryParse(linkedMapToken, out int parsedLinkedMapId) && parsedLinkedMapId > 0
+                ? parsedLinkedMapId
+                : 0;
+        }
+
+        private static WzImage TryResolveLinkedMapImage(MapInfo mapInfo, int linkedMapId)
+        {
+            if (mapInfo?.Image?.Parent is WzDirectory parentDirectory)
+            {
+                string linkedImageName = linkedMapId.ToString("D9", CultureInfo.InvariantCulture) + ".img";
+                if (parentDirectory[linkedImageName] is WzImage siblingMapImage)
+                {
+                    return siblingMapImage;
+                }
+            }
+
+            if (global::HaCreator.Program.WzManager == null)
+            {
+                return null;
+            }
+
+            return WzInfoTools.FindMapImage(linkedMapId.ToString(CultureInfo.InvariantCulture), global::HaCreator.Program.WzManager);
         }
     }
 }

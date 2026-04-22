@@ -429,17 +429,28 @@ namespace HaCreator.MapSimulator.UI
 
                 if (pressedThisFrame)
                 {
-                    _selectedIndex = ResolveClientItemIndexFromRelativePoint(
+                    _selectedIndex = ResolveClientItemIndexFromWindowRelativePoint(
                         _entries.Count,
                         _scrollOffset,
-                        mouseState.X - rowArea.X,
-                        mouseState.Y - rowArea.Y);
+                        mouseState.X - Position.X,
+                        mouseState.Y - Position.Y);
                     EnsureSelectionVisible();
                     UpdateButtonStates();
                     _previousMouseState = mouseState;
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
+            }
+
+            if (pressedThisFrame && ContainsPoint(mouseState.X, mouseState.Y))
+            {
+                _selectedIndex = ResolveClientItemIndexFromWindowRelativePoint(
+                    _entries.Count,
+                    _scrollOffset,
+                    mouseState.X - Position.X,
+                    mouseState.Y - Position.Y);
+                EnsureSelectionVisible();
+                UpdateButtonStates();
             }
 
             bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
@@ -1601,6 +1612,29 @@ namespace HaCreator.MapSimulator.UI
             return -1;
         }
 
+        internal static int ResolveClientItemIndexFromWindowRelativePoint(int itemCount, int scrollOffset, int relativeX, int relativeY)
+        {
+            if (itemCount <= 0)
+            {
+                return -1;
+            }
+
+            int visibleCount = Math.Min(itemCount, VisibleRowCount);
+            for (int row = 0, rowTop = RowTop; row < visibleCount; row++, rowTop += RowPitch)
+            {
+                Rectangle bounds = new(RowLeft, rowTop, 210 - RowLeft, RowHeight);
+                if (!bounds.Contains(relativeX, relativeY))
+                {
+                    continue;
+                }
+
+                int index = scrollOffset + row;
+                return index >= 0 && index < itemCount ? index : -1;
+            }
+
+            return -1;
+        }
+
         internal static int ResolveClientTooltipItemIndexFromWindowRelativePoint(int itemCount, int scrollOffset, int relativeX, int relativeY)
         {
             if (itemCount <= 0)
@@ -1830,31 +1864,18 @@ namespace HaCreator.MapSimulator.UI
             ReadOnlySpan<int> framePreference,
             out int tooltipFrameIndex)
         {
-            Rectangle bestRect = Rectangle.Empty;
-            int bestFrame = framePreference.Length > 0 ? framePreference[0] : 1;
-            int bestOverflow = int.MaxValue;
-
-            for (int i = 0; i < framePreference.Length; i++)
-            {
-                int frameIndex = framePreference[i];
-                Rectangle candidate = CreateTooltipRectFromAnchor(anchorPoint, tooltipWidth, tooltipHeight, frameIndex);
-                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
-                if (overflow == 0)
-                {
-                    tooltipFrameIndex = frameIndex;
-                    return candidate;
-                }
-
-                if (overflow < bestOverflow)
-                {
-                    bestOverflow = overflow;
-                    bestFrame = frameIndex;
-                    bestRect = candidate;
-                }
-            }
-
-            tooltipFrameIndex = bestFrame;
-            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
+            SkillTooltipFrameLayout.FrameGeometry[] frameGeometries =
+                SkillTooltipFrameLayout.BuildFrameGeometries(_tooltipFrames, _tooltipFrameOrigins);
+            return SkillTooltipFrameLayout.ResolveTooltipRect(
+                anchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight,
+                frameGeometries,
+                framePreference,
+                TooltipPadding,
+                out tooltipFrameIndex);
         }
 
         private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)

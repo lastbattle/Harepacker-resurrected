@@ -55,6 +55,45 @@ namespace HaCreator.MapSimulator.Interaction
         SummaryText
     }
 
+    internal enum QuestDetailCtSection
+    {
+        Log,
+        Summary
+    }
+
+    internal enum QuestDetailCtEntryKind
+    {
+        SectionHeader,
+        RichText,
+        ConditionLines,
+        Progress
+    }
+
+    internal enum QuestDetailCtEntryPalette
+    {
+        Default,
+        Requirement,
+        Reward,
+        Hint,
+        Summary
+    }
+
+    internal sealed class QuestDetailCtEntry
+    {
+        public QuestDetailCtSection Section { get; init; }
+        public QuestDetailCtEntryKind Kind { get; init; }
+        public string Text { get; init; } = string.Empty;
+        public string HeaderSurfaceKey { get; init; } = string.Empty;
+        public string HeaderFallbackText { get; init; } = string.Empty;
+        public IReadOnlyList<QuestLogLineSnapshot> Lines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
+        public QuestDetailCtEntryPalette Palette { get; init; }
+        public QuestDetailInlineReferenceSource Source { get; init; }
+        public int XOffset { get; init; }
+        public int YOffset { get; init; }
+        public int VerticalGapAfter { get; init; }
+        public bool RewardSection { get; init; }
+    }
+
     internal readonly record struct QuestDetailInlineReference
     {
         public QuestDetailInlineReference(
@@ -181,6 +220,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int? DeliveryCashItemId { get; init; }
         public string DeliveryCashItemName { get; init; } = string.Empty;
         public QuestDetailNpcButtonStyle NpcButtonStyle { get; set; }
+        public IReadOnlyList<QuestDetailCtEntry> LogCtEntries { get; init; } = Array.Empty<QuestDetailCtEntry>();
+        public IReadOnlyList<QuestDetailCtEntry> SummaryCtEntries { get; init; } = Array.Empty<QuestDetailCtEntry>();
     }
 
     internal sealed class QuestWindowActionResult

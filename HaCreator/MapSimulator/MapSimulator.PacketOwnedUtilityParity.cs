@@ -2687,6 +2687,7 @@ namespace HaCreator.MapSimulator
             foreach (string line in EnumerateClassCompetitionStructuredSegments(text))
             {
                 if (TryParseClassCompetitionPrefixedValue(line, "auth", out string authValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "authkey", out authValue)
                     || TryParseClassCompetitionPrefixedValue(line, "key", out authValue))
                 {
                     authKey = authValue;
@@ -2742,6 +2743,8 @@ namespace HaCreator.MapSimulator
                 authKey = extractedAuthKey;
             }
 
+            navigateUrl = HydrateClassCompetitionNavigateUrlWithAuthKey(navigateUrl, authKey);
+
             IReadOnlyList<string> normalizedPageLines = NormalizeClassCompetitionRemoteLines(pageLines, PacketOwnedClassCompetitionMaxRemotePageLines);
             IReadOnlyList<string> normalizedLadderLines = NormalizeClassCompetitionRemoteLines(ladderLines, PacketOwnedClassCompetitionMaxRemoteLadderLines);
             if (string.IsNullOrWhiteSpace(authKey)
@@ -2790,7 +2793,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 string[] parts = value.Split(
-                    new[] { "\r\n", "\n" },
+                    new[] { "\r\n", "\n", "\0" },
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 return parts.Length == 0
                     ? null
@@ -2866,7 +2869,10 @@ namespace HaCreator.MapSimulator
                 yield break;
             }
 
-            string[] lines = text.Split(
+            string normalized = text
+                .Replace('\0', '\n')
+                .Replace('\u001E', '\n');
+            string[] lines = normalized.Split(
                 new[] { "\r\n", "\n" },
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             for (int i = 0; i < lines.Length; i++)
@@ -2944,6 +2950,7 @@ namespace HaCreator.MapSimulator
             }
 
             return TryParseClassCompetitionPrefixedValue(line, "auth", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "authkey", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "key", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "url", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "navigate", out _)
@@ -2952,6 +2959,25 @@ namespace HaCreator.MapSimulator
                 || TryParseClassCompetitionPrefixedValue(line, "page", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "source", out _)
                 || TryParseClassCompetitionPrefixedValue(line, "ladder", out _);
+        }
+
+        private static string HydrateClassCompetitionNavigateUrlWithAuthKey(string navigateUrl, string authKey)
+        {
+            string normalizedNavigateUrl = navigateUrl?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedNavigateUrl)
+                || string.IsNullOrWhiteSpace(authKey)
+                || !TryNormalizeClassCompetitionAuthKey(authKey, out string normalizedAuthKey))
+            {
+                return normalizedNavigateUrl;
+            }
+
+            if (TryExtractClassCompetitionAuthKeyFromNavigateUrl(normalizedNavigateUrl, out _))
+            {
+                return normalizedNavigateUrl;
+            }
+
+            char separator = normalizedNavigateUrl.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+            return $"{normalizedNavigateUrl}{separator}key={Uri.EscapeDataString(normalizedAuthKey)}";
         }
 
         private static bool TryExtractClassCompetitionAuthKeyFromNavigateUrl(
@@ -4207,7 +4233,7 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.FormatMesoGiveSucceededText(mesoAmount);
-            ShowPacketOwnedRewardResultNotice(noticeText);
+            ShowPacketOwnedRewardResultNotice(noticeText, tightLine: true);
             message = trailingByteCount > 0
                 ? $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
                 : $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
@@ -4225,7 +4251,7 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.GetMesoGiveFailedText();
-            ShowPacketOwnedRewardResultNotice(noticeText);
+            ShowPacketOwnedRewardResultNotice(noticeText, tightLine: true);
             message = trailingByteCount > 0
                 ? $"Applied packet-owned meso-give failure through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
                 : "Applied packet-owned meso-give failure through the dedicated reward-result notice owner.";
@@ -4266,7 +4292,7 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.GetRandomMesoBagFailedText();
-            ShowPacketOwnedRewardResultNotice(noticeText);
+            ShowPacketOwnedRewardResultNotice(noticeText, tightLine: true);
             message = trailingByteCount > 0
                 ? $"Applied packet-owned random meso sack failure through the dedicated reward-result notice owner and ignored {trailingByteCount} trailing byte(s), matching the native handler."
                 : "Applied packet-owned random meso sack failure through the dedicated reward-result notice owner.";
@@ -7000,6 +7026,11 @@ namespace HaCreator.MapSimulator
             }
 
             StampPacketOwnedUtilityRequestState();
+            // Skill-learn result payloads expose the post-branch bExclRequestSent flag.
+            // Mirror shared StartQuest follow-up clear only when that flag returns cleared.
+            bool consumedQuestStartLatch =
+                ShouldConsumePacketOwnedQuestResultStartQuestSharedExclusiveResetFromExternalFlag(result.OnExclusiveRequest)
+                && TryConsumePacketOwnedQuestResultStartQuestLatchFromSharedExclusiveReset();
 
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             bool isLocalOwner = result.CharacterId > 0 && result.CharacterId == localCharacterId;
@@ -7064,6 +7095,11 @@ namespace HaCreator.MapSimulator
                     ? "success"
                     : "failure";
             message = $"Applied packet-owned skill-learn-item {outcomeLabel} for {ownershipLabel} owner {ownerName} ({result.CharacterId}).";
+            if (consumedQuestStartLatch)
+            {
+                message = $"{message} The skill-learn owner's cleared exclusive-request flag also consumed the packet-owned StartQuest follow-up latch.";
+            }
+
             return true;
         }
 
@@ -10845,6 +10881,7 @@ namespace HaCreator.MapSimulator
             bool hasPassiveTemporaryStatObject =
                 TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool resolvedPassiveTemporaryStatObject)
                 && resolvedPassiveTemporaryStatObject;
+            bool allocatedPassiveTemporaryStatObject = false;
             if (ShouldAllocatePacketOwnedBattleshipPassiveTemporaryStatObject(
                     hasPassiveTemporaryStatTrackingOwner,
                     isVehiclePresentationActive,
@@ -10856,6 +10893,7 @@ namespace HaCreator.MapSimulator
                     currTickCount))
             {
                 hasPassiveTemporaryStatObject = true;
+                allocatedPassiveTemporaryStatObject = true;
             }
 
             if (!ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
@@ -10884,7 +10922,9 @@ namespace HaCreator.MapSimulator
                 maxValue,
                 currTickCount,
                 hasTemporaryObject: true,
-                recordPassiveTemporaryStatUpdate: recordPassiveTemporaryStatUpdate);
+                recordPassiveTemporaryStatUpdate: ShouldRecordPacketOwnedBattleshipPassiveTemporaryStatUpdate(
+                    recordPassiveTemporaryStatUpdate,
+                    allocatedPassiveTemporaryStatObject));
 
             CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
             if (mountPart == null)
@@ -11015,6 +11055,16 @@ namespace HaCreator.MapSimulator
             return hasPassiveTemporaryStatTrackingOwner
                 && isVehiclePresentationActive
                 && !hasPassiveTemporaryStatObject;
+        }
+
+        internal static bool ShouldRecordPacketOwnedBattleshipPassiveTemporaryStatUpdate(
+            bool recordPassiveTemporaryStatUpdate,
+            bool allocatedPassiveTemporaryStatObject)
+        {
+            // Client evidence: SetSkillCooltimeOver itself remains the UpdatePassively entry seam.
+            // When the simulator has to allocate a missing TEMPORARY_STAT owner surrogate first,
+            // force one immediate update write so low-bucket metadata stays synchronized.
+            return recordPassiveTemporaryStatUpdate || allocatedPassiveTemporaryStatObject;
         }
 
         internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(
@@ -11548,6 +11598,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedLocalUtilityContext.EnsureRadioCreateLayerInitializedFromRuntime(runtimeCharacterId);
             RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(
                 runtimeCharacterId,
+                officialSessionConnected: _localUtilityOfficialSessionBridge.HasConnectedSession,
                 allowAfterRuntimeCharacterReset: resetForRuntimeCharacterChange);
         }
 
@@ -11584,6 +11635,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedLocalUtilityContext.EnsureRadioScheduleInitializedFromRuntime(runtimeCharacterId);
             RestorePersistedPacketOwnedRadioScheduleContextIfNeeded(
                 runtimeCharacterId,
+                officialSessionConnected: _localUtilityOfficialSessionBridge.HasConnectedSession,
                 allowAfterRuntimeCharacterReset: resetForRuntimeCharacterChange);
         }
 
@@ -11889,6 +11941,7 @@ namespace HaCreator.MapSimulator
 
         private void RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(
             int runtimeCharacterId,
+            bool officialSessionConnected,
             bool allowAfterRuntimeCharacterReset)
         {
             if (!ShouldRestorePersistedPacketOwnedRadioCreateLayerContext(
@@ -11897,6 +11950,7 @@ namespace HaCreator.MapSimulator
                     _packetOwnedLocalUtilityContext.HasRadioCreateLayerLeftContextValue,
                     _packetOwnedLocalUtilityContext.RadioCreateLayerMutationSequence,
                     _packetOwnedLocalUtilityContext.RadioCreateLayerLastMutationSource,
+                    officialSessionConnected,
                     allowAfterRuntimeCharacterReset))
             {
                 return;
@@ -11923,6 +11977,7 @@ namespace HaCreator.MapSimulator
 
         private void RestorePersistedPacketOwnedRadioScheduleContextIfNeeded(
             int runtimeCharacterId,
+            bool officialSessionConnected,
             bool allowAfterRuntimeCharacterReset)
         {
             if (!ShouldRestorePersistedPacketOwnedRadioScheduleContext(
@@ -11931,6 +11986,7 @@ namespace HaCreator.MapSimulator
                     _packetOwnedLocalUtilityContext.HasRadioScheduleContextValue,
                     _packetOwnedLocalUtilityContext.RadioScheduleMutationSequence,
                     _packetOwnedLocalUtilityContext.RadioScheduleLastMutationSource,
+                    officialSessionConnected,
                     allowAfterRuntimeCharacterReset))
             {
                 return;
@@ -11962,6 +12018,7 @@ namespace HaCreator.MapSimulator
             bool hasOverride,
             int mutationSequence,
             string mutationSource,
+            bool officialSessionConnected,
             bool allowAfterRuntimeCharacterReset)
         {
             if (runtimeCharacterId <= 0
@@ -11972,6 +12029,13 @@ namespace HaCreator.MapSimulator
             }
 
             string normalizedMutationSource = mutationSource ?? string.Empty;
+            if (!ShouldRestorePacketOwnedRadioContextFromPersistedMutationSource(
+                    normalizedMutationSource,
+                    officialSessionConnected))
+            {
+                return false;
+            }
+
             if (mutationSequence <= 0
                 && string.Equals(normalizedMutationSource, "fallback", StringComparison.Ordinal))
             {
@@ -11989,6 +12053,7 @@ namespace HaCreator.MapSimulator
             bool hasContextValue,
             int mutationSequence,
             string mutationSource,
+            bool officialSessionConnected,
             bool allowAfterRuntimeCharacterReset)
         {
             if (runtimeCharacterId <= 0
@@ -11999,6 +12064,13 @@ namespace HaCreator.MapSimulator
             }
 
             string normalizedMutationSource = mutationSource ?? string.Empty;
+            if (!ShouldRestorePacketOwnedRadioContextFromPersistedMutationSource(
+                    normalizedMutationSource,
+                    officialSessionConnected))
+            {
+                return false;
+            }
+
             if (mutationSequence <= 0
                 && string.Equals(normalizedMutationSource, "fallback", StringComparison.Ordinal))
             {
@@ -12008,6 +12080,18 @@ namespace HaCreator.MapSimulator
             return allowAfterRuntimeCharacterReset
                 && mutationSequence == 1
                 && string.Equals(normalizedMutationSource, "runtime-character-reset", StringComparison.Ordinal);
+        }
+
+        internal static bool ShouldRestorePacketOwnedRadioContextFromPersistedMutationSource(
+            string persistedMutationSource,
+            bool officialSessionConnected)
+        {
+            if (!officialSessionConnected)
+            {
+                return true;
+            }
+
+            return IsPacketOwnedRadioScheduleOfficialSessionSource(persistedMutationSource);
         }
 
         private LoginCharacterAccountStore.LoginCharacterAccountEntryState ResolveStoredPacketOwnedRadioCreateLayerEntry(int runtimeCharacterId)
@@ -21160,8 +21244,47 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            return property.ValueKind == JsonValueKind.String
-                && int.TryParse(property.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+            if (property.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            string rawValue = property.GetString();
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return false;
+            }
+
+            string normalized = rawValue.Trim();
+            if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+            {
+                return true;
+            }
+
+            bool negative = false;
+            if (normalized.StartsWith("-", StringComparison.Ordinal))
+            {
+                negative = true;
+                normalized = normalized[1..];
+            }
+            else if (normalized.StartsWith("+", StringComparison.Ordinal))
+            {
+                normalized = normalized[1..];
+            }
+
+            if (!normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string hexDigits = normalized[2..];
+            if (!int.TryParse(hexDigits, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out int hexValue))
+            {
+                return false;
+            }
+
+            value = negative ? -hexValue : hexValue;
+            return true;
         }
 
         private static bool TryGetJsonDateProperty(JsonElement element, out DateTime value, params string[] propertyNames)

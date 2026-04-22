@@ -360,6 +360,7 @@ namespace HaCreator.MapSimulator
             DrainLocalUtilityPacketInbox();
             DrainAdminShopPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
+            UpdatePacketOwnedAntiMacroAwaitingResultState(currTickCount);
             RestorePacketOwnedAdminShopAfterOwnerVisibilityResumes();
             FlushPendingLocalItemDropRequests(currTickCount);
             DrainMessengerOfficialSessionBridge();

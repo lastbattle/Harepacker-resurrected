@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator.Managers
         private readonly List<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly List<InboundPacketTrace> _recentInboundPackets = new();
         private readonly object _sync = new();
+        private bool _hasObservedLiveOutboundOpcode160;
+        private bool _hasObservedLiveInboundOpcode371;
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -157,7 +159,13 @@ namespace HaCreator.MapSimulator.Managers
                 ? "no captured server opcode 371 history"
                 : $"{RecentInboundPacketCount} captured server opcode 371 packet(s)";
             string guidance = DescribeSessionControlGuidance();
-            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}. {LastStatus} {guidance}";
+            string verification = DescribeLiveOwnershipVerificationStatus(
+                HasConnectedSession,
+                HasPassiveEstablishedSocketPair,
+                IsRunning,
+                _hasObservedLiveOutboundOpcode160,
+                _hasObservedLiveInboundOpcode371);
+            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}. {verification} {LastStatus} {guidance}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -736,6 +744,7 @@ namespace HaCreator.MapSimulator.Managers
                 if (TryBuildInboundTrace(raw, $"official-session:{pair.RemoteEndpoint}", out InboundPacketTrace inboundTrace))
                 {
                     RecordInboundTrace(inboundTrace);
+                    _hasObservedLiveInboundOpcode371 = true;
                 }
 
                 _pendingMessages.Enqueue(message);
@@ -762,6 +771,7 @@ namespace HaCreator.MapSimulator.Managers
                 if (TryBuildOutboundTrace(raw, $"official-session:{pair.ClientEndpoint}", out OutboundPacketTrace trace))
                 {
                     RecordOutboundTrace(trace);
+                    _hasObservedLiveOutboundOpcode160 = true;
                     ForwardedOutboundCount++;
                     LastStatus = $"Forwarded live Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)trace.RequestType} from {pair.ClientEndpoint}.";
                 }
@@ -970,7 +980,49 @@ namespace HaCreator.MapSimulator.Managers
                 QueuedCount = 0;
                 _recentOutboundPackets.Clear();
                 _recentInboundPackets.Clear();
+                _hasObservedLiveOutboundOpcode160 = false;
+                _hasObservedLiveInboundOpcode371 = false;
             }
+        }
+
+        internal static string DescribeLiveOwnershipVerificationStatus(
+            bool hasConnectedSession,
+            bool hasPassiveEstablishedSocketPair,
+            bool isRunning,
+            bool hasObservedLiveOutboundOpcode160,
+            bool hasObservedLiveInboundOpcode371)
+        {
+            if (hasObservedLiveOutboundOpcode160 && hasObservedLiveInboundOpcode371)
+            {
+                return $"Live ownership verification complete: captured proxied Maple opcode {RockPaperScissorsField.ClientOpcode} outbound plus opcode {RockPaperScissorsField.OwnerOpcode} inbound.";
+            }
+
+            if (hasPassiveEstablishedSocketPair && !isRunning)
+            {
+                return $"Live ownership verification pending reconnect: passive attach cannot capture opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} after handshake.";
+            }
+
+            if (isRunning && !hasConnectedSession)
+            {
+                return $"Live ownership verification pending reconnect: waiting for Maple to reconnect through localhost before opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} capture can start.";
+            }
+
+            if (hasConnectedSession)
+            {
+                if (!hasObservedLiveOutboundOpcode160 && !hasObservedLiveInboundOpcode371)
+                {
+                    return $"Live ownership verification in progress: waiting for both proxied opcode {RockPaperScissorsField.ClientOpcode} outbound and opcode {RockPaperScissorsField.OwnerOpcode} inbound.";
+                }
+
+                if (!hasObservedLiveOutboundOpcode160)
+                {
+                    return $"Live ownership verification in progress: opcode {RockPaperScissorsField.OwnerOpcode} inbound captured, waiting for proxied opcode {RockPaperScissorsField.ClientOpcode} outbound.";
+                }
+
+                return $"Live ownership verification in progress: opcode {RockPaperScissorsField.ClientOpcode} outbound captured, waiting for proxied opcode {RockPaperScissorsField.OwnerOpcode} inbound.";
+            }
+
+            return $"Live ownership verification idle: start an RPS session bridge and capture opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} traffic.";
         }
 
         internal static bool TryBuildInboundTrace(byte[] rawPacket, string source, out InboundPacketTrace trace)

@@ -1020,6 +1020,8 @@ namespace HaCreator.MapSimulator.UI
             _mesoEntryMaxValue = maxValue;
             _mesoEntryText = isMesoTransfer
                 ? maxValue.ToString(CultureInfo.InvariantCulture)
+                : isPutItemCount
+                    ? maxValue.ToString(CultureInfo.InvariantCulture)
                 : IsNumericEntryMode(mode)
                     ? "0"
                     : string.Empty;
@@ -1036,7 +1038,7 @@ namespace HaCreator.MapSimulator.UI
                 MesoEntryMode.VerifySecondaryPassword => "Enter storage passcode",
                 _ => string.Empty
             };
-            _mesoEntryReplaceOnDigit = true;
+            _mesoEntryReplaceOnDigit = !isPutItemCount;
             _secondaryPasswordConfirmationText ??= string.Empty;
             _softKeyboardActive = true;
             ClearCompositionText();

@@ -189,6 +189,7 @@ namespace HaCreator.MapSimulator.Effects
         private readonly Dictionary<string, WeddingRemoteParticipant> _audienceActors = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, string> _audienceActorNamesById = new();
         private readonly Dictionary<int, List<PendingWeddingRemoteParticipantOperation>> _pendingRemoteParticipantOperationsByCharacterId = new();
+        private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<RemoteRelationshipRecordDispatchKey, int>> _relationshipRecordOwnerByDispatchKey = new();
         private readonly Queue<int> _pendingExternalRemoteActorLoads = new();
         private readonly HashSet<int> _pendingExternalRemoteActorLoadIds = new();
         private readonly HashSet<int> _loadedExternalRemoteActorIds = new();
@@ -344,6 +345,7 @@ namespace HaCreator.MapSimulator.Effects
             _audienceActors.Clear();
             _audienceActorNamesById.Clear();
             _pendingRemoteParticipantOperationsByCharacterId.Clear();
+            ClearRelationshipRecordDispatchTables();
             _pendingExternalRemoteActorLoads.Clear();
             _pendingExternalRemoteActorLoadIds.Clear();
             _loadedExternalRemoteActorIds.Clear();
@@ -416,6 +418,7 @@ namespace HaCreator.MapSimulator.Effects
             _audienceActors.Clear();
             _audienceActorNamesById.Clear();
             _pendingRemoteParticipantOperationsByCharacterId.Clear();
+            ClearRelationshipRecordDispatchTables();
             _pendingExternalRemoteActorLoads.Clear();
             _pendingExternalRemoteActorLoadIds.Clear();
             _loadedExternalRemoteActorIds.Clear();
@@ -1103,6 +1106,7 @@ namespace HaCreator.MapSimulator.Effects
                 _audienceActorNamesById.Remove(participant.CharacterId);
                 RemoveExternalRemoteActorTracking(participant.CharacterId);
                 _pendingRemoteParticipantOperationsByCharacterId.Remove(participant.CharacterId);
+                RemoveRelationshipRecordDispatchKeysForOwnerAcrossTypes(participant.CharacterId);
             }
 
             return _audienceActors.Remove(normalized);
@@ -1114,6 +1118,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 RemoveExternalRemoteActorTracking(characterId);
                 _pendingRemoteParticipantOperationsByCharacterId.Remove(characterId);
+                RemoveRelationshipRecordDispatchKeysForOwnerAcrossTypes(characterId);
             }
 
             _audienceActors.Clear();
@@ -1860,6 +1865,12 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            RegisterRelationshipRecordDispatchKeys(
+                packet.RelationshipType,
+                packet.DispatchKey,
+                packet.RelationshipRecord,
+                characterId);
+
             if (!TryResolveParticipantForTemporaryStats(characterId, out WeddingRemoteParticipant participant, out _))
             {
                 QueuePendingRemoteParticipantOperation(
@@ -1892,6 +1903,37 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            if (TryResolveRelationshipRecordOwnerFromDispatchKey(packet.RelationshipType, packet.DispatchKey, out int mappedOwnerCharacterId))
+            {
+                if (!TryResolveParticipantForTemporaryStats(mappedOwnerCharacterId, out WeddingRemoteParticipant mappedParticipant, out _))
+                {
+                    QueuePendingRemoteParticipantOperation(
+                        mappedOwnerCharacterId,
+                        new PendingWeddingRemoteParticipantOperation(
+                            PendingWeddingRemoteParticipantOperationType.RelationshipRecordRemove,
+                            default,
+                            0,
+                            Array.Empty<int>(),
+                            null,
+                            default,
+                            0,
+                            0,
+                            0,
+                            0,
+                            packet.RelationshipType,
+                            default,
+                            mappedOwnerCharacterId,
+                            packet.ItemSerial));
+                    return true;
+                }
+
+                if (ApplyRelationshipRecordRemove(mappedParticipant, packet.RelationshipType, mappedOwnerCharacterId, packet.ItemSerial))
+                {
+                    RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, mappedOwnerCharacterId);
+                    return true;
+                }
+            }
+
             if (packet.CharacterId.HasValue
                 && packet.CharacterId.Value > 0
                 && !TryResolveParticipantForTemporaryStats(packet.CharacterId.Value, out _, out _))
@@ -1921,6 +1963,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 if (ApplyRelationshipRecordRemove(participant, packet.RelationshipType, packet.CharacterId, packet.ItemSerial))
                 {
+                    RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, participant.CharacterId);
                     affectedCount++;
                 }
             }
@@ -2074,6 +2117,142 @@ namespace HaCreator.MapSimulator.Effects
                 RemoteRelationshipOverlayType.NewYearCard => state.NewYearCardRecord,
                 _ => default
             };
+        }
+
+        private void RegisterRelationshipRecordDispatchKeys(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteRelationshipRecordDispatchKey primaryDispatchKey,
+            RemoteUserRelationshipRecord relationshipRecord,
+            int ownerCharacterId)
+        {
+            if (ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
+            RegisterRelationshipRecordDispatchKey(relationshipType, primaryDispatchKey, ownerCharacterId);
+            if (relationshipType is RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+            {
+                RegisterRelationshipRecordDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        relationshipRecord.ItemSerial,
+                        CharacterId: null),
+                    ownerCharacterId);
+                RegisterRelationshipRecordDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        relationshipRecord.PairItemSerial,
+                        CharacterId: null),
+                    ownerCharacterId);
+                return;
+            }
+
+            if (relationshipType == RemoteRelationshipOverlayType.NewYearCard)
+            {
+                RegisterRelationshipRecordDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.NewYearCardSerial,
+                        relationshipRecord.ItemSerial,
+                        CharacterId: null),
+                    ownerCharacterId);
+                return;
+            }
+
+            if (relationshipType == RemoteRelationshipOverlayType.Marriage)
+            {
+                RegisterRelationshipRecordDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.CharacterId,
+                        Serial: null,
+                        ownerCharacterId),
+                    ownerCharacterId);
+            }
+        }
+
+        private void RegisterRelationshipRecordDispatchKey(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteRelationshipRecordDispatchKey dispatchKey,
+            int ownerCharacterId)
+        {
+            if (!dispatchKey.HasValue || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            GetRelationshipRecordDispatchOwnerTable(relationshipType)[dispatchKey] = ownerCharacterId;
+        }
+
+        private bool TryResolveRelationshipRecordOwnerFromDispatchKey(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteRelationshipRecordDispatchKey dispatchKey,
+            out int ownerCharacterId)
+        {
+            ownerCharacterId = 0;
+            if (!dispatchKey.HasValue)
+            {
+                return false;
+            }
+
+            return GetRelationshipRecordDispatchOwnerTable(relationshipType).TryGetValue(dispatchKey, out ownerCharacterId)
+                && ownerCharacterId > 0;
+        }
+
+        private Dictionary<RemoteRelationshipRecordDispatchKey, int> GetRelationshipRecordDispatchOwnerTable(
+            RemoteRelationshipOverlayType relationshipType)
+        {
+            if (!_relationshipRecordOwnerByDispatchKey.TryGetValue(relationshipType, out Dictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable))
+            {
+                dispatchTable = new Dictionary<RemoteRelationshipRecordDispatchKey, int>();
+                _relationshipRecordOwnerByDispatchKey[relationshipType] = dispatchTable;
+            }
+
+            return dispatchTable;
+        }
+
+        private void RemoveRelationshipRecordDispatchKeysForOwner(
+            RemoteRelationshipOverlayType relationshipType,
+            int ownerCharacterId)
+        {
+            if (ownerCharacterId <= 0
+                || !_relationshipRecordOwnerByDispatchKey.TryGetValue(relationshipType, out Dictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable))
+            {
+                return;
+            }
+
+            foreach (RemoteRelationshipRecordDispatchKey dispatchKey in dispatchTable
+                .Where(entry => entry.Value == ownerCharacterId)
+                .Select(entry => entry.Key)
+                .ToArray())
+            {
+                dispatchTable.Remove(dispatchKey);
+            }
+        }
+
+        private void RemoveRelationshipRecordDispatchKeysForOwnerAcrossTypes(int ownerCharacterId)
+        {
+            if (ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            foreach (RemoteRelationshipOverlayType relationshipType in _relationshipRecordOwnerByDispatchKey.Keys.ToArray())
+            {
+                RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
+            }
+        }
+
+        private void ClearRelationshipRecordDispatchTables()
+        {
+            foreach (Dictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable in _relationshipRecordOwnerByDispatchKey.Values)
+            {
+                dispatchTable.Clear();
+            }
         }
 
         private static void ApplyParticipantTemporaryStatPresentation(WeddingRemoteParticipant participant)
@@ -2457,11 +2636,14 @@ namespace HaCreator.MapSimulator.Effects
                             operation.RelationshipRecord);
                         break;
                     case PendingWeddingRemoteParticipantOperationType.RelationshipRecordRemove:
-                        ApplyRelationshipRecordRemove(
+                        if (ApplyRelationshipRecordRemove(
                             participant,
                             operation.RelationshipType,
                             operation.RelationshipRemoveCharacterId,
-                            operation.RelationshipRemoveItemSerial);
+                            operation.RelationshipRemoveItemSerial))
+                        {
+                            RemoveRelationshipRecordDispatchKeysForOwner(operation.RelationshipType, participant.CharacterId);
+                        }
                         break;
                 }
             }
@@ -4725,6 +4907,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _participantActors.Remove(characterId);
                 _pendingRemoteParticipantOperationsByCharacterId.Remove(characterId);
+                RemoveRelationshipRecordDispatchKeysForOwnerAcrossTypes(characterId);
                 return;
             }
 
@@ -4733,6 +4916,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _participantActors.Remove(characterId);
                 _pendingRemoteParticipantOperationsByCharacterId.Remove(characterId);
+                RemoveRelationshipRecordDispatchKeysForOwnerAcrossTypes(characterId);
                 return;
             }
 
@@ -4818,6 +5002,8 @@ namespace HaCreator.MapSimulator.Effects
             _participantActors.Clear();
             _audienceActors.Clear();
             _audienceActorNamesById.Clear();
+            _pendingRemoteParticipantOperationsByCharacterId.Clear();
+            ClearRelationshipRecordDispatchTables();
             _pendingExternalRemoteActorLoads.Clear();
             _pendingExternalRemoteActorLoadIds.Clear();
             _loadedExternalRemoteActorIds.Clear();

@@ -3013,7 +3013,7 @@ namespace HaCreator.MapSimulator.Pools
                     static candidate => candidate.ContainsCurrentLocalUserPosition,
                     candidate => candidate.VisualState == initialState))
             {
-                if (TrySelectUniqueStrongestStateSignalCandidate(candidates, initialState, out index))
+                if (TrySelectUniqueStrongestStateSignalCandidate(scope, initialState, out index))
                 {
                     selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
                     return true;
@@ -3931,6 +3931,8 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
+            ApplyPacketLoadedHitLayerOwnership(data, sourceState);
+
             string descriptor = BuildReactorHitSoundDescriptor(reactor, sourceState);
             if (!string.IsNullOrWhiteSpace(descriptor))
             {
@@ -4089,6 +4091,31 @@ namespace HaCreator.MapSimulator.Pools
 
             data.PacketAnimationSourceState = visualState;
             data.PacketHitAnimationState = -1;
+        }
+
+        internal static void ApplyPacketLoadedHitLayerOwnership(ReactorRuntimeData data, int loadedHitSourceState)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            if (loadedHitSourceState < 0)
+            {
+                data.PacketHitAnimationState = -1;
+                return;
+            }
+
+            if (data.PacketAnimationSourceState < 0)
+            {
+                data.PacketAnimationSourceState = loadedHitSourceState;
+                data.PacketHitAnimationState = -1;
+                return;
+            }
+
+            data.PacketHitAnimationState = loadedHitSourceState != data.PacketAnimationSourceState
+                ? loadedHitSourceState
+                : -1;
         }
 
         internal static void ClearPacketVisualOwnershipState(ReactorRuntimeData data)

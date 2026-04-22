@@ -485,7 +485,7 @@ namespace HaCreator.MapSimulator
                 noticeWindow.Hide();
             }
 
-            if (releaseCombo)
+            if (releaseCombo && _packetOwnedAntiMacroComboHeld)
             {
                 SetPacketOwnedAntiMacroComboHold(false);
             }
@@ -709,6 +709,15 @@ namespace HaCreator.MapSimulator
                 && hasPendingAuthoritativeSubmitTransport;
         }
 
+        internal static bool ShouldExpirePacketOwnedAntiMacroAwaitingResult(int remainingMs)
+        {
+            // `CWvsContext::OnAntiMacroResult` writes m_tRemainAntiMacroQuestion from
+            // owner timeout deltas and clears challenge ownership once the timer has
+            // elapsed. Keep simulator-side awaiting state tied to the same remaining
+            // budget instead of persisting indefinitely.
+            return remainingMs <= 0;
+        }
+
         internal static bool HasPendingAuthoritativeSubmitTransportState(
             bool usesOfficialSessionBridgeTransport,
             bool hasSubmittedRawPacket,
@@ -766,6 +775,39 @@ namespace HaCreator.MapSimulator
                 hasSubmittedRawPacket,
                 bridgeHasQueuedPacket,
                 bridgeHasSentPacket);
+        }
+
+        private void UpdatePacketOwnedAntiMacroAwaitingResultState(int currentTickCount)
+        {
+            if (!_packetOwnedAntiMacroAwaitingResult)
+            {
+                return;
+            }
+
+            _packetOwnedAntiMacroCurrentRemainingMs = ResolvePacketOwnedAntiMacroCurrentRemainingMs(currentTickCount);
+            if (!ShouldExpirePacketOwnedAntiMacroAwaitingResult(_packetOwnedAntiMacroCurrentRemainingMs))
+            {
+                return;
+            }
+
+            bool hadPendingAuthoritativeSubmit = HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport();
+            _packetOwnedAntiMacroAwaitingResult = false;
+            _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = 0;
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+            _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
+            _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+
+            if (_packetOwnedAntiMacroComboHeld)
+            {
+                SetPacketOwnedAntiMacroComboHold(false);
+            }
+
+            _lastPacketOwnedAntiMacroSummary = hadPendingAuthoritativeSubmit
+                ? "Anti-macro submit wait expired at timeout before an authoritative bridge-correlated result arrived."
+                : "Anti-macro submit wait expired at timeout.";
         }
 
         private bool HasPacketOwnedAntiMacroAuthoritativeResultEvidence(string resultSource, IReadOnlyList<byte> payload)

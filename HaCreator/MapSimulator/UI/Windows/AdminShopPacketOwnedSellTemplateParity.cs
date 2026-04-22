@@ -213,11 +213,16 @@ namespace HaCreator.MapSimulator.UI
         }
 
         internal static int ComputePendingWishlistRegisterEntryIdentityScore(
+            int pendingSerialNumber,
             int pendingItemId,
             string pendingTitle,
+            int candidateSerialNumber,
             int candidateItemId,
             string candidateTitle)
         {
+            bool serialMatches = pendingSerialNumber > 0
+                && candidateSerialNumber > 0
+                && pendingSerialNumber == candidateSerialNumber;
             bool itemMatches = pendingItemId > 0
                 && candidateItemId > 0
                 && pendingItemId == candidateItemId;
@@ -227,22 +232,24 @@ namespace HaCreator.MapSimulator.UI
                     pendingTitle.Trim(),
                     candidateTitle.Trim(),
                     StringComparison.OrdinalIgnoreCase);
-            if (itemMatches && titleMatches)
+            int score = 0;
+            if (serialMatches)
             {
-                return 3;
+                // Prefer exact packet/catalog identity when SN is available.
+                score += 4;
             }
 
             if (itemMatches)
             {
-                return 2;
+                score += 2;
             }
 
             if (titleMatches)
             {
-                return 1;
+                score += 1;
             }
 
-            return 0;
+            return score;
         }
 
         private static bool IsPreferredCandidate(

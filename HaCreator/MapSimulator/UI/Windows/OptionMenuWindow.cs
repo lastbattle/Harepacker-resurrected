@@ -1109,7 +1109,7 @@ namespace HaCreator.MapSimulator.UI
             _joypadRows.Add(new JoypadRow(
                 null,
                 "Default",
-                "Mirrors CUIJoyPad button 1009 / StringPool[0x180F]; confirm stages the recovered eleven-combo default assignment instead of applying immediately.",
+                "Mirrors CUIJoyPad button 1009 / StringPool[0x180F]; confirm stages the recovered eleven-combo default assignment on the currently selected pad slot instead of applying immediately.",
                 session => DescribeResetProfileState(session),
                 (session, direction) =>
                 {
@@ -2441,24 +2441,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            session.GamepadIndex = PlayerIndex.One;
-            session.LeftStickDeadZoneX = 0.20f;
-            session.LeftStickDeadZoneY = 0.20f;
-            session.LeftTriggerThreshold = 0.20f;
-            session.RightTriggerThreshold = 0.20f;
-            session.LeftStickInvertX = false;
-            session.LeftStickInvertY = false;
-            session.ResponseCurve = PlayerInput.GamepadAxisResponseCurve.Linear;
-
-            session.Bindings.Clear();
-            foreach ((InputAction action, Keys primary, Keys secondary, Buttons gamepad) in PlayerInput.GetDefaultBindings())
-            {
-                if (Array.IndexOf(JoypadBindingActions, action) >= 0)
-                {
-                    session.Bindings[action] = gamepad;
-                }
-            }
-
+            // Client evidence: CUIJoyPad::SetDefault (0x969540) updates only the 11 combo controls
+            // and keeps using the currently selected joypad slot.
             ApplyClientJoypadDefaultCombos(session);
         }
 
@@ -2535,7 +2519,7 @@ namespace HaCreator.MapSimulator.UI
             _selectedJoypadActionButton = JoypadActionButtonKind.Ok;
             _statusMessage = direction < 0
                 ? "Restore the live joypad profile captured when this owner opened? Press Enter, Start, or BtOK to confirm, or Escape / Back to keep the staged profile."
-                : "Stage the default MapleStory-style joypad profile? Press Enter, Start, or BtOK to confirm, or Escape / Back to keep the current staged profile.";
+                : "Stage the recovered CUIJoyPad default combo assignment on the current controller slot? Press Enter, Start, or BtOK to confirm, or Escape / Back to keep the current staged profile.";
         }
 
         private void ConfirmJoypadPendingAction()
@@ -2549,7 +2533,7 @@ namespace HaCreator.MapSimulator.UI
                 case JoypadPendingConfirmAction.ResetDefaults:
                     ResetJoypadSession(_stagedJoypadSession);
                     ResetJoypadCaptureState(_stagedJoypadSession);
-                    _statusMessage = "Default MapleStory-style joypad profile staged. Press OK to commit or BtCancle to restore the live profile.";
+                    _statusMessage = "Default CUIJoyPad combo assignment staged on the selected controller slot. Press OK to commit or BtCancle to restore the live profile.";
                     return;
                 case JoypadPendingConfirmAction.RestoreLiveProfile:
                     if (_originalJoypadSession != null && _stagedJoypadSession != null)

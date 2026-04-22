@@ -1241,8 +1241,8 @@ namespace HaCreator.MapSimulator
             }
 
             return new VegaEquippedItemTokenResolution(
-                BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition, equippedPart),
-                VegaEquippedItemTokenSource.Synthetic);
+                0,
+                VegaEquippedItemTokenSource.None);
         }
 
         private static int BuildVegaEquippedItemToken(
@@ -1409,12 +1409,15 @@ namespace HaCreator.MapSimulator
             int itemId,
             InventorySlotData slot)
         {
+            _ = inventoryType;
+            _ = slotIndex;
+            _ = itemId;
             if (TryResolveClientAuthoredVegaInventoryItemToken(slot, out int itemToken))
             {
                 return itemToken;
             }
 
-            return BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
+            return 0;
         }
 
         private static int BuildVegaModifierItemToken(

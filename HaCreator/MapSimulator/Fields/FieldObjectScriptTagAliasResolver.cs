@@ -45,7 +45,11 @@ namespace HaCreator.MapSimulator.Fields
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private static readonly Regex FunctionBodyReturnBracketMemberAliasPattern = new(
-            @"\breturn\s+(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\[(?<expr>[^\]]+)\]",
+            @"\breturn\s+(?<owner>this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\[(?<expr>[^\]]+)\]",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex FunctionBodyReturnAliasVariablePattern = new(
+            @"\breturn\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\b",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private static readonly Regex ObjectLiteralAssignmentPattern = new(
@@ -380,7 +384,10 @@ namespace HaCreator.MapSimulator.Fields
 
             if (IsFunctionExpressionText(normalizedValue))
             {
-                string functionAlias = ResolveFunctionExpressionAliasCandidate(normalizedValue, localAliasMap);
+                string functionAlias = ResolveFunctionExpressionAliasCandidate(
+                    normalizedValue,
+                    localAliasMap,
+                    objectMemberAliasMap);
                 if (!string.IsNullOrWhiteSpace(functionAlias))
                 {
                     return functionAlias;
@@ -469,14 +476,19 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string ResolveFunctionExpressionAliasCandidate(
             string value,
-            IReadOnlyDictionary<string, string> localAliasMap)
+            IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
                 return string.Empty;
             }
 
-            if (TryResolveFunctionBodyMemberInvocationAlias(value, localAliasMap, out string memberAlias))
+            if (TryResolveFunctionBodyMemberInvocationAlias(
+                    value,
+                    localAliasMap,
+                    objectMemberAliasMap,
+                    out string memberAlias))
             {
                 return memberAlias;
             }
@@ -522,6 +534,7 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryResolveFunctionBodyMemberInvocationAlias(
             string value,
             IReadOnlyDictionary<string, string> localAliasMap,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
             out string aliasName)
         {
             aliasName = string.Empty;
@@ -592,14 +605,51 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach (Match match in FunctionBodyReturnBracketMemberAliasPattern.Matches(value))
             {
+                string ownerName = NormalizeFunctionAliasArgument(match.Groups["owner"]?.Value).TrimEnd(';');
                 string expression = match.Groups["expr"]?.Value;
-                if (!TryResolveBracketIndexKey(expression, localAliasMap, out string candidateAliasName)
-                    || !IsPotentialFunctionAliasName(candidateAliasName))
+                if (!TryResolveBracketIndexKey(expression, localAliasMap, out string candidateAliasName))
                 {
                     continue;
                 }
 
-                aliasName = candidateAliasName;
+                if (TryResolveObjectMemberAlias(
+                        ownerName,
+                        candidateAliasName,
+                        objectMemberAliasMap,
+                        out string objectMemberAlias))
+                {
+                    aliasName = objectMemberAlias;
+                    return true;
+                }
+
+                if (IsPotentialFunctionAliasName(candidateAliasName))
+                {
+                    aliasName = candidateAliasName;
+                    return true;
+                }
+            }
+
+            if (localAliasMap == null || localAliasMap.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (Match match in FunctionBodyReturnAliasVariablePattern.Matches(value))
+            {
+                string variableName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value).TrimEnd(';');
+                if (string.IsNullOrWhiteSpace(variableName)
+                    || !localAliasMap.TryGetValue(variableName, out string mappedAlias))
+                {
+                    continue;
+                }
+
+                string normalizedMappedAlias = NormalizeFunctionAliasArgument(mappedAlias).TrimEnd(';');
+                if (!IsPotentialFunctionAliasName(normalizedMappedAlias))
+                {
+                    continue;
+                }
+
+                aliasName = normalizedMappedAlias;
                 return true;
             }
 
@@ -1890,6 +1940,35 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string normalizedAlias = NormalizeFunctionAliasArgument(resolvedAlias).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(normalizedAlias))
+            {
+                return false;
+            }
+
+            aliasName = normalizedAlias;
+            return true;
+        }
+
+        private static bool TryResolveObjectMemberAlias(
+            string objectName,
+            string memberKey,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            out string aliasName)
+        {
+            aliasName = string.Empty;
+            string normalizedObjectName = NormalizeFunctionAliasArgument(objectName).TrimEnd(';');
+            string normalizedMemberKey = NormalizeFunctionAliasArgument(memberKey).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(normalizedObjectName)
+                || string.IsNullOrWhiteSpace(normalizedMemberKey)
+                || objectMemberAliasMap == null
+                || !objectMemberAliasMap.TryGetValue(normalizedObjectName, out IReadOnlyDictionary<string, string> memberAliasMap)
+                || memberAliasMap == null
+                || !memberAliasMap.TryGetValue(normalizedMemberKey, out string mappedAlias))
+            {
+                return false;
+            }
+
+            string normalizedAlias = NormalizeFunctionAliasArgument(mappedAlias).TrimEnd(';');
             if (!IsPotentialFunctionAliasName(normalizedAlias))
             {
                 return false;

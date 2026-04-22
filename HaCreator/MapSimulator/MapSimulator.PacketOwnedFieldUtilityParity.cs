@@ -612,9 +612,10 @@ namespace HaCreator.MapSimulator
                 queuedViaOutbox,
                 beforeDispatchCounters.HasBridgeTransport,
                 beforeDispatchCounters.HasOutboxTransport);
+            string payloadShapeSummary = DescribePacketOwnedFootholdResponsePayloadShapeForPacketParity(opcode, payload);
             return string.IsNullOrWhiteSpace(baseSummary)
-                ? traceSummary
-                : $"{baseSummary} {traceSummary}";
+                ? $"{traceSummary} {payloadShapeSummary}"
+                : $"{baseSummary} {traceSummary} {payloadShapeSummary}";
         }
 
         internal static string DescribePacketOwnedFootholdResponseTraceEvidenceForPacketParity(
@@ -654,6 +655,40 @@ namespace HaCreator.MapSimulator
             return $"Transport-trace evidence: opcode {opcode} was prepared but was not observed in live send or deferred queue histories.";
         }
 
+        internal static string DescribePacketOwnedFootholdResponsePayloadShapeForPacketParity(int opcode, IReadOnlyList<byte> payload)
+        {
+            const int tupleStrideBytes = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(byte) + sizeof(byte);
+            int payloadLength = payload?.Count ?? 0;
+            if (payloadLength == 0)
+            {
+                return $"Payload-shape evidence: opcode {opcode} payload is empty (0 foothold tuples).";
+            }
+
+            if (payloadLength % tupleStrideBytes != 0)
+            {
+                return $"Payload-shape evidence: opcode {opcode} payload length {payloadLength} is not aligned to the {tupleStrideBytes}-byte foothold tuple stride (state, curX, curY, reverseV, reverseH).";
+            }
+
+            int tupleCount = payloadLength / tupleStrideBytes;
+            int previewCount = Math.Min(tupleCount, 3);
+            List<string> tuplePreview = new(previewCount);
+            for (int i = 0; i < previewCount; i++)
+            {
+                int offset = i * tupleStrideBytes;
+                int state = ReadLittleEndianInt32(payload, offset + 0);
+                int currentX = ReadLittleEndianInt32(payload, offset + sizeof(int));
+                int currentY = ReadLittleEndianInt32(payload, offset + sizeof(int) + sizeof(int));
+                byte reverseV = payload[offset + sizeof(int) + sizeof(int) + sizeof(int)];
+                byte reverseH = payload[offset + sizeof(int) + sizeof(int) + sizeof(int) + sizeof(byte)];
+                tuplePreview.Add($"#{i}(state={state},curX={currentX},curY={currentY},revV={reverseV},revH={reverseH})");
+            }
+
+            string previewSuffix = string.Join("; ", tuplePreview);
+            return tupleCount > previewCount
+                ? $"Payload-shape evidence: opcode {opcode} payload encodes {tupleCount} foothold tuples (preview: {previewSuffix}; +{tupleCount - previewCount} more)."
+                : $"Payload-shape evidence: opcode {opcode} payload encodes {tupleCount} foothold tuples (preview: {previewSuffix}).";
+        }
+
         private string BuildPacketOwnedFootholdTraceStatus()
         {
             if (_packetFieldUtilityFootholdLastResponseOpcode < 0 || _packetFieldUtilityFootholdLastResponsePayload == null)
@@ -674,7 +709,7 @@ namespace HaCreator.MapSimulator
                 && _localUtilityOfficialSessionBridge.HasQueuedOutboundPacket(_packetFieldUtilityFootholdLastResponseOpcode, rawPacket);
             bool queuedViaOutbox = hasOutboxTransport
                 && _localUtilityPacketOutbox.HasQueuedOutboundPacket(_packetFieldUtilityFootholdLastResponseOpcode, rawPacket);
-            return DescribePacketOwnedFootholdResponseTraceEvidenceForPacketParity(
+            string traceSummary = DescribePacketOwnedFootholdResponseTraceEvidenceForPacketParity(
                 _packetFieldUtilityFootholdLastResponseOpcode,
                 dispatchedViaBridge,
                 dispatchedViaOutbox,
@@ -682,6 +717,18 @@ namespace HaCreator.MapSimulator
                 queuedViaOutbox,
                 hasBridgeTransport,
                 hasOutboxTransport);
+            string payloadShapeSummary = DescribePacketOwnedFootholdResponsePayloadShapeForPacketParity(
+                _packetFieldUtilityFootholdLastResponseOpcode,
+                _packetFieldUtilityFootholdLastResponsePayload);
+            return $"{traceSummary} {payloadShapeSummary}";
+        }
+
+        private static int ReadLittleEndianInt32(IReadOnlyList<byte> payload, int offset)
+        {
+            return payload[offset]
+                | (payload[offset + 1] << 8)
+                | (payload[offset + 2] << 16)
+                | (payload[offset + 3] << 24);
         }
 
         private static byte[] BuildPacketOwnedLocalUtilityRawPacket(int opcode, IReadOnlyList<byte> payload)

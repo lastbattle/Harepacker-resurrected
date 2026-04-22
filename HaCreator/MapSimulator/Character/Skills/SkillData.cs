@@ -1214,7 +1214,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool HideAvatarEffectOnLadderOrRope { get; set; }
         public int SummonMoveAbility { get; set; }
         public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
-        public float SummonSpawnDistanceX { get; set; } = 50f;
+        public int SummonSpawnDistanceX { get; set; } = 50;
         public int SummonAttackIntervalMs { get; set; }
         public int SummonAttackCountOverride { get; set; }
         public int SummonMobCountOverride { get; set; }

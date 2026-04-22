@@ -346,8 +346,10 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0646] = "Win",
             [0x0647] = "Loose",
             [0x0648] = "Timer",
+            [0x0649] = "Ready",
             [0x064B] = "Mushroom",
             [0x064C] = "Slime",
+            [0x08C4] = "Sound/MiniGame.img/",
             // The generated v95 string-pool table already carries the Snowball notice ids,
             // but these three entries arrive with `%2C`-escaped commas. Keep the
             // client-owned literals explicit here so `CField_SnowBall::OnSnowBallMsg`
@@ -414,10 +416,15 @@ namespace HaCreator.MapSimulator.Interaction
             // HUD, timerboard, key animation, gauge, and result-owner surfaces stay on the
             // client-backed resource paths.
             [0x14EC] = "killing/clear",
-            // Recovered from MapleStory.exe v95 `CWvsContext::OnSessionValue`. The cooldown
-            // animation-displayer owner branch compares this key before dispatching
-            // `CAnimationDisplayer::Effect_Cool`.
+            // Recovered from MapleStory.exe v95 `CWvsContext::OnSessionValue`. Keep the
+            // full Massacre session-value key block pinned because the generated table drifts
+            // in this range and these keys drive timerboard/gauge/context/bonus ownership.
             [0x14F1] = "massacre_cool",
+            [0x14F2] = "massacre_hit",
+            [0x14F3] = "massacre_laststage",
+            [0x14F4] = "massacre_miss",
+            [0x14F5] = "massacre_party",
+            [0x14F6] = "massacre_skill",
             [0x14EE] = "Map/Obj/etc.img/killing/backgrnd",
             [0x1510] = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/close",
             [0x1511] = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/ing",

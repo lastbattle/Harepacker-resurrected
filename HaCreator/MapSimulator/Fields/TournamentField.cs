@@ -76,7 +76,10 @@ namespace HaCreator.MapSimulator.Fields
         private bool _clientTournamentRegistrationContext;
         private readonly TournamentMatchTableDialogState _matchTableDialog = new();
         private int _ownedWrapperPacketCount;
+        private int _ownedStructuredPacketCount;
+        private int _ownedRawPacketCount;
         private readonly Queue<int> _ownedWrapperPacketTrail = new();
+        private readonly Queue<string> _ownedWrapperOwnerTrail = new();
         private int _forwardedRawPacketCount;
         private readonly Queue<int> _forwardedRawPacketTrail = new();
 
@@ -97,6 +100,8 @@ namespace HaCreator.MapSimulator.Fields
         public TournamentMatchTableDialogState MatchTableDialog => _matchTableDialog;
         public IReadOnlyList<string> PacketActionTrail => _packetActionTrail.ToArray();
         public int OwnedWrapperPacketCount => _ownedWrapperPacketCount;
+        public int OwnedStructuredPacketCount => _ownedStructuredPacketCount;
+        public int OwnedRawPacketCount => _ownedRawPacketCount;
         public int ForwardedRawPacketCount => _forwardedRawPacketCount;
 
         public void Configure(MapInfo mapInfo)
@@ -223,67 +228,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryApplyPacket(TournamentPacketType packetType, byte[] payload, int currentTimeMs, out string errorMessage)
         {
-            errorMessage = null;
-
-            if (!_isActive)
-            {
-                errorMessage = "Tournament runtime inactive.";
-                return false;
-            }
-
-            payload ??= Array.Empty<byte>();
-            _lastPacketType = (int)packetType;
-            _lastPayloadHex = Convert.ToHexString(payload);
-            RecordOwnedWrapperPacket((int)packetType);
-
-            try
-            {
-                using var stream = new MemoryStream(payload, writable: false);
-                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
-
-                switch (packetType)
-                {
-                    case TournamentPacketType.Tournament:
-                        ApplyTournamentNotice(reader, currentTimeMs);
-                        EnsurePacketConsumed(stream, "tournament");
-                        return true;
-
-                    case TournamentPacketType.MatchTable:
-                        ApplyMatchTable(payload, currentTimeMs);
-                        return true;
-
-                    case TournamentPacketType.SetPrize:
-                        ApplyPrize(reader, currentTimeMs);
-                        EnsurePacketConsumed(stream, "set-prize");
-                        return true;
-
-                    case TournamentPacketType.Uew:
-                        ApplyUew(reader, currentTimeMs);
-                        EnsurePacketConsumed(stream, "uew");
-                        return true;
-
-                    case TournamentPacketType.NoOp:
-                        SetStatus(
-                            "Tournament packet 378 reached the dedicated client wrapper and intentionally performed no local UI action.",
-                            currentTimeMs,
-                            Array.Empty<int>(),
-                            "noop (378)");
-                        SetSessionPhase(
-                            TournamentSessionPhase.NoOp,
-                            "CField_Tournament::OnPacket consumed opcode 378 and intentionally performed no local action.");
-                        EnsurePacketConsumed(stream, "noop");
-                        return true;
-
-                    default:
-                        errorMessage = $"Unsupported Tournament packet type: {(int)packetType}";
-                        return false;
-                }
-            }
-            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is InvalidDataException)
-            {
-                errorMessage = ex.Message;
-                return false;
-            }
+            return TryApplyPacketCore(packetType, payload, currentTimeMs, isRawTransport: false, out errorMessage);
         }
 
         public bool TryApplyRawPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
@@ -310,7 +255,7 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
-            return TryApplyPacket((TournamentPacketType)packetType, payload, currentTimeMs, out errorMessage);
+            return TryApplyPacketCore((TournamentPacketType)packetType, payload, currentTimeMs, isRawTransport: true, out errorMessage);
         }
 
         public string DescribeStatus()
@@ -329,7 +274,7 @@ namespace HaCreator.MapSimulator.Fields
             string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
             string matchTableText = _matchTableDialog.DescribeStatus();
             string phaseText = BuildLifecycleStatusText(Environment.TickCount);
-            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | context={DescribeParticipationContext()} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()} | owned={_ownedWrapperPacketCount} | ownedTrail={BuildOwnedWrapperPacketTrailSummary()} | forwardedRaw={_forwardedRawPacketCount} | forwardedTrail={BuildForwardedRawPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
+            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | context={DescribeParticipationContext()} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()} | owned={_ownedWrapperPacketCount} | ownedPacket={_ownedStructuredPacketCount} | ownedRaw={_ownedRawPacketCount} | ownedTrail={BuildOwnedWrapperPacketTrailSummary()} | ownedOwnerTrail={BuildOwnedWrapperOwnerTrailSummary()} | forwardedRaw={_forwardedRawPacketCount} | forwardedTrail={BuildForwardedRawPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
         }
 
         public string DescribeMatchTableDialog()
@@ -381,7 +326,10 @@ namespace HaCreator.MapSimulator.Fields
             _clientTournamentRegistrationContext = true;
             _matchTableDialog.Reset();
             _ownedWrapperPacketCount = 0;
+            _ownedStructuredPacketCount = 0;
+            _ownedRawPacketCount = 0;
             _ownedWrapperPacketTrail.Clear();
+            _ownedWrapperOwnerTrail.Clear();
             _forwardedRawPacketCount = 0;
             _forwardedRawPacketTrail.Clear();
         }
@@ -708,13 +656,105 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private void RecordOwnedWrapperPacket(int packetType)
+        private bool TryApplyPacketCore(
+            TournamentPacketType packetType,
+            byte[] payload,
+            int currentTimeMs,
+            bool isRawTransport,
+            out string errorMessage)
+        {
+            errorMessage = null;
+
+            if (!_isActive)
+            {
+                errorMessage = "Tournament runtime inactive.";
+                return false;
+            }
+
+            payload ??= Array.Empty<byte>();
+            _lastPacketType = (int)packetType;
+            _lastPayloadHex = Convert.ToHexString(payload);
+
+            try
+            {
+                using var stream = new MemoryStream(payload, writable: false);
+                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
+
+                switch (packetType)
+                {
+                    case TournamentPacketType.Tournament:
+                        ApplyTournamentNotice(reader, currentTimeMs);
+                        EnsurePacketConsumed(stream, "tournament");
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnTournament");
+                        return true;
+
+                    case TournamentPacketType.MatchTable:
+                        ApplyMatchTable(payload, currentTimeMs);
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnTournamentMatchTable");
+                        return true;
+
+                    case TournamentPacketType.SetPrize:
+                        ApplyPrize(reader, currentTimeMs);
+                        EnsurePacketConsumed(stream, "set-prize");
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnTournamentSetPrize");
+                        return true;
+
+                    case TournamentPacketType.Uew:
+                        ApplyUew(reader, currentTimeMs);
+                        EnsurePacketConsumed(stream, "uew");
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnTournamentUEW");
+                        return true;
+
+                    case TournamentPacketType.NoOp:
+                        SetStatus(
+                            "Tournament packet 378 reached the dedicated client wrapper and intentionally performed no local UI action.",
+                            currentTimeMs,
+                            Array.Empty<int>(),
+                            "noop (378)");
+                        SetSessionPhase(
+                            TournamentSessionPhase.NoOp,
+                            "CField_Tournament::OnPacket consumed opcode 378 and intentionally performed no local action.");
+                        EnsurePacketConsumed(stream, "noop");
+                        RecordOwnedWrapperPacket((int)packetType, isRawTransport, "CField_Tournament::OnPacket(noop)");
+                        return true;
+
+                    default:
+                        errorMessage = $"Unsupported Tournament packet type: {(int)packetType}";
+                        return false;
+                }
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is InvalidDataException)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
+        private void RecordOwnedWrapperPacket(int packetType, bool isRawTransport, string ownerRoute)
         {
             _ownedWrapperPacketCount++;
+            if (isRawTransport)
+            {
+                _ownedRawPacketCount++;
+            }
+            else
+            {
+                _ownedStructuredPacketCount++;
+            }
             _ownedWrapperPacketTrail.Enqueue(packetType);
             while (_ownedWrapperPacketTrail.Count > OwnedWrapperPacketTrailCapacity)
             {
                 _ownedWrapperPacketTrail.Dequeue();
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerRoute))
+            {
+                string transport = isRawTransport ? "raw" : "packet";
+                _ownedWrapperOwnerTrail.Enqueue($"{transport}:{packetType}->{ownerRoute}");
+                while (_ownedWrapperOwnerTrail.Count > OwnedWrapperPacketTrailCapacity)
+                {
+                    _ownedWrapperOwnerTrail.Dequeue();
+                }
             }
         }
 
@@ -726,6 +766,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Join("->", _ownedWrapperPacketTrail.Select(id => id.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        private string BuildOwnedWrapperOwnerTrailSummary()
+        {
+            if (_ownedWrapperOwnerTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _ownedWrapperOwnerTrail.Select(entry => TrimForDisplay(entry, 52)));
         }
 
         private string BuildForwardedRawPacketTrailSummary()

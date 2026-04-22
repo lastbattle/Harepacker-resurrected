@@ -941,7 +941,10 @@ namespace HaCreator.MapSimulator.UI
                 if (hasLeftClause || hasRightClause)
                 {
                     rowBottom = Math.Max(leftBottom, rightBottom);
-                    rowTop = GetFollowingAnalyzedTextTop(top, rowBottom);
+                    // Compact split rows are synthetic subdivisions of one detail payload.
+                    // Keep them contiguous inside the same analyzer block instead of
+                    // injecting an extra +10 block carry between each split row.
+                    rowTop = rowBottom;
                 }
 
                 clauseIndex += 2;
@@ -1000,7 +1003,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     int rowBottom = Math.Max(leftBottom, rightBottom);
                     bottom = Math.Max(bottom, rowBottom);
-                    rowTop = GetFollowingAnalyzedTextTop(top, rowBottom);
+                    rowTop = rowBottom;
                 }
 
                 clauseIndex += 2;

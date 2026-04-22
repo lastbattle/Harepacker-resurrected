@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
+using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
@@ -80,6 +81,8 @@ namespace HaCreator.MapSimulator
                     SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs, stateIndex),
                 tag => TryGetDynamicObjectTagState(tag?.Trim()),
                 tag => TryGetDynamicObjectTagStateIndex(tag?.Trim()),
+                (name, stateIndex, currentTick) => TryApplyPacketOwnedNamedObjectState(name, stateIndex),
+                name => TryGetPacketOwnedNamedObjectStateIndex(name),
                 HandleFieldSpecificDataPacketHandoff,
                 out message);
             if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string fieldStatePortalImpactMessage))
@@ -91,6 +94,75 @@ namespace HaCreator.MapSimulator
             }
 
             return packetApplied;
+        }
+
+        private bool TryApplyPacketOwnedNamedObjectState(string objectName, int stateIndex)
+        {
+            if (stateIndex < 0 || string.IsNullOrWhiteSpace(objectName))
+            {
+                return false;
+            }
+
+            if (!_packetStageTransitionNamedObjects.TryGetValue(objectName.Trim(), out List<BaseDXDrawableItem> objects) ||
+                objects == null ||
+                objects.Count == 0 ||
+                stateIndex >= objects.Count)
+            {
+                return false;
+            }
+
+            bool applied = false;
+            for (int i = 0; i < objects.Count; i++)
+            {
+                BaseDXDrawableItem mapObject = objects[i];
+                if (mapObject == null)
+                {
+                    continue;
+                }
+
+                _packetStageTransitionObjectVisibility[mapObject] = i == stateIndex;
+                applied = true;
+            }
+
+            return applied;
+        }
+
+        private int? TryGetPacketOwnedNamedObjectStateIndex(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName) ||
+                !_packetStageTransitionNamedObjects.TryGetValue(objectName.Trim(), out List<BaseDXDrawableItem> objects) ||
+                objects == null ||
+                objects.Count == 0)
+            {
+                return null;
+            }
+
+            int? fallbackVisibleIndex = null;
+            for (int i = 0; i < objects.Count; i++)
+            {
+                BaseDXDrawableItem mapObject = objects[i];
+                if (mapObject == null)
+                {
+                    continue;
+                }
+
+                if (_packetStageTransitionObjectVisibility.TryGetValue(mapObject, out bool visible))
+                {
+                    if (visible)
+                    {
+                        return i;
+                    }
+
+                    continue;
+                }
+
+                if (!fallbackVisibleIndex.HasValue && mapObject.IsVisible)
+                {
+                    fallbackVisibleIndex = i;
+                }
+            }
+
+            return fallbackVisibleIndex;
         }
 
         private bool TryApplyClientOwnedSessionValuePacket(byte[] payload, int currentTick, out string message)

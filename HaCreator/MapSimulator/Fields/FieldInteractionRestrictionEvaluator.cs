@@ -278,6 +278,7 @@ namespace HaCreator.MapSimulator.Fields
                 MapSimulatorWindowNames.PersonalShop => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.PersonalShop),
                 MapSimulatorWindowNames.EntrustedShop => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.EntrustedShop),
                 MapSimulatorWindowNames.TradingRoom => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.TradingRoom),
+                MapSimulatorWindowNames.CashTradingRoom => GetSocialRoomRestrictionMessage(fieldLimit, mapInfo, SocialRoomKind.TradingRoom),
                 _ => null
             };
             if (!string.IsNullOrWhiteSpace(socialRoomRestrictionMessage))

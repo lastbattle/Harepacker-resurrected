@@ -783,14 +783,6 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (activeOwnerIds == null || activeOwnerIds.Count == 0)
-            {
-                _remoteAffectedAreaOwnerNames.Clear();
-                _remoteAffectedAreaBattlefieldOwnerTeams.Clear();
-                _remoteAffectedAreaMonsterCarnivalOwnerTeams.Clear();
-                return;
-            }
-
             var candidateOwnerIds = new System.Collections.Generic.HashSet<int>();
             foreach (int ownerId in _remoteAffectedAreaOwnerNames.Keys)
             {

@@ -710,10 +710,18 @@ namespace HaCreator.MapSimulator.Character
 
         internal static bool CanResolveMorphTemplate(int morphTemplateId)
         {
+            return CanResolveMorphTemplate(morphTemplateId, Array.Empty<string>());
+        }
+
+        internal static bool CanResolveMorphTemplate(int morphTemplateId, IReadOnlyList<string> requestedActionNames)
+        {
             if (morphTemplateId <= 0)
             {
                 return false;
             }
+
+            var availableActionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool hasCandidateImage = false;
 
             var checkedTemplateIds = new HashSet<int>();
             foreach (int candidateTemplateId in EnumerateMorphTemplateCandidates(morphTemplateId, exactMorphImage: null))
@@ -723,9 +731,55 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                if (Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img") != null)
+                WzImage candidateImage = Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img");
+                if (candidateImage == null)
                 {
-                    return true;
+                    continue;
+                }
+
+                hasCandidateImage = true;
+                candidateImage.ParseImage();
+                foreach (WzImageProperty property in candidateImage.WzProperties)
+                {
+                    if (property != null
+                        && LooksLikeActionName(property.Name)
+                        && !string.IsNullOrWhiteSpace(property.Name))
+                    {
+                        availableActionNames.Add(property.Name);
+                    }
+                }
+            }
+
+            if (!hasCandidateImage)
+            {
+                return false;
+            }
+
+            if (requestedActionNames == null || requestedActionNames.Count == 0)
+            {
+                return true;
+            }
+
+            var morphPart = new CharacterPart
+            {
+                Type = CharacterPartType.Morph,
+                Animations = new Dictionary<string, CharacterAnimation>(StringComparer.OrdinalIgnoreCase),
+                AvailableAnimations = new HashSet<string>(availableActionNames, StringComparer.OrdinalIgnoreCase)
+            };
+
+            foreach (string requestedActionName in requestedActionNames)
+            {
+                if (string.IsNullOrWhiteSpace(requestedActionName))
+                {
+                    continue;
+                }
+
+                foreach (string candidateActionName in MorphClientActionResolver.EnumerateClientActionAliases(morphPart, requestedActionName))
+                {
+                    if (availableActionNames.Contains(candidateActionName))
+                    {
+                        return true;
+                    }
                 }
             }
 
@@ -3772,6 +3826,7 @@ namespace HaCreator.MapSimulator.Character
                 36 => "cane",
                 37 => "wand",
                 38 => "staff",
+                39 => "knuckle",
                 40 => "2h sword",
                 41 => "2h axe",
                 42 => "2h blunt",

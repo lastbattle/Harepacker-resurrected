@@ -253,7 +253,6 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedLogoutGiftPayload(byte[] payload, out string message)
         {
-            RegisterPacketOwnedLogoutGiftWindow();
             _lastPacketOwnedLogoutGiftRefreshTick = Environment.TickCount;
 
             if (!IsPacketOwnedLogoutGiftFieldStageActive())
@@ -265,18 +264,14 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is not LogoutGiftWindow window)
-            {
-                message = "CWvsContext::OnLogoutGift routed, but the simulator logout-gift owner is unavailable.";
-                _lastPacketOwnedLogoutGiftSummary = message;
-                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
-                return false;
-            }
+            LogoutGiftWindow window = uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) as LogoutGiftWindow;
+            bool ownerVisible = window?.IsVisible == true;
+            bool ownerSingletonPresent = IsPacketOwnedLogoutGiftOwnerSingletonPresent(_packetOwnedLogoutGiftOwnerInstantiated, ownerVisible);
 
             PacketOwnedLogoutGiftRefreshDisposition refreshDisposition = ResolvePacketOwnedLogoutGiftRefreshDisposition(
                 _packetOwnedLogoutGiftHasConfig,
-                IsPacketOwnedLogoutGiftOwnerSingletonPresent(_packetOwnedLogoutGiftOwnerInstantiated, window.IsVisible),
-                window.IsVisible,
+                ownerSingletonPresent,
+                ownerVisible,
                 ResolveCurrentPacketOwnedLogoutGiftOwnerAvailability() == PacketOwnedLogoutGiftOwnerAvailability.Available);
 
             switch (refreshDisposition)

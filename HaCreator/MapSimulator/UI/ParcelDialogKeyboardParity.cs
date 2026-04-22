@@ -7,13 +7,18 @@ namespace HaCreator.MapSimulator.UI
     {
         None,
         CloseDialog,
+        CancelArmedItemPicker,
         ClaimReceiveAttachment,
         DispatchSend
     }
 
     internal static class ParcelDialogKeyboardParity
     {
-        internal static ParcelDialogKeyboardAction ResolveAction(global::HaCreator.MapSimulator.Interaction.ParcelDialogTab activeTab, bool hasFocusedComposeField, Keys key)
+        internal static ParcelDialogKeyboardAction ResolveAction(
+            global::HaCreator.MapSimulator.Interaction.ParcelDialogTab activeTab,
+            bool hasFocusedComposeField,
+            bool hasArmedItemPicker,
+            Keys key)
         {
             if (hasFocusedComposeField)
             {
@@ -22,6 +27,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (key == Keys.Escape)
             {
+                if (activeTab == global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Send
+                    && hasArmedItemPicker)
+                {
+                    return ParcelDialogKeyboardAction.CancelArmedItemPicker;
+                }
+
                 return ParcelDialogKeyboardAction.CloseDialog;
             }
 

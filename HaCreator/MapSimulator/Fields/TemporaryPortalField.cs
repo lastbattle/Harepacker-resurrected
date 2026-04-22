@@ -2564,9 +2564,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (existingState.Value.State == 0)
             {
-                return packetState == 0
-                    ? RemoteTownPortalOverlayState
-                    : packetState;
+                return RemoteTownPortalOverlayState;
             }
 
             return existingState.Value.State;

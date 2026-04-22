@@ -289,6 +289,7 @@ namespace HaCreator.MapSimulator
         private float _clientOwnedLimitedViewOriginY = ClientOwnedLimitedViewFallbackOriginY;
         private bool _clientOwnedLimitedViewShareView;
         private int _clientOwnedLimitedViewShareViewMapId = int.MinValue;
+        private MapInfo _clientOwnedLimitedViewShareViewMapInfo;
         private TutorialWrapperKind _activeTutorialWrapperKind;
         private WeddingPhotoSceneContract? _activeWeddingPhotoSceneContract;
         private bool _wrapperOwnedAranTutorActorApplied;
@@ -881,6 +882,7 @@ namespace HaCreator.MapSimulator
             {
                 _clientOwnedLimitedViewShareView = false;
                 _clientOwnedLimitedViewShareViewMapId = int.MinValue;
+                _clientOwnedLimitedViewShareViewMapInfo = null;
                 _limitedViewField.ClearClientOwnedMask();
                 _limitedViewField.DisableImmediate();
                 return;
@@ -912,13 +914,37 @@ namespace HaCreator.MapSimulator
         private void RefreshClientOwnedLimitedViewShareView(MapInfo mapInfo)
         {
             int mapId = mapInfo?.id ?? int.MinValue;
-            if (_clientOwnedLimitedViewShareViewMapId == mapId)
+            if (!HasClientOwnedLimitedViewMapBindingChanged(
+                mapInfo,
+                mapId,
+                _clientOwnedLimitedViewShareViewMapInfo,
+                _clientOwnedLimitedViewShareViewMapId))
             {
                 return;
             }
 
             _clientOwnedLimitedViewShareViewMapId = mapId;
+            _clientOwnedLimitedViewShareViewMapInfo = mapInfo;
             _clientOwnedLimitedViewShareView = ResolveClientOwnedLimitedViewShareViewDefault(mapInfo);
+        }
+
+        internal static bool HasClientOwnedLimitedViewMapBindingChanged(
+            MapInfo currentMapInfo,
+            int currentMapId,
+            MapInfo previousMapInfo,
+            int previousMapId)
+        {
+            if (currentMapInfo == null)
+            {
+                return previousMapInfo != null || previousMapId != int.MinValue;
+            }
+
+            if (!ReferenceEquals(currentMapInfo, previousMapInfo))
+            {
+                return true;
+            }
+
+            return currentMapId != previousMapId;
         }
 
         private void SyncClientOwnedLimitedViewFocus(float playerX, float playerY)

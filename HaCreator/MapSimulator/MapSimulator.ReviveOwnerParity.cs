@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator
         private readonly ReviveOwnerRuntime _reviveOwnerRuntime = new();
         private ReviveOwnerTransferRequest? _pendingReviveOwnerTransferRequest;
         private int _pendingReviveOwnerTransferTick = int.MinValue;
+        private bool _packetOwnedRevivePremiumSafetyCharmLastObservedOfficialSessionConnected;
 
         private void WireReviveConfirmationWindow()
         {
@@ -77,6 +78,7 @@ namespace HaCreator.MapSimulator
             }
 
             int currentTick = Environment.TickCount;
+            SyncRevivePremiumSafetyCharmOfficialSessionLifecycle(currentTick);
             Vector2 spawnPoint = _playerManager?.GetSpawnPoint() ?? new Vector2(player?.DeathX ?? 0f, player?.DeathY ?? 0f);
             Vector2 deathPoint = new(player?.DeathX ?? spawnPoint.X, player?.DeathY ?? spawnPoint.Y);
             EnsureRevivePremiumSafetyCharmContextInitializedFromInventory("revive-owner-open-sync", currentTick);
@@ -108,6 +110,7 @@ namespace HaCreator.MapSimulator
 
         private void UpdateReviveOwnerState(int currentTick)
         {
+            SyncRevivePremiumSafetyCharmOfficialSessionLifecycle(currentTick);
             if (_playerManager?.Player?.IsAlive != false)
             {
                 if (_reviveOwnerRuntime.IsOpen)
@@ -333,6 +336,23 @@ namespace HaCreator.MapSimulator
             return fieldAllowsCurrentFieldRecovery && premiumSafetyCharmContextArmed;
         }
 
+        internal static bool ShouldResetRevivePremiumSafetyCharmOfficialMutationOwnershipOnSessionTransition(
+            bool previouslyConnected,
+            bool currentlyConnected)
+        {
+            return previouslyConnected != currentlyConnected;
+        }
+
+        internal static bool ShouldClearRevivePremiumSafetyCharmContextOnOfficialSessionAttach(
+            bool officialSessionConnected,
+            bool hasContextValue,
+            string lastMutationSource)
+        {
+            return officialSessionConnected
+                && hasContextValue
+                && !IsPacketOwnedRevivePremiumSafetyCharmContextOfficialSessionSource(lastMutationSource);
+        }
+
         private bool ResolveRevivePremiumSafetyCharmContextArmed(bool fallbackArmed)
         {
             int runtimeCharacterId = ResolveReviveOwnerRuntimeCharacterId();
@@ -344,6 +364,44 @@ namespace HaCreator.MapSimulator
 
             _packetOwnedLocalUtilityContext.ObserveRevivePremiumSafetyCharmRuntimeCharacterId(runtimeCharacterId);
             return _packetOwnedLocalUtilityContext.ResolveRevivePremiumSafetyCharmContextValue(fallbackArmed);
+        }
+
+        private void SyncRevivePremiumSafetyCharmOfficialSessionLifecycle(int currentTick)
+        {
+            bool officialSessionConnected = _localUtilityOfficialSessionBridge.HasConnectedSession;
+            if (!ShouldResetRevivePremiumSafetyCharmOfficialMutationOwnershipOnSessionTransition(
+                    _packetOwnedRevivePremiumSafetyCharmLastObservedOfficialSessionConnected,
+                    officialSessionConnected))
+            {
+                return;
+            }
+
+            _packetOwnedRevivePremiumSafetyCharmLastObservedOfficialSessionConnected = officialSessionConnected;
+            _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved = false;
+            if (!officialSessionConnected)
+            {
+                ShowUtilityFeedbackMessage(
+                    "Local utility official-session bridge disconnected; revive premium safety-charm ownership is unlocked for the next runtime session.");
+                return;
+            }
+
+            if (!ShouldClearRevivePremiumSafetyCharmContextOnOfficialSessionAttach(
+                    officialSessionConnected,
+                    _packetOwnedLocalUtilityContext.HasRevivePremiumSafetyCharmContextValue,
+                    _packetOwnedLocalUtilityContext.RevivePremiumSafetyCharmLastMutationSource))
+            {
+                ShowUtilityFeedbackMessage(
+                    "Local utility official-session bridge attached; revive premium safety-charm ownership now follows official packet mutation history.");
+                return;
+            }
+
+            int runtimeCharacterId = ResolveReviveOwnerRuntimeCharacterId();
+            _packetOwnedLocalUtilityContext.ClearRevivePremiumSafetyCharmContextValue(
+                "official-session-attach-reset",
+                currentTick,
+                runtimeCharacterId);
+            ShowUtilityFeedbackMessage(
+                "Local utility official-session bridge attached; cleared simulator-owned revive premium safety-charm context so ownership follows official packet mutation history.");
         }
 
         private void SetRevivePremiumSafetyCharmContextFromInventory(string source, int currentTick)

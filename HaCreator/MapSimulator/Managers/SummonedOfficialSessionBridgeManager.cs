@@ -2505,23 +2505,9 @@ namespace HaCreator.MapSimulator.Managers
             if (includesVecCtrlByte)
             {
                 if (mismatchByteIndices.Count == 1
-                    && TryResolveSg88MismatchPairForByte(
-                        mismatchPairs,
-                        PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseVecCtrlByteIndex,
-                        out byte observedVecCtrl,
-                        out byte rebuiltVecCtrl)
-                    && (observedVecCtrl & 1) == (rebuiltVecCtrl & 1))
+                    && TryResolveSg88VecCtrlReplayParityClass(mismatchPairs, decodeDetail, out string vecCtrlReplayParityClass))
                 {
-                    return "mismatch:vecCtrlHighBitsOnly";
-                }
-
-                if (mismatchByteIndices.Count == 1
-                    && PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityVecCtrlMismatchClass(
-                        decodeDetail,
-                        out string vecCtrlMismatchClass)
-                    && string.Equals(vecCtrlMismatchClass, "highBitsOnly", StringComparison.Ordinal))
-                {
-                    return "mismatch:vecCtrlHighBitsOnly";
+                    return vecCtrlReplayParityClass;
                 }
 
                 return mismatchByteIndices.Count == 1
@@ -2557,6 +2543,73 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return "mismatch:nonVecCtrlNonMoveAction";
+        }
+
+        private static bool TryResolveSg88VecCtrlReplayParityClass(
+            IReadOnlyList<string> mismatchPairs,
+            string decodeDetail,
+            out string replayParityClass)
+        {
+            replayParityClass = null;
+            if (TryResolveSg88MismatchPairForByte(
+                    mismatchPairs,
+                    PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseVecCtrlByteIndex,
+                    out byte observedVecCtrl,
+                    out byte rebuiltVecCtrl))
+            {
+                replayParityClass = ResolveSg88VecCtrlReplayParityClassFromMismatchClass(
+                    ResolveSg88VecCtrlMismatchClassFromPair(observedVecCtrl, rebuiltVecCtrl));
+                return replayParityClass != null;
+            }
+
+            if (!PacketOwnedMechanicRepeatSkillRuntime.TryExtractSg88ReplayParityVecCtrlMismatchClass(
+                    decodeDetail,
+                    out string vecCtrlMismatchClass))
+            {
+                return false;
+            }
+
+            replayParityClass = ResolveSg88VecCtrlReplayParityClassFromMismatchClass(vecCtrlMismatchClass);
+            return replayParityClass != null;
+        }
+
+        private static string ResolveSg88VecCtrlMismatchClassFromPair(byte observed, byte rebuilt)
+        {
+            if (observed == rebuilt)
+            {
+                return null;
+            }
+
+            if (observed == 0 && rebuilt != 0)
+            {
+                return "zeroToNonZero";
+            }
+
+            if (observed != 0 && rebuilt == 0)
+            {
+                return "nonZeroToZero";
+            }
+
+            return (observed & 1) == (rebuilt & 1)
+                ? "highBitsOnly"
+                : "lowBitChanged";
+        }
+
+        private static string ResolveSg88VecCtrlReplayParityClassFromMismatchClass(string mismatchClass)
+        {
+            if (string.IsNullOrWhiteSpace(mismatchClass))
+            {
+                return null;
+            }
+
+            return mismatchClass switch
+            {
+                "highBitsOnly" => "mismatch:vecCtrlHighBitsOnly",
+                "lowBitChanged" => "mismatch:vecCtrlLowBitChanged",
+                "zeroToNonZero" => "mismatch:vecCtrlZeroToNonZero",
+                "nonZeroToZero" => "mismatch:vecCtrlNonZeroToZero",
+                _ => null
+            };
         }
 
         internal static int[] ResolveSg88ReplayMismatchByteIndices(OutboundPacketTrace entry)

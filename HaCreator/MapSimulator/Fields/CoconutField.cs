@@ -681,10 +681,6 @@ namespace HaCreator.MapSimulator.Fields
 
             int resolvedAttackDelayMs = Math.Max(0, attackDelayMs);
             Coconut target = null;
-            float bestDistance = float.MaxValue;
-            Vector2 attackCenter = new Vector2(
-                attackBounds.Left + attackBounds.Width * 0.5f,
-                attackBounds.Top + attackBounds.Height * 0.5f);
             for (int i = 0; i < _coconuts.Count; i++)
             {
                 Coconut coconut = _coconuts[i];
@@ -697,13 +693,8 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     continue;
                 }
-                Vector2 coconutCenter = new Vector2(targetBounds.Center.X, targetBounds.Center.Y);
-                float distance = Vector2.DistanceSquared(attackCenter, coconutCenter);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    target = coconut;
-                }
+                target = coconut;
+                break;
             }
             if (target == null)
             {

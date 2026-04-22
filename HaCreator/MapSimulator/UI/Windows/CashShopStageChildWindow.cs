@@ -138,6 +138,8 @@ namespace HaCreator.MapSimulator.UI
             public int SelectorInitArg { get; init; } = 4;
             public int SelectorStartX { get; init; } = 2;
             public int SelectorStartY { get; init; } = 2;
+            public int SelectorStartWidth { get; init; } = 1;
+            public int SelectorStartHeight { get; init; } = 1;
             public int SelectorNormalColor { get; init; } = -12949590;
             public int SelectorSelectedColor { get; init; } = -1;
             public int SelectorOutlineColor { get; init; } = -16777216;
@@ -206,6 +208,8 @@ namespace HaCreator.MapSimulator.UI
             public int InitArg { get; set; } = 4;
             public int StartX { get; set; } = 2;
             public int StartY { get; set; } = 2;
+            public int StartWidth { get; set; } = 1;
+            public int StartHeight { get; set; } = 1;
             public Point Position { get; set; } = new(412, 406);
             public int SelectorCount { get; set; } = 2;
             public int ActiveSelectorIndex { get; set; }
@@ -798,7 +802,7 @@ namespace HaCreator.MapSimulator.UI
             string previousLabel = string.IsNullOrWhiteSpace(state.PreviousSelectorLabel) ? "Previous" : state.PreviousSelectorLabel.Trim();
             sprite.DrawString(
                 _font,
-                $"Selector#{_oneADaySelectorObject.ControlId.ToString(CultureInfo.InvariantCulture)} init {_oneADaySelectorObject.InitArg.ToString(CultureInfo.InvariantCulture)} {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  start {_oneADaySelectorObject.StartX.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.StartY.ToString(CultureInfo.InvariantCulture)}  pos {_oneADaySelectorObject.Position.X.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.Position.Y.ToString(CultureInfo.InvariantCulture)}",
+                $"Selector#{_oneADaySelectorObject.ControlId.ToString(CultureInfo.InvariantCulture)} init {_oneADaySelectorObject.InitArg.ToString(CultureInfo.InvariantCulture)} {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  start {_oneADaySelectorObject.StartX.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.StartY.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.StartWidth.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.StartHeight.ToString(CultureInfo.InvariantCulture)}  pos {_oneADaySelectorObject.Position.X.ToString(CultureInfo.InvariantCulture)},{_oneADaySelectorObject.Position.Y.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
             lineY += _font.LineSpacing;
@@ -2560,6 +2564,8 @@ namespace HaCreator.MapSimulator.UI
             int initArg = state?.SelectorInitArg ?? 4;
             int startX = state?.SelectorStartX ?? 2;
             int startY = state?.SelectorStartY ?? 2;
+            int startWidth = state?.SelectorStartWidth ?? 1;
+            int startHeight = state?.SelectorStartHeight ?? 1;
             Point position = state?.SelectorPosition ?? new Point(412, 406);
             int selectorCount = Math.Max(1, state?.SelectorCount ?? 2);
             int normalColor = state?.SelectorNormalColor ?? -12949590;
@@ -2572,6 +2578,8 @@ namespace HaCreator.MapSimulator.UI
                 || _oneADaySelectorObject.InitArg != initArg
                 || _oneADaySelectorObject.StartX != startX
                 || _oneADaySelectorObject.StartY != startY
+                || _oneADaySelectorObject.StartWidth != startWidth
+                || _oneADaySelectorObject.StartHeight != startHeight
                 || _oneADaySelectorObject.Position != position
                 || _oneADaySelectorObject.SelectorCount != selectorCount
                 || _oneADaySelectorObject.ActiveSelectorIndex != activeSelectorIndex
@@ -2583,6 +2591,8 @@ namespace HaCreator.MapSimulator.UI
             _oneADaySelectorObject.InitArg = initArg;
             _oneADaySelectorObject.StartX = startX;
             _oneADaySelectorObject.StartY = startY;
+            _oneADaySelectorObject.StartWidth = startWidth;
+            _oneADaySelectorObject.StartHeight = startHeight;
             _oneADaySelectorObject.Position = position;
             _oneADaySelectorObject.SelectorCount = selectorCount;
             _oneADaySelectorObject.ActiveSelectorIndex = activeSelectorIndex;

@@ -490,8 +490,7 @@ namespace HaCreator.MapSimulator
             }
 
             bool hasSingleSkillRecord = packet.Kind == SocialListClientGuildResultKind.SkillRecord && packet.GuildSkillRecord.HasValue;
-            bool hasGuildSnapshotSkillRecords = packet.Kind == SocialListClientGuildResultKind.GuildDataSnapshot
-                && packet.GuildSkillRecords is { Count: > 0 };
+            bool hasGuildSnapshotSkillRecords = packet.Kind == SocialListClientGuildResultKind.GuildDataSnapshot;
             if (!hasSingleSkillRecord && !hasGuildSnapshotSkillRecords)
             {
                 RefreshGuildSkillUiContext();
@@ -511,16 +510,10 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                string lastDetail = string.Empty;
-                int appliedCount = 0;
-                foreach (SocialListGuildSkillRecordPacket guildSkillRecord in packet.GuildSkillRecords ?? Array.Empty<SocialListGuildSkillRecordPacket>())
-                {
-                    lastDetail = _guildSkillRuntime.ApplyPacketOwnedSkillRecord(guildSkillRecord, packet.GuildId);
-                    appliedCount++;
-                }
-
-                string guildName = string.IsNullOrWhiteSpace(packet.GuildName) ? "Guild" : packet.GuildName.Trim();
-                skillRecordDetail = $"Client OnGuildResult({packet.RawSubtype}) synchronized {appliedCount} guild-skill record(s) for {guildName} (#{packet.GuildId}). {lastDetail}".Trim();
+                skillRecordDetail = _guildSkillRuntime.ApplyPacketOwnedSkillRecordSnapshot(
+                    packet.GuildSkillRecords ?? Array.Empty<SocialListGuildSkillRecordPacket>(),
+                    packet.GuildId,
+                    packet.RawSubtype);
             }
 
             TryTriggerSpecialistPetSocialFeedback(skillRecordDetail, Environment.TickCount);

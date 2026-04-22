@@ -830,6 +830,11 @@ namespace HaCreator.MapSimulator.Managers
                 return 0;
             }
 
+            if (selectedAreaGroup <= 0)
+            {
+                return 0;
+            }
+
             return areaDetailItemParams != null
                 && areaDetailItemParams.TryGetValue(selectedAreaGroup, out IReadOnlyList<int> itemParams)
                     ? SelectClientComboItemParamForLoad(requestedAreaDetail, itemParams)
@@ -860,6 +865,11 @@ namespace HaCreator.MapSimulator.Managers
             int delta)
         {
             if (!hasCountryNameCatalogData)
+            {
+                return 0;
+            }
+
+            if (currentAreaGroup <= 0)
             {
                 return 0;
             }

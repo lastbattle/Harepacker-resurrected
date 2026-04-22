@@ -2216,7 +2216,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (validLength != trimmed.Length
-                && !string.IsNullOrWhiteSpace(trimmed[validLength..]))
+                && !HasOnlyClientWhitespace(trimmed, validLength))
             {
                 return string.Empty;
             }
@@ -2320,7 +2320,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string trimmedName = characterName.Trim();
+            string trimmedName = TrimClientWhitespace(characterName);
             if (trimmedName.Length < 4 || trimmedName.Length > 12)
             {
                 return false;
@@ -2343,6 +2343,25 @@ namespace HaCreator.MapSimulator
             }
 
             return ambiguousCharacterCount < 4;
+        }
+
+        private static bool HasOnlyClientWhitespace(string value, int startIndex)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return true;
+            }
+
+            int clampedStart = Math.Clamp(startIndex, 0, value.Length);
+            for (int i = clampedStart; i < value.Length; i++)
+            {
+                if (!IsClientWhitespace(value[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool TryTrimTrailingChannelSuffix(string text, out string trimmed)

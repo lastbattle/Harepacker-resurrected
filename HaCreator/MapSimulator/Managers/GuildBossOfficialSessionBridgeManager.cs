@@ -434,6 +434,9 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
                 {
+                    // Keep passive ownership visible when reconnect proxy startup fails so retrying
+                    // attachproxy/startauto does not require re-attaching discovery first.
+                    _passiveEstablishedSession = candidate;
                     LastStatus = $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
                     status = LastStatus;
                     return false;

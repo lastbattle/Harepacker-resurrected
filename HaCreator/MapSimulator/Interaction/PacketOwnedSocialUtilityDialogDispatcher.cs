@@ -938,11 +938,15 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildGetItemRequestPayload(itemType, trunkRow),
                 $"Mirrored CTrunkDlg::SendGetItemRequest (opcode 67, mode 4, itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}).");
             _requestInFlight = true;
+            bool preConfirmShown = ShouldShowTrunkPreConfirmPrompt(slotData);
             string preConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendGetPreConfirm());
             string costConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendGetCostConfirm(0));
+            string preConfirmSummary = preConfirmShown
+                ? $"Accepted owner confirm {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)}: {preConfirm}"
+                : $"Skipped owner confirm {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)} because the native pre-confirm predicate evaluated false for this row.";
             StatusMessage =
                 $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}). " +
-                $"Accepted owner confirm {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)}: {preConfirm} " +
+                $"{preConfirmSummary} " +
                 $"Then accepted cost confirm {FormatStringPoolId(TrunkDialogClientParityText.SendGetNoCostConfirmStringPoolId)} / {FormatStringPoolId(TrunkDialogClientParityText.SendGetCostConfirmStringPoolId)}: {costConfirm}.";
             message = StatusMessage;
             return true;
@@ -1019,17 +1023,24 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Mirrored CTrunkDlg::SendPutItemRequest (opcode 67, mode 5, pos {inventoryPosition.ToString(CultureInfo.InvariantCulture)}, item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)}, count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}).");
             _requestInFlight = true;
             bool sharableOnce = slotData.CashItemSerialNumber.GetValueOrDefault() > 0;
+            bool preConfirmShown = sharableOnce || ShouldShowTrunkPreConfirmPrompt(slotData);
             string preConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutPreConfirm(sharableOnce));
             string askCount = !treatSingly && availableQuantity > 1
                 ? TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt())
                 : "No AskItemCount branch (client treat-singly path).";
             string costConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutCostConfirm(0));
+            int preConfirmStringPoolId = sharableOnce
+                ? TrunkSendPutSharableOnceConfirmStringPoolId
+                : TrunkSendPutConfirmStringPoolId;
+            string preConfirmSummary = preConfirmShown
+                ? $"Accepted pre-send confirm {FormatStringPoolId(preConfirmStringPoolId)}: {preConfirm}"
+                : $"Skipped pre-send confirm {FormatStringPoolId(preConfirmStringPoolId)} because the native pre-confirm predicate evaluated false for this row.";
             string quantitySummary = normalizedQuantity == availableQuantity
                 ? $"full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}"
                 : $"partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}";
             StatusMessage =
                 $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with {quantitySummary}. " +
-                $"Accepted pre-send confirm {FormatStringPoolId(sharableOnce ? TrunkSendPutSharableOnceConfirmStringPoolId : TrunkSendPutConfirmStringPoolId)}: {preConfirm} " +
+                $"{preConfirmSummary} " +
                 $"AskItemCount path {FormatStringPoolId(TrunkDialogClientParityText.SendPutAskItemCountStringPoolId)}: {askCount} " +
                 $"Then accepted cost confirm {FormatStringPoolId(TrunkDialogClientParityText.SendPutNoCostConfirmStringPoolId)} / {FormatStringPoolId(TrunkDialogClientParityText.SendPutCostConfirmStringPoolId)}: {costConfirm}.";
             message = StatusMessage;
@@ -1310,6 +1321,19 @@ namespace HaCreator.MapSimulator.Interaction
 
             return slotData.CashItemSerialNumber.GetValueOrDefault() > 0
                 && slotData.OwnerAccountId.GetValueOrDefault() > 0;
+        }
+
+        private static bool ShouldShowTrunkPreConfirmPrompt(InventorySlotData slotData)
+        {
+            if (slotData == null)
+            {
+                return false;
+            }
+
+            return slotData.CashItemSerialNumber.GetValueOrDefault() > 0
+                || slotData.OwnerAccountId.GetValueOrDefault() > 0
+                || slotData.OwnerCharacterId.GetValueOrDefault() > 0
+                || slotData.IsCashOwnershipLocked;
         }
     }
 }

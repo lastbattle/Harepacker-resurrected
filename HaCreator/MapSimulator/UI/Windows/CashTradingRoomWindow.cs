@@ -845,9 +845,10 @@ namespace HaCreator.MapSimulator.UI
                 _remoteTraderName = snapshot.Seller.Trim();
             }
 
-            if (snapshot.Price > 0 && !_localLocked)
+            if (!_localLocked)
             {
-                _remoteOffer = Math.Clamp(snapshot.Price, 0, Math.Max(0, _remoteWallet));
+                int packetOffer = Math.Clamp(snapshot.Price, 0, Math.Max(0, _remoteWallet));
+                _remoteOffer = packetOffer;
                 _remoteProgressState = RemoteTradeProgressState.Reviewing;
             }
 

@@ -1116,19 +1116,14 @@ namespace HaCreator.MapSimulator.Companions
 
             foreach (WzImageProperty child in actionNode.WzProperties.OrderBy(GetFrameOrder))
             {
-                WzCanvasProperty canvas = ResolveCanvasProperty(child);
-                if (canvas == null)
-                {
-                    continue;
-                }
-
                 string frameName = child.Name ?? string.Empty;
                 int fallbackDelay = fallbackDelayByFrameName != null &&
                                     !string.IsNullOrWhiteSpace(frameName) &&
                                     fallbackDelayByFrameName.TryGetValue(frameName, out int resolvedFallbackDelay)
                     ? resolvedFallbackDelay
                     : defaultDelay;
-                IDXObject frame = LoadTexture(canvas, fallbackDelay);
+                int frameDelay = ResolveFrameDelayOverride(child, fallbackDelay);
+                IDXObject frame = LoadFrameTexture(child, frameDelay);
                 if (frame != null)
                 {
                     frames.Add(new PetActionFrame(frameName, frame));
@@ -1147,6 +1142,46 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return null;
+        }
+
+        private IDXObject LoadFrameTexture(WzImageProperty frameProperty, int defaultDelay)
+        {
+            WzImageProperty resolvedFrameProperty = ResolveActionProperty(frameProperty);
+            if (resolvedFrameProperty is WzCanvasProperty directCanvas)
+            {
+                return LoadTexture(directCanvas, defaultDelay);
+            }
+
+            if (resolvedFrameProperty?.WzProperties == null ||
+                resolvedFrameProperty.WzProperties.Count == 0)
+            {
+                return null;
+            }
+
+            var layeredFrames = new List<IDXObject>();
+            foreach (WzImageProperty layerProperty in resolvedFrameProperty.WzProperties.OrderBy(GetFrameOrder))
+            {
+                WzCanvasProperty layerCanvas = ResolveCanvasProperty(layerProperty);
+                if (layerCanvas == null)
+                {
+                    continue;
+                }
+
+                IDXObject layerFrame = LoadTexture(layerCanvas, defaultDelay);
+                if (layerFrame != null)
+                {
+                    layeredFrames.Add(layerFrame);
+                }
+            }
+
+            if (layeredFrames.Count == 0)
+            {
+                return null;
+            }
+
+            return layeredFrames.Count == 1
+                ? layeredFrames[0]
+                : ComposeLayeredFrame(layeredFrames);
         }
 
         private List<IDXObject> LoadClientMultiPetHangFrames()
@@ -1299,6 +1334,106 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
+        private IDXObject ComposeLayeredFrame(IReadOnlyList<IDXObject> layerFrames)
+        {
+            if (layerFrames == null || layerFrames.Count == 0)
+            {
+                return null;
+            }
+
+            if (layerFrames.Count == 1)
+            {
+                return layerFrames[0];
+            }
+
+            var layerEntries = new List<LayeredFrameEntry>(layerFrames.Count);
+            try
+            {
+                for (int i = 0; i < layerFrames.Count; i++)
+                {
+                    IDXObject layerFrame = layerFrames[i];
+                    if (layerFrame?.Tag is not WzCanvasProperty layerCanvas)
+                    {
+                        continue;
+                    }
+
+                    SD.Bitmap layerBitmap = layerCanvas.GetLinkedWzCanvasBitmap();
+                    if (!TryGetBitmapDimensions(layerBitmap, out int layerWidth, out int layerHeight))
+                    {
+                        layerBitmap?.Dispose();
+                        continue;
+                    }
+
+                    Rectangle layerBounds = ResolveCanvasBounds(layerCanvas, layerWidth, layerHeight);
+                    layerEntries.Add(new LayeredFrameEntry(
+                        layerFrame,
+                        layerCanvas,
+                        layerBitmap,
+                        layerBounds,
+                        ResolveCanvasZ(layerCanvas),
+                        i));
+                }
+
+                if (layerEntries.Count == 0)
+                {
+                    return layerFrames[0];
+                }
+
+                Rectangle composedBounds = Rectangle.FromLTRB(
+                    layerEntries.Min(static entry => entry.Bounds.Left),
+                    layerEntries.Min(static entry => entry.Bounds.Top),
+                    layerEntries.Max(static entry => entry.Bounds.Right),
+                    layerEntries.Max(static entry => entry.Bounds.Bottom));
+
+                using var composedBitmap = new SD.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
+                using (SDG graphics = SDG.FromImage(composedBitmap))
+                {
+                    graphics.Clear(SD.Color.Transparent);
+                    foreach (LayeredFrameEntry layerEntry in layerEntries.OrderBy(static entry => entry, LayeredFrameEntryComparer.Instance))
+                    {
+                        graphics.DrawImage(
+                            layerEntry.Bitmap,
+                            layerEntry.Bounds.X - composedBounds.X,
+                            layerEntry.Bounds.Y - composedBounds.Y);
+                    }
+                }
+
+                Texture2D texture = composedBitmap.ToTexture2DAndDispose(_device);
+                if (texture == null)
+                {
+                    return layerFrames[0];
+                }
+
+                int delay = ResolveLayeredFrameDelay(layerEntries.Select(static entry => entry.Frame));
+                return new DXObject(new PointF(-composedBounds.X, -composedBounds.Y), texture, delay)
+                {
+                    Tag = layerEntries[0].Canvas
+                };
+            }
+            catch
+            {
+                return layerFrames[0];
+            }
+            finally
+            {
+                foreach (LayeredFrameEntry layerEntry in layerEntries)
+                {
+                    layerEntry.Bitmap.Dispose();
+                }
+            }
+        }
+
+        private static int ResolveFrameDelayOverride(WzImageProperty frameProperty, int defaultDelay)
+        {
+            int? frameDelay = GetIntValue(ResolveActionProperty(frameProperty)?["delay"]);
+            if (frameDelay.HasValue && frameDelay.Value > 0)
+            {
+                return frameDelay.Value;
+            }
+
+            return defaultDelay;
+        }
+
         internal static int ResolveComposedPetWearFrameDelay(IDXObject baseFrame, IDXObject overlayFrame)
         {
             if (baseFrame?.Delay > 0)
@@ -1314,11 +1449,38 @@ namespace HaCreator.MapSimulator.Companions
             return ClientPetActionDefaultDelay;
         }
 
+        internal static int ResolveLayeredFrameDelay(IEnumerable<IDXObject> layeredFrames)
+        {
+            if (layeredFrames != null)
+            {
+                foreach (IDXObject layeredFrame in layeredFrames)
+                {
+                    if (layeredFrame?.Delay > 0)
+                    {
+                        return layeredFrame.Delay;
+                    }
+                }
+            }
+
+            return ClientPetActionDefaultDelay;
+        }
+
         internal static bool ShouldDrawPetWearOverlayAfterBase(int? baseZ, int? overlayZ)
         {
             int resolvedBaseZ = baseZ ?? 0;
             int resolvedOverlayZ = overlayZ ?? 0;
             return resolvedOverlayZ >= resolvedBaseZ;
+        }
+
+        internal static int CompareCanvasLayerOrder(int? leftZ, int leftIndex, int? rightZ, int rightIndex)
+        {
+            int zOrder = (leftZ ?? 0).CompareTo(rightZ ?? 0);
+            if (zOrder != 0)
+            {
+                return zOrder;
+            }
+
+            return leftIndex.CompareTo(rightIndex);
         }
 
         private static Rectangle ResolveCanvasBounds(WzCanvasProperty canvas, int width, int height)
@@ -1387,6 +1549,24 @@ namespace HaCreator.MapSimulator.Companions
             width = bitmap?.Width ?? 0;
             height = bitmap?.Height ?? 0;
             return width > 0 && height > 0;
+        }
+
+        private readonly record struct LayeredFrameEntry(
+            IDXObject Frame,
+            WzCanvasProperty Canvas,
+            SD.Bitmap Bitmap,
+            Rectangle Bounds,
+            int? Z,
+            int SourceIndex);
+
+        private sealed class LayeredFrameEntryComparer : IComparer<LayeredFrameEntry>
+        {
+            internal static readonly LayeredFrameEntryComparer Instance = new();
+
+            public int Compare(LayeredFrameEntry x, LayeredFrameEntry y)
+            {
+                return CompareCanvasLayerOrder(x.Z, x.SourceIndex, y.Z, y.SourceIndex);
+            }
         }
     }
 }

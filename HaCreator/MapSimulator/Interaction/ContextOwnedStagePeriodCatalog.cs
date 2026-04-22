@@ -61,8 +61,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool TryGetPeriod(string stageTheme, byte mode, out ContextOwnedStagePeriodCatalogEntry entry)
         {
             entry = null;
-            if (string.IsNullOrWhiteSpace(stageTheme)
-                || !_themes.TryGetValue(stageTheme, out ContextOwnedStageThemeCatalogEntry theme))
+            string normalizedTheme = NormalizeStageTheme(stageTheme);
+            if (string.IsNullOrWhiteSpace(normalizedTheme)
+                || !_themes.TryGetValue(normalizedTheme, out ContextOwnedStageThemeCatalogEntry theme))
             {
                 return false;
             }
@@ -1289,14 +1290,15 @@ namespace HaCreator.MapSimulator.Interaction
             IEnumerable<TKey> enabledKeys,
             IDictionary<TKey, ContextOwnedStageUnitEnableState> cache)
         {
-            if (cache == null || string.IsNullOrWhiteSpace(stageTheme))
+            string normalizedTheme = NormalizeStageTheme(stageTheme);
+            if (cache == null || string.IsNullOrWhiteSpace(normalizedTheme))
             {
                 return;
             }
 
             foreach ((TKey key, ContextOwnedStageUnitEnableState state) in cache.ToArray())
             {
-                if (state != null && string.Equals(state.StageTheme, stageTheme, StringComparison.OrdinalIgnoreCase))
+                if (state != null && IsEquivalentStageTheme(state.StageTheme, normalizedTheme))
                 {
                     state.Enabled = false;
                 }
@@ -1307,12 +1309,12 @@ namespace HaCreator.MapSimulator.Interaction
                 TKey normalizedKey = ResolveExistingEquivalentKey(cache, key);
                 if (!cache.TryGetValue(normalizedKey, out ContextOwnedStageUnitEnableState state) || state == null)
                 {
-                    state = new ContextOwnedStageUnitEnableState(stageTheme, enabled: true);
+                    state = new ContextOwnedStageUnitEnableState(normalizedTheme, enabled: true);
                     cache[normalizedKey] = state;
                     continue;
                 }
 
-                state.StageTheme = stageTheme;
+                state.StageTheme = normalizedTheme;
                 state.Enabled = true;
             }
         }
@@ -1341,14 +1343,29 @@ namespace HaCreator.MapSimulator.Interaction
             byte mode,
             IDictionary<string, byte> stagePeriodCache)
         {
-            if (stagePeriodCache == null || string.IsNullOrWhiteSpace(stageTheme))
+            string normalizedTheme = NormalizeStageTheme(stageTheme);
+            if (stagePeriodCache == null || string.IsNullOrWhiteSpace(normalizedTheme))
             {
                 return;
             }
 
-            string normalizedTheme = stageTheme.Trim();
             string existingTheme = ResolveExistingEquivalentStringKey(stagePeriodCache, normalizedTheme);
             stagePeriodCache[existingTheme ?? normalizedTheme] = mode;
+        }
+
+        private static string NormalizeStageTheme(string stageTheme)
+        {
+            return string.IsNullOrWhiteSpace(stageTheme)
+                ? string.Empty
+                : stageTheme.Trim();
+        }
+
+        private static bool IsEquivalentStageTheme(string left, string right)
+        {
+            return string.Equals(
+                NormalizeStageTheme(left),
+                NormalizeStageTheme(right),
+                StringComparison.OrdinalIgnoreCase);
         }
 
         private static TKey ResolveExistingEquivalentKey<TKey>(
@@ -1431,7 +1448,9 @@ namespace HaCreator.MapSimulator.Interaction
             HashSet<int> enabledQuestIds,
             HashSet<int> affectedMapIds)
         {
-            StageTheme = stageTheme ?? string.Empty;
+            StageTheme = string.IsNullOrWhiteSpace(stageTheme)
+                ? string.Empty
+                : stageTheme.Trim();
             Mode = mode;
             BackColorArgb = backColorArgb;
             BackImages = backImages ?? Array.Empty<ContextOwnedStageBackImageEntry>();
@@ -1483,7 +1502,9 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal ContextOwnedStageUnitEnableState(string stageTheme, bool enabled)
         {
-            StageTheme = stageTheme ?? string.Empty;
+            StageTheme = string.IsNullOrWhiteSpace(stageTheme)
+                ? string.Empty
+                : stageTheme.Trim();
             Enabled = enabled;
         }
 

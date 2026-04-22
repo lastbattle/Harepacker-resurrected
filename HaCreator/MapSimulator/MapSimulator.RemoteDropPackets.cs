@@ -68,12 +68,10 @@ namespace HaCreator.MapSimulator
             int actorId = actorKind == DropPickupActorKind.Pet
                 ? ResolveRemoteDropPacketPetActorId(packet)
                 : packet.ActorId;
-            int fallbackOwnerId = packet.Reason switch
-            {
-                PacketDropLeaveReason.PetPickup => packet.ActorId,
-                PacketDropLeaveReason.OtherPickup => packet.ActorId,
-                _ => 0
-            };
+            int fallbackOwnerId = ResolveRemoteDropPacketPickupNoticeFallbackOwnerId(
+                packet,
+                actorId,
+                ResolveDropPartyActorOwnerId);
 
             return TrySurfaceRecentRemoteDropPickupNotice(
                 packet.DropId,
@@ -585,6 +583,40 @@ namespace HaCreator.MapSimulator
             }
 
             return 0;
+        }
+
+        internal static int ResolveRemoteDropPacketPickupNoticeFallbackOwnerId(
+            RemoteDropLeavePacket packet,
+            int resolvedActorId,
+            Func<int, int> partyActorOwnerResolver)
+        {
+            if (packet.Reason == PacketDropLeaveReason.PetPickup)
+            {
+                int petOwnerCharacterId = ResolveRemoteDropPacketLeaveOwnerCharacterId(packet, resolvedActorId);
+                return petOwnerCharacterId > 0
+                    ? petOwnerCharacterId
+                    : 0;
+            }
+
+            if (packet.Reason != PacketDropLeaveReason.OtherPickup)
+            {
+                return 0;
+            }
+
+            int normalizedOwnerCharacterId = partyActorOwnerResolver?.Invoke(resolvedActorId) ?? 0;
+            if (normalizedOwnerCharacterId <= 0 && packet.ActorId > 0)
+            {
+                normalizedOwnerCharacterId = partyActorOwnerResolver?.Invoke(packet.ActorId) ?? 0;
+            }
+
+            if (normalizedOwnerCharacterId > 0)
+            {
+                return normalizedOwnerCharacterId;
+            }
+
+            return packet.ActorId > 0
+                ? packet.ActorId
+                : 0;
         }
 
         internal static int[] ResolveRemoteDropPacketLeavePartyLinkActorIds(
@@ -1301,12 +1333,36 @@ namespace HaCreator.MapSimulator
         {
             ownerCharacterId = 0;
             slotIndex = 0;
-            if (actorParents == null || actorId == 0 || !actorParents.ContainsKey(actorId))
+            if (actorParents == null || actorId == 0)
             {
                 return false;
             }
 
-            int targetRoot = FindObservedDropPartyActorRoot(actorParents, actorId);
+            HashSet<int> targetRoots = new();
+            if (actorParents.ContainsKey(actorId))
+            {
+                targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, actorId));
+            }
+
+            if (actorOwners != null)
+            {
+                foreach (KeyValuePair<int, int> observedOwnerEntry in actorOwners)
+                {
+                    if (observedOwnerEntry.Value != actorId
+                        || !actorParents.ContainsKey(observedOwnerEntry.Key))
+                    {
+                        continue;
+                    }
+
+                    targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, observedOwnerEntry.Key));
+                }
+            }
+
+            if (targetRoots.Count == 0)
+            {
+                return false;
+            }
+
             int[] linkedActorIds = actorParents.Keys.ToArray();
 
             bool foundOwnerAlias = false;
@@ -1314,7 +1370,8 @@ namespace HaCreator.MapSimulator
             int bestOwnerAliasOwnerId = 0;
             foreach (int linkedActorId in linkedActorIds)
             {
-                if (FindObservedDropPartyActorRoot(actorParents, linkedActorId) != targetRoot)
+                int linkedActorRoot = FindObservedDropPartyActorRoot(actorParents, linkedActorId);
+                if (!targetRoots.Contains(linkedActorRoot))
                 {
                     continue;
                 }
@@ -1341,7 +1398,8 @@ namespace HaCreator.MapSimulator
 
             foreach (int linkedActorId in linkedActorIds)
             {
-                if (FindObservedDropPartyActorRoot(actorParents, linkedActorId) != targetRoot)
+                int linkedActorRoot = FindObservedDropPartyActorRoot(actorParents, linkedActorId);
+                if (!targetRoots.Contains(linkedActorRoot))
                 {
                     continue;
                 }

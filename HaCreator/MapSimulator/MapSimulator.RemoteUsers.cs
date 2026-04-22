@@ -1896,6 +1896,12 @@ namespace HaCreator.MapSimulator
                     }
 
                     int resolvedPickupActorId = ResolveRemoteUserDropPickupActorId(dropPickupPacket);
+                    int pickupOwnerCharacterId = ResolveRemoteUserDropPickupOwnerCharacterId(dropPickupPacket);
+                    int pickupNoticeFallbackOwnerId = ResolveRemoteUserDropPickupNoticeFallbackOwnerId(
+                        dropPickupPacket,
+                        resolvedPickupActorId,
+                        pickupOwnerCharacterId,
+                        ResolveDropPartyActorOwnerId);
                     DropItem drop = _dropPool.GetDrop(dropPickupPacket.DropId);
                     if (drop == null)
                     {
@@ -1910,7 +1916,7 @@ namespace HaCreator.MapSimulator
                             dropPickupPacket.ActorKind,
                             resolvedPickupActorId,
                             latePickupActorName,
-                            dropPickupPacket.FallbackOwnerId))
+                            pickupNoticeFallbackOwnerId))
                         {
                             result = $"Applied {DescribeRemoteUserPacketType(packetType)} for recently picked drop {dropPickupPacket.DropId}.";
                             return true;
@@ -1920,7 +1926,6 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
-                    int pickupOwnerCharacterId = ResolveRemoteUserDropPickupOwnerCharacterId(dropPickupPacket);
                     string pickupActorName = ResolveRemoteUserDropPickupActorName(
                         dropPickupPacket,
                         _remoteUserPool,
@@ -1956,7 +1961,7 @@ namespace HaCreator.MapSimulator
                                 dropPickupPacket.ActorKind,
                                 resolvedPickupActorId,
                                 pickupActorName,
-                                dropPickupPacket.FallbackOwnerId,
+                                pickupNoticeFallbackOwnerId,
                                 pickupTargetPosition))
                         {
                             result = $"Applied {DescribeRemoteUserPacketType(packetType)} for recently picked drop {dropPickupPacket.DropId}.";
@@ -2302,6 +2307,44 @@ namespace HaCreator.MapSimulator
             }
 
             return packet.ActorId > 0 ? packet.ActorId : 0;
+        }
+
+        internal static int ResolveRemoteUserDropPickupNoticeFallbackOwnerId(
+            RemoteUserDropPickupPacket packet,
+            int resolvedActorId,
+            int resolvedOwnerCharacterId,
+            Func<int, int> partyActorOwnerResolver)
+        {
+            if (packet.ActorKind == DropPickupActorKind.Pet)
+            {
+                if (resolvedOwnerCharacterId > 0)
+                {
+                    return resolvedOwnerCharacterId;
+                }
+
+                int normalizedPetOwnerId = partyActorOwnerResolver?.Invoke(resolvedActorId) ?? 0;
+                if (normalizedPetOwnerId > 0)
+                {
+                    return normalizedPetOwnerId;
+                }
+            }
+            else if (packet.ActorKind == DropPickupActorKind.Other)
+            {
+                int normalizedOwnerCharacterId = partyActorOwnerResolver?.Invoke(resolvedActorId) ?? 0;
+                if (normalizedOwnerCharacterId <= 0 && packet.ActorId > 0)
+                {
+                    normalizedOwnerCharacterId = partyActorOwnerResolver?.Invoke(packet.ActorId) ?? 0;
+                }
+
+                if (normalizedOwnerCharacterId > 0)
+                {
+                    return normalizedOwnerCharacterId;
+                }
+            }
+
+            return packet.FallbackOwnerId > 0
+                ? packet.FallbackOwnerId
+                : 0;
         }
 
         internal static int ResolveRemoteUserDropPickupActorId(

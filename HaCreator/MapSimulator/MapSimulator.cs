@@ -668,6 +668,9 @@ namespace HaCreator.MapSimulator
         private const string SkillCooldownNoticeSoundKey = "SkillCooldownNotice";
         private const string LoginEntryGameInSoundKey = "LoginEntryGameIn";
         private const string LoginEntryGameInSoundWzPath = "Sound/Game.img/GameIn";
+        private const string MemoryGameReadyClickSoundKey = "MemoryGameReadyClick";
+        private const int MemoryGameReadyClickSoundStringPoolId = 0x649;
+        private const int MiniGameSoundPrefixStringPoolId = 0x8C4;
         private const int ViewAllCharWorldSelectFallbackStringPoolId = 0xFBD;
         private const int ViewAllCharFailureStringPoolId = 0xFBE;
         private const int ViewAllCharWarningStringPoolId = 0xFBF;
@@ -725,8 +728,7 @@ namespace HaCreator.MapSimulator
         private int _lastCollisionCustomImpactMovePathAttribute = -1;
         private byte[] _lastCollisionCustomImpactMovePathPayload = Array.Empty<byte>();
         private int _lastPortalOwnedMovePathFlushAdmissionTick = int.MinValue;
-        private bool _hasPortalOwnedMovePathPostFlushCarry = false;
-        private MovePathElement _portalOwnedMovePathPostFlushCarry;
+        private readonly List<MovePathElement> _portalOwnedMovePathPostFlushCarry = new();
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -2031,6 +2033,10 @@ namespace HaCreator.MapSimulator
 
             ConsumeCollisionScriptExclusiveRequestFromTransferLifecycle();
             ConsumePendingPortalSessionValueImpactsFromTransferLifecycle();
+            if (ShouldConsumePassiveTransferRequestOnMapTransferAdmission(_passiveTransferRequestPending))
+            {
+                ConsumePassiveTransferRequestFromTransferLifecycle();
+            }
             _playerManager?.ForceStand();
             _gameState.PendingMapChange = true;
             _gameState.PendingMapId = targetMapId;
@@ -2038,6 +2044,14 @@ namespace HaCreator.MapSimulator
             _gameState.PendingPortalNameCandidates = targetPortalNameCandidates ?? Array.Empty<string>();
             _gameState.PendingPortalIndex = targetPortalIndex;
             return true;
+        }
+
+        internal static bool ShouldConsumePassiveTransferRequestOnMapTransferAdmission(
+            bool hasPendingPassiveTransferRequest)
+        {
+            // Transfer admission takes ownership from local passive retry replay:
+            // once a map handoff is queued, native lifecycle clears this retry owner.
+            return hasPendingPassiveTransferRequest;
         }
 
         private PortalInstance ResolvePortalByNameOrIndex(IEnumerable<PortalInstance> portals, string portalName, int portalIndex)
@@ -4977,42 +4991,78 @@ namespace HaCreator.MapSimulator
                 Math.Max(1, _simulatorChannelIndex + 1));
         }
 
-        private bool ResolveCharacterInfoMarriageBadgeState(UserInfoUI.UserInfoActionContext context)
+        internal static bool ShouldShowCharacterInfoMarriageBadge(
+            CharacterBuild build,
+            bool hasMarriageOverlayEvidence,
+            bool hasActiveMarriageRecordEvidence,
+            bool hasWeddingParticipantEvidence)
         {
-            if (context.IsRemoteTarget)
+            if (hasMarriageOverlayEvidence
+                || hasActiveMarriageRecordEvidence
+                || hasWeddingParticipantEvidence)
             {
-                bool foundActor = (context.CharacterId > 0 && _remoteUserPool.TryGetActor(context.CharacterId, out RemoteUserActor actor))
-                    || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
-                if (foundActor && actor?.RelationshipOverlays != null)
-                {
-                    if (actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage))
-                    {
-                        return true;
-                    }
-                }
-
-                if (_remoteUserPool.HasActiveMarriageRelationshipRecord(actor?.CharacterId ?? context.CharacterId))
-                {
-                    return true;
-                }
-
-                if (TryGetCharacterInfoWeddingParticipantSnapshot(
-                        actor?.CharacterId ?? context.CharacterId,
-                        !string.IsNullOrWhiteSpace(actor?.Name) ? actor.Name : context.CharacterName,
-                        out WeddingRemoteParticipantSnapshot weddingParticipant) &&
-                    weddingParticipant.Role is WeddingParticipantRole.Groom or WeddingParticipantRole.Bride)
-                {
-                    return true;
-                }
+                return true;
             }
 
-            CharacterBuild build = context.Build;
             if (build == null)
             {
                 return false;
             }
 
+            if (build.HasAuthoritativeProfileMarriage)
+            {
+                return build.IsProfileMarried;
+            }
+
             return UserInfoMarriageBadgeResolver.HasMarriageBadge(build);
+        }
+
+        private bool ResolveCharacterInfoMarriageBadgeState(UserInfoUI.UserInfoActionContext context)
+        {
+            context = NormalizeCharacterInfoActionContext(context);
+            CharacterBuild build = context.Build;
+            int characterId = context.CharacterId > 0
+                ? context.CharacterId
+                : build?.Id ?? 0;
+            string characterName = !string.IsNullOrWhiteSpace(context.CharacterName)
+                ? context.CharacterName
+                : build?.Name ?? string.Empty;
+
+            bool hasMarriageOverlayEvidence = false;
+            bool hasActiveMarriageRecordEvidence = false;
+            bool hasWeddingParticipantEvidence = false;
+
+            if (context.IsRemoteTarget)
+            {
+                bool foundActor = (characterId > 0 && _remoteUserPool.TryGetActor(characterId, out RemoteUserActor actor))
+                    || _remoteUserPool.TryGetActorByName(characterName, out actor);
+                if (foundActor && actor?.RelationshipOverlays != null)
+                {
+                    hasMarriageOverlayEvidence = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
+                }
+
+                hasActiveMarriageRecordEvidence = _remoteUserPool.HasActiveMarriageRelationshipRecord(actor?.CharacterId ?? characterId);
+                hasWeddingParticipantEvidence = TryGetCharacterInfoWeddingParticipantSnapshot(
+                    actor?.CharacterId ?? characterId,
+                    !string.IsNullOrWhiteSpace(actor?.Name) ? actor.Name : characterName,
+                    out WeddingRemoteParticipantSnapshot weddingParticipant)
+                    && weddingParticipant.Role is WeddingParticipantRole.Groom or WeddingParticipantRole.Bride;
+            }
+            else
+            {
+                WeddingField weddingField = _specialFieldRuntime?.SpecialEffects?.Wedding;
+                hasWeddingParticipantEvidence = weddingField != null
+                    && weddingField.IsActive
+                    && weddingField.LocalParticipantRole is WeddingParticipantRole.Groom or WeddingParticipantRole.Bride;
+                hasActiveMarriageRecordEvidence = characterId > 0
+                    && _remoteUserPool.HasActiveMarriageRelationshipRecord(characterId);
+            }
+
+            return ShouldShowCharacterInfoMarriageBadge(
+                build,
+                hasMarriageOverlayEvidence,
+                hasActiveMarriageRecordEvidence,
+                hasWeddingParticipantEvidence);
         }
 
         private UserInfoUI.UserInfoActionContext ResolveBookCollectionActionContext()
@@ -10956,6 +11006,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryUseSetupPersonalityInventoryItem(itemId, currentTime, slotIndex))
+            {
+                return true;
+            }
+
             string itemName = ResolvePickupItemName(itemId);
             PushFieldRuleMessage(
                 string.IsNullOrWhiteSpace(itemName)
@@ -11061,6 +11116,129 @@ namespace HaCreator.MapSimulator
                 maxAccumulatedExp,
                 cashExpTicketEnabled,
                 partyExpEnabled);
+        }
+
+        private bool TryUseSetupPersonalityInventoryItem(int itemId, int currentTime, int? slotIndex = null)
+        {
+            if (itemId <= 0
+                || _playerManager?.Player?.Build == null
+                || uiWindowManager?.InventoryWindow is not UI.IInventoryRuntime inventoryWindow)
+            {
+                return false;
+            }
+
+            WzSubProperty infoProperty = LoadInventoryItemInfoProperty(itemId);
+            if (infoProperty == null)
+            {
+                return false;
+            }
+
+            int charismaExperience = Math.Max(0, GetWzIntValue(infoProperty["charismaEXP"]));
+            int insightExperience = Math.Max(0, GetWzIntValue(infoProperty["insightEXP"]));
+            int willExperience = Math.Max(0, GetWzIntValue(infoProperty["willEXP"]));
+            int craftExperience = Math.Max(0, GetWzIntValue(infoProperty["craftEXP"]));
+            int senseExperience = Math.Max(0, GetWzIntValue(infoProperty["senseEXP"]));
+            int charmExperience = Math.Max(0, GetWzIntValue(infoProperty["charmEXP"]));
+            if (!HasSetupPersonalityExperienceGain(
+                    charismaExperience,
+                    insightExperience,
+                    willExperience,
+                    craftExperience,
+                    senseExperience,
+                    charmExperience))
+            {
+                return false;
+            }
+
+            if (!TryConsumeInventoryUseItem(
+                    inventoryWindow,
+                    InventoryType.SETUP,
+                    itemId,
+                    1,
+                    slotIndex))
+            {
+                return false;
+            }
+
+            ApplyConsumableProgressionToBuild(
+                _playerManager.Player.Build,
+                directExperience: 0,
+                charismaExperience: charismaExperience,
+                insightExperience: insightExperience,
+                willExperience: willExperience,
+                craftExperience: craftExperience,
+                senseExperience: senseExperience,
+                charmExperience: charmExperience,
+                eventPoint: 0);
+
+            _fieldRuleRuntime?.RegisterSuccessfulItemUse(
+                ShouldTrackFieldConsumeItemCooldown(InventoryType.SETUP, default, default),
+                currentTime);
+
+            string itemName = ResolvePickupItemName(itemId);
+            PushFieldRuleMessage(
+                BuildSetupPersonalityUseMessage(
+                    itemName,
+                    charismaExperience,
+                    insightExperience,
+                    willExperience,
+                    craftExperience,
+                    senseExperience,
+                    charmExperience),
+                currentTime,
+                false);
+            return true;
+        }
+
+        internal static bool HasSetupPersonalityExperienceGain(
+            int charismaExperience,
+            int insightExperience,
+            int willExperience,
+            int craftExperience,
+            int senseExperience,
+            int charmExperience)
+        {
+            return charismaExperience > 0
+                || insightExperience > 0
+                || willExperience > 0
+                || craftExperience > 0
+                || senseExperience > 0
+                || charmExperience > 0;
+        }
+
+        internal static string BuildSetupPersonalityUseMessage(
+            string itemName,
+            int charismaExperience,
+            int insightExperience,
+            int willExperience,
+            int craftExperience,
+            int senseExperience,
+            int charmExperience)
+        {
+            List<string> gains = new();
+            AppendSetupPersonalityGain(gains, "Charisma", charismaExperience);
+            AppendSetupPersonalityGain(gains, "Insight", insightExperience);
+            AppendSetupPersonalityGain(gains, "Will", willExperience);
+            AppendSetupPersonalityGain(gains, "Craft", craftExperience);
+            AppendSetupPersonalityGain(gains, "Sense", senseExperience);
+            AppendSetupPersonalityGain(gains, "Charm", charmExperience);
+
+            string resolvedName = string.IsNullOrWhiteSpace(itemName)
+                ? "That setup item"
+                : itemName;
+            return gains.Count == 0
+                ? $"{resolvedName} was consumed."
+                : $"{resolvedName} granted {string.Join(", ", gains)}.";
+        }
+
+        private static void AppendSetupPersonalityGain(List<string> gains, string label, int value)
+        {
+            if (value <= 0)
+            {
+                return;
+            }
+
+            gains.Add($"{label} +{value.ToString(CultureInfo.InvariantCulture)}");
         }
 
         internal static bool IsSetupExperienceChairUseSupported(
@@ -21000,6 +21178,13 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (!MobSkillStatusTargetParity.AreEncounterTeamsCompatible(
+                        sourceMob.MobInstance?.Team,
+                        mob.MobInstance?.Team))
+                {
+                    continue;
+                }
+
 
                 Rectangle hitbox = mob.GetBodyHitbox(currentTick);
                 if (hitbox.IsEmpty || !hitbox.Intersects(area))
@@ -28166,6 +28351,11 @@ namespace HaCreator.MapSimulator
             _soundManager?.PlaySound("Jump");
         }
 
+        private void PlayMemoryGameReadyClickSE()
+        {
+            _soundManager?.PlaySound(MemoryGameReadyClickSoundKey);
+        }
+
 
         /// <summary>
         /// Plays the drop item sound effect (on mob death).
@@ -30618,14 +30808,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string cardItemIdText = cardItemId.ToString("D8", CultureInfo.InvariantCulture);
             for (int i = 0; i < activeDrops.Count; i++)
             {
                 DropItem drop = activeDrops[i];
                 if (drop == null
                     || !drop.IsPacketControlled
                     || drop.Type != DropType.Item
-                    || !string.Equals(drop.ItemId, cardItemIdText, StringComparison.Ordinal)
+                    || !IsSameMonsterCardItemId(drop.ItemId, cardItemId)
                     || drop.State == DropState.Expired
                     || drop.State == DropState.Removed)
                 {
@@ -30636,6 +30825,23 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool IsSameMonsterCardItemId(string dropItemId, int cardItemId)
+        {
+            if (cardItemId <= 0 || string.IsNullOrWhiteSpace(dropItemId))
+            {
+                return false;
+            }
+
+            string normalizedDropItemId = dropItemId.Trim();
+            if (int.TryParse(normalizedDropItemId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedItemId))
+            {
+                return parsedItemId == cardItemId;
+            }
+
+            return string.Equals(normalizedDropItemId, cardItemId.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                || string.Equals(normalizedDropItemId, cardItemId.ToString("D8", CultureInfo.InvariantCulture), StringComparison.Ordinal);
         }
 
         internal readonly struct CharacterInfoSocialRoomPresenceSnapshot
@@ -31747,12 +31953,11 @@ namespace HaCreator.MapSimulator
                     flushAdmitted);
             cadenceShapedPath = CMovePathClientPacketCodec.ApplyPortalOwnedPostFlushCarryHint(
                 cadenceShapedPath,
-                _hasPortalOwnedMovePathPostFlushCarry && !flushAdmitted,
-                _portalOwnedMovePathPostFlushCarry,
+                !flushAdmitted ? _portalOwnedMovePathPostFlushCarry : Array.Empty<MovePathElement>(),
                 out bool consumedPostFlushCarry);
             if (consumedPostFlushCarry)
             {
-                _hasPortalOwnedMovePathPostFlushCarry = false;
+                _portalOwnedMovePathPostFlushCarry.Clear();
             }
             if (!CMovePathClientPacketCodec.TryEncode(
                     cadenceShapedPath,
@@ -31766,14 +31971,12 @@ namespace HaCreator.MapSimulator
             if (flushAdmitted)
             {
                 _lastPortalOwnedMovePathFlushAdmissionTick = currentTime;
-                if (cadenceShapedPath.Count > 0)
+                _portalOwnedMovePathPostFlushCarry.Clear();
+                IReadOnlyList<MovePathElement> carryPath =
+                    CMovePathClientPacketCodec.CapturePortalOwnedPostFlushCarryHint(cadenceShapedPath);
+                for (int i = 0; i < carryPath.Count; i++)
                 {
-                    _portalOwnedMovePathPostFlushCarry = cadenceShapedPath[cadenceShapedPath.Count - 1];
-                    _hasPortalOwnedMovePathPostFlushCarry = true;
-                }
-                else
-                {
-                    _hasPortalOwnedMovePathPostFlushCarry = false;
+                    _portalOwnedMovePathPostFlushCarry.Add(carryPath[i]);
                 }
             }
 
@@ -38347,7 +38550,9 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<StatusBarCooldownRenderData> GetStatusBarOffBarCooldownData(int currentTime)
         {
-            if (_statusBarOffBarCooldownRenderCacheTime == currentTime)
+            if (!ShouldRefreshStatusBarOffBarCooldownUiForClientParity(
+                currentTime,
+                _statusBarOffBarCooldownRenderCacheTime))
             {
                 return _statusBarOffBarCooldownRenderCache;
             }
@@ -38455,6 +38660,17 @@ namespace HaCreator.MapSimulator
 
             return _statusBarOffBarCooldownRenderCache;
 
+        }
+
+        internal static bool ShouldRefreshStatusBarOffBarCooldownUiForClientParity(
+            int currentTime,
+            int lastRefreshTime)
+        {
+            // Keep off-bar cooldown rows on the same recovered status-bar cooltime cadence
+            // used by shortcut tray updates.
+            return ShouldRefreshStatusBarShortcutCooldownUiForClientParity(
+                currentTime,
+                lastRefreshTime);
         }
 
 

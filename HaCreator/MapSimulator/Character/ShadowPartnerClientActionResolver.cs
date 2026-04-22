@@ -1551,6 +1551,35 @@ namespace HaCreator.MapSimulator.Character
                 },
                 ["darksight"] = CreateIndexedPieces(
                     ("alert", 0, 100)),
+                // Mounted Character/00002000 ghost helper rows are still published on
+                // child `1/*` as concrete fallback frame tables with authored delays.
+                // Keep row-shaped plans in fallback so loader-owned timing/event delay
+                // stays aligned when mounted rows are unavailable.
+                ["ghostwalk"] = CreateIndexedPieces(
+                    ("walk1", 0, 180),
+                    ("walk1", 1, 180),
+                    ("walk1", 0, 180),
+                    ("walk1", 1, 180)),
+                ["ghoststand"] = CreateIndexedPieces(
+                    ("stand1", 0, 500),
+                    ("stand1", 1, 500),
+                    ("stand1", 2, 500)),
+                ["ghostjump"] = CreateIndexedPieces(
+                    ("jump", 0, 200)),
+                ["ghostproneStab"] = CreateIndexedPieces(
+                    ("proneStab", 0, 300),
+                    ("proneStab", 1, 300)),
+                ["ghostladder"] = CreateIndexedPieces(
+                    ("ladder", 0, 250),
+                    ("ladder", 1, 250)),
+                ["ghostrope"] = CreateIndexedPieces(
+                    ("rope", 0, 250),
+                    ("rope", 1, 250)),
+                ["ghostfly"] = CreateIndexedPieces(
+                    ("fly", 0, 300),
+                    ("fly", 1, 300)),
+                ["ghostsit"] = CreateIndexedPieces(
+                    ("sit", 0, 100)),
                 // The mounted `fly2*` rows are not WZ-authored Shadow Partner branches,
                 // but their source actions are part of the generic helper surface.
                 ["fly2"] = CreateIndexedPieces(

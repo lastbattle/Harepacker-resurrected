@@ -920,7 +920,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (!int.TryParse(value, out int numericValue) || numericValue < 0)
+            if (!TryParseNonNegativeAtoiValue(value, out int numericValue))
             {
                 return false;
             }
@@ -988,6 +988,50 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return false;
             }
+        }
+
+        private static bool TryParseNonNegativeAtoiValue(string rawValue, out int value)
+        {
+            value = 0;
+            if (rawValue == null)
+            {
+                return false;
+            }
+
+            int index = 0;
+            while (index < rawValue.Length && char.IsWhiteSpace(rawValue[index]))
+            {
+                index++;
+            }
+
+            bool negative = false;
+            if (index < rawValue.Length && (rawValue[index] == '+' || rawValue[index] == '-'))
+            {
+                negative = rawValue[index] == '-';
+                index++;
+            }
+
+            long parsed = 0;
+            bool hasDigit = false;
+            while (index < rawValue.Length && char.IsDigit(rawValue[index]))
+            {
+                hasDigit = true;
+                parsed = (parsed * 10) + (rawValue[index] - '0');
+                if (parsed > int.MaxValue)
+                {
+                    return false;
+                }
+
+                index++;
+            }
+
+            if (!hasDigit || negative)
+            {
+                return false;
+            }
+
+            value = (int)parsed;
+            return true;
         }
 
         private static bool TryMatchSessionValueKey(string key, int stringPoolId, string fallbackKey)

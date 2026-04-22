@@ -403,6 +403,25 @@ namespace HaCreator.MapSimulator.UI
                 && ShouldToggleWhisperPickerComboDropdownOnPress(comboHovered, comboToggleHovered);
         }
 
+        internal static bool ShouldDrawWhisperPickerModalComboCaret(
+            bool isWhisperTargetPickerActive,
+            MapSimulatorChat.WhisperTargetPickerPresentation whisperTargetPickerPresentation,
+            MapSimulatorChat.WhisperTargetPickerModalFocusTarget modalFocusTarget,
+            bool isComboDropdownOpen,
+            int tickCount,
+            int blinkIntervalMs = 500)
+        {
+            if (!isWhisperTargetPickerActive
+                || whisperTargetPickerPresentation != MapSimulatorChat.WhisperTargetPickerPresentation.Modal
+                || modalFocusTarget != MapSimulatorChat.WhisperTargetPickerModalFocusTarget.ComboBox
+                || isComboDropdownOpen)
+            {
+                return false;
+            }
+
+            return ((tickCount / Math.Max(1, blinkIntervalMs)) % 2) == 0;
+        }
+
         internal static bool ShouldCommitHoveredWhisperPickerCandidateOnRelease(
             bool pressedWhisperPickerCandidate,
             string pressedWhisperTarget,
@@ -1644,17 +1663,49 @@ namespace HaCreator.MapSimulator.UI
                 comboBounds,
                 comboToggleBounds,
                 StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset);
+            string inputText = chatState?.InputText ?? string.Empty;
+            int cursorPosition = Math.Clamp(chatState?.CursorPosition ?? 0, 0, inputText.Length);
+            string visibleComboText = ResolveWhisperPickerModalComboVisibleText(
+                inputText,
+                cursorPosition,
+                comboTextMaxWidth,
+                value => MeasureChatText(value).X,
+                out int visibleComboCursorOffset);
+            int comboTextTopInset = StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextTopInset;
             DrawTextWithShadow(
                 sprite,
-                ResolveWhisperPickerModalComboDisplayText(
-                    chatState.InputText,
-                    comboTextMaxWidth,
-                    value => MeasureChatText(value).X),
+                visibleComboText,
                 new Vector2(
                     comboTextX,
-                    comboBounds.Y + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextTopInset),
+                    comboBounds.Y + comboTextTopInset),
                 new Color(24, 24, 24),
                 new Color(255, 255, 255, 160));
+
+            if (_pixelTexture == null
+                || !ShouldDrawWhisperPickerModalComboCaret(
+                    chatState?.IsWhisperTargetPickerActive == true,
+                    chatState?.WhisperTargetPickerPresentation ?? MapSimulatorChat.WhisperTargetPickerPresentation.Inline,
+                    chatState?.WhisperTargetPickerModalFocusTarget ?? MapSimulatorChat.WhisperTargetPickerModalFocusTarget.ComboBox,
+                    chatState?.IsWhisperTargetPickerComboDropdownOpen == true,
+                    Environment.TickCount))
+            {
+                return;
+            }
+
+            string textBeforeCursor = visibleComboCursorOffset <= 0
+                ? string.Empty
+                : visibleComboText.Substring(0, Math.Clamp(visibleComboCursorOffset, 0, visibleComboText.Length));
+            int caretX = (int)Math.Round(comboTextX + MeasureChatText(textBeforeCursor).X);
+            int caretHeight = Math.Clamp(Math.Max(1, ResolveFontLineSpacing() - 1), 1, Math.Max(1, comboBounds.Height - 4));
+            int caretY = comboBounds.Y + Math.Max(0, comboTextTopInset - 1);
+            sprite.Draw(
+                _pixelTexture,
+                new Rectangle(
+                    caretX,
+                    caretY,
+                    1,
+                    caretHeight),
+                Color.White);
         }
 
         private void DrawWhisperPickerModalComboDropdownRow(
@@ -2447,6 +2498,61 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return best > 0 ? text.Substring(0, best) : string.Empty;
+        }
+
+        internal static string ResolveWhisperPickerModalComboVisibleText(
+            string inputText,
+            int cursorPosition,
+            float maxWidth,
+            Func<string, float> measureWidth,
+            out int visibleCursorOffset)
+        {
+            if (measureWidth == null)
+            {
+                throw new ArgumentNullException(nameof(measureWidth));
+            }
+
+            visibleCursorOffset = 0;
+            string text = inputText ?? string.Empty;
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            int safeCursorPosition = Math.Clamp(cursorPosition, 0, text.Length);
+            float safeMaxWidth = Math.Max(1f, maxWidth);
+            if (measureWidth(text) <= safeMaxWidth)
+            {
+                visibleCursorOffset = safeCursorPosition;
+                return text;
+            }
+
+            int startIndex = safeCursorPosition;
+            while (startIndex > 0)
+            {
+                string candidate = text.Substring(startIndex - 1, safeCursorPosition - startIndex + 1);
+                if (measureWidth(candidate) > safeMaxWidth)
+                {
+                    break;
+                }
+
+                startIndex--;
+            }
+
+            int endIndex = safeCursorPosition;
+            while (endIndex < text.Length)
+            {
+                string candidate = text.Substring(startIndex, endIndex - startIndex + 1);
+                if (measureWidth(candidate) > safeMaxWidth)
+                {
+                    break;
+                }
+
+                endIndex++;
+            }
+
+            visibleCursorOffset = safeCursorPosition - startIndex;
+            return text.Substring(startIndex, Math.Max(0, endIndex - startIndex));
         }
 
         internal static string ResolveWhisperPickerModalDropdownDisplayText(

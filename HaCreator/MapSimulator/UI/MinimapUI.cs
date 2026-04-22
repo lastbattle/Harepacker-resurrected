@@ -9,6 +9,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -1602,7 +1603,8 @@ namespace HaCreator.MapSimulator.UI
                 int relativeMouseY = mouseState.Y - Position.Y;
                 SetHoveredTooltip(
                     selectedTooltipText,
-                    ResolveTooltipAnchorPointForTesting(Position.X, Position.Y, relativeMouseX, relativeMouseY));
+                    ResolveTooltipAnchorPointForTesting(Position.X, Position.Y, relativeMouseX, relativeMouseY),
+                    selectedHoverTarget.Kind);
                 return true;
             }
 
@@ -1798,14 +1800,52 @@ namespace HaCreator.MapSimulator.UI
             return (int)candidate < (int)current;
         }
 
-        private void SetHoveredTooltip(string tooltipText, Point anchorPoint)
+        internal static string NormalizeTooltipTextForDisplayForTesting(string tooltipText, ClientHoverTargetKind kind)
         {
             if (string.IsNullOrWhiteSpace(tooltipText))
+            {
+                return null;
+            }
+
+            string trimmed = tooltipText.Trim();
+            if (kind is ClientHoverTargetKind.RemoteDirection or ClientHoverTargetKind.TrackedUser)
+            {
+                return trimmed;
+            }
+
+            // Client OnMouseMove routes NPC/employee/portal through SetToolTip_String (single-line path).
+            StringBuilder singleLine = new(trimmed.Length);
+            bool previousWasWhitespace = false;
+            for (int i = 0; i < trimmed.Length; i++)
+            {
+                char current = trimmed[i];
+                bool normalizeWhitespace = current == '\r' || current == '\n' || current == '\t' || current == ' ';
+                if (normalizeWhitespace)
+                {
+                    if (!previousWasWhitespace)
+                    {
+                        singleLine.Append(' ');
+                        previousWasWhitespace = true;
+                    }
+
+                    continue;
+                }
+
+                singleLine.Append(current);
+                previousWasWhitespace = false;
+            }
+
+            return singleLine.ToString().Trim();
+        }
+
+        private void SetHoveredTooltip(string tooltipText, Point anchorPoint, ClientHoverTargetKind kind)
+        {
+            string normalizedText = NormalizeTooltipTextForDisplayForTesting(tooltipText, kind);
+            if (string.IsNullOrWhiteSpace(normalizedText))
             {
                 return;
             }
 
-            string normalizedText = tooltipText.Trim();
             if (!string.Equals(_hoverTooltipText, normalizedText, StringComparison.Ordinal))
             {
                 _hoverTooltipText = normalizedText;

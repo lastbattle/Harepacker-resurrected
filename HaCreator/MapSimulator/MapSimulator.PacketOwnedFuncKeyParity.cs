@@ -75,6 +75,7 @@ namespace HaCreator.MapSimulator
         private PacketOwnedFuncKeyMappedEntry[] _packetOwnedFuncKeyMappedOld = CreateEmptyPacketOwnedFuncKeyMap();
         private int[] _packetOwnedBindableHotkeyAssignedScanCodes = CreatePacketOwnedBindableHotkeyAssignmentMap();
         private readonly Dictionary<Keys, List<PacketOwnedCastInputOwner>> _packetOwnedCastInputOwnersByKey = new();
+        private readonly Dictionary<Keys, PacketOwnedCastInputOwner> _packetOwnedHeldRawCastInputOwnersByKey = new();
         private int _packetOwnedPetConsumeItemId;
         private InventoryType _packetOwnedPetConsumeItemInventoryType = InventoryType.NONE;
         private int _packetOwnedPetConsumeMpItemId;
@@ -1157,6 +1158,7 @@ namespace HaCreator.MapSimulator
                 BuildPacketOwnedExistingBindableHotkeySlotIndicesByKey(input);
             ClearPacketOwnedBindableHotkeyMappings(input);
             _packetOwnedCastInputOwnersByKey.Clear();
+            _packetOwnedHeldRawCastInputOwnersByKey.Clear();
 
             int translated = 0;
             int nextUnclaimedBindableSlotIndex = 0;
@@ -1318,10 +1320,16 @@ namespace HaCreator.MapSimulator
                 || !player.IsAlive
                 || skills == null)
             {
+                _packetOwnedHeldRawCastInputOwnersByKey.Clear();
                 return;
             }
 
             using var cancelBatchScope = skills.BeginClientCancelBatchScope();
+            ReleasePacketOwnedHeldRawCastInputOwnersOnKeyUp(
+                skills,
+                currentTime,
+                keyboardState,
+                previousKeyboardState);
             foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedCurrentMappedEntries())
             {
                 if (entry.Type == PacketOwnedFuncKeyFunctionType
@@ -1363,6 +1371,17 @@ namespace HaCreator.MapSimulator
                 }
 
                 Keys key = ResolvePacketOwnedScanCodeKey(scanCode);
+                if (key == Keys.None)
+                {
+                    continue;
+                }
+
+                if (TryResolvePacketOwnedHeldRawCastInputOwner(key, out _))
+                {
+                    // Keep the key bound to the owner that was active at key-down until key-up.
+                    continue;
+                }
+
                 if (!TryResolvePacketOwnedActiveCastInputOwner(key, out PacketOwnedCastInputOwner owner)
                     || owner.ScanCode != scanCode
                     || owner.IsHandledByLiveHotkeyBinding)
@@ -1373,13 +1392,11 @@ namespace HaCreator.MapSimulator
                 int ownerInputToken = ComposePacketOwnedFuncKeyInputToken(owner.ScanCode);
                 if (WasPacketOwnedFuncKeyPressed(keyboardState, previousKeyboardState, key))
                 {
-                    TryDispatchPacketOwnedRawFuncKeyEntry(owner.Entry, currentTime, ownerInputToken);
-                }
-
-                if (owner.Entry.Type == PacketOwnedFuncKeySkillType
-                    && WasPacketOwnedFuncKeyReleased(keyboardState, previousKeyboardState, key))
-                {
-                    skills.ReleasePacketOwnedFuncKeySkillIfActive(owner.Entry.Id, currentTime, ownerInputToken);
+                    if (TryDispatchPacketOwnedRawFuncKeyEntry(owner.Entry, currentTime, ownerInputToken)
+                        && owner.Entry.Type == PacketOwnedFuncKeySkillType)
+                    {
+                        _packetOwnedHeldRawCastInputOwnersByKey[key] = owner;
+                    }
                 }
             }
         }
@@ -1899,6 +1916,49 @@ namespace HaCreator.MapSimulator
 
             owner = owners[ownerIndex];
             return true;
+        }
+
+        private bool TryResolvePacketOwnedHeldRawCastInputOwner(Keys key, out PacketOwnedCastInputOwner owner)
+        {
+            if (key != Keys.None
+                && _packetOwnedHeldRawCastInputOwnersByKey.TryGetValue(key, out owner))
+            {
+                return true;
+            }
+
+            owner = default;
+            return false;
+        }
+
+        private void ReleasePacketOwnedHeldRawCastInputOwnersOnKeyUp(
+            SkillManager skills,
+            int currentTime,
+            KeyboardState keyboardState,
+            KeyboardState previousKeyboardState)
+        {
+            if (skills == null || _packetOwnedHeldRawCastInputOwnersByKey.Count == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<Keys, PacketOwnedCastInputOwner> heldOwnerEntry in _packetOwnedHeldRawCastInputOwnersByKey.ToArray())
+            {
+                Keys key = heldOwnerEntry.Key;
+                if (key == Keys.None
+                    || !WasPacketOwnedFuncKeyReleased(keyboardState, previousKeyboardState, key))
+                {
+                    continue;
+                }
+
+                PacketOwnedCastInputOwner owner = heldOwnerEntry.Value;
+                if (owner.Entry.Type == PacketOwnedFuncKeySkillType && owner.Entry.Id > 0)
+                {
+                    int ownerInputToken = ComposePacketOwnedFuncKeyInputToken(owner.ScanCode);
+                    skills.ReleasePacketOwnedFuncKeySkillIfActive(owner.Entry.Id, currentTime, ownerInputToken);
+                }
+
+                _packetOwnedHeldRawCastInputOwnersByKey.Remove(key);
+            }
         }
 
         private void RegisterPacketOwnedCastInputOwner(

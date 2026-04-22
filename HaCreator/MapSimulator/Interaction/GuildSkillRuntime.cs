@@ -496,6 +496,116 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{summary} {pendingResolutionDetail}";
         }
 
+        internal string ApplyPacketOwnedSkillRecordSnapshot(
+            IReadOnlyList<SocialListGuildSkillRecordPacket> records,
+            int guildId,
+            int rawSubtype = (byte)SocialListClientGuildResultKind.GuildDataSnapshot)
+        {
+            if (!_isInGuild)
+            {
+                return "Ignored client guild-skill snapshot because no guild is currently active.";
+            }
+
+            if (_guildId > 0 && guildId > 0 && guildId != _guildId)
+            {
+                return $"Ignored client guild-skill snapshot for guild {guildId} because the active guild context is {_guildId}.";
+            }
+
+            Dictionary<int, SocialListGuildSkillRecordPacket> recordsBySkillId = new();
+            if (records != null)
+            {
+                for (int i = 0; i < records.Count; i++)
+                {
+                    SocialListGuildSkillRecordPacket record = records[i];
+                    if (record.SkillId > 0)
+                    {
+                        recordsBySkillId[record.SkillId] = record;
+                    }
+                }
+            }
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            int changedCount = 0;
+            int clearedCount = 0;
+            string pendingResolutionDetail = string.Empty;
+            for (int i = 0; i < _skills.Count; i++)
+            {
+                SkillDisplayData skill = _skills[i];
+                if (skill == null)
+                {
+                    continue;
+                }
+
+                int previousLevel = skill.CurrentLevel;
+                DateTimeOffset? previousExpiration = _activeGuildSkillExpirations.TryGetValue(skill.SkillId, out DateTimeOffset previousExpirationValue)
+                    && previousExpirationValue > now
+                    ? previousExpirationValue
+                    : null;
+
+                int resolvedLevel = 0;
+                DateTimeOffset? resolvedExpiration = null;
+                if (recordsBySkillId.TryGetValue(skill.SkillId, out SocialListGuildSkillRecordPacket record))
+                {
+                    resolvedLevel = Math.Clamp(record.SkillLevel, 0, Math.Max(0, skill.MaxLevel));
+                    resolvedExpiration = record.Expiration.HasValue && record.Expiration.Value > now
+                        ? record.Expiration.Value
+                        : null;
+                }
+
+                skill.CurrentLevel = resolvedLevel;
+                if (resolvedLevel <= 0 || !resolvedExpiration.HasValue)
+                {
+                    _activeGuildSkillExpirations.Remove(skill.SkillId);
+                }
+                else
+                {
+                    _activeGuildSkillExpirations[skill.SkillId] = resolvedExpiration.Value;
+                }
+
+                if (resolvedLevel > previousLevel)
+                {
+                    _availablePoints = Math.Max(0, _availablePoints - (resolvedLevel - previousLevel));
+                }
+
+                if (resolvedLevel != previousLevel || !Nullable.Equals(previousExpiration, resolvedExpiration))
+                {
+                    changedCount++;
+                }
+
+                if (!recordsBySkillId.ContainsKey(skill.SkillId)
+                    && (previousLevel > 0 || previousExpiration.HasValue))
+                {
+                    clearedCount++;
+                }
+
+                GuildSkillPendingRequest pendingRequest = ResolveMatchingPendingSkillRecord(
+                    skill.SkillId,
+                    previousLevel,
+                    resolvedLevel,
+                    previousExpiration,
+                    resolvedExpiration);
+                string pendingResult = ApplyPendingSkillRecordResolution(
+                    pendingRequest,
+                    skill,
+                    previousLevel,
+                    resolvedLevel,
+                    previousExpiration,
+                    resolvedExpiration);
+                if (!string.IsNullOrWhiteSpace(pendingResult))
+                {
+                    pendingResolutionDetail = pendingResult;
+                }
+            }
+
+            SaveCurrentGuildState(_activeGuildStateKey);
+            EnsureRecommendation();
+
+            string summary = $"Client OnGuildResult({rawSubtype}) replaced guild-skill records for guild {guildId} (records={recordsBySkillId.Count}, changed={changedCount}, cleared={clearedCount}).";
+            return string.IsNullOrWhiteSpace(pendingResolutionDetail)
+                ? summary
+                : $"{summary} {pendingResolutionDetail}";
+        }
+
         internal string TryLevelSelectedSkill(bool packetOwned)
         {
             if (!_isInGuild)

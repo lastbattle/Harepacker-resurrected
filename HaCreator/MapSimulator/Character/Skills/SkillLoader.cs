@@ -710,7 +710,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.SummonSelfDestructionFormula = GetString(commonNode, "selfDestruction");
             }
 
-            skill.MorphId = ResolveMorphTemplateId(skill.SkillId, commonNode, pvpCommonNode, infoNode);
+            skill.MorphId = ResolveMorphTemplateId(
+                skill.SkillId,
+                commonNode,
+                pvpCommonNode,
+                infoNode,
+                skill.ActionNames);
 
             // Parse level nodes to find max level
             var levelNode = skillNode["level"];
@@ -2279,6 +2284,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 32 or 42 => "mace",
                 33 or 34 or 36 => null,
                 37 or 38 => null,
+                39 => "barehands",
                 40 => "swordTL",
                 43 => "spear",
                 44 => "poleArm",
@@ -6242,6 +6248,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                         }
                     }
                 }
+
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNameTokens(Branch))
+                {
+                    foreach (int candidateSkillId in ExpandClientSummonedUolHeuristicLinkedSkillIdCandidates(
+                                 linkedSkillId,
+                                 contextSkillId))
+                    {
+                        if (yieldedSkillIds.Add(candidateSkillId))
+                        {
+                            yield return candidateSkillId;
+                        }
+                    }
+                }
             }
         }
 
@@ -7177,6 +7196,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return linkedSkillId;
                 }
 
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNameTokens(resolvedProperty))
+                {
+                    yield return linkedSkillId;
+                }
+
                 foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromReqOrPassiveBranchChildValues(
                              resolvedProperty,
                              parts))
@@ -7332,6 +7356,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNames(branchProperty))
+                {
+                    yield return linkedSkillId;
+                }
+
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNameTokens(branchProperty))
                 {
                     yield return linkedSkillId;
                 }
@@ -7617,6 +7646,36 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromChildNameTokens(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            var yieldedSkillIds = new HashSet<int>();
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child == null
+                    || string.IsNullOrWhiteSpace(child.Name)
+                    || TryParseRequiredSkillId(child.Name, out _))
+                {
+                    continue;
+                }
+
+                foreach (int linkedSkillId in EnumerateClientSummonedUolFallbackSkillIdsFromValue(
+                             child.Name,
+                             contextSkillId: 0))
+                {
+                    if (LooksLikeClientSummonedUolInferredSkillId(linkedSkillId)
+                        && yieldedSkillIds.Add(linkedSkillId))
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+        }
+
         private static IEnumerable<int> EnumerateLinkedSkillIdsFromInfoLinkLeaves(WzImageProperty infoProperty)
         {
             foreach (string leafName in new[] { "requireSkill", "affectedSkill", "dummyOf" })
@@ -7728,6 +7787,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNames(branchProperty))
+            {
+                foreach (int candidateSkillId in ExpandClientSummonedUolHeuristicLinkedSkillIdCandidates(
+                             linkedSkillId,
+                             contextSkillId))
+                {
+                    yield return candidateSkillId;
+                }
+            }
+
+            foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNameTokens(branchProperty))
             {
                 foreach (int candidateSkillId in ExpandClientSummonedUolHeuristicLinkedSkillIdCandidates(
                              linkedSkillId,
@@ -8243,11 +8312,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            if (HasItemBulletAnimationFrames(bulletProperty))
-            {
-                return bulletProperty;
-            }
-
             if (bulletProperty is not WzSubProperty bulletContainer)
             {
                 return bulletProperty;
@@ -8260,6 +8324,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return candidateProperty;
                 }
+            }
+
+            if (HasItemBulletAnimationFrames(bulletProperty))
+            {
+                return bulletProperty;
             }
 
             foreach (WzImageProperty child in bulletContainer.WzProperties)
@@ -10473,7 +10542,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return node?[name] != null;
         }
 
-        private static int ResolveMorphTemplateId(int skillId, WzImageProperty commonNode, WzImageProperty pvpCommonNode, WzImageProperty infoNode)
+        private static int ResolveMorphTemplateId(
+            int skillId,
+            WzImageProperty commonNode,
+            WzImageProperty pvpCommonNode,
+            WzImageProperty infoNode,
+            IEnumerable<string> requestedActionNames)
         {
             int morphTemplateId = TryGetConcreteMorphTemplateId(commonNode, "morph");
             if (morphTemplateId > 0)
@@ -10493,16 +10567,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return morphTemplateId;
             }
 
-            return ResolveFlagOnlyMorphAliasTemplateId(skillId, commonNode, pvpCommonNode, infoNode);
+            return ResolveFlagOnlyMorphAliasTemplateId(
+                skillId,
+                commonNode,
+                pvpCommonNode,
+                infoNode,
+                requestedActionNames);
         }
 
         internal static int ResolveMorphTemplateIdForTesting(
             int skillId,
             WzImageProperty commonNode,
             WzImageProperty pvpCommonNode,
-            WzImageProperty infoNode)
+            WzImageProperty infoNode,
+            IEnumerable<string> requestedActionNames = null)
         {
-            return ResolveMorphTemplateId(skillId, commonNode, pvpCommonNode, infoNode);
+            return ResolveMorphTemplateId(
+                skillId,
+                commonNode,
+                pvpCommonNode,
+                infoNode,
+                requestedActionNames);
         }
 
         private static int TryGetConcreteMorphTemplateId(WzImageProperty node, string name)
@@ -10517,24 +10602,62 @@ namespace HaCreator.MapSimulator.Character.Skills
             return morphTemplateId > 1 ? morphTemplateId : 0;
         }
 
-        private static int ResolveFlagOnlyMorphAliasTemplateId(int skillId, WzImageProperty commonNode, WzImageProperty pvpCommonNode, WzImageProperty infoNode)
+        private static int ResolveFlagOnlyMorphAliasTemplateId(
+            int skillId,
+            WzImageProperty commonNode,
+            WzImageProperty pvpCommonNode,
+            WzImageProperty infoNode,
+            IEnumerable<string> requestedActionNames)
         {
-            if (!HasFlagOnlyMorphMetadata(commonNode, "morph")
-                && !HasFlagOnlyMorphMetadata(pvpCommonNode, "morph")
-                && !HasFlagOnlyMorphMetadata(infoNode, "morph"))
+            bool hasFlagOnlyMorphMetadata =
+                HasFlagOnlyMorphMetadata(commonNode, "morph")
+                || HasFlagOnlyMorphMetadata(pvpCommonNode, "morph")
+                || HasFlagOnlyMorphMetadata(infoNode, "morph");
+
+            return ResolveFlagOnlyMorphAliasTemplateId(
+                skillId,
+                hasFlagOnlyMorphMetadata,
+                requestedActionNames,
+                CharacterLoader.CanResolveMorphTemplate);
+        }
+
+        private static int ResolveFlagOnlyMorphAliasTemplateId(
+            int skillId,
+            bool hasFlagOnlyMorphMetadata,
+            IEnumerable<string> requestedActionNames,
+            Func<int, IReadOnlyList<string>, bool> canResolveMorphTemplate)
+        {
+            if (!hasFlagOnlyMorphMetadata || canResolveMorphTemplate == null)
             {
                 return 0;
             }
 
+            IReadOnlyList<string> normalizedActionNames = EnumerateDistinctActionNames(
+                    requestedActionNames ?? Array.Empty<string>())
+                .ToArray();
+
             foreach (int morphTemplateId in EnumerateFlagOnlyMorphTemplateCandidates(skillId))
             {
-                if (CharacterLoader.CanResolveMorphTemplate(morphTemplateId))
+                if (canResolveMorphTemplate(morphTemplateId, normalizedActionNames))
                 {
                     return morphTemplateId;
                 }
             }
 
             return 0;
+        }
+
+        internal static int ResolveFlagOnlyMorphAliasTemplateIdForTesting(
+            int skillId,
+            bool hasFlagOnlyMorphMetadata,
+            IEnumerable<string> requestedActionNames,
+            Func<int, IReadOnlyList<string>, bool> canResolveMorphTemplate)
+        {
+            return ResolveFlagOnlyMorphAliasTemplateId(
+                skillId,
+                hasFlagOnlyMorphMetadata,
+                requestedActionNames,
+                canResolveMorphTemplate);
         }
 
         private static IEnumerable<int> EnumerateFlagOnlyMorphTemplateCandidates(int skillId)

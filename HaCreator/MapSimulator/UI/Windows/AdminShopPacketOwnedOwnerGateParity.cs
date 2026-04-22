@@ -13,5 +13,19 @@ namespace HaCreator.MapSimulator.UI
         {
             return hasBlockingUniqueModelessOwner || !acceptsResultAtOwnerGate;
         }
+
+        internal static bool ShouldStageDeferredResultAtOwnerGate(
+            bool keepSessionActive,
+            bool hasPendingRequestState,
+            AdminShopPacketOwnedOwnerVisibilityState ownerVisibilityState)
+        {
+            if (!keepSessionActive)
+            {
+                return false;
+            }
+
+            return hasPendingRequestState
+                || ownerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily;
+        }
     }
 }

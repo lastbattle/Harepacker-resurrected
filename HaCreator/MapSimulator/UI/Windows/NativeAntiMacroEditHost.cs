@@ -650,7 +650,7 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
-            if (msg == WmChar && virtualKey == VkReturn)
+            if (msg == WmChar && ShouldSuppressClientOwnedCharInput(virtualKey))
             {
                 return IntPtr.Zero;
             }
@@ -1063,6 +1063,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        internal static bool ShouldSuppressClientOwnedCharInput(int charCode)
+        {
+            // `CCtrlEdit` owns command/control keys through `OnKey` and does not
+            // append control characters to the edit buffer through a generic
+            // desktop `WM_CHAR` fallback path.
+            return char.IsControl((char)charCode);
         }
 
         internal static bool ShouldHandleClientOwnedEditCommand(uint msg)

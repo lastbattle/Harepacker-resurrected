@@ -1649,6 +1649,7 @@ namespace HaCreator.MapSimulator.Pools
                                     effectPayload,
                                     allowSecondaryInt32: false,
                                     requireSecondaryInt32: false,
+                                    requireDecodeStringPayload: true,
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
@@ -1691,6 +1692,7 @@ namespace HaCreator.MapSimulator.Pools
                                     effectPayload,
                                     allowSecondaryInt32: true,
                                     requireSecondaryInt32: true,
+                                    requireDecodeStringPayload: true,
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
@@ -1709,15 +1711,15 @@ namespace HaCreator.MapSimulator.Pools
                             int32Value = payloadReader.ReadInt32();
                             if (payloadReader.RemainingLength == 0)
                             {
-                                // Client-owned path can still play item-use audio from the item id
-                                // even if a string-effect payload is omitted by the source.
-                                stringValue = null;
+                                error = $"Remote user effect subtype {effectType} expects a DecodeStr payload after the item ID.";
+                                return false;
                             }
                             else if (!TryParseFlexibleEffectStringPayload(
                                     effectType,
                                     effectPayload.AsSpan(payloadReader.Offset),
                                     allowSecondaryInt32: true,
                                     requireSecondaryInt32: false,
+                                    requireDecodeStringPayload: true,
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
@@ -1773,6 +1775,7 @@ namespace HaCreator.MapSimulator.Pools
             ReadOnlySpan<byte> payload,
             bool allowSecondaryInt32,
             bool requireSecondaryInt32,
+            bool requireDecodeStringPayload,
             out string stringValue,
             out int? secondaryInt32Value,
             out int[] trailingInt32Values,
@@ -1787,6 +1790,12 @@ namespace HaCreator.MapSimulator.Pools
 
             if (payload.Length == 0)
             {
+                if (requireDecodeStringPayload)
+                {
+                    error = $"Remote user effect subtype {effectType} expects a DecodeStr payload.";
+                    return false;
+                }
+
                 if (requireSecondaryInt32)
                 {
                     error = $"Remote user effect subtype {effectType} expects at least one trailing int32 value after DecodeStr.";
@@ -3651,9 +3660,10 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            string normalizedPath = markerName.Replace('\\', '/');
             bool hasDefaultHelperPathContext = markerName.IndexOf("DefaultHelper", StringComparison.OrdinalIgnoreCase) >= 0;
-            bool hasMinimapIconDirectionPathContext = markerName.IndexOf("MiniMap/iconDirection", StringComparison.OrdinalIgnoreCase) >= 0;
-            bool hasMinimapIconNpcPathContext = markerName.IndexOf("MiniMap/iconNpc", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool hasMinimapIconDirectionPathContext = normalizedPath.IndexOf("MiniMap/iconDirection", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool hasMinimapIconNpcPathContext = normalizedPath.IndexOf("MiniMap/iconNpc", StringComparison.OrdinalIgnoreCase) >= 0;
             bool isPlainMarkerToken = markerName.IndexOf('/') < 0 && markerName.IndexOf('\\') < 0;
             if (!hasDefaultHelperPathContext
                 && !hasMinimapIconDirectionPathContext
@@ -3912,6 +3922,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int[] maskWords = DecodeTemporaryStatMaskWords(rawPayload.Slice(0, sizeof(int) * 4));
+            hasWeaponCharge = IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.WeaponCharge);
             var reader = new PacketReader(rawPayload);
             reader.ReadBytes(sizeof(int) * 4);
 
@@ -3982,11 +3993,11 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.WeaponCharge))
                 {
-                    hasWeaponCharge = true;
+                    int weaponChargeValueOffset = reader.Offset;
                     int weaponChargeValue = reader.ReadInt32();
                     decodedWeaponChargeValue = weaponChargeValue;
-                    weaponChargeMetadataOffset = reader.Offset;
-                    weaponChargePayloadOffset = weaponChargeMetadataOffset;
+                    weaponChargeMetadataOffset = weaponChargeValueOffset;
+                    weaponChargePayloadOffset = weaponChargeValueOffset;
                     if (AfterImageChargeSkillResolver.IsKnownChargeSkillId(weaponChargeValue))
                     {
                         chargeSkillId = weaponChargeValue;
@@ -4452,6 +4463,22 @@ namespace HaCreator.MapSimulator.Pools
                     rawPayload,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByKnownSkillConsensusFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out int consensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    consensusChargeElement,
                     out chargeSkillId))
             {
                 return true;

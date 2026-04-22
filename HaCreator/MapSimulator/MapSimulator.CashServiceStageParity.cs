@@ -363,6 +363,8 @@ namespace HaCreator.MapSimulator
                         SelectorInitArg = CashShopOneADaySelectorInitArg,
                         SelectorStartX = 2,
                         SelectorStartY = 2,
+                        SelectorStartWidth = 1,
+                        SelectorStartHeight = 1,
                         SelectorPosition = new Microsoft.Xna.Framework.Point(412, 406),
                         TodaySelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A1, "Today"),
                         PreviousSelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A2, "Previous"),
@@ -680,24 +682,35 @@ namespace HaCreator.MapSimulator
                 ? "CashTrader"
                 : selectedEntry.Seller.Trim();
             string paneLabel = string.IsNullOrWhiteSpace(listSnapshot.PaneLabel) ? "Unknown" : listSnapshot.PaneLabel.Trim();
-            string packetSummary =
-                $"CCSWnd_List handed {paneLabel} selection {listingTitle} to CCashTradingRoomDlg (SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, item {itemId.ToString(CultureInfo.InvariantCulture)}).";
+            string listingSignature = $"{commoditySerialNumber}:{itemId}:{quantity}:{price}:{seller}:{selectedEntry.StateLabel}";
+            string packetSummary = BuildCashTradingRoomPacketSummary(
+                paneLabel,
+                listingTitle,
+                commoditySerialNumber,
+                itemId,
+                quantity,
+                price,
+                seller,
+                listingSignature);
+            string selectionSignature = BuildCashTradingRoomPacketSelectionSignature(
+                paneLabel,
+                listSnapshot.BrowseModeLabel,
+                listSnapshot.CategoryLabel,
+                listSnapshot.SelectedIndex,
+                listSnapshot.ScrollOffset,
+                commoditySerialNumber,
+                itemId,
+                quantity,
+                price,
+                commodityOnSale,
+                listingTitle,
+                seller,
+                selectedEntry.StateLabel,
+                selectedEntry.Detail);
 
             return new CashTradingRoomWindow.PacketTradeSessionSnapshot
             {
-                Signature = string.Join(
-                    "|",
-                    paneLabel,
-                    listSnapshot.BrowseModeLabel ?? string.Empty,
-                    listSnapshot.CategoryLabel ?? string.Empty,
-                    listSnapshot.SelectedIndex.ToString(CultureInfo.InvariantCulture),
-                    listSnapshot.ScrollOffset.ToString(CultureInfo.InvariantCulture),
-                    commoditySerialNumber.ToString(CultureInfo.InvariantCulture),
-                    itemId.ToString(CultureInfo.InvariantCulture),
-                    price.ToString(CultureInfo.InvariantCulture),
-                    selectedEntry.StateLabel ?? string.Empty,
-                    listingTitle,
-                seller),
+                Signature = selectionSignature,
                 CommoditySerialNumber = commoditySerialNumber,
                 ItemId = itemId,
                 Price = price,
@@ -705,9 +718,64 @@ namespace HaCreator.MapSimulator
                 CommodityOnSale = commodityOnSale,
                 ListingTitle = listingTitle,
                 Seller = seller,
-                ListingSignature = $"{commoditySerialNumber}:{itemId}:{quantity}:{price}:{seller}:{selectedEntry.StateLabel}",
+                ListingSignature = listingSignature,
                 PacketSummary = packetSummary
             };
+        }
+
+        internal static string BuildCashTradingRoomPacketSelectionSignature(
+            string paneLabel,
+            string browseModeLabel,
+            string categoryLabel,
+            int selectedIndex,
+            int scrollOffset,
+            int commoditySerialNumber,
+            int itemId,
+            int quantity,
+            int price,
+            bool commodityOnSale,
+            string listingTitle,
+            string seller,
+            string stateLabel,
+            string detail)
+        {
+            return string.Join(
+                "|",
+                paneLabel ?? string.Empty,
+                browseModeLabel ?? string.Empty,
+                categoryLabel ?? string.Empty,
+                selectedIndex.ToString(CultureInfo.InvariantCulture),
+                scrollOffset.ToString(CultureInfo.InvariantCulture),
+                commoditySerialNumber.ToString(CultureInfo.InvariantCulture),
+                itemId.ToString(CultureInfo.InvariantCulture),
+                quantity.ToString(CultureInfo.InvariantCulture),
+                price.ToString(CultureInfo.InvariantCulture),
+                commodityOnSale ? "sale" : "off-sale",
+                stateLabel ?? string.Empty,
+                listingTitle ?? string.Empty,
+                seller ?? string.Empty,
+                detail ?? string.Empty);
+        }
+
+        internal static string BuildCashTradingRoomPacketSummary(
+            string paneLabel,
+            string listingTitle,
+            int commoditySerialNumber,
+            int itemId,
+            int quantity,
+            int price,
+            string seller,
+            string listingSignature)
+        {
+            string quantitySuffix = quantity > 1
+                ? $" x{quantity.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            string sellerLabel = string.IsNullOrWhiteSpace(seller) ? "Unknown seller" : seller.Trim();
+            string signatureLabel = string.IsNullOrWhiteSpace(listingSignature) ? "none" : listingSignature.Trim();
+            return
+                $"CCSWnd_List handed {paneLabel} selection {listingTitle} to CCashTradingRoomDlg " +
+                $"(SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, item {itemId.ToString(CultureInfo.InvariantCulture)}{quantitySuffix}, " +
+                $"price {price.ToString("N0", CultureInfo.InvariantCulture)} NX, seller {sellerLabel}, sig {signatureLabel}).";
         }
 
         private static int ParseCashServicePriceLabel(string priceLabel)
@@ -951,10 +1019,18 @@ namespace HaCreator.MapSimulator
             List<string> lines = new(cashShopWindow?.DescribeLockerOwnerState() ?? Array.Empty<string>());
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
             {
-                lines.Add(stageWindow.CashGiftLastSummary);
+                foreach (CashServiceStageWindow.PacketCatalogEntry entry in stageWindow.CashLockerPacketEntries.Take(2))
+                {
+                    AppendUniqueLine(lines, entry.Detail);
+                    AppendUniqueLine(lines, entry.PacketFieldSummary);
+                }
+
+                AppendCashShopStatusLine(lines, stageWindow.CashGiftLastSummary);
+                AppendCashShopStatusLine(lines, stageWindow.CashPurchaseRecordSummary);
+                AppendCashShopStatusLine(lines, stageWindow.CashItemLastSummary);
                 foreach (string recentPacket in stageWindow.GetRecentPacketSummaries(2))
                 {
-                    lines.Add(recentPacket);
+                    AppendUniqueLine(lines, recentPacket);
                 }
             }
 
@@ -1024,12 +1100,15 @@ namespace HaCreator.MapSimulator
                 {
                     foreach (CashServiceStageWindow.PacketCatalogEntry entry in stageWindow.CashInventoryPacketEntries.Take(2))
                     {
-                        lines.Add(entry.Detail);
+                        AppendUniqueLine(lines, entry.Detail);
+                        AppendUniqueLine(lines, entry.PacketFieldSummary);
                     }
                 }
                 else
                 {
-                    lines.Add(stageWindow.CashGiftLastSummary);
+                    AppendCashShopStatusLine(lines, stageWindow.CashItemLastSummary);
+                    AppendCashShopStatusLine(lines, stageWindow.CashCouponLastSummary);
+                    AppendCashShopStatusLine(lines, stageWindow.CashGiftLastSummary);
                 }
             }
 
@@ -1183,22 +1262,26 @@ namespace HaCreator.MapSimulator
             {
                 if (!string.IsNullOrWhiteSpace(stageWindow.CashPurchaseRecordSummary))
                 {
-                    lines.Add(stageWindow.CashPurchaseRecordSummary);
+                    AppendUniqueLine(lines, stageWindow.CashPurchaseRecordSummary);
                 }
 
-                foreach (CashServiceStageWindow.PacketCatalogEntry entry in stageWindow.CashPacketCatalogEntries.Take(2))
+                IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> stagedEntries =
+                    ResolveCashShopListFallbackEntries(stageWindow, out string fallbackPaneLabel, out string _);
+                if (stagedEntries.Count > 0)
                 {
-                    lines.Add(entry.Detail);
-                    if (string.Equals(entry.PacketSource, "GW_GiftList", StringComparison.Ordinal)
-                        && !string.IsNullOrWhiteSpace(entry.PacketFieldSummary))
+                    AppendUniqueLine(
+                        lines,
+                        $"{fallbackPaneLabel} rows {stagedEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the Cash Shop stage.");
+                    foreach (CashServiceStageWindow.PacketCatalogEntry entry in stagedEntries.Take(2))
                     {
-                        lines.Add(entry.PacketFieldSummary);
+                        AppendUniqueLine(lines, entry.Detail);
+                        AppendUniqueLine(lines, entry.PacketFieldSummary);
                     }
                 }
 
                 foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
                 {
-                    lines.Add(recentPacket);
+                    AppendUniqueLine(lines, recentPacket);
                 }
             }
 
@@ -1215,17 +1298,23 @@ namespace HaCreator.MapSimulator
             if (stageWindow != null
                 && (snapshot == null || snapshot.TotalCount <= 0 || preferPacketOwnedList))
             {
-                List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(stageWindow.CashPacketCatalogEntries);
+                IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> packetSourceEntries =
+                    ResolveCashShopListFallbackEntries(stageWindow, out string packetPaneLabel, out string packetBrowseModeLabel);
+                List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(packetSourceEntries);
                 return new CashShopStageChildWindow.ListOwnerState
                 {
-                    PaneLabel = stageWindow.CashPacketPaneLabel,
-                    BrowseModeLabel = stageWindow.CashPacketBrowseModeLabel,
+                    PaneLabel = packetPaneLabel,
+                    BrowseModeLabel = packetBrowseModeLabel,
                     CategoryLabel = "CCashShop",
                     FooterMessage = stageWindow.StatusMessage,
                     SelectedEntryDetail = packetEntries.FirstOrDefault()?.Detail ?? string.Empty,
                     SelectedIndex = packetEntries.Count > 0 ? 0 : -1,
                     ScrollOffset = 0,
-                    TotalCount = Math.Max(packetEntries.Count, stageWindow.WishlistCount),
+                    TotalCount = Math.Max(
+                        packetEntries.Count,
+                        string.Equals(packetBrowseModeLabel, "Wish", StringComparison.OrdinalIgnoreCase)
+                            ? stageWindow.WishlistCount
+                            : 0),
                     PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
                     HasKeyFocusCanvas = artSnapshot.HasAnyKeyFocusCanvas,
                     VisibleEntries = packetEntries,
@@ -1282,7 +1371,14 @@ namespace HaCreator.MapSimulator
 
         private static bool ShouldPreferStagePacketOwnedCashList(AdminShopDialogUI.ListOwnerSnapshot snapshot, CashServiceStageWindow stageWindow)
         {
-            if (stageWindow == null || stageWindow.CashPacketCatalogEntries.Count <= 0)
+            if (stageWindow == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> packetSourceEntries =
+                ResolveCashShopListFallbackEntries(stageWindow, out string packetPaneLabel, out string packetBrowseMode);
+            if (packetSourceEntries.Count <= 0)
             {
                 return false;
             }
@@ -1292,8 +1388,6 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            string packetPaneLabel = stageWindow.CashPacketPaneLabel?.Trim();
-            string packetBrowseMode = stageWindow.CashPacketBrowseModeLabel?.Trim();
             if (string.Equals(packetPaneLabel, "Packet wishlist", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(packetBrowseMode, "Wish", StringComparison.OrdinalIgnoreCase))
             {
@@ -1301,6 +1395,47 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        private static IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> ResolveCashShopListFallbackEntries(
+            CashServiceStageWindow stageWindow,
+            out string paneLabel,
+            out string browseModeLabel)
+        {
+            paneLabel = stageWindow?.CashPacketPaneLabel ?? "Packet wishlist";
+            browseModeLabel = stageWindow?.CashPacketBrowseModeLabel ?? "Wish";
+            if (stageWindow == null)
+            {
+                return Array.Empty<CashServiceStageWindow.PacketCatalogEntry>();
+            }
+
+            if (stageWindow.CashPacketCatalogEntries.Count > 0)
+            {
+                return stageWindow.CashPacketCatalogEntries;
+            }
+
+            if (stageWindow.CashGiftPacketEntries.Count > 0)
+            {
+                paneLabel = "Packet gifts";
+                browseModeLabel = "Gift";
+                return stageWindow.CashGiftPacketEntries;
+            }
+
+            if (stageWindow.CashInventoryPacketEntries.Count > 0)
+            {
+                paneLabel = "Packet inventory";
+                browseModeLabel = "Inventory";
+                return stageWindow.CashInventoryPacketEntries;
+            }
+
+            if (stageWindow.CashLockerPacketEntries.Count > 0)
+            {
+                paneLabel = "Packet locker";
+                browseModeLabel = "Locker";
+                return stageWindow.CashLockerPacketEntries;
+            }
+
+            return Array.Empty<CashServiceStageWindow.PacketCatalogEntry>();
         }
 
         private static CashShopListArtSnapshot ResolveCashShopListArtSnapshot()
@@ -1371,6 +1506,16 @@ namespace HaCreator.MapSimulator
             }
 
             if (summary.StartsWith("No cash-item", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            lines.Add(summary);
+        }
+
+        private static void AppendUniqueLine(List<string> lines, string summary)
+        {
+            if (lines == null || string.IsNullOrWhiteSpace(summary) || lines.Contains(summary, StringComparer.Ordinal))
             {
                 return;
             }
@@ -1918,11 +2063,48 @@ namespace HaCreator.MapSimulator
                 balanceLine += $"  Charge {stageWindow.ChargeParam.ToString(CultureInfo.InvariantCulture)}";
             }
 
-            return new[]
+            List<string> lines = new()
             {
                 balanceLine,
                 stageWindow.StatusMessage
             };
+
+            AppendUniqueLine(lines, stageWindow.ItcNormalItemLastSummary);
+            if (stageWindow.ItcPacketCatalogEntries.Count > 0)
+            {
+                AppendUniqueLine(
+                    lines,
+                    $"Main-list rows {stageWindow.ItcPacketCatalogEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
+                AppendUniqueLine(lines, stageWindow.ItcPacketCatalogEntries[0].Detail);
+            }
+
+            if (stageWindow.ItcWishPacketEntries.Count > 0)
+            {
+                AppendUniqueLine(
+                    lines,
+                    $"Wish-sale rows {stageWindow.ItcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
+                AppendUniqueLine(lines, stageWindow.ItcWishPacketEntries[0].Detail);
+            }
+
+            if (stageWindow.ItcPurchasePacketEntries.Count > 0)
+            {
+                AppendUniqueLine(
+                    lines,
+                    $"Purchase rows {stageWindow.ItcPurchasePacketEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
+                AppendUniqueLine(lines, stageWindow.ItcPurchasePacketEntries[0].Detail);
+            }
+
+            if (stageWindow.ItcResultPacketEntries.Count > 0)
+            {
+                AppendUniqueLine(lines, stageWindow.ItcResultPacketEntries[0].Detail);
+            }
+
+            foreach (string recentPacket in stageWindow.GetRecentPacketSummaries(2))
+            {
+                AppendUniqueLine(lines, recentPacket);
+            }
+
+            return lines;
         }
 
         private void HideCashShopOwnerFamilyWindows()
@@ -2366,6 +2548,10 @@ namespace HaCreator.MapSimulator
                 selectedEntry.CommoditySerialNumber > 0
                     ? AdminShopDialogUI.GetCommodityPurchaseVariants(selectedEntry.CommoditySerialNumber)
                     : Array.Empty<AdminShopDialogUI.CommodityPurchaseVariantSnapshot>();
+            int preferredVariantSerialNumber = ResolveCashPurchasePreferredVariantSerialNumber(
+                selectedEntry,
+                purchaseVariants,
+                stageWindow?.CashPurchaseDialogSelectedVariantSerialNumber ?? 0);
             modalWindow.Configure(
                 "CConfirmPurchaseDlg",
                 $"Confirm purchase for {selectedEntry.Title}.",
@@ -2376,8 +2562,8 @@ namespace HaCreator.MapSimulator
                     new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
                 },
                 footer: "Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000) at height-95, Prepaid Cash (1001) at height-80, Nexon Cash (1002) at height-65, and combo 1003 at (62,42,150,18) when the selected commodity exposes multiple packed entries.",
-                checkBoxes: BuildCashPurchasePaymentSelectorStates(stageWindow),
-                comboBox: BuildCashPurchaseVariantComboBoxState(selectedEntry, purchaseVariants, stageWindow?.CashPurchaseDialogSelectedVariantSerialNumber ?? 0));
+                checkBoxes: BuildCashPurchasePaymentSelectorStates(stageWindow, selectedEntry, purchaseVariants, preferredVariantSerialNumber),
+                comboBox: BuildCashPurchaseVariantComboBoxState(selectedEntry, purchaseVariants, preferredVariantSerialNumber));
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog);
             return $"CConfirmPurchaseDlg opened for {selectedEntry.Title}.";
         }
@@ -2594,17 +2780,24 @@ namespace HaCreator.MapSimulator
         }
 
         private static IReadOnlyList<CashServiceModalOwnerWindow.CheckBoxState> BuildCashPurchasePaymentSelectorStates(
-            CashServiceStageWindow stageWindow)
+            CashServiceStageWindow stageWindow,
+            AdminShopDialogUI.OwnerEntrySnapshot selectedEntry,
+            IReadOnlyList<AdminShopDialogUI.CommodityPurchaseVariantSnapshot> purchaseVariants,
+            int preferredVariantSerialNumber)
         {
             if (stageWindow == null)
             {
                 return Array.Empty<CashServiceModalOwnerWindow.CheckBoxState>();
             }
 
+            long requiredPrice = ResolveCashPurchaseRequiredPrice(
+                selectedEntry,
+                purchaseVariants,
+                preferredVariantSerialNumber);
             int preferredPaymentControlId = stageWindow.CashPurchaseDialogSelectedPaymentControlId;
-            bool maplePointEnabled = stageWindow.MaplePointBalance > 0;
-            bool prepaidEnabled = stageWindow.PrepaidCashBalance > 0;
-            bool nexonEnabled = stageWindow.NexonCashBalance > 0;
+            bool maplePointEnabled = stageWindow.MaplePointBalance >= requiredPrice;
+            bool prepaidEnabled = stageWindow.PrepaidCashBalance >= requiredPrice;
+            bool nexonEnabled = stageWindow.NexonCashBalance >= requiredPrice;
             bool preferredEnabled = preferredPaymentControlId switch
             {
                 1000 => maplePointEnabled,
@@ -2627,7 +2820,7 @@ namespace HaCreator.MapSimulator
                 {
                     ControlId = 1000,
                     Label = "Maple Point",
-                    Detail = stageWindow.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture),
+                    Detail = FormatCashPurchasePaymentDetail(stageWindow.MaplePointBalance, requiredPrice),
                     IsChecked = selectedPaymentControlId == 1000,
                     IsEnabled = maplePointEnabled,
                     ClientX = 25,
@@ -2639,7 +2832,7 @@ namespace HaCreator.MapSimulator
                 {
                     ControlId = 1001,
                     Label = "Prepaid Cash",
-                    Detail = stageWindow.PrepaidCashBalance.ToString("N0", CultureInfo.InvariantCulture),
+                    Detail = FormatCashPurchasePaymentDetail(stageWindow.PrepaidCashBalance, requiredPrice),
                     IsChecked = selectedPaymentControlId == 1001,
                     IsEnabled = prepaidEnabled,
                     ClientX = 25,
@@ -2651,7 +2844,7 @@ namespace HaCreator.MapSimulator
                 {
                     ControlId = 1002,
                     Label = "Nexon Cash",
-                    Detail = stageWindow.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture),
+                    Detail = FormatCashPurchasePaymentDetail(stageWindow.NexonCashBalance, requiredPrice),
                     IsChecked = selectedPaymentControlId == 1002,
                     IsEnabled = nexonEnabled,
                     ClientX = 25,
@@ -2660,6 +2853,74 @@ namespace HaCreator.MapSimulator
                     ClientHeight = 14
                 }
             };
+        }
+
+        private static int ResolveCashPurchasePreferredVariantSerialNumber(
+            AdminShopDialogUI.OwnerEntrySnapshot selectedEntry,
+            IReadOnlyList<AdminShopDialogUI.CommodityPurchaseVariantSnapshot> purchaseVariants,
+            int preferredVariantSerialNumber)
+        {
+            if (purchaseVariants == null || purchaseVariants.Count == 0)
+            {
+                return preferredVariantSerialNumber > 0
+                    ? preferredVariantSerialNumber
+                    : Math.Max(0, selectedEntry?.CommoditySerialNumber ?? 0);
+            }
+
+            if (preferredVariantSerialNumber > 0
+                && purchaseVariants.Any(variant => variant.SerialNumber == preferredVariantSerialNumber))
+            {
+                return preferredVariantSerialNumber;
+            }
+
+            int selectedCommoditySerial = Math.Max(0, selectedEntry?.CommoditySerialNumber ?? 0);
+            if (selectedCommoditySerial > 0
+                && purchaseVariants.Any(variant => variant.SerialNumber == selectedCommoditySerial))
+            {
+                return selectedCommoditySerial;
+            }
+
+            return Math.Max(0, purchaseVariants[0].SerialNumber);
+        }
+
+        private static long ResolveCashPurchaseRequiredPrice(
+            AdminShopDialogUI.OwnerEntrySnapshot selectedEntry,
+            IReadOnlyList<AdminShopDialogUI.CommodityPurchaseVariantSnapshot> purchaseVariants,
+            int preferredVariantSerialNumber)
+        {
+            if (purchaseVariants != null && purchaseVariants.Count > 0)
+            {
+                AdminShopDialogUI.CommodityPurchaseVariantSnapshot variant = purchaseVariants
+                    .FirstOrDefault(candidate => candidate.SerialNumber == preferredVariantSerialNumber)
+                    ?? purchaseVariants[0];
+                return Math.Max(0L, variant?.Price ?? 0L);
+            }
+
+            if (selectedEntry != null
+                && selectedEntry.CommoditySerialNumber > 0
+                && AdminShopDialogUI.TryResolveCommodityBySerialNumber(
+                    selectedEntry.CommoditySerialNumber,
+                    out _,
+                    out long resolvedPrice,
+                    out _,
+                    out _))
+            {
+                return Math.Max(0L, resolvedPrice);
+            }
+
+            return 0L;
+        }
+
+        private static string FormatCashPurchasePaymentDetail(long availableBalance, long requiredPrice)
+        {
+            long normalizedBalance = Math.Max(0L, availableBalance);
+            long normalizedRequired = Math.Max(0L, requiredPrice);
+            if (normalizedRequired <= 0L)
+            {
+                return normalizedBalance.ToString("N0", CultureInfo.InvariantCulture);
+            }
+
+            return $"{normalizedBalance.ToString("N0", CultureInfo.InvariantCulture)} / need {normalizedRequired.ToString("N0", CultureInfo.InvariantCulture)}";
         }
 
         private static CashServiceModalOwnerWindow.ComboBoxState BuildCashPurchaseVariantComboBoxState(

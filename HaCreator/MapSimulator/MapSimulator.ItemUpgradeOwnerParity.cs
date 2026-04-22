@@ -298,7 +298,9 @@ namespace HaCreator.MapSimulator
                     ResolveItemUpgradeRecoveredSlotNotice(recoverySlotCountArgument);
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
-                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(decodeState.ResultCode);
+                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(
+                    decodeState.ResultCode,
+                    decodeState.OutcomeResultValue);
                 message = $"Queued packet-owned item-upgrade recovery apply result code {decodeState.ResultCode}.";
                 if (consumedQuestStartLatch)
                 {
@@ -320,7 +322,9 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
                 _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
-                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(decodeState.ResultCode);
+                _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(
+                    decodeState.ResultCode,
+                    outcomeResultValue: null);
                 message = $"Queued packet-owned item-upgrade notice result code {decodeState.ResultCode}.";
                 if (consumedQuestStartLatch)
                 {
@@ -353,7 +357,9 @@ namespace HaCreator.MapSimulator
             _pendingItemUpgradeOwnerRequest.PacketOwnedApplyStatusMessageOverride = null;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultObserved = true;
             _pendingItemUpgradeOwnerRequest.PacketOwnedResultCode = decodeState.ResultCode;
-            _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(decodeState.ResultCode);
+            _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(
+                decodeState.ResultCode,
+                decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : (int?)null);
             message = success
                 ? $"Queued packet-owned item-upgrade success result code {decodeState.ResultCode}."
                 : $"Queued packet-owned item-upgrade fail result code {decodeState.ResultCode}.";
@@ -380,14 +386,21 @@ namespace HaCreator.MapSimulator
                 out message);
         }
 
-        private static int ResolveItemUpgradeResultReadyDelayMs(byte resultCode)
+        private static int ResolveItemUpgradeResultReadyDelayMs(byte resultCode, int? outcomeResultValue)
         {
             // CUIItemUpgrade::OnItemUpgradeResult handles 65/66 branches in the same call
             // (Decode4 reason + immediate notice/recovery path), while non-65/66 outcomes
             // transition through the regular result-state show path.
+            //
+            // CUIItemUpgrade::ShowResult sets m_tEnd to now+1000 specifically when
+            // m_nReturnResult==61 and m_nResult==0 (Vicious' Hammer fail), so keep
+            // that result branch on the delayed apply lane before owner completion.
             return resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot ||
                    resultCode == ItemUpgradePacketResultCodeClientRejected
                 ? 0
+                : resultCode == ItemUpgradePacketResultCodeViciousHammer &&
+                  outcomeResultValue.GetValueOrDefault() == ItemUpgradePacketOutcomeStateFail
+                    ? ItemUpgradeOwnerResultAckViciousHammerDelayMs
                 : ItemUpgradeOwnerResultApplyDelayMs;
         }
 
@@ -1003,7 +1016,12 @@ namespace HaCreator.MapSimulator
 
         internal static int ResolveItemUpgradeResultReadyDelayMsForTests(byte resultCode)
         {
-            return ResolveItemUpgradeResultReadyDelayMs(resultCode);
+            return ResolveItemUpgradeResultReadyDelayMs(resultCode, outcomeResultValue: null);
+        }
+
+        internal static int ResolveItemUpgradeResultReadyDelayMsForTests(byte resultCode, int? outcomeResultValue)
+        {
+            return ResolveItemUpgradeResultReadyDelayMs(resultCode, outcomeResultValue);
         }
 
         internal static bool TryDecodeItemUpgradeResultPayloadStateForTests(

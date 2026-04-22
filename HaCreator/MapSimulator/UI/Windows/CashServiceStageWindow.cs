@@ -1096,8 +1096,7 @@ namespace HaCreator.MapSimulator.UI
                     detail = ApplyCashOneADayPacket(payload);
                     break;
                 case 396:
-                    _noticeState = TryReadUtf8Text(payload, out string freeItemNotice) ? freeItemNotice : "Free-item notice packet received.";
-                    detail = _noticeState;
+                    detail = BuildCashFreeItemNoticeResult(payload);
                     break;
                 default:
                     detail = $"Unsupported Cash Shop packet {packetType}.";
@@ -3079,6 +3078,44 @@ namespace HaCreator.MapSimulator.UI
             });
             _noticeState = _cashTransferWorldLastSummary;
             return _cashTransferWorldLastSummary;
+        }
+
+        private string BuildCashFreeItemNoticeResult(byte[] payload)
+        {
+            byte[] packetPayload = payload ?? Array.Empty<byte>();
+            string decodedNotice = null;
+            if (!TryReadUtf8Text(packetPayload, out decodedNotice))
+            {
+                using MemoryStream stream = new(packetPayload, writable: false);
+                using BinaryReader reader = new(stream);
+                if (TryReadMapleString(reader, out string mapleNotice))
+                {
+                    decodedNotice = mapleNotice;
+                }
+            }
+
+            string notice = string.IsNullOrWhiteSpace(decodedNotice)
+                ? "Free-item notice packet received."
+                : SanitizePacketString(decodedNotice, "free-item notice");
+            string payloadHex = BuildCompactPayloadHex(packetPayload, 0, packetPayload.Length);
+            _noticeState = notice;
+            if (!string.IsNullOrWhiteSpace(payloadHex))
+            {
+                _noticeState += $" Packet bytes: {payloadHex}.";
+            }
+
+            AppendCashPacketCatalogEntry("Packet free item", "Notice", new PacketCatalogEntry
+            {
+                Title = "Free-item notice",
+                Detail = _noticeState,
+                Seller = "CCSWnd_Status",
+                PriceLabel = packetPayload.Length > 0 ? $"{packetPayload.Length.ToString(CultureInfo.InvariantCulture)} bytes" : string.Empty,
+                StateLabel = "Notice",
+                PacketSource = "CCashShop::OnPacket(396)",
+                PacketFieldSummary = string.IsNullOrWhiteSpace(notice) ? string.Empty : $"Notice: {notice}",
+                PacketRawByteLength = packetPayload.Length
+            });
+            return _noticeState;
         }
 
         public string CompleteReceiveGiftDialog(int selectedGiftIndex, string replyText)

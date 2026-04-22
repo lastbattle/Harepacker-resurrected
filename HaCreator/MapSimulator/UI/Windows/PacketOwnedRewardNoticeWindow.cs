@@ -167,6 +167,14 @@ namespace HaCreator.MapSimulator.UI
             return Math.Min(normalizedWrappedLineCount, normalizedResolvedFrameLineCount);
         }
 
+        internal static float ResolveBodyWrapWidth(bool hasTitle, bool tightLine)
+        {
+            // CUtilDlg::Draw uses the tighter 234px body-width branch when no title is present.
+            return tightLine || !hasTitle
+                ? TightLineBodyWrapWidth
+                : NormalBodyWrapWidth;
+        }
+
         public void Configure(string title, string body, bool autoSeparated = true, bool tightLine = false)
         {
             _title = title?.Trim() ?? string.Empty;
@@ -301,7 +309,9 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            float wrapWidth = _tightLine ? TightLineBodyWrapWidth : NormalBodyWrapWidth;
+            float wrapWidth = ResolveBodyWrapWidth(
+                hasTitle: !string.IsNullOrWhiteSpace(_title),
+                tightLine: _tightLine);
             foreach (string line in WrapText(_body, wrapWidth))
             {
                 yield return line;

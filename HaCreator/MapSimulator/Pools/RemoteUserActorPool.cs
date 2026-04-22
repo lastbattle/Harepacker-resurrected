@@ -1619,7 +1619,11 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.Build.ActivePortableChair = null;
                 actor.PreferredPortableChairPairCharacterId = null;
-                ClearPortableChairPairRecord(characterId);
+                SyncPortableChairPairRecordFromSeatState(
+                    characterId,
+                    chairItemId ?? 0,
+                    pairCharacterId,
+                    allowPairRecordCreateFromSeatState);
                 SetActorAction(actor, CharacterPart.GetActionString(CharacterAction.Stand1), allowSitFallback: false, Environment.TickCount);
                 SyncTemporaryStatPresentation(actor);
                 actor.ClearMeleeAfterImage();
@@ -2575,7 +2579,10 @@ namespace HaCreator.MapSimulator.Pools
                 SkinKey = string.IsNullOrWhiteSpace(skinKey) ? "KeyDownBar" : skinKey.Trim(),
                 DurationMs = Math.Max(0, durationMs),
                 PrepareDurationMs = Math.Max(0, prepareDurationMs),
-                GaugeDurationMs = gaugeDurationMs > 0 ? gaugeDurationMs : Math.Max(0, durationMs),
+                GaugeDurationMs = ResolvePreparedSkillGaugeDurationForOverlay(
+                    textVariant,
+                    gaugeDurationMs,
+                    durationMs),
                 StartTime = currentTime,
                 IsKeydownSkill = isKeydownSkill,
                 IsHolding = isHolding,
@@ -4837,7 +4844,10 @@ namespace HaCreator.MapSimulator.Pools
             overlay.Surface = PreparedSkillHudSurface.World;
             overlay.RemainingMs = remainingMs;
             overlay.DurationMs = duration;
-            overlay.GaugeDurationMs = prepared.GaugeDurationMs > 0 ? prepared.GaugeDurationMs : duration;
+            overlay.GaugeDurationMs = ResolvePreparedSkillGaugeDurationForOverlay(
+                prepared.TextVariant,
+                prepared.GaugeDurationMs,
+                duration);
             overlay.Progress = progress;
             overlay.IsKeydownSkill = prepared.IsKeydownSkill;
             overlay.IsPreparingPhase = prepared.AutoEnterHold && !isHolding && prepared.PrepareDurationMs > 0;
@@ -4922,6 +4932,34 @@ namespace HaCreator.MapSimulator.Pools
             isHolding = prepared.IsHolding;
             holdElapsedMs = isHolding ? elapsed : 0;
             return true;
+        }
+
+        private static int ResolvePreparedSkillGaugeDurationForOverlay(
+            PreparedSkillHudTextVariant textVariant,
+            int gaugeDurationMs,
+            int durationMs)
+        {
+            if (gaugeDurationMs > 0)
+            {
+                return gaugeDurationMs;
+            }
+
+            // Client parity: release-armed families can keep prepare/release caption
+            // ownership even when no explicit gauge window exists.
+            if (textVariant == PreparedSkillHudTextVariant.ReleaseArmed)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, durationMs);
+        }
+
+        internal static int ResolvePreparedSkillGaugeDurationForOverlayForTesting(
+            PreparedSkillHudTextVariant textVariant,
+            int gaugeDurationMs,
+            int durationMs)
+        {
+            return ResolvePreparedSkillGaugeDurationForOverlay(textVariant, gaugeDurationMs, durationMs);
         }
 
         private static bool TryResolvePreparedSkillWorldAnchor(
@@ -8931,8 +8969,21 @@ namespace HaCreator.MapSimulator.Pools
             int? preferredPairCharacterId,
             bool allowCreateRecordFromSeatState)
         {
-            if (characterId <= 0 || !IsCoupleChairRecordItemIdForClientParity(chairItemId))
+            if (characterId <= 0)
             {
+                return null;
+            }
+
+            if (!IsCoupleChairRecordItemIdForClientParity(chairItemId))
+            {
+                if (!allowCreateRecordFromSeatState && existingRecord.HasValue)
+                {
+                    return existingRecord.Value with
+                    {
+                        PreferredPairCharacterId = preferredPairCharacterId
+                    };
+                }
+
                 return null;
             }
 
@@ -10507,9 +10558,27 @@ namespace HaCreator.MapSimulator.Pools
         {
             int decodedWeaponChargeValue = weaponChargeValue.GetValueOrDefault();
             return hasWeaponChargeMaskBit
-                   && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(resolvedChargeSkillId.GetValueOrDefault())
+                   && !IsKnownNonEnergyRemoteWeaponChargeSkillId(resolvedChargeSkillId.GetValueOrDefault())
                    && decodedWeaponChargeValue > 0
-                   && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(decodedWeaponChargeValue);
+                   && !IsKnownNonEnergyRemoteWeaponChargeSkillId(decodedWeaponChargeValue);
+        }
+
+        private static bool IsKnownNonEnergyRemoteWeaponChargeSkillId(int skillId)
+        {
+            if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(skillId))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < RemoteEnergyChargeSkillIds.Length; i++)
+            {
+                if (RemoteEnergyChargeSkillIds[i] == skillId)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static int ResolveRemoteEnergyChargeMinimumFullChargeValue(int skillId, SkillData skill)
@@ -12252,7 +12321,30 @@ namespace HaCreator.MapSimulator.Pools
             part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, partX, partY, partColor, flip, null);
         }
 
-        private static int GetUnderFaceInsertionIndex(List<AssembledPart> parts)
+        private static int GetUnderFaceInsertionIndex(IReadOnlyList<AssembledPart> parts)
+        {
+            if (parts == null || parts.Count == 0)
+            {
+                return 0;
+            }
+
+            // Keep remote under-face seam insertion on the same render-layer index
+            // resolver used by the local lane; when no under-face layer metadata is
+            // available, fall back to the legacy part-type heuristic.
+            int[] insertionIndices = PlayerCharacter.GetAvatarRenderLayerInsertionIndices(parts);
+            int sharedInsertionIndex = PlayerCharacter.ResolveMirrorImageOverlayInsertionIndex(
+                insertionIndices,
+                parts.Count);
+            if (sharedInsertionIndex >= 0
+                && sharedInsertionIndex < parts.Count)
+            {
+                return sharedInsertionIndex;
+            }
+
+            return ResolveLegacyUnderFaceInsertionIndex(parts);
+        }
+
+        private static int ResolveLegacyUnderFaceInsertionIndex(IReadOnlyList<AssembledPart> parts)
         {
             if (parts == null || parts.Count == 0)
             {
@@ -12285,6 +12377,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return fallbackIndex;
+        }
+
+        internal static int ResolveRemoteUnderFaceInsertionIndexForTesting(IReadOnlyList<AssembledPart> parts)
+        {
+            return GetUnderFaceInsertionIndex(parts);
         }
 
         private static void DrawRemoteShadowPartner(
@@ -13658,6 +13755,22 @@ namespace HaCreator.MapSimulator.Pools
                 return payloadChargeSkillId;
             }
 
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByKnownSkillConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out int consensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    consensusChargeElement,
+                    out int consensusChargeSkillId))
+            {
+                return consensusChargeSkillId;
+            }
+
             return AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 ? effectivePreferredSkillId
                 : null;
@@ -13800,6 +13913,18 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementByKnownSkillConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
                     out chargeElement))
             {
                 return true;

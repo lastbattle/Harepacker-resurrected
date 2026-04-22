@@ -35,6 +35,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ShopMiniRoomBalloonRaisedOffset = 7;
         private const int MiniRoomLayoutBaselineBoardWidth = 166;
         private const int MiniRoomLayoutBaselineBoardHeight = 166;
+        private const int MiniRoomLayoutBaselineSignboardOriginX = 14;
+        private const int MiniRoomLayoutBaselineSignboardOriginY = 17;
         private const int MiniRoomLayoutLegacyIconX = 12;
         private const int MiniRoomLayoutLegacyIconY = 83;
         private const int MiniRoomLayoutLegacyCurrentCountX = 29;
@@ -913,7 +915,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int currentTickMs = GetClientTickCountMs();
             if (_lastEmployeeCacheSweepTickMs != 0
-                && GetElapsedCacheTimeMs(currentTickMs, _lastEmployeeCacheSweepTickMs) < ClientEmployeeCacheSweepIntervalMs)
+                && GetElapsedCacheTimeMs(currentTickMs, _lastEmployeeCacheSweepTickMs) < (uint)ClientEmployeeCacheSweepIntervalMs)
             {
                 return;
             }
@@ -972,12 +974,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool HasCacheEntryExpired(int lastAccessTickMs, int currentTickMs)
         {
-            return GetElapsedCacheTimeMs(currentTickMs, lastAccessTickMs) >= ClientEmployeeCacheEntryLifetimeMs;
+            return GetElapsedCacheTimeMs(currentTickMs, lastAccessTickMs) >= (uint)ClientEmployeeCacheEntryLifetimeMs;
         }
 
-        private static int GetElapsedCacheTimeMs(int currentTickMs, int previousTickMs)
+        private static uint GetElapsedCacheTimeMs(int currentTickMs, int previousTickMs)
         {
-            return unchecked(currentTickMs - previousTickMs);
+            return unchecked((uint)(currentTickMs - previousTickMs));
         }
 
         private static int GetClientTickCountMs()
@@ -1502,7 +1504,8 @@ namespace HaCreator.MapSimulator.Interaction
             MiniRoomBalloonLayout layout = ResolveMiniRoomBalloonLayout(
                 boardTexture.Width,
                 boardTexture.Height,
-                useTemplateLayoutScaling: _activeMiniRoomBoardAssets?.Signboard != null);
+                useTemplateLayoutScaling: _activeMiniRoomBoardAssets?.Signboard != null,
+                boardOrigin: _activeMiniRoomBoardAssets?.SignboardOrigin);
             int boardX = (int)boardPosition.X;
             int boardY = (int)boardPosition.Y;
 
@@ -1660,12 +1663,18 @@ namespace HaCreator.MapSimulator.Interaction
             int OwnerY) ResolveMiniRoomBalloonLayoutForTesting(
             int boardWidth,
             int boardHeight,
-            bool useTemplateLayoutScaling)
+            bool useTemplateLayoutScaling,
+            int? boardOriginX = null,
+            int? boardOriginY = null)
         {
+            Vector2? boardOrigin = boardOriginX.HasValue && boardOriginY.HasValue
+                ? new Vector2(boardOriginX.Value, boardOriginY.Value)
+                : null;
             MiniRoomBalloonLayout layout = ResolveMiniRoomBalloonLayout(
                 boardWidth,
                 boardHeight,
-                useTemplateLayoutScaling);
+                useTemplateLayoutScaling,
+                boardOrigin);
             return (
                 layout.IconX,
                 layout.IconY,
@@ -1683,71 +1692,96 @@ namespace HaCreator.MapSimulator.Interaction
         private static MiniRoomBalloonLayout ResolveMiniRoomBalloonLayout(
             int boardWidth,
             int boardHeight,
-            bool useTemplateLayoutScaling)
+            bool useTemplateLayoutScaling,
+            Vector2? boardOrigin = null)
         {
             return new MiniRoomBalloonLayout(
                 IconX: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyIconX,
                     boardWidth,
                     MiniRoomLayoutBaselineBoardWidth,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.X,
+                    MiniRoomLayoutBaselineSignboardOriginX),
                 IconY: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyIconY,
                     boardHeight,
                     MiniRoomLayoutBaselineBoardHeight,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.Y,
+                    MiniRoomLayoutBaselineSignboardOriginY),
                 CurrentCountX: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyCurrentCountX,
                     boardWidth,
                     MiniRoomLayoutBaselineBoardWidth,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.X,
+                    MiniRoomLayoutBaselineSignboardOriginX),
                 CurrentCountY: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyCurrentCountY,
                     boardHeight,
                     MiniRoomLayoutBaselineBoardHeight,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.Y,
+                    MiniRoomLayoutBaselineSignboardOriginY),
                 MaxCountX: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyMaxCountX,
                     boardWidth,
                     MiniRoomLayoutBaselineBoardWidth,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.X,
+                    MiniRoomLayoutBaselineSignboardOriginX),
                 MaxCountY: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyMaxCountY,
                     boardHeight,
                     MiniRoomLayoutBaselineBoardHeight,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.Y,
+                    MiniRoomLayoutBaselineSignboardOriginY),
                 StatusX: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyStatusX,
                     boardWidth,
                     MiniRoomLayoutBaselineBoardWidth,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.X,
+                    MiniRoomLayoutBaselineSignboardOriginX),
                 StatusY: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyStatusY,
                     boardHeight,
                     MiniRoomLayoutBaselineBoardHeight,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.Y,
+                    MiniRoomLayoutBaselineSignboardOriginY),
                 TitleCenterX: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyTitleCenterX,
                     boardWidth,
                     MiniRoomLayoutBaselineBoardWidth,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.X,
+                    MiniRoomLayoutBaselineSignboardOriginX),
                 HeadlineY: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyHeadlineY,
                     boardHeight,
                     MiniRoomLayoutBaselineBoardHeight,
-                    useTemplateLayoutScaling),
+                    useTemplateLayoutScaling,
+                    boardOrigin?.Y,
+                    MiniRoomLayoutBaselineSignboardOriginY),
                 OwnerY: ResolveMiniRoomLayoutAxisOffset(
                     MiniRoomLayoutLegacyOwnerY,
                     boardHeight,
                     MiniRoomLayoutBaselineBoardHeight,
-                    useTemplateLayoutScaling));
+                    useTemplateLayoutScaling,
+                    boardOrigin?.Y,
+                    MiniRoomLayoutBaselineSignboardOriginY));
         }
 
         private static int ResolveMiniRoomLayoutAxisOffset(
             int legacyOffset,
             int actualSize,
             int baselineSize,
-            bool useTemplateLayoutScaling)
+            bool useTemplateLayoutScaling,
+            float? actualOrigin,
+            int baselineOrigin)
         {
             if (!useTemplateLayoutScaling || actualSize <= 0 || baselineSize <= 0)
             {
@@ -1755,6 +1789,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             float scale = actualSize / (float)baselineSize;
+            if (actualOrigin.HasValue)
+            {
+                float anchoredOffset = actualOrigin.Value + ((legacyOffset - baselineOrigin) * scale);
+                return (int)Math.Round(anchoredOffset);
+            }
+
             return (int)Math.Round(legacyOffset * scale);
         }
 

@@ -1884,7 +1884,7 @@ namespace HaCreator.MapSimulator.Animation
             _nextUpdateTime = currentTimeMs + Math.Max(0, delayMs);
             _lastUpdateTime = currentTimeMs;
             _endTime = currentTimeMs + Math.Max(1, durationMs);
-            _intervalMs = Math.Max(16, intervalMs);
+            _intervalMs = NormalizeSnapshotIntervalMs(intervalMs);
             _alpha = alpha;
             _snapshotRetentionMs = Math.Max(0, snapshotRetentionMs);
             _terminationRequested = false;
@@ -2127,6 +2127,11 @@ namespace HaCreator.MapSimulator.Animation
 
             float progress = MathHelper.Clamp((float)ageMs / retentionMs, 0f, 1f);
             return (byte)Math.Clamp((int)MathF.Round(baseAlpha * (1f - progress)), 0, byte.MaxValue);
+        }
+
+        internal static int NormalizeSnapshotIntervalMs(int intervalMs)
+        {
+            return Math.Max(1, intervalMs);
         }
 
         public void Dispose()

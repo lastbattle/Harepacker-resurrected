@@ -2500,6 +2500,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private const int SIEGE_REPEAT_ATTACK_DELAY_MS = 180;
         private const int TANK_REPEAT_ATTACK_DELAY_MS = 420;
+        private const int CLIENT_SHOW_SKILL_EFFECT_SUMMON_MONSTER_PLACEMENT_DISTANCE_X = 125;
         private const int OWNER_ATTACK_TARGET_MEMORY_MS = 1500;
         private const int SUMMON_BODY_CONTACT_COOLDOWN_MS = 700;
         private const int SUMMON_HIT_PERIOD_DURATION_MS = 1500;
@@ -3070,7 +3071,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int weaponCode = GetEquippedWeaponCode();
             int subWeaponCode = GetEquippedSubWeaponCode();
 
-            if (skillId == 33101005 && weaponCode <= 0)
+            if (ShouldUseClientPrepareNoWeaponRestrictionMessage(skillId, weaponCode))
             {
                 return MapleStoryStringPool.GetOrFallback(
                     ClientPrepareNoWeaponStringPoolId,
@@ -3277,6 +3278,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return IsValidShootingWeaponForSkill(skillId, weaponCode);
+        }
+
+        private static bool ShouldUseClientPrepareNoWeaponRestrictionMessage(int skillId, int weaponCode)
+        {
+            if (skillId <= 0 || weaponCode > 0)
+            {
+                return false;
+            }
+
+            return ClientDoActiveSkillPrepareWeaponValidationSkillIds.Contains(skillId);
         }
 
         /// <summary>
@@ -8349,6 +8360,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return blankActionMountedFallbackVehicleId;
                 }
+
+                // Keep blank-action smoothing windows on fallback-capable owner ids only.
+                // If no mounted fallback owner resolves, defer explicit owner matching until
+                // a concrete action name returns.
+                return 0;
             }
 
             int currentActionMountItemId = ResolveClientOwnedVehicleCurrentActionMountItemId(
@@ -8981,12 +8997,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2 resolvedPlacement = SummonMovementResolver.ResolveSpawnPositionForInstance(
                 skill.SkillId,
                 skill.SummonMovementStyle,
-                skill.SummonSpawnDistanceX,
+                ResolveClientLocalShowSkillEffectPlacementDistanceX(skill),
                 casterPosition,
                 facingRightForPlacement,
                 instanceIndex: 0,
                 instanceCount: 1);
             return SettleSummonOnFoothold(skill.SummonMovementStyle, resolvedPlacement);
+        }
+
+        internal static int ResolveClientLocalShowSkillEffectPlacementDistanceX(SkillData skill)
+        {
+            int authoredDistance = skill?.SummonSpawnDistanceX ?? 0;
+            if (authoredDistance > 0)
+            {
+                return authoredDistance;
+            }
+
+            if (IsClientLocalShowSkillEffectSummonMonsterFamilySkill(skill))
+            {
+                // `CUserLocal::DoActiveSkill_SummonMonster@0x93eff0` seeds placement
+                // from `pt.x += 125 * direction` before foothold settle/search.
+                return CLIENT_SHOW_SKILL_EFFECT_SUMMON_MONSTER_PLACEMENT_DISTANCE_X;
+            }
+
+            return authoredDistance;
         }
 
         private static bool HasClientShowSkillEffectSummonPlacementMetadata(SkillData skill)
@@ -11760,6 +11794,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skillId == ClientPrepareHalfHpRequirementSkillId;
         }
 
+        internal static bool UsesClientPrepareNoWeaponRestrictionMessageForTesting(int skillId, int weaponCode)
+        {
+            return ShouldUseClientPrepareNoWeaponRestrictionMessage(skillId, weaponCode);
+        }
+
         internal static bool UsesClientPrepareSwallowTargetAdmissionForTesting(int skillId)
         {
             return skillId == ClientPrepareSwallowTargetAdmissionSkillId;
@@ -13101,12 +13140,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            // The client keeps `m_nRocketBoosterVY` armed until the startup one-time action
-            // finishes, then clears it on the next upkeep tick before touchdown attack
-            // resolution can begin.
-            if (!_rocketBoosterState.StoredLaunchMarkerCleared)
+            bool canAttemptLandingAttack = CanAttemptRocketBoosterLandingAttack(
+                _player?.IsPlayingClientOwnedOneTimeAction == true,
+                _rocketBoosterState.StoredLaunchMarkerCleared,
+                out bool storedLaunchMarkerCleared);
+            _rocketBoosterState.StoredLaunchMarkerCleared = storedLaunchMarkerCleared;
+            if (!canAttemptLandingAttack)
             {
-                _rocketBoosterState.StoredLaunchMarkerCleared = true;
                 return;
             }
 
@@ -13322,6 +13362,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             // completion and `m_nRocketBoosterVY` ownership; it does not enforce an
             // extra startup-duration wall once the clip has already ended.
             return !hasActiveClientOwnedOneTimeAction;
+        }
+
+        internal static bool CanAttemptRocketBoosterLandingAttack(
+            bool hasActiveClientOwnedOneTimeAction,
+            bool storedLaunchMarkerCleared,
+            out bool nextStoredLaunchMarkerCleared)
+        {
+            if (hasActiveClientOwnedOneTimeAction)
+            {
+                nextStoredLaunchMarkerCleared = storedLaunchMarkerCleared;
+                return false;
+            }
+
+            // `TryDoingRocketBoosterEnd` clears `m_nRocketBoosterVY` as soon as one-time
+            // action gating is released. Touchdown attack may proceed on that same tick.
+            nextStoredLaunchMarkerCleared = true;
+            return true;
         }
 
         internal static bool ShouldClearRocketBoosterAfterLandingAttack(int landingAttackElapsedMs)
@@ -14083,7 +14140,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             LocalAttackAreaOwnerLane resolvedOwnerLane =
                 localAttackAreaOwnerLane != LocalAttackAreaOwnerLane.None
                     ? localAttackAreaOwnerLane
-                    : ResolveLocalAttackAreaOwnerLane(mode);
+                    : ResolveLocalAttackAreaOwnerLane(mode, skill?.SkillId ?? 0);
             NotifyAttackAreaResolved(worldHitbox, currentTime, skill.SkillId);
             int maxTargets = Math.Max(1, levelData.MobCount);
             int attackCount = Math.Max(1, levelData.AttackCount);
@@ -22818,8 +22875,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                  - (first.Y - origin.Y) * (second.X - origin.X);
         }
 
-        internal static LocalAttackAreaOwnerLane ResolveLocalAttackAreaOwnerLane(AttackResolutionMode mode)
+        internal static LocalAttackAreaOwnerLane ResolveLocalAttackAreaOwnerLane(
+            AttackResolutionMode mode,
+            int skillId = 0)
         {
+            LocalAttackAreaOwnerLane explicitOwnerLane = ResolveClientExplicitLocalAttackAreaOwnerLane(skillId);
+            if (explicitOwnerLane != LocalAttackAreaOwnerLane.None)
+            {
+                return explicitOwnerLane;
+            }
+
             return mode switch
             {
                 AttackResolutionMode.Melee => LocalAttackAreaOwnerLane.TryDoingMeleeAttack,
@@ -22827,6 +22892,72 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AttackResolutionMode.Magic => LocalAttackAreaOwnerLane.TryDoingMagicAttack,
                 _ => LocalAttackAreaOwnerLane.None
             };
+        }
+
+        private static LocalAttackAreaOwnerLane ResolveClientExplicitLocalAttackAreaOwnerLane(int skillId)
+        {
+            if (IsClientShootLaneExplicitAreaSkillId(skillId))
+            {
+                return LocalAttackAreaOwnerLane.TryDoingShootAttack;
+            }
+
+            if (IsClientMagicLaneExplicitAreaSkillId(skillId))
+            {
+                return LocalAttackAreaOwnerLane.TryDoingMagicAttack;
+            }
+
+            if (IsClientBodyLaneExplicitAreaSkillId(skillId))
+            {
+                return LocalAttackAreaOwnerLane.TryDoingBodyAttack;
+            }
+
+            if (IsClientMesoExplosionLaneExplicitAreaSkillId(skillId))
+            {
+                return LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion;
+            }
+
+            return LocalAttackAreaOwnerLane.None;
+        }
+
+        private static bool IsClientShootLaneExplicitAreaSkillId(int skillId)
+        {
+            // IDA: TryDoingShootAttack explicit local affected-area owner branch.
+            return skillId == 3111003;
+        }
+
+        private static bool IsClientMagicLaneExplicitAreaSkillId(int skillId)
+        {
+            // IDA: TryDoingMagicAttack explicit local affected-area owner branch table.
+            return skillId == 12111003
+                   || skillId == 12111005
+                   || skillId == 2121007
+                   || skillId == 2221001
+                   || skillId == 2221007
+                   || skillId == 2321008
+                   || skillId == 22161001
+                   || skillId == 22181002
+                   || skillId == 32121004;
+        }
+
+        private static bool IsClientBodyLaneExplicitAreaSkillId(int skillId)
+        {
+            // IDA: TryDoingBodyAttack explicit local affected-area owner branch table.
+            return skillId == 32121003
+                   || IsClientTeleportMasterySkillId(skillId);
+        }
+
+        private static bool IsClientMesoExplosionLaneExplicitAreaSkillId(int skillId)
+        {
+            // IDA: DoActiveSkill_MesoExplosion explicit local affected-area owner branch.
+            return skillId == 4211006;
+        }
+
+        private static bool IsClientTeleportMasterySkillId(int skillId)
+        {
+            return skillId == 2111007
+                   || skillId == 2211007
+                   || skillId == 2311007
+                   || skillId == 32111010;
         }
 
         private void NotifyAttackAreaResolved(
@@ -26909,6 +27040,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
             }
 
+            if (string.Equals(label, MasteryBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
+            }
+
             if (string.Equals(label, BlessBuffLabel, StringComparison.OrdinalIgnoreCase))
             {
                 return activeTemporaryStatsByLabel.ContainsKey("PAD")
@@ -28149,7 +28285,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                       || mentions("throwing star mastery")
                       || mentions("throwing stars")
                       || mentionsFamilyWithGenericWeaponMastery("claw", "claws", "throwing star", "throwing stars"),
-                48 => mentions("knuckle mastery")
+                39 or 48 => mentions("knuckle mastery")
                       || mentions("knuckle expert")
                       || mentionsFamilyWithGenericWeaponMastery("knuckle", "knuckles"),
                 49 => mentions("gun mastery")
@@ -28252,7 +28388,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // `skill/1311.img/skill/13110003/common/mastery = 55+u(x/2)`.
                 13100000 or 13110003 or 3100000 or 3120005 => weaponCode == 45,
                 14100000 or 4100000 => weaponCode == 47,
-                15100001 or 5100001 => weaponCode == 48,
+                15100001 or 5100001 => weaponCode is 39 or 48,
                 2100006 or 2200006 or 2300006 or 22120002 or 22170001 or 2310008 => weaponCode is 37 or 38,
                 21100000 or 21120001 => weaponCode == 44,
                 3200000 or 3220004 => weaponCode == 46,
@@ -28287,11 +28423,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skillId switch
             {
-                51100001 => weaponCode == 48,
+                51100001 => weaponCode is 39 or 48,
                 // `skill/5112.img/skill/51120001/common/mastery = 55+u(x/2)` is present,
                 // but `String/Skill.img` does not publish a matching entry, so keep the
                 // Buccaneer-era expert book on the knuckle family via its observed job branch.
-                51120001 => weaponCode == 48,
+                51120001 => weaponCode is 39 or 48,
                 5700000 => weaponCode == 49,
                 _ => false
             };

@@ -42,8 +42,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (response.PacketResultCode != MapTransferRuntimePacketResultCode.RegisterApplied &&
-                response.PacketResultCode != MapTransferRuntimePacketResultCode.DeleteApplied)
+            if (!ShouldForwardMapTransferRequestToOfficialSession(_mapTransferOfficialSessionBridge.HasConnectedSession, request, response))
             {
                 return false;
             }
@@ -75,6 +74,21 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        internal static bool ShouldForwardMapTransferRequestToOfficialSession(
+            bool hasConnectedSession,
+            MapTransferRuntimeRequest request,
+            MapTransferRuntimeResponse previewResponse)
+        {
+            _ = previewResponse;
+            if (!hasConnectedSession || request == null || request.MapId <= 0)
+            {
+                return false;
+            }
+
+            return request.Type == MapTransferRuntimeRequestType.Register ||
+                   request.Type == MapTransferRuntimeRequestType.Delete;
+        }
+
         private void DrainMapTransferOfficialSessionBridge()
         {
             while (_mapTransferOfficialSessionBridge.TryDequeue(out MapTransferPacketInboxMessage message))
@@ -100,6 +114,11 @@ namespace HaCreator.MapSimulator
                 CharacterBuild targetBuild = pendingRequest?.Build ?? GetActiveMapTransferCharacterBuild();
                 MapTransferRuntimeRequest request = pendingRequest?.Request;
                 MapTransferRuntimeResponse predictedResponse = pendingRequest?.PredictedResponse;
+                if (request != null)
+                {
+                    _mapTransferOfficialSessionBridge.DropObservedRequest(request);
+                }
+
                 if (request == null &&
                     _mapTransferOfficialSessionBridge.TryResolveObservedRequest(previewResponse, out MapTransferRuntimeRequest observedRequest))
                 {

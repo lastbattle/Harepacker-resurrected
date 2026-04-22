@@ -8,7 +8,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     public readonly record struct SummonMovementProfile(
         int MoveAbility,
         SummonMovementStyle Style,
-        float SpawnDistanceX);
+        int SpawnDistanceX);
 
     public static class SummonMovementResolver
     {
@@ -107,21 +107,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
-        public static float ResolveSpawnDistanceX(int skillId)
+        public static int ResolveSpawnDistanceX(int skillId)
         {
             if (StationaryOctopusSkills.Contains(skillId))
-                return 45f;
+                return 45;
 
             if (StationarySpawnBehindSkills.Contains(skillId))
-                return -50f;
+                return -50;
 
             if (StationarySpawnNearBehindSkills.Contains(skillId))
-                return -30f;
+                return -30;
 
             if (StationarySpawnFarSkills.Contains(skillId))
-                return 200f;
+                return 200;
 
-            return 50f;
+            return 50;
         }
 
         public static Vector2 ResolveSpawnPosition(

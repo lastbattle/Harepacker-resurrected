@@ -11,7 +11,8 @@ namespace HaCreator.MapSimulator.Physics
             out byte[] payload,
             out string error,
             bool includeClientRandomCounts = false,
-            bool includeClientFlushTail = false)
+            bool includeClientFlushTail = false,
+            IReadOnlyList<byte> passiveKeyPadStates = null)
         {
             payload = Array.Empty<byte>();
             error = null;
@@ -43,7 +44,7 @@ namespace HaCreator.MapSimulator.Physics
 
             if (includeClientFlushTail)
             {
-                WriteFlushTail(writer, path, start);
+                WriteFlushTail(writer, path, start, passiveKeyPadStates);
             }
 
             writer.Flush();
@@ -113,12 +114,11 @@ namespace HaCreator.MapSimulator.Physics
 
         internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedPostFlushCarryHint(
             IReadOnlyList<MovePathElement> path,
-            bool hasCarry,
-            MovePathElement carry,
+            IReadOnlyList<MovePathElement> carryPath,
             out bool consumedCarry)
         {
             consumedCarry = false;
-            if (!hasCarry)
+            if (carryPath == null || carryPath.Count == 0)
             {
                 return path ?? Array.Empty<MovePathElement>();
             }
@@ -128,22 +128,65 @@ namespace HaCreator.MapSimulator.Physics
                 return Array.Empty<MovePathElement>();
             }
 
-            for (int i = 0; i < path.Count; i++)
-            {
-                if (HasSameEncodedShape(path[i], carry))
-                {
-                    consumedCarry = true;
-                    return path;
-                }
-            }
-
             if (path.Count != 1)
             {
                 return path;
             }
 
-            consumedCarry = true;
-            return new[] { carry, path[0] };
+            List<MovePathElement> merged = new(carryPath.Count + path.Count);
+            for (int i = 0; i < carryPath.Count; i++)
+            {
+                MovePathElement carry = carryPath[i];
+                if (HasEncodedShape(path, carry))
+                {
+                    consumedCarry = true;
+                    continue;
+                }
+
+                merged.Add(carry);
+                consumedCarry = true;
+            }
+
+            if (merged.Count == 0)
+            {
+                return path;
+            }
+
+            merged.AddRange(path);
+            return merged;
+        }
+
+        internal static IReadOnlyList<MovePathElement> CapturePortalOwnedPostFlushCarryHint(
+            IReadOnlyList<MovePathElement> flushAdmittedPath)
+        {
+            if (flushAdmittedPath == null || flushAdmittedPath.Count == 0)
+            {
+                return Array.Empty<MovePathElement>();
+            }
+
+            int lastGroundedIndex = -1;
+            for (int i = flushAdmittedPath.Count - 1; i >= 0; i--)
+            {
+                if (flushAdmittedPath[i].FootholdId > 0)
+                {
+                    lastGroundedIndex = i;
+                    break;
+                }
+            }
+
+            int carryStartIndex = lastGroundedIndex + 1;
+            if (carryStartIndex <= 0 || carryStartIndex >= flushAdmittedPath.Count)
+            {
+                return Array.Empty<MovePathElement>();
+            }
+
+            MovePathElement[] carry = new MovePathElement[flushAdmittedPath.Count - carryStartIndex];
+            for (int i = 0; i < carry.Length; i++)
+            {
+                carry[i] = flushAdmittedPath[carryStartIndex + i];
+            }
+
+            return carry;
         }
 
         private static void WriteElement(BinaryWriter writer, MovePathElement element, bool includeClientRandomCounts)
@@ -237,9 +280,25 @@ namespace HaCreator.MapSimulator.Physics
             return (byte)((actionCode << 1) | (facingRight ? 0 : 1));
         }
 
-        private static void WriteFlushTail(BinaryWriter writer, IReadOnlyList<MovePathElement> path, MovePathElement start)
+        private static void WriteFlushTail(
+            BinaryWriter writer,
+            IReadOnlyList<MovePathElement> path,
+            MovePathElement start,
+            IReadOnlyList<byte> passiveKeyPadStates)
         {
-            writer.Write((byte)0);
+            int stateCount = Math.Clamp(passiveKeyPadStates?.Count ?? 0, 0, byte.MaxValue);
+            writer.Write((byte)stateCount);
+            for (int i = 0; i < stateCount; i += 2)
+            {
+                byte low = (byte)(passiveKeyPadStates[i] & 0x0F);
+                byte packed = low;
+                if (i + 1 < stateCount)
+                {
+                    packed |= (byte)((passiveKeyPadStates[i + 1] & 0x0F) << 4);
+                }
+
+                writer.Write(packed);
+            }
 
             short left = ClampToShort(start.X);
             short top = ClampToShort(start.Y);
@@ -327,6 +386,19 @@ namespace HaCreator.MapSimulator.Physics
                    && left.YOffset == right.YOffset
                    && left.RandomCount == right.RandomCount
                    && left.ActualRandomCount == right.ActualRandomCount;
+        }
+
+        private static bool HasEncodedShape(IReadOnlyList<MovePathElement> path, MovePathElement candidate)
+        {
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (HasSameEncodedShape(path[i], candidate))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
