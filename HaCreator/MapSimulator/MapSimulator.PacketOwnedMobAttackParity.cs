@@ -116,6 +116,10 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 decodedPacket.MoveAction,
                 decodedPacket.FacingLeft);
+            if (decodedPacket.MovePathElements?.Count > 0)
+            {
+                liveMob?.MovementInfo?.QueuePacketMovePathElements(decodedPacket.MovePathElements, currentTime);
+            }
 
             if (!decodedPacket.NextAttackPossible)
             {

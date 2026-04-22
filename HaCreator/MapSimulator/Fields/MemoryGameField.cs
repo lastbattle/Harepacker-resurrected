@@ -1080,6 +1080,10 @@ namespace HaCreator.MapSimulator.Fields
 
 
             EnsureRoomOpenFromMiniRoomRuntime();
+            if (!TryValidateOfficialClientPacketShape(packetBytes, out message))
+            {
+                return false;
+            }
 
             byte packetType = packetBytes[0];
             if (_pendingPrompt.IsActive && IsLocalRequestPacketSubtype(packetType))
@@ -3178,15 +3182,133 @@ namespace HaCreator.MapSimulator.Fields
             byte packetType = packetBytes[0];
             return promptType switch
             {
-                MemoryGamePromptType.OutgoingTieRequest => packetType == MemoryGameTieRequestPacketType,
-                MemoryGamePromptType.IncomingTieRequest => packetType == MemoryGameTieResultPacketType,
-                MemoryGamePromptType.GiveUp => packetType == MemoryGameClientGiveUpPacketType,
-                MemoryGamePromptType.BanParticipant => packetType == MemoryGameClientBanOrTurnUpCardPacketType && packetBytes.Length <= 1,
-                MemoryGamePromptType.BookLeave => packetType == MemoryGameClientBookLeavePacketType,
-                MemoryGamePromptType.CancelBookedLeave => packetType == MemoryGameClientCancelLeavePacketType,
-                MemoryGamePromptType.CloseRoom => packetType == MiniRoomBaseLeavePacketType,
+                MemoryGamePromptType.OutgoingTieRequest => packetType == MemoryGameTieRequestPacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.IncomingTieRequest => packetType == MemoryGameTieResultPacketType && packetBytes.Length == 2 && packetBytes[1] <= 1,
+                MemoryGamePromptType.GiveUp => packetType == MemoryGameClientGiveUpPacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.BanParticipant => packetType == MemoryGameClientBanOrTurnUpCardPacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.BookLeave => packetType == MemoryGameClientBookLeavePacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.CancelBookedLeave => packetType == MemoryGameClientCancelLeavePacketType && packetBytes.Length == 1,
+                MemoryGamePromptType.CloseRoom => packetType == MiniRoomBaseLeavePacketType && packetBytes.Length == 1,
                 _ => false
             };
+        }
+
+        private static bool TryValidateOfficialClientPacketShape(byte[] packetBytes, out string message)
+        {
+            message = null;
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Memory Game client payload is empty.";
+                return false;
+            }
+
+            byte packetType = packetBytes[0];
+            int packetLength = packetBytes.Length;
+            switch (packetType)
+            {
+                // v95 client send path:
+                // CMemoryGameDlg::OnClickEndButton encodes 10/56/57 as one-byte subtype payloads.
+                // CMemoryGameDlg::SendClaimGiveUp encodes subtype 52 as one-byte payload.
+                // CMemoryGameDlg::SendTieRequest encodes subtype 50 as one-byte payload.
+                // CMemoryGameDlg::OnTieRequest encodes subtype 51 with one decision byte (0/1).
+                case MiniRoomBaseLeavePacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Leave packet (10) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameTieRequestPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Tie-request packet (50) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameTieResultPacketType:
+                    if (packetLength != 2)
+                    {
+                        message = $"Tie-response packet (51) requires two bytes (51 <0|1>), but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    if (packetBytes[1] > 1)
+                    {
+                        message = $"Tie-response packet (51) used invalid decision byte {packetBytes[1]}; expected 0 or 1.";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientGiveUpPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Give-up packet (52) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientBookLeavePacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Leave-book packet (56) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientCancelLeavePacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Leave-book cancel packet (57) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameReadyPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Ready packet (58) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameCancelReadyPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Cancel-ready packet (59) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameClientBanOrTurnUpCardPacketType:
+                    if (packetLength != 1 && packetLength != 2)
+                    {
+                        message = $"Ban/turn-up packet (60) requires one byte (ban) or two bytes (turn-up), but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+
+                case MemoryGameStartPacketType:
+                    if (packetLength != 1)
+                    {
+                        message = $"Start packet (61) requires a single-byte payload, but received {packetLength} byte(s).";
+                        return false;
+                    }
+
+                    break;
+            }
+
+            return true;
         }
 
         private static bool AssignPromptMissing(out string message)

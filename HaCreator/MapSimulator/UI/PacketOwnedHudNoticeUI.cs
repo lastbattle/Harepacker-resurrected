@@ -318,15 +318,36 @@ namespace HaCreator.MapSimulator.UI
 
         private static int GetFrameWidth(Texture2D top, Texture2D center, Texture2D bottom, int fallbackWidth)
         {
-            return Math.Max(
+            return ResolveFrameWidth(
                 fallbackWidth,
-                Math.Max(top?.Width ?? 0, Math.Max(center?.Width ?? 0, bottom?.Width ?? 0)));
+                top?.Width ?? 0,
+                center?.Width ?? 0,
+                bottom?.Width ?? 0);
         }
 
         private static int GetMinimumFrameHeight(Texture2D top, Texture2D center, Texture2D bottom, int fallbackHeight)
         {
-            int frameHeight = (top?.Height ?? 0) + (center?.Height ?? 0) + (bottom?.Height ?? 0);
-            return Math.Max(fallbackHeight, frameHeight);
+            return ResolveFrameHeight(
+                fallbackHeight,
+                top?.Height ?? 0,
+                center?.Height ?? 0,
+                bottom?.Height ?? 0);
+        }
+
+        internal static int ResolveFrameWidth(int fallbackWidth, int topWidth, int centerWidth, int bottomWidth)
+        {
+            int authoredWidth = Math.Max(topWidth, Math.Max(centerWidth, bottomWidth));
+            return authoredWidth > 0
+                ? authoredWidth
+                : Math.Max(1, fallbackWidth);
+        }
+
+        internal static int ResolveFrameHeight(int fallbackHeight, int topHeight, int centerHeight, int bottomHeight)
+        {
+            int authoredHeight = Math.Max(0, topHeight) + Math.Max(0, centerHeight) + Math.Max(0, bottomHeight);
+            return authoredHeight > 0
+                ? authoredHeight
+                : Math.Max(1, fallbackHeight);
         }
 
         private string TrimText(string value, float scale, int maxWidth)

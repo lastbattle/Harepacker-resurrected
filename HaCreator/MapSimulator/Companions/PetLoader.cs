@@ -1305,37 +1305,40 @@ namespace HaCreator.MapSimulator.Companions
 
         private static Rectangle ResolveCanvasBounds(WzCanvasProperty canvas, int width, int height)
         {
-            if (TryResolveCanvasBoundsFromVectors(canvas, width, height, out Rectangle authoredBounds))
-            {
-                return authoredBounds;
-            }
-
             Point canvasOrigin = ResolveCanvasOrigin(canvas);
-            return new Rectangle(-canvasOrigin.X, -canvasOrigin.Y, width, height);
+            Point? authoredLt = TryResolveVector(canvas?["lt"], out Point lt) ? lt : null;
+            Point? authoredRb = TryResolveVector(canvas?["rb"], out Point rb) ? rb : null;
+            return ResolveCanvasBoundsFromMetadata(authoredLt, authoredRb, canvasOrigin, width, height);
         }
 
-        private static bool TryResolveCanvasBoundsFromVectors(WzCanvasProperty canvas, int width, int height, out Rectangle bounds)
+        internal static Rectangle ResolveCanvasBoundsFromMetadata(
+            Point? authoredLt,
+            Point? authoredRb,
+            Point origin,
+            int width,
+            int height)
         {
-            bounds = default;
-            if (canvas == null || width <= 0 || height <= 0)
+            if (width <= 0 || height <= 0)
             {
-                return false;
+                return Rectangle.Empty;
             }
 
-            if (!TryResolveVector(canvas["lt"], out Point lt) || !TryResolveVector(canvas["rb"], out Point rb))
+            int left = authoredLt?.X ?? -origin.X;
+            int top = authoredLt?.Y ?? -origin.Y;
+            int right = authoredRb?.X ?? left + width;
+            int bottom = authoredRb?.Y ?? top + height;
+
+            if (right <= left)
             {
-                return false;
+                right = left + width;
             }
 
-            int resolvedWidth = rb.X - lt.X;
-            int resolvedHeight = rb.Y - lt.Y;
-            if (resolvedWidth <= 0 || resolvedHeight <= 0)
+            if (bottom <= top)
             {
-                return false;
+                bottom = top + height;
             }
 
-            bounds = new Rectangle(lt.X, lt.Y, resolvedWidth, resolvedHeight);
-            return true;
+            return Rectangle.FromLTRB(left, top, right, bottom);
         }
 
         private static Point ResolveCanvasOrigin(WzCanvasProperty canvas)

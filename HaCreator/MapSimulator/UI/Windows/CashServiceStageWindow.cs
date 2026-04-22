@@ -133,6 +133,8 @@ namespace HaCreator.MapSimulator.UI
         private const int CashItemInfoPacketByteLength = 55;
         private const int GiftListPacketByteLength = 98;
         private const int ReceiveGiftAcceptNoticeStringPoolId = 0x0AC0;
+        private const int MaxTrailingCashItemInfoDecodeRows = 32;
+        private const int MaxTrailingItcDecodeRows = 32;
 
         internal sealed class GiftListPacketSnapshot
         {
@@ -1159,8 +1161,12 @@ namespace HaCreator.MapSimulator.UI
                 105 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResUseCouponFailed"),
                 107 => TryApplyCashGiftDone(packetPayload, out string giftDoneMessage)
                     ? giftDoneMessage
-                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftDone", packetPayload),
-                108 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResGiftFailed"),
+                    : _cashReceiveGiftPendingAcceptEntry != null
+                        ? "CCashShop::OnCashItemResGiftDone reached the receive-gift accept branch and is waiting for modal-owner finalization."
+                        : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftDone", packetPayload),
+                108 => _cashReceiveGiftPendingAcceptEntry != null
+                    ? "CCashShop::OnCashItemResGiftFailed reached the receive-gift accept branch and is waiting for modal-owner finalization."
+                    : BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResGiftFailed"),
                 -102 => TryApplyCashBuyPackageDone(packetPayload, out string buyPackageDoneMessage)
                     ? buyPackageDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyPackageDone", packetPayload),
@@ -1462,7 +1468,10 @@ namespace HaCreator.MapSimulator.UI
             string trailingSummary = AppendTrailingCashItemInfoFromPayload(
                 payload,
                 (int)stream.Position,
-                maxCount: 4,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(
+                    payload,
+                    startOffset: (int)stream.Position,
+                    preferredCount: 4),
                 paneLabel: "Packet gifts",
                 browseModeLabel: "Gift",
                 titlePrefix: "Gift packet body",
@@ -1551,7 +1560,7 @@ namespace HaCreator.MapSimulator.UI
             AppendCashPacketCatalogEntry("Packet purchase", "Buy", entry);
             string trailingSummary = AppendTrailingCashItemInfoFromReader(
                 reader,
-                maxCount: 4,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: 4),
                 paneLabel: "Packet purchase",
                 browseModeLabel: "Buy",
                 titlePrefix: "Buy packet body",
@@ -1734,7 +1743,7 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             string trailingSummary = AppendTrailingCashItemInfoFromReader(
                 reader,
-                maxCount: 4,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: 4),
                 paneLabel: "Packet coupons",
                 browseModeLabel: "Coupon",
                 titlePrefix: "Coupon packet body",
@@ -1839,7 +1848,7 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             string trailingSummary = AppendTrailingCashItemInfoFromReader(
                 reader,
-                maxCount: 8,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: Math.Max(8, itemCount)),
                 paneLabel: "Packet package",
                 browseModeLabel: "Package",
                 titlePrefix: "Package packet body",
@@ -2016,7 +2025,7 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             string trailingSummary = AppendTrailingCashItemInfoFromReader(
                 reader,
-                maxCount: 4,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: 4),
                 paneLabel: "Packet purchase",
                 browseModeLabel: "Buy",
                 titlePrefix: "Purchase-record packet body",
@@ -2075,7 +2084,7 @@ namespace HaCreator.MapSimulator.UI
             _cashNameChangeLastSummary = $"Name-change purchase completed with embedded {embeddedCashItemInfoEntry.PacketFieldSummary}.";
             string trailingSummary = AppendTrailingCashItemInfoFromReader(
                 reader,
-                maxCount: 4,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: 4),
                 paneLabel: "Packet rename",
                 browseModeLabel: "Name",
                 titlePrefix: "Name-change packet body",
@@ -2130,7 +2139,7 @@ namespace HaCreator.MapSimulator.UI
             _cashTransferWorldLastSummary = $"Transfer-world purchase completed with embedded {embeddedCashItemInfoEntry.PacketFieldSummary}.";
             string trailingSummary = AppendTrailingCashItemInfoFromReader(
                 reader,
-                maxCount: 4,
+                maxCount: ResolveTrailingCashItemInfoDecodeCount(reader, preferredCount: 4),
                 paneLabel: "Packet transfer",
                 browseModeLabel: "Transfer",
                 titlePrefix: "Transfer-world packet body",
@@ -4129,7 +4138,9 @@ namespace HaCreator.MapSimulator.UI
             int winningPrice = Math.Max(0, reader.ReadInt32());
             int itemCount = Math.Max(0, reader.ReadInt32());
             int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1 + (sizeof(int) * 2), _itcPurchasePacketEntries, _itcPacketCatalogEntries);
-            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(reader, Math.Max(1, Math.Min(itemCount, 4)));
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(
+                reader,
+                ResolveTrailingItcDecodeCount(reader, requestedCount: itemCount));
             if (listingIdHint <= 0)
             {
                 listingIdHint = decodedRows.FirstOrDefault(candidate => candidate?.ListingId > 0)?.ListingId ?? 0;
@@ -4182,6 +4193,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _itcPurchaseItemCount = Math.Max(0, _itcPurchasePacketEntries.Count);
+            _itcCurrentCategoryItemCount = Math.Max(0, _itcPacketCatalogEntries.Count);
+            _itcNormalItemEntryCount = _itcCurrentCategoryItemCount;
             _noticeState = winningPrice > 0
                 ? $"Success-bid info resolved at {winningPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s), updating {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} purchase owner row(s)."
                 : $"Success-bid info arrived without an explicit winning price and refreshed {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} purchase owner row(s).";
@@ -4210,7 +4223,9 @@ namespace HaCreator.MapSimulator.UI
             int reason = reader.ReadInt32();
             int itemCount = reader.ReadInt32();
             int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1 + (sizeof(int) * 2), _itcWishPacketEntries);
-            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(reader, Math.Max(1, Math.Min(itemCount, 4)));
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(
+                reader,
+                ResolveTrailingItcDecodeCount(reader, requestedCount: itemCount));
             if (listingIdHint <= 0)
             {
                 listingIdHint = decodedRows.FirstOrDefault(candidate => candidate?.ListingId > 0)?.ListingId ?? 0;
@@ -4980,6 +4995,58 @@ namespace HaCreator.MapSimulator.UI
             return string.Create(
                 CultureInfo.InvariantCulture,
                 $"GW_GiftList[{snapshot.RawByteLength}] row {Math.Max(1, snapshot.RowIndex)}: liSN={snapshot.SerialNumber}, nItemID={snapshot.ItemId}, sFrom[{snapshot.SenderByteLength}]={sender}, sFromRaw[{snapshot.SenderByteLength}]=\"{rawSender}\", sFromRawHex[{snapshot.SenderByteLength}]={snapshot.SenderRawHex}, sText[{snapshot.MessageByteLength}]={message}, sTextRaw[{snapshot.MessageByteLength}]=\"{rawMessage}\", sTextRawHex[{snapshot.MessageByteLength}]={snapshot.MessageRawHex}, acceptOpcode={snapshot.AcceptRequestOpcode}");
+        }
+
+        private static int ResolveTrailingCashItemInfoDecodeCount(BinaryReader reader, int preferredCount)
+        {
+            int normalizedPreferredCount = NormalizeDecodeCount(preferredCount, MaxTrailingCashItemInfoDecodeRows);
+            if (reader?.BaseStream == null)
+            {
+                return normalizedPreferredCount;
+            }
+
+            long trailingByteCount = Math.Max(0L, reader.BaseStream.Length - reader.BaseStream.Position);
+            int availableRows = (int)Math.Min(
+                MaxTrailingCashItemInfoDecodeRows,
+                trailingByteCount / CashItemInfoPacketByteLength);
+            return Math.Max(normalizedPreferredCount, Math.Max(1, availableRows));
+        }
+
+        private static int ResolveTrailingCashItemInfoDecodeCount(byte[] payload, int startOffset, int preferredCount)
+        {
+            int normalizedPreferredCount = NormalizeDecodeCount(preferredCount, MaxTrailingCashItemInfoDecodeRows);
+            if (payload == null || startOffset < 0 || startOffset >= payload.Length)
+            {
+                return normalizedPreferredCount;
+            }
+
+            int trailingByteCount = Math.Max(0, payload.Length - startOffset);
+            int availableRows = Math.Min(
+                MaxTrailingCashItemInfoDecodeRows,
+                trailingByteCount / CashItemInfoPacketByteLength);
+            return Math.Max(normalizedPreferredCount, Math.Max(1, availableRows));
+        }
+
+        private static int ResolveTrailingItcDecodeCount(BinaryReader reader, int requestedCount)
+        {
+            int normalizedRequestedCount = NormalizeDecodeCount(requestedCount, MaxTrailingItcDecodeRows);
+            if (reader?.BaseStream == null)
+            {
+                return normalizedRequestedCount;
+            }
+
+            long trailingByteCount = Math.Max(0L, reader.BaseStream.Length - reader.BaseStream.Position);
+            int minimumRowLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long);
+            int availableRows = (int)Math.Min(
+                MaxTrailingItcDecodeRows,
+                trailingByteCount / Math.Max(1, minimumRowLength));
+            return Math.Max(normalizedRequestedCount, Math.Max(1, availableRows));
+        }
+
+        private static int NormalizeDecodeCount(int requestedCount, int hardCap)
+        {
+            int cap = Math.Max(1, hardCap);
+            return Math.Clamp(requestedCount <= 0 ? 1 : requestedCount, 1, cap);
         }
 
         private List<CashItemInfoPacketSnapshot> TryDecodeTrailingCashItemInfoSnapshots(BinaryReader reader, int maxCount)

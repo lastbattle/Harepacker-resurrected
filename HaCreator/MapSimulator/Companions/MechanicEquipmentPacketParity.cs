@@ -1689,38 +1689,27 @@ namespace HaCreator.MapSimulator.Companions
             bool hasCashSerial,
             out string rejectReason)
         {
-            long entryStart = reader?.BaseStream?.Position ?? 0;
-            if (TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, statFieldCount: 14, out rejectReason))
-            {
-                return true;
-            }
-
-            if (reader?.BaseStream is { CanSeek: true } stream)
-            {
-                stream.Position = entryStart;
-                return TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, statFieldCount: 15, out rejectReason);
-            }
-
-            return false;
-        }
-
-        private static bool TryReadClientInventoryOperationEquipBody(
-            BinaryReader reader,
-            bool hasCashSerial,
-            int statFieldCount,
-            out string rejectReason)
-        {
             rejectReason = null;
+            if (reader == null)
+            {
+                rejectReason = "Inventory-operation add entry reader is unavailable.";
+                return false;
+            }
+
             Stream stream = reader.BaseStream;
+            // Client evidence: GW_ItemSlotEquip::RawDecode (0x4f8360) decodes this
+            // block as nRUC, nCUC, then 15 Int16 stat fields (STR..JUMP), without
+            // a version-dependent 14-stat variant in v95.
+            const int equipStatFieldCount = 15;
             const int equipStatHeaderByteLength = sizeof(byte) * 2;
-            if (!TryEnsureRemaining(stream, equipStatHeaderByteLength + (sizeof(short) * statFieldCount), out rejectReason))
+            if (!TryEnsureRemaining(stream, equipStatHeaderByteLength + (sizeof(short) * equipStatFieldCount), out rejectReason))
             {
                 return false;
             }
 
             _ = reader.ReadByte();
             _ = reader.ReadByte();
-            for (int i = 0; i < statFieldCount; i++)
+            for (int i = 0; i < equipStatFieldCount; i++)
             {
                 _ = reader.ReadInt16();
             }

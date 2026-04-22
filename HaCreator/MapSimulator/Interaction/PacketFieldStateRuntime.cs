@@ -162,8 +162,9 @@ namespace HaCreator.MapSimulator.Interaction
             int packetType,
             byte[] payload,
             int currentTick,
-            Func<string, bool?, int, int?, bool> setDynamicObjectTagState,
+            Func<string, bool?, int, int?, int?, bool> setDynamicObjectTagState,
             Func<string, bool?> getDynamicObjectTagState,
+            Func<string, int?> getDynamicObjectTagStateIndex,
             Func<byte[], int, string> fieldSpecificDataHandler,
             out string message)
         {
@@ -185,7 +186,13 @@ namespace HaCreator.MapSimulator.Interaction
                 case 167:
                     return TryApplyQuestTime(payload, currentTick, out message);
                 case 169:
-                    return TryApplyObjectState(payload, currentTick, setDynamicObjectTagState, getDynamicObjectTagState, out message);
+                    return TryApplyObjectState(
+                        payload,
+                        currentTick,
+                        setDynamicObjectTagState,
+                        getDynamicObjectTagState,
+                        getDynamicObjectTagStateIndex,
+                        out message);
                 default:
                     message = $"Unsupported field packet type {packetType}.";
                     return false;
@@ -570,8 +577,9 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyObjectState(
             byte[] payload,
             int currentTick,
-            Func<string, bool?, int, int?, bool> setDynamicObjectTagState,
+            Func<string, bool?, int, int?, int?, bool> setDynamicObjectTagState,
             Func<string, bool?> getDynamicObjectTagState,
+            Func<string, int?> getDynamicObjectTagStateIndex,
             out string message)
         {
             if (payload == null || payload.Length == 0)
@@ -605,21 +613,25 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         bool packetEnabled = ResolveObjectStateVisibilityBridge(packetStateValue);
                         bool replayedPacketState =
-                            setDynamicObjectTagState?.Invoke(normalizedTag, packetEnabled, 0, currentTick) == true;
+                            setDynamicObjectTagState?.Invoke(normalizedTag, packetEnabled, 0, currentTick, packetStateValue) == true;
                         message = replayedPacketState
-                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); reapplied packet-owned state {packetStateValue} ({(packetEnabled ? "on" : "off")} visibility bridge)."
+                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); reapplied packet-owned state {packetStateValue} ({(packetEnabled ? "on" : "off")} visibility bridge, state index {packetStateValue})."
                             : $"Replayed current object-state packet for '{normalizedTag}' (state=-1); packet-owned state {packetStateValue} is cached but could not be republished.";
                         _statusMessage = message;
                         return replayedPacketState;
                     }
 
                     bool? currentTagState = getDynamicObjectTagState?.Invoke(normalizedTag);
+                    int? currentStateIndex = getDynamicObjectTagStateIndex?.Invoke(normalizedTag);
                     bool available = currentTagState.HasValue;
                     bool replayed = available &&
-                        setDynamicObjectTagState?.Invoke(normalizedTag, currentTagState.Value, 0, currentTick) == true;
+                        setDynamicObjectTagState?.Invoke(normalizedTag, currentTagState.Value, 0, currentTick, currentStateIndex) == true;
+                    string currentStateIndexSummary = currentStateIndex.HasValue
+                        ? $" (state index {currentStateIndex.Value})"
+                        : string.Empty;
                     message = available
                         ? (replayed
-                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); republished current {(currentTagState.Value ? "on" : "off")} visibility bridge."
+                            ? $"Replayed current object-state packet for '{normalizedTag}' (state=-1); republished current {(currentTagState.Value ? "on" : "off")} visibility bridge{currentStateIndexSummary}."
                             : $"Replayed current object-state packet for '{normalizedTag}' (state=-1); current tag state exists but could not be republished.")
                         : $"Object-state replay packet for '{normalizedTag}' was ignored because no matching tagged object state is available.";
                     _statusMessage = message;
@@ -628,9 +640,9 @@ namespace HaCreator.MapSimulator.Interaction
 
                 _packetObjectStateByTag[normalizedTag] = stateValue;
                 bool isEnabled = ResolveObjectStateVisibilityBridge(stateValue);
-                bool applied = setDynamicObjectTagState?.Invoke(normalizedTag, isEnabled, 0, currentTick) == true;
+                bool applied = setDynamicObjectTagState?.Invoke(normalizedTag, isEnabled, 0, currentTick, stateValue) == true;
                 message = applied
-                    ? $"Applied object-state packet for '{normalizedTag}' => state {stateValue} ({(isEnabled ? "on" : "off")} visibility bridge)."
+                    ? $"Applied object-state packet for '{normalizedTag}' => state {stateValue} ({(isEnabled ? "on" : "off")} visibility bridge, state index {stateValue})."
                     : $"Object-state packet for '{normalizedTag}' was ignored because no matching tagged object state is available.";
                 _statusMessage = message;
                 return applied;

@@ -194,6 +194,13 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     return i;
                 }
+
+                if (group.Options != null
+                    && group.Options.Count > 0
+                    && !group.Options.Any(option => option?.ItemId == selectedItemId))
+                {
+                    return i;
+                }
             }
 
             return prompt.Groups.Count;

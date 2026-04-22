@@ -246,6 +246,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!TryGetVisiblePacketOwnedWhisperUserListWindow(out _))
+            {
+                ShowUtilityFeedbackMessage(
+                    $"Ignored packet-owned user-list location update for {target.Trim()} because the SocialList owner is not active.");
+                return;
+            }
+
             _socialListRuntime.SetPacketWhisperLocationInfo(target, locationText, result, value);
             string normalizedLocation = locationText?.Trim() ?? string.Empty;
             ShowUtilityFeedbackMessage(string.IsNullOrWhiteSpace(normalizedLocation)
@@ -255,12 +262,18 @@ namespace HaCreator.MapSimulator
 
         private void InvalidatePacketOwnedWhisperUserListWindow()
         {
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.SocialList) is not SocialListWindow socialListWindow)
+            if (!TryGetVisiblePacketOwnedWhisperUserListWindow(out SocialListWindow socialListWindow))
             {
                 return;
             }
 
             socialListWindow.InvalidatePacketOwnedSnapshot();
+        }
+
+        private bool TryGetVisiblePacketOwnedWhisperUserListWindow(out SocialListWindow socialListWindow)
+        {
+            socialListWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.SocialList) as SocialListWindow;
+            return socialListWindow != null && socialListWindow.IsVisible;
         }
 
         private void ShowPacketOwnedFieldWarning(string message)

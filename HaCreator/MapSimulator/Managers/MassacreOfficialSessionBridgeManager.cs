@@ -877,6 +877,12 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (opcode == CurrentWrapperRelayOpcode
+                && TryDecodeNestedRelayMassacrePacket(payload, source, rawPacket, mappedInboundOpcodes, sessionValueInfoState, out message))
+            {
+                return true;
+            }
+
             if (opcode != CurrentWrapperRelayOpcode
                 && opcode != PacketTypeIncGauge
                 && opcode != PacketTypeResult)

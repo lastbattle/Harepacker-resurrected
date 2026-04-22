@@ -952,6 +952,16 @@ namespace HaCreator.MapSimulator.Interaction
             int ownerId,
             string ownerLabel)
         {
+            if (tab == SocialListTab.Guild && ShouldIgnoreGuildScopedResult(ownerId, out int activeGuildId))
+            {
+                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.GradeChange}) for guild {ownerId} because the active packet-owned guild context is {activeGuildId}.";
+            }
+
+            if (tab == SocialListTab.Guild)
+            {
+                RememberPacketGuildId(ownerId);
+            }
+
             if (gradeChange.MemberId <= 0)
             {
                 return $"Client {ownerLabel}-result grade-change member id must be positive.";

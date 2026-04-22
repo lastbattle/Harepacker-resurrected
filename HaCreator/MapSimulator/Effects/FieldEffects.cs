@@ -419,7 +419,7 @@ namespace HaCreator.MapSimulator.Effects
         /// This mirrors the client distinction between generic object-state updates and obstacle
         /// packets while keeping the simulator seam reusable for simple scripted toggles.
         /// </summary>
-        public void PublishObjectState(string objectTag, bool isOn, int transitionTimeMs, int currentTimeMs)
+        public void PublishObjectState(string objectTag, bool isOn, int transitionTimeMs, int currentTimeMs, int? stateIndex = null)
         {
             if (string.IsNullOrWhiteSpace(objectTag))
             {
@@ -436,6 +436,7 @@ namespace HaCreator.MapSimulator.Effects
             objectState.TransitionDuration = transitionTimeMs;
             objectState.TransitionStartTime = currentTimeMs;
             objectState.IsTransitioning = transitionTimeMs > 0;
+            objectState.StateIndex = stateIndex;
         }
 
         public bool TryGetPublishedObjectState(string objectTag, out bool isOn)
@@ -447,6 +448,20 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             isOn = false;
+            return false;
+        }
+
+        public bool TryGetPublishedObjectState(string objectTag, out bool isOn, out int? stateIndex)
+        {
+            if (_publishedObjectStates.TryGetValue(objectTag, out var objectState))
+            {
+                isOn = objectState.TargetState;
+                stateIndex = objectState.StateIndex;
+                return true;
+            }
+
+            isOn = false;
+            stateIndex = null;
             return false;
         }
 
@@ -864,6 +879,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsTransitioning;
         public int TransitionStartTime;
         public int TransitionDuration;
+        public int? StateIndex;
     }
 
     /// <summary>

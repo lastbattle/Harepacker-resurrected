@@ -521,6 +521,14 @@ namespace HaCreator.MapSimulator
                 return Math.Max(0, window.ExpiresAt - currentTickCount);
             }
 
+            if (_packetOwnedAntiMacroAwaitingResult)
+            {
+                return ResolvePacketOwnedAntiMacroAwaitingRemainingMs(
+                    _lastPacketOwnedAntiMacroSubmittedRemainingMs,
+                    _lastPacketOwnedAntiMacroSubmittedTick,
+                    currentTickCount);
+            }
+
             return Math.Max(0, _packetOwnedAntiMacroCurrentRemainingMs);
         }
 
@@ -760,6 +768,25 @@ namespace HaCreator.MapSimulator
             {
                 return Math.Max(0, resultTick - submittedTick);
             }
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroAwaitingRemainingMs(
+            int remainingAtSubmitMs,
+            int submittedTick,
+            int currentTick)
+        {
+            if (remainingAtSubmitMs <= 0)
+            {
+                return 0;
+            }
+
+            int elapsedMs = ResolvePacketOwnedAntiMacroRoundTripLatencyMs(submittedTick, currentTick);
+            if (elapsedMs < 0)
+            {
+                return Math.Max(0, remainingAtSubmitMs);
+            }
+
+            return Math.Max(0, remainingAtSubmitMs - elapsedMs);
         }
 
         internal static PacketOwnedAntiMacroNoticeMapping ResolvePacketOwnedAntiMacroNoticeMappingForTest(int noticeType, int antiMacroType)

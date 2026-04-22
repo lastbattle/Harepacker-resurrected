@@ -1129,19 +1129,19 @@ namespace HaCreator.MapSimulator.UI
             string[] blocks = text.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
             foreach (string block in blocks)
             {
-                string trimmedBlock = block.Trim();
-                if (trimmedBlock.Length == 0)
+                if (string.IsNullOrWhiteSpace(block))
                 {
                     continue;
                 }
 
                 string currentLine = string.Empty;
-                foreach ((string token, bool isWhitespace) in TokenizeCollectionBlock(trimmedBlock))
+                foreach ((string token, bool isWhitespace) in TokenizeCollectionBlock(block))
                 {
                     if (isWhitespace)
                     {
                         if (string.IsNullOrEmpty(currentLine))
                         {
+                            AppendTokenWithHardSplit(lines, ref currentLine, token, maxWidth, measureWidth);
                             continue;
                         }
 
@@ -1152,7 +1152,7 @@ namespace HaCreator.MapSimulator.UI
                         }
                         else
                         {
-                            lines.Add(currentLine.TrimEnd());
+                            lines.Add(currentLine);
                             currentLine = string.Empty;
                         }
 
@@ -1172,14 +1172,14 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    lines.Add(currentLine.TrimEnd());
+                    lines.Add(currentLine);
                     currentLine = string.Empty;
                     AppendTokenWithHardSplit(lines, ref currentLine, token, maxWidth, measureWidth);
                 }
 
                 if (!string.IsNullOrWhiteSpace(currentLine))
                 {
-                    lines.Add(currentLine.TrimEnd());
+                    lines.Add(currentLine);
                 }
             }
 

@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.UI
         StageMalformedSubtypePayload,
         ApplyTradeRequestResult,
         ApplyWishlistRegisterResult,
+        ApplyWishlistSearchResult,
         DisconnectNoPendingRequest
     }
 
@@ -17,7 +18,8 @@ namespace HaCreator.MapSimulator.UI
             byte subtype,
             bool hasResultCode,
             bool hasPendingTradeRequest,
-            bool hasPendingWishlistRegister)
+            bool hasPendingWishlistRegister,
+            bool hasPendingWishlistSearch)
         {
             if (!AdminShopDialogClientParityText.HandlesResultSubtype(subtype))
             {
@@ -37,6 +39,11 @@ namespace HaCreator.MapSimulator.UI
             if (hasPendingWishlistRegister)
             {
                 return AdminShopPacketOwnedResultGateAction.ApplyWishlistRegisterResult;
+            }
+
+            if (hasPendingWishlistSearch)
+            {
+                return AdminShopPacketOwnedResultGateAction.ApplyWishlistSearchResult;
             }
 
             return AdminShopPacketOwnedResultGateAction.DisconnectNoPendingRequest;

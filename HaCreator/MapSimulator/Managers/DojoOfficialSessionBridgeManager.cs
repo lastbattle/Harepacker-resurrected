@@ -798,46 +798,27 @@ namespace HaCreator.MapSimulator.Managers
             packetPayload = Array.Empty<byte>();
             evidence = string.Empty;
             payload ??= Array.Empty<byte>();
-            List<int> relayPrefixChain = new();
-            byte[] relayPayload = payload;
-            const int maxNestedRelayDepth = 8;
-            for (int depth = 0; depth < maxNestedRelayDepth; depth++)
+            if (!Fields.SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int relayPacketType,
+                    out byte[] relayPayload,
+                    out _))
             {
-                if (!Fields.SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                        relayPayload,
-                        out int relayPacketType,
-                        out byte[] nestedPayload,
-                        out _))
-                {
-                    return false;
-                }
-
-                relayPrefixChain.Add(relayPacketType);
-                if (relayPacketType == FieldSpecificDataOpcode
-                    && DojoField.TryDecodeFieldSpecificPacketPayload(
-                        nestedPayload,
-                        out packetType,
-                        out packetPayload,
-                        out _))
-                {
-                    evidence = $"nested-relay:{string.Join("->", relayPrefixChain)}";
-                    return true;
-                }
-
-                if (relayPacketType != CurrentWrapperRelayOpcode
-                    && relayPacketType != FieldSpecificDataOpcode)
-                {
-                    return false;
-                }
-
-                relayPayload = nestedPayload;
-                if (relayPayload.Length < sizeof(ushort))
-                {
-                    break;
-                }
+                return false;
             }
 
-            return false;
+            if (!Fields.SpecialFieldRuntimeCoordinator.TryDecodeDojoPacketFromRelayPrefixChain(
+                    relayPacketType,
+                    relayPayload,
+                    out packetType,
+                    out packetPayload,
+                    out string relayEvidence))
+            {
+                return false;
+            }
+
+            evidence = $"nested-relay:{relayEvidence}";
+            return true;
         }
 
         public void Stop()

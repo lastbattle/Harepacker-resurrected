@@ -356,6 +356,9 @@ namespace HaCreator.MapSimulator.UI
         private const int CashShopIncTrunkCountCost = 4000;
         private const int CashShopIncTrunkCountSlotStep = 4;
         private const int CashShopIncTrunkCountSlotCap = 48;
+        private const int CashShopIncTrunkCountConfirmPromptStringPoolId = 0x01F7;
+        private const int CashShopIncTrunkCountSlotCapNoticeStringPoolId = 0x01FC;
+        private const int CashShopIncTrunkCountInsufficientCashNoticeStringPoolId = 0x0229;
         private const int CashShopOutboundOpcode = 275;
         private const int CashShopIncTrunkCountMode = 7;
         private const int LeftPaneX = 17;
@@ -880,6 +883,7 @@ namespace HaCreator.MapSimulator.UI
             byte resultCode,
             int trailingByteCount,
             string trailingPayloadSignature,
+            byte[] trailingPayload,
             bool hasResultCode,
             string blockingOwner)
         {
@@ -909,6 +913,21 @@ namespace HaCreator.MapSimulator.UI
                 keepSessionActive,
                 preservedVisibilityState,
                 keepPendingRequestState: hasPendingRequestState);
+            if (hasPendingRequestState && keepSessionActive)
+            {
+                _packetOwnedAdminShopSession.StageDeferredOwnerGatedResult(
+                    subtype,
+                    resultCode,
+                    hasResultCode,
+                    trailingByteCount,
+                    trailingPayloadSignature,
+                    trailingPayload);
+            }
+            else
+            {
+                _packetOwnedAdminShopSession.ClearDeferredOwnerGatedResult();
+            }
+
             _pendingPacketOwnedAdminShopResult = hasPendingRequestState;
             if (hasPendingRequestState)
             {
@@ -935,6 +954,34 @@ namespace HaCreator.MapSimulator.UI
                     : $"Packet 366 arrived while {blockingOwner} owned the unique-modeless slot, so the client OnPacket gate ignored it before the request-sent check.";
             UpdateActionButtonStates();
             return _footerMessage;
+        }
+
+        internal bool TryApplyDeferredPacketOwnedAdminShopResultAfterOwnerVisible(
+            out string summary,
+            out string noticeText)
+        {
+            summary = string.Empty;
+            noticeText = string.Empty;
+            if (!_packetOwnedAdminShopSession.TryConsumeDeferredOwnerGatedResult(
+                    out AdminShopPacketOwnedDeferredResultSnapshot stagedResult))
+            {
+                return false;
+            }
+
+            bool applied = TryApplyPacketOwnedAdminShopResult(
+                stagedResult.Subtype,
+                stagedResult.ResultCode,
+                stagedResult.TrailingByteCount,
+                stagedResult.TrailingPayloadSignature,
+                stagedResult.TrailingPayload,
+                stagedResult.HasResultCode,
+                out string resultMessage,
+                out noticeText,
+                out _);
+            summary = applied
+                ? $"Replayed deferred packet 366 after CAdminShopDlg became visible again. {resultMessage}".Trim()
+                : "Deferred packet 366 replay failed after CAdminShopDlg became visible again.";
+            return true;
         }
 
         public string ApplyPacketOwnedAdminShopOpenRejected(string noticeText)
@@ -972,6 +1019,9 @@ namespace HaCreator.MapSimulator.UI
             message = "Packet-owned admin-shop result could not be applied.";
             noticeText = string.Empty;
             reopenRequested = false;
+            bool hadPendingWishlistSearchRequest = _packetOwnedAdminShopSession.HasPendingWishlistSearch
+                || _packetOwnedWishlistPendingSearchRequestId >= 0
+                || !string.IsNullOrWhiteSpace(_packetOwnedWishlistPendingSearchQuery);
             _packetOwnedAdminShopSession.RecordResultPacket(
                 subtype,
                 resultCode,
@@ -998,11 +1048,16 @@ namespace HaCreator.MapSimulator.UI
 
             _pendingPacketOwnedAdminShopResult = false;
             AdminShopEntry entry = _pendingRequestEntry;
+            bool hasWishlistSearchSnapshotResult = subtype == 4
+                && hasResultCode
+                && resultCode == 0
+                && _packetOwnedWishlistSearchSnapshot != null;
             AdminShopPacketOwnedResultGateAction gateAction = AdminShopPacketOwnedResultGateParity.ResolveGateAction(
                 subtype,
                 hasResultCode,
                 hasPendingTradeRequest: entry != null,
-                hasPendingWishlistRegister: _pendingPacketOwnedWishlistRegisterEntry != null);
+                hasPendingWishlistRegister: _pendingPacketOwnedWishlistRegisterEntry != null,
+                hasPendingWishlistSearch: hadPendingWishlistSearchRequest || hasWishlistSearchSnapshotResult);
             if (gateAction == AdminShopPacketOwnedResultGateAction.IgnoreUnsupportedSubtype)
             {
                 if (entry != null)
@@ -1044,6 +1099,23 @@ namespace HaCreator.MapSimulator.UI
             if (gateAction == AdminShopPacketOwnedResultGateAction.ApplyWishlistRegisterResult)
             {
                 return TryApplyPacketOwnedWishlistRegisterResult(subtype, resultCode, out message, out noticeText, out reopenRequested);
+            }
+
+            if (gateAction == AdminShopPacketOwnedResultGateAction.ApplyWishlistSearchResult)
+            {
+                _packetOwnedAdminShopSession.ClearLastNotice();
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 subtype 4 advanced the packet-owned SearchItemName snapshot without mutating the active admin-shop owner row.");
+                message = hasResultCode && resultCode == 0
+                    ? BuildPacketOwnedWishlistSearchSnapshotSummary()
+                    : $"Packet 366 subtype 4 search-result lane returned code {resultCode.ToString(CultureInfo.InvariantCulture)} and left the admin-shop owner state unchanged.";
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    message = "Packet 366 subtype 4 search-result lane updated the packet-owned wishlist search session state.";
+                }
+
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
             }
 
             if (gateAction == AdminShopPacketOwnedResultGateAction.DisconnectNoPendingRequest || entry == null)
@@ -1423,7 +1495,12 @@ namespace HaCreator.MapSimulator.UI
                 return _footerMessage;
             }
 
-            if (!TryBuildCashShopIncTrunkCountOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string outboundError))
+            if (!TryBuildCashShopIncTrunkCountOutboundRequest(
+                    out PacketOwnedNpcUtilityOutboundRequest request,
+                    out string outboundError,
+                    out string confirmPromptSummary,
+                    out int selectedPaymentOption,
+                    out int availablePaymentOptions))
             {
                 _footerMessage = outboundError;
                 UpdateActionButtonStates();
@@ -1432,7 +1509,7 @@ namespace HaCreator.MapSimulator.UI
 
             string outboundSummary = DispatchPacketOwnedAdminShopOutbound(request);
             SubmitSelectedEntryRequest();
-            return $"CCSWnd_Inventory::OnButtonClicked(0x3EF) routed to CCashShop::OnIncTrunkCount. {outboundSummary} {_footerMessage}";
+            return $"CCSWnd_Inventory::OnButtonClicked(0x3EF) routed to CCashShop::OnIncTrunkCount. CConfirmPurchaseDlg::Confirm accepted default payment option 0x{selectedPaymentOption.ToString("X", CultureInfo.InvariantCulture)} from mask 0x{availablePaymentOptions.ToString("X", CultureInfo.InvariantCulture)} after prompt '{confirmPromptSummary}'. {outboundSummary} {_footerMessage}";
         }
 
         public string MoveListOwnerSelection(int delta)
@@ -9332,10 +9409,16 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryBuildCashShopIncTrunkCountOutboundRequest(
             out PacketOwnedNpcUtilityOutboundRequest request,
-            out string error)
+            out string error,
+            out string confirmPromptSummary,
+            out int selectedPaymentOption,
+            out int availablePaymentOptions)
         {
             request = default;
             error = string.Empty;
+            confirmPromptSummary = string.Empty;
+            selectedPaymentOption = 0;
+            availablePaymentOptions = 0;
             if (_pendingRequestEntry != null)
             {
                 error = "CCashShop::OnIncTrunkCount ignored BtExTrunk because a prior cash-shop request is still pending.";
@@ -9345,31 +9428,69 @@ namespace HaCreator.MapSimulator.UI
             int nextSlotLimit = (_storageRuntime?.GetSlotLimit() ?? 0) + CashShopIncTrunkCountSlotStep;
             if (nextSlotLimit > CashShopIncTrunkCountSlotCap)
             {
-                error = $"CCashShop::OnIncTrunkCount blocked BtExTrunk because trunk slot limit {nextSlotLimit.ToString(CultureInfo.InvariantCulture)} would exceed {CashShopIncTrunkCountSlotCap.ToString(CultureInfo.InvariantCulture)}.";
+                error = $"CCashShop::OnIncTrunkCount blocked BtExTrunk because trunk slot limit {nextSlotLimit.ToString(CultureInfo.InvariantCulture)} would exceed {CashShopIncTrunkCountSlotCap.ToString(CultureInfo.InvariantCulture)} ({MapleStoryStringPool.FormatFallbackLabel(CashShopIncTrunkCountSlotCapNoticeStringPoolId)}).";
                 return false;
             }
 
-            int optionMask = ResolveCashShopIncTrunkCountOptionMask();
-            if (optionMask == 0)
+            availablePaymentOptions = ResolveCashShopIncTrunkCountOptionMask();
+            if (availablePaymentOptions == 0)
             {
-                error = $"CCashShop::OnIncTrunkCount blocked BtExTrunk because no cash lane has at least {CashShopIncTrunkCountCost.ToString(CultureInfo.InvariantCulture)} NX.";
+                error = $"CCashShop::OnIncTrunkCount blocked BtExTrunk because no cash lane has at least {CashShopIncTrunkCountCost.ToString(CultureInfo.InvariantCulture)} NX ({MapleStoryStringPool.FormatFallbackLabel(CashShopIncTrunkCountInsufficientCashNoticeStringPoolId)}).";
                 return false;
             }
 
-            bool mapPointOnly = optionMask == 2;
+            selectedPaymentOption = ResolveCashShopIncTrunkCountSelectedPaymentOption(availablePaymentOptions);
+            bool mapPointOnly = selectedPaymentOption == 2;
+            confirmPromptSummary = BuildCashShopIncTrunkCountConfirmPrompt();
             byte[] payload =
             [
                 (byte)CashShopIncTrunkCountMode,
                 (byte)(mapPointOnly ? 1 : 0),
-                .. BitConverter.GetBytes(optionMask),
+                .. BitConverter.GetBytes(selectedPaymentOption),
                 0
             ];
 
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 CashShopOutboundOpcode,
                 payload,
-                $"Mirrored CCashShop::OnIncTrunkCount outbound body (opcode {CashShopOutboundOpcode.ToString(CultureInfo.InvariantCulture)}, mode {CashShopIncTrunkCountMode.ToString(CultureInfo.InvariantCulture)}, optionMask 0x{optionMask.ToString("X", CultureInfo.InvariantCulture)}, mapPointOnly {(mapPointOnly ? 1 : 0)}).");
+                $"Mirrored CCashShop::OnIncTrunkCount outbound body (opcode {CashShopOutboundOpcode.ToString(CultureInfo.InvariantCulture)}, mode {CashShopIncTrunkCountMode.ToString(CultureInfo.InvariantCulture)}, optionMask 0x{selectedPaymentOption.ToString("X", CultureInfo.InvariantCulture)}, mapPointOnly {(mapPointOnly ? 1 : 0)}).");
             return true;
+        }
+
+        private static int ResolveCashShopIncTrunkCountSelectedPaymentOption(int availablePaymentOptions)
+        {
+            if ((availablePaymentOptions & 1) != 0)
+            {
+                return 1;
+            }
+
+            if ((availablePaymentOptions & 2) != 0)
+            {
+                return 2;
+            }
+
+            if ((availablePaymentOptions & 4) != 0)
+            {
+                return 4;
+            }
+
+            return 0;
+        }
+
+        private static string BuildCashShopIncTrunkCountConfirmPrompt()
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                CashShopIncTrunkCountConfirmPromptStringPoolId,
+                "Adding slots to the storage ({0} NX)\r\nAre you sure you want to add slots to your storage?",
+                1,
+                out _);
+            string prompt = format.Contains("%d", StringComparison.Ordinal)
+                ? format.Replace("%d", CashShopIncTrunkCountCost.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                : string.Format(CultureInfo.InvariantCulture, format, CashShopIncTrunkCountCost);
+            return prompt
+                .Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal)
+                .Trim();
         }
 
         private int ResolveCashShopIncTrunkCountOptionMask()

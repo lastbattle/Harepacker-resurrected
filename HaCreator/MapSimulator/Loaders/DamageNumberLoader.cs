@@ -131,6 +131,8 @@ namespace HaCreator.MapSimulator.Loaders
     /// </summary>
     public static class DamageNumberLoader
     {
+        internal const string DamageNumberSpecialTextOwnerSetName = "NoRed0";
+
         // Cached digit sets
         private static readonly Dictionary<string, DamageNumberDigitSet> _digitSets = new Dictionary<string, DamageNumberDigitSet>();
         private static bool _initialized = false;
@@ -242,32 +244,36 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            // Load special text sprites (Miss, guard, etc.)
-            foreach (string specialName in SpecialTextNames)
+            if (ShouldLoadSpecialTextSprites(name))
             {
-                WzCanvasProperty specialCanvas = typeProperty[specialName] as WzCanvasProperty;
-                if (specialCanvas == null)
-                    continue;
-
-                try
+                // CAnimationDisplayer::Effect_HP owner seam:
+                // special-result text is owned by NoRed0 only.
+                foreach (string specialName in SpecialTextNames)
                 {
-                    var bitmap = specialCanvas.GetLinkedWzCanvasBitmap();
-                    if (bitmap != null)
-                    {
-                        digitSet.SpecialWidths[specialName] = bitmap.Width;
-                        digitSet.SpecialHeights[specialName] = bitmap.Height;
-                        digitSet.SpecialTextures[specialName] = bitmap.ToTexture2DAndDispose(device);
+                    WzCanvasProperty specialCanvas = typeProperty[specialName] as WzCanvasProperty;
+                    if (specialCanvas == null)
+                        continue;
 
-                        var originProp = specialCanvas["origin"] as WzVectorProperty;
-                        if (originProp != null)
+                    try
+                    {
+                        var bitmap = specialCanvas.GetLinkedWzCanvasBitmap();
+                        if (bitmap != null)
                         {
-                            digitSet.SpecialOrigins[specialName] = new Point(originProp.X.Value, originProp.Y.Value);
+                            digitSet.SpecialWidths[specialName] = bitmap.Width;
+                            digitSet.SpecialHeights[specialName] = bitmap.Height;
+                            digitSet.SpecialTextures[specialName] = bitmap.ToTexture2DAndDispose(device);
+
+                            var originProp = specialCanvas["origin"] as WzVectorProperty;
+                            if (originProp != null)
+                            {
+                                digitSet.SpecialOrigins[specialName] = new Point(originProp.X.Value, originProp.Y.Value);
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[DamageNumberLoader] Error loading special {specialName} from {name}: {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DamageNumberLoader] Error loading special {specialName} from {name}: {ex.Message}");
+                    }
                 }
             }
 
@@ -344,6 +350,14 @@ namespace HaCreator.MapSimulator.Loaders
             };
 
             return colorName + (size == DamageNumberSize.Large ? "1" : "0");
+        }
+
+        internal static bool ShouldLoadSpecialTextSprites(string setName)
+        {
+            return string.Equals(
+                setName?.Trim(),
+                DamageNumberSpecialTextOwnerSetName,
+                StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

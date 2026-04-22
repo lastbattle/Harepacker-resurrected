@@ -522,7 +522,10 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            int refreshLeadTimeMs = ResolveStatusRefreshLeadTimeMs(runtimeData.DurationMs, recastLeadTimeMs);
+            int statusDurationMs = skillId == 170
+                ? ResolveSkillStatusDurationMs(skillId, runtimeData)
+                : runtimeData.DurationMs;
+            int refreshLeadTimeMs = ResolveStatusRefreshLeadTimeMs(statusDurationMs, recastLeadTimeMs);
 
             switch (skillId)
             {

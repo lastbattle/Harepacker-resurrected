@@ -440,6 +440,16 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (GetJoypadClientCoreSlotIndex(_armedJoypadBindingAction.Value) >= 0
+                && GetClientComboAllowedButtons(session, _armedJoypadBindingAction.Value).Count == 0)
+            {
+                string actionLabel = FormatActionLabel(_armedJoypadBindingAction.Value);
+                _armedJoypadBindingAction = null;
+                _statusMessage = $"{actionLabel}: {GetClientJoypadDetectionFailedText()} CUIJoyPad combo capture only arms detected Button 1..N candidates on the selected port.";
+                HandleJoypadConfirmInput(session);
+                return;
+            }
+
             if (!TryGetPressedJoypadButton(session, _armedJoypadBindingAction.Value, out Buttons gamepadButton))
             {
                 HandleJoypadConfirmInput(session);

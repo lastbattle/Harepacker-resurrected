@@ -76,8 +76,10 @@ namespace HaCreator.MapSimulator
                 packetType,
                 payload,
                 currTickCount,
-                (tag, state, transitionTimeMs, currentTimeMs) => SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs),
+                (tag, state, transitionTimeMs, currentTimeMs, stateIndex) =>
+                    SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs, stateIndex),
                 tag => TryGetDynamicObjectTagState(tag?.Trim()),
+                tag => TryGetDynamicObjectTagStateIndex(tag?.Trim()),
                 HandleFieldSpecificDataPacketHandoff,
                 out message);
             if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string fieldStatePortalImpactMessage))

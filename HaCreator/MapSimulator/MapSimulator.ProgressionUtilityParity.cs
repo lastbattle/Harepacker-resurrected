@@ -1013,6 +1013,15 @@ namespace HaCreator.MapSimulator
 
             if (candidates.Count == 0)
             {
+                // Packet-owned attendance/calendar rows can seed CUIEventAlarm strip text
+                // when explicit m_aCT lines are omitted from the payload.
+                EventAlarmLineSnapshot[] calendarFallbackLines =
+                    BuildFallbackPacketOwnedEventCalendarAlarmLines(_packetOwnedEventCalendarEntries);
+                if (calendarFallbackLines.Length > 0)
+                {
+                    return calendarFallbackLines;
+                }
+
                 return Array.Empty<EventAlarmLineSnapshot>();
             }
 

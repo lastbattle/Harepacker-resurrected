@@ -399,11 +399,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildRankTitles(IReadOnlyList<string> rankTitles, int guildId)
         {
+            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            {
+                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.RankTitles}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+            }
+
             if (rankTitles == null || rankTitles.Count == 0)
             {
                 return "Client guild-result rank-title payload did not include any titles.";
             }
 
+            RememberPacketGuildId(guildId);
             _guildRankTitles.Clear();
             for (int i = 0; i < rankTitles.Count; i++)
             {
@@ -424,6 +430,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildNoticeText(string notice, int guildId)
         {
+            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            {
+                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+            }
+
+            RememberPacketGuildId(guildId);
             _guildNoticeText = string.IsNullOrWhiteSpace(notice) ? string.Empty : notice.Trim();
             NotifySocialTextEditCommitted(_guildNoticeText);
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =

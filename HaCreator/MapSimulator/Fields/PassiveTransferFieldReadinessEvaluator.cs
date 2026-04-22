@@ -120,6 +120,13 @@ namespace HaCreator.MapSimulator.Fields
                 return QueuedRetryDecision.Clear;
             }
 
+            if (!state.HasOneTimeActionCompleted)
+            {
+                // `TryPassiveTransferField` keeps the pending owner armed while one-time actions
+                // are still active. Admission/clear only occurs after one-time completion.
+                return QueuedRetryDecision.KeepPending;
+            }
+
             bool shouldKeepPending = ShouldKeepQueuedRetryPending(
                 new PassiveTransferFieldQueuedRetryState(
                     state.HasLiveFieldInterface,
@@ -128,7 +135,7 @@ namespace HaCreator.MapSimulator.Fields
                     state.IsPlayerActive,
                     state.HasReadyFieldInterface));
 
-            if (state.HasOneTimeActionCompleted && state.HasReadyFieldInterface)
+            if (state.HasReadyFieldInterface)
             {
                 if (!shouldKeepPending)
                 {

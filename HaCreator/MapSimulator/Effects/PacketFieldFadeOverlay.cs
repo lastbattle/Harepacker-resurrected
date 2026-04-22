@@ -73,12 +73,12 @@ namespace HaCreator.MapSimulator.Effects
             for (int index = 0; index < _entries.Count; index++)
             {
                 FadeEntry entry = _entries[index];
-                if (entry.HasFadeOutStarted(currentTickCount))
+                float currentAlpha = GetAlpha(entry, currentTickCount);
+                if (currentAlpha <= 0f)
                 {
                     continue;
                 }
 
-                float currentAlpha = GetAlpha(entry, currentTickCount);
                 _entries[index] = entry.WithForcedFadeOut(currentTickCount, resolvedFadeOutMs, currentAlpha);
                 forcedCount++;
             }

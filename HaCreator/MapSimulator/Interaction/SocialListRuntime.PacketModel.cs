@@ -441,6 +441,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPacketGuildMarkSelection(GuildMarkSelection selection, int guildId)
         {
+            if (ShouldIgnoreGuildScopedResult(guildId, out int activeGuildId))
+            {
+                return $"Ignored client OnGuildResult({(byte)SocialListClientGuildResultKind.Mark}) for guild {guildId} because the active packet-owned guild context is {activeGuildId}.";
+            }
+
+            RememberPacketGuildId(guildId);
             _packetGuildMarkSelection = selection with { ComboIndex = ResolveGuildMarkComboIndex(selection.Mark) };
             _packetGuildMarkRevision = AdvanceGuildDialogRevision(_packetGuildMarkRevision);
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =

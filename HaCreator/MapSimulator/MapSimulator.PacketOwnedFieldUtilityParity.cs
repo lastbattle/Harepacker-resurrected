@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, string> _packetFieldUtilityFootholdNamesBySerial = new();
         private readonly Dictionary<int, int> _packetFieldUtilityFootholdStatesByPlatformId = new();
         private const int PacketOwnedFootholdInfoResponseOpcode = 270;
+        private const string PacketOwnedFootholdTraceNotCapturedSummary = "No packet-owned foothold-info response payload has been captured for transport-trace validation.";
         private int[] _packetFieldUtilityQuickslotKeyCodes;
         private bool _packetFieldUtilityWeatherOverrideActive;
         private int _packetFieldUtilityWeatherItemId;
@@ -43,6 +44,8 @@ namespace HaCreator.MapSimulator
         private bool _packetFieldUtilityMinimapHiddenByAdminResult;
         private string _packetFieldUtilityFootholdRequestSummary = "No packet-owned foothold-info request has been handled.";
         private string _packetFieldUtilityFootholdOfficialResponseSummary = "No packet-owned foothold-info response payload has been prepared.";
+        private int _packetFieldUtilityFootholdLastResponseOpcode = -1;
+        private byte[] _packetFieldUtilityFootholdLastResponsePayload = Array.Empty<byte>();
 
         private bool TryApplyPacketOwnedFieldUtilityPacket(int packetType, byte[] payload, out string message)
         {
@@ -548,12 +551,150 @@ namespace HaCreator.MapSimulator
         {
             IReadOnlyList<PacketFieldUtilityFootholdEntry> snapshot = BuildPacketOwnedFootholdSnapshot();
             byte[] officialResponsePayload = PacketFieldUtilityRuntime.BuildOfficialSessionFootHoldInfoResponsePayload(snapshot);
+            PacketOwnedFootholdResponseTransportCounters transportCounters = CapturePacketOwnedFootholdResponseTransportCounters();
             string snapshotSummary = DescribePacketOwnedFootholdSnapshotEntries(snapshot);
             _packetFieldUtilityFootholdRequestSummary = snapshot.Count == 0
                 ? "Received packet-owned foothold-info request; no dynamic foothold entries were available to snapshot."
                 : $"Received packet-owned foothold-info request; prepared {snapshot.Count} dynamic foothold snapshot entr{(snapshot.Count == 1 ? "y" : "ies")} for the current runtime: {snapshotSummary}";
+            _packetFieldUtilityFootholdLastResponseOpcode = PacketOwnedFootholdInfoResponseOpcode;
+            _packetFieldUtilityFootholdLastResponsePayload = officialResponsePayload;
             _packetFieldUtilityFootholdOfficialResponseSummary = DescribePacketOwnedFootholdOfficialResponse(officialResponsePayload, snapshot.Count);
+            _packetFieldUtilityFootholdOfficialResponseSummary = AppendPacketOwnedFootholdResponseTransportTraceSummary(
+                _packetFieldUtilityFootholdOfficialResponseSummary,
+                PacketOwnedFootholdInfoResponseOpcode,
+                officialResponsePayload,
+                transportCounters);
             return _packetFieldUtilityFootholdRequestSummary;
+        }
+
+        private sealed record PacketOwnedFootholdResponseTransportCounters(
+            int BridgeSentCount,
+            int OutboxSentCount,
+            int BridgeQueuedCount,
+            int OutboxQueuedCount,
+            bool HasBridgeTransport,
+            bool HasOutboxTransport);
+
+        private PacketOwnedFootholdResponseTransportCounters CapturePacketOwnedFootholdResponseTransportCounters()
+        {
+            return new PacketOwnedFootholdResponseTransportCounters(
+                _localUtilityOfficialSessionBridge?.SentCount ?? 0,
+                _localUtilityPacketOutbox?.SentCount ?? 0,
+                _localUtilityOfficialSessionBridge?.QueuedCount ?? 0,
+                _localUtilityPacketOutbox?.QueuedCount ?? 0,
+                _localUtilityOfficialSessionBridge != null,
+                _localUtilityPacketOutbox != null);
+        }
+
+        private string AppendPacketOwnedFootholdResponseTransportTraceSummary(
+            string baseSummary,
+            int opcode,
+            IReadOnlyList<byte> payload,
+            PacketOwnedFootholdResponseTransportCounters beforeDispatchCounters)
+        {
+            byte[] rawPacket = BuildPacketOwnedLocalUtilityRawPacket(opcode, payload);
+            bool dispatchedViaBridge = _localUtilityOfficialSessionBridge != null
+                && _localUtilityOfficialSessionBridge.HasSentOutboundPacketSince(opcode, rawPacket, beforeDispatchCounters.BridgeSentCount);
+            bool dispatchedViaOutbox = _localUtilityPacketOutbox != null
+                && _localUtilityPacketOutbox.SentCount > beforeDispatchCounters.OutboxSentCount
+                && _localUtilityPacketOutbox.HasSentOutboundPacket(opcode, rawPacket);
+            bool queuedViaBridge = _localUtilityOfficialSessionBridge != null
+                && _localUtilityOfficialSessionBridge.QueuedCount > beforeDispatchCounters.BridgeQueuedCount
+                && _localUtilityOfficialSessionBridge.HasQueuedOutboundPacket(opcode, rawPacket);
+            bool queuedViaOutbox = _localUtilityPacketOutbox != null
+                && _localUtilityPacketOutbox.QueuedCount > beforeDispatchCounters.OutboxQueuedCount
+                && _localUtilityPacketOutbox.HasQueuedOutboundPacket(opcode, rawPacket);
+            string traceSummary = DescribePacketOwnedFootholdResponseTraceEvidenceForPacketParity(
+                opcode,
+                dispatchedViaBridge,
+                dispatchedViaOutbox,
+                queuedViaBridge,
+                queuedViaOutbox,
+                beforeDispatchCounters.HasBridgeTransport,
+                beforeDispatchCounters.HasOutboxTransport);
+            return string.IsNullOrWhiteSpace(baseSummary)
+                ? traceSummary
+                : $"{baseSummary} {traceSummary}";
+        }
+
+        internal static string DescribePacketOwnedFootholdResponseTraceEvidenceForPacketParity(
+            int opcode,
+            bool dispatchedViaBridge,
+            bool dispatchedViaOutbox,
+            bool queuedViaBridge,
+            bool queuedViaOutbox,
+            bool hasBridgeTransport,
+            bool hasOutboxTransport)
+        {
+            if (dispatchedViaBridge)
+            {
+                return $"Transport-trace evidence: observed outbound opcode {opcode} on the live official-session bridge.";
+            }
+
+            if (dispatchedViaOutbox)
+            {
+                return $"Transport-trace evidence: observed outbound opcode {opcode} through the local-utility outbox.";
+            }
+
+            if (queuedViaBridge)
+            {
+                return $"Transport-trace evidence: observed outbound opcode {opcode} queued for deferred official-session bridge injection.";
+            }
+
+            if (queuedViaOutbox)
+            {
+                return $"Transport-trace evidence: observed outbound opcode {opcode} queued for deferred local-utility outbox delivery.";
+            }
+
+            if (!hasBridgeTransport && !hasOutboxTransport)
+            {
+                return $"Transport-trace evidence: no bridge or outbox transport is configured for opcode {opcode} validation.";
+            }
+
+            return $"Transport-trace evidence: opcode {opcode} was prepared but was not observed in live send or deferred queue histories.";
+        }
+
+        private string BuildPacketOwnedFootholdTraceStatus()
+        {
+            if (_packetFieldUtilityFootholdLastResponseOpcode < 0 || _packetFieldUtilityFootholdLastResponsePayload == null)
+            {
+                return PacketOwnedFootholdTraceNotCapturedSummary;
+            }
+
+            byte[] rawPacket = BuildPacketOwnedLocalUtilityRawPacket(
+                _packetFieldUtilityFootholdLastResponseOpcode,
+                _packetFieldUtilityFootholdLastResponsePayload);
+            bool hasBridgeTransport = _localUtilityOfficialSessionBridge != null;
+            bool hasOutboxTransport = _localUtilityPacketOutbox != null;
+            bool dispatchedViaBridge = hasBridgeTransport
+                && _localUtilityOfficialSessionBridge.HasSentOutboundPacket(_packetFieldUtilityFootholdLastResponseOpcode, rawPacket);
+            bool dispatchedViaOutbox = hasOutboxTransport
+                && _localUtilityPacketOutbox.HasSentOutboundPacket(_packetFieldUtilityFootholdLastResponseOpcode, rawPacket);
+            bool queuedViaBridge = hasBridgeTransport
+                && _localUtilityOfficialSessionBridge.HasQueuedOutboundPacket(_packetFieldUtilityFootholdLastResponseOpcode, rawPacket);
+            bool queuedViaOutbox = hasOutboxTransport
+                && _localUtilityPacketOutbox.HasQueuedOutboundPacket(_packetFieldUtilityFootholdLastResponseOpcode, rawPacket);
+            return DescribePacketOwnedFootholdResponseTraceEvidenceForPacketParity(
+                _packetFieldUtilityFootholdLastResponseOpcode,
+                dispatchedViaBridge,
+                dispatchedViaOutbox,
+                queuedViaBridge,
+                queuedViaOutbox,
+                hasBridgeTransport,
+                hasOutboxTransport);
+        }
+
+        private static byte[] BuildPacketOwnedLocalUtilityRawPacket(int opcode, IReadOnlyList<byte> payload)
+        {
+            int payloadLength = payload?.Count ?? 0;
+            byte[] rawPacket = new byte[sizeof(ushort) + payloadLength];
+            BitConverter.GetBytes((ushort)opcode).CopyTo(rawPacket, 0);
+            for (int i = 0; i < payloadLength; i++)
+            {
+                rawPacket[sizeof(ushort) + i] = payload[i];
+            }
+
+            return rawPacket;
         }
 
         internal static string DescribePacketOwnedFootholdSnapshotEntries(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)
@@ -1113,6 +1254,8 @@ namespace HaCreator.MapSimulator
                 _packetFieldUtilityMinimapHiddenByAdminResult = false;
                 _packetFieldUtilityFootholdRequestSummary = "No packet-owned foothold-info request has been handled.";
                 _packetFieldUtilityFootholdOfficialResponseSummary = "No packet-owned foothold-info response payload has been prepared.";
+                _packetFieldUtilityFootholdLastResponseOpcode = -1;
+                _packetFieldUtilityFootholdLastResponsePayload = Array.Empty<byte>();
                 ApplyPacketOwnedQuickslotKeyMap(null, useDefault: true);
                 _fieldEffects?.StopWeather();
                 return ChatCommandHandler.CommandResult.Ok(_packetFieldUtilityRuntime.DescribeStatus());
@@ -1133,7 +1276,8 @@ namespace HaCreator.MapSimulator
                 "stalk" => HandlePacketOwnedFieldUtilityStalkCommand(args),
                 "quickslot" => HandlePacketOwnedFieldUtilityQuickslotCommand(args),
                 "footholdrequest" => ApplyPacketOwnedFieldUtilityHelper(PacketFieldUtilityPacketKind.RequestFootHoldInfo, Array.Empty<byte>()),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldutility [status|clear|weather <itemId|clear> [message...]|quiz <question|answer|clear> <category> <problemId>|stalk <add <characterId> <name> <x> <y>|remove <characterId>>|quickslot <default|k1 k2 k3 k4 k5 k6 k7 k8>|footholdrequest|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
+                "footholdtrace" => ChatCommandHandler.CommandResult.Info(BuildPacketOwnedFootholdTraceStatus()),
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /fieldutility [status|clear|weather <itemId|clear> [message...]|quiz <question|answer|clear> <category> <problemId>|stalk <add <characterId> <name> <x> <y>|remove <characterId>>|quickslot <default|k1 k2 k3 k4 k5 k6 k7 k8>|footholdrequest|footholdtrace|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]"),
             };
         }
 

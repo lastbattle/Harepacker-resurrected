@@ -20,6 +20,40 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class QuestRewardRaiseInboundPacketCodec
     {
+        internal static bool TryDecodeClientPutItemAddOrConfirm(
+            byte[] payload,
+            out QuestRewardRaiseInboundPacket packet,
+            out string error)
+        {
+            packet = null;
+            error = null;
+
+            if (payload == null)
+            {
+                error = "Raise inbound payload is missing.";
+                return false;
+            }
+
+            if (payload.Length < 1)
+            {
+                error = "Raise inbound result payload must include a success flag.";
+                return false;
+            }
+
+            bool success = payload[0] != 0;
+            byte[] statePayload = payload.Length == 1 ? Array.Empty<byte>() : payload[1..];
+            if (!QuestRewardRaiseOutboundRequest.TryDecodePayload(statePayload, out QuestRewardRaisePacketPayload decodedPayload, out error))
+            {
+                return false;
+            }
+
+            QuestRewardRaiseInboundPacketKind resolvedKind = LooksLikePutItemConfirmPayload(decodedPayload)
+                ? QuestRewardRaiseInboundPacketKind.PutItemConfirmResult
+                : QuestRewardRaiseInboundPacketKind.PutItemAddResult;
+            packet = new QuestRewardRaiseInboundPacket(resolvedKind, success, decodedPayload, payload.ToArray());
+            return true;
+        }
+
         internal static bool TryDecode(
             QuestRewardRaiseInboundPacketKind kind,
             byte[] payload,
@@ -60,6 +94,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             packet = new QuestRewardRaiseInboundPacket(kind, success, decodedPayload, payload.ToArray());
             return true;
+        }
+
+        private static bool LooksLikePutItemConfirmPayload(QuestRewardRaisePacketPayload payload)
+        {
+            return payload != null
+                && payload.InventoryType == MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.NONE
+                && payload.SlotIndex < 0
+                && payload.OwnerItemId > 0
+                && payload.ItemId == payload.OwnerItemId
+                && payload.OwnerRequestId > 0
+                && payload.PieceRequestId == payload.OwnerRequestId;
         }
 
         internal static byte[] Encode(

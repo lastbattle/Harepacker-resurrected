@@ -451,7 +451,8 @@ namespace HaCreator.MapSimulator
             if (string.Equals(args[0], "recent", StringComparison.OrdinalIgnoreCase))
             {
                 int count = 10;
-                if (args.Length >= 2 && (!int.TryParse(args[1], out count) || count <= 0))
+                if (args.Length > 2
+                    || (args.Length == 2 && (!int.TryParse(args[1], out count) || count <= 0)))
                 {
                     return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.RecentUsage);
                 }
@@ -461,13 +462,19 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "clearrecent", StringComparison.OrdinalIgnoreCase))
             {
+                if (args.Length != 1)
+                {
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.ClearRecentUsage);
+                }
+
                 return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsOfficialSessionBridge.ClearRecentOutboundPackets());
             }
 
             if (string.Equals(args[0], "recentin", StringComparison.OrdinalIgnoreCase))
             {
                 int count = 10;
-                if (args.Length >= 2 && (!int.TryParse(args[1], out count) || count <= 0))
+                if (args.Length > 2
+                    || (args.Length == 2 && (!int.TryParse(args[1], out count) || count <= 0)))
                 {
                     return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.RecentInboundUsage);
                 }
@@ -477,6 +484,11 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "clearrecentin", StringComparison.OrdinalIgnoreCase))
             {
+                if (args.Length != 1)
+                {
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.ClearRecentInboundUsage);
+                }
+
                 return ChatCommandHandler.CommandResult.Ok(_rockPaperScissorsOfficialSessionBridge.ClearRecentInboundPackets());
             }
 

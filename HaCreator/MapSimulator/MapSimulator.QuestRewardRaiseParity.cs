@@ -664,6 +664,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            return TryApplyPacketOwnedQuestRewardRaisePacket(packet, out message);
+        }
+
+        private bool TryApplyPacketOwnedQuestRewardRaiseClientPutItemAddOrConfirmPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!QuestRewardRaiseInboundPacketCodec.TryDecodeClientPutItemAddOrConfirm(payload, out QuestRewardRaiseInboundPacket packet, out string error))
+            {
+                message = error ?? "Raise client PutItem(286) payload could not be decoded.";
+                return false;
+            }
+
+            return TryApplyPacketOwnedQuestRewardRaisePacket(packet, out message);
+        }
+
+        private bool TryApplyPacketOwnedQuestRewardRaisePacket(QuestRewardRaiseInboundPacket packet, out string message)
+        {
             StampPacketOwnedUtilityRequestState();
             message = ApplyPacketOwnedQuestRewardRaisePacket(packet);
             RefreshQuestRewardRaiseWindow();

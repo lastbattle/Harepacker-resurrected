@@ -348,6 +348,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             byte normalizedAction = (byte)(packetAction & 0x7F);
+            if (normalizedAction == 0)
+            {
+                return ResolveAuthoredAssistTypeForRuntimeOwnershipWithoutActionFamily(
+                    skill,
+                    currentAssistType);
+            }
+
             if (normalizedAction == PacketSkillActionSubsummon)
             {
                 return HasAuthoredSummonOwnedPacketSkillBranch(

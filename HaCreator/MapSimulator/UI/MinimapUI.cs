@@ -1702,7 +1702,7 @@ namespace HaCreator.MapSimulator.UI
         {
             return IsClientMinimapTooltipPortalType(portalType)
                 && hideTooltip != MapleBool.True
-                && targetMapId >= 0;
+                && targetMapId != -1;
         }
 
         internal static bool IsClientMinimapTooltipPortalType(PortalType portalType)

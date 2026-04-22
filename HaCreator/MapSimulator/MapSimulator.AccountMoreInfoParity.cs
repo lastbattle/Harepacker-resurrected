@@ -100,7 +100,7 @@ namespace HaCreator.MapSimulator
 
         private string OpenPacketOwnedAccountMoreInfoOwner(bool firstEntry)
         {
-            _accountMoreInfoRuntime.Open(firstEntry);
+            bool shouldDispatchLoadRequest = _accountMoreInfoRuntime.OpenOrRefreshFromPacket(firstEntry);
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AccountMoreInfo) is not AccountMoreInfoWindow window)
             {
                 string unavailable = $"CWvsContext::OnAccountMoreInfo requested UI_Open({PacketOwnedAccountMoreInfoUiType}), but the simulator account-more-info owner is unavailable.";
@@ -114,6 +114,13 @@ namespace HaCreator.MapSimulator
             if (firstEntry)
             {
                 ShowUtilityFeedbackMessage(AccountMoreInfoOwnerStringPoolText.ResolveFirstEntryPrompt());
+            }
+
+            if (!shouldDispatchLoadRequest)
+            {
+                const string duplicateOpenStatus = "CWvsContext::OnAccountMoreInfo subtype 0 refreshed existing UI type 40 and skipped duplicate load request dispatch because the owner was already open.";
+                _accountMoreInfoRuntime.RecordDispatchStatus(duplicateOpenStatus);
+                return duplicateOpenStatus;
             }
 
             byte[] loadPayload = _accountMoreInfoRuntime.BuildLoadRequestPayload();

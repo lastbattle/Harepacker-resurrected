@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemNameRegex = new(@"#(?:t|z)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex MalformedItemNameRegex = new(@"#(?<id>\d{7,8}):?#", RegexOptions.Compiled);
         private static readonly Regex MobNameRegex = new(@"#o(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestRecordOrNameRegex = new(@"#Q(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestNameRegex = new(@"#(?:q|y)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -69,6 +70,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex RewardCategoryRegex = new(@"#W(?<category>[^#\s]*)#", RegexOptions.Compiled);
         private static readonly Regex FontNameRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontSizeRegex = new(@"#fs[+-]?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontSizeResetRegex = new(@"#fs#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontTableRegex = new(@"#w(?:(?<value>basic|summary|select|reward|prob|default|black|red|green|blue|yellow|orange|gray|grey|purple|violet|magenta|0x[0-9a-fA-F]+|-?\d+)#|#|(?=$|\s))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
         private static readonly Regex NumericPrefixedStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -95,6 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = PlayerNameRegex.Replace(formatted, _ => ResolvePlayerName(context));
             formatted = NpcRegex.Replace(formatted, static match => ResolveNpcName(match.Groups[1].Value));
             formatted = ItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
+            formatted = MalformedItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups["id"].Value));
             formatted = MobNameRegex.Replace(formatted, static match => ResolveMobName(match.Groups[1].Value));
             formatted = QuestRecordOrNameRegex.Replace(formatted, match => ResolveQuestRecordOrNameText(match.Groups[1].Value, context));
             formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
@@ -124,6 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = RewardCategoryRegex.Replace(formatted, static match => ResolveRewardCategoryMarker(match.Groups["category"].Value));
             formatted = FontNameRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontName, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
             formatted = FontSizeRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontSize, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
+            formatted = FontSizeResetRegex.Replace(formatted, static _ => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontSize, string.Empty));
             formatted = FontTableRegex.Replace(formatted, static match =>
             {
                 if (TryResolveFontTableIndex(match.Groups["value"].Value, out int tableId))

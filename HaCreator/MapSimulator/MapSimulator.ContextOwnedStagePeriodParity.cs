@@ -27,10 +27,10 @@ namespace HaCreator.MapSimulator
         private readonly ContextOwnedStagePeriodRuntime _contextOwnedStagePeriodRuntime = new();
         private readonly ContextStagePeriodPacketInboxManager _contextStagePeriodPacketInbox = new();
         private ContextOwnedStageSystemCatalog _contextOwnedStageSystemCatalog;
-        private readonly Dictionary<string, ContextOwnedStageUnitEnableState> _contextOwnedStageKeywordCache = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ContextOwnedStageUnitEnableState> _contextOwnedStageKeywordCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, ContextOwnedStageUnitEnableState> _contextOwnedStageQuestCache = new();
-        private readonly Dictionary<string, byte> _contextOwnedStagePeriodCache = new(StringComparer.Ordinal);
-        private HashSet<string> _contextOwnedStageActiveKeywords = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, byte> _contextOwnedStagePeriodCache = new(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> _contextOwnedStageActiveKeywords = new(StringComparer.OrdinalIgnoreCase);
         private HashSet<int> _contextOwnedStageActiveQuestIds = new();
         private HashSet<int> _contextOwnedStageAffectedMapIds = new();
         private ContextOwnedStagePeriodCatalogEntry _contextOwnedStageCurrentPeriod;

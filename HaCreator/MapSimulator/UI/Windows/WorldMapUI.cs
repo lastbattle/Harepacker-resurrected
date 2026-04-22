@@ -20,6 +20,13 @@ namespace HaCreator.MapSimulator.UI
             Item
         }
 
+        public enum QuestOverlayMarkerStyle
+        {
+            Default,
+            HighLevelQuest,
+            LowLevelQuest
+        }
+
         public sealed class MapEntry
         {
             public int MapId { get; init; }
@@ -56,6 +63,7 @@ namespace HaCreator.MapSimulator.UI
             public string Description { get; init; } = string.Empty;
             public bool IsPriorityTarget { get; init; }
             public int StableOrder { get; init; }
+            public QuestOverlayMarkerStyle MarkerStyle { get; init; }
         }
 
         public sealed class WorldMapSurfaceDefinition
@@ -149,6 +157,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _searchInputOutlineTexture;
         private readonly Texture2D _caretTexture;
         private readonly OverlayMarkerFrame[] _overlayMarkerFrames;
+        private readonly Texture2D _lowLevelQuestMarkerTexture;
+        private readonly Point _lowLevelQuestMarkerOrigin;
+        private readonly Texture2D _highLevelQuestMarkerTexture;
+        private readonly Point _highLevelQuestMarkerOrigin;
         private readonly GraphicsDevice _graphicsDevice;
         private readonly UIObject _allButton;
         private readonly UIObject _anotherButton;
@@ -208,6 +220,10 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] overlayMarkerTextures,
             Point[] overlayMarkerOrigins,
             int[] overlayMarkerDelays,
+            Texture2D lowLevelQuestMarkerTexture,
+            Point lowLevelQuestMarkerOrigin,
+            Texture2D highLevelQuestMarkerTexture,
+            Point highLevelQuestMarkerOrigin,
             UIObject allButton,
             UIObject anotherButton,
             UIObject searchButton,
@@ -227,6 +243,10 @@ namespace HaCreator.MapSimulator.UI
             _searchNoticeOffset = searchNoticeOffset;
             _selectionTexture = selectionTexture;
             _overlayMarkerFrames = BuildOverlayMarkerFrames(overlayMarkerTextures, overlayMarkerOrigins, overlayMarkerDelays);
+            _lowLevelQuestMarkerTexture = lowLevelQuestMarkerTexture;
+            _lowLevelQuestMarkerOrigin = lowLevelQuestMarkerOrigin;
+            _highLevelQuestMarkerTexture = highLevelQuestMarkerTexture;
+            _highLevelQuestMarkerOrigin = highLevelQuestMarkerOrigin;
             _graphicsDevice = device;
             _searchInputBackgroundTexture = new Texture2D(device, 1, 1);
             _searchInputBackgroundTexture.SetData(new[] { Color.White });
@@ -355,6 +375,10 @@ namespace HaCreator.MapSimulator.UI
                 Array.Empty<Texture2D>(),
                 Array.Empty<Point>(),
                 Array.Empty<int>(),
+                null,
+                Point.Zero,
+                null,
+                Point.Zero,
                 allButton,
                 anotherButton,
                 searchButton,
@@ -379,6 +403,10 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] overlayMarkerTextures,
             Point[] overlayMarkerOrigins,
             int[] overlayMarkerDelays,
+            Texture2D lowLevelQuestMarkerTexture,
+            Point lowLevelQuestMarkerOrigin,
+            Texture2D highLevelQuestMarkerTexture,
+            Point highLevelQuestMarkerOrigin,
             UIObject allButton,
             UIObject anotherButton,
             UIObject searchButton,
@@ -405,6 +433,10 @@ namespace HaCreator.MapSimulator.UI
                 overlayMarkerTextures,
                 overlayMarkerOrigins,
                 overlayMarkerDelays,
+                lowLevelQuestMarkerTexture,
+                lowLevelQuestMarkerOrigin,
+                highLevelQuestMarkerTexture,
+                highLevelQuestMarkerOrigin,
                 allButton,
                 anotherButton,
                 searchButton,
@@ -1210,10 +1242,6 @@ namespace HaCreator.MapSimulator.UI
             }
 
             OverlayMarkerFrame? markerFrame = GetActiveOverlayMarkerFrame(tickCount);
-            if (!markerFrame.HasValue)
-            {
-                return;
-            }
 
             foreach (IGrouping<int, QuestOverlayEntry> overlayGroup in _questOverlays
                 .Where(entry => entry != null && entry.MapId > 0)
@@ -1232,7 +1260,7 @@ namespace HaCreator.MapSimulator.UI
                     .ToArray();
                 for (int i = 0; i < orderedOverlays.Length; i++)
                 {
-                    DrawSurfaceMarker(sprite, markerFrame.Value, spotAnchor, orderedOverlays[i], i);
+                    DrawSurfaceMarker(sprite, markerFrame, spotAnchor, orderedOverlays[i], i);
                 }
             }
         }
@@ -1289,23 +1317,24 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawSurfaceMarker(
             SpriteBatch sprite,
-            OverlayMarkerFrame frame,
+            OverlayMarkerFrame? animatedFrame,
             Point anchor,
             QuestOverlayEntry overlay,
             int overlayIndex)
         {
-            if (frame.Texture == null)
+            if (!TryResolveQuestOverlayMarkerVisual(overlay, animatedFrame, out Texture2D markerTexture, out Point markerOrigin, out bool drawOverlayIcon))
             {
                 return;
             }
 
             Point overlayOffset = ResolveOverlaySurfaceOffset(overlayIndex);
             Vector2 drawPosition = new(
-                anchor.X + overlayOffset.X - frame.Origin.X,
-                anchor.Y + overlayOffset.Y - frame.Origin.Y);
-            sprite.Draw(frame.Texture, drawPosition, Color.White);
+                anchor.X + overlayOffset.X - markerOrigin.X,
+                anchor.Y + overlayOffset.Y - markerOrigin.Y);
+            sprite.Draw(markerTexture, drawPosition, Color.White);
 
-            if (!TryResolveSurfaceOverlayIconStyle(overlay?.Kind ?? SearchResultKind.Field, out SearchResultVisualStyle iconStyle))
+            if (!drawOverlayIcon ||
+                !TryResolveSurfaceOverlayIconStyle(overlay?.Kind ?? SearchResultKind.Field, out SearchResultVisualStyle iconStyle))
             {
                 return;
             }
@@ -1320,6 +1349,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.Draw(iconStyle.IconTexture, new Vector2(iconX, iconY), Color.White);
+        }
+
+        private bool TryResolveQuestOverlayMarkerVisual(
+            QuestOverlayEntry overlay,
+            OverlayMarkerFrame? animatedFrame,
+            out Texture2D markerTexture,
+            out Point markerOrigin,
+            out bool drawOverlayIcon)
+        {
+            markerTexture = null;
+            markerOrigin = Point.Zero;
+            drawOverlayIcon = false;
+
+            switch (overlay?.MarkerStyle ?? QuestOverlayMarkerStyle.Default)
+            {
+                case QuestOverlayMarkerStyle.LowLevelQuest when _lowLevelQuestMarkerTexture != null:
+                    markerTexture = _lowLevelQuestMarkerTexture;
+                    markerOrigin = _lowLevelQuestMarkerOrigin;
+                    return true;
+                case QuestOverlayMarkerStyle.HighLevelQuest when _highLevelQuestMarkerTexture != null:
+                    markerTexture = _highLevelQuestMarkerTexture;
+                    markerOrigin = _highLevelQuestMarkerOrigin;
+                    return true;
+            }
+
+            if (!animatedFrame.HasValue || animatedFrame.Value.Texture == null)
+            {
+                return false;
+            }
+
+            markerTexture = animatedFrame.Value.Texture;
+            markerOrigin = animatedFrame.Value.Origin;
+            drawOverlayIcon = true;
+            return true;
         }
 
         private static Point ResolveOverlaySurfaceOffset(int overlayIndex)

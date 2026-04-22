@@ -8730,24 +8730,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private List<TradeVerificationEntry> BuildTradeRequestVerificationEntries()
         {
-            List<TradeVerificationEntry> entries = new();
-            string remoteName = ResolveRemoteTraderName();
-            for (int slotIndex = 1; slotIndex <= TradingRoomClientItemSlotCount; slotIndex++)
-            {
-                SocialRoomItemEntry localEntry = FindTradingRoomPacketEntry(OwnerName, slotIndex);
-                if (TryBuildTradeVerificationEntry(localEntry, out TradeVerificationEntry localVerificationEntry))
-                {
-                    entries.Add(localVerificationEntry);
-                }
-
-                SocialRoomItemEntry remoteEntry = FindTradingRoomPacketEntry(remoteName, slotIndex);
-                if (TryBuildTradeVerificationEntry(remoteEntry, out TradeVerificationEntry remoteVerificationEntry))
-                {
-                    entries.Add(remoteVerificationEntry);
-                }
-            }
-
-            return entries;
+            // IDA: CTradingRoomDlg::OnTrade (0x763F20) scans m_aaItem[1] only before emitting subtype 20.
+            // The request-side checksum list should therefore mirror the peer-side rows only.
+            return BuildTradeVerificationEntries(isLocalParty: false);
         }
 
         private bool TryValidateTradeRequestVerificationEntries(

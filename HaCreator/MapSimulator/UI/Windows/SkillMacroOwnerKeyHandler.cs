@@ -153,12 +153,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            bool suppressImeOwnedForwarding = ShouldSuppressConfiguredNonFunctionHotkeyForwarding(
-                key,
-                imeCompositionActive,
-                imeCandidateWindowActive);
-            return !suppressImeOwnedForwarding
-                || ShouldForwardImeNavigationKeyToParent(key);
+            // IDA evidence: `CCtrlEdit::OnKey` (`0x4e3a20`) forwards key-up (`lParam < 0`)
+            // directly to the parent owner callback for non-function keys.
+            _ = imeCompositionActive;
+            _ = imeCandidateWindowActive;
+            return true;
         }
 
         internal static bool ShouldApplyCaretBoundaryNavigation(bool controlHeld)

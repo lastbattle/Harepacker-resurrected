@@ -3789,6 +3789,7 @@ namespace HaCreator.MapSimulator.Character
                 56 => "shining rod",
                 57 => "desperado",
                 58 => "soul shooter",
+                59 => "ancient bow",
                 _ => "weapon"
             };
         }

@@ -3911,6 +3911,23 @@ namespace HaCreator.MapSimulator.Character
             return new PlayerMovementSyncSnapshot(passivePosition, movePath);
         }
 
+        public PlayerMovementSyncSnapshot GetMovementSyncSnapshotFromRecordedPath(
+            int currentTime,
+            bool appendLatestState = true)
+        {
+            PassivePositionSnapshot passivePosition = Physics.MakePassivePositionSnapshot(currentTime);
+            var movePath = appendLatestState
+                ? Physics.GetMovePathSnapshot(currentTime)
+                : Physics.GetMovePathPacketSnapshot(currentTime);
+
+            if (movePath.Count == 0)
+            {
+                movePath = Physics.MakeMovePath(currentTime);
+            }
+
+            return new PlayerMovementSyncSnapshot(passivePosition, movePath);
+        }
+
         #endregion
 
         #region Combat
@@ -7581,6 +7598,7 @@ namespace HaCreator.MapSimulator.Character
                 signature.Add(RuntimeHelpers.GetHashCode(part.SourcePortableChairLayer));
                 signature.Add(RuntimeHelpers.GetHashCode(part.SourcePart));
                 IReadOnlyList<string> visibilityTokens = part.VisibilityTokens;
+                signature.Add(RuntimeHelpers.GetHashCode(visibilityTokens));
                 signature.Add(visibilityTokens?.Count ?? 0);
                 if (visibilityTokens != null)
                 {
@@ -10490,9 +10508,17 @@ namespace HaCreator.MapSimulator.Character
             {
                 return mountedStatePart?.Slot == EquipSlot.TamingMob
                     ? mountedStatePart
-                    : equippedMount?.Slot == EquipSlot.TamingMob
-                        ? equippedMount
-                        : null;
+                    : transitionOverridePart?.Slot == EquipSlot.TamingMob
+                        ? transitionOverridePart
+                        : stateDrivenOverridePart?.Slot == EquipSlot.TamingMob
+                            ? stateDrivenOverridePart
+                            : clientOwnedVehicleMount?.Slot == EquipSlot.TamingMob
+                                ? clientOwnedVehicleMount
+                                : transformOwnedVehicleMount?.Slot == EquipSlot.TamingMob
+                                    ? transformOwnedVehicleMount
+                                    : equippedMount?.Slot == EquipSlot.TamingMob
+                                        ? equippedMount
+                                        : null;
             }
 
             return MatchesTamingMobItemId(mountedStatePart, mountedVehicleId)

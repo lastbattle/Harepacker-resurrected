@@ -2384,6 +2384,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return infoProperty["type"] != null
+                   || infoProperty["uiType"] != null
                    || infoProperty["direction"] != null
                    || infoProperty["floatType"] != null
                    || infoProperty["speed"] != null
@@ -3361,6 +3362,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 int weatherType = GetIntOrStringValue(infoProperty["type"]);
                 metadataLines.Add($"Weather Type: {weatherType.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (infoProperty["uiType"] != null)
+            {
+                int uiType = GetIntOrStringValue(infoProperty["uiType"]);
+                metadataLines.Add($"Weather UI Type: {uiType.ToString(CultureInfo.InvariantCulture)}");
             }
 
             if (infoProperty["direction"] != null)

@@ -973,13 +973,16 @@ namespace HaCreator.MapSimulator.Interaction
                     ulong characterDataFlags = 0;
                     PacketCharacterDataTransferHead transferHead;
                     PacketCharacterDataSnapshot characterDataSnapshot;
-                    if (!TryDecodeCharacterDataDecodePrelude(reader, out transferHead, out characterDataSnapshot, out characterDataFlags, out _))
+                    int characterDataDecodedByteCount;
+                    if (!TryDecodeCharacterDataDecodePrelude(reader, out transferHead, out characterDataSnapshot, out characterDataFlags, out characterDataDecodedByteCount))
                     {
                         stream.Position = characterDataStart;
                         if (!TryDecodeCharacterDataTransferHead(reader, out transferHead, out characterDataSnapshot, out error))
                         {
                             return false;
                         }
+
+                        characterDataDecodedByteCount = checked((int)(stream.Position - characterDataStart));
                     }
 
                     int remainingBytes = checked((int)(stream.Length - stream.Position));
@@ -1012,7 +1015,8 @@ namespace HaCreator.MapSimulator.Interaction
                         characterDataSnapshot,
                         transferServerFileTime,
                         remainingBytes > 0 ? reader.ReadBytes(remainingBytes) : Array.Empty<byte>(),
-                        remainingBytes);
+                        remainingBytes,
+                        characterDataDecodedByteCount);
                     return true;
                 }
 
@@ -1062,6 +1066,7 @@ namespace HaCreator.MapSimulator.Interaction
                     null,
                     serverFileTime,
                     Array.Empty<byte>(),
+                    0,
                     0);
                 return true;
             }
@@ -1087,12 +1092,25 @@ namespace HaCreator.MapSimulator.Interaction
                 _ = reader.ReadInt32(); // damage seed 1
                 _ = reader.ReadInt32(); // damage seed 2
                 _ = reader.ReadInt32(); // damage seed 3
+                long statSectionStart = reader.BaseStream.Position;
                 snapshot = ReadCharacterDataStatSnapshot(reader);
+                int statByteCount = checked((int)(reader.BaseStream.Position - statSectionStart));
+                long statTrailerStart = reader.BaseStream.Position;
+                int statTrailerByteCount = 0;
                 if (TryDecodeCharacterDataStatTrailer(reader, snapshot, out PacketCharacterDataSnapshot decoratedSnapshot))
                 {
                     snapshot = decoratedSnapshot;
+                    statTrailerByteCount = checked((int)(reader.BaseStream.Position - statTrailerStart));
                 }
 
+                snapshot = snapshot with
+                {
+                    CharacterDataDecodePreludeByteCount = 0,
+                    CharacterDataDamageSeedByteCount = sizeof(int) * 3,
+                    CharacterDataStatByteCount = statByteCount,
+                    CharacterDataStatTrailerByteCount = statTrailerByteCount,
+                    CharacterDataDecodeByteCount = checked((int)(reader.BaseStream.Position - restorePosition))
+                };
                 head = new PacketCharacterDataTransferHead(snapshot.FieldId, snapshot.PortalIndex, snapshot.Hp);
                 return true;
             }
@@ -1167,10 +1185,16 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
+                long statSectionStart = reader.BaseStream.Position;
+                int decodePreludeByteCount = checked((int)(statSectionStart - startPosition));
                 snapshot = ReadCharacterDataStatSnapshot(reader);
+                int statByteCount = checked((int)(reader.BaseStream.Position - statSectionStart));
+                long statTrailerStart = reader.BaseStream.Position;
+                int statTrailerByteCount = 0;
                 if (TryDecodeCharacterDataStatTrailer(reader, snapshot, out PacketCharacterDataSnapshot decoratedSnapshot))
                 {
                     snapshot = decoratedSnapshot;
+                    statTrailerByteCount = checked((int)(reader.BaseStream.Position - statTrailerStart));
                 }
 
                 snapshot = snapshot with
@@ -1190,6 +1214,10 @@ namespace HaCreator.MapSimulator.Interaction
                     BackwardUpdateSecondaryRemovedSerialNumberByteCount = backwardUpdateSecondaryRemovedSerialNumberByteCount,
                     BackwardUpdateSecondaryRemovedSerialNumberCount = backwardUpdateSecondaryRemovedSerialNumbers.Count,
                     BackwardUpdateSecondaryRemovedSerialNumbers = backwardUpdateSecondaryRemovedSerialNumbers,
+                    CharacterDataDecodePreludeByteCount = decodePreludeByteCount,
+                    CharacterDataDamageSeedByteCount = 0,
+                    CharacterDataStatByteCount = statByteCount,
+                    CharacterDataStatTrailerByteCount = statTrailerByteCount,
                     DecodedSectionFlags = CharacterDataStatFlag
                 };
 
@@ -1211,6 +1239,10 @@ namespace HaCreator.MapSimulator.Interaction
 
                 head = new PacketCharacterDataTransferHead(snapshot.FieldId, snapshot.PortalIndex, snapshot.Hp);
                 consumedBytes = checked((int)(reader.BaseStream.Position - startPosition));
+                snapshot = snapshot with
+                {
+                    CharacterDataDecodeByteCount = consumedBytes
+                };
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -3946,7 +3978,12 @@ namespace HaCreator.MapSimulator.Interaction
         int VisitorQuestRecordByteCount = 0,
         IReadOnlyDictionary<int, int> VisitorQuestRecords = null,
         ulong DecodedSectionFlags = 0,
-        IReadOnlyDictionary<ulong, int> DecodedSectionByteCounts = null);
+        IReadOnlyDictionary<ulong, int> DecodedSectionByteCounts = null,
+        int CharacterDataDecodePreludeByteCount = 0,
+        int CharacterDataDamageSeedByteCount = 0,
+        int CharacterDataStatByteCount = 0,
+        int CharacterDataStatTrailerByteCount = 0,
+        int CharacterDataDecodeByteCount = 0);
 
     internal readonly record struct PacketCharacterDataTwoIntValueRecord(
         int Value1,
@@ -3980,5 +4017,6 @@ namespace HaCreator.MapSimulator.Interaction
         PacketCharacterDataSnapshot CharacterDataSnapshot,
         long ServerFileTime,
         byte[] TrailingPayload,
-        int TrailingBytes);
+        int TrailingBytes,
+        int CharacterDataDecodedByteCount = 0);
 }

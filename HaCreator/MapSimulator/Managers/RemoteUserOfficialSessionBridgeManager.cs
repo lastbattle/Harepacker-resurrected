@@ -1187,7 +1187,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 bool decoded = HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorHirePayload(
                     payload,
-                    out int characterId,
+                    out _,
                     out bool enabled,
                     out _);
                 if (!decoded)
@@ -1195,14 +1195,15 @@ namespace HaCreator.MapSimulator.Managers
                     return $"invalid-hire:{payload?.Length ?? 0}";
                 }
 
-                return $"hire:{characterId}:{(enabled ? 1 : 0)}";
+                // Evidence should reflect wrapper shape, not owner id churn from traffic.
+                return $"hire:enabled={(enabled ? 1 : 0)}";
             }
 
             if (packetType == (int)Pools.RemoteUserPacketType.UserTutorMessage)
             {
                 bool decoded = HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorMessagePayload(
                     payload,
-                    out int characterId,
+                    out _,
                     out bool indexedPayload,
                     out int messageIndex,
                     out int durationMs,
@@ -1216,13 +1217,13 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (indexedPayload)
                 {
-                    return $"msg-indexed:{characterId}:{messageIndex}:{durationMs}";
+                    return $"msg-indexed:{messageIndex}:{durationMs}";
                 }
 
                 int textHash = string.IsNullOrEmpty(text)
                     ? 0
                     : StringComparer.Ordinal.GetHashCode(text);
-                return $"msg-text:{characterId}:{width}:{durationMs}:{text?.Length ?? 0}:{textHash}";
+                return $"msg-text:{width}:{durationMs}:{text?.Length ?? 0}:{textHash}";
             }
 
             return $"packet:{packetType}:{payload?.Length ?? 0}";

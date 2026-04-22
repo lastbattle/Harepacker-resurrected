@@ -261,16 +261,17 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
+            int requestedLevel = Math.Max(1, level);
             if (preferPvpLevelData)
             {
-                SkillLevelData pvpLevelData = skill.GetPvpLevel(Math.Max(1, level));
+                SkillLevelData pvpLevelData = skill.GetPvpLevel(requestedLevel);
                 if (pvpLevelData != null)
                 {
                     return pvpLevelData;
                 }
             }
 
-            SkillLevelData levelData = skill.GetLevel(Math.Max(1, level));
+            SkillLevelData levelData = skill.GetLevel(requestedLevel);
             if (levelData != null)
             {
                 return levelData;
@@ -278,42 +279,72 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!preferPvpLevelData)
             {
-                SkillLevelData pvpLevelData = skill.GetPvpLevel(Math.Max(1, level));
+                SkillLevelData pvpLevelData = skill.GetPvpLevel(requestedLevel);
                 if (pvpLevelData != null)
                 {
                     return pvpLevelData;
                 }
             }
 
-            int maxLevel = Math.Max(1, skill.MaxLevel);
-            for (int resolvedLevel = 1; resolvedLevel <= maxLevel; resolvedLevel++)
+            SkillLevelData nearestPreferredLevelData = ResolveNearestAuthoredSkillLevelData(
+                skill,
+                requestedLevel,
+                usePvpLevels: preferPvpLevelData);
+            if (nearestPreferredLevelData != null)
             {
-                if (preferPvpLevelData)
+                return nearestPreferredLevelData;
+            }
+
+            return ResolveNearestAuthoredSkillLevelData(
+                skill,
+                requestedLevel,
+                usePvpLevels: !preferPvpLevelData);
+        }
+
+        private static SkillLevelData ResolveNearestAuthoredSkillLevelData(
+            SkillData skill,
+            int requestedLevel,
+            bool usePvpLevels)
+        {
+            if (skill == null)
+            {
+                return null;
+            }
+
+            int maxLevel = Math.Max(Math.Max(1, skill.MaxLevel), requestedLevel);
+            SkillLevelData closestLowerOrEqual = null;
+            int closestLowerOrEqualLevel = int.MinValue;
+            SkillLevelData closestHigher = null;
+            int closestHigherLevel = int.MaxValue;
+            for (int candidateLevel = 1; candidateLevel <= maxLevel; candidateLevel++)
+            {
+                SkillLevelData candidateLevelData = usePvpLevels
+                    ? skill.GetPvpLevel(candidateLevel)
+                    : skill.GetLevel(candidateLevel);
+                if (candidateLevelData == null)
                 {
-                    SkillLevelData pvpLevelData = skill.GetPvpLevel(resolvedLevel);
-                    if (pvpLevelData != null)
-                    {
-                        return pvpLevelData;
-                    }
+                    continue;
                 }
 
-                levelData = skill.GetLevel(resolvedLevel);
-                if (levelData != null)
+                if (candidateLevel <= requestedLevel)
                 {
-                    return levelData;
+                    if (candidateLevel > closestLowerOrEqualLevel)
+                    {
+                        closestLowerOrEqualLevel = candidateLevel;
+                        closestLowerOrEqual = candidateLevelData;
+                    }
+
+                    continue;
                 }
 
-                if (!preferPvpLevelData)
+                if (candidateLevel < closestHigherLevel)
                 {
-                    SkillLevelData pvpLevelData = skill.GetPvpLevel(resolvedLevel);
-                    if (pvpLevelData != null)
-                    {
-                        return pvpLevelData;
-                    }
+                    closestHigherLevel = candidateLevel;
+                    closestHigher = candidateLevelData;
                 }
             }
 
-            return null;
+            return closestLowerOrEqual ?? closestHigher;
         }
 
         public static bool HasProjectableSupportBuffMetadata(SkillLevelData levelData)

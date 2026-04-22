@@ -794,7 +794,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static HashSet<string> ParseStringSet(params WzImageProperty[] properties)
         {
-            HashSet<string> values = new(StringComparer.Ordinal);
+            HashSet<string> values = new(StringComparer.OrdinalIgnoreCase);
             if (properties == null)
             {
                 return values;
@@ -1299,7 +1299,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach ((TKey key, ContextOwnedStageUnitEnableState state) in cache.ToArray())
             {
-                if (state != null && string.Equals(state.StageTheme, stageTheme, StringComparison.Ordinal))
+                if (state != null && string.Equals(state.StageTheme, stageTheme, StringComparison.OrdinalIgnoreCase))
                 {
                     state.Enabled = false;
                 }
@@ -1374,7 +1374,7 @@ namespace HaCreator.MapSimulator.Interaction
             Mode = mode;
             BackColorArgb = backColorArgb;
             BackImages = backImages ?? Array.Empty<ContextOwnedStageBackImageEntry>();
-            Keywords = keywords ?? new HashSet<string>(StringComparer.Ordinal);
+            Keywords = keywords ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             EnabledQuestIds = enabledQuestIds ?? new HashSet<int>();
             AffectedMapIds = affectedMapIds ?? new HashSet<int>();
         }

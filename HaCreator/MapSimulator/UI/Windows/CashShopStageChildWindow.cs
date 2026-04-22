@@ -22,6 +22,12 @@ namespace HaCreator.MapSimulator.UI
             public int ScrollOffset { get; init; }
             public int WheelRange { get; init; }
             public bool HasNumberFont { get; init; }
+            public int ScrollBarControlId { get; init; } = 1001;
+            public int ScrollBarUpButtonId { get; init; } = 1;
+            public int ScrollBarDownButtonId { get; init; }
+            public int ScrollBarX { get; init; } = -1;
+            public int ScrollBarY { get; init; } = -1;
+            public int ScrollBarHeight { get; init; } = -1;
             public IReadOnlyList<string> SharedCharacterNames { get; init; } = Array.Empty<string>();
         }
 
@@ -37,6 +43,13 @@ namespace HaCreator.MapSimulator.UI
             public int RowFocusIndex { get; init; }
             public int WheelRange { get; init; }
             public bool HasNumberFont { get; init; }
+            public int TabControlId { get; init; } = 1000;
+            public int ScrollBarControlId { get; init; } = 1001;
+            public int ScrollBarUpButtonId { get; init; } = 1;
+            public int ScrollBarDownButtonId { get; init; }
+            public int ScrollBarX { get; init; } = -1;
+            public int ScrollBarY { get; init; } = -1;
+            public int ScrollBarHeight { get; init; } = -1;
             public string ActiveTabName { get; init; } = string.Empty;
             public string SelectedEntryTitle { get; init; } = string.Empty;
             public string PacketFocusSignature { get; init; } = string.Empty;
@@ -556,6 +569,12 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
 
             IReadOnlyList<string> sharedNames = state.SharedCharacterNames.Count > 0
                 ? state.SharedCharacterNames
@@ -612,6 +631,12 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(
                 _font,
                 $"Scroll {Math.Max(state.ScrollOffset, _inventoryScrollOffset).ToString(CultureInfo.InvariantCulture)}  First {_inventoryFirstPosition.ToString(CultureInfo.InvariantCulture)}  Wheel {state.WheelRange.ToString(CultureInfo.InvariantCulture)}  Number {(state.HasNumberFont ? "on" : "off")}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Tab#{state.TabControlId.ToString(CultureInfo.InvariantCulture)}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
@@ -986,7 +1011,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            Rectangle scrollTrackBounds = GetLockerScrollTrackBounds(absoluteBounds);
+            Rectangle scrollTrackBounds = GetLockerScrollTrackBounds(absoluteBounds, state);
             Rectangle scrollThumbBounds = GetLockerScrollThumbBounds(absoluteBounds, state, _lockerScrollOffset);
             bool leftJustReleased = mouseState.LeftButton == ButtonState.Released
                 && _previousMouseState.LeftButton == ButtonState.Pressed;
@@ -1057,7 +1082,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            Rectangle scrollTrackBounds = GetInventoryScrollTrackBounds(absoluteBounds);
+            Rectangle scrollTrackBounds = GetInventoryScrollTrackBounds(absoluteBounds, state);
             Rectangle scrollThumbBounds = GetInventoryScrollThumbBounds(absoluteBounds, state, _inventoryTabName, _inventoryScrollOffset);
             bool leftJustReleased = mouseState.LeftButton == ButtonState.Released
                 && _previousMouseState.LeftButton == ButtonState.Pressed;
@@ -1872,7 +1897,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ApplyLockerScrollThumbDrag(int mouseY, Rectangle absoluteBounds, LockerOwnerState state)
         {
-            Rectangle trackBounds = GetLockerScrollTrackBounds(absoluteBounds);
+            Rectangle trackBounds = GetLockerScrollTrackBounds(absoluteBounds, state);
             int sharedCount = Math.Max(0, state?.SharedCharacterNames?.Count ?? 0);
             int maxScroll = Math.Max(0, sharedCount - 3);
             if (maxScroll <= 0)
@@ -1905,7 +1930,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ApplyInventoryScrollThumbDrag(int mouseY, Rectangle absoluteBounds, InventoryOwnerState state)
         {
-            Rectangle trackBounds = GetInventoryScrollTrackBounds(absoluteBounds);
+            Rectangle trackBounds = GetInventoryScrollTrackBounds(absoluteBounds, state);
             int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
             if (maxScroll <= 0)
             {
@@ -2820,14 +2845,17 @@ namespace HaCreator.MapSimulator.UI
             return value.Substring(0, Math.Max(0, maxLength - 3)) + "...";
         }
 
-        private static Rectangle GetLockerScrollTrackBounds(Rectangle absoluteBounds)
+        private static Rectangle GetLockerScrollTrackBounds(Rectangle absoluteBounds, LockerOwnerState state)
         {
-            return new Rectangle(absoluteBounds.Right - 28, absoluteBounds.Y + 54, 16, 72);
+            int x = state?.ScrollBarX >= 0 ? absoluteBounds.X + state.ScrollBarX : absoluteBounds.Right - 28;
+            int y = state?.ScrollBarY >= 0 ? absoluteBounds.Y + state.ScrollBarY : absoluteBounds.Y + 54;
+            int height = state?.ScrollBarHeight > 0 ? state.ScrollBarHeight : 72;
+            return new Rectangle(x, y, 16, height);
         }
 
         private static Rectangle GetLockerScrollThumbBounds(Rectangle absoluteBounds, LockerOwnerState state, int currentScrollOffset)
         {
-            Rectangle trackBounds = GetLockerScrollTrackBounds(absoluteBounds);
+            Rectangle trackBounds = GetLockerScrollTrackBounds(absoluteBounds, state);
             int count = Math.Max(0, state?.SharedCharacterNames?.Count ?? 0);
             int maxScroll = Math.Max(0, count - 3);
             int thumbHeight = maxScroll == 0
@@ -2839,14 +2867,17 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(trackBounds.X + 2, thumbY, Math.Max(10, trackBounds.Width - 4), thumbHeight);
         }
 
-        private static Rectangle GetInventoryScrollTrackBounds(Rectangle absoluteBounds)
+        private static Rectangle GetInventoryScrollTrackBounds(Rectangle absoluteBounds, InventoryOwnerState state)
         {
-            return new Rectangle(absoluteBounds.Right - 28, absoluteBounds.Y + 112, 16, 72);
+            int x = state?.ScrollBarX >= 0 ? absoluteBounds.X + state.ScrollBarX : absoluteBounds.Right - 28;
+            int y = state?.ScrollBarY >= 0 ? absoluteBounds.Y + state.ScrollBarY : absoluteBounds.Y + 112;
+            int height = state?.ScrollBarHeight > 0 ? state.ScrollBarHeight : 72;
+            return new Rectangle(x, y, 16, height);
         }
 
         private static Rectangle GetInventoryScrollThumbBounds(Rectangle absoluteBounds, InventoryOwnerState state, string activeTabName, int currentScrollOffset)
         {
-            Rectangle trackBounds = GetInventoryScrollTrackBounds(absoluteBounds);
+            Rectangle trackBounds = GetInventoryScrollTrackBounds(absoluteBounds, state);
             int count = state == null ? 0 : activeTabName switch
             {
                 "Use" => state.UseCount,

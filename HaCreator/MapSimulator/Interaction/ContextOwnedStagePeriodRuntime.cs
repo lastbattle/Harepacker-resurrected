@@ -51,7 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             bool isAlreadyCurrent = callbacks.IsStagePeriodCurrent?.Invoke(packet)
-                ?? string.Equals(_currentStagePeriod, packet.StagePeriod, StringComparison.Ordinal)
+                ?? string.Equals(_currentStagePeriod, packet.StagePeriod, StringComparison.OrdinalIgnoreCase)
                 && _currentMode == packet.Mode;
             if (isAlreadyCurrent)
             {

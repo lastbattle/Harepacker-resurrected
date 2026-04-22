@@ -302,6 +302,20 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(listBounds.X, listBounds.Y, contentWidth, listBounds.Height);
         }
 
+        public static int ResolveWhisperPickerModalComboTextMaxWidth(
+            Rectangle comboBounds,
+            Rectangle comboToggleBounds,
+            int textLeftInset,
+            int rightLaneInset = 2)
+        {
+            int safeTextLeftInset = Math.Max(0, textLeftInset);
+            int safeRightLaneInset = Math.Max(0, rightLaneInset);
+            int editableLaneWidth = Math.Max(
+                1,
+                (comboToggleBounds.Left - comboBounds.X) - safeRightLaneInset);
+            return Math.Max(1, editableLaneWidth - safeTextLeftInset);
+        }
+
         public static Rectangle ResolveWhisperPickerModalDropdownScrollBarBounds(
             Rectangle listBounds,
             int scrollbarWidth)

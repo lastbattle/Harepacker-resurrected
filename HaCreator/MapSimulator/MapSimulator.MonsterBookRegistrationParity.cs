@@ -50,7 +50,7 @@ namespace HaCreator.MapSimulator
         }
 
         private PendingMonsterBookRegistrationRequest _pendingMonsterBookRegistrationRequest;
-        private PendingMonsterBookOwnershipSaveRequest _pendingMonsterBookOwnershipSaveRequest;
+        private readonly List<PendingMonsterBookOwnershipSaveRequest> _pendingMonsterBookOwnershipSaveRequests = new();
         private int _nextMonsterBookRegistrationRequestId = 1;
         private int _nextMonsterBookOwnershipSaveRequestId = 1;
 
@@ -314,15 +314,16 @@ namespace HaCreator.MapSimulator
 
             if (!sync.HasOwnershipSnapshot)
             {
-                PendingMonsterBookOwnershipSaveRequest pendingSaveRequest = _pendingMonsterBookOwnershipSaveRequest;
-                bool acknowledgedPendingSave = pendingSaveRequest != null
-                    && IsMonsterBookOwnershipSaveAckForPendingRequest(
-                        pendingSaveRequest,
-                        sync.RequestId,
-                        resolvedCharacterId,
-                        resolvedCharacterName);
+                int pendingSaveRequestIndex = ResolveMonsterBookOwnershipSaveAckMatchIndex(
+                    sync.RequestId,
+                    resolvedCharacterId,
+                    resolvedCharacterName);
+                PendingMonsterBookOwnershipSaveRequest pendingSaveRequest =
+                    pendingSaveRequestIndex >= 0 && pendingSaveRequestIndex < _pendingMonsterBookOwnershipSaveRequests.Count
+                        ? _pendingMonsterBookOwnershipSaveRequests[pendingSaveRequestIndex]
+                        : null;
                 bool persistedAckOwnedSnapshot = false;
-                if (acknowledgedPendingSave)
+                if (pendingSaveRequest != null)
                 {
                     if (sync.SaveAccepted.GetValueOrDefault(true))
                     {
@@ -336,7 +337,10 @@ namespace HaCreator.MapSimulator
                         persistedAckOwnedSnapshot = true;
                     }
 
-                    _pendingMonsterBookOwnershipSaveRequest = null;
+                    RemoveMatchedMonsterBookOwnershipSaveRequests(
+                        pendingSaveRequestIndex,
+                        pendingSaveRequest,
+                        sync.RequestId);
                 }
 
                 StampPacketOwnedUtilityRequestState();
@@ -354,23 +358,28 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            int syncedRegisteredMobId = ResolveMonsterBookRegisteredMobIdFromSyncValue(sync.RegisteredMobId, sync.CardCountsByMob);
             MonsterBookSnapshot snapshot = _monsterBookManager.ApplyOwnershipSync(
                 targetBuild,
                 resolvedCharacterId,
                 resolvedCharacterName,
                 sync.CardCountsByMob,
-                registeredMobId: sync.RegisteredMobId ?? 0,
+                registeredMobId: syncedRegisteredMobId,
                 replaceExisting: sync.ClearRequested || sync.ReplaceExisting);
 
-            if (_pendingMonsterBookOwnershipSaveRequest != null
-                && IsMonsterBookOwnershipSyncForPendingSaveRequest(
-                    _pendingMonsterBookOwnershipSaveRequest,
-                    sync.RequestId,
-                    resolvedCharacterId,
-                    resolvedCharacterName,
-                    snapshot))
+            int pendingSaveSyncMatchIndex = ResolveMonsterBookOwnershipSaveSyncMatchIndex(
+                sync.RequestId,
+                resolvedCharacterId,
+                resolvedCharacterName,
+                snapshot);
+            if (pendingSaveSyncMatchIndex >= 0
+                && pendingSaveSyncMatchIndex < _pendingMonsterBookOwnershipSaveRequests.Count)
             {
-                _pendingMonsterBookOwnershipSaveRequest = null;
+                PendingMonsterBookOwnershipSaveRequest matchedRequest = _pendingMonsterBookOwnershipSaveRequests[pendingSaveSyncMatchIndex];
+                RemoveMatchedMonsterBookOwnershipSaveRequests(
+                    pendingSaveSyncMatchIndex,
+                    matchedRequest,
+                    sync.RequestId);
             }
 
             if (_pendingMonsterBookRegistrationRequest != null
@@ -457,6 +466,26 @@ namespace HaCreator.MapSimulator
             }
 
             return fallbackBuild ?? activeBuild ?? _loginCharacterRoster.SelectedEntry?.Build;
+        }
+
+        private int ResolveMonsterBookRegisteredMobIdFromSyncValue(
+            int? syncRegisteredValue,
+            IReadOnlyDictionary<int, int> syncCardCountsByMob)
+        {
+            int rawRegisteredValue = syncRegisteredValue.GetValueOrDefault();
+            if (rawRegisteredValue <= 0)
+            {
+                return 0;
+            }
+
+            if (syncCardCountsByMob != null && syncCardCountsByMob.ContainsKey(rawRegisteredValue))
+            {
+                return rawRegisteredValue;
+            }
+
+            return _monsterBookManager.TryResolveMobIdByCardItemId(rawRegisteredValue, out int resolvedMobId)
+                ? resolvedMobId
+                : rawRegisteredValue;
         }
 
         internal static bool TryDecodeMonsterBookRegistrationResultPayloadForTests(
@@ -618,6 +647,11 @@ namespace HaCreator.MapSimulator
             }
 
             if (TryDecodeMonsterBookOwnershipSyncCompactBinaryPayload(payload, out result, out detail))
+            {
+                return true;
+            }
+
+            if (TryDecodeMonsterBookSetCoverPayload(payload, out result, out detail))
             {
                 return true;
             }
@@ -948,6 +982,55 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private static bool TryDecodeMonsterBookSetCoverPayload(
+            byte[] payload,
+            out MonsterBookOwnershipSyncPayload result,
+            out string detail)
+        {
+            result = default;
+            detail = null;
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            int offset = 0;
+            if (payload.Length >= sizeof(int) * 2)
+            {
+                int prefixedPacketType = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+                if (prefixedPacketType == LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType)
+                {
+                    offset = sizeof(int);
+                }
+            }
+
+            if (payload.Length - offset != sizeof(int))
+            {
+                return false;
+            }
+
+            int cardId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+            if (cardId <= 0)
+            {
+                detail = "Monster Book SetCover payload contained a non-positive card id.";
+                return false;
+            }
+
+            result = new MonsterBookOwnershipSyncPayload(
+                clearRequested: false,
+                replaceExisting: false,
+                hasOwnershipSnapshot: true,
+                saveAccepted: null,
+                requestId: null,
+                characterId: null,
+                characterName: string.Empty,
+                registeredMobId: cardId,
+                cardCountsByMob: new Dictionary<int, int>(),
+                statusText: string.Empty);
+            detail = "Decoded Monster Book SetCover raw payload.";
+            return true;
+        }
+
         private static bool IsMonsterBookOwnershipSyncForPendingRequest(
             PendingMonsterBookRegistrationRequest pendingRequest,
             int syncedCharacterId,
@@ -981,6 +1064,143 @@ namespace HaCreator.MapSimulator
             return pendingRequest.Registered
                 ? syncedRegisteredMobId == pendingRequest.MobId
                 : syncedRegisteredMobId <= 0 || syncedRegisteredMobId != pendingRequest.MobId;
+        }
+
+        private int ResolveMonsterBookOwnershipSaveAckMatchIndex(
+            int? syncedRequestId,
+            int syncedCharacterId,
+            string syncedCharacterName)
+        {
+            if (_pendingMonsterBookOwnershipSaveRequests.Count <= 0)
+            {
+                return -1;
+            }
+
+            if (syncedRequestId.HasValue && syncedRequestId.Value > 0)
+            {
+                for (int i = _pendingMonsterBookOwnershipSaveRequests.Count - 1; i >= 0; i--)
+                {
+                    PendingMonsterBookOwnershipSaveRequest request = _pendingMonsterBookOwnershipSaveRequests[i];
+                    if (IsMonsterBookOwnershipSaveAckForPendingRequest(
+                        request,
+                        syncedRequestId,
+                        syncedCharacterId,
+                        syncedCharacterName))
+                    {
+                        return i;
+                    }
+                }
+
+                return -1;
+            }
+
+            int newestMatchIndex = -1;
+            long newestMatchTick = long.MinValue;
+            for (int i = _pendingMonsterBookOwnershipSaveRequests.Count - 1; i >= 0; i--)
+            {
+                PendingMonsterBookOwnershipSaveRequest request = _pendingMonsterBookOwnershipSaveRequests[i];
+                if (!IsMonsterBookOwnershipSaveAckForPendingRequest(
+                    request,
+                    syncedRequestId,
+                    syncedCharacterId,
+                    syncedCharacterName))
+                {
+                    continue;
+                }
+
+                if (request.SentTick >= newestMatchTick)
+                {
+                    newestMatchTick = request.SentTick;
+                    newestMatchIndex = i;
+                }
+            }
+
+            return newestMatchIndex;
+        }
+
+        private int ResolveMonsterBookOwnershipSaveSyncMatchIndex(
+            int? syncedRequestId,
+            int syncedCharacterId,
+            string syncedCharacterName,
+            MonsterBookSnapshot syncedSnapshot)
+        {
+            if (_pendingMonsterBookOwnershipSaveRequests.Count <= 0)
+            {
+                return -1;
+            }
+
+            for (int i = _pendingMonsterBookOwnershipSaveRequests.Count - 1; i >= 0; i--)
+            {
+                PendingMonsterBookOwnershipSaveRequest request = _pendingMonsterBookOwnershipSaveRequests[i];
+                if (!IsMonsterBookOwnershipSyncForPendingSaveRequest(
+                    request,
+                    syncedRequestId,
+                    syncedCharacterId,
+                    syncedCharacterName,
+                    syncedSnapshot))
+                {
+                    continue;
+                }
+
+                return i;
+            }
+
+            return -1;
+        }
+
+        private void RemoveMatchedMonsterBookOwnershipSaveRequests(
+            int matchedIndex,
+            PendingMonsterBookOwnershipSaveRequest matchedRequest,
+            int? syncedRequestId)
+        {
+            if (matchedRequest == null
+                || matchedIndex < 0
+                || matchedIndex >= _pendingMonsterBookOwnershipSaveRequests.Count)
+            {
+                return;
+            }
+
+            if (syncedRequestId.HasValue && syncedRequestId.Value > 0)
+            {
+                _pendingMonsterBookOwnershipSaveRequests.RemoveAt(matchedIndex);
+                return;
+            }
+
+            for (int i = _pendingMonsterBookOwnershipSaveRequests.Count - 1; i >= 0; i--)
+            {
+                PendingMonsterBookOwnershipSaveRequest pendingRequest = _pendingMonsterBookOwnershipSaveRequests[i];
+                if (!IsSameMonsterBookOwnershipSaveCharacter(pendingRequest, matchedRequest))
+                {
+                    continue;
+                }
+
+                if (pendingRequest.SentTick <= matchedRequest.SentTick)
+                {
+                    _pendingMonsterBookOwnershipSaveRequests.RemoveAt(i);
+                }
+            }
+        }
+
+        private static bool IsSameMonsterBookOwnershipSaveCharacter(
+            PendingMonsterBookOwnershipSaveRequest left,
+            PendingMonsterBookOwnershipSaveRequest right)
+        {
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            if (left.CharacterId > 0 && right.CharacterId > 0)
+            {
+                return left.CharacterId == right.CharacterId;
+            }
+
+            return !string.IsNullOrWhiteSpace(left.CharacterName)
+                && !string.IsNullOrWhiteSpace(right.CharacterName)
+                && string.Equals(
+                    left.CharacterName.Trim(),
+                    right.CharacterName.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsMonsterBookOwnershipSyncForPendingSaveRequest(
@@ -1366,7 +1586,7 @@ namespace HaCreator.MapSimulator
                 cardCountsByMob,
                 source);
             MonsterBookOwnershipSaveDispatchResult dispatchResult = DispatchMonsterBookOwnershipSaveRequest(savePayload, source);
-            _pendingMonsterBookOwnershipSaveRequest = new PendingMonsterBookOwnershipSaveRequest
+            PendingMonsterBookOwnershipSaveRequest pendingRequest = new PendingMonsterBookOwnershipSaveRequest
             {
                 Build = build,
                 CharacterId = characterId,
@@ -1381,6 +1601,7 @@ namespace HaCreator.MapSimulator
                 SyntheticResultQueuedTick = long.MinValue,
                 AllowSyntheticFallback = dispatchResult.AllowSyntheticFallback
             };
+            _pendingMonsterBookOwnershipSaveRequests.Add(pendingRequest);
 
             if (showFeedback)
             {
@@ -1391,53 +1612,65 @@ namespace HaCreator.MapSimulator
 
         private void ProcessPendingMonsterBookOwnershipSaveRequest()
         {
-            PendingMonsterBookOwnershipSaveRequest request = _pendingMonsterBookOwnershipSaveRequest;
-            if (request == null)
-            {
-                return;
-            }
-
-            long elapsedMs = Environment.TickCount64 - request.SentTick;
-            if (elapsedMs < request.ResponseDelayMs)
+            if (_pendingMonsterBookOwnershipSaveRequests.Count <= 0)
             {
                 return;
             }
 
             bool hasLiveOfficialSession = _localUtilityOfficialSessionBridge?.HasConnectedSession == true;
-            bool fallbackFromNoLiveSession = request.AllowSyntheticFallback && !hasLiveOfficialSession;
-            bool fallbackFromOfficialSessionTimeout = hasLiveOfficialSession
-                && request.AllowSyntheticFallback
-                && elapsedMs >= request.ResponseDelayMs + MonsterBookOwnershipSaveOfficialSessionTimeoutMs;
-            if (!request.SyntheticResultQueued
-                && (fallbackFromNoLiveSession || fallbackFromOfficialSessionTimeout))
+            for (int i = _pendingMonsterBookOwnershipSaveRequests.Count - 1; i >= 0; i--)
             {
-                request.SyntheticResultQueued = true;
-                request.SyntheticResultQueuedTick = Environment.TickCount64;
-                _localUtilityPacketInbox.EnqueueLocal(
-                    LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType,
-                    request.Payload,
-                    "monster-book-save");
-                return;
-            }
-
-            if (request.SyntheticResultQueued)
-            {
-                long syntheticElapsedMs = request.SyntheticResultQueuedTick > long.MinValue
-                    ? Environment.TickCount64 - request.SyntheticResultQueuedTick
-                    : elapsedMs;
-                if (syntheticElapsedMs < MonsterBookOwnershipSaveSyntheticResultTimeoutMs)
+                PendingMonsterBookOwnershipSaveRequest request = _pendingMonsterBookOwnershipSaveRequests[i];
+                if (request == null)
                 {
-                    return;
+                    _pendingMonsterBookOwnershipSaveRequests.RemoveAt(i);
+                    continue;
                 }
-            }
-            else if (elapsedMs < request.ResponseDelayMs + MonsterBookOwnershipSaveOfficialSessionTimeoutMs)
-            {
-                return;
-            }
 
-            _pendingMonsterBookOwnershipSaveRequest = null;
-            ShowUtilityFeedbackMessage(
-                $"Monster Book ownership-save request #{request.RequestId.ToString(CultureInfo.InvariantCulture)} timed out while waiting for local utility packet {LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType.ToString(CultureInfo.InvariantCulture)}.");
+                long elapsedMs = Environment.TickCount64 - request.SentTick;
+                if (elapsedMs < request.ResponseDelayMs)
+                {
+                    continue;
+                }
+
+                bool fallbackFromNoLiveSession = request.AllowSyntheticFallback && !hasLiveOfficialSession;
+                bool fallbackFromOfficialSessionTimeout = hasLiveOfficialSession
+                    && request.AllowSyntheticFallback
+                    && elapsedMs >= request.ResponseDelayMs + MonsterBookOwnershipSaveOfficialSessionTimeoutMs;
+                if (!request.SyntheticResultQueued
+                    && (fallbackFromNoLiveSession || fallbackFromOfficialSessionTimeout))
+                {
+                    request.SyntheticResultQueued = true;
+                    request.SyntheticResultQueuedTick = Environment.TickCount64;
+                    _localUtilityPacketInbox.EnqueueLocal(
+                        LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType,
+                        request.Payload,
+                        "monster-book-save");
+                    continue;
+                }
+
+                bool timedOut;
+                if (request.SyntheticResultQueued)
+                {
+                    long syntheticElapsedMs = request.SyntheticResultQueuedTick > long.MinValue
+                        ? Environment.TickCount64 - request.SyntheticResultQueuedTick
+                        : elapsedMs;
+                    timedOut = syntheticElapsedMs >= MonsterBookOwnershipSaveSyntheticResultTimeoutMs;
+                }
+                else
+                {
+                    timedOut = elapsedMs >= request.ResponseDelayMs + MonsterBookOwnershipSaveOfficialSessionTimeoutMs;
+                }
+
+                if (!timedOut)
+                {
+                    continue;
+                }
+
+                _pendingMonsterBookOwnershipSaveRequests.RemoveAt(i);
+                ShowUtilityFeedbackMessage(
+                    $"Monster Book ownership-save request #{request.RequestId.ToString(CultureInfo.InvariantCulture)} timed out while waiting for local utility packet {LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType.ToString(CultureInfo.InvariantCulture)}.");
+            }
         }
 
         private static bool TryFindNestedPropertyObject(

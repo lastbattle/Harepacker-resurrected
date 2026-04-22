@@ -802,11 +802,12 @@ namespace HaCreator.MapSimulator.Character
                 // exact when present, then follow the checked alert redirect surface.
                 ["recovery"] = new[] { "alert", "stand" },
                 // Post-s_sMorphAction client raw action code 302 remains `pvpko`.
-                // Character/00002000.img keeps `pvpko/0/action = alert`, and current
-                // Morph coverage only publishes a verbatim `pvpko` branch on 2002.img.
-                // Keep exact `pvpko` first when authored, then fall back through the
-                // checked body-redirect surface for other morph templates.
-                ["pvpko"] = new[] { "alert", "dead" },
+                // Character/00002000.img keeps the checked redirect chain:
+                // `alert`, then `swingOF`, `swingTF`, `jump`, and `fly`.
+                // Current Morph coverage still only publishes a verbatim `pvpko`
+                // branch on 2002.img. Keep exact `pvpko` first when authored, then
+                // follow that checked body surface before dead-state fallback.
+                ["pvpko"] = new[] { "alert", "swingOF", "swingTF", "jump", "fly", "dead" },
                 // Character/00002000.img also keeps `heal`, `ghoststand`, `ghostsit`,
                 // and `ghostproneStab` as client raw roots while checked Morph/*.img
                 // publishes no verbatim branches for those names.
@@ -819,6 +820,17 @@ namespace HaCreator.MapSimulator.Character
                 ["mining_jaguar"] = new[] { "sit" },
                 ["herbalism_mechanic"] = new[] { "sit" },
                 ["mining_mechanic"] = new[] { "sit" }
+            };
+
+        private static readonly HashSet<string> ClientPublishedAliasesWithoutDirectBodyRedirectRows =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                "edgeSpiral",
+                "demonJump",
+                "demonJumpUpward",
+                "demonJumpFoward",
+                "HTswiftPhantom",
+                "swiftPhantom"
             };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
@@ -1853,19 +1865,18 @@ namespace HaCreator.MapSimulator.Character
             // `shot` is the one currently evidenced cross-family request: pirate morphs
             // publish `doublefire`, while archer morphs publish `windshot`.
             //
-            // WZ-first recheck also keeps `edgeSpiral` as a skill-authored action value
-            // (`Skill/2312.img/skill/23121003/action/0`) with no direct
-            // `Character/00002000.img/edgeSpiral/0/action` redirect row. Keep the
-            // explicit mapped aliases first when present, but let the resolver continue
-            // into the published combat fallback surface when none of those aliases are
-            // authored on the active morph template.
+            // WZ-first recheck of `Character/00002000.img` keeps the jump-family
+            // `demonJump*`/`*swiftPhantom` names and `edgeSpiral` out of direct
+            // body-action redirect rows. Keep explicit mapped aliases first when
+            // present, but allow fallback into published morph combat branches when
+            // those aliases are not authored on the active morph template.
             //
             // Apply that same fallback rule to other skill-authored names that are not
             // present in the client raw morph action table. Those requests can still be
             // mapped through explicit aliases first, but should not hard-stop when their
             // mapped aliases are absent on the active morph template.
             return !string.Equals(actionName, "shot", StringComparison.OrdinalIgnoreCase)
-                   && !string.Equals(actionName, "edgeSpiral", StringComparison.OrdinalIgnoreCase)
+                   && !ClientPublishedAliasesWithoutDirectBodyRedirectRows.Contains(actionName)
                    && IsClientConfirmedMorphActionName(actionName);
         }
 

@@ -143,6 +143,11 @@ namespace HaCreator.MapSimulator.Character
                 ["ninjastorm"] = new[] { "shoot1", "shoot2", "shootF" },
                 ["vampire"] = new[] { "shoot1", "shoot2", "shootF" },
                 ["smokeshell"] = new[] { "alert", "stand1", "stand2" },
+                ["holyshield"] = new[] { "alert", "stand1", "stand2" },
+                ["resurrection"] = new[] { "alert", "stand1", "stand2" },
+                ["dash"] = new[] { "walk1", "walk2", "stand1" },
+                ["octopus"] = new[] { "alert", "stand1", "stand2" },
+                ["darksight"] = new[] { "alert", "stand1", "stand2" },
                 // Mounted helper rows currently recover concrete piece plans for these
                 // actions in v95, but keep explicit alias fallback so other data sets
                 // still resolve onto authored `special/*` branches when those rows are absent.
@@ -1508,6 +1513,31 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 0, -360),
                     ("alert", 1, 270),
                     ("alert", 2, 270)),
+                // Additional non-attack client-init rows from Character/00002000 still
+                // publish concrete helper-piece timing and transform metadata.
+                ["holyshield"] = CreateIndexedPieces(
+                    ("stabO1", 0, -300),
+                    ("stabO1", 1, 840)),
+                ["resurrection"] = CreateIndexedPieces(
+                    ("alert", 0, -840),
+                    ("alert", 1, -840),
+                    ("alert", 2, 840)),
+                ["dash"] = CreateIndexedPieces(
+                    ("walk1", 0, 1)),
+                ["octopus"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, 0),
+                    CreateIndexedPiece(1, "swingPF", 3, 90, move: new Point(37, 0)),
+                    CreateIndexedPiece(2, "stabT2", 1, 90, move: new Point(36, -83), rotationDegrees: 270),
+                    CreateIndexedPiece(3, "swingT2", 0, 90, move: new Point(-8, -108), rotationDegrees: 180),
+                    CreateIndexedPiece(4, "swingP2", 0, 90, move: new Point(-11, -114), rotationDegrees: 180),
+                    CreateIndexedPiece(5, "swingP2", 1, 90, move: new Point(-24, -111), rotationDegrees: 180),
+                    CreateIndexedPiece(6, "swingT2", 0, 90, move: new Point(-9, -14)),
+                    CreateIndexedPiece(7, "swingOF", 3, 270, move: new Point(32, 0)),
+                    CreateIndexedPiece(8, "alert", 0, 0)
+                },
+                ["darksight"] = CreateIndexedPieces(
+                    ("alert", 0, 100)),
                 // The mounted `fly2*` rows are not WZ-authored Shadow Partner branches,
                 // but their source actions are part of the generic helper surface.
                 ["fly2"] = CreateIndexedPieces(
@@ -1761,7 +1791,12 @@ namespace HaCreator.MapSimulator.Character
             "owlDead",
             "homing",
             "recovery",
-            "backstep"
+            "backstep",
+            "holyshield",
+            "resurrection",
+            "dash",
+            "octopus",
+            "darksight"
         };
 
         private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)
@@ -3120,9 +3155,8 @@ namespace HaCreator.MapSimulator.Character
             SkillFrame alphaFrame = frame;
             int alphaFrameElapsedMs = frameElapsedMs;
             if (ShouldClampLoopedPlaybackAlphaEnvelope(playbackAnimation, actionElapsedMs)
-                && TryGetPlaybackFrameAtTime(
+                && TryResolvePlaybackTerminalFrameEndState(
                     playbackAnimation,
-                    ResolvePlaybackTotalDurationMs(playbackAnimation) - 1,
                     out SkillFrame clampedFrame,
                     out int clampedFrameElapsedMs))
             {

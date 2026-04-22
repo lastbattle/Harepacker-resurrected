@@ -74,7 +74,7 @@ namespace HaCreator.MapSimulator
         private PacketOwnedFuncKeyMappedEntry[] _packetOwnedFuncKeyMapped = CreateEmptyPacketOwnedFuncKeyMap();
         private PacketOwnedFuncKeyMappedEntry[] _packetOwnedFuncKeyMappedOld = CreateEmptyPacketOwnedFuncKeyMap();
         private int[] _packetOwnedBindableHotkeyAssignedScanCodes = CreatePacketOwnedBindableHotkeyAssignmentMap();
-        private readonly Dictionary<Keys, int> _packetOwnedOverflowCastOwnerScanCodesByKey = new();
+        private readonly Dictionary<Keys, List<PacketOwnedCastInputOwner>> _packetOwnedCastInputOwnersByKey = new();
         private int _packetOwnedPetConsumeItemId;
         private InventoryType _packetOwnedPetConsumeItemInventoryType = InventoryType.NONE;
         private int _packetOwnedPetConsumeMpItemId;
@@ -104,6 +104,24 @@ namespace HaCreator.MapSimulator
 
             public InputAction Action { get; }
             public int SlotIndex { get; }
+        }
+
+        private readonly struct PacketOwnedCastInputOwner
+        {
+            public PacketOwnedCastInputOwner(
+                int scanCode,
+                PacketOwnedFuncKeyMappedEntry entry,
+                int bindableSlotIndex)
+            {
+                ScanCode = scanCode;
+                Entry = entry;
+                BindableSlotIndex = bindableSlotIndex;
+            }
+
+            public int ScanCode { get; }
+            public PacketOwnedFuncKeyMappedEntry Entry { get; }
+            public int BindableSlotIndex { get; }
+            public bool IsHandledByLiveHotkeyBinding => BindableSlotIndex >= 0;
         }
 
         internal enum PacketOwnedRawFunctionOwner
@@ -1138,7 +1156,7 @@ namespace HaCreator.MapSimulator
             IReadOnlyDictionary<Keys, int> existingBindableHotkeySlotIndicesByKey =
                 BuildPacketOwnedExistingBindableHotkeySlotIndicesByKey(input);
             ClearPacketOwnedBindableHotkeyMappings(input);
-            _packetOwnedOverflowCastOwnerScanCodesByKey.Clear();
+            _packetOwnedCastInputOwnersByKey.Clear();
 
             int translated = 0;
             int nextUnclaimedBindableSlotIndex = 0;
@@ -1155,6 +1173,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                int bindableSlotIndex = -1;
                 if (TryResolvePacketOwnedBindableHotkeySlot(
                         input,
                         key,
@@ -1166,14 +1185,10 @@ namespace HaCreator.MapSimulator
                     BindPacketOwnedHotkeyAction(input, slot.Action, key);
                     RecordPacketOwnedBindableHotkeyAssignment(slot, scanCode);
                     translated++;
+                    bindableSlotIndex = slot.SlotIndex;
                 }
-                else
-                {
-                    // CFuncKeyMappedMan::AdaptVirtualKey keeps one effective cast owner per key.
-                    // Once bindable hotkey surfaces are exhausted, retain only the first overflow
-                    // owner for each physical key instead of dispatching every duplicate raw entry.
-                    TryAssignPacketOwnedOverflowCastOwner(scanCode, key, input);
-                }
+
+                RegisterPacketOwnedCastInputOwner(scanCode, key, entry, bindableSlotIndex, input);
             }
 
             return translated;
@@ -1348,22 +1363,23 @@ namespace HaCreator.MapSimulator
                 }
 
                 Keys key = ResolvePacketOwnedScanCodeKey(scanCode);
-                if (IsPacketOwnedCastEntryHandledByLiveHotkeyBinding(scanCode)
-                    || !IsPacketOwnedCastEntryHandledByOverflowOwnerStack(scanCode, key))
+                if (!TryResolvePacketOwnedActiveCastInputOwner(key, out PacketOwnedCastInputOwner owner)
+                    || owner.ScanCode != scanCode
+                    || owner.IsHandledByLiveHotkeyBinding)
                 {
                     continue;
                 }
 
-                int ownerInputToken = ComposePacketOwnedFuncKeyInputToken(scanCode);
+                int ownerInputToken = ComposePacketOwnedFuncKeyInputToken(owner.ScanCode);
                 if (WasPacketOwnedFuncKeyPressed(keyboardState, previousKeyboardState, key))
                 {
-                    TryDispatchPacketOwnedRawFuncKeyEntry(entry, currentTime, ownerInputToken);
+                    TryDispatchPacketOwnedRawFuncKeyEntry(owner.Entry, currentTime, ownerInputToken);
                 }
 
-                if (entry.Type == PacketOwnedFuncKeySkillType
+                if (owner.Entry.Type == PacketOwnedFuncKeySkillType
                     && WasPacketOwnedFuncKeyReleased(keyboardState, previousKeyboardState, key))
                 {
-                    skills.ReleasePacketOwnedFuncKeySkillIfActive(entry.Id, currentTime, ownerInputToken);
+                    skills.ReleasePacketOwnedFuncKeySkillIfActive(owner.Entry.Id, currentTime, ownerInputToken);
                 }
             }
         }
@@ -1864,50 +1880,87 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private bool IsPacketOwnedCastEntryHandledByLiveHotkeyBinding(int scanCode)
+        private bool TryResolvePacketOwnedActiveCastInputOwner(Keys key, out PacketOwnedCastInputOwner owner)
         {
-            for (int i = 0; i < _packetOwnedBindableHotkeyAssignedScanCodes.Length; i++)
-            {
-                if (_packetOwnedBindableHotkeyAssignedScanCodes[i] == scanCode)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private bool IsPacketOwnedCastEntryHandledByOverflowOwnerStack(int scanCode, Keys key)
-        {
-            return key != Keys.None
-                && _packetOwnedOverflowCastOwnerScanCodesByKey.TryGetValue(key, out int ownerScanCode)
-                && ownerScanCode == scanCode;
-        }
-
-        private void TryAssignPacketOwnedOverflowCastOwner(int scanCode, Keys key, PlayerInput input)
-        {
-            if (!ShouldHandlePacketOwnedCastEntryViaRawRuntime(input, key, handledByLiveHotkeyBinding: false))
-            {
-                return;
-            }
-
-            TryAssignPacketOwnedOverflowCastOwner(_packetOwnedOverflowCastOwnerScanCodesByKey, key, scanCode);
-        }
-
-        internal static bool TryAssignPacketOwnedOverflowCastOwner(
-            IDictionary<Keys, int> overflowOwnersByKey,
-            Keys key,
-            int scanCode)
-        {
-            if (overflowOwnersByKey == null
-                || key == Keys.None
-                || scanCode < 0
-                || overflowOwnersByKey.ContainsKey(key))
+            owner = default;
+            if (key == Keys.None
+                || !_packetOwnedCastInputOwnersByKey.TryGetValue(key, out List<PacketOwnedCastInputOwner> owners)
+                || owners == null
+                || owners.Count == 0)
             {
                 return false;
             }
 
-            overflowOwnersByKey[key] = scanCode;
+            for (int i = 0; i < owners.Count; i++)
+            {
+                if (owners[i].IsHandledByLiveHotkeyBinding)
+                {
+                    owner = owners[i];
+                    return true;
+                }
+            }
+
+            owner = owners[0];
+            return true;
+        }
+
+        private void RegisterPacketOwnedCastInputOwner(
+            int scanCode,
+            Keys key,
+            PacketOwnedFuncKeyMappedEntry entry,
+            int bindableSlotIndex,
+            PlayerInput input)
+        {
+            bool handledByLiveHotkeyBinding = bindableSlotIndex >= 0;
+            if (scanCode < 0
+                || key == Keys.None
+                || (!handledByLiveHotkeyBinding
+                    && !ShouldHandlePacketOwnedCastEntryViaRawRuntime(input, key, handledByLiveHotkeyBinding: false)))
+            {
+                return;
+            }
+
+            if (!_packetOwnedCastInputOwnersByKey.TryGetValue(key, out List<PacketOwnedCastInputOwner> owners))
+            {
+                owners = new List<PacketOwnedCastInputOwner>();
+                _packetOwnedCastInputOwnersByKey[key] = owners;
+            }
+
+            for (int i = 0; i < owners.Count; i++)
+            {
+                if (owners[i].ScanCode == scanCode)
+                {
+                    return;
+                }
+            }
+
+            owners.Add(new PacketOwnedCastInputOwner(scanCode, entry, bindableSlotIndex));
+        }
+
+        internal static bool TryRegisterPacketOwnedCastInputOwner(
+            IDictionary<Keys, List<int>> ownersByKey,
+            Keys key,
+            int scanCode)
+        {
+            if (ownersByKey == null
+                || key == Keys.None
+                || scanCode < 0)
+            {
+                return false;
+            }
+
+            if (!ownersByKey.TryGetValue(key, out List<int> owners))
+            {
+                owners = new List<int>();
+                ownersByKey[key] = owners;
+            }
+
+            if (owners.Contains(scanCode))
+            {
+                return false;
+            }
+
+            owners.Add(scanCode);
             return true;
         }
 

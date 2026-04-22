@@ -1638,11 +1638,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float comboTextX = comboBounds.X + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset;
+            int comboTextMaxWidth = StatusBarChatLayoutRules.ResolveWhisperPickerModalComboTextMaxWidth(
+                comboBounds,
+                comboToggleBounds,
+                StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset);
             DrawTextWithShadow(
                 sprite,
                 ResolveWhisperPickerModalComboDisplayText(
                     chatState.InputText,
-                    Math.Max(1f, comboToggleBounds.Left - comboTextX),
+                    comboTextMaxWidth,
                     value => MeasureChatText(value).X),
                 new Vector2(
                     comboTextX,

@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -911,15 +912,31 @@ namespace HaCreator.MapSimulator.UI
                     _pendingPutInventoryType = inventoryType;
                     _pendingPutInventoryRowIndex = _inventorySelectedIndex;
                     _pendingPutSlotData = selected.Clone();
-                    _statusMessage = $"CTrunkDlg::AskItemCount is staging SendPutItemRequest for {FormatItemLabel(selected)}.";
+                    string askCountPrompt = TrunkDialogClientParityText.ToInlineText(
+                        TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt());
+                    _statusMessage = $"CTrunkDlg::AskItemCount is staging SendPutItemRequest for {FormatItemLabel(selected)}. Prompt: {askCountPrompt}";
                     BeginMesoEntry(MesoEntryMode.PutItemCount);
+                    return;
+                }
+
+                if (!TryResolveLiveInventorySlot(inventoryType, _inventorySelectedIndex, out InventorySlotData liveSlot))
+                {
+                    _statusMessage = "CTrunkDlg::SendPutItemRequest aborted because CharacterData::GetItem no longer resolves the selected inventory row.";
+                    UpdateButtonStates();
+                    return;
+                }
+
+                if (!MatchesPendingPutIdentity(selected, liveSlot))
+                {
+                    _statusMessage = "CTrunkDlg::SendPutItemRequest aborted because CharacterData::GetItem pointer-identity changed before dispatch.";
+                    UpdateButtonStates();
                     return;
                 }
 
                 PacketOwnedTrunkRequestResult packetOwnedResult = PacketOwnedPutItemRequested(
                     inventoryType,
                     _inventorySelectedIndex,
-                    selected,
+                    liveSlot,
                     1);
                 _statusMessage = string.IsNullOrWhiteSpace(packetOwnedResult.Message)
                     ? packetOwnedResult.Accepted
@@ -1010,7 +1027,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 MesoEntryMode.Withdraw => "Withdraw meso amount",
                 MesoEntryMode.Deposit => "Deposit meso amount",
-                MesoEntryMode.PutItemCount => "Deposit item count",
+                MesoEntryMode.PutItemCount => TrunkDialogClientParityText.ToInlineText(
+                    TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt()),
                 MesoEntryMode.VerifyAccountPic => "Enter account PIC",
                 MesoEntryMode.VerifyAccountSecondaryPassword => "Enter account secondary password",
                 MesoEntryMode.SetupSecondaryPassword => "Create storage passcode",

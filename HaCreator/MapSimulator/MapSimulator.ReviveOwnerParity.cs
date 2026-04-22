@@ -339,6 +339,7 @@ namespace HaCreator.MapSimulator
             if (_packetOwnedLocalUtilityContext.RequiresRevivePremiumSafetyCharmCharacterReset(runtimeCharacterId))
             {
                 _packetOwnedLocalUtilityContext.ResetRevivePremiumSafetyCharmForCharacter(runtimeCharacterId);
+                _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved = false;
             }
 
             _packetOwnedLocalUtilityContext.ObserveRevivePremiumSafetyCharmRuntimeCharacterId(runtimeCharacterId);
@@ -351,6 +352,12 @@ namespace HaCreator.MapSimulator
             if (_packetOwnedLocalUtilityContext.RequiresRevivePremiumSafetyCharmCharacterReset(runtimeCharacterId))
             {
                 _packetOwnedLocalUtilityContext.ResetRevivePremiumSafetyCharmForCharacter(runtimeCharacterId);
+                _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved = false;
+            }
+
+            if (_packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved)
+            {
+                return;
             }
 
             bool armed = GetInventoryWindowItemCount(5131000) > 0;
@@ -369,10 +376,16 @@ namespace HaCreator.MapSimulator
             if (_packetOwnedLocalUtilityContext.RequiresRevivePremiumSafetyCharmCharacterReset(runtimeCharacterId))
             {
                 _packetOwnedLocalUtilityContext.ResetRevivePremiumSafetyCharmForCharacter(runtimeCharacterId);
+                _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved = false;
             }
 
             _packetOwnedLocalUtilityContext.ObserveRevivePremiumSafetyCharmRuntimeCharacterId(runtimeCharacterId);
             if (_packetOwnedLocalUtilityContext.HasRevivePremiumSafetyCharmContextValue)
+            {
+                return;
+            }
+
+            if (_packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved)
             {
                 return;
             }

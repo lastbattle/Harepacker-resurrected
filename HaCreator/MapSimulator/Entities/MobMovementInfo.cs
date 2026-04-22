@@ -268,6 +268,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _nextDirectionChangeTime = 0;
         private int _directionChangeCooldown = 0;  // Prevents rapid direction flipping
         private readonly List<MobPacketMovePathElement> _packetMovePathBuffer = new();
+        private const int MaxBufferedPacketMovePathElements = 128;
 
         // Spawn position (for reference)
         private int _spawnX;
@@ -669,6 +670,82 @@ namespace HaCreator.MapSimulator.Entities
             _packetMovePathBuffer.Add(element);
         }
 
+        internal void QueuePacketMovePathElements(IReadOnlyList<MobPacketMovePathElement> elements, int receiveTime)
+        {
+            if (elements == null || elements.Count == 0)
+            {
+                return;
+            }
+
+            int baseTime = Math.Max(0, receiveTime);
+            int cursorTime = _packetMovePathBuffer.Count > 0
+                ? _packetMovePathBuffer[_packetMovePathBuffer.Count - 1].TimeStamp
+                : baseTime;
+
+            for (int i = 0; i < elements.Count; i++)
+            {
+                MobPacketMovePathElement source = elements[i];
+                int candidateTime = Math.Max(baseTime + Math.Max(0, source.TimeStamp), cursorTime + 1);
+                _packetMovePathBuffer.Add(new MobPacketMovePathElement(
+                    source.X,
+                    source.Y,
+                    source.VelocityX,
+                    source.VelocityY,
+                    source.MoveType,
+                    source.JumpState,
+                    source.Action,
+                    source.FacingRight,
+                    candidateTime,
+                    source.MoveAction));
+                cursorTime = candidateTime;
+            }
+
+            if (_packetMovePathBuffer.Count <= MaxBufferedPacketMovePathElements)
+            {
+                return;
+            }
+
+            int overflow = _packetMovePathBuffer.Count - MaxBufferedPacketMovePathElements;
+            _packetMovePathBuffer.RemoveRange(0, overflow);
+        }
+
+        internal bool TryApplyPacketMovePathProgression(int currentTime)
+        {
+            if (_packetMovePathBuffer.Count <= 1)
+            {
+                return false;
+            }
+
+            int sampleTime = Math.Max(0, currentTime);
+            while (_packetMovePathBuffer.Count > 1 &&
+                   sampleTime >= _packetMovePathBuffer[1].TimeStamp)
+            {
+                _packetMovePathBuffer.RemoveAt(0);
+            }
+
+            MobPacketMovePathElement sample = _packetMovePathBuffer[0];
+            if (_packetMovePathBuffer.Count > 1)
+            {
+                MobPacketMovePathElement next = _packetMovePathBuffer[1];
+                int segmentDuration = Math.Max(1, next.TimeStamp - sample.TimeStamp);
+                float t = Math.Clamp((sampleTime - sample.TimeStamp) / (float)segmentDuration, 0f, 1f);
+                sample = new MobPacketMovePathElement(
+                    Lerp(sample.X, next.X, t),
+                    Lerp(sample.Y, next.Y, t),
+                    Lerp(sample.VelocityX, next.VelocityX, t),
+                    Lerp(sample.VelocityY, next.VelocityY, t),
+                    t < 1f ? sample.MoveType : next.MoveType,
+                    t < 1f ? sample.JumpState : next.JumpState,
+                    t < 1f ? sample.Action : next.Action,
+                    t < 1f ? sample.FacingRight : next.FacingRight,
+                    sampleTime,
+                    t < 1f ? sample.MoveAction : next.MoveAction);
+            }
+
+            ApplyPacketMovePathSample(sample, sampleTime);
+            return true;
+        }
+
         public void ApplyPacketMoveInterrupt(
             bool notForceLandingWhenDiscard,
             int receiveTime = 0,
@@ -778,6 +855,40 @@ namespace HaCreator.MapSimulator.Entities
             // Mirrors CMovePath::DiscardByInterrupt reducing buffered elements to
             // a fresh m_elemLast snapshot owned by the receive tick.
             LastPacketMoveInterruptTruncatedElementCount = bufferedBefore;
+        }
+
+        private void ApplyPacketMovePathSample(MobPacketMovePathElement sample, int sampleTime)
+        {
+            X = sample.X;
+            Y = sample.Y;
+            VelocityX = sample.VelocityX;
+            VelocityY = sample.VelocityY;
+
+            if (!NoFlip)
+            {
+                FlipX = sample.FacingRight;
+                MoveDirection = sample.FacingRight
+                    ? MobMoveDirection.Right
+                    : MobMoveDirection.Left;
+            }
+
+            if (sample.MoveAction >= 0)
+            {
+                CurrentAction = ResolvePacketOwnedMoveAction(sample.MoveAction, sample.Action);
+                ApplyPacketOwnedMoveState(sample.MoveAction);
+                LastPacketOwnedMoveAction = sample.MoveAction;
+                LastPacketOwnedMoveActionUpdateTime = sampleTime;
+                return;
+            }
+
+            MoveType = sample.MoveType;
+            JumpState = sample.JumpState;
+            CurrentAction = sample.Action;
+        }
+
+        private static float Lerp(float start, float end, float t)
+        {
+            return start + ((end - start) * t);
         }
 
         private void ApplyPacketOwnedMoveState(int moveAction)

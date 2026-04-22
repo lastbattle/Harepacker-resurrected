@@ -879,11 +879,15 @@ namespace HaCreator.MapSimulator.Interaction
                         string target = ReadMapleString(reader);
                         byte result = reader.ReadByte();
                         int value = reader.ReadInt32();
+                        bool hiddenFieldResult = subtype == 9
+                            && result == 1
+                            && IsWhisperHiddenField(value, callbacks);
                         TryBuildWhisperFindMessage(subtype, target, result, value, callbacks, out string resolved);
                         bool chaseTransferArmed = callbacks?.ConsumeWhisperChaseTransferRequest?.Invoke() == true;
                         bool queuedTransfer = false;
                         if (subtype == 9
                             && result == 1
+                            && !hiddenFieldResult
                             && chaseTransferArmed
                             && HasWhisperTransferTarget(value, callbacks)
                             && TryReadWhisperFindTransferPosition(reader, stream, out int transferX, out int transferY))
@@ -904,7 +908,7 @@ namespace HaCreator.MapSimulator.Interaction
                         {
                             callbacks?.AddClientChatMessage?.Invoke(
                                 resolved,
-                                ResolveWhisperFindChatLogType(subtype, result, resolved),
+                                ResolveWhisperFindChatLogType(subtype, result, value, callbacks),
                                 null);
                         }
 
@@ -2031,11 +2035,16 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static int ResolveWhisperFindChatLogType(byte subtype, byte result, string message)
+        private static int ResolveWhisperFindChatLogType(
+            byte subtype,
+            byte result,
+            int value,
+            PacketFieldFeedbackCallbacks callbacks)
         {
             if (subtype == 9
                 && result == 1
-                && !string.IsNullOrWhiteSpace(message))
+                && HasWhisperTransferTarget(value, callbacks)
+                && !IsWhisperHiddenField(value, callbacks))
             {
                 return 7;
             }

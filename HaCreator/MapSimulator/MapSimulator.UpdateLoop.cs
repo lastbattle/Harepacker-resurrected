@@ -1053,6 +1053,7 @@ namespace HaCreator.MapSimulator
                     chatConsumedInput || _chat.IsActive || uiCapturesKeyboard,
                     currTickCount);
                 _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive || uiCapturesKeyboard, isWindowActive);
+                FlushDragonCompanionVecCtrlEndUpdateActivePackets();
                 UpdatePacketOwnedFuncKeyRuntime(
                     currTickCount,
                     newKeyboardState,

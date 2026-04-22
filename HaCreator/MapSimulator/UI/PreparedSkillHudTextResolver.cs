@@ -13,6 +13,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.Amplify)
             {
+                if (preparedSkill.IsHolding)
+                {
+                    return "Amplified";
+                }
+
                 return gaugeDurationMs > 0 && progress < 0.999f
                     ? $"Amplifying {Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%"
                     : "Amplified";
@@ -93,6 +98,12 @@ namespace HaCreator.MapSimulator.UI
             if (preparedSkill == null)
             {
                 return 0f;
+            }
+
+            if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.Amplify
+                && preparedSkill.IsHolding)
+            {
+                return 1f;
             }
 
             if (preparedSkill.IsHolding && preparedSkill.MaxHoldDurationMs > 0)

@@ -73,7 +73,8 @@ namespace HaCreator.MapSimulator
 
         private bool TryResolveTransportFieldInitRequest(out int fieldId, out int shipKind, out string status)
         {
-            fieldId = _mapBoard?.MapInfo?.id ?? 0;
+            MapInfo mapInfo = _mapBoard?.MapInfo;
+            fieldId = mapInfo?.id ?? 0;
             shipKind = _transportField?.ShipKind ?? -1;
 
             if (fieldId <= 0)
@@ -82,19 +83,30 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TransportationFieldInitRequestCodec.IsSupportedShipKind(shipKind))
+            if (_transportField != null
+                && _transportField.HasRouteConfiguration
+                && TransportationFieldInitRequestCodec.IsSupportedShipKind(shipKind))
             {
-                status = $"Transport field-init request only supports ship kinds 0 and 1, but the active transport field resolved {shipKind}.";
-                return false;
+                status = $"Resolved {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)} from active transport runtime.";
+                return true;
             }
 
-            status = $"Resolved {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)}.";
-            return true;
+            if (TransportationFieldWrapperContractBuilder.TryCreate(mapInfo, out TransportationWrapperContract wrapperContract)
+                && wrapperContract.IsActive
+                && TransportationFieldInitRequestCodec.IsSupportedShipKind(wrapperContract.ShipKind))
+            {
+                shipKind = wrapperContract.ShipKind;
+                status = $"Resolved {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)} from wrapper contract ({wrapperContract.SourceDescription}).";
+                return true;
+            }
+
+            status = $"Transport field-init request only supports ship kinds 0 and 1, but no active wrapper contract resolved a supported kind for map {fieldId}.";
+            return false;
         }
 
         private string ArmTransportFieldInitRequestForActiveWrapperMap()
         {
-            if (!IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) || !_transportField.HasRouteConfiguration)
+            if (!IsTransitVoyageWrapperMap(_mapBoard?.MapInfo))
             {
                 return null;
             }

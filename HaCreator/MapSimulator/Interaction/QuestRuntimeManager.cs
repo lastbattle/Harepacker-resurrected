@@ -334,6 +334,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndPetRecallLimit { get; init; }
             public int? EndPetTamenessMinimum { get; init; }
             public int? EndPetTamenessMaximum { get; init; }
+            public int? EndFameRequirement { get; init; }
             public int? EndQuestCompleteCount { get; init; }
             public int EndMorphTemplateId { get; init; }
             public IReadOnlyList<int> EndRequiredBuffIds { get; init; } = Array.Empty<int>();
@@ -977,6 +978,11 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add($"Complete at least {definition.EndQuestCompleteCount.Value} quest(s) before completing this quest.");
             }
 
+            if (build != null && HasUnmetCompletionFameDemand(definition.EndFameRequirement, GetCurrentFame(build)))
+            {
+                issues.Add($"Reach fame {definition.EndFameRequirement.Value}.");
+            }
+
             if (HasUnmetCompletionMorphDemand(
                     definition.EndMorphTemplateId,
                     ResolveCurrentMorphTemplateIdForCompletionDemand(_currentMorphTemplateIdProvider)))
@@ -1027,9 +1033,10 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.MaxLevel,
                     definition.EndActions?.ActionMinLevel,
                     definition.EndActions?.ActionMaxLevel,
-                    definition.EndActions?.AllowedJobs))
+                    definition.EndActions?.AllowedJobs,
+                    definition.EndFameRequirement))
             {
-                issues.Add("Completion demand includes build-scoped level/job gates, but character build context is unavailable.");
+                issues.Add("Completion demand includes build-scoped level/job/fame gates, but character build context is unavailable.");
             }
 
             if (build != null &&
@@ -1074,6 +1081,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return requiredCompletedQuestCount.HasValue
                    && requiredCompletedQuestCount.Value > Math.Max(0, currentCompletedQuestCount);
+        }
+
+        internal static bool HasUnmetCompletionFameDemand(int? requiredFame, int currentFame)
+        {
+            return requiredFame.HasValue
+                   && currentFame < requiredFame.Value;
         }
 
         internal static bool HasUnmetRequiredCompletionBuffDemand(
@@ -1244,13 +1257,15 @@ namespace HaCreator.MapSimulator.Interaction
             int? maxLevel,
             int? actionMinLevel,
             int? actionMaxLevel,
-            IReadOnlyList<int> actionAllowedJobs)
+            IReadOnlyList<int> actionAllowedJobs,
+            int? fameRequirement = null)
         {
             return minLevel.HasValue
                    || maxLevel.HasValue
                    || actionMinLevel.HasValue
                    || actionMaxLevel.HasValue
-                   || (actionAllowedJobs?.Count ?? 0) > 0;
+                   || (actionAllowedJobs?.Count ?? 0) > 0
+                   || fameRequirement.HasValue;
         }
 
         internal static bool HasUnmetCompletionActionJobDemand(IReadOnlyList<int> actionAllowedJobs, int currentJob)
@@ -2075,6 +2090,21 @@ namespace HaCreator.MapSimulator.Interaction
                 ? availableUntil.Value
                 : availableUntil.Value.ToUniversalTime();
             return normalizedUntil.Date == QuestDeliveryWorthlessOpenEndDateUtc.Date;
+        }
+
+        internal bool IsQuestWorthlessForWorldMapOverlay(int questId, CharacterBuild build)
+        {
+            if (questId <= 0 || !_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return false;
+            }
+
+            return IsQuestDeliveryWorthlessForClientParity(
+                definition.QuestId,
+                preferredQuestId: 0,
+                Math.Max(0, build?.Level ?? 0),
+                definition.MinLevel,
+                definition.StartAvailableUntil);
         }
 
         private static void AppendQuestIds(HashSet<int> questIds, QuestLogSnapshot snapshot)
@@ -4307,16 +4337,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool HasConversationVariantMetadata(WzImageProperty property)
         {
-            return GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID") != null ||
-                   GetConversationVariantMetadataProperty(property, "job", "jobId", "jobID") != null ||
+            return GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID", "npcNo") != null ||
+                   GetConversationVariantMetadataProperty(property, "job", "jobId", "jobID", "jobNo") != null ||
                    GetConversationVariantMetadataProperty(property, "quest", "questId", "questID", "questNo") != null ||
                    GetConversationVariantMetadataProperty(property, "state", "questState", "quest_state") != null ||
                    GetConversationVariantMetadataProperty(property, "subJob", "subjob") != null ||
                    GetConversationVariantMetadataProperty(property, "subJobFlags", "subJobFlag", "subjobflags", "subjobflag") != null ||
-                   GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin") != null ||
-                   GetConversationVariantMetadataProperty(property, "fameMax", "maxFame", "popMax") != null ||
-                   GetConversationVariantMetadataProperty(property, "lvmin", "minLevel", "levelMin") != null ||
-                   GetConversationVariantMetadataProperty(property, "lvmax", "maxLevel", "levelMax") != null ||
+                   GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin", "minPop") != null ||
+                   GetConversationVariantMetadataProperty(property, "fameMax", "maxFame", "popMax", "maxPop") != null ||
+                   GetConversationVariantMetadataProperty(property, "lvmin", "minLv", "minLevel", "levelMin") != null ||
+                   GetConversationVariantMetadataProperty(property, "lvmax", "maxLv", "maxLevel", "levelMax") != null ||
                    GetConversationVariantMetadataProperty(property, "gender", "sex", "genderType") != null;
         }
 
@@ -4336,14 +4366,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int? requiredNpcId = ParseNpcId(
-                GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID"));
+                GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID", "npcNo"));
             if (requiredNpcId.HasValue && requiredNpcId.Value != npcId)
             {
                 return false;
             }
 
             IReadOnlyList<int> allowedJobs = ParseJobIds(
-                GetConversationVariantMetadataProperty(property, "job", "jobId", "jobID"));
+                GetConversationVariantMetadataProperty(property, "job", "jobId", "jobID", "jobNo"));
             if (allowedJobs.Count > 0 && !MatchesAllowedJobs(currentJob, allowedJobs))
             {
                 return false;
@@ -4365,7 +4395,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int minimumFame = ParsePositiveInt(
-                GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin"))
+                GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin", "minPop"))
                 .GetValueOrDefault();
             if (minimumFame > 0 && currentFame < minimumFame)
             {
@@ -4373,7 +4403,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int maximumFame = ParsePositiveInt(
-                GetConversationVariantMetadataProperty(property, "fameMax", "maxFame", "popMax"))
+                GetConversationVariantMetadataProperty(property, "fameMax", "maxFame", "popMax", "maxPop"))
                 .GetValueOrDefault();
             if (maximumFame > 0 && currentFame > maximumFame)
             {
@@ -4381,7 +4411,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int minimumLevel = ParsePositiveInt(
-                GetConversationVariantMetadataProperty(property, "lvmin", "minLevel", "levelMin"))
+                GetConversationVariantMetadataProperty(property, "lvmin", "minLv", "minLevel", "levelMin"))
                 .GetValueOrDefault();
             if (minimumLevel > 0 && currentLevel < minimumLevel)
             {
@@ -4389,7 +4419,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int maximumLevel = ParsePositiveInt(
-                GetConversationVariantMetadataProperty(property, "lvmax", "maxLevel", "levelMax"))
+                GetConversationVariantMetadataProperty(property, "lvmax", "maxLv", "maxLevel", "levelMax"))
                 .GetValueOrDefault();
             if (maximumLevel > 0 && currentLevel > maximumLevel)
             {
@@ -4705,7 +4735,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (state == QuestStateType.Started &&
                 !isCompletionNpc &&
-                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> npcPages, "npc", "npcid"))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> npcPages, "npc", "npcid", "npcno"))
             {
                 return npcPages;
             }
@@ -4760,14 +4790,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (hasUnmetQuestRequirements &&
-                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> questPages, "quest", "questid"))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> questPages, "quest", "questid", "questno"))
             {
                 return questPages;
             }
 
             if (state == QuestStateType.Not_Started &&
                 hasUnmetJobRequirement &&
-                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> jobPages, "job", "jobid"))
+                TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> jobPages, "job", "jobid", "jobno"))
             {
                 return jobPages;
             }
@@ -4790,9 +4820,11 @@ namespace HaCreator.MapSimulator.Interaction
                     "lv",
                     "level",
                     "lvmin",
+                    "minlv",
                     "minlevel",
                     "levelmin",
                     "lvmax",
+                    "maxlv",
                     "maxlevel",
                     "levelmax"))
             {
@@ -4806,9 +4838,11 @@ namespace HaCreator.MapSimulator.Interaction
                     "pop",
                     "fame",
                     "popmin",
+                    "minpop",
                     "minfame",
                     "famemin",
                     "popmax",
+                    "maxpop",
                     "maxfame",
                     "famemax"))
             {
@@ -4840,7 +4874,8 @@ namespace HaCreator.MapSimulator.Interaction
                     "day",
                     "date",
                     "time",
-                    "weekday"))
+                    "weekday",
+                    "dayofweek"))
             {
                 return timePages;
             }
@@ -8231,6 +8266,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
                 EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
+                EndFameRequirement = ParsePositiveInt(endCheck?["pop"]),
                 EndQuestCompleteCount = ParseInt(endCheck?["questComplete"]),
                 EndMorphTemplateId = ParsePositiveInt(endCheck?["morph"]).GetValueOrDefault(),
                 EndRequiredBuffIds = ParseQuestDemandIntegerList(endCheck?["buff"]),
@@ -11356,13 +11392,17 @@ namespace HaCreator.MapSimulator.Interaction
                    normalized == "famemin" ||
                    normalized == "minfame" ||
                    normalized == "popmin" ||
+                   normalized == "minpop" ||
                    normalized == "famemax" ||
                    normalized == "maxfame" ||
                    normalized == "popmax" ||
+                   normalized == "maxpop" ||
                    normalized == "lvmin" ||
+                   normalized == "minlv" ||
                    normalized == "minlevel" ||
                    normalized == "levelmin" ||
                    normalized == "lvmax" ||
+                   normalized == "maxlv" ||
                    normalized == "maxlevel" ||
                    normalized == "levelmax" ||
                    normalized == "gender" ||

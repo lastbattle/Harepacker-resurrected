@@ -2284,7 +2284,7 @@ namespace HaCreator.MapSimulator.Loaders
 
 
                 loadedFrames.Add(frame);
-                loadedOrigins.Add(ResolveCanvasOffset(canvas, Point.Zero));
+                loadedOrigins.Add(NormalizeQuestOverlayMarkerOrigin(ResolveCanvasOffset(canvas, Point.Zero)));
                 loadedDelays.Add(Math.Max(1, canvas[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt() ?? 120));
             }
 
@@ -2292,6 +2292,28 @@ namespace HaCreator.MapSimulator.Loaders
             frames = loadedFrames.ToArray();
             origins = loadedOrigins.ToArray();
             delays = loadedDelays.ToArray();
+        }
+
+        private static Point NormalizeQuestOverlayMarkerOrigin(Point originOffset)
+        {
+            return new Point(-originOffset.X, -originOffset.Y);
+        }
+
+        internal static Point NormalizeQuestOverlayMarkerOriginForTesting(Point originOffset)
+        {
+            return NormalizeQuestOverlayMarkerOrigin(originOffset);
+        }
+
+        private static Point ResolveQuestGuideNpcMarkerOrigin(WzSubProperty markerProperty, Texture2D markerTexture)
+        {
+            Point fallbackOrigin = markerTexture == null
+                ? Point.Zero
+                : new Point(markerTexture.Width / 2, markerTexture.Height);
+            WzCanvasProperty markerCanvas = markerProperty?["0"] as WzCanvasProperty;
+            Point offset = ResolveCanvasOffset(
+                markerCanvas,
+                new Point(-fallbackOrigin.X, -fallbackOrigin.Y));
+            return NormalizeQuestOverlayMarkerOrigin(offset);
         }
 
 
@@ -2937,12 +2959,19 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty resultFieldProperty = worldMapSearchProperty?["resultField"] as WzSubProperty;
             WzSubProperty resultNpcProperty = worldMapSearchProperty?["resultNpc"] as WzSubProperty;
             WzSubProperty resultMobProperty = worldMapSearchProperty?["resultMob"] as WzSubProperty;
+            WzSubProperty questGuideProperty = uiWindow2Image?["QuestGuide"] as WzSubProperty;
             LoadWorldMapQuestOverlayAnimation(
-                uiWindow2Image?["QuestGuide"]?["QuestMark"] as WzSubProperty,
+                questGuideProperty?["QuestMark"] as WzSubProperty,
                 device,
                 out Texture2D[] overlayMarkerTextures,
                 out Point[] overlayMarkerOrigins,
                 out int[] overlayMarkerDelays);
+            WzSubProperty lowLevelMarkerProperty = questGuideProperty?["LowLVQuestMark"]?["forNPC"] as WzSubProperty;
+            WzSubProperty highLevelMarkerProperty = questGuideProperty?["HighLVQuestMark"]?["forNPC"] as WzSubProperty;
+            Texture2D lowLevelQuestMarkerTexture = LoadCanvasTexture(lowLevelMarkerProperty, "0", device);
+            Texture2D highLevelQuestMarkerTexture = LoadCanvasTexture(highLevelMarkerProperty, "0", device);
+            Point lowLevelQuestMarkerOrigin = ResolveQuestGuideNpcMarkerOrigin(lowLevelMarkerProperty, lowLevelQuestMarkerTexture);
+            Point highLevelQuestMarkerOrigin = ResolveQuestGuideNpcMarkerOrigin(highLevelMarkerProperty, highLevelQuestMarkerTexture);
             Dictionary<WorldMapUI.SearchResultKind, WorldMapUI.SearchResultVisualStyle> resultStyles = new Dictionary<WorldMapUI.SearchResultKind, WorldMapUI.SearchResultVisualStyle>
             {
                 [WorldMapUI.SearchResultKind.Field] = new WorldMapUI.SearchResultVisualStyle(
@@ -2974,6 +3003,10 @@ namespace HaCreator.MapSimulator.Loaders
                 overlayMarkerTextures,
                 overlayMarkerOrigins,
                 overlayMarkerDelays,
+                lowLevelQuestMarkerTexture,
+                lowLevelQuestMarkerOrigin,
+                highLevelQuestMarkerTexture,
+                highLevelQuestMarkerOrigin,
                 LoadButton(worldMapProperty, "BtAll", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtAnother", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtSearch", clickSound, overSound, device),

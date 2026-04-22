@@ -896,10 +896,7 @@ namespace HaCreator.MapSimulator
             {
                 return shareViewFromMapInfo;
             }
-
-            WzImage contractImage = ResolveClientOwnedContractMapImage(mapInfo, out _, linkedMapResolver);
-            return TryResolveClientOwnedLimitedViewShareViewFromMapImage(contractImage, out bool shareViewFromMapImage)
-                && shareViewFromMapImage;
+            return false;
         }
 
         private static bool TryResolveClientOwnedLimitedViewShareViewFromMapInfo(MapInfo mapInfo, out bool shareView)
@@ -937,27 +934,6 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
-        }
-
-        private static bool TryResolveClientOwnedLimitedViewShareViewFromMapImage(WzImage mapImage, out bool shareView)
-        {
-            shareView = false;
-            if (mapImage == null)
-            {
-                return false;
-            }
-
-            if (!mapImage.Parsed)
-            {
-                mapImage.ParseImage();
-            }
-
-            WzImageProperty property =
-                ResolveProperty(mapImage, "limitedview/shareview")
-                ?? ResolveProperty(mapImage, "limitedView/shareview")
-                ?? ResolveProperty(mapImage, "info/shareview")
-                ?? ResolveProperty(mapImage, "info/limitedview/shareview");
-            return TryResolveClientOwnedLimitedViewShareViewFromProperty(property, out shareView);
         }
 
         private static bool TryResolveClientOwnedLimitedViewShareViewFromProperty(WzImageProperty property, out bool shareView)

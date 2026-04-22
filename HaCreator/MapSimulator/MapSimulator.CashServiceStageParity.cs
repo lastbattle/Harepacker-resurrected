@@ -51,6 +51,10 @@ namespace HaCreator.MapSimulator
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
         private const int CashShopOneADayHistorySlotCount = 12;
+        private const int CashShopOneADaySelectorInitArg = 4;
+        private const int CashShopLockerScrollBarControlId = 1001;
+        private const int CashShopInventoryTabControlId = 1000;
+        private const int CashShopInventoryScrollBarControlId = 1001;
         private int _lastPlayedCashGachaponAnimationSequence;
         private bool _cashReceiveGiftFollowUpNoticePending;
         private int _cashReceiveGiftFollowUpNoticeNextIndex = -1;
@@ -356,7 +360,7 @@ namespace HaCreator.MapSimulator
                         NoticeState = stageWindow.NoticeState,
                         SelectorIndex = selectorIndex,
                         SelectorControlId = 2001,
-                        SelectorInitArg = 1,
+                        SelectorInitArg = CashShopOneADaySelectorInitArg,
                         SelectorStartX = 2,
                         SelectorStartY = 2,
                         SelectorPosition = new Microsoft.Xna.Framework.Point(412, 406),
@@ -961,6 +965,7 @@ namespace HaCreator.MapSimulator
         {
             AdminShopDialogUI.LockerOwnerSnapshot snapshot = cashShopWindow?.GetLockerOwnerSnapshot() ?? new();
             CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            int scrollBarDownButtonId = ResolveCashLockerScrollBarDownButtonId(_playerManager?.Player?.Build?.Job ?? 0);
             int usedSlotCount = snapshot.UsedSlotCount;
             int slotLimit = snapshot.SlotLimit;
             if (stageWindow != null)
@@ -982,14 +987,20 @@ namespace HaCreator.MapSimulator
                 UsedSlotCount = usedSlotCount,
                 SlotLimit = slotLimit,
                 CanExpand = snapshot.CanExpand || (slotLimit > 0 && usedSlotCount < slotLimit),
-                ScrollOffset = ResolveCashLockerInitialScrollOffset(_playerManager?.Player?.Build?.Job ?? 0),
+                ScrollOffset = 0,
                 WheelRange = 208,
                 HasNumberFont = true,
+                ScrollBarControlId = CashShopLockerScrollBarControlId,
+                ScrollBarUpButtonId = 1,
+                ScrollBarDownButtonId = scrollBarDownButtonId,
+                ScrollBarX = 229,
+                ScrollBarY = 29,
+                ScrollBarHeight = 67,
                 SharedCharacterNames = snapshot.SharedCharacterNames
             };
         }
 
-        private static int ResolveCashLockerInitialScrollOffset(int jobId)
+        private static int ResolveCashLockerScrollBarDownButtonId(int jobId)
         {
             if (jobId / 1000 == 1)
             {
@@ -1048,6 +1059,13 @@ namespace HaCreator.MapSimulator
                 RowFocusIndex = packetFocus?.RowFocusIndex ?? 0,
                 WheelRange = 140,
                 HasNumberFont = true,
+                TabControlId = CashShopInventoryTabControlId,
+                ScrollBarControlId = CashShopInventoryScrollBarControlId,
+                ScrollBarUpButtonId = 1,
+                ScrollBarDownButtonId = 0,
+                ScrollBarX = 160,
+                ScrollBarY = 54,
+                ScrollBarHeight = 102,
                 ActiveTabName = packetFocus?.ActiveTabName ?? string.Empty,
                 SelectedEntryTitle = selectedEntryTitle,
                 PacketFocusSignature = packetFocus?.FocusSignature ?? string.Empty,
@@ -2209,6 +2227,35 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (stageWindow.TryFinalizeReceiveGiftAcceptResult(
+                    stageWindow.CashItemResultSubtype,
+                    out string receiveGiftSummary,
+                    out string receiveGiftOwnerNotice,
+                    out bool receiveGiftAccepted,
+                    out int receiveGiftNextIndex))
+            {
+                string message = string.Join(
+                    " ",
+                    new[] { receiveGiftSummary, receiveGiftOwnerNotice }
+                        .Where(part => !string.IsNullOrWhiteSpace(part)));
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    if (receiveGiftAccepted)
+                    {
+                        _chat?.AddSystemMessage(message, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(message, currTickCount);
+                    }
+                }
+
+                if (receiveGiftNextIndex < 0)
+                {
+                    return;
+                }
+            }
+
             if (stageWindow.CashItemResultSubtype == 90 && stageWindow.CashGiftPacketEntries.Count > 0)
             {
                 ShowCashReceiveGiftDialog(stageWindow, 0);
@@ -2770,10 +2817,10 @@ namespace HaCreator.MapSimulator
             }
 
             string dispatchSummary = DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText);
-            string message = stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, normalizedReplyText, dispatchSummary);
+            string message = stageWindow.StageReceiveGiftAcceptRequest(selectedGiftIndex, normalizedReplyText, dispatchSummary);
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
-            int nextGiftIndex = stageWindow.CashGiftPacketEntries.Count > 0
-                ? Math.Clamp(selectedGiftIndex, 0, stageWindow.CashGiftPacketEntries.Count - 1)
+            int nextGiftIndex = selectedGiftIndex + 1 < stageWindow.CashGiftPacketEntries.Count
+                ? selectedGiftIndex + 1
                 : -1;
             string ownerNotice = stageWindow.BuildReceiveGiftAcceptOwnerNotice(selectedGift, normalizedReplyText);
             ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, message);

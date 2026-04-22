@@ -21,9 +21,6 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color ClientAmountTextColor = Color.Black;
         private const int OkButtonOffsetX = 204;
         private const int OkButtonOffsetY = 77;
-        private const int FallbackMessageY = 34;
-        private const int FallbackAmountY = 56;
-        private const int FallbackOkButtonBottomMargin = 10;
 
         private readonly IReadOnlyDictionary<int, IDXObject> _backgrounds;
         private readonly IReadOnlyDictionary<int, bool> _authoredLayoutByRank;
@@ -192,41 +189,24 @@ namespace HaCreator.MapSimulator.UI
             int buttonHeight,
             bool useAuthoredLayout)
         {
-            if (useAuthoredLayout)
-            {
-                return new Point(OkButtonOffsetX, OkButtonOffsetY);
-            }
-
-            int centeredX = Math.Max(0, (frameWidth - Math.Max(0, buttonWidth)) / 2);
-            int anchoredY = Math.Max(0, frameHeight - Math.Max(0, buttonHeight) - FallbackOkButtonBottomMargin);
-            return new Point(centeredX, anchoredY);
+            return new Point(OkButtonOffsetX, OkButtonOffsetY);
         }
 
         internal static bool ShouldUseClientCoordinateLayout(bool hasAuthoredRankArt, bool usesFallbackNoticeShell)
         {
-            return hasAuthoredRankArt || usesFallbackNoticeShell;
+            // CUIRandomMesoBag::OnCreate and ::Draw keep fixed control/text coordinates for
+            // all rank branches; shell selection changes art only, not control layout.
+            return true;
         }
 
         internal static Point ResolveMessagePosition(int frameWidth, float measuredWidth, bool useAuthoredLayout)
         {
-            if (useAuthoredLayout)
-            {
-                return new Point(MessageOffsetX, MessageOffsetY);
-            }
-
-            int centeredX = Math.Max(0, (int)MathF.Round((frameWidth - measuredWidth) / 2f));
-            return new Point(centeredX, FallbackMessageY);
+            return new Point(MessageOffsetX, MessageOffsetY);
         }
 
         internal static Point ResolveAmountPosition(int frameWidth, float measuredWidth, bool useAuthoredLayout)
         {
-            if (useAuthoredLayout)
-            {
-                return new Point(ResolveClientAmountTextX(measuredWidth), AmountOffsetY);
-            }
-
-            int centeredX = Math.Max(0, (int)MathF.Round((frameWidth - measuredWidth) / 2f));
-            return new Point(centeredX, FallbackAmountY);
+            return new Point(ResolveClientAmountTextX(measuredWidth), AmountOffsetY);
         }
 
         internal static int ResolveClientAmountTextX(float measuredWidth)

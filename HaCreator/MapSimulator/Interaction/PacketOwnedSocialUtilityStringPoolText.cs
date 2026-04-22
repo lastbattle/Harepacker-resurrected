@@ -47,19 +47,12 @@ namespace HaCreator.MapSimulator.Interaction
                 meso);
         }
 
-        internal static string ResolveParcelArrivalItemNotice(string itemName, int quantity = 1)
+        internal static string ResolveParcelArrivalItemNotice(string itemName)
         {
-            string resolvedNotice = FormatClientTemplate(
+            return FormatClientTemplate(
                 ParcelArrivalItemStringPoolId,
                 "\r\nitem : %s",
                 string.IsNullOrWhiteSpace(itemName) ? "item" : itemName.Trim());
-
-            if (quantity > 1)
-            {
-                resolvedNotice += $" x{quantity}";
-            }
-
-            return resolvedNotice;
         }
 
         internal static bool TryResolveTrunkNoticeStringPoolId(int packetSubtype, out int stringPoolId)

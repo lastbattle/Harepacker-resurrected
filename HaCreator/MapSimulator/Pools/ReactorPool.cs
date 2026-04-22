@@ -845,6 +845,50 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         /// <summary>
+        /// Find hit-activatable reactors intersecting a world-space basic-attack area.
+        /// Mirrors CReactorPool::FindHitReactor used by CField_GuildBoss::BasicActionAttack.
+        /// </summary>
+        public List<(ReactorItem reactor, int index)> FindHitReactorsInBounds(Rectangle attackBounds, int? currentTick = null)
+        {
+            var results = new List<(ReactorItem reactor, int index)>();
+
+            if (GetReactorCount() == 0 || attackBounds.Width <= 0 || attackBounds.Height <= 0)
+            {
+                return results;
+            }
+
+            int resolvedTick = currentTick ?? _lastUpdateTick;
+
+            for (int i = 0; i < GetReactorCount(); i++)
+            {
+                var reactor = GetReactor(i);
+                if (reactor?.ReactorInstance == null)
+                {
+                    continue;
+                }
+
+                ReactorRuntimeData data = GetReactorData(i);
+                if (!CanParticipateInHitReactorSearch(data) || !MeetsQuestRequirement(data))
+                {
+                    continue;
+                }
+
+                Rectangle reactorBounds = reactor.GetCurrentBounds(resolvedTick);
+                if (!IsAttackDirectionValid(data.ReactorType, attackBounds, reactorBounds))
+                {
+                    continue;
+                }
+
+                if (reactorBounds.Intersects(attackBounds))
+                {
+                    results.Add((reactor, i));
+                }
+            }
+
+            return results;
+        }
+
+        /// <summary>
         /// Trigger reactors that react to skill or attack interaction inside the supplied range.
         /// </summary>
         public List<ReactorItem> TriggerSkillReactors(
@@ -3446,6 +3490,14 @@ namespace HaCreator.MapSimulator.Pools
             return (supportedTypes & ToActivationMask(activationType)) != 0;
         }
 
+        internal static bool CanParticipateInHitReactorSearch(ReactorRuntimeData data)
+        {
+            return data != null
+                && data.State != ReactorState.Destroyed
+                && data.State != ReactorState.Respawning
+                && SupportsActivationType(data, ReactorActivationType.Hit);
+        }
+
         internal static bool ShouldAutoActivateQuestRefresh(
             ReactorRuntimeData data,
             IEnumerable<int> currentStateEventTypes)
@@ -3977,7 +4029,7 @@ namespace HaCreator.MapSimulator.Pools
                 && fallbackAnimationOwnerState != data.PacketAnimationSourceState)
             {
                 IReadOnlyList<int> continuityFallbackEventTypes = getExactAuthoredEventTypes(fallbackAnimationOwnerState);
-                if (continuityFallbackEventTypes is { Count: > 0 })
+                if (HasResolvableAutoHitEventType(continuityFallbackEventTypes, hitOption, reactorType))
                 {
                     return fallbackAnimationOwnerState;
                 }

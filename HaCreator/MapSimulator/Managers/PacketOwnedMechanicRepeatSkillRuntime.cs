@@ -1183,6 +1183,29 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            if (parsedIndices.Count == 0
+                && normalizedToken.IndexOf(' ', StringComparison.Ordinal) >= 0)
+            {
+                string[] whitespaceTokens = normalizedToken.Split(
+                    ' ',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (string whitespaceToken in whitespaceTokens)
+                {
+                    if (!TryParseSg88ReplayParityMismatchFieldToken(whitespaceToken, out int[] parsed))
+                    {
+                        continue;
+                    }
+
+                    foreach (int index in parsed)
+                    {
+                        if (index >= 0)
+                        {
+                            parsedIndices.Add(index);
+                        }
+                    }
+                }
+            }
+
             if (parsedIndices.Count == 0)
             {
                 return false;
@@ -1236,7 +1259,241 @@ namespace HaCreator.MapSimulator.Managers
                 case JsonValueKind.Array:
                     return value.EnumerateArray().Any(IsSg88MismatchAffirmativeJsonValue);
                 case JsonValueKind.Object:
-                    return value.EnumerateObject().Any(property => IsSg88MismatchAffirmativeJsonValue(property.Value));
+                    return TryResolveSg88MismatchAffirmativeJsonObject(value, out bool objectAffirmative)
+                        && objectAffirmative;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryResolveSg88MismatchAffirmativeJsonObject(JsonElement objectValue, out bool affirmative)
+        {
+            affirmative = false;
+            bool sawSignal = false;
+            foreach (JsonProperty property in objectValue.EnumerateObject())
+            {
+                if (!TryNormalizeSg88MismatchSignalName(property.Name, out string signalName))
+                {
+                    continue;
+                }
+
+                sawSignal = true;
+                if (!TryEvaluateSg88MismatchSignalValue(signalName, property.Value, out bool signalAffirmative))
+                {
+                    continue;
+                }
+
+                if (signalAffirmative)
+                {
+                    affirmative = true;
+                    return true;
+                }
+            }
+
+            return sawSignal;
+        }
+
+        private static bool TryNormalizeSg88MismatchSignalName(string signalName, out string normalizedSignalName)
+        {
+            normalizedSignalName = null;
+            if (string.IsNullOrWhiteSpace(signalName))
+            {
+                return false;
+            }
+
+            string normalized = signalName.Trim()
+                .Trim('"', '\'')
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(".", string.Empty, StringComparison.Ordinal)
+                .Replace("/", string.Empty, StringComparison.Ordinal)
+                .Replace("\\", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            switch (normalized)
+            {
+                case "mismatch":
+                case "ismismatch":
+                case "different":
+                case "isdifferent":
+                case "diff":
+                case "changed":
+                case "ischanged":
+                case "change":
+                case "delta":
+                case "unequal":
+                case "isunequal":
+                case "notequal":
+                    normalizedSignalName = "mismatch";
+                    return true;
+                case "match":
+                case "matched":
+                case "ismatch":
+                case "equal":
+                case "isequal":
+                case "same":
+                case "issame":
+                    normalizedSignalName = "matched";
+                    return true;
+                case "parity":
+                case "status":
+                case "result":
+                case "state":
+                    normalizedSignalName = "status";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryEvaluateSg88MismatchSignalValue(
+            string signalName,
+            JsonElement signalValue,
+            out bool affirmative)
+        {
+            affirmative = false;
+            switch (signalName)
+            {
+                case "mismatch":
+                    affirmative = IsSg88MismatchAffirmativeJsonValue(signalValue);
+                    return true;
+                case "matched":
+                    if (!TryResolveSg88MatchedJsonValue(signalValue, out bool matchedValue))
+                    {
+                        return false;
+                    }
+
+                    affirmative = !matchedValue;
+                    return true;
+                case "status":
+                    if (TryResolveSg88MismatchStatusJsonValue(signalValue, out bool mismatchStatus))
+                    {
+                        affirmative = mismatchStatus;
+                    }
+                    else
+                    {
+                        affirmative = IsSg88MismatchAffirmativeJsonValue(signalValue);
+                    }
+
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryResolveSg88MismatchStatusJsonValue(JsonElement statusValue, out bool mismatchStatus)
+        {
+            mismatchStatus = false;
+            switch (statusValue.ValueKind)
+            {
+                case JsonValueKind.String:
+                    return TryResolveSg88MismatchStatusToken(statusValue.GetString(), out mismatchStatus);
+                case JsonValueKind.Number:
+                    if (statusValue.TryGetInt64(out long integral))
+                    {
+                        mismatchStatus = integral != 0;
+                        return true;
+                    }
+
+                    if (statusValue.TryGetDouble(out double floating))
+                    {
+                        mismatchStatus = Math.Abs(floating) > double.Epsilon;
+                        return true;
+                    }
+
+                    return false;
+                case JsonValueKind.True:
+                    mismatchStatus = true;
+                    return true;
+                case JsonValueKind.False:
+                    mismatchStatus = false;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryResolveSg88MatchedJsonValue(JsonElement matchedValue, out bool matched)
+        {
+            matched = false;
+            switch (matchedValue.ValueKind)
+            {
+                case JsonValueKind.True:
+                    matched = true;
+                    return true;
+                case JsonValueKind.False:
+                    matched = false;
+                    return true;
+                case JsonValueKind.Number:
+                    if (matchedValue.TryGetInt64(out long integral))
+                    {
+                        matched = integral != 0;
+                        return true;
+                    }
+
+                    if (matchedValue.TryGetDouble(out double floating))
+                    {
+                        matched = Math.Abs(floating) > double.Epsilon;
+                        return true;
+                    }
+
+                    return false;
+                case JsonValueKind.String:
+                {
+                    if (TryResolveSg88MismatchStatusToken(matchedValue.GetString(), out bool mismatchStatus))
+                    {
+                        matched = !mismatchStatus;
+                        return true;
+                    }
+
+                    return false;
+                }
+                case JsonValueKind.Object:
+                    if (TryResolveSg88MismatchAffirmativeJsonObject(matchedValue, out bool objectAffirmative))
+                    {
+                        matched = !objectAffirmative;
+                        return true;
+                    }
+
+                    return false;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryResolveSg88MismatchStatusToken(string token, out bool mismatchStatus)
+        {
+            mismatchStatus = false;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalized = token.Trim()
+                .Trim('"', '\'')
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            switch (normalized)
+            {
+                case "mismatch":
+                case "different":
+                case "diff":
+                case "changed":
+                case "unmatched":
+                case "notmatched":
+                case "notequal":
+                case "unequal":
+                    mismatchStatus = true;
+                    return true;
+                case "match":
+                case "matched":
+                case "equal":
+                case "same":
+                case "identical":
+                    mismatchStatus = false;
+                    return true;
                 default:
                     return false;
             }
@@ -1321,7 +1578,9 @@ namespace HaCreator.MapSimulator.Managers
                 .Replace("-", string.Empty, StringComparison.Ordinal)
                 .Replace(" ", string.Empty, StringComparison.Ordinal)
                 .ToLowerInvariant();
-            return normalized is "0" or "false" or "no" or "none" or "null" or "na" or "n/a";
+            return normalized is "0" or "false" or "off" or "disabled"
+                or "no" or "none" or "null" or "na" or "n/a"
+                or "nomismatch" or "matched" or "equal" or "same";
         }
 
         private static string[] BuildSg88MismatchFieldTokenCandidates(string token)
@@ -1362,6 +1621,16 @@ namespace HaCreator.MapSimulator.Managers
                 .Replace("_", string.Empty, StringComparison.Ordinal)
                 .Replace("-", string.Empty, StringComparison.Ordinal)
                 .Replace(".", string.Empty, StringComparison.Ordinal)
+                .Replace("/", string.Empty, StringComparison.Ordinal)
+                .Replace("\\", string.Empty, StringComparison.Ordinal)
+                .Replace("[", string.Empty, StringComparison.Ordinal)
+                .Replace("]", string.Empty, StringComparison.Ordinal)
+                .Replace("(", string.Empty, StringComparison.Ordinal)
+                .Replace(")", string.Empty, StringComparison.Ordinal)
+                .Replace("{", string.Empty, StringComparison.Ordinal)
+                .Replace("}", string.Empty, StringComparison.Ordinal)
+                .Replace("<", string.Empty, StringComparison.Ordinal)
+                .Replace(">", string.Empty, StringComparison.Ordinal)
                 .Replace(" ", string.Empty, StringComparison.Ordinal)
                 .ToLowerInvariant();
             if (normalized.StartsWith("payload", StringComparison.Ordinal))
@@ -1419,6 +1688,11 @@ namespace HaCreator.MapSimulator.Managers
                 case "requesttimems":
                 case "requestms":
                 case "requestedat":
+                case "requestedtime":
+                case "requestedtick":
+                case "reqms":
+                case "reqat":
+                case "reqtime":
                 case "tick":
                     byteIndices = new[] { 2, 3, 4, 5 };
                     return true;
@@ -1432,6 +1706,8 @@ namespace HaCreator.MapSimulator.Managers
                 case "slv":
                 case "lv":
                 case "level":
+                case "skilllevelbyte":
+                case "skilllvbyte":
                     byteIndices = new[] { 10 };
                     return true;
                 case "x":
@@ -1439,6 +1715,7 @@ namespace HaCreator.MapSimulator.Managers
                 case "posx":
                 case "coordx":
                 case "positionx":
+                case "xposition":
                     byteIndices = new[] { 11, 12 };
                     return true;
                 case "y":
@@ -1446,6 +1723,7 @@ namespace HaCreator.MapSimulator.Managers
                 case "posy":
                 case "coordy":
                 case "positiony":
+                case "yposition":
                     byteIndices = new[] { 13, 14 };
                     return true;
                 case "moveaction":
@@ -1456,6 +1734,8 @@ namespace HaCreator.MapSimulator.Managers
                 case "rawmove":
                 case "movebyte":
                 case "moveactionlowbit":
+                case "rawmoveactionbyte":
+                case "rawmovebyte":
                     byteIndices = new[] { Sg88FirstUseMoveActionByteIndex };
                     return true;
                 case "vecctrl":
@@ -1466,6 +1746,8 @@ namespace HaCreator.MapSimulator.Managers
                 case "vectorcontrol":
                 case "vec":
                 case "vecowner":
+                case "vecctrlflag":
+                case "vecctrlownerbyte":
                     byteIndices = new[] { Sg88FirstUseVecCtrlByteIndex };
                     return true;
                 default:

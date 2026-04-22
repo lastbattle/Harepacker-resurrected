@@ -1407,6 +1407,19 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            byte[] branchPrefixBytes = presentation.StringBranchPrefixBytes;
+            if (branchPrefixBytes != null && branchPrefixBytes.Length > 0)
+            {
+                for (int i = branchPrefixBytes.Length - 1; i >= 0; i--)
+                {
+                    int candidateHint = branchPrefixBytes[i];
+                    if (ResolveAnimationDisplayerCatchSuccessHint(candidateHint).HasValue)
+                    {
+                        return candidateHint;
+                    }
+                }
+            }
+
             return secondaryHint;
         }
 
@@ -1739,6 +1752,26 @@ namespace HaCreator.MapSimulator
                 (clampedDurationMs / 100f) * clampedProbability,
                 MidpointRounding.AwayFromZero);
             return Math.Max(1, bursts);
+        }
+
+        internal static int ResolveAnimationDisplayerReservedVisualVariantIndex(
+            int registrationTime,
+            int variantCount)
+        {
+            if (variantCount <= 0)
+            {
+                return 0;
+            }
+
+            uint unsignedTime = unchecked((uint)registrationTime);
+            return (int)(unsignedTime % (uint)variantCount);
+        }
+
+        internal static int ResolveAnimationDisplayerReservedEmotionDurationMs()
+        {
+            // Client evidence (`RESERVEDINFO::Update`, type 6):
+            // `CAvatar::SetEmotion(..., -1)` uses the indefinite sentinel.
+            return -1;
         }
 
         internal static int ResolveAnimationDisplayerReservedStartRegistrationTime(int currentTime, int startDelayMs)
@@ -3548,7 +3581,7 @@ namespace HaCreator.MapSimulator
                         new RemoteUserEmotionPacket(
                             presentation.CharacterId,
                             metadata.EmotionId,
-                            DurationMs: 0,
+                            DurationMs: ResolveAnimationDisplayerReservedEmotionDurationMs(),
                             ByItemOption: false),
                         registerTime,
                         out _);
@@ -3595,8 +3628,22 @@ namespace HaCreator.MapSimulator
                 return consumed;
             }
 
+            string resolvedVisualEffectUol = metadata.VisualEffectUol;
+            WzImageProperty visualRootProperty = ResolveAnimationDisplayerPropertyStatic(metadata.VisualEffectUol);
+            string[] visualVariantUols = EnumerateAnimationDisplayerFollowEquipmentEffectVariantUols(
+                metadata.VisualEffectUol,
+                visualRootProperty,
+                out _);
+            if (visualVariantUols.Length > 0)
+            {
+                int variantIndex = ResolveAnimationDisplayerReservedVisualVariantIndex(
+                    registerTime,
+                    visualVariantUols.Length);
+                resolvedVisualEffectUol = visualVariantUols[variantIndex];
+            }
+
             if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(
-                    metadata.VisualEffectUol,
+                    resolvedVisualEffectUol,
                     out int reservedSquibVariant))
             {
                 bool registered = TryRegisterAnimationDisplayerSquib(
@@ -3615,7 +3662,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (TryResolveAnimationDisplayerTransformedOnLadderFromEffectUol(
-                    metadata.VisualEffectUol,
+                    resolvedVisualEffectUol,
                     out bool reservedTransformedOnLadder))
             {
                 bool registered = TryRegisterAnimationDisplayerTransformed(
@@ -3634,8 +3681,8 @@ namespace HaCreator.MapSimulator
             }
 
             if (TryGetAnimationDisplayerFrames(
-                    $"reserved:{sourceEffectUol}:{metadata.Type}:{metadata.VisualEffectUol}",
-                    metadata.VisualEffectUol,
+                    $"reserved:{sourceEffectUol}:{metadata.Type}:{resolvedVisualEffectUol}",
+                    resolvedVisualEffectUol,
                     out List<IDXObject> reservedFrames))
             {
                 Vector2 anchor = ResolveAnimationDisplayerReservedVisualAnchor(getPosition, metadata);
@@ -7273,7 +7320,7 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var indexedPoints = new List<(int Index, string Segment, WzVectorProperty Point)>();
+            var indexedRows = new Dictionary<int, WzImageProperty>();
             var seenSegments = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < childCount; i++)
             {
@@ -7285,36 +7332,37 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                WzImageProperty resolvedChild = ResolveAnimationDisplayerLinkedRealProperty(childProperty);
-                if (resolvedChild is not WzVectorProperty point)
+                if (!indexedRows.ContainsKey(index))
                 {
-                    continue;
+                    indexedRows[index] = childProperty;
                 }
-
-                indexedPoints.Add((index, childName, point));
             }
 
-            if (indexedPoints.Count == 0)
+            if (indexedRows.Count == 0)
             {
                 return null;
             }
 
-            indexedPoints.Sort(static (left, right) =>
+            var points = new List<Vector2>();
+            for (int index = 0; ; index++)
             {
-                int indexComparison = left.Index.CompareTo(right.Index);
-                return indexComparison != 0
-                    ? indexComparison
-                    : StringComparer.Ordinal.Compare(left.Segment, right.Segment);
-            });
+                if (!indexedRows.TryGetValue(index, out WzImageProperty indexedRow))
+                {
+                    break;
+                }
 
-            var points = new List<Vector2>(indexedPoints.Count);
-            for (int i = 0; i < indexedPoints.Count; i++)
-            {
-                WzVectorProperty point = indexedPoints[i].Point;
+                WzImageProperty resolvedChild = ResolveAnimationDisplayerLinkedRealProperty(indexedRow);
+                if (resolvedChild is not WzVectorProperty point)
+                {
+                    break;
+                }
+
                 points.Add(new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0));
             }
 
-            return points;
+            return points.Count > 0
+                ? points
+                : null;
         }
 
         private static WzImageProperty ResolveAnimationDisplayerLinkedRealProperty(WzImageProperty property)

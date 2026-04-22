@@ -350,6 +350,25 @@ namespace HaCreator.MapSimulator.Managers
             return cardItemId > 0;
         }
 
+        public bool TryResolveMobIdByCardItemId(int cardItemId, out int mobId)
+        {
+            mobId = 0;
+            if (cardItemId <= 0)
+            {
+                return false;
+            }
+
+            if (!EnsureCatalogByItemId().TryGetValue(cardItemId, out MonsterBookCardDefinition definition)
+                || definition == null
+                || definition.MobId <= 0)
+            {
+                return false;
+            }
+
+            mobId = definition.MobId;
+            return true;
+        }
+
         public bool TryResolveRewardItemIds(int mobId, out IReadOnlyList<int> rewardItemIds)
         {
             rewardItemIds = Array.Empty<int>();
@@ -958,7 +977,9 @@ namespace HaCreator.MapSimulator.Managers
                 return new MonsterBookStringEntry
                 {
                     EpisodeText = (entryProperty["episode"] as WzStringProperty)?.Value ?? string.Empty,
-                    RewardItemIds = ReadOrderedInts(entryProperty["reward"] as WzSubProperty),
+                    // Preserve zero-valued reward slots so the runtime reward picker can model
+                    // authored "no reward item" outcomes from String/MonsterBook.img.
+                    RewardItemIds = ReadOrderedInts(entryProperty["reward"] as WzSubProperty, includeZeroEntries: true),
                     MapIds = ReadOrderedInts(entryProperty["map"] as WzSubProperty)
                 };
             }
@@ -968,7 +989,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static IReadOnlyList<int> ReadOrderedInts(WzSubProperty property)
+        private static IReadOnlyList<int> ReadOrderedInts(WzSubProperty property, bool includeZeroEntries = false)
         {
             if (property == null)
             {
@@ -978,7 +999,7 @@ namespace HaCreator.MapSimulator.Managers
             return property.WzProperties
                 .OrderBy(entry => ParseInt(entry.Name))
                 .Select(ReadInt)
-                .Where(value => value > 0)
+                .Where(value => includeZeroEntries ? value >= 0 : value > 0)
                 .ToArray();
         }
 
@@ -996,9 +1017,11 @@ namespace HaCreator.MapSimulator.Managers
 
         private static IReadOnlyList<string> BuildRewardLines(bool isBoss, int mobId, MonsterBookStringEntry stringEntry)
         {
-            if (stringEntry?.RewardItemIds?.Count > 0)
+            IReadOnlyList<int> rewardItemIds = stringEntry?.RewardItemIds;
+            if (rewardItemIds?.Count > 0)
             {
-                return stringEntry.RewardItemIds
+                return rewardItemIds
+                    .Where(itemId => itemId > 0)
                     .Take(4)
                     .Select(ResolveRewardLine)
                     .Append($"Card target mob: {mobId}")

@@ -1031,7 +1031,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _pendingQuestDeliveryResults.RemoveAll(result => result.QuestId == normalizedQuestId);
+            _pendingQuestDeliveryResults.RemoveAll(result =>
+                result.QuestId == normalizedQuestId &&
+                result.CompletionPhase == completionPhase);
             _pendingQuestDeliveryResults.Add(new PendingQuestDeliveryResultOwnership(
                 normalizedQuestId,
                 completionPhase,
@@ -1180,7 +1182,7 @@ namespace HaCreator.MapSimulator
             int normalizedQuestId = Math.Max(0, questId);
             if (normalizedQuestId > 0)
             {
-                pending.RemoveAll(result => result.QuestId == normalizedQuestId);
+                pending.RemoveAll(result => result.QuestId == normalizedQuestId && !result.CompletionPhase);
                 pending.Add(new PendingQuestDeliveryResultOwnership(
                     normalizedQuestId,
                     false,
@@ -1199,6 +1201,68 @@ namespace HaCreator.MapSimulator
             }
 
             return result;
+        }
+
+        internal static IReadOnlyList<int> RegisterPendingQuestDeliveryQuestResultIdsWithPhaseForTesting(
+            IReadOnlyList<int> existingQuestIds,
+            IReadOnlyList<bool> existingCompletionPhases,
+            int questId,
+            bool completionPhase,
+            out IReadOnlyList<bool> resultingCompletionPhases,
+            int maxCount = MaxPendingQuestDeliveryResultOwnershipCount)
+        {
+            var pending = new List<PendingQuestDeliveryResultOwnership>();
+            if (existingQuestIds != null)
+            {
+                for (int i = 0; i < existingQuestIds.Count; i++)
+                {
+                    int existingQuestId = Math.Max(0, existingQuestIds[i]);
+                    if (existingQuestId <= 0)
+                    {
+                        continue;
+                    }
+
+                    bool existingCompletionPhase = existingCompletionPhases != null
+                                                   && i < existingCompletionPhases.Count
+                                                   && existingCompletionPhases[i];
+                    pending.Add(new PendingQuestDeliveryResultOwnership(
+                        existingQuestId,
+                        existingCompletionPhase,
+                        0,
+                        0,
+                        int.MinValue,
+                        string.Empty,
+                        false));
+                }
+            }
+
+            int normalizedQuestId = Math.Max(0, questId);
+            if (normalizedQuestId > 0)
+            {
+                pending.RemoveAll(result =>
+                    result.QuestId == normalizedQuestId &&
+                    result.CompletionPhase == completionPhase);
+                pending.Add(new PendingQuestDeliveryResultOwnership(
+                    normalizedQuestId,
+                    completionPhase,
+                    0,
+                    0,
+                    int.MinValue,
+                    string.Empty,
+                    false));
+                TrimPendingQuestDeliveryResultOwnershipQueue(pending, Math.Max(1, maxCount));
+            }
+
+            var questIds = new int[pending.Count];
+            var phases = new bool[pending.Count];
+            for (int i = 0; i < pending.Count; i++)
+            {
+                questIds[i] = pending[i].QuestId;
+                phases[i] = pending[i].CompletionPhase;
+            }
+
+            resultingCompletionPhases = phases;
+            return questIds;
         }
 
         internal static int FindPendingQuestDeliveryQuestResultIndexForTesting(

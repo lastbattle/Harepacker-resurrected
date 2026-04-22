@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private const int RowCashIconRightX = 42;
         private const int RowPrimaryTextX = 53;
         private const int RowPrimaryTextY = 3;
+        private const int RowPrimaryTextClipWidth = 160;
         private const int RowSecondaryTextX = 53;
         private const int RowSecondaryTextY = 20;
         private const int ScrollBarX = 190;
@@ -337,7 +338,7 @@ namespace HaCreator.MapSimulator.UI
                 StoreBankOwnerRowSnapshot row = rows[rowIndex];
                 DrawItemIcon(sprite, row, drawX, drawY);
 
-                string primary = TrimToWidth(ClampClientPrimaryText(row.PrimaryText), RowWidth - RowPrimaryTextX - 8f, 0.62f);
+                string primary = TrimToWidth(ClampClientPrimaryText(row.PrimaryText), RowPrimaryTextClipWidth, 0.62f);
                 InventoryRenderUtil.DrawOutlinedText(
                     sprite,
                     _font,

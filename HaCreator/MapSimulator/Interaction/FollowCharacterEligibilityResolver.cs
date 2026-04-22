@@ -173,22 +173,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (tamingMobPart.Animations.TryGetValue(actionName, out CharacterAnimation animation)
-                && animation?.Frames?.Count > 0)
+            if (tamingMobPart.AvailableAnimations != null
+                && tamingMobPart.AvailableAnimations.Count > 0)
             {
-                return true;
+                return tamingMobPart.AvailableAnimations.Contains(actionName);
             }
 
-            // Exact-root ownership checks must not resolve through action aliases
-            // (`sit -> stand1/stand2`) because client-owned vehicle ownership for this
-            // seam requires an authored root on the mounted asset.
-            if (tamingMobPart.AvailableAnimations == null
-                || tamingMobPart.AvailableAnimations.Count == 0)
+            if (!tamingMobPart.Animations.TryGetValue(actionName, out CharacterAnimation animation)
+                || animation?.Frames?.Count <= 0)
             {
                 return false;
             }
 
-            return tamingMobPart.AvailableAnimations.Contains(actionName);
+            // Exact-root ownership checks must not treat cached alias frames as authored roots.
+            // CharacterPart.TryGetAnimation can cache alias results under the requested key
+            // (`sit` -> `stand1`) when WZ metadata is unavailable, so only trust the cache when
+            // the resolved frame owner name is absent or still matches the requested root.
+            return string.IsNullOrWhiteSpace(animation.ActionName)
+                   || string.Equals(animation.ActionName, actionName, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

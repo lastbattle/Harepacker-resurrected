@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using HaCreator.MapSimulator.AI;
+using HaCreator.MapSimulator.Entities;
 using MapleLib.PacketLib;
 using Microsoft.Xna.Framework;
 
@@ -28,6 +29,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int AttackId { get; init; }
             public List<Point> MultiTargetForBall { get; init; }
             public List<int> RandTimeForAreaAttack { get; init; }
+            public IReadOnlyList<MobPacketMovePathElement> MovePathElements { get; init; }
         }
 
         internal readonly record struct DecodedLockedTargetInfo(
@@ -125,6 +127,9 @@ namespace HaCreator.MapSimulator.Interaction
                     AttackId = TryResolveAttackId(moveAction, out int attackId) ? attackId : 0,
                     MultiTargetForBall = multiTargetForBall,
                     RandTimeForAreaAttack = randTimeForAreaAttack,
+                    MovePathElements = TryDecodeMovePathElements(reader, moveActionByte, out var movePathElements)
+                        ? movePathElements
+                        : Array.Empty<MobPacketMovePathElement>()
                 };
                 return true;
             }
@@ -230,6 +235,257 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return values;
+        }
+
+        private static bool TryDecodeMovePathElements(
+            PacketReader reader,
+            byte fallbackMoveActionByte,
+            out IReadOnlyList<MobPacketMovePathElement> movePathElements)
+        {
+            movePathElements = Array.Empty<MobPacketMovePathElement>();
+            if (reader == null || reader.Remaining <= 0)
+            {
+                return true;
+            }
+
+            int tailLength = reader.Remaining;
+            if (tailLength <= 0)
+            {
+                return true;
+            }
+
+            byte[] tail = reader.ReadBytes(tailLength);
+            if (TryDecodeMovePathElementsCore(
+                    tail,
+                    decodeClientOptionalRandomCounts: false,
+                    fallbackMoveActionByte,
+                    out List<MobPacketMovePathElement> withoutRandomCounts,
+                    out int consumedWithoutRandomCounts) &&
+                consumedWithoutRandomCounts == tail.Length)
+            {
+                movePathElements = withoutRandomCounts;
+                return true;
+            }
+
+            if (TryDecodeMovePathElementsCore(
+                    tail,
+                    decodeClientOptionalRandomCounts: true,
+                    fallbackMoveActionByte,
+                    out List<MobPacketMovePathElement> withRandomCounts,
+                    out int consumedWithRandomCounts) &&
+                consumedWithRandomCounts == tail.Length)
+            {
+                movePathElements = withRandomCounts;
+                return true;
+            }
+
+            // Move-path decode is best-effort for packet-owned replay. Keep attack ownership
+            // branches alive even when an uncommon tail layout is not yet modeled.
+            movePathElements = Array.Empty<MobPacketMovePathElement>();
+            return false;
+        }
+
+        private static bool TryDecodeMovePathElementsCore(
+            byte[] tail,
+            bool decodeClientOptionalRandomCounts,
+            byte fallbackMoveActionByte,
+            out List<MobPacketMovePathElement> movePathElements,
+            out int bytesConsumed)
+        {
+            movePathElements = new List<MobPacketMovePathElement>();
+            bytesConsumed = 0;
+            if (tail == null || tail.Length == 0)
+            {
+                return true;
+            }
+
+            PacketReader reader = new(tail);
+            try
+            {
+                float currentX = reader.ReadShort();
+                float currentY = reader.ReadShort();
+                float currentVelocityX = reader.ReadShort();
+                float currentVelocityY = reader.ReadShort();
+                int movePathElementCount = reader.ReadByte();
+                if (movePathElementCount <= 0)
+                {
+                    bytesConsumed = reader.Position;
+                    return true;
+                }
+
+                int cursorTime = 0;
+                MobMoveType currentMoveType = MobMoveType.Move;
+                MobJumpState currentJumpState = MobJumpState.None;
+
+                for (int i = 0; i < movePathElementCount; i++)
+                {
+                    byte attr = reader.ReadByte();
+                    bool readsCommonMoveSuffix = true;
+                    float elementX = currentX;
+                    float elementY = currentY;
+                    float elementVelocityX = currentVelocityX;
+                    float elementVelocityY = currentVelocityY;
+
+                    switch (attr)
+                    {
+                        case 0:
+                        case 5:
+                        case 12:
+                        case 14:
+                        case 35:
+                        case 36:
+                            elementX = reader.ReadShort();
+                            elementY = reader.ReadShort();
+                            elementVelocityX = reader.ReadShort();
+                            elementVelocityY = reader.ReadShort();
+                            _ = reader.ReadShort(); // foothold id
+                            if (attr == 12)
+                            {
+                                _ = reader.ReadShort(); // fall start foothold id
+                            }
+
+                            _ = reader.ReadShort(); // x offset
+                            _ = reader.ReadShort(); // y offset
+                            break;
+                        case 1:
+                        case 2:
+                        case 13:
+                        case 16:
+                        case 18:
+                        case 31:
+                        case 32:
+                        case 33:
+                        case 34:
+                            elementVelocityX = reader.ReadShort();
+                            elementVelocityY = reader.ReadShort();
+                            break;
+                        case 3:
+                        case 4:
+                        case 6:
+                        case 7:
+                        case 8:
+                        case 10:
+                            elementX = reader.ReadShort();
+                            elementY = reader.ReadShort();
+                            _ = reader.ReadShort(); // foothold id
+                            elementVelocityX = 0f;
+                            elementVelocityY = 0f;
+                            break;
+                        case 9:
+                            _ = reader.ReadByte();
+                            elementVelocityX = 0f;
+                            elementVelocityY = 0f;
+                            readsCommonMoveSuffix = false;
+                            break;
+                        case 11:
+                            elementVelocityX = reader.ReadShort();
+                            elementVelocityY = reader.ReadShort();
+                            _ = reader.ReadShort();
+                            break;
+                        case 17:
+                            elementX = reader.ReadShort();
+                            elementY = reader.ReadShort();
+                            elementVelocityX = reader.ReadShort();
+                            elementVelocityY = reader.ReadShort();
+                            break;
+                        case >= 20 and <= 30:
+                            break;
+                        default:
+                            elementX = 0f;
+                            elementY = 0f;
+                            elementVelocityX = 0f;
+                            elementVelocityY = 0f;
+                            break;
+                    }
+
+                    byte moveActionByte = fallbackMoveActionByte;
+                    int elapsedMs = 1;
+                    if (readsCommonMoveSuffix)
+                    {
+                        moveActionByte = reader.ReadByte();
+                        elapsedMs = Math.Max(1, (int)reader.ReadShort());
+                        if (decodeClientOptionalRandomCounts)
+                        {
+                            _ = reader.ReadShort();
+                            _ = reader.ReadShort();
+                        }
+                    }
+
+                    int moveAction = moveActionByte >> 1;
+                    bool facingRight = (moveActionByte & 1) != 0;
+                    ResolveMoveTypeAndJumpState(moveAction, currentMoveType, currentJumpState, out currentMoveType, out currentJumpState);
+                    MobAction action = ResolveMobAction(moveAction);
+
+                    cursorTime += elapsedMs;
+                    movePathElements.Add(new MobPacketMovePathElement(
+                        elementX,
+                        elementY,
+                        elementVelocityX,
+                        elementVelocityY,
+                        currentMoveType,
+                        currentJumpState,
+                        action,
+                        facingRight,
+                        cursorTime,
+                        moveAction));
+
+                    currentX = elementX;
+                    currentY = elementY;
+                    currentVelocityX = elementVelocityX;
+                    currentVelocityY = elementVelocityY;
+                }
+
+                bytesConsumed = reader.Position;
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is ArgumentOutOfRangeException || ex is OverflowException)
+            {
+                bytesConsumed = reader.Position;
+                movePathElements.Clear();
+                return false;
+            }
+        }
+
+        private static void ResolveMoveTypeAndJumpState(
+            int moveAction,
+            MobMoveType currentMoveType,
+            MobJumpState currentJumpState,
+            out MobMoveType moveType,
+            out MobJumpState jumpState)
+        {
+            moveType = currentMoveType;
+            jumpState = currentJumpState;
+            switch (moveAction)
+            {
+                case 0:
+                    jumpState = MobJumpState.None;
+                    break;
+                case 1:
+                    moveType = MobMoveType.Move;
+                    jumpState = MobJumpState.None;
+                    break;
+                case 2:
+                case 3:
+                    moveType = MobMoveType.Jump;
+                    if (jumpState == MobJumpState.None)
+                    {
+                        jumpState = MobJumpState.Falling;
+                    }
+
+                    break;
+            }
+        }
+
+        private static MobAction ResolveMobAction(int moveAction)
+        {
+            return moveAction switch
+            {
+                >= 13 and <= 21 => MobAction.Attack1,
+                0 => MobAction.Stand,
+                1 => MobAction.Move,
+                2 or 3 => MobAction.Jump,
+                _ => MobAction.Move
+            };
         }
     }
 }

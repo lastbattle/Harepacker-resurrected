@@ -1893,6 +1893,64 @@ namespace HaCreator.MapSimulator.UI
             || _pendingPacketOwnedDisassemblySlotIndex >= 0
             || _pendingPacketOwnedDisassemblyItemId > 0;
 
+        internal static bool ShouldKeepPendingPacketOwnedDisassemblyRequest(
+            int pendingSourceSlotIndex,
+            int pendingSourceItemId,
+            IReadOnlyList<(int SlotIndex, int ItemId)> visibleDisassemblyTargets)
+        {
+            if (pendingSourceSlotIndex < 0)
+            {
+                return true;
+            }
+
+            if (visibleDisassemblyTargets == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < visibleDisassemblyTargets.Count; i++)
+            {
+                (int slotIndex, int itemId) = visibleDisassemblyTargets[i];
+                if (slotIndex != pendingSourceSlotIndex)
+                {
+                    continue;
+                }
+
+                if (pendingSourceItemId <= 0 || itemId == pendingSourceItemId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool PrunePendingPacketOwnedDisassemblyRequest(IReadOnlyList<ItemMakerRecipe> disassemblyRecipes)
+        {
+            int pendingSlotIndex = _pendingPacketOwnedRequest?.IsDisassembly == true
+                ? _pendingPacketOwnedRequest.SourceSlotIndex
+                : _pendingPacketOwnedDisassemblySlotIndex;
+            if (pendingSlotIndex < 0)
+            {
+                return false;
+            }
+
+            int pendingItemId = _pendingPacketOwnedRequest?.IsDisassembly == true
+                ? _pendingPacketOwnedRequest.SourceItemId
+                : _pendingPacketOwnedDisassemblyItemId;
+            List<(int SlotIndex, int ItemId)> visibleTargets = disassemblyRecipes?
+                .Where(static recipe => recipe != null && recipe.Mode == ItemMakerRecipeMode.Disassemble)
+                .Select(static recipe => (recipe.SourceSlotIndex, recipe.OutputItemId))
+                .ToList();
+            if (ShouldKeepPendingPacketOwnedDisassemblyRequest(pendingSlotIndex, pendingItemId, visibleTargets))
+            {
+                return false;
+            }
+
+            ClearPendingPacketOwnedRequest();
+            return true;
+        }
+
         private void StagePendingPacketOwnedRequest(ItemMakerRecipe recipe)
         {
             ClearPendingPacketOwnedRequest();
@@ -2868,6 +2926,7 @@ namespace HaCreator.MapSimulator.UI
 
             List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(allowedRecipes);
             List<ItemMakerRecipe> disassemblyRecipes = BuildDisassemblyRecipes();
+            PrunePendingPacketOwnedDisassemblyRequest(disassemblyRecipes);
             SyncDiscoveredRecipes(launchFilteredRecipes.Where(static recipe => !recipe.IsHidden));
             SyncUnlockedHiddenRecipes(_packetOwnedHasAuthoritativeHiddenRecipeList
                 ? launchFilteredRecipes.Where(static recipe => recipe.IsHidden).Where(IsVisibleInPacketOwnedHiddenSelector)

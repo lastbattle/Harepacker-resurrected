@@ -4526,10 +4526,10 @@ namespace HaCreator.MapSimulator.Pools
 
         private static int ResolveRemoteGenericGrenadeImpactMagnitudeForParity(int keyDownTimeMs)
         {
-            // Client CUser::ThrowGrenade keeps integer quotient semantics:
-            // (tKeyDown / 1000) * 600 for non-4341003 throws.
-            int keyDownSeconds = keyDownTimeMs / 1000;
-            return keyDownSeconds * GenericGrenadeImpactScale;
+            // Client CUser::ThrowGrenade computes non-4341003 impact as
+            // (double)tKeyDown / 1000.0 * 600.0 and then truncates to int.
+            double scaledImpact = keyDownTimeMs / 1000d * GenericGrenadeImpactScale;
+            return (int)scaledImpact;
         }
 
         private static int ResolveRemoteGrenadeBallAngleDegreesForParity(RemoteGrenadePresentation presentation)
@@ -8541,10 +8541,7 @@ namespace HaCreator.MapSimulator.Pools
                 .Select(sourceRecord =>
                 {
                     PortableChairPairParticipant participant = participantMap[sourceRecord.CharacterId];
-                    int? existingPairCharacterId = ResolvePortableChairExistingPairCharacterIdForParity(
-                        sourceRecord,
-                        sourceRecordMap,
-                        participantMap);
+                    int? existingPairCharacterId = ResolvePortableChairExistingPairCharacterIdForParity(sourceRecord);
                     return new PortableChairPairParticipant(
                         participant.CharacterId,
                         participant.Chair,
@@ -8702,9 +8699,7 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         private static int? ResolvePortableChairExistingPairCharacterIdForParity(
-            PortableChairPairRecord sourceRecord,
-            IReadOnlyDictionary<int, PortableChairPairRecord> sourceRecordMap,
-            IReadOnlyDictionary<int, PortableChairPairParticipant> participantMap)
+            PortableChairPairRecord sourceRecord)
         {
             if (!sourceRecord.PairCharacterId.HasValue
                 || sourceRecord.PairCharacterId.Value <= 0
@@ -8713,21 +8708,9 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            int partnerCharacterId = sourceRecord.PairCharacterId.Value;
-            if (!sourceRecordMap.TryGetValue(partnerCharacterId, out PortableChairPairRecord partnerRecord)
-                || !participantMap.TryGetValue(partnerCharacterId, out PortableChairPairParticipant partnerParticipant))
-            {
-                return null;
-            }
-
-            if (partnerParticipant.Chair?.IsCoupleChair != true
-                || partnerParticipant.Chair.ItemId != sourceRecord.ItemId
-                || partnerRecord.ItemId != sourceRecord.ItemId)
-            {
-                return null;
-            }
-
-            return partnerCharacterId;
+            // CUserPool::Update checks candidate dwPairCharacterID directly:
+            // only 0 or the current owner can be admitted as a new pair.
+            return sourceRecord.PairCharacterId.Value;
         }
 
         private static bool TryFindPortableChairPairCandidateIndex(
@@ -9433,24 +9416,21 @@ namespace HaCreator.MapSimulator.Pools
                 temporaryStatAnimationStartTime,
                 reseedTimelineFromPacket);
             PruneExpiredRemoteTemporaryStatAvatarEffectTailStates(actor.TemporaryStatAuraEffectTails, currentTime);
+            int auraTailShiftCadenceUpdateCount = ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountForAuraTailTransition(
+                previousAuraState,
+                actor.TemporaryStatAuraEffect,
+                actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount);
+            actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount = auraTailShiftCadenceUpdateCount;
+
             if (TryCreateRemoteTemporaryStatAvatarEffectTailState(
                     previousAuraState,
                     actor.TemporaryStatAuraEffect,
                     currentTime,
                     actor.TemporaryStatAffectedLayerShiftCadenceFrameDurationMs,
-                    actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount,
+                    auraTailShiftCadenceUpdateCount,
                     out RemoteTemporaryStatAvatarEffectState auraTailState))
             {
                 AppendRemoteTemporaryStatAuraTailState(actor.TemporaryStatAuraEffectTails, auraTailState);
-            }
-
-            if (ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacement(
-                    previousAuraState,
-                    actor.TemporaryStatAuraEffect))
-            {
-                actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount =
-                    ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountAfterForcedShift(
-                        actor.TemporaryStatAffectedLayerShiftCadenceUpdateCount);
             }
 
             ResolveRemoteMoreWildDamageUpSkill(knownState, out int? moreWildDamageUpSkillId, out SkillData moreWildDamageUpSkill);
@@ -9580,6 +9560,16 @@ namespace HaCreator.MapSimulator.Pools
             int currentUpdateCount)
         {
             return 1;
+        }
+
+        private static int ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountForAuraTailTransition(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState,
+            int currentUpdateCount)
+        {
+            return ShouldResetRemoteTemporaryStatAffectedLayerShiftCadenceForAuraReplacement(previousState, currentState)
+                ? ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountAfterForcedShift(currentUpdateCount)
+                : currentUpdateCount;
         }
 
         internal static int ResolveRemoteTemporaryStatAnimationStartTimeForTesting(int currentTime, ushort delayMs)
@@ -11293,6 +11283,17 @@ namespace HaCreator.MapSimulator.Pools
             int currentUpdateCount)
         {
             return ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountAfterForcedShift(currentUpdateCount);
+        }
+
+        internal static int ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountForAuraTailTransitionForTesting(
+            RemoteTemporaryStatAvatarEffectState previousState,
+            RemoteTemporaryStatAvatarEffectState currentState,
+            int currentUpdateCount)
+        {
+            return ResolveRemoteTemporaryStatAffectedLayerShiftCadenceUpdateCountForAuraTailTransition(
+                previousState,
+                currentState,
+                currentUpdateCount);
         }
 
         internal static int ResolveRemoteEnergyChargeMinimumFullChargeValueForTesting(int skillId, SkillData skill)
@@ -13532,6 +13533,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int payloadMaskBaseOffset = sizeof(int) * 4;
+            int metadataMissingMaskBaseNearestScanBytes = hasValidMetadataOffset
+                ? 0
+                : AfterImageChargeSkillResolver.ChargeMetadataMissingMaskBaseNearestScanBytes;
             if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -13562,6 +13566,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out int metadataMissingNearestMaskBaseChargeElement)
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,
@@ -13576,6 +13581,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out int nearestMaskBaseChargeSkillId))
             {
                 return nearestMaskBaseChargeSkillId;
@@ -13586,6 +13592,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out int nearestMaskBaseChargeElement)
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,
@@ -13680,6 +13687,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int payloadMaskBaseOffset = sizeof(int) * 4;
+            int metadataMissingMaskBaseNearestScanBytes = hasValidMetadataOffset
+                ? 0
+                : AfterImageChargeSkillResolver.ChargeMetadataMissingMaskBaseNearestScanBytes;
             if (AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -13706,6 +13716,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out chargeElement))
             {
                 return true;
@@ -13716,6 +13727,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out int nearestMaskBaseChargeSkillId)
                 && AfterImageChargeSkillResolver.TryGetChargeElement(nearestMaskBaseChargeSkillId, out chargeElement))
             {
@@ -13727,6 +13739,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out chargeElement))
             {
                 return true;

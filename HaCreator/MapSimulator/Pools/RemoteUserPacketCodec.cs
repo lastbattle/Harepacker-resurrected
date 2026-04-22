@@ -4304,6 +4304,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int payloadMaskBaseOffset = sizeof(int) * 4;
+            int metadataMissingMaskBaseNearestScanBytes = hasValidMetadataOffset
+                ? 0
+                : AfterImageChargeSkillResolver.ChargeMetadataMissingMaskBaseNearestScanBytes;
             if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                     rawPayload,
                     payloadMaskBaseOffset,
@@ -4334,6 +4337,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out int metadataMissingNearestMaskBaseChargeElement)
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,
@@ -4348,6 +4352,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out chargeSkillId))
             {
                 return true;
@@ -4358,6 +4363,7 @@ namespace HaCreator.MapSimulator.Pools
                     payloadMaskBaseOffset,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    metadataMissingMaskBaseNearestScanBytes,
                     out int nearestMaskBaseChargeElement)
                 && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
                     effectivePreferredSkillId,

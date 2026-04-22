@@ -6770,7 +6770,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!IsPacketMobAttackSourcePropertySegment(firstSegment)
                 || startIndex >= segments.Count - 1
-                || !int.TryParse(
+                || !TryParsePacketMobAttackGeneralEffectAliasFlexibleFrameNumberToken(
                     NormalizePacketMobAttackGeneralEffectSiblingFrameToken(segments[startIndex + 1]),
                     out frameIndex))
             {
@@ -6876,11 +6876,10 @@ namespace HaCreator.MapSimulator.Pools
                    && normalizedAliasToken[^1] == closeDelimiter
                    && IsPacketMobAttackSourcePropertySegment(
                        normalizedAliasToken.Substring(0, openDelimiterIndex).Trim())
-                   && int.TryParse(
-                       NormalizePacketMobAttackGeneralEffectNumericToken(
-                           normalizedAliasToken.Substring(
-                               openDelimiterIndex + 1,
-                               normalizedAliasToken.Length - openDelimiterIndex - 2)),
+                   && TryParsePacketMobAttackGeneralEffectAliasFlexibleFrameNumberToken(
+                       normalizedAliasToken.Substring(
+                           openDelimiterIndex + 1,
+                           normalizedAliasToken.Length - openDelimiterIndex - 2),
                        out frameIndex);
         }
 
@@ -7683,8 +7682,8 @@ namespace HaCreator.MapSimulator.Pools
         private static bool IsPacketMobAttackGeneralEffectAliasFrameToken(string token)
         {
             return !string.IsNullOrWhiteSpace(token)
-                   && int.TryParse(
-                       NormalizePacketMobAttackGeneralEffectNumericToken(token),
+                   && TryParsePacketMobAttackGeneralEffectAliasFlexibleFrameNumberToken(
+                       token,
                        out _);
         }
 
@@ -7905,8 +7904,8 @@ namespace HaCreator.MapSimulator.Pools
             string assignmentSuffix = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(
                 token.Substring(assignmentIndex + assignmentDelimiterLength));
             assignmentSuffix = string.Concat(assignmentSuffix.Where(static ch => !char.IsWhiteSpace(ch)));
-            if (!int.TryParse(
-                    NormalizePacketMobAttackGeneralEffectNumericToken(assignmentSuffix),
+            if (!TryParsePacketMobAttackGeneralEffectAliasFlexibleFrameNumberToken(
+                    assignmentSuffix,
                     out int frameIndex))
             {
                 return false;
@@ -8154,7 +8153,6 @@ namespace HaCreator.MapSimulator.Pools
             string assignmentPrefix = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(
                 normalizedToken.Substring(0, assignmentIndex));
             if (string.IsNullOrWhiteSpace(assignmentPrefix)
-                || IsPacketMobAttackSourceAliasSegment(assignmentPrefix)
                 || IsPacketMobAttackCategorySegment(assignmentPrefix))
             {
                 return false;
@@ -8162,7 +8160,43 @@ namespace HaCreator.MapSimulator.Pools
 
             string assignmentSuffix = NormalizePacketMobAttackGeneralEffectPathTokenShell(
                 normalizedToken.Substring(assignmentIndex + assignmentDelimiterLength));
+            if (IsPacketMobAttackSourceAliasSegment(assignmentPrefix))
+            {
+                return IsPacketMobAttackGeneralEffectNestedNonSourceAssignmentNoiseToken(assignmentSuffix);
+            }
+
             return !string.IsNullOrWhiteSpace(assignmentSuffix);
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectNestedNonSourceAssignmentNoiseToken(
+            string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            int nestedAssignmentIndex = FindPacketMobAttackGeneralEffectPathAssignmentIndex(
+                token,
+                out int nestedAssignmentDelimiterLength);
+            if (nestedAssignmentIndex <= 0
+                || nestedAssignmentIndex + nestedAssignmentDelimiterLength >= token.Length)
+            {
+                return false;
+            }
+
+            string nestedPrefix = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(
+                token.Substring(0, nestedAssignmentIndex));
+            if (string.IsNullOrWhiteSpace(nestedPrefix)
+                || IsPacketMobAttackSourceAliasSegment(nestedPrefix)
+                || IsPacketMobAttackCategorySegment(nestedPrefix))
+            {
+                return false;
+            }
+
+            string nestedSuffix = NormalizePacketMobAttackGeneralEffectPathTokenShell(
+                token.Substring(nestedAssignmentIndex + nestedAssignmentDelimiterLength));
+            return !string.IsNullOrWhiteSpace(nestedSuffix);
         }
 
         private static int FindPacketMobAttackGeneralEffectPathAssignmentIndex(
@@ -8269,7 +8303,7 @@ namespace HaCreator.MapSimulator.Pools
                 && openParenthesisIndex < normalized.Length - 2
                 && normalized[^1] == ')'
                 && IsPacketMobAttackSourcePropertySegment(normalized.Substring(0, openParenthesisIndex))
-                && int.TryParse(
+                && TryParsePacketMobAttackGeneralEffectAliasFlexibleFrameNumberToken(
                     normalized.Substring(
                         openParenthesisIndex + 1,
                         normalized.Length - openParenthesisIndex - 2),
@@ -8314,8 +8348,8 @@ namespace HaCreator.MapSimulator.Pools
             return delimiterIndex > 0
                    && delimiterIndex < aliasToken.Length - 1
                    && IsPacketMobAttackSourcePropertySegment(aliasToken.Substring(0, delimiterIndex))
-                   && int.TryParse(
-                       NormalizePacketMobAttackGeneralEffectNumericToken(aliasToken.Substring(delimiterIndex + 1)),
+                   && TryParsePacketMobAttackGeneralEffectAliasFlexibleFrameNumberToken(
+                       aliasToken.Substring(delimiterIndex + 1),
                        out frameIndex);
         }
 
@@ -8329,6 +8363,39 @@ namespace HaCreator.MapSimulator.Pools
             return token
                 .Trim()
                 .Trim('"', '\'');
+        }
+
+        private static bool TryParsePacketMobAttackGeneralEffectAliasFlexibleFrameNumberToken(
+            string token,
+            out int frameIndex)
+        {
+            frameIndex = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalizedToken = NormalizePacketMobAttackGeneralEffectNumericToken(token);
+            if (int.TryParse(normalizedToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out frameIndex))
+            {
+                return true;
+            }
+
+            if (normalizedToken.Length < 2
+                || (normalizedToken[0] != '+' && normalizedToken[0] != '-'))
+            {
+                return false;
+            }
+
+            char sign = normalizedToken[0];
+            string magnitudeToken = NormalizePacketMobAttackGeneralEffectNumericToken(normalizedToken.Substring(1));
+            if (!int.TryParse(magnitudeToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out int magnitude))
+            {
+                return false;
+            }
+
+            frameIndex = sign == '-' ? -magnitude : magnitude;
+            return true;
         }
 
         private static bool IsPacketMobAttackSourcePropertySegment(string segment)

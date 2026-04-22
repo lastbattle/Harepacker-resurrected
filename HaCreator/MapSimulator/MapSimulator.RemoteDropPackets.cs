@@ -1156,7 +1156,8 @@ namespace HaCreator.MapSimulator
             int[] targetRoots = ResolveObservedDropPartyTargetRoots(
                 actorParents,
                 actorId,
-                normalizedActorId);
+                normalizedActorId,
+                partyActorOwnerResolver);
             if (targetRoots.Length == 0)
             {
                 return false;
@@ -1202,7 +1203,8 @@ namespace HaCreator.MapSimulator
         private static int[] ResolveObservedDropPartyTargetRoots(
             System.Collections.Generic.IDictionary<int, int> actorParents,
             int actorId,
-            int normalizedActorId)
+            int normalizedActorId,
+            Func<int, int> partyActorOwnerResolver = null)
         {
             if (actorParents == null)
             {
@@ -1220,6 +1222,23 @@ namespace HaCreator.MapSimulator
                 && actorParents.ContainsKey(normalizedActorId))
             {
                 targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, normalizedActorId));
+            }
+
+            if (partyActorOwnerResolver != null)
+            {
+                int[] linkedActorIds = actorParents.Keys.ToArray();
+                for (int i = 0; i < linkedActorIds.Length; i++)
+                {
+                    int linkedActorId = linkedActorIds[i];
+                    int normalizedLinkedActorId = NormalizeDropPartyActorId(linkedActorId, partyActorOwnerResolver);
+                    if (normalizedLinkedActorId == 0
+                        || (normalizedLinkedActorId != actorId && normalizedLinkedActorId != normalizedActorId))
+                    {
+                        continue;
+                    }
+
+                    targetRoots.Add(FindObservedDropPartyActorRoot(actorParents, linkedActorId));
+                }
             }
 
             return targetRoots.Count == 0

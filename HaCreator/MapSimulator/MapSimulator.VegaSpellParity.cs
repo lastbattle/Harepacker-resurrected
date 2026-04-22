@@ -872,9 +872,15 @@ namespace HaCreator.MapSimulator
 
             CharacterPart equippedPart = null;
             _playerManager?.Player?.Build?.Equipment?.TryGetValue(request.Slot, out equippedPart);
+            int observedInventoryEquipItemToken = ResolveVegaEquippedInventoryItemToken(
+                inventoryWindow,
+                request.Slot,
+                request.EquipItemId,
+                encodedEquipPosition);
             int equipItemToken = BuildVegaEquippedItemToken(
                 request.EquipItemToken,
                 ResolveObservedVegaEquipItemToken(request.Slot),
+                observedInventoryEquipItemToken,
                 request.Slot,
                 request.EquipItemId,
                 encodedEquipPosition,
@@ -1171,6 +1177,7 @@ namespace HaCreator.MapSimulator
         private static int BuildVegaEquippedItemToken(
             int preferredItemToken,
             int observedEquipItemToken,
+            int observedInventoryEquipItemToken,
             EquipSlot slot,
             int itemId,
             int encodedEquipPosition,
@@ -1186,12 +1193,92 @@ namespace HaCreator.MapSimulator
                 return observedEquipItemToken;
             }
 
+            if (observedInventoryEquipItemToken != 0)
+            {
+                return observedInventoryEquipItemToken;
+            }
+
             if (TryResolveClientAuthoredVegaEquippedItemToken(equippedPart, out int itemToken))
             {
                 return itemToken;
             }
 
             return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition, equippedPart);
+        }
+
+        private static int ResolveVegaEquippedInventoryItemToken(
+            UI.IInventoryRuntime inventoryWindow,
+            EquipSlot equipSlot,
+            int equipItemId,
+            int encodedEquipPosition)
+        {
+            if (inventoryWindow == null || equipItemId <= 0)
+            {
+                return 0;
+            }
+
+            IReadOnlyList<InventorySlotData> equipSlots = inventoryWindow.GetSlots(InventoryType.EQUIP);
+            if (equipSlots == null || equipSlots.Count == 0)
+            {
+                return 0;
+            }
+
+            int fallbackToken = 0;
+            int bestScore = int.MinValue;
+            int bestToken = 0;
+            for (int i = 0; i < equipSlots.Count; i++)
+            {
+                InventorySlotData candidate = equipSlots[i];
+                if (candidate == null
+                    || candidate.IsDisabled
+                    || candidate.ItemId != equipItemId
+                    || Math.Max(0, candidate.Quantity) <= 0
+                    || !TryResolveClientAuthoredVegaInventoryItemToken(candidate, out int token))
+                {
+                    continue;
+                }
+
+                if (fallbackToken == 0)
+                {
+                    fallbackToken = token;
+                }
+
+                int score = 0;
+                if (candidate.IsEquipped)
+                {
+                    score += 10;
+                }
+
+                CharacterPart tooltipPart = candidate.TooltipPart;
+                if (tooltipPart?.Slot == equipSlot)
+                {
+                    score += 8;
+                }
+
+                if (tooltipPart?.ItemId == equipItemId)
+                {
+                    score += 4;
+                }
+
+                if (tooltipPart != null
+                    && RepairDurabilityClientParity.TryEncodeEquippedPosition(
+                        tooltipPart.Slot,
+                        equipItemId,
+                        out int tooltipEncodedPosition)
+                    && tooltipEncodedPosition == encodedEquipPosition)
+                {
+                    score += 6;
+                }
+
+                score -= Math.Min(i, 32);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestToken = token;
+                }
+            }
+
+            return bestToken != 0 ? bestToken : fallbackToken;
         }
 
         private int ResolveObservedVegaEquipItemToken(EquipSlot slot)
@@ -1440,6 +1527,7 @@ namespace HaCreator.MapSimulator
         internal static int BuildVegaEquippedItemTokenForTests(
             int preferredItemToken,
             int observedEquipItemToken,
+            int observedInventoryEquipItemToken,
             EquipSlot slot,
             int itemId,
             int encodedEquipPosition,
@@ -1448,6 +1536,7 @@ namespace HaCreator.MapSimulator
             return BuildVegaEquippedItemToken(
                 preferredItemToken,
                 observedEquipItemToken,
+                observedInventoryEquipItemToken,
                 slot,
                 itemId,
                 encodedEquipPosition,
@@ -1816,16 +1905,16 @@ namespace HaCreator.MapSimulator
                 return fallback;
             }
 
+            string aliasDescriptor = NormalizePacketOwnedClientSoundDescriptor(
+                VegaOwnerStringPoolText.GetResultLoopSoundAliasDescriptor());
+            if (string.Equals(normalized, aliasDescriptor, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "VegaTwinkling", StringComparison.OrdinalIgnoreCase))
+            {
+                return fallback;
+            }
+
             if (!normalized.Contains('/', StringComparison.Ordinal))
             {
-                string aliasDescriptor = NormalizePacketOwnedClientSoundDescriptor(
-                    VegaOwnerStringPoolText.GetResultLoopSoundAliasDescriptor());
-                if (string.Equals(normalized, aliasDescriptor, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalized, "VegaTwinkling", StringComparison.OrdinalIgnoreCase))
-                {
-                    return fallback;
-                }
-
                 return normalized;
             }
 
@@ -1833,6 +1922,13 @@ namespace HaCreator.MapSimulator
                 || string.IsNullOrWhiteSpace(propertyPath)
                 || propertyPath.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
                 || propertyPath.Contains(".img/", StringComparison.OrdinalIgnoreCase))
+            {
+                return fallback;
+            }
+
+            if (string.Equals(propertyPath, "VegaTwinkling", StringComparison.OrdinalIgnoreCase)
+                || (TrySplitPacketOwnedClientSoundDescriptor(aliasDescriptor, out _, out string aliasPropertyPath)
+                    && string.Equals(propertyPath, aliasPropertyPath, StringComparison.OrdinalIgnoreCase)))
             {
                 return fallback;
             }

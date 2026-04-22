@@ -108,6 +108,19 @@ namespace HaCreator.MapSimulator.Managers
 
         internal bool IsOpen => _isOpen;
 
+        internal bool OpenOrRefreshFromPacket(bool firstEntry)
+        {
+            if (_isOpen)
+            {
+                _isFirstEntry = firstEntry;
+                _statusText = "CWvsContext::OnAccountMoreInfo subtype 0 refreshed the existing owner without issuing a duplicate load request.";
+                return false;
+            }
+
+            Open(firstEntry);
+            return true;
+        }
+
         internal void Open(bool firstEntry)
         {
             ResetDraftToClientDefaults();

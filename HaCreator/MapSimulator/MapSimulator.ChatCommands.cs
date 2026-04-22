@@ -10503,7 +10503,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "fieldutility",
                 "Inspect or drive packet-authored field weather, admin-result, quiz, stalk, quickslot-init, and foothold-info handlers",
-                "/fieldutility [status|clear|weather <itemId|clear> [message...]|quiz <question|answer|clear> <category> <problemId>|stalk <add <characterId> <name> <x> <y>|remove <characterId>>|quickslot <default|k1 k2 k3 k4 k5 k6 k7 k8>|footholdrequest|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]",
+                "/fieldutility [status|clear|weather <itemId|clear> [message...]|quiz <question|answer|clear> <category> <problemId>|stalk <add <characterId> <name> <x> <y>|remove <characterId>>|quickslot <default|k1 k2 k3 k4 k5 k6 k7 k8>|footholdrequest|footholdtrace|packet <kind> [payloadhex=..|payloadb64=..]|packetraw <kind> <hex>]",
                 HandlePacketOwnedFieldUtilityCommand);
 
 

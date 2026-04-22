@@ -5,6 +5,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal static class AfterImageChargeSkillResolver
     {
         internal const int ChargeMetadataScopedScanBytes = sizeof(int) * 4;
+        internal const int ChargeMetadataMissingMaskBaseNearestScanBytes = sizeof(int) * 16;
         private const int PageFireChargeSkillId = 1211004;
         private const int PageIceChargeSkillId = 1211006;
         private const int PageLightningChargeSkillId = 1211008;
@@ -458,6 +459,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 startOffset: 0,
                 metadataOffset,
                 preferredSkillId,
+                maxDistanceBytes: 0,
                 out chargeSkillId);
         }
 
@@ -466,6 +468,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             int startOffset,
             int metadataOffset,
             int preferredSkillId,
+            out int chargeSkillId)
+        {
+            return TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
+                payload,
+                startOffset,
+                metadataOffset,
+                preferredSkillId,
+                maxDistanceBytes: 0,
+                out chargeSkillId);
+        }
+
+        internal static bool TryResolveNearestChargeSkillIdFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int metadataOffset,
+            int preferredSkillId,
+            int maxDistanceBytes,
             out int chargeSkillId)
         {
             chargeSkillId = 0;
@@ -516,6 +535,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 long distance = Math.Abs((long)offset - metadataOffset);
+                if (maxDistanceBytes > 0 && distance > maxDistanceBytes)
+                {
+                    continue;
+                }
+
                 if (distance > nearestDistance)
                 {
                     continue;
@@ -560,6 +584,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 startOffset: 0,
                 metadataOffset,
                 preferredSkillId,
+                maxDistanceBytes: 0,
                 out chargeElement);
         }
 
@@ -568,6 +593,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             int startOffset,
             int metadataOffset,
             int preferredSkillId,
+            out int chargeElement)
+        {
+            return TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+                payload,
+                startOffset,
+                metadataOffset,
+                preferredSkillId,
+                maxDistanceBytes: 0,
+                out chargeElement);
+        }
+
+        internal static bool TryResolveNearestChargeElementValueFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int metadataOffset,
+            int preferredSkillId,
+            int maxDistanceBytes,
             out int chargeElement)
         {
             chargeElement = 0;
@@ -612,6 +654,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 long distance = Math.Abs((long)offset - metadataOffset);
+                if (maxDistanceBytes > 0 && distance > maxDistanceBytes)
+                {
+                    continue;
+                }
+
                 if (distance > nearestDistance)
                 {
                     continue;

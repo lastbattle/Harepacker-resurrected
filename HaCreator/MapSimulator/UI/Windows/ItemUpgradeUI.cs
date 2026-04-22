@@ -343,6 +343,34 @@ namespace HaCreator.MapSimulator.UI
             return 1;
         }
 
+        public int ResolveProjectedRemainingUpgradeSlotCountAfterRecoveryFromCurrentSelection()
+        {
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0)
+            {
+                return 1;
+            }
+
+            KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
+            UpgradeState state = GetOrCreateState(selection.Key, selection.Value);
+            int projectedRemainingSlots = Math.Max(0, state.RemainingSlots + 1);
+            int projectedTotalSlots = Math.Max(state.TotalSlots, projectedRemainingSlots);
+            return Math.Clamp(projectedRemainingSlots, 0, Math.Max(1, projectedTotalSlots));
+        }
+
+        public int ResolveCurrentSelectionTotalUpgradeSlotCount()
+        {
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0)
+            {
+                return 1;
+            }
+
+            KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
+            UpgradeState state = GetOrCreateState(selection.Key, selection.Value);
+            return Math.Max(1, state.TotalSlots);
+        }
+
         public void SetDecorations(Texture2D backgroundOverlay, Point backgroundOverlayOffset, Texture2D headerOverlay, Point headerOverlayOffset)
         {
             _backgroundOverlay = backgroundOverlay;

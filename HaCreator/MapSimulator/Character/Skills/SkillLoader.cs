@@ -5307,6 +5307,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 case WzStringProperty stringProperty:
                     return ParseLinkedSkillIds(stringProperty.Value);
+                case WzUOLProperty uolProperty:
+                    if (!string.IsNullOrWhiteSpace(uolProperty.Value))
+                    {
+                        return ParseLinkedSkillIds(uolProperty.Value);
+                    }
+
+                    return ParseLinkedSkillIds(uolProperty.GetString());
                 case WzIntProperty intProperty when intProperty.Value > 0:
                     return new[] { intProperty.Value };
                 case WzShortProperty shortProperty when shortProperty.Value > 0:

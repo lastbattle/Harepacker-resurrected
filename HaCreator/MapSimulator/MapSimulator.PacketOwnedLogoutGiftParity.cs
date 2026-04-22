@@ -1143,9 +1143,8 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<PacketOwnedLogoutGiftContextField>();
             }
 
-            int mappedValueCount = Math.Min(PacketOwnedLogoutGiftPrecursorContextSlotCount, leadingOpaqueInt32Values.Length);
-            int firstInputIndex = leadingOpaqueInt32Values.Length - mappedValueCount;
-            int firstDwordIndex = PacketOwnedLogoutGiftPrecursorContextDwordIndex - (mappedValueCount - 1);
+            int mappedValueCount = leadingOpaqueInt32Values.Length;
+            int firstDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - mappedValueCount;
             PacketOwnedLogoutGiftContextField[] fields = new PacketOwnedLogoutGiftContextField[mappedValueCount];
             for (int i = 0; i < mappedValueCount; i++)
             {
@@ -1153,7 +1152,7 @@ namespace HaCreator.MapSimulator
                 fields[i] = new PacketOwnedLogoutGiftContextField(
                     dwordIndex,
                     ResolvePacketOwnedLogoutGiftContextByteOffset(dwordIndex),
-                    leadingOpaqueInt32Values[firstInputIndex + i],
+                    leadingOpaqueInt32Values[i],
                     ResolvePacketOwnedLogoutGiftLeadingContextSemanticName(dwordIndex));
             }
 

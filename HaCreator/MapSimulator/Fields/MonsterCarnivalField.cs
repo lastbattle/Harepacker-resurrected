@@ -1272,6 +1272,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int StatusDurationMs = 4500;
         private const int VariantActionTrailCapacity = 4;
         private const int VariantTransportTrailCapacity = 6;
+        private const int Season2TimerTrailCapacity = 6;
 
         private readonly Dictionary<int, int> _mobSpellCounts = new();
         private readonly Dictionary<int, int> _skillUseCounts = new();
@@ -1306,6 +1307,7 @@ namespace HaCreator.MapSimulator.Fields
         private int[] _lastClientOwnerStringPoolIds = Array.Empty<int>();
         private readonly Queue<string> _variantActionTrail = new();
         private readonly Queue<string> _variantTransportTrail = new();
+        private readonly Queue<string> _season2SubDialogTimerTrail = new();
         private readonly MonsterCarnivalUiWindowState _uiWindowState = new();
         private MonsterCarnivalVariantSessionPhase _variantSessionPhase;
         private string _variantSessionSummary;
@@ -1667,7 +1669,18 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalTab tab = TryParseTab(tabCode, out MonsterCarnivalTab parsedTab)
                 ? parsedTab
                 : _activeTab;
-            bool pendingLocalRequestMatch = TryConsumePendingLocalRequest(tab, entryIndex);
+            bool isLocalRequestOwner = IsLocalRequestOwner(characterName);
+            bool consumedPendingLocalRequest = TryConsumePendingLocalRequestForResultOwnership(
+                tab,
+                entryIndex,
+                isLocalRequestOwner,
+                out PendingLocalRequestToken consumedPendingToken);
+            int resolvedRequestTab = consumedPendingLocalRequest
+                ? (int)consumedPendingToken.Tab
+                : (int)tab;
+            int resolvedRequestIndex = consumedPendingLocalRequest
+                ? consumedPendingToken.EntryIndex
+                : entryIndex;
             MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
             if (entry == null)
             {
@@ -1675,14 +1688,19 @@ namespace HaCreator.MapSimulator.Fields
                     ? $"Monster Carnival request result received for tab {(int)tab}, index {entryIndex}."
                     : characterName.Trim();
                 ShowStatus(fallbackMessage, tickCount);
-                if (pendingLocalRequestMatch)
+                if (consumedPendingLocalRequest)
                 {
-                    _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "success", (int)tab, entryIndex);
+                    _uiWindowState.MarkRequestCooldownReset(
+                        tickCount,
+                        _definition?.ClientOwnerLabel,
+                        "success",
+                        resolvedRequestTab,
+                        resolvedRequestIndex);
                 }
                 return;
             }
 
-            bool spendLocalCp = IsLocalRequestOwner(characterName) || pendingLocalRequestMatch;
+            bool spendLocalCp = isLocalRequestOwner || consumedPendingLocalRequest;
             bool ownerTeamKnown = TryResolveKnownCharacterTeam(characterName, out MonsterCarnivalTeam ownerTeam);
             if (!ownerTeamKnown
                 && !spendLocalCp
@@ -1698,7 +1716,12 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalStringPoolMessage? successDefinition = GetRequestSuccessMessage(entry.Tab);
             if (spendLocalCp)
             {
-                _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "success", (int)tab, entryIndex);
+                _uiWindowState.MarkRequestCooldownReset(
+                    tickCount,
+                    _definition?.ClientOwnerLabel,
+                    "success",
+                    resolvedRequestTab,
+                    resolvedRequestIndex);
             }
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.Request,
@@ -1758,6 +1781,7 @@ namespace HaCreator.MapSimulator.Fields
                     MonsterCarnivalSeason2SubDialogPhase.ResultClosed);
                 _season2SubDialogDeadlineTick = null;
                 _season2SubDialogTimerSummary = "Season 2 sub dialog timer closed by OnShowGameResult.";
+                RecordSeason2SubDialogTimerEvent("result-close(deadline=none)");
             }
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.ResultRoute,
@@ -2412,6 +2436,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastClientOwnerStringPoolIds = Array.Empty<int>();
             _variantActionTrail.Clear();
             _variantTransportTrail.Clear();
+            _season2SubDialogTimerTrail.Clear();
             _uiWindowState.Reset();
             _variantSessionPhase = MonsterCarnivalVariantSessionPhase.None;
             _variantSessionSummary = null;
@@ -2464,6 +2489,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastResultChatRoute = null;
             _lastDeathChatRoute = null;
             _variantTransportTrail.Clear();
+            _season2SubDialogTimerTrail.Clear();
             _variantTransportPacketCount = 0;
             _variantEnterPacketCount = 0;
             _variantRequestPacketCount = 0;
@@ -3244,6 +3270,27 @@ namespace HaCreator.MapSimulator.Fields
             return consumed;
         }
 
+        private bool TryConsumePendingLocalRequestForResultOwnership(
+            MonsterCarnivalTab tab,
+            int entryIndex,
+            bool isLocalRequestOwner,
+            out PendingLocalRequestToken consumedToken)
+        {
+            consumedToken = default;
+            if (TryConsumePendingLocalRequest(tab, entryIndex))
+            {
+                consumedToken = new PendingLocalRequestToken(tab, entryIndex);
+                return true;
+            }
+
+            if (!isLocalRequestOwner)
+            {
+                return false;
+            }
+
+            return TryConsumeNextPendingLocalRequest(out consumedToken);
+        }
+
         private bool TryConsumeNextPendingLocalRequest(out PendingLocalRequestToken token)
         {
             token = default;
@@ -4004,6 +4051,20 @@ namespace HaCreator.MapSimulator.Fields
                 Array.Empty<int>());
         }
 
+        private void RecordSeason2SubDialogTimerEvent(string summary)
+        {
+            if (_definition?.IsSeason2Mode != true || string.IsNullOrWhiteSpace(summary))
+            {
+                return;
+            }
+
+            _season2SubDialogTimerTrail.Enqueue(summary.Trim());
+            while (_season2SubDialogTimerTrail.Count > Season2TimerTrailCapacity)
+            {
+                _season2SubDialogTimerTrail.Dequeue();
+            }
+        }
+
         private void RecordVariantTransportPacket(int packetType, bool rawPacket, string delegatedOwner)
         {
             if (!ShouldTrackVariantClientOwnerAction())
@@ -4123,6 +4184,7 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogTimerSummary = messageSeconds > 0
                 ? $"Season 2 dialog timer primed from monsterCarnival/timeMessage={messageSeconds}s and waiting for request/death ownership."
                 : "Season 2 dialog timer unavailable because monsterCarnival/timeMessage was not authored.";
+            RecordSeason2SubDialogTimerEvent($"enter-prime(timeMessage={messageSeconds}s,deadline={(_season2SubDialogDeadlineTick.HasValue ? "armed" : "none")})");
             SetSeason2SubDialogState(
                 visible: false,
                 okEnabled: false,
@@ -4145,6 +4207,7 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogTimerSummary = messageSeconds > 0
                 ? $"Season 2 sub dialog timer armed for {messageSeconds}s from monsterCarnival/timeMessage after request routing."
                 : "Season 2 sub dialog timer unavailable because monsterCarnival/timeMessage was not authored.";
+            RecordSeason2SubDialogTimerEvent($"request-arm(success={success},reason={Math.Max(0, reasonCode ?? 0)},timeMessage={messageSeconds}s,deadline={(_season2SubDialogDeadlineTick.HasValue ? "armed" : "none")})");
             if (success)
             {
                 string entryLabel = entry == null
@@ -4185,6 +4248,7 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogTimerSummary = messageSeconds > 0
                 ? $"Season 2 sub dialog death lock timer armed for {messageSeconds}s from monsterCarnival/timeMessage."
                 : "Season 2 sub dialog death lock has no local timer because monsterCarnival/timeMessage was not authored.";
+            RecordSeason2SubDialogTimerEvent($"death-arm(timeMessage={messageSeconds}s,deadline={(_season2SubDialogDeadlineTick.HasValue ? "armed" : "none")})");
             string actor = string.IsNullOrWhiteSpace(characterName) ? "unknown-member" : characterName.Trim();
             SetSeason2SubDialogState(
                 visible: true,
@@ -4209,6 +4273,7 @@ namespace HaCreator.MapSimulator.Fields
             _season2SubDialogTimerSummary = messageSeconds > 0
                 ? $"Season 2 sub dialog timer elapsed after {messageSeconds}s (monsterCarnival/timeMessage); UIWindow2 sub dialog auto-hid until the next request/death/result packet."
                 : "Season 2 sub dialog auto-hid after timer expiry.";
+            RecordSeason2SubDialogTimerEvent($"timer-expire(timeMessage={messageSeconds}s)");
             SetSeason2SubDialogState(
                 visible: false,
                 okEnabled: false,
@@ -4278,10 +4343,11 @@ namespace HaCreator.MapSimulator.Fields
             string timerSummary = string.IsNullOrWhiteSpace(_season2SubDialogTimerSummary)
                 ? string.Empty
                 : $" {_season2SubDialogTimerSummary}";
+            string timerTrail = BuildSeason2SubDialogTimerTrailSummary();
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
-                ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel}){timerSummary}"
-                : $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel}) {_season2SubDialogSummary}{timerSummary}";
+                ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},timerTrail={timerTrail}){timerSummary}"
+                : $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},timerTrail={timerTrail}) {_season2SubDialogSummary}{timerSummary}";
         }
 
         private void InitializeClientOwnedUiWindowState(MonsterCarnivalFieldDefinition definition)
@@ -4673,6 +4739,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Join(" => ", _variantTransportTrail.Select(entry => TrimVariantActionText(entry, 44)));
+        }
+
+        private string BuildSeason2SubDialogTimerTrailSummary()
+        {
+            if (_definition?.IsSeason2Mode != true || _season2SubDialogTimerTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _season2SubDialogTimerTrail.Select(entry => TrimVariantActionText(entry, 40)));
         }
 
         private string BuildInitialVariantSessionSummary(MonsterCarnivalFieldDefinition definition)

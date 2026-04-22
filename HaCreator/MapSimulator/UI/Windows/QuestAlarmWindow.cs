@@ -657,29 +657,34 @@ namespace HaCreator.MapSimulator.UI
             bool clearHiddenAutoTombstones)
         {
             EnsurePersistedStateLoaded();
+            bool replaceRegistrations = registeredQuestIds != null;
             HashSet<int> previousVisibleQuestIds = null;
             QuestAlarmSnapshot previousSnapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
-            if (previousSnapshot.Entries != null && previousSnapshot.Entries.Count > 0)
+            if (replaceRegistrations && previousSnapshot.Entries != null && previousSnapshot.Entries.Count > 0)
             {
                 previousVisibleQuestIds = new HashSet<int>(previousSnapshot.Entries
                     .Where(static entry => entry?.QuestId > 0)
                     .Select(static entry => entry.QuestId));
             }
 
-            HashSet<int> previousTrackedQuestIds = _trackedQuestIds.Count == 0
-                ? null
-                : _trackedQuestIds.ToHashSet();
+            HashSet<int> previousTrackedQuestIds = replaceRegistrations && _trackedQuestIds.Count > 0
+                ? _trackedQuestIds.ToHashSet()
+                : null;
             HashSet<int> previousHiddenAutoQuestIds = clearHiddenAutoTombstones && _hiddenAutoQuestIds.Count > 0
                 ? _hiddenAutoQuestIds.ToHashSet()
                 : null;
 
-            _trackedQuestIds.Clear();
+            if (replaceRegistrations)
+            {
+                _trackedQuestIds.Clear();
+            }
+
             if (clearHiddenAutoTombstones)
             {
                 _hiddenAutoQuestIds.Clear();
             }
 
-            if (registeredQuestIds != null)
+            if (replaceRegistrations)
             {
                 for (int i = 0; i < registeredQuestIds.Count && _trackedQuestIds.Count < MaxVisibleEntries; i++)
                 {
@@ -693,7 +698,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            if (previousTrackedQuestIds != null && previousTrackedQuestIds.Count > 0)
+            if (replaceRegistrations && previousTrackedQuestIds != null && previousTrackedQuestIds.Count > 0)
             {
                 previousTrackedQuestIds.ExceptWith(_trackedQuestIds);
                 foreach (int removedQuestId in previousTrackedQuestIds)
@@ -715,9 +720,13 @@ namespace HaCreator.MapSimulator.UI
             _autoTrackEnabled = autoRegisterEnabled;
             _isMinimized = minimized || _trackedQuestIds.Count == 0;
 
-            ResetSelectionAfterMutation();
+            if (replaceRegistrations)
+            {
+                ResetSelectionAfterMutation();
+            }
+
             QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
-            if (previousVisibleQuestIds != null && previousVisibleQuestIds.Count > 0)
+            if (replaceRegistrations && previousVisibleQuestIds != null && previousVisibleQuestIds.Count > 0)
             {
                 for (int i = 0; i < refreshedSnapshot.Entries.Count; i++)
                 {
@@ -745,7 +754,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             SavePersistedState();
-            QuestDeleted?.Invoke();
+            if (replaceRegistrations)
+            {
+                QuestDeleted?.Invoke();
+            }
+
             return _trackedQuestIds.Count;
         }
 

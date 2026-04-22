@@ -1492,11 +1492,16 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                 }
 
-                if (matchedByHeader)
+                if (ShouldKeepModeZeroOwnershipOnHeaderFallback(
+                        request,
+                        inventoryType,
+                        targetPosition,
+                        itemId,
+                        matchedByHeader))
                 {
                     // CWvsContext::OnInventoryOperation reads the mode-0 owner/position header
                     // before descending into GW_ItemSlotBase::Decode. Keep ownership recovery on
-                    // the header match when local deep item-body decode is unavailable.
+                    // header-proven ownership when local deep item-body decode is unavailable.
                     rejectReason = null;
                     return true;
                 }
@@ -1512,6 +1517,38 @@ namespace HaCreator.MapSimulator.UI
             {
                 rejectReason = "Inventory-operation add entry is truncated.";
                 return false;
+            }
+        }
+
+        private static bool ShouldKeepModeZeroOwnershipOnHeaderFallback(
+            EquipmentChangeRequest request,
+            byte inventoryType,
+            short targetPosition,
+            int addedItemId,
+            bool matchedByHeader)
+        {
+            if (matchedByHeader)
+            {
+                return true;
+            }
+
+            if (request == null || addedItemId <= 0)
+            {
+                return false;
+            }
+
+            switch (request.Kind)
+            {
+                case EquipmentChangeRequestKind.CharacterToCharacter:
+                    return request.SourceEquipSlot.HasValue
+                           && IsExpectedCharacterSourceInventory(request, inventoryType)
+                           && targetPosition == ToClientEquipPosition(request.SourceEquipSlot.Value);
+                case EquipmentChangeRequestKind.InventoryToCharacter:
+                    return request.TargetEquipSlot.HasValue
+                           && IsSupportedClientCharacterInventoryType(inventoryType)
+                           && targetPosition > 0;
+                default:
+                    return false;
             }
         }
 

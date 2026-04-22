@@ -37,7 +37,7 @@ namespace HaCreator.MapSimulator.UI
         private const int PriceTextY = 72;
         private const int StatusTextX = 18;
         private const int StatusTextY = 92;
-        private const int SearchMaxLength = 40;
+        private const int SearchMaxLength = 256;
         private const int MainTitleBandHeight = 16;
         private const int CategoryPopupOffsetY = 18;
         private const int PopupHeaderY = 12;
@@ -972,20 +972,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (WasPressed(keyboardState, Keys.Back) && _searchQuery.Length > 0)
+            if (_searchFieldFocused && WasPressed(keyboardState, Keys.Back) && _searchQuery.Length > 0)
             {
                 _searchQuery = _searchQuery[..^1];
                 InvalidateWishlistSearchResultSession();
             }
-            else if (WasPressed(keyboardState, Keys.Delete))
+            else if (_searchFieldFocused && WasPressed(keyboardState, Keys.Delete))
             {
                 _searchQuery = string.Empty;
                 InvalidateWishlistSearchResultSession();
-            }
-            else if (WasPressed(keyboardState, Keys.Space))
-            {
-                ToggleAddOn();
-                return;
             }
 
             if (_popupMode == PopupMode.Results)
@@ -1016,15 +1011,6 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 return;
-            }
-
-            if (WasPressed(keyboardState, Keys.Left))
-            {
-                CyclePriceRange(-1);
-            }
-            else if (WasPressed(keyboardState, Keys.Right))
-            {
-                CyclePriceRange(1);
             }
         }
 

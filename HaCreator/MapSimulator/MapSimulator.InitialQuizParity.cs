@@ -191,6 +191,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
                 ownerActive: true,
                 _initialQuizOwnerFocusTarget);
+            SyncInitialQuizOwnerEditControlState(ownerActive: true, _initialQuizOwnerChildControlState);
         }
 
         private void ClearInitialQuizOwnerInputState()
@@ -224,6 +225,7 @@ namespace HaCreator.MapSimulator
                 ownerActive: true,
                 _initialQuizOwnerFocusTarget);
             _initialQuizOwnerChildControlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
+            SyncInitialQuizOwnerEditControlState(ownerActive: true, _initialQuizOwnerChildControlState);
             _initialQuizOwnerDisplayedRemainingSeconds = ResolveInitialQuizOwnerDisplayedRemainingSeconds(
                 _initialQuizOwnerHasDisplayedRemainingSeconds
                     ? _initialQuizOwnerDisplayedRemainingSeconds
@@ -835,8 +837,11 @@ namespace HaCreator.MapSimulator
 
         private void EnsureInitialQuizOwnerControlStackCreated()
         {
+            EnsureInitialQuizOwnerPixelTexture();
             EnsureInitialQuizOwnerInputTextRasterizer();
-            EnsureInitialQuizOwnerEditControl()?.Reset();
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            editControl?.Reset();
+            SyncInitialQuizOwnerEditControlState(ownerActive: true, _initialQuizOwnerChildControlState);
         }
 
         private void DestroyInitialQuizOwnerControlStack()
@@ -856,9 +861,15 @@ namespace HaCreator.MapSimulator
 
         private AntiMacroEditControl EnsureInitialQuizOwnerEditControl()
         {
-            if (_initialQuizOwnerEditControl != null || _packetScriptOwnerPixelTexture == null)
+            if (_initialQuizOwnerEditControl != null)
             {
                 return _initialQuizOwnerEditControl;
+            }
+
+            EnsureInitialQuizOwnerPixelTexture();
+            if (_packetScriptOwnerPixelTexture == null)
+            {
+                return null;
             }
 
             _initialQuizOwnerEditControl = new AntiMacroEditControl(
@@ -1261,6 +1272,17 @@ namespace HaCreator.MapSimulator
             return new Rectangle(ownerBounds.X + 109, ownerBounds.Y + 157, 150, 13);
         }
 
+        private void EnsureInitialQuizOwnerPixelTexture()
+        {
+            if (_packetScriptOwnerPixelTexture != null || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            _packetScriptOwnerPixelTexture = new Texture2D(GraphicsDevice, 1, 1);
+            _packetScriptOwnerPixelTexture.SetData(new[] { Color.White });
+        }
+
         private void EnsureInitialQuizOwnerVisualsLoaded()
         {
             if (_initialQuizOwnerVisualsLoaded || GraphicsDevice == null)
@@ -1269,8 +1291,7 @@ namespace HaCreator.MapSimulator
             }
 
             _initialQuizOwnerVisualsLoaded = true;
-            _packetScriptOwnerPixelTexture ??= new Texture2D(GraphicsDevice, 1, 1);
-            _packetScriptOwnerPixelTexture.SetData(new[] { Color.White });
+            EnsureInitialQuizOwnerPixelTexture();
 
             WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img") ?? uiWindowImage;
@@ -1293,6 +1314,22 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerDigits = LoadInitialQuizOwnerDigits(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty, out _initialQuizOwnerCommaTexture);
             _initialQuizOwnerAnimationFrames = LoadInitialQuizOwnerAnimationFrames(preferred?["ani"] as WzSubProperty, fallback?["ani"] as WzSubProperty);
             _initialQuizOwnerBackground3Origin = ResolveCanvasOrigin(preferredBackground3 ?? fallbackBackground3);
+        }
+
+        private void SyncInitialQuizOwnerEditControlState(bool ownerActive, InitialQuizOwnerChildControlState controlState)
+        {
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl == null)
+            {
+                return;
+            }
+
+            bool inputFocused = ShouldCaptureInitialQuizOwnerTextInput(ownerActive, controlState, _initialQuizOwnerFocusTarget);
+            editControl.SetFocus(inputFocused);
+            if (!inputFocused)
+            {
+                editControl.EndMouseSelection();
+            }
         }
 
         private Texture2D[] LoadInitialQuizOwnerDigits(WzSubProperty preferred, WzSubProperty fallback, out Texture2D commaTexture)
@@ -1522,6 +1559,9 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
                 _initialQuizOwnerCaptureState != InitialQuizOwnerCaptureState.None,
                 focusTarget);
+            SyncInitialQuizOwnerEditControlState(
+                _initialQuizOwnerCaptureState != InitialQuizOwnerCaptureState.None,
+                _initialQuizOwnerChildControlState);
             if (!ShouldClearInitialQuizOwnerImeOnFocusChange(previousFocus, focusTarget))
             {
                 return;

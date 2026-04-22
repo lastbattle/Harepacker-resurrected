@@ -1767,6 +1767,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             Dictionary<InventoryType, int> previousCountsByType = new(_decodedCountsByType);
             List<StoreBankItemEntry> previousItems = new(_decodedItems);
+            int previousMoney = _money;
             _decodedCountsByType.Clear();
             _retainedCountsByType.Clear();
             _decodedItems.Clear();
@@ -1781,17 +1782,17 @@ namespace HaCreator.MapSimulator.Interaction
             using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
             _npcTemplateId = reader.ReadInt32();
             _slotCount = reader.ReadByte();
-            long flags = reader.ReadInt64();
-            _dbcharFlagMask = (ulong)flags;
+            ulong flags = reader.ReadUInt64();
+            _dbcharFlagMask = flags;
             HashSet<InventoryType> decodedGroups = new();
-            _money = (flags & 2L) != 0 && stream.Length - stream.Position >= sizeof(int)
+            _money = (flags & 2UL) != 0 && stream.Length - stream.Position >= sizeof(int)
                 ? reader.ReadInt32()
-                : 0;
+                : previousMoney;
 
             for (int i = 0; i < StoreInventoryGroups.Length; i++)
             {
                 StoreInventoryGroup group = StoreInventoryGroups[i];
-                if ((flags & group.FlagMask) == 0)
+                if ((flags & (uint)group.FlagMask) == 0)
                 {
                     continue;
                 }

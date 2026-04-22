@@ -2621,7 +2621,10 @@ namespace HaCreator.MapSimulator.Character
                 _ => absoluteJobId switch
                 {
                     300 or 310 or 311 or 312
-                        or 1300 or 1310 or 1311 or 1312 => AutoAssignStrategy.BowmanBow,
+                        or 1300 or 1310 or 1311 or 1312
+                        // Keep modern ancient-bow roots on the bow-style STR target
+                        // when no weapon is equipped, matching the same lane as code 59.
+                        or 6300 or 6310 or 6311 or 6312 => AutoAssignStrategy.BowmanBow,
                     320 or 321 or 322
                         or 3300 or 3310 or 3311 or 3312
                         or 2002 or 2300 or 2310 or 2311 or 2312 => AutoAssignStrategy.BowmanCrossbowLike,

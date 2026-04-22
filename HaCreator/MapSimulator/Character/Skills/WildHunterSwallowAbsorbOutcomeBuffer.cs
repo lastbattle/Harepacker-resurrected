@@ -18,7 +18,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             PruneExpired(currentTime);
-            int existingIndex = FindPairIndex(skillId, targetMobId);
+
+            int existingIndex = _pending.FindIndex(pending =>
+                pending.SkillId == skillId
+                && pending.TargetMobId == targetMobId);
             if (existingIndex >= 0)
             {
                 _pending.RemoveAt(existingIndex);
@@ -79,20 +82,6 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsExpired(PendingOutcome pending, int currentTime)
         {
             return currentTime >= pending.ExpireTime;
-        }
-
-        private int FindPairIndex(int skillId, int targetMobId)
-        {
-            for (int i = 0; i < _pending.Count; i++)
-            {
-                PendingOutcome pending = _pending[i];
-                if (pending.SkillId == skillId && pending.TargetMobId == targetMobId)
-                {
-                    return i;
-                }
-            }
-
-            return -1;
         }
 
         private sealed record PendingOutcome(int SkillId, int TargetMobId, bool Success, int ExpireTime);

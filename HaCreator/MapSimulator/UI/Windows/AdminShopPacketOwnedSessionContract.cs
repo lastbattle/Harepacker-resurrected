@@ -6,6 +6,14 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
+    internal readonly record struct AdminShopPacketOwnedDeferredResultSnapshot(
+        byte Subtype,
+        byte ResultCode,
+        bool HasResultCode,
+        int TrailingByteCount,
+        string TrailingPayloadSignature,
+        byte[] TrailingPayload);
+
     internal enum AdminShopPacketOwnedOwnerVisibilityState
     {
         Hidden,
@@ -26,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
             || ResultCount > 0
             || InboundPacketCount > 0
             || BlockedByOwnerCount > 0
+            || HasDeferredOwnerGatedResult
             || NpcTemplateId > 0
             || DecodedItemCount > 0
             || !string.IsNullOrWhiteSpace(LastNotice)
@@ -81,8 +90,10 @@ namespace HaCreator.MapSimulator.UI
         public bool HasPendingWishlistSearch => PendingWishlistSearchRequestId >= 0
             || !string.IsNullOrWhiteSpace(PendingWishlistSearchQuery)
             || PendingWishlistSearchPriceRangeIndex >= 0;
+        public bool HasDeferredOwnerGatedResult => _deferredOwnerGatedResult.HasValue;
         public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
             = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
+        private AdminShopPacketOwnedDeferredResultSnapshot? _deferredOwnerGatedResult;
 
         public void BeginOpen(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string ownerState = null)
         {
@@ -115,6 +126,7 @@ namespace HaCreator.MapSimulator.UI
             LastOutboundSummary = string.Empty;
             LastOwnerState = ownerState ?? string.Empty;
             LastCloseOpenedWishlist = false;
+            ClearDeferredOwnerGatedResultCore(touchStateToken: false);
             ClearPendingWishlistRegister();
             ClearPendingWishlistSearch();
             TouchWishlistSearchStateToken();
@@ -176,6 +188,7 @@ namespace HaCreator.MapSimulator.UI
             ServiceSessionId = -1;
             WishlistSearchSessionId = -1;
             LastNotice = noticeText ?? string.Empty;
+            ClearDeferredOwnerGatedResultCore(touchStateToken: false);
             ClearPendingWishlistRegister();
             ClearPendingWishlistSearch();
             if (!string.IsNullOrWhiteSpace(outboundSummary))
@@ -206,6 +219,7 @@ namespace HaCreator.MapSimulator.UI
             LastOwnerState = ownerState ?? string.Empty;
             LastCloseOpenedWishlist = openedWishlistBeforeClose;
             CloseCount++;
+            ClearDeferredOwnerGatedResultCore(touchStateToken: false);
             ClearPendingWishlistRegister();
             ClearPendingWishlistSearch();
             TouchWishlistSearchStateToken();
@@ -239,6 +253,7 @@ namespace HaCreator.MapSimulator.UI
                 ? "Packet 367 was blocked by another unique-modeless owner."
                 : $"Packet 367 was blocked by the visible {blockingOwner} unique-modeless owner.";
             LastCloseOpenedWishlist = false;
+            ClearDeferredOwnerGatedResultCore(touchStateToken: false);
             ClearPendingWishlistRegister();
             ClearPendingWishlistSearch();
             OpenCount++;
@@ -265,6 +280,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 WishlistSearchSessionId = AdvanceSessionId(WishlistSearchSessionId);
             }
+
+            ClearDeferredOwnerGatedResultCore(touchStateToken: false);
             WouldDisconnect = false;
             TouchWishlistSearchStateToken();
         }
@@ -319,11 +336,53 @@ namespace HaCreator.MapSimulator.UI
             LastOwnerState = ownerState ?? string.Empty;
             if (!keepPendingRequestState)
             {
+                ClearDeferredOwnerGatedResultCore(touchStateToken: false);
                 ClearPendingWishlistRegister();
                 ClearPendingWishlistSearch();
             }
 
             TouchWishlistSearchStateToken();
+        }
+
+        public void StageDeferredOwnerGatedResult(
+            byte subtype,
+            byte resultCode,
+            bool hasResultCode,
+            int trailingByteCount,
+            string trailingPayloadSignature,
+            byte[] trailingPayload)
+        {
+            int normalizedTrailingByteCount = Math.Max(0, trailingByteCount);
+            byte[] normalizedTrailingPayload = trailingPayload?.ToArray() ?? Array.Empty<byte>();
+            _deferredOwnerGatedResult = new AdminShopPacketOwnedDeferredResultSnapshot(
+                subtype,
+                resultCode,
+                hasResultCode,
+                normalizedTrailingByteCount,
+                normalizedTrailingByteCount > 0
+                    ? NormalizePayloadSignature(trailingPayloadSignature)
+                    : "none",
+                normalizedTrailingPayload);
+            TouchWishlistSearchStateToken();
+        }
+
+        public bool TryConsumeDeferredOwnerGatedResult(out AdminShopPacketOwnedDeferredResultSnapshot snapshot)
+        {
+            if (!_deferredOwnerGatedResult.HasValue)
+            {
+                snapshot = default;
+                return false;
+            }
+
+            snapshot = _deferredOwnerGatedResult.Value;
+            _deferredOwnerGatedResult = null;
+            TouchWishlistSearchStateToken();
+            return true;
+        }
+
+        public void ClearDeferredOwnerGatedResult()
+        {
+            ClearDeferredOwnerGatedResultCore(touchStateToken: true);
         }
 
         public void SetWaitingForResult(bool waitingForResult)
@@ -543,6 +602,8 @@ namespace HaCreator.MapSimulator.UI
                 PendingWishlistSearchQuery ?? string.Empty,
                 PendingWishlistSearchCategoryKey ?? "all",
                 PendingWishlistSearchPriceRangeIndex,
+                HasDeferredOwnerGatedResult ? "1" : "0",
+                HasDeferredOwnerGatedResult ? DescribeDeferredOwnerGatedResult() : string.Empty,
                 ((int)OwnerVisibilityState).ToString(),
                 LastNotice ?? string.Empty,
                 LastOutboundSummary ?? string.Empty,
@@ -593,7 +654,10 @@ namespace HaCreator.MapSimulator.UI
             string pendingSearchText = HasPendingWishlistSearch
                 ? $", staged {DescribePendingWishlistSearch()}"
                 : string.Empty;
-            return $"token {WishlistSearchStateToken}, {packetText}, {sessionText}, {searchSessionText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}{pendingSearchText}";
+            string deferredResultText = HasDeferredOwnerGatedResult
+                ? $", deferred {DescribeDeferredOwnerGatedResult()}"
+                : string.Empty;
+            return $"token {WishlistSearchStateToken}, {packetText}, {sessionText}, {searchSessionText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}{pendingSearchText}{deferredResultText}";
         }
 
         public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
@@ -617,7 +681,10 @@ namespace HaCreator.MapSimulator.UI
             string resultTailText = ResultTrailingByteCount > 0
                 ? $", result tail {ResultTrailingByteCount} byte(s) ({ResultTrailingPayloadSignature})"
                 : string.Empty;
-            lines.Add($"token {WishlistSearchStateToken}, {visibilityText}, {DescribeDisconnectHazard()}{blockedText}{inboundText}{tailText}{resultTailText}");
+            string deferredText = HasDeferredOwnerGatedResult
+                ? $", deferred {DescribeDeferredOwnerGatedResult()}"
+                : string.Empty;
+            lines.Add($"token {WishlistSearchStateToken}, {visibilityText}, {DescribeDisconnectHazard()}{blockedText}{inboundText}{tailText}{resultTailText}{deferredText}");
 
             string phaseText = DescribeWishlistSearchPhase();
             if (!string.IsNullOrWhiteSpace(LastNotice))
@@ -687,6 +754,9 @@ namespace HaCreator.MapSimulator.UI
             string pendingWishlistSearchText = HasPendingWishlistSearch
                 ? $", staged {DescribePendingWishlistSearch()}"
                 : string.Empty;
+            string deferredResultText = HasDeferredOwnerGatedResult
+                ? $", deferred {DescribeDeferredOwnerGatedResult()}"
+                : string.Empty;
             string closeText = CloseCount > 0
                 ? $", close={CloseCount}{(LastCloseOpenedWishlist ? " via wishlist prompt" : string.Empty)}"
                 : string.Empty;
@@ -702,7 +772,7 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             string inboundSourceText = DescribeInboundSourceSummary();
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}{pendingWishlistSearchText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}{pendingWishlistSearchText}{deferredResultText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
         }
 
         private string DescribeLastResultState()
@@ -860,11 +930,42 @@ namespace HaCreator.MapSimulator.UI
             return $"{requestText}, {queryText}, {categoryText}, {priceText}";
         }
 
+        private string DescribeDeferredOwnerGatedResult()
+        {
+            if (!_deferredOwnerGatedResult.HasValue)
+            {
+                return "result unresolved";
+            }
+
+            AdminShopPacketOwnedDeferredResultSnapshot snapshot = _deferredOwnerGatedResult.Value;
+            string resultCodeText = snapshot.HasResultCode
+                ? $"code {snapshot.ResultCode}"
+                : "no result code";
+            string tailText = snapshot.TrailingByteCount > 0
+                ? $", tail {snapshot.TrailingByteCount} byte(s) ({snapshot.TrailingPayloadSignature})"
+                : string.Empty;
+            return $"packet 366 subtype {snapshot.Subtype}, {resultCodeText}{tailText}";
+        }
+
         private void TouchWishlistSearchStateToken()
         {
             WishlistSearchStateToken = WishlistSearchStateToken == int.MaxValue
                 ? 1
                 : WishlistSearchStateToken + 1;
+        }
+
+        private void ClearDeferredOwnerGatedResultCore(bool touchStateToken)
+        {
+            if (!_deferredOwnerGatedResult.HasValue)
+            {
+                return;
+            }
+
+            _deferredOwnerGatedResult = null;
+            if (touchStateToken)
+            {
+                TouchWishlistSearchStateToken();
+            }
         }
     }
 }

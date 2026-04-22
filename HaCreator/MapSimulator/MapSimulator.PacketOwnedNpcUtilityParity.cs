@@ -429,6 +429,7 @@ namespace HaCreator.MapSimulator
                     resultSnapshot.ResultCode,
                     resultSnapshot.TrailingByteCount,
                     resultSnapshot.TrailingPayloadSignature,
+                    resultSnapshot.TrailingPayload,
                     resultSnapshot.HasResultCode,
                     resultBlockingOwner);
                 return true;
@@ -491,6 +492,23 @@ namespace HaCreator.MapSimulator
             }
 
             adminShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceShown();
+            if (adminShopWindow.TryApplyDeferredPacketOwnedAdminShopResultAfterOwnerVisible(
+                    out string deferredSummary,
+                    out string deferredNotice))
+            {
+                if (!string.IsNullOrWhiteSpace(deferredNotice))
+                {
+                    ShowPacketOwnedNoticeDialog(deferredNotice);
+                }
+
+                if (!string.IsNullOrWhiteSpace(deferredSummary))
+                {
+                    return string.IsNullOrWhiteSpace(defaultMessage)
+                        ? deferredSummary
+                        : $"{defaultMessage} {deferredSummary}".Trim();
+                }
+            }
+
             return defaultMessage;
         }
 

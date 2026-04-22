@@ -1454,6 +1454,13 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
+            if (MovementInfo.TryApplyPacketMovePathProgression(tickCount))
+            {
+                this.flip = MovementInfo.FlipX;
+                UpdateAnimationAction();
+                return;
+            }
+
             MovementInfo.UpdateMovement(deltaTimeMs);
 
             // Update flip state based on movement direction
@@ -1850,6 +1857,14 @@ namespace HaCreator.MapSimulator.Entities
         private void RegisterAngerGaugeBurst(int tickCount)
         {
             List<IDXObject> effectFrames = _animationSet.GetAngerGaugeEffect();
+            string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
+                _mobInstance?.MobInfo?.ID,
+                _animationSet.GetAngerGaugeEffectPath());
+            if (!MobAngerGaugeBurstParity.CanRegisterOwnerBurst(effectFrames, effectPath) || _animationEffects == null)
+            {
+                return;
+            }
+
             int repeatIntervalMs = MobAngerGaugeBurstParity.ResolveRepeatIntervalMs(
                 effectFrames,
                 AI?.GetCurrentAttack(),
@@ -1859,30 +1874,18 @@ namespace HaCreator.MapSimulator.Entities
                 return;
             }
 
+            Vector2 anchor = GetAngerGaugeBurstAnchor();
+            _animationEffects.AddFullChargedAngerGauge(
+                effectFrames,
+                effectPath,
+                GetAngerGaugeBurstAnchor,
+                anchor.X,
+                anchor.Y,
+                tickCount,
+                zOrder: 1);
+
             _angerGaugeBurstNextAllowedTick = tickCount + repeatIntervalMs;
             AI?.RecordAngerGaugeFullChargeEffectRegistration(tickCount);
-
-            string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
-                _mobInstance?.MobInfo?.ID,
-                _animationSet.GetAngerGaugeEffectPath());
-            if (string.IsNullOrWhiteSpace(effectPath))
-            {
-                return;
-            }
-
-            if (_animationEffects != null)
-            {
-                Vector2 anchor = GetAngerGaugeBurstAnchor();
-                _animationEffects.AddFullChargedAngerGauge(
-                    effectFrames,
-                    effectPath,
-                    GetAngerGaugeBurstAnchor,
-                    anchor.X,
-                    anchor.Y,
-                    tickCount,
-                    zOrder: 1);
-                return;
-            }
         }
 
         private static IDXObject GetTimedAnimationFrame(IReadOnlyList<IDXObject> frames, int tickCount, int startTick, bool loop)

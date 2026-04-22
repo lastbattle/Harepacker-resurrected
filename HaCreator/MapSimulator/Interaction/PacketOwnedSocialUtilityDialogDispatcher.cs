@@ -730,8 +730,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (entry?.HasItemAttachment == true)
             {
                 noticeBuilder.Append(PacketOwnedSocialUtilityStringPoolText.ResolveParcelArrivalItemNotice(
-                    ResolveArrivalItemName(entry.AttachmentItemId),
-                    Math.Max(1, entry.AttachmentQuantity)));
+                    ResolveArrivalItemName(entry.AttachmentItemId)));
             }
 
             return noticeBuilder.ToString();
@@ -928,9 +927,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (IsSharableOnceCashOwnershipBlocked(slotData))
             {
-                string blockedMessage = ResolveStringPoolNoticeText(
-                    TrunkSendPutSharableOnceBlockedStringPoolId,
-                    "This sharable-once item cannot be moved because ownership is already locked.");
+                string blockedMessage = TrunkDialogClientParityText.ResolveSharableOnceBlockedNotice();
                 StatusMessage = $"CTrunkDlg blocked SendGetItemRequest on the sharable-once ownership branch: {blockedMessage}";
                 message = StatusMessage;
                 return false;
@@ -941,7 +938,12 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildGetItemRequestPayload(itemType, trunkRow),
                 $"Mirrored CTrunkDlg::SendGetItemRequest (opcode 67, mode 4, itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}).");
             _requestInFlight = true;
-            StatusMessage = $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}). Pre-send confirm branch follows {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)}.";
+            string preConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendGetPreConfirm());
+            string costConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendGetCostConfirm(0));
+            StatusMessage =
+                $"CTrunkDlg staged SendGetItemRequest for item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)} (itemType {itemType.ToString(CultureInfo.InvariantCulture)}, row {trunkRow.ToString(CultureInfo.InvariantCulture)}). " +
+                $"Accepted owner confirm {FormatStringPoolId(TrunkSendGetConfirmStringPoolId)}: {preConfirm} " +
+                $"Then accepted cost confirm {FormatStringPoolId(TrunkDialogClientParityText.SendGetNoCostConfirmStringPoolId)} / {FormatStringPoolId(TrunkDialogClientParityText.SendGetCostConfirmStringPoolId)}: {costConfirm}.";
             message = StatusMessage;
             return true;
         }
@@ -998,9 +1000,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (IsSharableOnceCashOwnershipBlocked(slotData))
             {
-                string blockedMessage = ResolveStringPoolNoticeText(
-                    TrunkSendPutSharableOnceBlockedStringPoolId,
-                    "This sharable-once item can no longer be moved.");
+                string blockedMessage = TrunkDialogClientParityText.ResolveSharableOnceBlockedNotice();
                 StatusMessage = $"CTrunkDlg blocked SendPutItemRequest on the sharable-once ownership branch via {FormatStringPoolId(TrunkSendPutSharableOnceBlockedStringPoolId)}: {blockedMessage}";
                 message = StatusMessage;
                 return false;
@@ -1018,9 +1018,20 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildPutItemRequestPayload(inventoryPosition, slotData.ItemId, normalizedQuantity),
                 $"Mirrored CTrunkDlg::SendPutItemRequest (opcode 67, mode 5, pos {inventoryPosition.ToString(CultureInfo.InvariantCulture)}, item {slotData.ItemId.ToString(CultureInfo.InvariantCulture)}, count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}).");
             _requestInFlight = true;
-            StatusMessage = normalizedQuantity == availableQuantity
-                ? $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}. Confirm branches follow {FormatStringPoolId(TrunkSendPutConfirmStringPoolId)} / {FormatStringPoolId(TrunkSendPutSharableOnceConfirmStringPoolId)} when applicable."
-                : $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}. Confirm branches follow {FormatStringPoolId(TrunkSendPutConfirmStringPoolId)} / {FormatStringPoolId(TrunkSendPutSharableOnceConfirmStringPoolId)} when applicable.";
+            bool sharableOnce = slotData.CashItemSerialNumber.GetValueOrDefault() > 0;
+            string preConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutPreConfirm(sharableOnce));
+            string askCount = !treatSingly && availableQuantity > 1
+                ? TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt())
+                : "No AskItemCount branch (client treat-singly path).";
+            string costConfirm = TrunkDialogClientParityText.ToInlineText(TrunkDialogClientParityText.ResolveSendPutCostConfirm(0));
+            string quantitySummary = normalizedQuantity == availableQuantity
+                ? $"full count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}"
+                : $"partial count {normalizedQuantity.ToString(CultureInfo.InvariantCulture)}";
+            StatusMessage =
+                $"CTrunkDlg staged SendPutItemRequest for slot {inventoryPosition.ToString(CultureInfo.InvariantCulture)} with {quantitySummary}. " +
+                $"Accepted pre-send confirm {FormatStringPoolId(sharableOnce ? TrunkSendPutSharableOnceConfirmStringPoolId : TrunkSendPutConfirmStringPoolId)}: {preConfirm} " +
+                $"AskItemCount path {FormatStringPoolId(TrunkDialogClientParityText.SendPutAskItemCountStringPoolId)}: {askCount} " +
+                $"Then accepted cost confirm {FormatStringPoolId(TrunkDialogClientParityText.SendPutNoCostConfirmStringPoolId)} / {FormatStringPoolId(TrunkDialogClientParityText.SendPutCostConfirmStringPoolId)}: {costConfirm}.";
             message = StatusMessage;
             return true;
         }

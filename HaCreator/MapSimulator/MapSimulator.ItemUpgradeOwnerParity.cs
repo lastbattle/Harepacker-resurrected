@@ -258,10 +258,8 @@ namespace HaCreator.MapSimulator
 
             if (_pendingItemUpgradeOwnerRequest == null)
             {
-                if (TryResolveItemUpgradePacketOwnedNoticeOnlyResult(
-                        decodeState.ResultCode,
-                        decodeState.HasReasonCode ? decodeState.ReasonCode : (int?)null,
-                        decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : _itemUpgradeOwnerLastResultValue,
+                if (TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequest(
+                        decodeState,
                         out string packetOwnedNoticeWithoutPendingRequest))
                 {
                     ShowUtilityFeedbackMessage(packetOwnedNoticeWithoutPendingRequest);
@@ -367,6 +365,21 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequest(
+            ItemUpgradeResultDecodeState decodeState,
+            out string message)
+        {
+            int? reasonCode = decodeState.HasReasonCode ? decodeState.ReasonCode : (int?)null;
+            int? resultValue = decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : _itemUpgradeOwnerLastResultValue;
+            int recoverySlotCountArgument = ResolveItemUpgradeRecoveredSlotCountArgumentWithoutPendingRequest();
+            return TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequest(
+                decodeState.ResultCode,
+                reasonCode,
+                resultValue,
+                recoverySlotCountArgument,
+                out message);
+        }
+
         private static int ResolveItemUpgradeResultReadyDelayMs(byte resultCode)
         {
             // CUIItemUpgrade::OnItemUpgradeResult handles 65/66 branches in the same call
@@ -391,6 +404,24 @@ namespace HaCreator.MapSimulator
                 }
 
                 return itemUpgradeWindow.ResolveProjectedRemainingUpgradeSlotCountAfterRecovery(slot);
+            }
+
+            return 1;
+        }
+
+        private int ResolveItemUpgradeRecoveredSlotCountArgumentWithoutPendingRequest()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
+            {
+                int totalSlotCount = itemUpgradeWindow.ResolveCurrentSelectionTotalUpgradeSlotCount();
+                if (_itemUpgradeOwnerLastUpgradeStateValue != int.MinValue)
+                {
+                    return ResolveItemUpgradeRecoveredSlotCountArgumentFromPacketState(
+                        totalSlotCount,
+                        _itemUpgradeOwnerLastUpgradeStateValue);
+                }
+
+                return itemUpgradeWindow.ResolveProjectedRemainingUpgradeSlotCountAfterRecoveryFromCurrentSelection();
             }
 
             return 1;
@@ -1043,6 +1074,25 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private static bool TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequest(
+            byte resultCode,
+            int? reasonCode,
+            int? resultValue,
+            int recoverySlotCountArgument,
+            out string message)
+        {
+            message = null;
+            if (resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot &&
+                reasonCode.HasValue &&
+                reasonCode.Value == 0)
+            {
+                message = ResolveItemUpgradeRecoveredSlotNotice(Math.Max(0, recoverySlotCountArgument));
+                return true;
+            }
+
+            return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(resultCode, reasonCode, resultValue, out message);
+        }
+
         internal static int ResolveItemUpgradeClientDuplicateRequestBusyResultValueForTests()
         {
             return ItemUpgradeClientDuplicateRequestBusyResultValue;
@@ -1068,6 +1118,21 @@ namespace HaCreator.MapSimulator
             out string message)
         {
             return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(resultCode, reasonCode, resultValue, out message);
+        }
+
+        internal static bool TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequestForTests(
+            byte resultCode,
+            int? reasonCode,
+            int? resultValue,
+            int recoverySlotCountArgument,
+            out string message)
+        {
+            return TryResolveItemUpgradePacketOwnedNoticeWithoutPendingRequest(
+                resultCode,
+                reasonCode,
+                resultValue,
+                recoverySlotCountArgument,
+                out message);
         }
 
         internal static string ResolveItemUpgradeRecoveredSlotNoticeForTests(int remainingUpgradeCount)

@@ -1266,6 +1266,17 @@ namespace HaCreator.MapSimulator.Interaction
             return canvasProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
         }
 
+        private static Vector2? GetCanvasOriginVector(WzCanvasProperty canvasProperty)
+        {
+            if (canvasProperty == null)
+            {
+                return null;
+            }
+
+            System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
+            return new Vector2(origin.X, origin.Y);
+        }
+
         private NameTagAssets ResolveNameTagAssets(SocialRoomFieldActorSnapshot snapshot, GraphicsDevice device)
         {
             if (snapshot?.Template == SocialRoomFieldActorTemplate.CashEmployee && snapshot.TemplateId > 0)
@@ -1352,6 +1363,7 @@ namespace HaCreator.MapSimulator.Interaction
             EmployeeMiniRoomBoardAssets loadedAssets = new()
             {
                 Signboard = signboardTexture,
+                SignboardOrigin = GetCanvasOriginVector(signboardCanvas),
                 EffectFrames = effectFrames,
                 TotalEffectDurationMs = effectFrames.Sum(frame => Math.Max(1, frame.DelayMs))
             };
@@ -1377,7 +1389,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 int delayMs = Math.Max(1, GetIntValue(canvas?["delay"]) ?? ClientEmployeeDefaultFrameDelayMs);
-                frames.Add(new EmployeeMiniRoomBoardEffectFrame(texture, delayMs));
+                frames.Add(new EmployeeMiniRoomBoardEffectFrame(texture, delayMs, GetCanvasOriginVector(canvas)));
             }
 
             return frames.ToArray();
@@ -1462,17 +1474,23 @@ namespace HaCreator.MapSimulator.Interaction
 
             int actorScreenX = _activeActor.CurrentX - mapShiftX + mapCenterX;
             int actorScreenY = _activeActor.CurrentY - mapShiftY + mapCenterY;
-            int boardX = actorScreenX - (boardTexture.Width / 2);
-            int boardY =
+            int verticalAdjustment = ResolveMiniRoomBalloonVerticalAdjustment(_activeSnapshot);
+            Vector2 boardAnchor = new(
+                actorScreenX,
                 actorScreenY
                 - _activeActor.NpcInstance.Height
-                - boardTexture.Height
                 - MiniRoomBalloonVerticalOffset
-                + ResolveMiniRoomBalloonVerticalAdjustment(_activeSnapshot);
-            Vector2 boardPosition = new(boardX, boardY);
+                + verticalAdjustment);
+            Vector2 boardPosition = ResolveMiniRoomBoardDrawPosition(
+                boardAnchor,
+                boardTexture.Width,
+                boardTexture.Height,
+                _activeMiniRoomBoardAssets?.SignboardOrigin);
+            int boardX = (int)boardPosition.X;
+            int boardY = (int)boardPosition.Y;
 
             spriteBatch.Draw(boardTexture, boardPosition, Color.White);
-            DrawTemplateMiniRoomBoardEffect(spriteBatch, boardPosition, _activeMiniRoomBoardAssets, tickCount);
+            DrawTemplateMiniRoomBoardEffect(spriteBatch, boardAnchor, _activeMiniRoomBoardAssets, tickCount);
 
             if (assets.PersonalShopIcon != null)
             {
@@ -1494,7 +1512,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static void DrawTemplateMiniRoomBoardEffect(
             SpriteBatch spriteBatch,
-            Vector2 boardPosition,
+            Vector2 boardAnchor,
             EmployeeMiniRoomBoardAssets templateAssets,
             int tickCount)
         {
@@ -1519,11 +1537,86 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (frame.Texture != null)
                 {
-                    spriteBatch.Draw(frame.Texture, boardPosition, Color.White);
+                    Vector2 framePosition = ResolveMiniRoomBoardDrawPosition(
+                        boardAnchor,
+                        frame.Texture.Width,
+                        frame.Texture.Height,
+                        frame.Origin ?? templateAssets.SignboardOrigin);
+                    spriteBatch.Draw(frame.Texture, framePosition, Color.White);
                 }
 
                 break;
             }
+        }
+
+        private static Vector2 ResolveMiniRoomBoardDrawPosition(
+            Vector2 boardAnchor,
+            int boardWidth,
+            int boardHeight,
+            Vector2? configuredOrigin)
+        {
+            Vector2 origin = ResolveMiniRoomBoardDrawOrigin(boardWidth, boardHeight, configuredOrigin);
+            return new Vector2(boardAnchor.X - origin.X, boardAnchor.Y - origin.Y);
+        }
+
+        private static Vector2 ResolveMiniRoomBoardDrawOrigin(
+            int boardWidth,
+            int boardHeight,
+            Vector2? configuredOrigin)
+        {
+            if (configuredOrigin.HasValue)
+            {
+                return configuredOrigin.Value;
+            }
+
+            return new Vector2(boardWidth / 2f, boardHeight);
+        }
+
+        internal static (int X, int Y) ResolveMiniRoomBoardTopLeftForTesting(
+            int actorScreenX,
+            int actorScreenY,
+            int actorHeight,
+            int boardWidth,
+            int boardHeight,
+            int verticalAdjustment,
+            int? originX,
+            int? originY)
+        {
+            Vector2 boardAnchor = new(
+                actorScreenX,
+                actorScreenY - actorHeight - MiniRoomBalloonVerticalOffset + verticalAdjustment);
+            Vector2? configuredOrigin = originX.HasValue && originY.HasValue
+                ? new Vector2(originX.Value, originY.Value)
+                : null;
+            Vector2 position = ResolveMiniRoomBoardDrawPosition(
+                boardAnchor,
+                boardWidth,
+                boardHeight,
+                configuredOrigin);
+            return ((int)position.X, (int)position.Y);
+        }
+
+        internal static (int X, int Y) ResolveMiniRoomBoardEffectTopLeftForTesting(
+            int boardAnchorX,
+            int boardAnchorY,
+            int effectWidth,
+            int effectHeight,
+            int? effectOriginX,
+            int? effectOriginY,
+            int? boardOriginX,
+            int? boardOriginY)
+        {
+            Vector2? configuredOrigin = effectOriginX.HasValue && effectOriginY.HasValue
+                ? new Vector2(effectOriginX.Value, effectOriginY.Value)
+                : (boardOriginX.HasValue && boardOriginY.HasValue
+                    ? new Vector2(boardOriginX.Value, boardOriginY.Value)
+                    : null);
+            Vector2 position = ResolveMiniRoomBoardDrawPosition(
+                new Vector2(boardAnchorX, boardAnchorY),
+                effectWidth,
+                effectHeight,
+                configuredOrigin);
+            return ((int)position.X, (int)position.Y);
         }
 
         private static Texture2D ResolveMiniRoomBalloonBoardTexture(
@@ -2337,11 +2430,12 @@ namespace HaCreator.MapSimulator.Interaction
                 && MaxCountDigits.Length >= 5;
         }
 
-        private readonly record struct EmployeeMiniRoomBoardEffectFrame(Texture2D Texture, int DelayMs);
+        private readonly record struct EmployeeMiniRoomBoardEffectFrame(Texture2D Texture, int DelayMs, Vector2? Origin);
 
         private sealed class EmployeeMiniRoomBoardAssets
         {
             public Texture2D Signboard { get; init; }
+            public Vector2? SignboardOrigin { get; init; }
             public EmployeeMiniRoomBoardEffectFrame[] EffectFrames { get; init; } = Array.Empty<EmployeeMiniRoomBoardEffectFrame>();
             public int TotalEffectDurationMs { get; init; }
         }

@@ -1860,15 +1860,27 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            if (!TryResolveParticipantForTemporaryStats(characterId, out WeddingRemoteParticipant participant, out errorMessage))
+            if (!TryResolveParticipantForTemporaryStats(characterId, out WeddingRemoteParticipant participant, out _))
             {
-                return false;
+                QueuePendingRemoteParticipantOperation(
+                    characterId,
+                    new PendingWeddingRemoteParticipantOperation(
+                        PendingWeddingRemoteParticipantOperationType.RelationshipRecordAdd,
+                        default,
+                        0,
+                        Array.Empty<int>(),
+                        null,
+                        default,
+                        0,
+                        0,
+                        0,
+                        0,
+                        packet.RelationshipType,
+                        packet.RelationshipRecord));
+                return true;
             }
 
-            RemoteUserAvatarModifiedPacket state = participant.AvatarModifiedState
-                ?? CreateDefaultAvatarModifiedState(characterId);
-            state = ApplyRelationshipRecordToAvatarModifiedState(state, packet.RelationshipType, packet.RelationshipRecord);
-            StoreAvatarModifiedState(participant, state);
+            ApplyRelationshipRecordAdd(participant, packet.RelationshipType, packet.RelationshipRecord);
             return true;
         }
 
@@ -1880,25 +1892,37 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            if (packet.CharacterId.HasValue
+                && packet.CharacterId.Value > 0
+                && !TryResolveParticipantForTemporaryStats(packet.CharacterId.Value, out _, out _))
+            {
+                QueuePendingRemoteParticipantOperation(
+                    packet.CharacterId.Value,
+                    new PendingWeddingRemoteParticipantOperation(
+                        PendingWeddingRemoteParticipantOperationType.RelationshipRecordRemove,
+                        default,
+                        0,
+                        Array.Empty<int>(),
+                        null,
+                        default,
+                        0,
+                        0,
+                        0,
+                        0,
+                        packet.RelationshipType,
+                        default,
+                        packet.CharacterId,
+                        packet.ItemSerial));
+                return true;
+            }
+
             int affectedCount = 0;
             foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
             {
-                if (!participant.AvatarModifiedState.HasValue)
+                if (ApplyRelationshipRecordRemove(participant, packet.RelationshipType, packet.CharacterId, packet.ItemSerial))
                 {
-                    continue;
+                    affectedCount++;
                 }
-
-                if (!ShouldClearRelationshipRecord(packet, participant, out RemoteUserRelationshipRecord currentRecord))
-                {
-                    continue;
-                }
-
-                RemoteUserAvatarModifiedPacket updatedState = ApplyRelationshipRecordToAvatarModifiedState(
-                    participant.AvatarModifiedState.Value,
-                    packet.RelationshipType,
-                    currentRecord with { IsActive = false, ItemId = 0 });
-                StoreAvatarModifiedState(participant, updatedState);
-                affectedCount++;
             }
 
             if (affectedCount == 0)
@@ -1914,6 +1938,54 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
+        private static void ApplyRelationshipRecordAdd(
+            WeddingRemoteParticipant participant,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            if (participant == null)
+            {
+                return;
+            }
+
+            RemoteUserAvatarModifiedPacket state = participant.AvatarModifiedState
+                ?? CreateDefaultAvatarModifiedState(participant.CharacterId);
+            state = ApplyRelationshipRecordToAvatarModifiedState(state, relationshipType, relationshipRecord);
+            StoreAvatarModifiedState(participant, state);
+        }
+
+        private static bool ApplyRelationshipRecordRemove(
+            WeddingRemoteParticipant participant,
+            RemoteRelationshipOverlayType relationshipType,
+            int? characterId,
+            long? itemSerial)
+        {
+            if (participant == null || !participant.AvatarModifiedState.HasValue)
+            {
+                return false;
+            }
+
+            RemoteUserRelationshipRecord currentRecord = GetRelationshipRecord(
+                participant.AvatarModifiedState.Value,
+                relationshipType);
+            if (!currentRecord.IsActive)
+            {
+                return false;
+            }
+
+            if (!ShouldClearRelationshipRecord(characterId, itemSerial, participant, currentRecord))
+            {
+                return false;
+            }
+
+            RemoteUserAvatarModifiedPacket updatedState = ApplyRelationshipRecordToAvatarModifiedState(
+                participant.AvatarModifiedState.Value,
+                relationshipType,
+                currentRecord with { IsActive = false, ItemId = 0 });
+            StoreAvatarModifiedState(participant, updatedState);
+            return true;
+        }
+
         private static bool ShouldClearRelationshipRecord(
             RemoteUserRelationshipRecordRemovePacket removePacket,
             WeddingRemoteParticipant participant,
@@ -1922,27 +1994,40 @@ namespace HaCreator.MapSimulator.Effects
             currentRecord = GetRelationshipRecord(
                 participant.AvatarModifiedState.Value,
                 removePacket.RelationshipType);
-            if (!currentRecord.IsActive)
+            return ShouldClearRelationshipRecord(
+                removePacket.CharacterId,
+                removePacket.ItemSerial,
+                participant,
+                currentRecord);
+        }
+
+        private static bool ShouldClearRelationshipRecord(
+            int? characterId,
+            long? itemSerial,
+            WeddingRemoteParticipant participant,
+            RemoteUserRelationshipRecord currentRecord)
+        {
+            if (!currentRecord.IsActive || participant == null)
             {
                 return false;
             }
 
-            if (removePacket.CharacterId.HasValue && removePacket.CharacterId.Value > 0)
+            if (characterId.HasValue && characterId.Value > 0)
             {
-                if (removePacket.CharacterId.Value == participant.CharacterId)
+                if (characterId.Value == participant.CharacterId)
                 {
                     return true;
                 }
 
                 return currentRecord.PairCharacterId.HasValue
-                    && currentRecord.PairCharacterId.Value == removePacket.CharacterId.Value;
+                    && currentRecord.PairCharacterId.Value == characterId.Value;
             }
 
-            if (removePacket.ItemSerial.HasValue)
+            if (itemSerial.HasValue)
             {
-                long itemSerial = removePacket.ItemSerial.Value;
-                return (currentRecord.ItemSerial.HasValue && currentRecord.ItemSerial.Value == itemSerial)
-                    || (currentRecord.PairItemSerial.HasValue && currentRecord.PairItemSerial.Value == itemSerial);
+                long serial = itemSerial.Value;
+                return (currentRecord.ItemSerial.HasValue && currentRecord.ItemSerial.Value == serial)
+                    || (currentRecord.PairItemSerial.HasValue && currentRecord.PairItemSerial.Value == serial);
             }
 
             return true;
@@ -2344,6 +2429,19 @@ namespace HaCreator.MapSimulator.Effects
                             operation.MarkBackgroundColor,
                             operation.MarkId,
                             operation.MarkColor);
+                        break;
+                    case PendingWeddingRemoteParticipantOperationType.RelationshipRecordAdd:
+                        ApplyRelationshipRecordAdd(
+                            participant,
+                            operation.RelationshipType,
+                            operation.RelationshipRecord);
+                        break;
+                    case PendingWeddingRemoteParticipantOperationType.RelationshipRecordRemove:
+                        ApplyRelationshipRecordRemove(
+                            participant,
+                            operation.RelationshipType,
+                            operation.RelationshipRemoveCharacterId,
+                            operation.RelationshipRemoveItemSerial);
                         break;
                 }
             }

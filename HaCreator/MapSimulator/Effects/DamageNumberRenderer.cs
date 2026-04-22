@@ -170,7 +170,7 @@ namespace HaCreator.MapSimulator.Effects
         internal const int DamageNumberFormatStringPoolId = 0x1A15;
         internal const string DamageNumberEffectCategoryName = "effect";
         internal const string DamageNumberBasicEffectImageName = "BasicEff.img";
-        internal const string DamageNumberSpecialTextOwnerSetName = "NoRed0";
+        internal const string DamageNumberSpecialTextOwnerSetName = DamageNumberLoader.DamageNumberSpecialTextOwnerSetName;
         #endregion
 
         internal readonly record struct DigitLayoutEntry(int Digit, bool UseLargeDigitSet, int RelativeX);

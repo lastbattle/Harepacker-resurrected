@@ -392,12 +392,7 @@ namespace HaCreator.MapSimulator.Character
                 part.OffsetY += bodyRelMove.Y;
             }
 
-            OffsetMapPoint(frame.MapPoints, "navel", bodyRelMove);
-            OffsetMapPoint(frame.MapPoints, "neck", bodyRelMove);
-            OffsetMapPoint(frame.MapPoints, "hand", bodyRelMove);
-            OffsetMapPoint(frame.MapPoints, "handMove", bodyRelMove);
-            OffsetMapPoint(frame.MapPoints, "brow", bodyRelMove);
-            OffsetMapPoint(frame.MapPoints, "muzzle", bodyRelMove);
+            OffsetNonClientMapPoints(frame.MapPoints, bodyRelMove);
         }
 
         internal static MountedOriginRelocation ResolveMountedOriginRelocation(
@@ -799,14 +794,25 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private static void OffsetMapPoint(Dictionary<string, Point> mapPoints, string name, Point offset)
+        private static void OffsetNonClientMapPoints(Dictionary<string, Point> mapPoints, Point offset)
         {
-            if (mapPoints == null || !mapPoints.TryGetValue(name, out Point point))
+            if (mapPoints == null || mapPoints.Count == 0 || offset == Point.Zero)
             {
                 return;
             }
 
-            mapPoints[name] = new Point(point.X + offset.X, point.Y + offset.Y);
+            var names = new List<string>(mapPoints.Keys);
+            for (int i = 0; i < names.Count; i++)
+            {
+                string name = names[i];
+                if (IsClientOriginMapPointName(name)
+                    || !mapPoints.TryGetValue(name, out Point point))
+                {
+                    continue;
+                }
+
+                mapPoints[name] = new Point(point.X + offset.X, point.Y + offset.Y);
+            }
         }
 
         private static bool TryGetMapPoint(CharacterFrame frame, string name, out Point point)

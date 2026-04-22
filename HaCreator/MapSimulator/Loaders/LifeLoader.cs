@@ -97,7 +97,7 @@ namespace HaCreator.MapSimulator.Loaders
         // These slots are explicitly client-owned by the 43-slot contract, but native names are not yet recovered.
         private static readonly IReadOnlyCollection<int> _mobClientUnresolvedActionSlots = new HashSet<int>
         {
-            6, 7, 8, 11, 12, 40, 41, 42
+            7, 8, 11, 40, 41, 42
         };
 
         private static readonly Dictionary<string, int> _mobClientActionSlotsByName =
@@ -111,7 +111,9 @@ namespace HaCreator.MapSimulator.Loaders
                 // WZ mob roots still ship non-indexed hit/die branches on some templates;
                 // canonicalize them onto the client-owned slot surface.
                 ["hit"] = 3,
-                ["die"] = 4
+                ["die"] = 4,
+                // Preserve the pre-slot-expansion simulator alias for MoveAction2RawAction case 16.
+                ["moveaction16"] = 39
             };
         private sealed class CachedDoomMobAssets
         {
@@ -129,9 +131,14 @@ namespace HaCreator.MapSimulator.Loaders
                 [3] = "hit1",
                 [4] = "die1",
                 [5] = "regen",
+                // Recovered from `_dynamic_initializer_for__s_sMobAction__`: slot 6 uses StringPool id 0x0453.
+                [6] = "bomb",
                 [9] = "hit2",
                 [10] = "die2",
-                [39] = "moveaction16"
+                // Recovered from `_dynamic_initializer_for__s_sMobAction__`: slot 12 uses StringPool id 0x0452.
+                [12] = "dieF",
+                // `CMob::MoveAction2RawAction` case 16 resolves to slot 39; WZ action roots use `chase`.
+                [39] = "chase"
             };
 
             for (int attackSlot = MobClientAttackActionSlotStart; attackSlot <= MobClientAttackActionSlotEnd; attackSlot++)

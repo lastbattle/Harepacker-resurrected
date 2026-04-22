@@ -133,10 +133,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private List<TradeVerificationEntry> BuildTradingRoomTradeRequestVerificationEntries()
         {
-            List<TradeVerificationEntry> entries = new List<TradeVerificationEntry>();
-            entries.AddRange(BuildTradeVerificationEntries(isLocalParty: false));
-            entries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
-            return entries;
+            // IDA: CTradingRoomDlg::OnTrade (0x763F20) computes CRC rows from m_aaItem[1] only.
+            return BuildTradeVerificationEntries(isLocalParty: false);
         }
     }
 }

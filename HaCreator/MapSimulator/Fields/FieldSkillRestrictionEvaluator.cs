@@ -287,17 +287,20 @@ namespace HaCreator.MapSimulator.Fields
                 return "Evan characters cannot use active skills in no-dragon fields.";
             }
 
-            if (runtimeState?.CoconutBasicActionOwned == true)
+            if (mapInfo.fieldType == FieldType.FIELDTYPE_COCONUT
+                && runtimeState?.CoconutBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Coconut minigame owns basic attacks.";
             }
 
-            if (runtimeState?.SnowBallBasicActionOwned == true)
+            if (mapInfo.fieldType == FieldType.FIELDTYPE_SNOWBALL
+                && runtimeState?.SnowBallBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Snowball minigame owns basic attacks.";
             }
 
-            if (runtimeState?.GuildBossBasicActionOwned == true)
+            if (mapInfo.fieldType == FieldType.FIELDTYPE_GUILDBOSS
+                && runtimeState?.GuildBossBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Guild Boss field owns basic attacks.";
             }
