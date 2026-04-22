@@ -10,7 +10,7 @@ namespace HaCreator.MapSimulator.Pools
         private const float MinimumHypnotizeTargetRange = 320f;
         private const float CurrentTargetRetentionRangeMultiplier = 1.5f;
 
-        public static MobItem ResolveTarget(MobItem source, IReadOnlyList<MobItem> activeMobs)
+        public static MobItem ResolveTarget(MobItem source, IReadOnlyList<MobItem> activeMobs, int preferredTargetId = 0)
         {
             if (source?.AI == null || source.AI.IsDead || activeMobs == null || activeMobs.Count == 0)
             {
@@ -57,7 +57,8 @@ namespace HaCreator.MapSimulator.Pools
                     candidatePriorityTier: candidatePriorityTier,
                     currentDistanceSq: bestDistanceSq,
                     candidateDistanceSq: distanceSq,
-                    candidateId: candidate.PoolId))
+                    candidateId: candidate.PoolId,
+                    preferredTargetId: preferredTargetId))
                 {
                     continue;
                 }
@@ -135,11 +136,22 @@ namespace HaCreator.MapSimulator.Pools
             int candidatePriorityTier,
             float currentDistanceSq,
             float candidateDistanceSq,
-            int candidateId)
+            int candidateId,
+            int preferredTargetId = 0)
         {
             if (candidatePriorityTier != currentPriorityTier)
             {
                 return candidatePriorityTier < currentPriorityTier;
+            }
+
+            if (preferredTargetId > 0)
+            {
+                bool candidateIsPreferred = candidateId == preferredTargetId;
+                bool currentBestIsPreferred = currentBestId == preferredTargetId;
+                if (candidateIsPreferred != currentBestIsPreferred)
+                {
+                    return candidateIsPreferred;
+                }
             }
 
             if (currentTargetId > 0)

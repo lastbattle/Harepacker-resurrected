@@ -138,6 +138,9 @@ namespace HaCreator.MapSimulator.UI
         private const int SearchTextInsetX = 6;
         private const int SearchTextInsetY = 3;
         private const int MaxSearchQueryLength = 48;
+        private const int MaxVisibleSurfaceMarkersPerMap = 6;
+        private const int SurfaceOverlayOverflowBadgeOffsetX = 20;
+        private const int SurfaceOverlayOverflowBadgeOffsetY = -16;
         private const int KeyRepeatInitialDelayMs = 360;
         private const int KeyRepeatIntervalMs = 42;
         private const int CandidateWindowPadding = 4;
@@ -799,7 +802,7 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle rowBounds = new(Position.X + ListStartX, Position.Y + ListStartY + (row * RowHeight), ListWidth, RowHeight);
                 Color textColor = entry.MapId == _selectedMapId ? Color.White : new Color(228, 228, 228);
                 int overlayCount = GetOverlayCountForMap(entry.MapId);
-                int markerInset = DrawOverlayMarker(sprite, rowBounds, overlayCount, TickCount);
+                int markerInset = DrawOverlayMarker(sprite, rowBounds, entry.MapId, overlayCount, TickCount);
                 string label = TrimToWidth($"{entry.MapId} {entry.DisplayName}", ListWidth - markerInset - 4);
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
@@ -1252,17 +1255,103 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                QuestOverlayEntry[] orderedOverlays = overlayGroup
-                    .OrderByDescending(entry => entry.IsPriorityTarget)
-                    .ThenBy(entry => entry.StableOrder)
-                    .ThenBy(entry => entry.Kind)
-                    .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                for (int i = 0; i < orderedOverlays.Length; i++)
+                QuestOverlayEntry[] orderedOverlays = OrderOverlaysForPlacement(overlayGroup).ToArray();
+                (IReadOnlyList<QuestOverlayEntry> visibleOverlays, int hiddenCount) = SelectVisibleSurfaceMarkers(
+                    orderedOverlays,
+                    MaxVisibleSurfaceMarkersPerMap);
+                IReadOnlyList<QuestOverlayEntry> drawOrder = BuildSurfaceMarkerDrawOrder(visibleOverlays);
+                for (int i = 0; i < drawOrder.Count; i++)
                 {
-                    DrawSurfaceMarker(sprite, markerFrame, spotAnchor, orderedOverlays[i], i);
+                    DrawSurfaceMarker(sprite, markerFrame, spotAnchor, drawOrder[i], i);
+                }
+
+                if (hiddenCount > 0)
+                {
+                    DrawSurfaceOverlayOverflowBadge(sprite, spotAnchor, hiddenCount);
                 }
             }
+        }
+
+        private static IReadOnlyList<QuestOverlayEntry> OrderOverlaysForPlacement(IEnumerable<QuestOverlayEntry> overlays)
+        {
+            if (overlays == null)
+            {
+                return Array.Empty<QuestOverlayEntry>();
+            }
+
+            return overlays
+                .Where(entry => entry != null)
+                .OrderByDescending(entry => entry.IsPriorityTarget)
+                .ThenBy(entry => entry.StableOrder)
+                .ThenBy(entry => entry.Kind)
+                .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static (IReadOnlyList<QuestOverlayEntry> VisibleEntries, int HiddenCount) SelectVisibleSurfaceMarkers(
+            IReadOnlyList<QuestOverlayEntry> overlays,
+            int maxVisibleMarkers)
+        {
+            if (overlays == null || overlays.Count == 0)
+            {
+                return (Array.Empty<QuestOverlayEntry>(), 0);
+            }
+
+            int clampedMax = Math.Max(1, maxVisibleMarkers);
+            if (overlays.Count <= clampedMax)
+            {
+                return (overlays, 0);
+            }
+
+            QuestOverlayEntry[] visible = overlays
+                .Take(clampedMax)
+                .ToArray();
+            return (visible, overlays.Count - visible.Length);
+        }
+
+        private static IReadOnlyList<QuestOverlayEntry> BuildSurfaceMarkerDrawOrder(IReadOnlyList<QuestOverlayEntry> overlays)
+        {
+            if (overlays == null || overlays.Count == 0)
+            {
+                return Array.Empty<QuestOverlayEntry>();
+            }
+
+            return overlays
+                .OrderBy(entry => entry.IsPriorityTarget ? 1 : 0)
+                .ThenBy(entry => entry.StableOrder)
+                .ThenBy(entry => entry.Kind)
+                .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        internal static (IReadOnlyList<QuestOverlayEntry> VisibleEntries, int HiddenCount) SelectVisibleSurfaceMarkersForTesting(
+            IReadOnlyList<QuestOverlayEntry> overlays,
+            int maxVisibleMarkers)
+        {
+            return SelectVisibleSurfaceMarkers(overlays, maxVisibleMarkers);
+        }
+
+        internal static IReadOnlyList<QuestOverlayEntry> BuildSurfaceMarkerDrawOrderForTesting(IReadOnlyList<QuestOverlayEntry> overlays)
+        {
+            return BuildSurfaceMarkerDrawOrder(overlays);
+        }
+
+        private void DrawSurfaceOverlayOverflowBadge(SpriteBatch sprite, Point anchor, int hiddenCount)
+        {
+            if (_font == null || hiddenCount <= 0)
+            {
+                return;
+            }
+
+            string badgeText = $"+{hiddenCount}";
+            SelectorWindowDrawing.DrawShadowedText(
+                sprite,
+                _font,
+                badgeText,
+                new Vector2(
+                    anchor.X + SurfaceOverlayOverflowBadgeOffsetX,
+                    anchor.Y + SurfaceOverlayOverflowBadgeOffsetY),
+                new Color(255, 236, 167));
         }
 
         private bool TryResolveActiveSurface(out WorldMapSurfaceDefinition surface)
@@ -1358,11 +1447,27 @@ namespace HaCreator.MapSimulator.UI
             out Point markerOrigin,
             out bool drawOverlayIcon)
         {
+            QuestOverlayMarkerStyle markerStyle = overlay?.MarkerStyle ?? QuestOverlayMarkerStyle.Default;
+            return TryResolveQuestOverlayMarkerVisual(
+                markerStyle,
+                animatedFrame,
+                out markerTexture,
+                out markerOrigin,
+                out drawOverlayIcon);
+        }
+
+        private bool TryResolveQuestOverlayMarkerVisual(
+            QuestOverlayMarkerStyle markerStyle,
+            OverlayMarkerFrame? animatedFrame,
+            out Texture2D markerTexture,
+            out Point markerOrigin,
+            out bool drawOverlayIcon)
+        {
             markerTexture = null;
             markerOrigin = Point.Zero;
             drawOverlayIcon = false;
 
-            switch (overlay?.MarkerStyle ?? QuestOverlayMarkerStyle.Default)
+            switch (markerStyle)
             {
                 case QuestOverlayMarkerStyle.LowLevelQuest when _lowLevelQuestMarkerTexture != null:
                     markerTexture = _lowLevelQuestMarkerTexture;
@@ -1643,7 +1748,7 @@ namespace HaCreator.MapSimulator.UI
 
             Texture2D iconTexture = style?.IconTexture;
             int textStartX = rowBounds.X + 2;
-            textStartX += DrawOverlayMarker(sprite, rowBounds, GetOverlayCountForMap(entry.MapId), tickCount);
+            textStartX += DrawOverlayMarker(sprite, rowBounds, entry.MapId, GetOverlayCountForMap(entry.MapId), tickCount);
             if (iconTexture != null)
             {
                 Point iconOffset = style?.IconOffset ?? Point.Zero;
@@ -1684,7 +1789,7 @@ namespace HaCreator.MapSimulator.UI
                 : null;
         }
 
-        private int DrawOverlayMarker(SpriteBatch sprite, Rectangle rowBounds, int overlayCount, int tickCount)
+        private int DrawOverlayMarker(SpriteBatch sprite, Rectangle rowBounds, int mapId, int overlayCount, int tickCount)
         {
             if (overlayCount <= 0)
             {
@@ -1692,14 +1797,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             OverlayMarkerFrame? markerFrame = GetActiveOverlayMarkerFrame(tickCount);
-            if (!markerFrame.HasValue)
-            {
-                return 12;
-            }
-
-            OverlayMarkerFrame frame = markerFrame.Value;
-            Texture2D texture = frame.Texture;
-            if (texture == null)
+            QuestOverlayMarkerStyle markerStyle = ResolveRowOverlayMarkerStyle(mapId);
+            if (!TryResolveQuestOverlayMarkerVisual(
+                    markerStyle,
+                    markerFrame,
+                    out Texture2D texture,
+                    out Point markerOrigin,
+                    out _))
             {
                 return 12;
             }
@@ -1711,12 +1815,44 @@ namespace HaCreator.MapSimulator.UI
             int anchorX = rowBounds.X + 7;
             int anchorY = rowBounds.Bottom - 1;
             Rectangle destination = new(
-                anchorX - (int)Math.Round(frame.Origin.X * scale),
-                anchorY - (int)Math.Round(frame.Origin.Y * scale),
+                anchorX - (int)Math.Round(markerOrigin.X * scale),
+                anchorY - (int)Math.Round(markerOrigin.Y * scale),
                 width,
                 height);
-            sprite.Draw(frame.Texture, destination, Color.White);
-            return Math.Max(12, destination.Width) + 2;
+            sprite.Draw(texture, destination, Color.White);
+
+            int inset = Math.Max(12, destination.Width) + 2;
+            if (overlayCount > 1 && _font != null)
+            {
+                string countLabel = overlayCount > 99 ? "99+" : overlayCount.ToString();
+                Vector2 countPosition = new(destination.Right + 1, rowBounds.Y + 1);
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    countLabel,
+                    countPosition,
+                    new Color(255, 236, 167));
+                inset += Math.Max(6, (int)Math.Ceiling(_font.MeasureString(countLabel).X));
+            }
+
+            return inset;
+        }
+
+        private QuestOverlayMarkerStyle ResolveRowOverlayMarkerStyle(int mapId)
+        {
+            if (mapId <= 0)
+            {
+                return QuestOverlayMarkerStyle.Default;
+            }
+
+            QuestOverlayEntry resolvedOverlay = _questOverlays
+                .Where(entry => entry != null && entry.MapId == mapId)
+                .OrderByDescending(entry => entry.IsPriorityTarget)
+                .ThenBy(entry => entry.StableOrder)
+                .ThenBy(entry => entry.Kind)
+                .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            return resolvedOverlay?.MarkerStyle ?? QuestOverlayMarkerStyle.Default;
         }
 
         private OverlayMarkerFrame? GetActiveOverlayMarkerFrame(int tickCount)

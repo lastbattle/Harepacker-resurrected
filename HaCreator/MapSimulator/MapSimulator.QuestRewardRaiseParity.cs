@@ -660,6 +660,12 @@ namespace HaCreator.MapSimulator
             message = null;
             if (!QuestRewardRaiseInboundPacketCodec.TryDecode(kind, payload, out QuestRewardRaiseInboundPacket packet, out string error))
             {
+                if (kind == QuestRewardRaiseInboundPacketKind.PutItemReleaseResult
+                    && TryApplyPacketOwnedQuestRewardRaiseClientCompactPutItemPayload(kind, payload, out message))
+                {
+                    return true;
+                }
+
                 message = error ?? "Raise inbound payload could not be decoded.";
                 return false;
             }
@@ -672,11 +678,83 @@ namespace HaCreator.MapSimulator
             message = null;
             if (!QuestRewardRaiseInboundPacketCodec.TryDecodeClientPutItemAddOrConfirm(payload, out QuestRewardRaiseInboundPacket packet, out string error))
             {
+                if (TryApplyPacketOwnedQuestRewardRaiseClientCompactPutItemPayload(
+                        QuestRewardRaiseInboundPacketKind.PutItemAddResult,
+                        payload,
+                        out message))
+                {
+                    return true;
+                }
+
                 message = error ?? "Raise client PutItem(286) payload could not be decoded.";
                 return false;
             }
 
             return TryApplyPacketOwnedQuestRewardRaisePacket(packet, out message);
+        }
+
+        private bool TryApplyPacketOwnedQuestRewardRaiseClientCompactPutItemPayload(
+            QuestRewardRaiseInboundPacketKind kind,
+            byte[] payload,
+            out string message)
+        {
+            message = null;
+            if (kind is not QuestRewardRaiseInboundPacketKind.PutItemAddResult
+                and not QuestRewardRaiseInboundPacketKind.PutItemReleaseResult)
+            {
+                return false;
+            }
+
+            if (!QuestRewardRaiseInboundPacketCodec.TryDecodeClientCompactPutItemPayload(
+                    payload,
+                    out QuestRewardRaiseClientCompactPutItemPayload compactPayload,
+                    out string decodeError))
+            {
+                message = decodeError ?? "Raise compact PutItem payload could not be decoded.";
+                return false;
+            }
+
+            QuestRewardRaiseState observedRaise = _questRewardRaiseManager.FindObservedRaiseByPieceHint(
+                compactPayload.InventoryType,
+                compactPayload.SlotIndex,
+                compactPayload.ItemId);
+            int questId = Math.Max(0, observedRaise?.Prompt?.QuestId ?? 0);
+            if (observedRaise == null || questId <= 0)
+            {
+                message = $"Raise compact PutItem payload could not be mapped to a retained/live owner seam for item {Math.Max(0, compactPayload.ItemId)}.";
+                return false;
+            }
+
+            int pieceRequestId = ResolveCompactQuestRewardRaisePieceRequestId(observedRaise, compactPayload);
+            QuestRewardRaisePacketPayload syntheticPayload = new(
+                Math.Max(0, observedRaise.ManagerSessionId),
+                Math.Max(0, observedRaise.RequestId),
+                Math.Max(0, pieceRequestId),
+                questId,
+                Math.Max(0, observedRaise.OwnerItemId),
+                observedRaise.QrData,
+                observedRaise.WindowMode,
+                observedRaise.DisplayMode,
+                compactPayload.InventoryType,
+                compactPayload.SlotIndex,
+                Math.Max(0, compactPayload.ItemId),
+                1,
+                Math.Max(0, observedRaise.PlacedPieces?.Count ?? 0),
+                Math.Max(1, observedRaise.MaxDropCount),
+                observedRaise.SelectedItemsByGroup.ToDictionary(entry => entry.Key, entry => entry.Value));
+            QuestRewardRaiseInboundPacket syntheticPacket = new(
+                kind,
+                Success: true,
+                syntheticPayload,
+                payload?.ToArray() ?? Array.Empty<byte>());
+            if (!TryApplyPacketOwnedQuestRewardRaisePacket(syntheticPacket, out string appliedMessage))
+            {
+                message = appliedMessage;
+                return false;
+            }
+
+            message = $"{appliedMessage} Decoded from compact client PutItem payload ({(kind == QuestRewardRaiseInboundPacketKind.PutItemReleaseResult ? "285" : "286")}) using the retained/live owner seam.";
+            return true;
         }
 
         private bool TryApplyPacketOwnedQuestRewardRaisePacket(QuestRewardRaiseInboundPacket packet, out string message)
@@ -883,7 +961,7 @@ namespace HaCreator.MapSimulator
                 return placedPiece;
             }
 
-            placedPiece = TryMatchQuestRewardRaisePlacedPieceByItem(activeRaise, payload);
+            placedPiece = TryMatchQuestRewardRaisePlacedPieceByItem(activeRaise, payload, packet.Kind);
             if (placedPiece != null || !createIfMissing)
             {
                 return placedPiece;
@@ -1079,7 +1157,8 @@ namespace HaCreator.MapSimulator
 
         private static QuestRewardRaisePlacedPiece TryMatchQuestRewardRaisePlacedPieceByItem(
             QuestRewardRaiseState activeRaise,
-            QuestRewardRaisePacketPayload payload)
+            QuestRewardRaisePacketPayload payload,
+            QuestRewardRaiseInboundPacketKind packetKind)
         {
             if (activeRaise?.PlacedPieces == null || payload == null || payload.ItemId <= 0)
             {
@@ -1087,9 +1166,108 @@ namespace HaCreator.MapSimulator
             }
 
             QuestRewardRaisePlacedPiece[] matches = activeRaise.PlacedPieces
-                .Where(piece => piece.ItemId == payload.ItemId)
+                .Where(piece =>
+                    piece.ItemId == payload.ItemId
+                    && (payload.InventoryType == InventoryType.NONE || piece.InventoryType == payload.InventoryType))
                 .ToArray();
-            return matches.Length == 1 ? matches[0] : null;
+            if (matches.Length == 0)
+            {
+                return null;
+            }
+
+            if (matches.Length == 1)
+            {
+                return matches[0];
+            }
+
+            QuestRewardRaisePieceLifecycleState[] preferredLifecycleOrder = ResolvePreferredQuestRewardRaiseLifecycleOrder(packetKind);
+            for (int i = 0; i < preferredLifecycleOrder.Length; i++)
+            {
+                QuestRewardRaisePieceLifecycleState lifecycle = preferredLifecycleOrder[i];
+                QuestRewardRaisePlacedPiece matched = matches.FirstOrDefault(piece => piece.LifecycleState == lifecycle);
+                if (matched != null)
+                {
+                    return matched;
+                }
+            }
+
+            return matches[0];
+        }
+
+        private static QuestRewardRaisePieceLifecycleState[] ResolvePreferredQuestRewardRaiseLifecycleOrder(QuestRewardRaiseInboundPacketKind packetKind)
+        {
+            return packetKind switch
+            {
+                QuestRewardRaiseInboundPacketKind.PutItemAddResult =>
+                [
+                    QuestRewardRaisePieceLifecycleState.PendingAddAck,
+                    QuestRewardRaisePieceLifecycleState.Active,
+                    QuestRewardRaisePieceLifecycleState.PendingConfirmAck,
+                    QuestRewardRaisePieceLifecycleState.PendingReleaseAck,
+                    QuestRewardRaisePieceLifecycleState.Confirmed
+                ],
+                QuestRewardRaiseInboundPacketKind.PutItemReleaseResult =>
+                [
+                    QuestRewardRaisePieceLifecycleState.PendingReleaseAck,
+                    QuestRewardRaisePieceLifecycleState.Active,
+                    QuestRewardRaisePieceLifecycleState.PendingConfirmAck,
+                    QuestRewardRaisePieceLifecycleState.PendingAddAck,
+                    QuestRewardRaisePieceLifecycleState.Confirmed
+                ],
+                QuestRewardRaiseInboundPacketKind.OwnerSync =>
+                [
+                    QuestRewardRaisePieceLifecycleState.Active,
+                    QuestRewardRaisePieceLifecycleState.PendingAddAck,
+                    QuestRewardRaisePieceLifecycleState.PendingReleaseAck,
+                    QuestRewardRaisePieceLifecycleState.PendingConfirmAck,
+                    QuestRewardRaisePieceLifecycleState.Confirmed
+                ],
+                QuestRewardRaiseInboundPacketKind.PutItemConfirmResult =>
+                [
+                    QuestRewardRaisePieceLifecycleState.PendingConfirmAck,
+                    QuestRewardRaisePieceLifecycleState.Active,
+                    QuestRewardRaisePieceLifecycleState.PendingReleaseAck,
+                    QuestRewardRaisePieceLifecycleState.PendingAddAck,
+                    QuestRewardRaisePieceLifecycleState.Confirmed
+                ],
+                _ =>
+                [
+                    QuestRewardRaisePieceLifecycleState.Active,
+                    QuestRewardRaisePieceLifecycleState.PendingAddAck,
+                    QuestRewardRaisePieceLifecycleState.PendingReleaseAck,
+                    QuestRewardRaisePieceLifecycleState.PendingConfirmAck,
+                    QuestRewardRaisePieceLifecycleState.Confirmed
+                ]
+            };
+        }
+
+        private static int ResolveCompactQuestRewardRaisePieceRequestId(
+            QuestRewardRaiseState observedRaise,
+            QuestRewardRaiseClientCompactPutItemPayload compactPayload)
+        {
+            if (observedRaise?.PlacedPieces == null || observedRaise.PlacedPieces.Count == 0)
+            {
+                return 0;
+            }
+
+            QuestRewardRaisePlacedPiece matchedBySlot = compactPayload.InventoryType != InventoryType.NONE && compactPayload.SlotIndex >= 0
+                ? observedRaise.PlacedPieces.FirstOrDefault(piece =>
+                    piece.InventoryType == compactPayload.InventoryType
+                    && piece.SlotIndex == compactPayload.SlotIndex
+                    && (compactPayload.ItemId <= 0 || piece.ItemId == compactPayload.ItemId))
+                : null;
+            if (matchedBySlot != null)
+            {
+                return Math.Max(0, matchedBySlot.RequestId);
+            }
+
+            if (compactPayload.ItemId <= 0)
+            {
+                return 0;
+            }
+
+            QuestRewardRaisePlacedPiece matchedByItem = observedRaise.PlacedPieces.FirstOrDefault(piece => piece.ItemId == compactPayload.ItemId);
+            return Math.Max(0, matchedByItem?.RequestId ?? 0);
         }
 
         private static void ApplyPacketOwnedQuestRewardRaisePieceInboundState(

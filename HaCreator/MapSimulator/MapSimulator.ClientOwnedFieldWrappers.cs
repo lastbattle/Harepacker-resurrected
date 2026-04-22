@@ -387,9 +387,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!string.Equals(key?.Trim(), "shareview", StringComparison.OrdinalIgnoreCase))
+            if (!TryResolveClientOwnedLimitedViewShareViewFieldValueKey(key, out string normalizedKey))
             {
-                message = "limited-view field-value key is unsupported (expected shareview).";
+                message = "limited-view field-value key is unsupported (expected shareview/m_bShareView, optionally prefixed by limitedview).";
                 return false;
             }
 
@@ -401,8 +401,63 @@ namespace HaCreator.MapSimulator
 
             _clientOwnedLimitedViewShareView = shareView;
             _limitedViewField.SetClientOwnedShareView(shareView);
-            message = $"limited-view shareview set to {(shareView ? "on" : "off")} (CField_LimitedView::m_bShareView).";
+            message = $"limited-view {normalizedKey} set to {(shareView ? "on" : "off")} (CField_LimitedView::m_bShareView).";
             return true;
+        }
+
+        internal static bool TryResolveClientOwnedLimitedViewShareViewFieldValueKey(string key, out string normalizedKey)
+        {
+            normalizedKey = null;
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            string candidate = key.Trim();
+            if (candidate.Length == 0)
+            {
+                return false;
+            }
+
+            if (TryStripClientOwnedLimitedViewFieldValuePrefix(candidate, out string stripped))
+            {
+                candidate = stripped;
+            }
+
+            if (string.Equals(candidate, "shareview", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate, "shareView", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate, "m_bShareView", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedKey = "shareview";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryStripClientOwnedLimitedViewFieldValuePrefix(string key, out string stripped)
+        {
+            stripped = null;
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            string candidate = key.Trim();
+            const string wrapperPrefix = "limitedview";
+            if (!candidate.StartsWith(wrapperPrefix, StringComparison.OrdinalIgnoreCase) || candidate.Length <= wrapperPrefix.Length)
+            {
+                return false;
+            }
+
+            char separator = candidate[wrapperPrefix.Length];
+            if (separator is not (' ' or ':' or '/' or '.' or '|'))
+            {
+                return false;
+            }
+
+            stripped = candidate[(wrapperPrefix.Length + 1)..].Trim();
+            return !string.IsNullOrWhiteSpace(stripped);
         }
 
         private static bool TryParseClientOwnedBooleanToken(string token, out bool value)

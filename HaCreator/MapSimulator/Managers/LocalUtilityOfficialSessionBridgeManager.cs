@@ -113,7 +113,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,193,234,248,250,253,254,255,256,261,264,269,270,274,275,291,366,367,405,406,407,425,1011,1023,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=28,58,133,193,234,248,250,253,254,255,256,261,264,269,270,274,275,291,366,367,405,406,407,425,1011,1019,1023,1024,1025,1035,1047; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -708,6 +708,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.MakerResultClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.ItemMakerHiddenRecipeUnlockPacketType
+                || packetType == LocalUtilityPacketInboxManager.ItemMakerSessionPacketType
                 || packetType == LocalUtilityPacketInboxManager.OpenClassCompetitionPagePacketType
                 || packetType == LocalUtilityPacketInboxManager.QuestGuideResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.DeliveryQuestPacketType
@@ -748,6 +750,8 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.PassiveMoveClientPacketType => "PassiveMove(269)",
                 LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
                 LocalUtilityPacketInboxManager.MakerResultClientPacketType => "OnMakerResult(248)",
+                LocalUtilityPacketInboxManager.ItemMakerHiddenRecipeUnlockPacketType => "ItemMakerHiddenRecipeUnlock(1019)",
+                LocalUtilityPacketInboxManager.ItemMakerSessionPacketType => "ItemMakerSession(1024)",
                 LocalUtilityPacketInboxManager.OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
                 LocalUtilityPacketInboxManager.QuestGuideResultPacketType => "QuestGuideResult(274)",
                 LocalUtilityPacketInboxManager.DeliveryQuestPacketType => "DeliveryQuest(275)",

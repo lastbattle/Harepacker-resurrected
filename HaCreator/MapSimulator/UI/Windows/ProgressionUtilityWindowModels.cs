@@ -1106,7 +1106,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static IReadOnlyList<string> WrapCollectionText(string text, int width, int styleIndex, Func<string, int, float> measureTextWidth = null)
         {
-            if (string.IsNullOrWhiteSpace(text))
+            if (string.IsNullOrEmpty(text))
             {
                 return Array.Empty<string>();
             }
@@ -1120,7 +1120,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static IReadOnlyList<string> WrapCollectionTextWithClientAnalyzerSpacing(string text, int maxWidth, Func<string, float> measureWidth)
         {
-            if (string.IsNullOrWhiteSpace(text) || measureWidth == null || maxWidth <= 0)
+            if (string.IsNullOrEmpty(text) || measureWidth == null || maxWidth <= 0)
             {
                 return Array.Empty<string>();
             }
@@ -1129,8 +1129,11 @@ namespace HaCreator.MapSimulator.UI
             string[] blocks = text.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
             foreach (string block in blocks)
             {
-                if (string.IsNullOrWhiteSpace(block))
+                // CBookDlg::SetPage pushes each authored text payload into CTextAnalyzer.
+                // Preserve explicit blank line delimiters so analyzer row carry mirrors native CT_INFO sequencing.
+                if (block.Length == 0)
                 {
+                    lines.Add(string.Empty);
                     continue;
                 }
 
@@ -1177,7 +1180,7 @@ namespace HaCreator.MapSimulator.UI
                     AppendTokenWithHardSplit(lines, ref currentLine, token, maxWidth, measureWidth);
                 }
 
-                if (!string.IsNullOrWhiteSpace(currentLine))
+                if (currentLine.Length > 0)
                 {
                     lines.Add(currentLine);
                 }

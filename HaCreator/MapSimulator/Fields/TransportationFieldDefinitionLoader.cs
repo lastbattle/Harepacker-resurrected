@@ -46,15 +46,12 @@ namespace HaCreator.MapSimulator.Fields
         public static bool TryCreate(MapInfo mapInfo, out TransportationFieldDefinition definition)
         {
             definition = null;
-            if (mapInfo?.additionalNonInfoProps == null)
+            if (mapInfo == null)
             {
                 return false;
             }
 
-            WzSubProperty shipObject = mapInfo.additionalNonInfoProps
-                .OfType<WzSubProperty>()
-                .FirstOrDefault(prop => string.Equals(prop.Name, "shipObj", StringComparison.OrdinalIgnoreCase));
-            if (shipObject == null)
+            if (!TryResolveShipObject(mapInfo, out WzSubProperty shipObject))
             {
                 return false;
             }
@@ -132,6 +129,37 @@ namespace HaCreator.MapSimulator.Fields
         private static int GetInt(WzImageProperty property, int defaultValue)
         {
             return property == null ? defaultValue : InfoTool.GetInt(property);
+        }
+
+        private static bool TryResolveShipObject(MapInfo mapInfo, out WzSubProperty shipObject)
+        {
+            shipObject = TryResolveShipObjectFromAdditionalNonInfoProps(mapInfo)
+                ?? TryResolveShipObjectFromMapImage(mapInfo?.Image);
+            return shipObject != null;
+        }
+
+        private static WzSubProperty TryResolveShipObjectFromAdditionalNonInfoProps(MapInfo mapInfo)
+        {
+            return mapInfo?.additionalNonInfoProps?
+                .OfType<WzSubProperty>()
+                .FirstOrDefault(prop => string.Equals(prop.Name, "shipObj", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static WzSubProperty TryResolveShipObjectFromMapImage(WzImage mapImage)
+        {
+            if (mapImage == null)
+            {
+                return null;
+            }
+
+            if (!mapImage.Parsed)
+            {
+                mapImage.ParseImage();
+            }
+
+            return mapImage.WzProperties
+                .OfType<WzSubProperty>()
+                .FirstOrDefault(prop => string.Equals(prop.Name, "shipObj", StringComparison.OrdinalIgnoreCase));
         }
     }
 }

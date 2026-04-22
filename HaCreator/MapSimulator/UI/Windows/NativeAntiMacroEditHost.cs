@@ -711,16 +711,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (allowImeOwnedDownHandling)
                 {
-                    bool imeOwnedDispatchApplied = TryDispatchDeferredDownKeyToImeOwner(hWnd, wParam, lParam);
-                    if (!imeOwnedDispatchApplied)
-                    {
-                        _ = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
-                    }
-
-                    // Let IME consume the Down key first; only fall through to the parent
-                    // path when IME is no longer holding an active composition/candidate state.
-                    bool imeStillOwnsInputAfterKeyDown = HasImeOwnedInputState();
-                    if (ShouldForwardDeferredDownKeyToParentAfterIme(imeStillOwnsInputAfterKeyDown))
+                    _ = TryDispatchDeferredDownKeyToImeOwner(hWnd, wParam, lParam);
+                    if (ShouldForwardDeferredDownKeyToParentAfterIme(imeOwnedInputStateAfterKeyDown: true))
                     {
                         ForwardKeyToParent(WmKeyDown, wParam, lParam);
                     }
@@ -1187,10 +1179,10 @@ namespace HaCreator.MapSimulator.UI
             bool imeCandidateWindowActive,
             bool imeDefaultWindowAvailable)
         {
-            // `CCtrlEdit::OnKey` checks owner presence (`m_pIMECandWnd`) for VK_DOWN.
-            // Keep the hosted gate on recoverable owner presence/state instead of
-            // requiring IME open status, which the native branch does not inspect.
-            return imeCompositionActive || imeCandidateWindowActive || imeDefaultWindowAvailable;
+            // `CCtrlEdit::OnKey` only takes the IME-owned VK_DOWN branch when
+            // `m_pIMECandWnd` exists. Mirror that owner gate with active IME
+            // composition/candidate state instead of default IME-window presence.
+            return imeCompositionActive || imeCandidateWindowActive;
         }
 
         internal static bool ShouldDispatchDeferredDownKeyToImeWindow(IntPtr imeWindowHandle, IntPtr editHandle)

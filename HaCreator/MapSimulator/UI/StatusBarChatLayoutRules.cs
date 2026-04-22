@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientWhisperPickerModalComboBottomOffset = 63;
         internal const int ClientWhisperPickerModalComboTextLeftInset = 6;
         internal const int ClientWhisperPickerModalComboTextTopInset = 3;
+        internal const int ClientWhisperPickerModalDropdownTextTopInsetNoScrollbar = 1;
         internal const int ClientWhisperPickerModalListGap = 6;
         internal const int ClientWhisperPickerModalOkButtonLeft = 157;
         internal const int ClientWhisperPickerModalCloseButtonLeft = 198;
@@ -300,6 +301,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return new Rectangle(listBounds.X, listBounds.Y, contentWidth, listBounds.Height);
+        }
+
+        public static int ResolveWhisperPickerModalDropdownTextTopInset(
+            bool showScrollbar,
+            int comboTextOffsetY = 0)
+        {
+            int safeComboTextOffsetY = Math.Max(0, comboTextOffsetY);
+            // CCtrlComboBoxSelect::Draw uses +3 when scrollbar child exists and
+            // +1 - m_nTextOffset_Y for non-scroll lists.
+            return showScrollbar
+                ? ClientWhisperPickerModalComboTextTopInset
+                : Math.Max(0, ClientWhisperPickerModalDropdownTextTopInsetNoScrollbar - safeComboTextOffsetY);
         }
 
         public static int ResolveWhisperPickerModalComboTextMaxWidth(

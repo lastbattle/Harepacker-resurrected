@@ -1107,8 +1107,8 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGameTieRequestPacketType => TryApplyOutgoingTieRequest(out message),
                 MemoryGameTieResultPacketType => TryApplyOutgoingTieResponse(packetBytes, tickCount, out message),
                 MemoryGameClientGiveUpPacketType => TryApplyOutgoingGiveUpRequest(out message),
-                MemoryGameClientBookLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: true, out message),
-                MemoryGameClientCancelLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: false, out message),
+                MemoryGameClientBookLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: true, out message, preserveStatusMessage: true),
+                MemoryGameClientCancelLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: false, out message, preserveStatusMessage: true),
                 MemoryGameReadyPacketType => TryApplyOutgoingReadyRequest(isReady: true, out message),
                 MemoryGameCancelReadyPacketType => TryApplyOutgoingReadyRequest(isReady: false, out message),
                 MemoryGameClientBanOrTurnUpCardPacketType => TryApplyClientBanOrTurnUpCardPacket(packetBytes, tickCount, out message),
@@ -1881,9 +1881,9 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryApplyOutgoingLobbyLeavePacket(out string message)
         {
-            if (_stage != RoomStage.Lobby)
+            if (_stage == RoomStage.Playing)
             {
-                message = "Client leave packet 10 is only emitted from the Match Cards lobby; active rounds use leave-book packets 56/57.";
+                message = "Client leave packet 10 is only emitted outside active rounds; use leave-book packets 56/57 while Match Cards is playing.";
                 return false;
             }
 
@@ -1907,12 +1907,6 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryApplyOutgoingGiveUpRequest(out string message)
         {
-            if (_stage != RoomStage.Playing)
-            {
-                message = "Give-up requests are only valid during an active Match Cards round.";
-                return false;
-            }
-
             if (_localGiveUpRequestSent)
             {
                 message = "A Match Cards give-up request is already pending.";
@@ -1985,24 +1979,6 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (packetBytes.Length <= 1)
             {
-                if (_stage != RoomStage.Lobby)
-                {
-                    message = "Ban requests are only valid while the Match Cards room is in the lobby.";
-                    return false;
-                }
-
-                if (_localPlayerIndex != 0)
-                {
-                    message = "Only the Match Cards room owner can send ban request packet (60).";
-                    return false;
-                }
-
-                if (!TryResolveBanTargetName(0, out _))
-                {
-                    message = "No participant is available to ban.";
-                    return false;
-                }
-
                 message = "Ban request packet (60) sent.";
                 return true;
             }
@@ -2026,12 +2002,6 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryApplyOutgoingReadyRequest(bool isReady, out string message)
         {
-            if (_stage != RoomStage.Lobby)
-            {
-                message = "Ready requests are only valid from the Match Cards lobby.";
-                return false;
-            }
-
             message = isReady
                 ? "Ready request packet (58) sent."
                 : "Ready-cancel request packet (59) sent.";
@@ -2040,23 +2010,6 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryApplyOutgoingStartRequest(out string message)
         {
-            if (_stage != RoomStage.Lobby)
-            {
-                message = "Start requests are only valid from the Match Cards lobby.";
-                return false;
-            }
-
-            if (_localPlayerIndex != 0)
-            {
-                message = "Only the Match Cards room owner can send start packet (61).";
-                return false;
-            }
-
-            if (!CanLocalHostSendStartRequest(out message))
-            {
-                return false;
-            }
-
             if (!HasClientStartTarget())
             {
                 message = "Start request ignored because no opponent is seated in the Match Cards room yet.";

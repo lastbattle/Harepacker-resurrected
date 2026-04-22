@@ -680,7 +680,10 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            foreach ((int objectId, int index) in reactorsOnLocalUser.ToArray())
+            foreach ((int objectId, int index) in reactorsOnLocalUser
+                .OrderBy(static entry => entry.Value)
+                .ThenBy(static entry => entry.Key)
+                .ToArray())
             {
                 if (seenObjectIds.Contains(objectId))
                 {
@@ -4007,7 +4010,6 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (data == null
                 || data.PacketProperEventIndex != -2
-                || data.PacketAnimationSourceState < 0
                 || getExactAuthoredEventTypes == null)
             {
                 return sourceState;
@@ -4018,15 +4020,19 @@ namespace HaCreator.MapSimulator.Pools
                 return sourceState;
             }
 
-            IReadOnlyList<int> animationSourceEventTypes = getExactAuthoredEventTypes(data.PacketAnimationSourceState);
-            if (HasResolvableAutoHitEventType(animationSourceEventTypes, hitOption, reactorType))
+            int packetAnimationSourceState = data.PacketAnimationSourceState;
+            if (packetAnimationSourceState >= 0)
             {
-                return data.PacketAnimationSourceState;
+                IReadOnlyList<int> animationSourceEventTypes = getExactAuthoredEventTypes(packetAnimationSourceState);
+                if (HasResolvableAutoHitEventType(animationSourceEventTypes, hitOption, reactorType))
+                {
+                    return packetAnimationSourceState;
+                }
             }
 
             if (fallbackAnimationOwnerState >= 0
                 && fallbackAnimationOwnerState != sourceState
-                && fallbackAnimationOwnerState != data.PacketAnimationSourceState)
+                && fallbackAnimationOwnerState != packetAnimationSourceState)
             {
                 IReadOnlyList<int> continuityFallbackEventTypes = getExactAuthoredEventTypes(fallbackAnimationOwnerState);
                 if (HasResolvableAutoHitEventType(continuityFallbackEventTypes, hitOption, reactorType))

@@ -1648,6 +1648,7 @@ namespace HaCreator.MapSimulator.Pools
                                     effectType,
                                     effectPayload,
                                     allowSecondaryInt32: false,
+                                    requireSecondaryInt32: false,
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
@@ -1689,6 +1690,7 @@ namespace HaCreator.MapSimulator.Pools
                                     effectType,
                                     effectPayload,
                                     allowSecondaryInt32: true,
+                                    requireSecondaryInt32: true,
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
@@ -1715,6 +1717,7 @@ namespace HaCreator.MapSimulator.Pools
                                     effectType,
                                     effectPayload.AsSpan(payloadReader.Offset),
                                     allowSecondaryInt32: true,
+                                    requireSecondaryInt32: false,
                                     out stringValue,
                                     out secondaryInt32Value,
                                     out trailingInt32Values,
@@ -1769,6 +1772,7 @@ namespace HaCreator.MapSimulator.Pools
             byte effectType,
             ReadOnlySpan<byte> payload,
             bool allowSecondaryInt32,
+            bool requireSecondaryInt32,
             out string stringValue,
             out int? secondaryInt32Value,
             out int[] trailingInt32Values,
@@ -1783,6 +1787,12 @@ namespace HaCreator.MapSimulator.Pools
 
             if (payload.Length == 0)
             {
+                if (requireSecondaryInt32)
+                {
+                    error = $"Remote user effect subtype {effectType} expects at least one trailing int32 value after DecodeStr.";
+                    return false;
+                }
+
                 return true;
             }
 
@@ -1798,6 +1808,12 @@ namespace HaCreator.MapSimulator.Pools
                 if (consumedBranchPrefixBytes > 0)
                 {
                     stringBranchPrefixBytes = payload[..consumedBranchPrefixBytes].ToArray();
+                }
+
+                if (requireSecondaryInt32 && !secondaryInt32Value.HasValue)
+                {
+                    error = $"Remote user effect subtype {effectType} expects at least one trailing int32 value after DecodeStr.";
+                    return false;
                 }
 
                 return true;
@@ -3287,6 +3303,15 @@ namespace HaCreator.MapSimulator.Pools
                 for (int j = defaultHelperSegmentIndex + 1; j < segments.Length; j++)
                 {
                     string candidate = NormalizeHelperMarkerNameSegment(segments[j]);
+                    string nextCandidate = j + 1 < segments.Length
+                        ? NormalizeHelperMarkerNameSegment(segments[j + 1])
+                        : string.Empty;
+                    if (TryResolveCompositeHelperMarkerName(candidate, nextCandidate, out string compositeMarkerName)
+                        && KnownHelperMarkerNames.Contains(compositeMarkerName))
+                    {
+                        return compositeMarkerName;
+                    }
+
                     if (candidate.Length == 0
                         || IsNumericHelperMarkerPathSegment(candidate)
                         || !KnownHelperMarkerNames.Contains(candidate))
@@ -3301,6 +3326,15 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = segments.Length - 1; i >= 0; i--)
             {
                 string candidate = NormalizeHelperMarkerNameSegment(segments[i]);
+                string previousCandidate = i > 0
+                    ? NormalizeHelperMarkerNameSegment(segments[i - 1])
+                    : string.Empty;
+                if (TryResolveCompositeHelperMarkerName(previousCandidate, candidate, out string compositeMarkerName)
+                    && KnownHelperMarkerNames.Contains(compositeMarkerName))
+                {
+                    return compositeMarkerName;
+                }
+
                 if (candidate.Length == 0
                     || IsNumericHelperMarkerPathSegment(candidate)
                     || !KnownHelperMarkerNames.Contains(candidate))
@@ -3380,6 +3414,32 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        private static bool TryResolveCompositeHelperMarkerName(
+            string firstSegment,
+            string secondSegment,
+            out string markerName)
+        {
+            markerName = null;
+            if (string.IsNullOrWhiteSpace(firstSegment)
+                || string.IsNullOrWhiteSpace(secondSegment)
+                || IsNumericHelperMarkerPathSegment(firstSegment)
+                || IsNumericHelperMarkerPathSegment(secondSegment))
+            {
+                return false;
+            }
+
+            markerName = (firstSegment, secondSegment) switch
+            {
+                ("guild", "master") => "guildmaster",
+                ("party", "master") => "partymaster",
+                ("user", "trader") => "usertrader",
+                ("another", "trader") => "anothertrader",
+                _ => null
+            };
+
+            return markerName != null;
         }
 
         private static bool TryResolveMinimapIconNpcMarkerSegment(
@@ -3876,6 +3936,13 @@ namespace HaCreator.MapSimulator.Pools
             int? blueAuraValue = null;
             int? yellowAuraValue = null;
             bool hasBlessingArmor = false;
+            int? stunValue = null;
+            int? darknessValue = null;
+            int? sealValue = null;
+            int? weaknessValue = null;
+            int? curseValue = null;
+            int? poisonValue = null;
+            short? poisonValueShort = null;
             int weaponChargeMetadataOffset = -1;
             int? decodedWeaponChargeValue = null;
             int? attractValue = null;
@@ -3928,33 +3995,33 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Stun))
                 {
-                    reader.ReadInt32();
+                    stunValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Darkness))
                 {
-                    reader.ReadInt32();
+                    darknessValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Seal))
                 {
-                    reader.ReadInt32();
+                    sealValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Weakness))
                 {
-                    reader.ReadInt32();
+                    weaknessValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Curse))
                 {
-                    reader.ReadInt32();
+                    curseValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Poison))
                 {
-                    reader.ReadInt16();
-                    reader.ReadInt32();
+                    poisonValueShort = reader.ReadInt16();
+                    poisonValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.ShadowPartner))
@@ -4224,7 +4291,14 @@ namespace HaCreator.MapSimulator.Pools
                     hasMorewildDamageUp,
                     trailingDefenseAttByte,
                     trailingDefenseStateByte),
-                decodedWeaponChargeValue);
+                decodedWeaponChargeValue,
+                stunValue,
+                darknessValue,
+                sealValue,
+                weaknessValue,
+                curseValue,
+                poisonValue,
+                poisonValueShort);
         }
 
         private static bool IsTemporaryStatActive(int[] maskWords, RemoteTemporaryStatMaskBit bit)
@@ -4373,11 +4447,12 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
-                rawPayload,
-                payloadMaskBaseOffset,
-                effectivePreferredSkillId,
-                out chargeSkillId))
+            if (hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out chargeSkillId))
             {
                 return true;
             }
@@ -4509,6 +4584,27 @@ namespace HaCreator.MapSimulator.Pools
                 maskedExtendedState,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WeaponCharge)
                     ? knownState.WeaponChargeValue
+                    : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Stun)
+                    ? knownState.StunValue
+                    : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Darkness)
+                    ? knownState.DarknessValue
+                    : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Seal)
+                    ? knownState.SealValue
+                    : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Weakness)
+                    ? knownState.WeaknessValue
+                    : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Curse)
+                    ? knownState.CurseValue
+                    : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Poison)
+                    ? knownState.PoisonValue
+                    : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Poison)
+                    ? knownState.PoisonValueShort
                     : null);
 
             return snapshot with

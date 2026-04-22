@@ -710,6 +710,7 @@ namespace HaCreator.MapSimulator.Fields
                 // CField_Coconut::BasicActionAttack still returns handled when no
                 // coconut target resolves from the hitbox. Keep the field-owned
                 // normal-attack lane consumed even without an opcode 257 request.
+                RegisterLocalBasicActionOwnership(currentTick, resolvedAttackDelayMs);
                 return true;
             }
             QueueAttackPacketRequest(target.Id, resolvedAttackDelayMs, currentTick);

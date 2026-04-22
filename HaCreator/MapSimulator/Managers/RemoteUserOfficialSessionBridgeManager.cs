@@ -709,6 +709,12 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (!hasMappedPacketType)
                 {
+                    if (!IsOfficialSessionSource(source))
+                    {
+                        LastStatus = $"Ignored unmapped remote-user opcode {opcode}: tutor-owner opcode inference requires official-session capture evidence. {OfficialRemoteOwnerEvidence}";
+                        return false;
+                    }
+
                     if (_tutorInferenceConflictMap.TryGetValue(opcode, out string conflictReason))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: tutor payload inference is suspended due to conflicting tutor wrapper observations ({conflictReason}). Remove or manually remap this opcode to continue.";
@@ -803,6 +809,22 @@ namespace HaCreator.MapSimulator.Managers
                             && !HasBuildScopedCompanionTutorOwnerProofNoLock(opcode, packetType, inferenceBuildTag, out string companionReason))
                         {
                             LastStatus = $"Observed potential tutor-owner mapping for opcode {opcode} -> {RemoteUserPacketInboxManager.DescribePacketType(packetType)} ({pendingEvidence.Reason}); build {inferenceBuildTag} has distinct wrapper proof {inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount}, but awaits companion tutor-owner opcode proof ({companionReason}) before mapping. {OfficialRemoteOwnerEvidence}";
+                            return false;
+                        }
+
+                        if (!trustV95LocalOwnerTable
+                            && TryResolveConflictingBuildScopedTutorOwnerOpcodeNoLock(
+                                inferenceBuildTag,
+                                opcode,
+                                packetType,
+                                out ushort conflictingOpcode,
+                                out int conflictingProof))
+                        {
+                            string buildConflictReason =
+                                $"build {inferenceBuildTag} already maps {RemoteUserPacketInboxManager.DescribePacketType(packetType)} to opcode {conflictingOpcode} with official-session proof {conflictingProof}/{MinOfficialSessionTutorInferenceProofCount}";
+                            _pendingTutorInferenceMap.Remove(opcode);
+                            _tutorInferenceConflictMap[opcode] = buildConflictReason;
+                            LastStatus = $"Ignored CUserPool local-user opcode {opcode}: tutor payload inference conflict ({buildConflictReason}). Remove or manually remap this opcode to continue.";
                             return false;
                         }
 
@@ -967,6 +989,43 @@ namespace HaCreator.MapSimulator.Managers
                 reason = indexedPayload
                     ? $"recovered CUserPool local-user opcode {opcode} inferred as OnTutorMsg indexed wrapper for character {messageCharacterId}, index={messageIndex}, duration={durationMs}"
                     : $"recovered CUserPool local-user opcode {opcode} inferred as OnTutorMsg text wrapper for character {messageCharacterId}, width={width}, duration={durationMs}, textLength={text?.Length ?? 0}";
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryResolveConflictingBuildScopedTutorOwnerOpcodeNoLock(
+            string buildTag,
+            ushort pendingOpcode,
+            int packetType,
+            out ushort conflictingOpcode,
+            out int conflictingProof)
+        {
+            conflictingOpcode = 0;
+            conflictingProof = 0;
+            if (string.IsNullOrWhiteSpace(buildTag)
+                || !_learnedTutorPacketMapByBuild.TryGetValue(buildTag, out Dictionary<ushort, LearnedOpcodeEntry> learnedMap))
+            {
+                return false;
+            }
+
+            foreach ((ushort learnedOpcode, LearnedOpcodeEntry learnedEntry) in learnedMap)
+            {
+                if (learnedOpcode == pendingOpcode
+                    || learnedEntry.PacketType != packetType)
+                {
+                    continue;
+                }
+
+                int proof = learnedEntry.ResolveOfficialSessionBuildProofCount(buildTag);
+                if (proof < MinOfficialSessionTutorInferenceProofCount)
+                {
+                    continue;
+                }
+
+                conflictingOpcode = learnedOpcode;
+                conflictingProof = proof;
                 return true;
             }
 

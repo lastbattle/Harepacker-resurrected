@@ -236,6 +236,31 @@ namespace HaCreator.MapSimulator.Combat
             };
         }
 
+        public int? PeekPacketOwnedLockedMobTargetId(int mobPoolId, int currentTime)
+        {
+            if (mobPoolId <= 0 ||
+                !_pendingAttackPacketOverrides.TryGetValue(mobPoolId, out PendingAttackPacketOverrides packetOverrides))
+            {
+                return null;
+            }
+
+            if (packetOverrides?.ExpireTime > 0 && currentTime >= packetOverrides.ExpireTime)
+            {
+                _pendingAttackPacketOverrides.Remove(mobPoolId);
+                return null;
+            }
+
+            MobTargetInfo lockedTarget = packetOverrides?.LockedTarget;
+            if (lockedTarget?.IsValid != true ||
+                lockedTarget.TargetType != MobTargetType.Mob ||
+                lockedTarget.TargetId <= 0)
+            {
+                return null;
+            }
+
+            return lockedTarget.TargetId;
+        }
+
         public void Clear()
         {
             _activeMobProjectiles.Clear();
@@ -1223,16 +1248,6 @@ namespace HaCreator.MapSimulator.Combat
             if (clampedCount == slotPositions.Count)
             {
                 for (int i = 0; i < slotPositions.Count; i++)
-                {
-                    selected.Add(slotPositions[i]);
-                }
-
-                return selected;
-            }
-
-            if (startOffset != 0)
-            {
-                for (int i = 0; i < clampedCount; i++)
                 {
                     selected.Add(slotPositions[i]);
                 }

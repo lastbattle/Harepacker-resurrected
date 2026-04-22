@@ -295,6 +295,7 @@ namespace HaCreator.MapSimulator.Interaction
             public bool HasEquipOnAutoStart { get; init; }
             public bool HasAutoCompleteAlert { get; init; }
             public bool HasAutoPreCompleteAlert { get; init; }
+            public int DailyPlayTimeSeconds { get; init; }
             public bool StartDayByDayRepeat { get; init; }
             public bool StartWeeklyRepeat { get; init; }
             public int StartRepeatIntervalMinutes { get; init; }
@@ -336,6 +337,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndPetTamenessMaximum { get; init; }
             public int? EndFameRequirement { get; init; }
             public int? EndQuestCompleteCount { get; init; }
+            public int? EndPartyQuestRankS { get; init; }
             public int EndMorphTemplateId { get; init; }
             public IReadOnlyList<int> EndRequiredBuffIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> EndExcludedBuffIds { get; init; } = Array.Empty<int>();
@@ -426,6 +428,8 @@ namespace HaCreator.MapSimulator.Interaction
         private Func<int, bool> _hasActiveQuestDemandBuffProvider;
         private Func<int> _monsterBookOwnedCardTypeCountProvider;
         private Func<int, int> _monsterBookCardCountByMobIdProvider;
+        private Func<int, bool> _isSuccessDailyPlayQuestProvider;
+        private Func<int, string, int?> _resolvePartyQuestRankCountProvider;
         private bool _definitionsLoaded;
         private const long QuestAlarmRecentUpdateWindowMs = 8000;
         private const long QuestAlarmAutoRegisterActiveWindowMs = 10L * 60L * 1000L;
@@ -796,7 +800,9 @@ namespace HaCreator.MapSimulator.Interaction
             Func<int> currentMorphTemplateIdProvider = null,
             Func<int, bool> hasActiveQuestDemandBuffProvider = null,
             Func<int> monsterBookOwnedCardTypeCountProvider = null,
-            Func<int, int> monsterBookCardCountByMobIdProvider = null)
+            Func<int, int> monsterBookCardCountByMobIdProvider = null,
+            Func<int, bool> isSuccessDailyPlayQuestProvider = null,
+            Func<int, string, int?> resolvePartyQuestRankCountProvider = null)
         {
             _applyQuestBuffItem = applyQuestBuffItem;
             _currentMapIdProvider = currentMapIdProvider;
@@ -807,6 +813,8 @@ namespace HaCreator.MapSimulator.Interaction
             _hasActiveQuestDemandBuffProvider = hasActiveQuestDemandBuffProvider;
             _monsterBookOwnedCardTypeCountProvider = monsterBookOwnedCardTypeCountProvider;
             _monsterBookCardCountByMobIdProvider = monsterBookCardCountByMobIdProvider;
+            _isSuccessDailyPlayQuestProvider = isSuccessDailyPlayQuestProvider;
+            _resolvePartyQuestRankCountProvider = resolvePartyQuestRankCountProvider;
         }
 
         public void SetPacketOwnedAutoStartQuestRegistration(int questId, bool registered)
@@ -978,9 +986,28 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add($"Complete at least {definition.EndQuestCompleteCount.Value} quest(s) before completing this quest.");
             }
 
+            int? currentPartyQuestRankS = ResolvePartyQuestRankCountForCompletionDemand(
+                definition.QuestId,
+                "S",
+                _resolvePartyQuestRankCountProvider);
+            if (HasUnmetCompletionPartyQuestRankDemand(
+                    definition.EndPartyQuestRankS,
+                    currentPartyQuestRankS))
+            {
+                issues.Add($"Party quest rank S demand requires at least {definition.EndPartyQuestRankS.Value} count(s).");
+            }
+
             if (build != null && HasUnmetCompletionFameDemand(definition.EndFameRequirement, GetCurrentFame(build)))
             {
                 issues.Add($"Reach fame {definition.EndFameRequirement.Value}.");
+            }
+
+            if (HasUnmetCompletionDailyPlayDemand(
+                    definition.DailyPlayTimeSeconds,
+                    definition.QuestId,
+                    _isSuccessDailyPlayQuestProvider))
+            {
+                issues.Add("Daily-play quest demand is unresolved or unmet.");
             }
 
             if (HasUnmetCompletionMorphDemand(
@@ -1081,6 +1108,42 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return requiredCompletedQuestCount.HasValue
                    && requiredCompletedQuestCount.Value > Math.Max(0, currentCompletedQuestCount);
+        }
+
+        internal static int? ResolvePartyQuestRankCountForCompletionDemand(
+            int questId,
+            string rankKey,
+            Func<int, string, int?> resolvePartyQuestRankCountProvider)
+        {
+            if (questId <= 0 ||
+                string.IsNullOrWhiteSpace(rankKey) ||
+                resolvePartyQuestRankCountProvider == null)
+            {
+                return null;
+            }
+
+            int? resolved = resolvePartyQuestRankCountProvider(questId, rankKey.Trim());
+            return resolved.HasValue ? Math.Max(0, resolved.Value) : null;
+        }
+
+        internal static bool HasUnmetCompletionPartyQuestRankDemand(
+            int? requiredPartyQuestRankCount,
+            int? currentPartyQuestRankCount)
+        {
+            return requiredPartyQuestRankCount.HasValue
+                   && requiredPartyQuestRankCount.Value >= 0
+                   && (!currentPartyQuestRankCount.HasValue
+                       || currentPartyQuestRankCount.Value < requiredPartyQuestRankCount.Value);
+        }
+
+        internal static bool HasUnmetCompletionDailyPlayDemand(
+            int requiredDailyPlayTimeSeconds,
+            int questId,
+            Func<int, bool> isSuccessDailyPlayQuestProvider)
+        {
+            return requiredDailyPlayTimeSeconds > 0
+                   && (isSuccessDailyPlayQuestProvider == null
+                       || !isSuccessDailyPlayQuestProvider(Math.Max(0, questId)));
         }
 
         internal static bool HasUnmetCompletionFameDemand(int? requiredFame, int currentFame)
@@ -4365,8 +4428,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int? requiredNpcId = ParseNpcId(
-                GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID", "npcNo"));
+            int? requiredNpcId = ParseConversationMetadataInt(
+                GetConversationVariantMetadataProperty(property, "npc", "npcId", "npcID", "npcNo"),
+                requirePositive: true);
             if (requiredNpcId.HasValue && requiredNpcId.Value != npcId)
             {
                 return false;
@@ -4379,14 +4443,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int? requiredSubJob = ParseInt(
+            int? requiredSubJob = ParseConversationMetadataInt(
                 GetConversationVariantMetadataProperty(property, "subJob", "subjob"));
             if (requiredSubJob.HasValue && requiredSubJob.Value >= 0 && currentSubJob != requiredSubJob.Value)
             {
                 return false;
             }
 
-            int requiredSubJobFlags = ParsePositiveInt(
+            int requiredSubJobFlags = ParseConversationMetadataInt(
                 GetConversationVariantMetadataProperty(property, "subJobFlags", "subJobFlag", "subjobflags", "subjobflag"))
                 .GetValueOrDefault();
             if (requiredSubJobFlags > 0 && !MatchesQuestSubJobFlags(currentJob, currentSubJob, requiredSubJobFlags))
@@ -4394,7 +4458,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int minimumFame = ParsePositiveInt(
+            int minimumFame = ParseConversationMetadataInt(
                 GetConversationVariantMetadataProperty(property, "pop", "fame", "fameMin", "minFame", "popMin", "minPop"))
                 .GetValueOrDefault();
             if (minimumFame > 0 && currentFame < minimumFame)
@@ -4402,7 +4466,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int maximumFame = ParsePositiveInt(
+            int maximumFame = ParseConversationMetadataInt(
                 GetConversationVariantMetadataProperty(property, "fameMax", "maxFame", "popMax", "maxPop"))
                 .GetValueOrDefault();
             if (maximumFame > 0 && currentFame > maximumFame)
@@ -4410,7 +4474,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int minimumLevel = ParsePositiveInt(
+            int minimumLevel = ParseConversationMetadataInt(
                 GetConversationVariantMetadataProperty(property, "lvmin", "minLv", "minLevel", "levelMin"))
                 .GetValueOrDefault();
             if (minimumLevel > 0 && currentLevel < minimumLevel)
@@ -4418,7 +4482,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int maximumLevel = ParsePositiveInt(
+            int maximumLevel = ParseConversationMetadataInt(
                 GetConversationVariantMetadataProperty(property, "lvmax", "maxLv", "maxLevel", "levelMax"))
                 .GetValueOrDefault();
             if (maximumLevel > 0 && currentLevel > maximumLevel)
@@ -4486,13 +4550,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return nestedRequirements;
             }
 
-            int directQuestId = ParseInt(questProperty).GetValueOrDefault();
+            int directQuestId = ParseConversationMetadataInt(questProperty, requirePositive: true).GetValueOrDefault();
             if (directQuestId <= 0)
             {
                 return Array.Empty<QuestStateRequirement>();
             }
 
-            int directQuestState = ParseInt(GetConversationVariantMetadataProperty(
+            int directQuestState = ParseConversationMetadataInt(GetConversationVariantMetadataProperty(
                 property,
                 "state",
                 "questState",
@@ -4575,7 +4639,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static CharacterGenderType? ParseConversationVariantGender(WzImageProperty property)
         {
-            int? value = ParseInt(property);
+            int? value = ParseConversationMetadataInt(property);
             if (!value.HasValue ||
                 value.Value == (int)CharacterGenderType.Both ||
                 value.Value < (int)CharacterGenderType.Male ||
@@ -4585,6 +4649,52 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return (CharacterGenderType)value.Value;
+        }
+
+        private static int? ParseConversationMetadataInt(WzImageProperty property, bool requirePositive = false)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            return TryParseConversationMetadataIntRecursive(property, requirePositive, maxDepth: 10);
+        }
+
+        private static int? TryParseConversationMetadataIntRecursive(
+            WzImageProperty property,
+            bool requirePositive,
+            int maxDepth)
+        {
+            if (property == null || maxDepth < 0)
+            {
+                return null;
+            }
+
+            int? scalar = ParseInt(property);
+            if (scalar.HasValue && (!requirePositive || scalar.Value > 0))
+            {
+                return scalar;
+            }
+
+            if (property.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                int? nested = TryParseConversationMetadataIntRecursive(
+                    property.WzProperties[i],
+                    requirePositive,
+                    maxDepth - 1);
+                if (nested.HasValue)
+                {
+                    return nested;
+                }
+            }
+
+            return null;
         }
 
         private static void AppendConversationPages(
@@ -8227,6 +8337,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasEquipOnAutoStart = HasEquipOnAutoStart(startCheck),
                 HasAutoCompleteAlert = ParseTruthyFlag(questInfo["autoComplete"]),
                 HasAutoPreCompleteAlert = ParseTruthyFlag(questInfo["autoPreComplete"]),
+                DailyPlayTimeSeconds = ParsePositiveInt(questInfo["dailyPlayTime"]).GetValueOrDefault(),
                 StartDayByDayRepeat = ParseTruthyFlag(startCheck?["dayByDay"]),
                 StartWeeklyRepeat = ParseTruthyFlag(startCheck?["weeklyRepeat"]),
                 StartRepeatIntervalMinutes = ParsePositiveInt(startCheck?["interval"]).GetValueOrDefault(),
@@ -8268,6 +8379,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
                 EndFameRequirement = ParsePositiveInt(endCheck?["pop"]),
                 EndQuestCompleteCount = ParseInt(endCheck?["questComplete"]),
+                EndPartyQuestRankS = ParseInt(endCheck?["partyQuest_S"]),
                 EndMorphTemplateId = ParsePositiveInt(endCheck?["morph"]).GetValueOrDefault(),
                 EndRequiredBuffIds = ParseQuestDemandIntegerList(endCheck?["buff"]),
                 EndExcludedBuffIds = ParseQuestDemandIntegerList(endCheck?["exceptbuff"]),

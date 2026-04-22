@@ -186,12 +186,21 @@ namespace HaCreator.MapSimulator
                 return automaticActionSetIndex;
             }
 
-            if (preferredActionSetIndex == automaticActionSetIndex)
+            // Keep the CActionMan::LoadNpcAction(..., -2) automatic action-set path authoritative.
+            // Only hop to a fallback set when it is still conditionless/non-hidden.
+            int rootActionSetIndex = ResolveRootActionSetIndex(actionSets, automaticActionSetIndex);
+            if (TryGetActionSetByIndex(actionSets, rootActionSetIndex, out NpcClientActionSetLoader.NpcClientActionSetDefinition rootSet)
+                && rootActionSetIndex != automaticActionSetIndex
+                && IsRepairActionSetFallbackSafe(rootSet)
+                && ActionSetContainsAnyCandidate(rootSet, preferredActionCandidates))
             {
-                return automaticActionSetIndex;
+                return rootActionSetIndex;
             }
 
-            if (TryGetActionSetByIndex(actionSets, preferredActionSetIndex, out NpcClientActionSetLoader.NpcClientActionSetDefinition preferredSet)
+            if (preferredActionSetIndex != automaticActionSetIndex
+                && preferredActionSetIndex != rootActionSetIndex
+                && TryGetActionSetByIndex(actionSets, preferredActionSetIndex, out NpcClientActionSetLoader.NpcClientActionSetDefinition preferredSet)
+                && IsRepairActionSetFallbackSafe(preferredSet)
                 && ActionSetContainsAnyCandidate(preferredSet, preferredActionCandidates))
             {
                 return preferredActionSetIndex;
@@ -511,6 +520,34 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private static int ResolveRootActionSetIndex(
+            IReadOnlyList<NpcClientActionSetLoader.NpcClientActionSetDefinition> actionSets,
+            int fallbackIndex)
+        {
+            if (actionSets == null || actionSets.Count <= 0)
+            {
+                return fallbackIndex;
+            }
+
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                if (actionSets[i].IsRootSet)
+                {
+                    return actionSets[i].Index;
+                }
+            }
+
+            return fallbackIndex;
+        }
+
+        private static bool IsRepairActionSetFallbackSafe(
+            NpcClientActionSetLoader.NpcClientActionSetDefinition actionSet)
+        {
+            return !actionSet.Hide
+                   && !actionSet.HasQuestConditions
+                   && !actionSet.RequiredGender.HasValue;
+        }
+
         internal static IReadOnlyList<(string Key, bool Enabled)> ResolveRequiredJobBadgeStates(int requiredJobMask)
         {
             var states = new (string Key, bool Enabled)[JobBadgeDefinitions.Length];
@@ -605,6 +642,7 @@ namespace HaCreator.MapSimulator
             Rectangle bestRect = candidates[0].Rect;
             int bestFrame = candidates[0].FrameIndex;
             int bestOverflow = int.MaxValue;
+            int bestClampDistance = int.MaxValue;
 
             for (int i = 0; i < candidates.Length; i++)
             {
@@ -616,11 +654,14 @@ namespace HaCreator.MapSimulator
                     return new HoverTooltipPlacement(candidate, frameIndex);
                 }
 
-                if (overflow < bestOverflow)
+                int clampDistance = ComputeTooltipClampDistance(candidate, renderWidth, renderHeight, viewportPadding);
+                if (overflow < bestOverflow
+                    || (overflow == bestOverflow && clampDistance < bestClampDistance))
                 {
                     bestOverflow = overflow;
                     bestRect = candidate;
                     bestFrame = frameIndex;
+                    bestClampDistance = clampDistance;
                 }
             }
 
@@ -1126,21 +1167,35 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                bool success = ReadBoolean(root, true, "success", "succeeded", "ok", "accepted")
-                    && !ReadBoolean(root, false, "failure", "failed", "rejected", "error");
-                short? operationCode = ReadInt(root, "operationCode", "opcode", "op", "repairOpcode") is int op
+                JsonElement body = root;
+                if (root.TryGetProperty("result", out JsonElement nestedResult)
+                    && nestedResult.ValueKind == JsonValueKind.Object)
+                {
+                    body = nestedResult;
+                }
+
+                bool success = ReadBooleanWithFallback(body, root, true, "success", "succeeded", "ok", "accepted")
+                    && !ReadBooleanWithFallback(body, root, false, "failure", "failed", "rejected", "error");
+                short? operationCode = ReadIntWithFallback(body, root, "operationCode", "opcode", "op", "repairOpcode") is int op
                     && (op == 130 || op == 131)
                         ? (short)op
                         : null;
-                int? encodedSlotPosition = ReadInt(root, "encodedSlotPosition", "encodedPosition", "nPOS", "slotPosition", "position");
+                int? encodedSlotPosition = ReadIntWithFallback(
+                    body,
+                    root,
+                    "encodedSlotPosition",
+                    "encodedPosition",
+                    "nPOS",
+                    "slotPosition",
+                    "position");
                 if (encodedSlotPosition.HasValue && !LooksLikeEncodedSlotPosition(encodedSlotPosition.Value))
                 {
                     error = $"Repair-result JSON encoded slot position {encodedSlotPosition.Value} is outside the client slot range.";
                     return false;
                 }
 
-                int? reasonCode = ReadInt(root, "reasonCode", "reason", "errorCode", "rejectReason");
-                string statusText = ReadString(root, "statusText", "message", "text", "localizedText", "notice");
+                int? reasonCode = ReadIntWithFallback(body, root, "reasonCode", "reason", "errorCode", "rejectReason");
+                string statusText = ReadStringWithFallback(body, root, "statusText", "message", "text", "localizedText", "notice");
                 result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
                 return true;
             }
@@ -1191,6 +1246,17 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
+        private static int? ReadIntWithFallback(JsonElement primaryRoot, JsonElement fallbackRoot, params string[] names)
+        {
+            int? value = ReadInt(primaryRoot, names);
+            if (value.HasValue || primaryRoot.ValueKind == fallbackRoot.ValueKind && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return value;
+            }
+
+            return ReadInt(fallbackRoot, names);
+        }
+
         private static bool ReadBoolean(JsonElement root, bool defaultValue, params string[] names)
         {
             foreach (string name in names)
@@ -1233,6 +1299,23 @@ namespace HaCreator.MapSimulator
             return defaultValue;
         }
 
+        private static bool ReadBooleanWithFallback(
+            JsonElement primaryRoot,
+            JsonElement fallbackRoot,
+            bool defaultValue,
+            params string[] names)
+        {
+            bool primary = ReadBoolean(primaryRoot, defaultValue, names);
+            if (primaryRoot.ValueKind == fallbackRoot.ValueKind
+                && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return primary;
+            }
+
+            bool fallback = ReadBoolean(fallbackRoot, defaultValue, names);
+            return primary == defaultValue ? fallback : primary;
+        }
+
         private static string ReadString(JsonElement root, params string[] names)
         {
             foreach (string name in names)
@@ -1245,6 +1328,18 @@ namespace HaCreator.MapSimulator
             }
 
             return string.Empty;
+        }
+
+        private static string ReadStringWithFallback(JsonElement primaryRoot, JsonElement fallbackRoot, params string[] names)
+        {
+            string primary = ReadString(primaryRoot, names);
+            if (!string.IsNullOrWhiteSpace(primary)
+                || primaryRoot.ValueKind == fallbackRoot.ValueKind && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return primary;
+            }
+
+            return ReadString(fallbackRoot, names);
         }
 
         private static bool LooksLikeEncodedSlotPosition(int encodedSlotPosition)
@@ -1568,6 +1663,16 @@ namespace HaCreator.MapSimulator
                 Math.Clamp(rect.Y, minY, maxY),
                 rect.Width,
                 rect.Height);
+        }
+
+        private static int ComputeTooltipClampDistance(
+            Rectangle rect,
+            int renderWidth,
+            int renderHeight,
+            int viewportPadding)
+        {
+            Rectangle clamped = ClampTooltipRect(rect, renderWidth, renderHeight, viewportPadding);
+            return Math.Abs(rect.X - clamped.X) + Math.Abs(rect.Y - clamped.Y);
         }
     }
 }

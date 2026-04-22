@@ -1620,17 +1620,13 @@ namespace HaCreator.MapSimulator.Interaction
             callbacks?.SetObjectTagState?.Invoke(tag, isEnabled, 0, currentTick);
         }
 
-        private static string BuildWhisperLocationMessage(string target, int value, PacketFieldFeedbackCallbacks callbacks)
+        private static string BuildWhisperLocationMessage(string target, string locationName)
         {
-            string mapName = callbacks?.ResolveMapName?.Invoke(value);
-            string resolvedLocation = string.IsNullOrWhiteSpace(mapName)
-                ? value.ToString(CultureInfo.InvariantCulture)
-                : mapName.Trim();
             return FormatWhisperStringPoolText(
                 WhisperLocationStringPoolId,
                 WhisperLocationFallback,
                 target,
-                resolvedLocation);
+                locationName);
         }
 
         private static string ResolveIncomingWhisperLogText(string sender, byte channelId, string body, PacketFieldFeedbackCallbacks callbacks)
@@ -1853,7 +1849,15 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
-                    string location = BuildWhisperLocationMessage(normalizedTarget, value, callbacks);
+                    string mapName = callbacks?.ResolveMapName?.Invoke(value);
+                    if (string.IsNullOrWhiteSpace(mapName))
+                    {
+                        text = string.Empty;
+                        return true;
+                    }
+
+                    string resolvedLocation = mapName.Trim();
+                    string location = BuildWhisperLocationMessage(normalizedTarget, resolvedLocation);
                     if (subtype == 9 && callbacks?.IsUnderCover?.Invoke() == true)
                     {
                         location += FormatWhisperUnderCoverMapIdSuffix(value);
@@ -1864,7 +1868,7 @@ namespace HaCreator.MapSimulator.Interaction
                             WhisperUserListFormatStringPoolId,
                             WhisperLocationFallback,
                             normalizedTarget,
-                            callbacks?.ResolveMapName?.Invoke(value) ?? value.ToString(CultureInfo.InvariantCulture))
+                            resolvedLocation)
                         : location;
                     return true;
                 case 2:

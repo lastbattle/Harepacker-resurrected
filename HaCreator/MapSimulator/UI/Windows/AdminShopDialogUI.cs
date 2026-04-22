@@ -492,6 +492,7 @@ namespace HaCreator.MapSimulator.UI
         private string _pendingRequestPreviousStateLabel = string.Empty;
         private bool _pendingStorageExpansionAwaitingPacketResult;
         private int _pendingStorageExpansionCommoditySerialNumber;
+        private int _pendingStorageExpansionPaymentOption;
         private string _lastClickedEntryKey = string.Empty;
         private int _previousScrollWheelValue;
         private MouseState _previousMouseState;
@@ -671,6 +672,9 @@ namespace HaCreator.MapSimulator.UI
 
         internal bool ShouldRestorePacketOwnedAdminShopAfterUniqueModelessBlockerClears =>
             _packetOwnedAdminShopSession.ShouldRestoreOwnerSurfaceAfterUniqueModelessBlockerClears
+            && _packetOwnedAdminShopRows.Count > 0;
+        internal bool ShouldRestorePacketOwnedAdminShopAfterCashShopFamilyVisible =>
+            _packetOwnedAdminShopSession.ShouldRestoreOwnerSurfaceAfterCashShopFamilyVisible
             && _packetOwnedAdminShopRows.Count > 0;
 
         public IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> GetPacketOwnedCashShopStageCatalogEntries()
@@ -1056,7 +1060,10 @@ namespace HaCreator.MapSimulator.UI
                 subtype,
                 hasResultCode,
                 hasPendingTradeRequest: entry != null,
-                hasPendingWishlistRegister: _pendingPacketOwnedWishlistRegisterEntry != null,
+                hasPendingWishlistRegister: _pendingPacketOwnedWishlistRegisterEntry != null
+                    || _pendingPacketOwnedWishlistRegisterItemId > 0
+                    || !string.IsNullOrWhiteSpace(_pendingPacketOwnedWishlistRegisterTitle)
+                    || _packetOwnedAdminShopSession.HasPendingWishlistRegister,
                 hasPendingWishlistSearch: hadPendingWishlistSearchRequest || hasWishlistSearchSnapshotResult);
             if (gateAction == AdminShopPacketOwnedResultGateAction.IgnoreUnsupportedSubtype)
             {
@@ -1508,8 +1515,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string outboundSummary = DispatchPacketOwnedAdminShopOutbound(request);
+            _pendingStorageExpansionPaymentOption = selectedPaymentOption;
             SubmitSelectedEntryRequest();
-            return $"CCSWnd_Inventory::OnButtonClicked(0x3EF) routed to CCashShop::OnIncTrunkCount. CConfirmPurchaseDlg::Confirm accepted default payment option 0x{selectedPaymentOption.ToString("X", CultureInfo.InvariantCulture)} from mask 0x{availablePaymentOptions.ToString("X", CultureInfo.InvariantCulture)} after prompt '{confirmPromptSummary}'. {outboundSummary} {_footerMessage}";
+            return $"CCSWnd_Inventory::OnButtonClicked(0x3EF) routed to CCashShop::OnIncTrunkCount. CConfirmPurchaseDlg::Confirm accepted payment option 0x{selectedPaymentOption.ToString("X", CultureInfo.InvariantCulture)} from mask 0x{availablePaymentOptions.ToString("X", CultureInfo.InvariantCulture)} after prompt '{confirmPromptSummary}'. {outboundSummary} {_footerMessage}";
         }
 
         public string MoveListOwnerSelection(int delta)
@@ -1922,22 +1930,11 @@ namespace HaCreator.MapSimulator.UI
 
             AdminShopCategory requestedCategory = ResolveWishlistCategory(categoryKey);
             string requestedCategoryLabel = GetWishlistCategoryLabel(categoryKey);
-            if (TryBuildPacketOwnedWishlistSearchResults(
-                    trimmedQuery,
-                    categoryKey,
-                    priceRangeIndex,
-                    requestedCategoryLabel,
-                    out List<WishlistSearchResult> packetOwnedResults,
-                    out string packetOwnedSummary))
-            {
-                int packetAlreadyWishlistedCount = packetOwnedResults.Count(result => result.AlreadyWishlisted);
-                message = packetAlreadyWishlistedCount > 0
-                    ? $"{packetOwnedSummary} {packetAlreadyWishlistedCount} row(s) are already saved."
-                    : packetOwnedSummary;
-                _footerMessage = message;
-                UpdateActionButtonStates();
-                return packetOwnedResults;
-            }
+            string packetOwnedSessionSummary = BuildPacketOwnedWishlistSearchSessionOnlySummary(
+                trimmedQuery,
+                categoryKey,
+                priceRangeIndex,
+                requestedCategoryLabel);
 
             List<(AdminShopEntry Entry, int Score, int ClientListOrder, int SourceIndex)> matches = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
@@ -1975,6 +1972,11 @@ namespace HaCreator.MapSimulator.UI
             message = alreadyWishlistedCount > 0
                 ? $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using the client CItemInfo scan order; {alreadyWishlistedCount} row(s) are already saved."
                 : $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using the client CItemInfo scan order.";
+            if (!string.IsNullOrWhiteSpace(packetOwnedSessionSummary))
+            {
+                message = string.Concat(message, " ", packetOwnedSessionSummary);
+            }
+
             _footerMessage = message;
             UpdateActionButtonStates();
             return results;
@@ -4356,6 +4358,9 @@ namespace HaCreator.MapSimulator.UI
             _pendingStorageExpansionCommoditySerialNumber = entry?.IsStorageExpansion == true
                 ? ResolveStorageExpansionCommoditySerialNumberForEntry(entry)
                 : 0;
+            _pendingStorageExpansionPaymentOption = entry?.IsStorageExpansion == true
+                ? ResolveStorageExpansionPaymentOption(Math.Max(0L, entry.Price), _pendingStorageExpansionPaymentOption, out _)
+                : 0;
             _pendingStorageExpansionAwaitingPacketResult = entry?.IsStorageExpansion == true
                 && _pendingStorageExpansionCommoditySerialNumber > 0;
             bool shouldAwaitPacketOwnedResult = _packetOwnedAdminShopSession.IsActive
@@ -4731,8 +4736,10 @@ namespace HaCreator.MapSimulator.UI
         {
             _pendingPacketOwnedWishlistRegisterEntry = entry;
             _pendingPacketOwnedWishlistRegisterCategory = requestedCategory;
+            _pendingPacketOwnedWishlistRegisterItemId = ResolveWishlistRegisterItemId(entry);
+            _pendingPacketOwnedWishlistRegisterTitle = entry?.Title?.Trim() ?? string.Empty;
             _packetOwnedAdminShopSession.RecordPendingWishlistRegister(
-                ResolveWishlistRegisterItemId(entry),
+                _pendingPacketOwnedWishlistRegisterItemId,
                 entry?.Title ?? string.Empty,
                 GetCategoryLabel(requestedCategory));
             string registerSummary = DispatchPacketOwnedAdminShopWishlistRegister(entry);
@@ -4748,6 +4755,8 @@ namespace HaCreator.MapSimulator.UI
             reopenRequested = false;
             AdminShopEntry entry = _pendingPacketOwnedWishlistRegisterEntry;
             AdminShopCategory requestedCategory = _pendingPacketOwnedWishlistRegisterCategory;
+            int pendingItemId = _pendingPacketOwnedWishlistRegisterItemId;
+            string pendingTitle = _pendingPacketOwnedWishlistRegisterTitle;
 
             if (!AdminShopDialogClientParityText.HandlesResultSubtype(subtype))
             {
@@ -4761,13 +4770,16 @@ namespace HaCreator.MapSimulator.UI
 
             if (entry == null || !_paneStates[AdminShopPane.Npc].SourceEntries.Contains(entry))
             {
-                ClearPendingPacketOwnedWishlistRegister();
-                _packetOwnedAdminShopSession.MarkDisconnectHazard();
-                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived after the pending wish-list register row was no longer present in the admin-shop catalog.");
-                message = "Packet 366 arrived for a wish-list register request whose live NPC catalog row was no longer available.";
-                _footerMessage = message;
-                UpdateActionButtonStates();
-                return true;
+                if (!TryResolvePendingPacketOwnedWishlistRegisterEntry(pendingItemId, pendingTitle, out entry))
+                {
+                    ClearPendingPacketOwnedWishlistRegister();
+                    _packetOwnedAdminShopSession.MarkDisconnectHazard();
+                    _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived after the pending wish-list register row was no longer present in the admin-shop catalog.");
+                    message = "Packet 366 arrived for a wish-list register request whose live NPC catalog row was no longer available.";
+                    _footerMessage = message;
+                    UpdateActionButtonStates();
+                    return true;
+                }
             }
 
             if (resultCode == 0)
@@ -4825,7 +4837,51 @@ namespace HaCreator.MapSimulator.UI
         {
             _pendingPacketOwnedWishlistRegisterEntry = null;
             _pendingPacketOwnedWishlistRegisterCategory = AdminShopCategory.All;
+            _pendingPacketOwnedWishlistRegisterItemId = 0;
+            _pendingPacketOwnedWishlistRegisterTitle = string.Empty;
             _packetOwnedAdminShopSession.ClearPendingWishlistRegister();
+        }
+
+        private bool TryResolvePendingPacketOwnedWishlistRegisterEntry(int pendingItemId, string pendingTitle, out AdminShopEntry entry)
+        {
+            entry = null;
+            IReadOnlyList<AdminShopEntry> sourceEntries = _paneStates[AdminShopPane.Npc].SourceEntries;
+            if (sourceEntries == null || sourceEntries.Count == 0)
+            {
+                return false;
+            }
+
+            int bestScore = 0;
+            AdminShopEntry bestEntry = null;
+            for (int index = 0; index < sourceEntries.Count; index++)
+            {
+                AdminShopEntry candidate = sourceEntries[index];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                int candidateItemId = ResolveWishlistRegisterItemId(candidate);
+                int score = AdminShopPacketOwnedSellTemplateParity.ComputePendingWishlistRegisterEntryIdentityScore(
+                    pendingItemId,
+                    pendingTitle,
+                    candidateItemId,
+                    candidate.Title);
+                if (score <= bestScore)
+                {
+                    continue;
+                }
+
+                bestScore = score;
+                bestEntry = candidate;
+                if (bestScore >= 3)
+                {
+                    break;
+                }
+            }
+
+            entry = bestEntry;
+            return entry != null;
         }
 
         private bool TryBuildPacketOwnedWishlistSearchResults(
@@ -5428,6 +5484,40 @@ namespace HaCreator.MapSimulator.UI
                 snapshot.ItemIds?.Count ?? 0,
                 snapshot.ResultRows?.Count ?? 0);
             return $"wishlist packet snapshot: {sessionLabel}, {requestLabel}, rows {rowCount.ToString(CultureInfo.InvariantCulture)}, {queryLabel}, {categoryLabel}, {priceBandLabel}, {fallbackLabel}, {sourceLabel}, {tailLabel}, sig {_packetOwnedWishlistSearchSnapshotSignature}.";
+        }
+
+        private string BuildPacketOwnedWishlistSearchSessionOnlySummary(
+            string query,
+            string categoryKey,
+            int priceRangeIndex,
+            string requestedCategoryLabel)
+        {
+            AdminShopPacketOwnedWishlistSearchSnapshot snapshot = _packetOwnedWishlistSearchSnapshot;
+            if (!_packetOwnedAdminShopSession.IsActive
+                || snapshot == null
+                || !MatchesPacketOwnedWishlistSearchSnapshot(snapshot, query, categoryKey, priceRangeIndex))
+            {
+                return string.Empty;
+            }
+
+            int effectiveSearchSessionId = AdminShopPacketOwnedWishlistSearchSessionParity.ResolveEffectiveSearchSessionId(
+                snapshot.SearchSessionId,
+                snapshot.LocalSearchRequestId);
+            string sessionLabel = snapshot.ServiceSessionId >= 0 || effectiveSearchSessionId >= 0
+                ? $"{Math.Max(-1, snapshot.ServiceSessionId).ToString(CultureInfo.InvariantCulture)}/{Math.Max(-1, effectiveSearchSessionId).ToString(CultureInfo.InvariantCulture)}"
+                : "unresolved";
+            if (snapshot.IgnoredDueToSessionMismatch)
+            {
+                return $"Stale packet-authored SearchItemName rows were ignored because payload session ids did not match the active owner session {sessionLabel}.";
+            }
+
+            int packetRowCount = Math.Max(snapshot.ItemIds?.Count ?? 0, snapshot.ResultRows?.Count ?? 0);
+            if (packetRowCount <= 0)
+            {
+                return $"Packet 366 subtype 4 advanced wishlist session {sessionLabel}, and SearchItemName continued through the client CItemInfo lane for {requestedCategoryLabel}.";
+            }
+
+            return $"Packet-authored SearchItemName row payloads are not consumed because CUIAdminShopWishList::SearchItemName (0x771B50) keeps result staging owner-local; session {sessionLabel} is tracked for packet-owned invalidation only.";
         }
 
         private WishlistSearchResult BuildWishlistSearchResult(AdminShopEntry entry, int score)
@@ -6556,10 +6646,10 @@ namespace HaCreator.MapSimulator.UI
                    && _storageRuntime.IsClientAccountAuthorityVerified
                    && _storageRuntime.IsSecondaryPasswordVerified
                    && _storageRuntime.CanExpandSlotLimit()
-                   && _nexonCash >= entry.Price;
+                   && ResolveStorageExpansionPaymentOption(Math.Max(0L, entry.Price), _pendingStorageExpansionPaymentOption, out _) != 0;
         }
 
-        private bool TryConsumeStorageExpansionCash(long amount)
+        private bool TryConsumeStorageExpansionCash(long amount, int paymentOption)
         {
             long normalizedAmount = Math.Max(0L, amount);
             if (normalizedAmount <= 0)
@@ -6567,23 +6657,100 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (_nexonCash < normalizedAmount)
+            if (!IsCashShopPaymentOptionSupported(paymentOption))
             {
                 return false;
             }
 
-            if (TryConsumeCashBalance != null)
+            if (ResolveCashBalanceForPaymentOption(paymentOption) < normalizedAmount)
             {
-                return TryConsumeCashBalance(normalizedAmount);
+                return false;
             }
 
-            _nexonCash -= normalizedAmount;
+            if (paymentOption == 1 && TryConsumeCashBalance != null)
+            {
+                if (!TryConsumeCashBalance(normalizedAmount))
+                {
+                    return false;
+                }
+
+                _nexonCash = Math.Max(0L, _nexonCash - normalizedAmount);
+                return true;
+            }
+
+            ConsumeCashBalanceForPaymentOption(normalizedAmount, paymentOption);
             return true;
         }
 
-        private static string FormatCashPriceLabel(long amount)
+        private static bool IsCashShopPaymentOptionSupported(int paymentOption)
         {
-            return $"{FormatPriceLabel(amount)} NX";
+            return paymentOption == 1 || paymentOption == 2 || paymentOption == 4;
+        }
+
+        private static string ResolveCashShopPaymentOptionLabel(int paymentOption)
+        {
+            return paymentOption switch
+            {
+                1 => "Nexon Cash",
+                2 => "Maple Point",
+                4 => "Prepaid Cash",
+                _ => "cash lane"
+            };
+        }
+
+        private long ResolveCashBalanceForPaymentOption(int paymentOption)
+        {
+            return paymentOption switch
+            {
+                1 => _nexonCash,
+                2 => _maplePoint,
+                4 => _prepaidCash,
+                _ => 0L
+            };
+        }
+
+        private void ConsumeCashBalanceForPaymentOption(long amount, int paymentOption)
+        {
+            switch (paymentOption)
+            {
+                case 1:
+                    _nexonCash = Math.Max(0L, _nexonCash - amount);
+                    break;
+                case 2:
+                    _maplePoint = Math.Max(0L, _maplePoint - amount);
+                    break;
+                case 4:
+                    _prepaidCash = Math.Max(0L, _prepaidCash - amount);
+                    break;
+            }
+        }
+
+        private static string FormatCashPriceLabel(long amount, int paymentOption = 0)
+        {
+            return paymentOption switch
+            {
+                1 => $"{FormatPriceLabel(amount)} NX (Nexon Cash)",
+                2 => $"{FormatPriceLabel(amount)} NX (Maple Point)",
+                4 => $"{FormatPriceLabel(amount)} NX (Prepaid Cash)",
+                _ => $"{FormatPriceLabel(amount)} NX"
+            };
+        }
+
+        private int ResolveStorageExpansionPaymentOption(long amount, int preferredPaymentOption, out int availablePaymentOptions)
+        {
+            availablePaymentOptions = ResolveCashShopIncTrunkCountOptionMask(amount);
+            if (availablePaymentOptions == 0)
+            {
+                return 0;
+            }
+
+            if (IsCashShopPaymentOptionSupported(preferredPaymentOption)
+                && (availablePaymentOptions & preferredPaymentOption) != 0)
+            {
+                return preferredPaymentOption;
+            }
+
+            return ResolveCashShopIncTrunkCountSelectedPaymentOption(availablePaymentOptions);
         }
 
         private string BuildInventoryExpansionBlockedMessage(AdminShopEntry entry)
@@ -6655,9 +6822,13 @@ namespace HaCreator.MapSimulator.UI
                     : "Open storage first and create a passcode before purchasing storage-slot expansion.";
             }
 
-            if (_nexonCash < entry.Price)
+            int selectedPaymentOption = ResolveStorageExpansionPaymentOption(
+                Math.Max(0L, entry.Price),
+                _pendingStorageExpansionPaymentOption,
+                out int availablePaymentOptions);
+            if (selectedPaymentOption == 0 || availablePaymentOptions == 0)
             {
-                return $"Need {FormatCashPriceLabel(entry.Price)} before extending storage capacity.";
+                return $"Need {FormatCashPriceLabel(entry.Price)} in an available cash lane before extending storage capacity.";
             }
 
             return GetEntryStateText(entry);
@@ -6757,13 +6928,29 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (!TryConsumeStorageExpansionCash(entry.Price))
+            int selectedPaymentOption = ResolveStorageExpansionPaymentOption(
+                Math.Max(0L, entry.Price),
+                _pendingStorageExpansionPaymentOption,
+                out int availablePaymentOptions);
+            if (selectedPaymentOption == 0 || availablePaymentOptions == 0)
             {
                 CompleteStorageExpansionRequest(
                     entry,
                     AdminShopEntryState.RequestRejected,
                     "Need NX",
-                    $"Need {FormatCashPriceLabel(entry.Price)} before extending storage capacity.",
+                    $"Need {FormatCashPriceLabel(entry.Price)} in an available cash lane before extending storage capacity.",
+                    StorageExpansionResultSubtype.Rejected,
+                    StorageExpansionFailureReason.NotEnoughCash);
+                return;
+            }
+
+            if (!TryConsumeStorageExpansionCash(entry.Price, selectedPaymentOption))
+            {
+                CompleteStorageExpansionRequest(
+                    entry,
+                    AdminShopEntryState.RequestRejected,
+                    "Need NX",
+                    $"Need {FormatCashPriceLabel(entry.Price, selectedPaymentOption)} before extending storage capacity.",
                     StorageExpansionResultSubtype.Rejected,
                     StorageExpansionFailureReason.NotEnoughCash);
                 return;
@@ -6785,7 +6972,7 @@ namespace HaCreator.MapSimulator.UI
                 entry,
                 AdminShopEntryState.RequestAccepted,
                 "Expanded",
-                $"{entry.Title} succeeded. Storage now has {_storageRuntime.GetSlotLimit()} slots and {FormatCashPriceLabel(_nexonCash)} remains on the account.",
+                $"{entry.Title} succeeded. Storage now has {_storageRuntime.GetSlotLimit()} slots and {FormatCashPriceLabel(ResolveCashBalanceForPaymentOption(selectedPaymentOption), selectedPaymentOption)} remains on {ResolveCashShopPaymentOptionLabel(selectedPaymentOption)}.",
                 StorageExpansionResultSubtype.Success,
                 StorageExpansionFailureReason.None,
                 markPurchased: true);
@@ -6959,6 +7146,7 @@ namespace HaCreator.MapSimulator.UI
             _pendingRequestPreviousStateLabel = string.Empty;
             _pendingStorageExpansionAwaitingPacketResult = false;
             _pendingStorageExpansionCommoditySerialNumber = 0;
+            _pendingStorageExpansionPaymentOption = 0;
             _pendingPacketOwnedAdminShopResult = false;
             _packetOwnedAdminShopSession.ClearWaitingForResult();
             _requestResolveTick = 0;
@@ -7272,13 +7460,30 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                if (packetResult.ConsumeCash && !TryConsumeStorageExpansionCash(nxPrice))
+                int selectedPaymentOption = ResolveStorageExpansionPaymentOption(
+                    nxPrice,
+                    _pendingStorageExpansionPaymentOption,
+                    out int availablePaymentOptions);
+                if (packetResult.ConsumeCash && (selectedPaymentOption == 0 || availablePaymentOptions == 0))
                 {
                     CompleteStorageExpansionRequest(
                         _pendingRequestEntry,
                         AdminShopEntryState.RequestRejected,
                         "Need NX",
-                        $"Packet-owned storage-expansion success for SN {(packetResult.CommoditySerialNumber > 0 ? packetResult.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture) : "local seam")} was rejected locally because the account does not have {FormatCashPriceLabel(nxPrice)} available.",
+                        $"Packet-owned storage-expansion success for SN {(packetResult.CommoditySerialNumber > 0 ? packetResult.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture) : "local seam")} was rejected locally because no cash lane has {FormatCashPriceLabel(nxPrice)} available.",
+                        StorageExpansionResultSubtype.Rejected,
+                        StorageExpansionFailureReason.NotEnoughCash);
+                    message = _footerMessage;
+                    return false;
+                }
+
+                if (packetResult.ConsumeCash && !TryConsumeStorageExpansionCash(nxPrice, selectedPaymentOption))
+                {
+                    CompleteStorageExpansionRequest(
+                        _pendingRequestEntry,
+                        AdminShopEntryState.RequestRejected,
+                        "Need NX",
+                        $"Packet-owned storage-expansion success for SN {(packetResult.CommoditySerialNumber > 0 ? packetResult.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture) : "local seam")} was rejected locally because {ResolveCashShopPaymentOptionLabel(selectedPaymentOption)} does not have {FormatCashPriceLabel(nxPrice, selectedPaymentOption)} available.",
                         StorageExpansionResultSubtype.Rejected,
                         StorageExpansionFailureReason.NotEnoughCash);
                     message = _footerMessage;
@@ -7379,7 +7584,7 @@ namespace HaCreator.MapSimulator.UI
                 StorageExpansionFailureReason.SessionLocked => $"{commodityLabel} was rejected because the trunk session is no longer active.",
                 StorageExpansionFailureReason.MissingAccountAuthority => $"{commodityLabel} was rejected because the account PIC or secondary password was not verified.",
                 StorageExpansionFailureReason.MissingStoragePasscode => $"{commodityLabel} was rejected because the storage passcode was not verified.",
-                StorageExpansionFailureReason.NotEnoughCash => $"{commodityLabel} was rejected because the account does not have {FormatCashPriceLabel(nxPrice)} available.",
+                StorageExpansionFailureReason.NotEnoughCash => $"{commodityLabel} was rejected because the selected cash lane does not have {FormatCashPriceLabel(nxPrice, _pendingStorageExpansionPaymentOption)} available.",
                 StorageExpansionFailureReason.ExpansionFailed => $"{commodityLabel} reached the packet-owned Cash Shop seam, but the storage slot limit did not advance.",
                 StorageExpansionFailureReason.RuntimeUnavailable => "The packet-owned storage-expansion result could not be applied because the storage runtime is unavailable.",
                 _ => $"{commodityLabel} was rejected by the packet-owned Cash Shop result seam."
@@ -9493,20 +9698,21 @@ namespace HaCreator.MapSimulator.UI
                 .Trim();
         }
 
-        private int ResolveCashShopIncTrunkCountOptionMask()
+        private int ResolveCashShopIncTrunkCountOptionMask(long minimumAmount = CashShopIncTrunkCountCost)
         {
+            long normalizedMinimumAmount = Math.Max(0L, minimumAmount);
             int optionMask = 0;
-            if (_nexonCash >= CashShopIncTrunkCountCost)
+            if (_nexonCash >= normalizedMinimumAmount)
             {
                 optionMask |= 1;
             }
 
-            if (_maplePoint >= CashShopIncTrunkCountCost)
+            if (_maplePoint >= normalizedMinimumAmount)
             {
                 optionMask |= 2;
             }
 
-            if (_prepaidCash >= CashShopIncTrunkCountCost)
+            if (_prepaidCash >= normalizedMinimumAmount)
             {
                 optionMask |= 4;
             }

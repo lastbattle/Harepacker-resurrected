@@ -984,9 +984,11 @@ namespace HaCreator.MapSimulator
 
         private static bool TryMapItemUpgradeOutcomeStateResult(int packetResultValue, out bool success)
         {
-            success = packetResultValue == ItemUpgradePacketOutcomeStateSuccess;
-            return packetResultValue == ItemUpgradePacketOutcomeStateFail ||
-                   packetResultValue == ItemUpgradePacketOutcomeStateSuccess;
+            // CUIItemUpgrade::OnItemUpgradeResult stores Decode4 directly into m_nResult,
+            // and ShowResult gates by truthiness (if m_nResult) rather than a strict {0,1} domain.
+            // Keep 0 as fail and treat any non-zero outcome as success-equivalent.
+            success = packetResultValue != ItemUpgradePacketOutcomeStateFail;
+            return true;
         }
 
         internal static bool TryMapItemUpgradeResultCodeForTests(byte resultCode, out bool success)

@@ -2337,6 +2337,11 @@ namespace HaCreator.MapSimulator.Effects
         private static WeddingParticipantNameTagSignature CreateNameTagSignature(WeddingRemoteParticipant participant)
         {
             CharacterBuild build = participant?.Build;
+            RemoteUserAvatarModifiedPacket? avatarModifiedState = participant?.AvatarModifiedState;
+            RemoteUserRelationshipRecord coupleRecord = avatarModifiedState?.CoupleRecord ?? default;
+            RemoteUserRelationshipRecord friendshipRecord = avatarModifiedState?.FriendshipRecord ?? default;
+            RemoteUserRelationshipRecord marriageRecord = avatarModifiedState?.MarriageRecord ?? default;
+            RemoteUserRelationshipRecord newYearCardRecord = avatarModifiedState?.NewYearCardRecord ?? default;
             return new WeddingParticipantNameTagSignature(
                 NormalizeNameTagText(participant?.Name),
                 NormalizeNameTagText(build?.GuildName),
@@ -2344,7 +2349,18 @@ namespace HaCreator.MapSimulator.Effects
                 build?.GuildMarkBackgroundColor,
                 build?.GuildMarkId,
                 build?.GuildMarkColor,
+                ResolveRelationshipNameTagItemId(coupleRecord),
+                ResolveRelationshipNameTagItemId(friendshipRecord),
+                ResolveRelationshipNameTagItemId(marriageRecord),
+                ResolveRelationshipNameTagItemId(newYearCardRecord),
                 ShouldDrawParticipantLikeClient(participant));
+        }
+
+        private static int? ResolveRelationshipNameTagItemId(RemoteUserRelationshipRecord relationshipRecord)
+        {
+            return relationshipRecord.IsActive && relationshipRecord.ItemId > 0
+                ? relationshipRecord.ItemId
+                : null;
         }
 
         private static string NormalizeNameTagText(string value)
@@ -2359,6 +2375,10 @@ namespace HaCreator.MapSimulator.Effects
             int? GuildMarkBackgroundColor,
             int? GuildMarkId,
             int? GuildMarkColor,
+            int? CoupleItemId,
+            int? FriendshipItemId,
+            int? MarriageItemId,
+            int? NewYearCardItemId,
             bool IsVisibleLikeClient);
 
         private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
@@ -2739,8 +2759,14 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
+            WeddingParticipantNameTagSignature previousNameTagSignature = CreateNameTagSignature(participant);
             participant.AvatarModifiedState = packet;
             participant.AvatarModifiedRevision++;
+            if (participant.NameTagRevision == 0
+                || !previousNameTagSignature.Equals(CreateNameTagSignature(participant)))
+            {
+                RefreshParticipantNameTag(participant);
+            }
         }
 
         internal static bool TryApplyParticipantGenericItemEffect(

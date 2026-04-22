@@ -438,6 +438,18 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            if (mapInfo?.unsupportedInfoProperties != null)
+            {
+                for (int i = 0; i < mapInfo.unsupportedInfoProperties.Count; i++)
+                {
+                    WzImageProperty property = mapInfo.unsupportedInfoProperties[i];
+                    if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return property;
+                    }
+                }
+            }
+
             return mapInfo?.Image?["info"]?[propertyName] as WzImageProperty;
         }
 

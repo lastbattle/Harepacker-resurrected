@@ -387,13 +387,45 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+
             lock (_sync)
             {
                 if (HasAttachedClient)
                 {
+                    if (MatchesDiscoveredTargetConfiguration(
+                            ListenPort,
+                            RemoteHost,
+                            RemotePort,
+                            requestedListenPort,
+                            candidate.RemoteEndpoint,
+                            autoSelectListenPort))
+                    {
+                        status = $"Guild boss official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                        LastStatus = status;
+                        return true;
+                    }
+
                     status = $"Guild boss official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
                     LastStatus = status;
                     return false;
+                }
+
+                if (IsRunning
+                    && MatchesDiscoveredTargetConfiguration(
+                        ListenPort,
+                        RemoteHost,
+                        RemotePort,
+                        requestedListenPort,
+                        candidate.RemoteEndpoint,
+                        autoSelectListenPort))
+                {
+                    _passiveEstablishedSession = candidate;
+                    status =
+                        $"Guild boss official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}; keeping existing proxy listener on 127.0.0.1:{ListenPort}.";
+                    LastStatus = status;
+                    return true;
                 }
 
                 bool preservePendingForReconnectHandoff = !HasAttachedClient && _pendingOutboundRequests.Count > 0;

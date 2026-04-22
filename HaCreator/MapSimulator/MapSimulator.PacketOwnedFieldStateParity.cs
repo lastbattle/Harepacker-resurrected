@@ -460,6 +460,15 @@ namespace HaCreator.MapSimulator
             }
 
             if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
+                IsLimitedViewWrapperMap(_mapBoard?.MapInfo) &&
+                TryApplyClientOwnedLimitedViewFieldValue(key, value, out string limitedViewMessage))
+            {
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
+                target = limitedViewMessage;
+                return true;
+            }
+
+            if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
                 IsEscortResultWrapperMap(_mapBoard?.MapInfo) &&
                 _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out string wrapperMessage))
             {
@@ -526,6 +535,11 @@ namespace HaCreator.MapSimulator
                 owners |= FieldSpecificStringPairOwnerMask.ChaosZakum;
             }
 
+            if (IsLimitedViewWrapperMap(_mapBoard?.MapInfo))
+            {
+                owners |= FieldSpecificStringPairOwnerMask.LimitedView;
+            }
+
             return owners;
         }
 
@@ -553,6 +567,11 @@ namespace HaCreator.MapSimulator
             if ((owners & FieldSpecificStringPairOwnerMask.ChaosZakum) != 0)
             {
                 names.Add("chaos-zakum session wrapper");
+            }
+
+            if ((owners & FieldSpecificStringPairOwnerMask.LimitedView) != 0)
+            {
+                names.Add("limited-view wrapper");
             }
 
             return names.Count == 0 ? "no known owner" : string.Join(", ", names);
@@ -1014,7 +1033,8 @@ namespace HaCreator.MapSimulator
             PartyRaid = 1 << 0,
             EscortResult = 1 << 1,
             HuntingAdBalloon = 1 << 2,
-            ChaosZakum = 1 << 3
+            ChaosZakum = 1 << 3,
+            LimitedView = 1 << 4
         }
 
         private QuestLogSnapshot BuildQuestLogSnapshotWithPacketState(QuestLogTabType tab, bool showAllLevels)

@@ -1399,6 +1399,8 @@ namespace HaCreator.MapSimulator
                 _lastCollisionVerticalJumpMovePathPayload = Array.Empty<byte>();
                 _lastCollisionCustomImpactMovePathAttribute = -1;
                 _lastCollisionCustomImpactMovePathPayload = Array.Empty<byte>();
+                _lastPortalOwnedMovePathFlushAdmissionTick = int.MinValue;
+                _hasPortalOwnedMovePathPostFlushCarry = false;
                 _pendingMapSpawnTarget = null;
             }
             ClearPendingPortalSessionValueImpacts();

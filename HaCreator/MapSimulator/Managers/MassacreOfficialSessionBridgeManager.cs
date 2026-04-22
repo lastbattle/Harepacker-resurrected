@@ -36,11 +36,13 @@ namespace HaCreator.MapSimulator.Managers
         private const int MassacreHitSessionKeyStringPoolId = 0x14F2;
         private const int MassacreStageSessionKeyStringPoolId = 0x14F3;
         private const int MassacreMissSessionKeyStringPoolId = 0x14F4;
+        private const int MassacrePartySessionKeyStringPoolId = 0x14F5;
         private const int MassacreSkillSessionKeyStringPoolId = 0x14F6;
         private const string MassacreCoolSessionKeyFallback = "massacre_cool";
         private const string MassacreHitSessionKeyFallback = "massacre_hit";
         private const string MassacreStageSessionKeyFallback = "massacre_laststage";
         private const string MassacreMissSessionKeyFallback = "massacre_miss";
+        private const string MassacrePartySessionKeyFallback = "massacre_party";
         private const string MassacreSkillSessionKeyFallback = "massacre_skill";
         private const int MaxNestedRelayDepth = 8;
         private const int MaxRecentInboundPackets = 32;
@@ -935,6 +937,20 @@ namespace HaCreator.MapSimulator.Managers
                     source,
                     $"packetraw {Convert.ToHexString(rawPacket)}",
                     value1: numericValue);
+                return true;
+            }
+
+            if (TryMatchSessionValueKey(key, MassacrePartySessionKeyStringPoolId, MassacrePartySessionKeyFallback))
+            {
+                if (numericValue <= 0)
+                {
+                    return false;
+                }
+
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Bonus,
+                    source,
+                    $"packetraw {Convert.ToHexString(rawPacket)}");
                 return true;
             }
 

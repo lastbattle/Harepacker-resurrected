@@ -1461,7 +1461,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 ParcelDialogKeyboardAction dialogAction = ParcelDialogKeyboardParity.ResolveAction(
                     snapshot.ActiveTab,
-                    _activeInputField != ComposeInputField.None,
+                    _softKeyboardActive && _activeInputField != ComposeInputField.None,
                     dialogActionKey);
                 if (dialogAction != ParcelDialogKeyboardAction.None)
                 {

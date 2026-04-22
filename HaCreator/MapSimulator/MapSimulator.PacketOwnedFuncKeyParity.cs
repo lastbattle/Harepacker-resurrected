@@ -1891,16 +1891,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            for (int i = 0; i < owners.Count; i++)
+            int ownerIndex = ResolvePacketOwnedActiveCastOwnerIndex(owners);
+            if (ownerIndex < 0 || ownerIndex >= owners.Count)
             {
-                if (owners[i].IsHandledByLiveHotkeyBinding)
-                {
-                    owner = owners[i];
-                    return true;
-                }
+                return false;
             }
 
-            owner = owners[0];
+            owner = owners[ownerIndex];
             return true;
         }
 
@@ -1962,6 +1959,42 @@ namespace HaCreator.MapSimulator
 
             owners.Add(scanCode);
             return true;
+        }
+
+        internal static int ResolvePacketOwnedActiveCastOwnerIndex(IReadOnlyList<bool> handledByLiveHotkeyBindings)
+        {
+            if (handledByLiveHotkeyBindings == null || handledByLiveHotkeyBindings.Count == 0)
+            {
+                return -1;
+            }
+
+            for (int i = handledByLiveHotkeyBindings.Count - 1; i >= 0; i--)
+            {
+                if (handledByLiveHotkeyBindings[i])
+                {
+                    return i;
+                }
+            }
+
+            return handledByLiveHotkeyBindings.Count - 1;
+        }
+
+        private static int ResolvePacketOwnedActiveCastOwnerIndex(IReadOnlyList<PacketOwnedCastInputOwner> owners)
+        {
+            if (owners == null || owners.Count == 0)
+            {
+                return -1;
+            }
+
+            for (int i = owners.Count - 1; i >= 0; i--)
+            {
+                if (owners[i].IsHandledByLiveHotkeyBinding)
+                {
+                    return i;
+                }
+            }
+
+            return owners.Count - 1;
         }
 
         private static PacketOwnedKeyActionSlot[] BuildPacketOwnedBindableHotkeySlots()

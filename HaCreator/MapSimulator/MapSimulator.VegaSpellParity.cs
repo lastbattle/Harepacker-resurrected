@@ -32,7 +32,7 @@ namespace HaCreator.MapSimulator
         private bool _vegaResultLoopSoundActive;
         private string _vegaResultLoopSoundInstanceKey = string.Empty;
         private int _vegaExclusiveRequestSentTick = int.MinValue;
-        private readonly Dictionary<EquipSlot, int> _vegaObservedEquipItemTokensBySlot = new();
+        private readonly Dictionary<EquipSlot, ObservedVegaEquipItemTokenState> _vegaObservedEquipItemTokensBySlot = new();
         private PendingVegaLaunchState _pendingVegaLaunchState;
         private PendingVegaLoopbackLaunchState _pendingVegaLoopbackLaunchState;
         private PendingVegaCastState _pendingVegaCastState;
@@ -99,6 +99,30 @@ namespace HaCreator.MapSimulator
             public byte[] Payload { get; init; } = Array.Empty<byte>();
             public string Source { get; init; } = string.Empty;
             public int ReadyAtTick { get; init; }
+        }
+
+        private sealed class ObservedVegaEquipItemTokenState
+        {
+            public int ItemId { get; init; }
+            public int ItemToken { get; init; }
+        }
+
+        private enum VegaEquippedItemTokenSource
+        {
+            None = 0,
+            PreferredRequest,
+            ObservedSlot,
+            ObservedInventory,
+            CharacterPart,
+            Synthetic
+        }
+
+        private readonly record struct VegaEquippedItemTokenResolution(
+            int ItemToken,
+            VegaEquippedItemTokenSource Source)
+        {
+            public bool IsClientAuthored => Source != VegaEquippedItemTokenSource.None
+                && Source != VegaEquippedItemTokenSource.Synthetic;
         }
 
         private void WireVegaSpellWindowOwnerCallbacks(VegaSpellUI vegaSpellWindow)
@@ -493,7 +517,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            RememberObservedVegaEquipItemToken(request.Slot, requestContext.EquipItemToken);
+            RememberObservedVegaEquipItemToken(
+                request.Slot,
+                request.EquipItemId,
+                requestContext.EquipItemToken,
+                requestContext.IsEquipItemTokenClientAuthored);
             ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
 
             _pendingVegaPromptState = null;
@@ -877,9 +905,9 @@ namespace HaCreator.MapSimulator
                 request.Slot,
                 request.EquipItemId,
                 encodedEquipPosition);
-            int equipItemToken = BuildVegaEquippedItemToken(
+            VegaEquippedItemTokenResolution equipItemTokenResolution = ResolveVegaEquippedItemToken(
                 request.EquipItemToken,
-                ResolveObservedVegaEquipItemToken(request.Slot),
+                ResolveObservedVegaEquipItemToken(request.Slot, request.EquipItemId),
                 observedInventoryEquipItemToken,
                 request.Slot,
                 request.EquipItemId,
@@ -905,7 +933,8 @@ namespace HaCreator.MapSimulator
 
             context = new VegaRequestContext(
                 encodedEquipPosition,
-                equipItemToken,
+                equipItemTokenResolution.ItemToken,
+                equipItemTokenResolution.IsClientAuthored,
                 modifierInventoryType,
                 modifierSlotIndex,
                 ResolveVegaModifierRequestItemToken(modifierInventoryType, modifierSlotIndex, request.ModifierItemId, modifierSlot),
@@ -1174,7 +1203,7 @@ namespace HaCreator.MapSimulator
                 equippedPart?.IsCashOwnershipLocked == true ? 1 : 0);
         }
 
-        private static int BuildVegaEquippedItemToken(
+        private static VegaEquippedItemTokenResolution ResolveVegaEquippedItemToken(
             int preferredItemToken,
             int observedEquipItemToken,
             int observedInventoryEquipItemToken,
@@ -1185,25 +1214,54 @@ namespace HaCreator.MapSimulator
         {
             if (preferredItemToken != 0)
             {
-                return preferredItemToken;
+                return new VegaEquippedItemTokenResolution(
+                    preferredItemToken,
+                    VegaEquippedItemTokenSource.PreferredRequest);
             }
 
             if (observedEquipItemToken != 0)
             {
-                return observedEquipItemToken;
+                return new VegaEquippedItemTokenResolution(
+                    observedEquipItemToken,
+                    VegaEquippedItemTokenSource.ObservedSlot);
             }
 
             if (observedInventoryEquipItemToken != 0)
             {
-                return observedInventoryEquipItemToken;
+                return new VegaEquippedItemTokenResolution(
+                    observedInventoryEquipItemToken,
+                    VegaEquippedItemTokenSource.ObservedInventory);
             }
 
             if (TryResolveClientAuthoredVegaEquippedItemToken(equippedPart, out int itemToken))
             {
-                return itemToken;
+                return new VegaEquippedItemTokenResolution(
+                    itemToken,
+                    VegaEquippedItemTokenSource.CharacterPart);
             }
 
-            return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition, equippedPart);
+            return new VegaEquippedItemTokenResolution(
+                BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition, equippedPart),
+                VegaEquippedItemTokenSource.Synthetic);
+        }
+
+        private static int BuildVegaEquippedItemToken(
+            int preferredItemToken,
+            int observedEquipItemToken,
+            int observedInventoryEquipItemToken,
+            EquipSlot slot,
+            int itemId,
+            int encodedEquipPosition,
+            CharacterPart equippedPart)
+        {
+            return ResolveVegaEquippedItemToken(
+                preferredItemToken,
+                observedEquipItemToken,
+                observedInventoryEquipItemToken,
+                slot,
+                itemId,
+                encodedEquipPosition,
+                equippedPart).ItemToken;
         }
 
         private static int ResolveVegaEquippedInventoryItemToken(
@@ -1281,21 +1339,41 @@ namespace HaCreator.MapSimulator
             return bestToken != 0 ? bestToken : fallbackToken;
         }
 
-        private int ResolveObservedVegaEquipItemToken(EquipSlot slot)
+        private int ResolveObservedVegaEquipItemToken(EquipSlot slot, int itemId)
         {
-            return _vegaObservedEquipItemTokensBySlot.TryGetValue(slot, out int observedToken)
-                ? observedToken
-                : 0;
+            if (!_vegaObservedEquipItemTokensBySlot.TryGetValue(slot, out ObservedVegaEquipItemTokenState observedState)
+                || observedState == null
+                || observedState.ItemToken == 0
+                || observedState.ItemId <= 0
+                || observedState.ItemId != itemId)
+            {
+                return 0;
+            }
+
+            return observedState.ItemToken;
         }
 
-        private void RememberObservedVegaEquipItemToken(EquipSlot slot, int equipItemToken)
+        private void RememberObservedVegaEquipItemToken(
+            EquipSlot slot,
+            int itemId,
+            int equipItemToken,
+            bool isClientAuthored)
         {
-            if (slot == EquipSlot.None || equipItemToken == 0)
+            if (slot == EquipSlot.None || itemId <= 0 || equipItemToken == 0)
             {
                 return;
             }
 
-            _vegaObservedEquipItemTokensBySlot[slot] = equipItemToken;
+            if (!isClientAuthored)
+            {
+                return;
+            }
+
+            _vegaObservedEquipItemTokensBySlot[slot] = new ObservedVegaEquipItemTokenState
+            {
+                ItemId = itemId,
+                ItemToken = equipItemToken
+            };
         }
 
         private static int BuildSyntheticVegaInventoryItemToken(
@@ -1543,6 +1621,25 @@ namespace HaCreator.MapSimulator
                 equippedPart);
         }
 
+        internal static bool IsClientAuthoredVegaEquippedItemTokenForTests(
+            int preferredItemToken,
+            int observedEquipItemToken,
+            int observedInventoryEquipItemToken,
+            EquipSlot slot,
+            int itemId,
+            int encodedEquipPosition,
+            CharacterPart equippedPart = null)
+        {
+            return ResolveVegaEquippedItemToken(
+                preferredItemToken,
+                observedEquipItemToken,
+                observedInventoryEquipItemToken,
+                slot,
+                itemId,
+                encodedEquipPosition,
+                equippedPart).IsClientAuthored;
+        }
+
         internal static int BuildSyntheticVegaInventoryItemTokenForTests(
             InventoryType inventoryType,
             int slotIndex,
@@ -1698,6 +1795,7 @@ namespace HaCreator.MapSimulator
         private readonly record struct VegaRequestContext(
             int EncodedEquipPosition,
             int EquipItemToken,
+            bool IsEquipItemTokenClientAuthored,
             InventoryType ModifierInventoryType,
             int ModifierSlotIndex,
             int ModifierItemToken,

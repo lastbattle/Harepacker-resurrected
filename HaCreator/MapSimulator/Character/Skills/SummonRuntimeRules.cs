@@ -442,14 +442,44 @@ namespace HaCreator.MapSimulator.Character.Skills
                 HasExplicitSummonOwnedPacketSkillBranch(skill, PacketSkillActionSubsummon);
             bool hasExplicitSupportCue =
                 HasExplicitSupportOwnedPacketSkillBranch(skill, PacketSkillActionHealingRobotHeal);
-            if (hasExplicitSummonCue == hasExplicitSupportCue)
+            if (hasExplicitSummonCue != hasExplicitSupportCue)
+            {
+                return hasExplicitSummonCue
+                    ? SummonAssistType.SummonAction
+                    : SummonAssistType.Support;
+            }
+
+            // Keep authored conflicting explicit-family cues deterministic: when both
+            // summon and support explicit families exist, action-family-missing packets
+            // retain current ownership.
+            if (hasExplicitSummonCue)
             {
                 return currentAssistType;
             }
 
-            return hasExplicitSummonCue
+            // With no explicit family cue (`subsummon` / `heal` / `support`), allow
+            // minionAbility to disambiguate ownership only when authored branches
+            // expose exactly one family.
+            bool hasSummonMinionCue = HasSummonOwnedMinionAbilityCue(skill);
+            bool hasSupportMinionCue = HasSupportOwnedMinionAbilityCue(skill);
+            if (hasSummonMinionCue == hasSupportMinionCue)
+            {
+                return currentAssistType;
+            }
+
+            if (hasSupportMinionCue)
+            {
+                return HasAuthoredSupportOwnedPacketSkillBranch(skill, PacketSkillActionHealingRobotHeal)
+                    ? SummonAssistType.Support
+                    : currentAssistType;
+            }
+
+            return HasAuthoredSummonOwnedPacketSkillBranch(
+                    skill,
+                    PacketSkillActionSubsummon,
+                    allowMissingSummonMinionCue: true)
                 ? SummonAssistType.SummonAction
-                : SummonAssistType.Support;
+                : currentAssistType;
         }
 
         internal static bool HasAuthoredPacketSkillAssistOwnershipBranch(
@@ -1798,6 +1828,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return HasMinionAbilityToken(skill?.MinionAbility, "heal")
                    || HasMinionAbilityToken(skill?.MinionAbility, "mes")
                    || HasMinionAbilityToken(skill?.MinionAbility, "amplifyDamage");
+        }
+
+        private static bool HasSummonOwnedMinionAbilityCue(SkillData skill)
+        {
+            return HasMinionAbilityToken(skill?.MinionAbility, "summon");
         }
 
         private static bool UsesNamedSummonAnimationBranch(SkillData skill, string branchName)

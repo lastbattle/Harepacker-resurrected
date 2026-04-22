@@ -7177,6 +7177,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return linkedSkillId;
                 }
 
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromReqOrPassiveBranchChildValues(
+                             resolvedProperty,
+                             parts))
+                {
+                    yield return linkedSkillId;
+                }
+
                 yield break;
             }
 
@@ -7325,6 +7332,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNames(branchProperty))
+                {
+                    yield return linkedSkillId;
+                }
+
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromReqOrPassiveBranchChildValues(
+                             branchProperty,
+                             BuildResolvedClientSummonedUolChildPathParts(resolvedPathParts, branchName)))
                 {
                     yield return linkedSkillId;
                 }
@@ -7720,6 +7734,104 @@ namespace HaCreator.MapSimulator.Character.Skills
                              contextSkillId))
                 {
                     yield return candidateSkillId;
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromReqOrPassiveBranchChildValues(
+            WzImageProperty branchProperty,
+            string[] branchPathParts)
+        {
+            if (branchProperty?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            var yieldedSkillIds = new HashSet<int>();
+            foreach (WzImageProperty child in branchProperty.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                if (TryParseRequiredSkillId(child.Name, out _))
+                {
+                    // req/* and psdSkill/* numeric children are authored as linked-skill ids in the name
+                    // and usually use level/toggle values; avoid value-side contextual false positives.
+                    continue;
+                }
+
+                string[] childPathParts = BuildResolvedClientSummonedUolChildPathParts(branchPathParts, child.Name);
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromReqOrPassiveChildValueProperty(
+                             child,
+                             childPathParts))
+                {
+                    if (linkedSkillId > 0
+                        && LooksLikeClientSummonedUolInferredSkillId(linkedSkillId)
+                        && yieldedSkillIds.Add(linkedSkillId))
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromReqOrPassiveChildValueProperty(
+            WzImageProperty childProperty,
+            string[] resolvedPathParts)
+        {
+            if (childProperty == null)
+            {
+                yield break;
+            }
+
+            var yieldedSkillIds = new HashSet<int>();
+            foreach (string valueText in EnumerateClientSummonedUolValueTexts(childProperty))
+            {
+                if (string.IsNullOrWhiteSpace(valueText))
+                {
+                    continue;
+                }
+
+                foreach (int parsedLinkedSkillId in ParseLinkedSkillIds(valueText))
+                {
+                    if (LooksLikeClientSummonedUolInferredSkillId(parsedLinkedSkillId)
+                        && yieldedSkillIds.Add(parsedLinkedSkillId))
+                    {
+                        yield return parsedLinkedSkillId;
+                    }
+                }
+
+                foreach (string pathToken in EnumerateClientSummonedUolPathTokensFromValue(valueText))
+                {
+                    if (string.IsNullOrWhiteSpace(pathToken))
+                    {
+                        continue;
+                    }
+
+                    string normalizedPath = NormalizeClientSummonedUolPathToken(pathToken, resolvedPathParts);
+                    if (string.IsNullOrWhiteSpace(normalizedPath))
+                    {
+                        continue;
+                    }
+
+                    if (TryParseClientSummonedUolRootSkillId(normalizedPath, out int rootSkillId)
+                        && LooksLikeClientSummonedUolInferredSkillId(rootSkillId)
+                        && yieldedSkillIds.Add(rootSkillId))
+                    {
+                        yield return rootSkillId;
+                    }
+
+                    foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath))
+                    {
+                        if (linkedSkillId > 0
+                            && LooksLikeClientSummonedUolInferredSkillId(linkedSkillId)
+                            && yieldedSkillIds.Add(linkedSkillId))
+                        {
+                            yield return linkedSkillId;
+                        }
+                    }
                 }
             }
         }
@@ -9694,21 +9806,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 requirePercentSuffix: false,
                 placeholders,
                 "avoidability");
-            levelData.Speed = ApplyDescriptionBackedLabelAliases(
-                levelData.Speed,
-                normalizedSurface,
-                requirePercentSuffix: false,
-                placeholders,
-                "movement speed",
-                "speed");
-            levelData.Speed = ApplyDescriptionBackedAliasValue(
-                levelData.Speed,
-                yValue,
-                PlaceholderMatchesGenericSpeedHint(normalizedSurface, "#y"));
-            levelData.Speed = ApplyDescriptionBackedAliasValue(
-                levelData.Speed,
-                wValue,
-                PlaceholderMatchesGenericSpeedHint(normalizedSurface, "#w"));
+            foreach ((string placeholderToken, int aliasValue) in placeholders)
+            {
+                levelData.Speed = ApplyDescriptionBackedAliasValue(
+                    levelData.Speed,
+                    aliasValue,
+                    PlaceholderMatchesMovementSpeedHint(normalizedSurface, placeholderToken));
+                levelData.SpeedMax = ApplyDescriptionBackedAliasValue(
+                    levelData.SpeedMax,
+                    aliasValue,
+                    PlaceholderMatchesMaxMovementSpeedHint(normalizedSurface, placeholderToken));
+            }
             levelData.Jump = ApplyDescriptionBackedLabelAliases(
                 levelData.Jump,
                 normalizedSurface,
@@ -9968,7 +10076,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                                   && !context.Contains("magic att", StringComparison.Ordinal)
                                   && !context.Contains("magic attack", StringComparison.Ordinal)
                                   && !context.Contains("battle mode att", StringComparison.Ordinal)
-                                  && !context.Contains("enemy att", StringComparison.Ordinal));
+                                  && !context.Contains("enemy att", StringComparison.Ordinal)
+                                  && !context.Contains("attacks", StringComparison.Ordinal)
+                                  && !context.Contains("attack count", StringComparison.Ordinal)
+                                  && !context.Contains("number of attacks", StringComparison.Ordinal)
+                                  && !context.Contains("final attack count", StringComparison.Ordinal));
         }
 
         private static bool PlaceholderMatchesGenericDefenseHint(
@@ -9999,7 +10111,34 @@ namespace HaCreator.MapSimulator.Character.Skills
                 static context => (context.Contains("movement speed", StringComparison.Ordinal)
                                    || context.Contains("speed", StringComparison.Ordinal))
                                   && !context.Contains("attack speed", StringComparison.Ordinal)
+                                  && !context.Contains("max movement speed", StringComparison.Ordinal)
+                                  && !context.Contains("maximum movement speed", StringComparison.Ordinal)
+                                  && !context.Contains("max speed", StringComparison.Ordinal)
+                                  && !context.Contains("speed max", StringComparison.Ordinal)
                                   && !context.Contains("weapon speed", StringComparison.Ordinal));
+        }
+
+        private static bool PlaceholderMatchesMovementSpeedHint(string normalizedSurface, string placeholderToken)
+        {
+            return PlaceholderMatchesGenericSpeedHint(normalizedSurface, placeholderToken)
+                   && !PlaceholderMatchesMaxMovementSpeedHint(normalizedSurface, placeholderToken)
+                   && !PlaceholderMatchesHintLabel(
+                       normalizedSurface,
+                       placeholderToken,
+                       requirePercentSuffix: false,
+                       "enemy movement speed");
+        }
+
+        private static bool PlaceholderMatchesMaxMovementSpeedHint(string normalizedSurface, string placeholderToken)
+        {
+            return PlaceholderMatchesHintLabel(
+                normalizedSurface,
+                placeholderToken,
+                requirePercentSuffix: false,
+                "max movement speed",
+                "maximum movement speed",
+                "speed max",
+                "max speed");
         }
 
         private static bool PlaceholderMatchesGenericHint(
@@ -10435,6 +10574,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return candidateTemplateId;
                 }
             }
+
+            foreach (int candidateTemplateId in EnumerateFlagOnlyMorphTemplateTrimmedRemapCandidates(suffixTemplateId))
+            {
+                if (candidateTemplateId > 0 && seen.Add(candidateTemplateId))
+                {
+                    yield return candidateTemplateId;
+                }
+            }
         }
 
         internal static IReadOnlyList<int> EnumerateFlagOnlyMorphTemplateCandidatesForTesting(int skillId)
@@ -10475,6 +10622,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     yield return familyBase;
                 }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateFlagOnlyMorphTemplateTrimmedRemapCandidates(int suffixTemplateId)
+        {
+            if (suffixTemplateId < 1000)
+            {
+                yield break;
+            }
+
+            // WZ-first recheck keeps non-suffix flag-only remap evidence on
+            // `Skill/2002.img/skill/20020111/info/morph = 1` where the effective
+            // morph template is `0111` (last three digits) rather than suffix `1111`.
+            // Keep this as a late fallback after suffix/pair/family candidates.
+            int trimmedTemplateId = suffixTemplateId % 1000;
+            if (trimmedTemplateId > 0)
+            {
+                yield return trimmedTemplateId;
             }
         }
 

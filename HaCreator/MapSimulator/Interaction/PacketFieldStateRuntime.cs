@@ -593,6 +593,13 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketReader reader = new(payload);
                 string tag = reader.ReadMapleString();
                 int stateValue = reader.ReadInt();
+                if (reader.Remaining != 0)
+                {
+                    message = $"Object-state packet for '{tag?.Trim()}' was ignored because CField::OnSetObjectState expects exactly `<MapleString tag><int state>` and this payload has {reader.Remaining} trailing byte(s).";
+                    _statusMessage = message;
+                    return false;
+                }
+
                 if (string.IsNullOrWhiteSpace(tag))
                 {
                     message = "Object-state packet did not contain a tag name.";
@@ -638,9 +645,13 @@ namespace HaCreator.MapSimulator.Interaction
                     return replayed;
                 }
 
-                _packetObjectStateByTag[normalizedTag] = stateValue;
                 bool isEnabled = ResolveObjectStateVisibilityBridge(stateValue);
                 bool applied = setDynamicObjectTagState?.Invoke(normalizedTag, isEnabled, 0, currentTick, stateValue) == true;
+                if (applied)
+                {
+                    _packetObjectStateByTag[normalizedTag] = stateValue;
+                }
+
                 message = applied
                     ? $"Applied object-state packet for '{normalizedTag}' => state {stateValue} ({(isEnabled ? "on" : "off")} visibility bridge, state index {stateValue})."
                     : $"Object-state packet for '{normalizedTag}' was ignored because no matching tagged object state is available.";

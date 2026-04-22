@@ -420,14 +420,26 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleRockPaperScissorsSessionCommand(string[] args)
         {
-            if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            if (args.Length == 0)
             {
+                return ChatCommandHandler.CommandResult.Info(DescribeRockPaperScissorsOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!RockPaperScissorsSessionCommandParsing.HasExactArgCount(args, 1))
+                {
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.SessionUsage);
+                }
+
                 return ChatCommandHandler.CommandResult.Info(DescribeRockPaperScissorsOfficialSessionBridgeStatus());
             }
 
             if (string.Equals(args[0], "discover", StringComparison.OrdinalIgnoreCase))
             {
-                if (args.Length < 2 || !int.TryParse(args[1], out int remotePort) || remotePort <= 0)
+                if (!RockPaperScissorsSessionCommandParsing.HasArgCountInRange(args, 2, 4)
+                    || !int.TryParse(args[1], out int remotePort)
+                    || remotePort <= 0)
                 {
                     return ChatCommandHandler.CommandResult.Error("Usage: /rps session discover <remotePort> [processName|pid] [localPort]");
                 }
@@ -450,9 +462,7 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "recent", StringComparison.OrdinalIgnoreCase))
             {
-                int count = 10;
-                if (args.Length > 2
-                    || (args.Length == 2 && (!int.TryParse(args[1], out count) || count <= 0)))
+                if (!RockPaperScissorsSessionCommandParsing.TryParseOptionalPositiveCount(args, 10, out int count))
                 {
                     return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.RecentUsage);
                 }
@@ -472,9 +482,7 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "recentin", StringComparison.OrdinalIgnoreCase))
             {
-                int count = 10;
-                if (args.Length > 2
-                    || (args.Length == 2 && (!int.TryParse(args[1], out count) || count <= 0)))
+                if (!RockPaperScissorsSessionCommandParsing.TryParseOptionalPositiveCount(args, 10, out int count))
                 {
                     return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.RecentInboundUsage);
                 }
@@ -494,7 +502,9 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "attach", StringComparison.OrdinalIgnoreCase))
             {
-                if (args.Length < 2 || !int.TryParse(args[1], out int remotePort) || remotePort <= 0)
+                if (!RockPaperScissorsSessionCommandParsing.HasArgCountInRange(args, 2, 4)
+                    || !int.TryParse(args[1], out int remotePort)
+                    || remotePort <= 0)
                 {
                     return ChatCommandHandler.CommandResult.Error("Usage: /rps session attach <remotePort> [processName|pid] [localPort]");
                 }
@@ -524,7 +534,7 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "attachproxy", StringComparison.OrdinalIgnoreCase))
             {
-                if (args.Length < 3 ||
+                if (!RockPaperScissorsSessionCommandParsing.HasArgCountInRange(args, 3, 5) ||
                     !RockPaperScissorsSessionCommandParsing.TryParseProxyListenPort(args[1], out int listenPort) ||
                     !int.TryParse(args[2], out int remotePort) ||
                     remotePort <= 0)
@@ -560,7 +570,7 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
             {
-                if (args.Length < 4 ||
+                if (!RockPaperScissorsSessionCommandParsing.HasExactArgCount(args, 4) ||
                     !RockPaperScissorsSessionCommandParsing.TryParseProxyListenPort(args[1], out int listenPort) ||
                     !int.TryParse(args[3], out int remotePort) ||
                     remotePort <= 0)
@@ -583,7 +593,7 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "startauto", StringComparison.OrdinalIgnoreCase))
             {
-                if (args.Length < 3 ||
+                if (!RockPaperScissorsSessionCommandParsing.HasArgCountInRange(args, 3, 5) ||
                     !RockPaperScissorsSessionCommandParsing.TryParseProxyListenPort(args[1], out int listenPort) ||
                     !int.TryParse(args[2], out int remotePort) ||
                     remotePort <= 0)
@@ -619,6 +629,11 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
             {
+                if (!RockPaperScissorsSessionCommandParsing.HasExactArgCount(args, 1))
+                {
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.SessionUsage);
+                }
+
                 _rockPaperScissorsOfficialSessionBridgeEnabled = false;
                 _rockPaperScissorsOfficialSessionBridgeUseDiscovery = false;
                 _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector = null;

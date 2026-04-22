@@ -77,6 +77,9 @@ namespace HaCreator.MapSimulator.UI
         public bool ShouldRestoreOwnerSurfaceAfterUniqueModelessBlockerClears =>
             IsActive
             && OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
+        public bool ShouldRestoreOwnerSurfaceAfterCashShopFamilyVisible =>
+            IsActive
+            && OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily;
         public int PendingWishlistRegisterItemId { get; private set; }
         public string PendingWishlistRegisterTitle { get; private set; } = string.Empty;
         public string PendingWishlistRegisterCategoryLabel { get; private set; } = string.Empty;

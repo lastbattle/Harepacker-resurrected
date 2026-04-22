@@ -15,12 +15,17 @@ namespace HaCreator.MapSimulator.UI
     {
         internal static ParcelDialogKeyboardAction ResolveAction(global::HaCreator.MapSimulator.Interaction.ParcelDialogTab activeTab, bool hasFocusedComposeField, Keys key)
         {
+            if (hasFocusedComposeField)
+            {
+                return ParcelDialogKeyboardAction.None;
+            }
+
             if (key == Keys.Escape)
             {
                 return ParcelDialogKeyboardAction.CloseDialog;
             }
 
-            if (key != Keys.Enter || hasFocusedComposeField)
+            if (key != Keys.Enter)
             {
                 return ParcelDialogKeyboardAction.None;
             }

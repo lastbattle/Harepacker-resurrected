@@ -100,7 +100,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 Keys.Up or Keys.Down or Keys.Left or Keys.Right => true,
                 Keys.PageUp or Keys.PageDown => true,
+                Keys.Home or Keys.End => true,
                 Keys.Enter or Keys.Space => true,
+                Keys.Escape or Keys.Tab => true,
+                Keys.Back or Keys.Delete or Keys.Insert => true,
                 Keys.D0 or Keys.D1 or Keys.D2 or Keys.D3 or Keys.D4 or Keys.D5 or Keys.D6 or Keys.D7 or Keys.D8 or Keys.D9 => true,
                 Keys.NumPad0 or Keys.NumPad1 or Keys.NumPad2 or Keys.NumPad3 or Keys.NumPad4 or Keys.NumPad5 or Keys.NumPad6 or Keys.NumPad7 or Keys.NumPad8 or Keys.NumPad9 => true,
                 _ => false

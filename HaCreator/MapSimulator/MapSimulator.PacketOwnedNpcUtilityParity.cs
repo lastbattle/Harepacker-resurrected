@@ -512,11 +512,18 @@ namespace HaCreator.MapSimulator
             return defaultMessage;
         }
 
-        private void RestorePacketOwnedAdminShopAfterUniqueModelessBlockerClears()
+        private void RestorePacketOwnedAdminShopAfterOwnerVisibilityResumes()
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is not AdminShopDialogUI adminShopWindow
-                || adminShopWindow.IsVisible
-                || !adminShopWindow.ShouldRestorePacketOwnedAdminShopAfterUniqueModelessBlockerClears)
+                || adminShopWindow.IsVisible)
+            {
+                return;
+            }
+
+            bool restoreAfterBlockerClears = adminShopWindow.ShouldRestorePacketOwnedAdminShopAfterUniqueModelessBlockerClears;
+            bool restoreAfterCashShopFamilyVisible = adminShopWindow.ShouldRestorePacketOwnedAdminShopAfterCashShopFamilyVisible
+                && IsCashShopOwnerFamilyVisibleWithoutAdminShopOwner();
+            if (!restoreAfterBlockerClears && !restoreAfterCashShopFamilyVisible)
             {
                 return;
             }
@@ -526,13 +533,49 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            string restoreReason = restoreAfterCashShopFamilyVisible
+                ? "CAdminShopDlg resumed the staged packet-owned session after the Cash Shop owner family became visible again."
+                : "CAdminShopDlg surfaced the staged packet 367 payload after the unique-modeless blocker cleared.";
             string restoreSummary = ShowPacketOwnedAdminShopOwnerWindow(
                 adminShopWindow,
-                "CAdminShopDlg surfaced the staged packet 367 payload after the unique-modeless blocker cleared.");
+                restoreReason);
             if (!string.IsNullOrWhiteSpace(restoreSummary))
             {
                 ShowUtilityFeedbackMessage(restoreSummary);
             }
+        }
+
+        private bool IsCashShopOwnerFamilyVisibleWithoutAdminShopOwner()
+        {
+            if (uiWindowManager == null)
+            {
+                return false;
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.CashShopStage)?.IsVisible == true
+                || uiWindowManager.GetWindow(MapSimulatorWindowNames.CashAvatarPreview)?.IsVisible == true
+                || uiWindowManager.GetWindow(MapSimulatorWindowNames.CashTradingRoom)?.IsVisible == true)
+            {
+                return true;
+            }
+
+            for (int i = 0; i < CashShopChildOwnerWindowNames.Length; i++)
+            {
+                if (uiWindowManager.GetWindow(CashShopChildOwnerWindowNames[i])?.IsVisible == true)
+                {
+                    return true;
+                }
+            }
+
+            for (int i = 0; i < CashShopModalOwnerWindowNames.Length; i++)
+            {
+                if (uiWindowManager.GetWindow(CashShopModalOwnerWindowNames[i])?.IsVisible == true)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedNpcShopCommand(string[] args)

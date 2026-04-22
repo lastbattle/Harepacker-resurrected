@@ -130,6 +130,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientTopRowButtonRightPadding = 6;
         private const int ClientOptionButtonRightPadding = 17;
         private const int ClientOptionButtonBottomPadding = 4;
+        private bool _useLegacyOptionButtonCycle;
 
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
@@ -262,7 +263,9 @@ namespace HaCreator.MapSimulator.UI
                 uiButtons.Add(_btnNpc);
             uiButtons.Add(_btnMap);
 
-            _btnMax.SetButtonState(UIObjectState.Disabled); // start maximised
+            _useLegacyOptionButtonCycle = _btnSmall == null || _expandedFrame == null;
+            _btnMax.SetButtonState(_useLegacyOptionButtonCycle ? UIObjectState.Normal : UIObjectState.Disabled); // start maximised
+            _btnMin.SetButtonState(UIObjectState.Normal);
             if (_btnSmall != null)
                 _btnSmall.SetVisible(false);
 
@@ -697,7 +700,8 @@ namespace HaCreator.MapSimulator.UI
                         buttonId,
                         _currentOption,
                         _previousExpandedOption,
-                        _btnSmall != null && _expandedFrame != null));
+                        _btnSmall != null && _expandedFrame != null,
+                        _useLegacyOptionButtonCycle));
                     break;
                 case ClientButtonIdMap:
                     WorldMapRequested?.Invoke();
@@ -809,7 +813,8 @@ namespace HaCreator.MapSimulator.UI
                 _currentOption,
                 _bIsCollapsedState,
                 _btnSmall != null && _expandedFrame != null,
-                _btnNpc != null && ResolveAnyNpcMarker() != null && _npcMarkers.Count > 0);
+                _btnNpc != null && ResolveAnyNpcMarker() != null && _npcMarkers.Count > 0,
+                _useLegacyOptionButtonCycle);
 
             _btnMin.SetVisible(buttonVisibility.MinVisible);
             _btnMax.SetVisible(buttonVisibility.MaxVisible);
@@ -825,19 +830,31 @@ namespace HaCreator.MapSimulator.UI
             _btnMap.X = mapButtonX;
             _btnMap.Y = ClientTopRowButtonTop;
 
-            UIObject visibleStateButton = _btnMax.ButtonVisible ? _btnMax : _btnMin;
-            UIObject hiddenStateButton = ReferenceEquals(visibleStateButton, _btnMax) ? _btnMin : _btnMax;
-            int stateButtonX = ResolveAdjacentLeftButtonX(mapButtonX, visibleStateButton?.CanvasSnapshotWidth ?? 0);
-            if (visibleStateButton != null)
+            int stateButtonX = ResolveAdjacentLeftButtonX(mapButtonX, _btnMax.CanvasSnapshotWidth);
+            if (_useLegacyOptionButtonCycle)
             {
-                visibleStateButton.X = stateButtonX;
-                visibleStateButton.Y = ClientTopRowButtonTop;
+                _btnMax.X = stateButtonX;
+                _btnMax.Y = ClientTopRowButtonTop;
+                _btnMin.X = ResolveAdjacentLeftButtonX(stateButtonX, _btnMin.CanvasSnapshotWidth);
+                _btnMin.Y = ClientTopRowButtonTop;
+                stateButtonX = _btnMin.X;
             }
-
-            if (hiddenStateButton != null)
+            else
             {
-                hiddenStateButton.X = stateButtonX;
-                hiddenStateButton.Y = ClientTopRowButtonTop;
+                UIObject visibleStateButton = _btnMax.ButtonVisible ? _btnMax : _btnMin;
+                UIObject hiddenStateButton = ReferenceEquals(visibleStateButton, _btnMax) ? _btnMin : _btnMax;
+                stateButtonX = ResolveAdjacentLeftButtonX(mapButtonX, visibleStateButton?.CanvasSnapshotWidth ?? 0);
+                if (visibleStateButton != null)
+                {
+                    visibleStateButton.X = stateButtonX;
+                    visibleStateButton.Y = ClientTopRowButtonTop;
+                }
+
+                if (hiddenStateButton != null)
+                {
+                    hiddenStateButton.X = stateButtonX;
+                    hiddenStateButton.Y = ClientTopRowButtonTop;
+                }
             }
 
             int nextTopRowX = stateButtonX;
@@ -882,7 +899,8 @@ namespace HaCreator.MapSimulator.UI
                 _currentOption,
                 _previousExpandedOption,
                 _btnSmall != null && _expandedFrame != null,
-                _bIsCollapsedState);
+                _bIsCollapsedState,
+                _useLegacyOptionButtonCycle);
 
             ApplyClientStateTransition(transition);
         }
@@ -896,8 +914,17 @@ namespace HaCreator.MapSimulator.UI
             _bIsCollapsedState = transition.IsCollapsed;
 
             SyncFramePositionsFrom(previousFrame);
-            _btnMin.SetButtonState(_bIsCollapsedState ? UIObjectState.Disabled : UIObjectState.Normal);
-            _btnMax.SetButtonState(_bIsCollapsedState ? UIObjectState.Normal : UIObjectState.Disabled);
+            if (_useLegacyOptionButtonCycle)
+            {
+                _btnMin.SetButtonState(UIObjectState.Normal);
+                _btnMax.SetButtonState(UIObjectState.Normal);
+            }
+            else
+            {
+                _btnMin.SetButtonState(_bIsCollapsedState ? UIObjectState.Disabled : UIObjectState.Normal);
+                _btnMax.SetButtonState(_bIsCollapsedState ? UIObjectState.Normal : UIObjectState.Disabled);
+            }
+
             UpdateButtonLayout();
         }
 
@@ -905,8 +932,30 @@ namespace HaCreator.MapSimulator.UI
             int buttonId,
             int currentOption,
             int previousExpandedOption,
-            bool supportsExpandedOption)
+            bool supportsExpandedOption,
+            bool useLegacyOptionButtonCycle = false)
         {
+            if (useLegacyOptionButtonCycle)
+            {
+                int legacyNormalizedCurrentOption = NormalizeClientOptionForLegacyCycle(currentOption);
+                int legacyNormalizedPreviousExpandedOption = NormalizeRememberedExpandedOption(previousExpandedOption);
+                return buttonId switch
+                {
+                    ClientButtonIdMinimapState => new ClientStateTransition(
+                        NormalizeClientOptionForLegacyCycle(legacyNormalizedCurrentOption + 1),
+                        legacyNormalizedPreviousExpandedOption,
+                        NormalizeClientOptionForLegacyCycle(legacyNormalizedCurrentOption + 1) == ClientOptionCollapsed),
+                    ClientButtonIdMinimapRestore => new ClientStateTransition(
+                        NormalizeClientOptionForLegacyCycle(legacyNormalizedCurrentOption - 1),
+                        legacyNormalizedPreviousExpandedOption,
+                        NormalizeClientOptionForLegacyCycle(legacyNormalizedCurrentOption - 1) == ClientOptionCollapsed),
+                    _ => new ClientStateTransition(
+                        legacyNormalizedCurrentOption,
+                        legacyNormalizedPreviousExpandedOption,
+                        legacyNormalizedCurrentOption == ClientOptionCollapsed)
+                };
+            }
+
             static int NormalizeClientOptionForState(int option, bool supportsExpanded)
             {
                 if (!supportsExpanded)
@@ -953,6 +1002,12 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private static int NormalizeClientOptionForLegacyCycle(int option)
+        {
+            int normalized = option % 3;
+            return normalized < 0 ? normalized + 3 : normalized;
+        }
+
         private static ClientStateTransition ResolveMinimapStateButtonTransition(
             int normalizedCurrentOption,
             int normalizedPreviousExpandedOption)
@@ -975,7 +1030,8 @@ namespace HaCreator.MapSimulator.UI
             int currentOption,
             int previousExpandedOption,
             bool supportsExpandedOption,
-            bool isCollapsed)
+            bool isCollapsed,
+            bool useLegacyOptionButtonCycle = false)
         {
             int buttonId = isCollapsed || currentOption == ClientOptionCollapsed
                 ? ClientButtonIdMinimapRestore
@@ -985,7 +1041,8 @@ namespace HaCreator.MapSimulator.UI
                 buttonId,
                 currentOption,
                 previousExpandedOption,
-                supportsExpandedOption);
+                supportsExpandedOption,
+                useLegacyOptionButtonCycle);
         }
 
         internal static ClientStateTransition ResolveEnsureExpandedTransitionForTesting(
@@ -1055,8 +1112,19 @@ namespace HaCreator.MapSimulator.UI
             int currentOption,
             bool isCollapsed,
             bool supportsExpandedOption,
-            bool supportsNpcButton)
+            bool supportsNpcButton,
+            bool useLegacyOptionButtonCycle = false)
         {
+            if (useLegacyOptionButtonCycle)
+            {
+                return new ClientButtonVisibility(
+                    MinVisible: true,
+                    MaxVisible: true,
+                    BigVisible: false,
+                    SmallVisible: false,
+                    NpcVisible: false);
+            }
+
             int normalizedCurrentOption = currentOption switch
             {
                 ClientOptionExpanded when supportsExpandedOption => ClientOptionExpanded,

@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Fields
         private const string TournamentContractSummary = "32-player bracket, resting period between rounds, prize podium after finals, five-minute exit grace.";
         private const int PacketTrailCapacity = 6;
         private const int ForwardedRawPacketTrailCapacity = 6;
+        private const int OwnedWrapperPacketTrailCapacity = 6;
 
         private int _mapId;
         private bool _isActive;
@@ -74,6 +75,8 @@ namespace HaCreator.MapSimulator.Fields
         private bool _clientTournamentFlagBitContext;
         private bool _clientTournamentRegistrationContext;
         private readonly TournamentMatchTableDialogState _matchTableDialog = new();
+        private int _ownedWrapperPacketCount;
+        private readonly Queue<int> _ownedWrapperPacketTrail = new();
         private int _forwardedRawPacketCount;
         private readonly Queue<int> _forwardedRawPacketTrail = new();
 
@@ -93,6 +96,7 @@ namespace HaCreator.MapSimulator.Fields
         public bool ClientTournamentRegistrationContext => _clientTournamentRegistrationContext;
         public TournamentMatchTableDialogState MatchTableDialog => _matchTableDialog;
         public IReadOnlyList<string> PacketActionTrail => _packetActionTrail.ToArray();
+        public int OwnedWrapperPacketCount => _ownedWrapperPacketCount;
         public int ForwardedRawPacketCount => _forwardedRawPacketCount;
 
         public void Configure(MapInfo mapInfo)
@@ -230,6 +234,7 @@ namespace HaCreator.MapSimulator.Fields
             payload ??= Array.Empty<byte>();
             _lastPacketType = (int)packetType;
             _lastPayloadHex = Convert.ToHexString(payload);
+            RecordOwnedWrapperPacket((int)packetType);
 
             try
             {
@@ -324,7 +329,7 @@ namespace HaCreator.MapSimulator.Fields
             string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
             string matchTableText = _matchTableDialog.DescribeStatus();
             string phaseText = BuildLifecycleStatusText(Environment.TickCount);
-            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | context={DescribeParticipationContext()} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()} | forwardedRaw={_forwardedRawPacketCount} | forwardedTrail={BuildForwardedRawPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
+            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | context={DescribeParticipationContext()} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()} | owned={_ownedWrapperPacketCount} | ownedTrail={BuildOwnedWrapperPacketTrailSummary()} | forwardedRaw={_forwardedRawPacketCount} | forwardedTrail={BuildForwardedRawPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
         }
 
         public string DescribeMatchTableDialog()
@@ -375,6 +380,8 @@ namespace HaCreator.MapSimulator.Fields
             _clientTournamentFlagBitContext = true;
             _clientTournamentRegistrationContext = true;
             _matchTableDialog.Reset();
+            _ownedWrapperPacketCount = 0;
+            _ownedWrapperPacketTrail.Clear();
             _forwardedRawPacketCount = 0;
             _forwardedRawPacketTrail.Clear();
         }
@@ -699,6 +706,26 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _forwardedRawPacketTrail.Dequeue();
             }
+        }
+
+        private void RecordOwnedWrapperPacket(int packetType)
+        {
+            _ownedWrapperPacketCount++;
+            _ownedWrapperPacketTrail.Enqueue(packetType);
+            while (_ownedWrapperPacketTrail.Count > OwnedWrapperPacketTrailCapacity)
+            {
+                _ownedWrapperPacketTrail.Dequeue();
+            }
+        }
+
+        private string BuildOwnedWrapperPacketTrailSummary()
+        {
+            if (_ownedWrapperPacketTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join("->", _ownedWrapperPacketTrail.Select(id => id.ToString(CultureInfo.InvariantCulture)));
         }
 
         private string BuildForwardedRawPacketTrailSummary()

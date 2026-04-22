@@ -153,7 +153,8 @@ namespace HaCreator.MapSimulator.Companions
         private int _activeVerticalCheckCount;
         private int _vecCtrlWorkStepCarryMilliseconds;
         private int _vecCtrlEndUpdateActiveFlushCarryMilliseconds;
-        private int _pendingVecCtrlEndUpdateActiveFlushPacketCount;
+        private readonly Queue<byte[]> _pendingVecCtrlEndUpdateActiveFlushPayloads = new();
+        private readonly List<MovePathElement> _clientVecCtrlMovePathBuffer = new();
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
         private const float GroundSideOffset = 42f;
@@ -187,6 +188,8 @@ namespace HaCreator.MapSimulator.Companions
         private const int ClientVecCtrlPassiveStepMilliseconds = 30;
         private const int ClientVecCtrlDragonMovePacketOpcode = 214;
         private const int ClientVecCtrlDragonFlushThresholdMilliseconds = 1000;
+        private const int MaxPendingClientVecCtrlFlushPackets = 128;
+        private const int MaxClientVecCtrlMovePathElements = 128;
         private const float QuestInfoHorizontalOffset = 20f;
         private const float QuestInfoVerticalGap = 15f;
         private const int DragonBlinkEffectStringPoolId = 0x0B6B;
@@ -474,7 +477,8 @@ namespace HaCreator.MapSimulator.Companions
             _activeVerticalCheckCount = 0;
             _vecCtrlWorkStepCarryMilliseconds = 0;
             _vecCtrlEndUpdateActiveFlushCarryMilliseconds = 0;
-            _pendingVecCtrlEndUpdateActiveFlushPacketCount = 0;
+            _pendingVecCtrlEndUpdateActiveFlushPayloads.Clear();
+            _clientVecCtrlMovePathBuffer.Clear();
         }
 
         internal bool ClearClientOwnedOneTimeActionOnSkillCancel(PlayerCharacter owner, int currentTime)
@@ -514,7 +518,7 @@ namespace HaCreator.MapSimulator.Companions
                 _ => "hidden"
             };
 
-            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, action alpha: {Math.Round(_ownerPhaseActionAlpha * 255f)}, quest info: {questInfoLabel}, pending vecctrl flush: {_pendingVecCtrlEndUpdateActiveFlushPacketCount}, owner: {ownerName ?? "Unknown"}";
+            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, action alpha: {Math.Round(_ownerPhaseActionAlpha * 255f)}, quest info: {questInfoLabel}, pending vecctrl flush: {_pendingVecCtrlEndUpdateActiveFlushPayloads.Count}, owner: {ownerName ?? "Unknown"}";
         }
 
         private DragonAnimationSet GetOrLoadAnimationSet(int dragonJob)
@@ -804,10 +808,13 @@ namespace HaCreator.MapSimulator.Companions
 
             int workStepCount = ResolveClientVecCtrlWorkStepCount(frameDeltaSeconds, ref _vecCtrlWorkStepCarryMilliseconds);
             FollowUpdateFlags followUpdate = FollowUpdateFlags.None;
+            EnsureClientVecCtrlMovePathSeed(owner);
             for (int step = 0; step < workStepCount; step++)
             {
                 UpdateFollowState(owner);
+                Vector2 previousAnchor = _visualAnchor;
                 followUpdate |= UpdateVisualAnchor();
+                RecordClientVecCtrlMovePathStep(owner, previousAnchor);
             }
 
             QueueClientVecCtrlEndUpdateActiveFlushPackets(workStepCount);
@@ -826,10 +833,109 @@ namespace HaCreator.MapSimulator.Companions
                 return;
             }
 
-            _pendingVecCtrlEndUpdateActiveFlushPacketCount =
-                _pendingVecCtrlEndUpdateActiveFlushPacketCount > int.MaxValue - flushPacketCount
-                    ? int.MaxValue
-                    : _pendingVecCtrlEndUpdateActiveFlushPacketCount + flushPacketCount;
+            for (int i = 0; i < flushPacketCount; i++)
+            {
+                EnqueueClientVecCtrlEndUpdateActiveFlushPacketPayload(
+                    BuildClientVecCtrlEndUpdateActiveFlushPacketPayload());
+            }
+        }
+
+        private void EnsureClientVecCtrlMovePathSeed(PlayerCharacter? owner)
+        {
+            if (_clientVecCtrlMovePathBuffer.Count > 0)
+            {
+                return;
+            }
+
+            _clientVecCtrlMovePathBuffer.Add(CreateClientVecCtrlMovePathElement(owner, _visualAnchor, _followVelocity));
+        }
+
+        private void RecordClientVecCtrlMovePathStep(PlayerCharacter owner, Vector2 previousAnchor)
+        {
+            if (_clientVecCtrlMovePathBuffer.Count <= 0)
+            {
+                _clientVecCtrlMovePathBuffer.Add(CreateClientVecCtrlMovePathElement(owner, previousAnchor, _followVelocity));
+            }
+
+            int lastIndex = _clientVecCtrlMovePathBuffer.Count - 1;
+            MovePathElement tail = _clientVecCtrlMovePathBuffer[lastIndex];
+            tail.Duration = (short)ClientVecCtrlPassiveStepMilliseconds;
+            _clientVecCtrlMovePathBuffer[lastIndex] = tail;
+            _clientVecCtrlMovePathBuffer.Add(CreateClientVecCtrlMovePathElement(owner, _visualAnchor, _followVelocity));
+
+            while (_clientVecCtrlMovePathBuffer.Count > MaxClientVecCtrlMovePathElements)
+            {
+                _clientVecCtrlMovePathBuffer.RemoveAt(0);
+            }
+        }
+
+        private MovePathElement CreateClientVecCtrlMovePathElement(PlayerCharacter? owner, Vector2 anchor, Vector2 velocity)
+        {
+            short clampedX = (short)Math.Clamp((int)MathF.Round(anchor.X), short.MinValue, short.MaxValue);
+            short clampedY = (short)Math.Clamp((int)MathF.Round(anchor.Y), short.MinValue, short.MaxValue);
+            short clampedVelocityX = (short)Math.Clamp((int)MathF.Round(velocity.X), short.MinValue, short.MaxValue);
+            short clampedVelocityY = (short)Math.Clamp((int)MathF.Round(velocity.Y), short.MinValue, short.MaxValue);
+            short footholdId = (short)Math.Clamp(owner?.Physics?.CurrentFoothold?.num ?? 0, short.MinValue, short.MaxValue);
+            short fallStartFootholdId = (short)Math.Clamp(owner?.Physics?.FallStartFoothold?.num ?? 0, short.MinValue, short.MaxValue);
+            MoveAction action = Math.Abs(clampedVelocityX) > 0 || Math.Abs(clampedVelocityY) > 0
+                ? MoveAction.Walk
+                : MoveAction.Stand;
+            return new MovePathElement
+            {
+                X = clampedX,
+                Y = clampedY,
+                VelocityX = clampedVelocityX,
+                VelocityY = clampedVelocityY,
+                Action = action,
+                FootholdId = footholdId,
+                FallStartFootholdId = fallStartFootholdId,
+                Duration = 0,
+                FacingRight = _facingRight,
+                MovePathAttribute = 0,
+                XOffset = 0,
+                YOffset = 0,
+                RandomCount = 0,
+                ActualRandomCount = 0,
+                StatChanged = false
+            };
+        }
+
+        private byte[] BuildClientVecCtrlEndUpdateActiveFlushPacketPayload()
+        {
+            EnsureClientVecCtrlMovePathSeed(owner: null);
+            IReadOnlyList<MovePathElement> movePath = _clientVecCtrlMovePathBuffer;
+            if (!TryEncodeClientDragonEndUpdateActiveFlushMovePathPayload(
+                    movePath,
+                    out byte[] payload,
+                    out _))
+            {
+                payload = Array.Empty<byte>();
+            }
+
+            if (movePath.Count > 0)
+            {
+                MovePathElement tail = movePath[movePath.Count - 1];
+                tail.Duration = 0;
+                _clientVecCtrlMovePathBuffer.Clear();
+                _clientVecCtrlMovePathBuffer.Add(tail);
+            }
+            else
+            {
+                _clientVecCtrlMovePathBuffer.Clear();
+            }
+
+            return payload ?? Array.Empty<byte>();
+        }
+
+        private void EnqueueClientVecCtrlEndUpdateActiveFlushPacketPayload(byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            while (_pendingVecCtrlEndUpdateActiveFlushPayloads.Count >= MaxPendingClientVecCtrlFlushPackets)
+            {
+                _pendingVecCtrlEndUpdateActiveFlushPayloads.Dequeue();
+            }
+
+            _pendingVecCtrlEndUpdateActiveFlushPayloads.Enqueue(payload);
         }
 
         private void UpdateFollowState(PlayerCharacter owner)
@@ -987,15 +1093,31 @@ namespace HaCreator.MapSimulator.Companions
             return flushPacketCount;
         }
 
-        internal bool TryConsumeClientVecCtrlEndUpdateActiveFlushPacket(out int packetOpcode)
+        internal static bool TryEncodeClientDragonEndUpdateActiveFlushMovePathPayload(
+            IReadOnlyList<MovePathElement> movePath,
+            out byte[] payload,
+            out string error)
         {
-            if (_pendingVecCtrlEndUpdateActiveFlushPacketCount <= 0)
+            IReadOnlyList<MovePathElement> normalizedPath =
+                CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(movePath);
+            return CMovePathClientPacketCodec.TryEncode(
+                normalizedPath,
+                out payload,
+                out error,
+                includeClientRandomCounts: false,
+                includeClientFlushTail: true);
+        }
+
+        internal bool TryConsumeClientVecCtrlEndUpdateActiveFlushPacket(out int packetOpcode, out byte[] payload)
+        {
+            if (_pendingVecCtrlEndUpdateActiveFlushPayloads.Count <= 0)
             {
                 packetOpcode = 0;
+                payload = Array.Empty<byte>();
                 return false;
             }
 
-            _pendingVecCtrlEndUpdateActiveFlushPacketCount--;
+            payload = _pendingVecCtrlEndUpdateActiveFlushPayloads.Dequeue() ?? Array.Empty<byte>();
             packetOpcode = ClientVecCtrlDragonMovePacketOpcode;
             return true;
         }

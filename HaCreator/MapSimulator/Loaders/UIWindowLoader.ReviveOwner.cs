@@ -53,24 +53,28 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D defaultBranchBackground = LoadReviveOwnerBranchBackground(
                 uiWindowImage,
                 uiWindow2Image,
+                basicImage,
                 utilDialogProperty,
                 ReviveOwnerRuntime.ResolveNativeBranchSpec(ReviveOwnerVariant.DefaultOnly).BackgroundUolSymbol,
                 device);
             Texture2D premiumSafetyCharmBackground = LoadReviveOwnerBranchBackground(
                 uiWindowImage,
                 uiWindow2Image,
+                basicImage,
                 utilDialogProperty,
                 ReviveOwnerRuntime.ResolveNativeBranchSpec(ReviveOwnerVariant.PremiumSafetyCharmChoice).BackgroundUolSymbol,
                 device);
             Texture2D upgradeTombBackground = LoadReviveOwnerBranchBackground(
                 uiWindowImage,
                 uiWindow2Image,
+                basicImage,
                 utilDialogProperty,
                 ReviveOwnerRuntime.ResolveNativeBranchSpec(ReviveOwnerVariant.UpgradeTombChoice).BackgroundUolSymbol,
                 device);
             Texture2D soulStoneBackground = LoadReviveOwnerBranchBackground(
                 uiWindowImage,
                 uiWindow2Image,
+                basicImage,
                 utilDialogProperty,
                 ReviveOwnerRuntime.ResolveNativeBranchSpec(ReviveOwnerVariant.SoulStoneChoice).BackgroundUolSymbol,
                 device);
@@ -110,6 +114,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static Texture2D LoadReviveOwnerBranchBackground(
             WzImage uiWindowImage,
             WzImage uiWindow2Image,
+            WzImage basicImage,
             WzSubProperty utilDialogProperty,
             string backgroundSymbol,
             GraphicsDevice device)
@@ -121,6 +126,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             return LoadReviveOwnerCanvasTexture(utilDialogProperty, backgroundSymbol, device)
                 ?? LoadReviveOwnerCanvasTexture(uiWindow2Image, backgroundSymbol, device)
+                ?? LoadReviveOwnerCanvasTexture(basicImage, backgroundSymbol, device)
                 ?? LoadReviveOwnerCanvasTexture(uiWindowImage, backgroundSymbol, device);
         }
 

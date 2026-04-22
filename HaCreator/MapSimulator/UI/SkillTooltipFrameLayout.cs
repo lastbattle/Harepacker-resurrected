@@ -123,16 +123,24 @@ namespace HaCreator.MapSimulator.UI
             Rectangle bestRect = Rectangle.Empty;
             int bestFrame = framePreference.Length > 0 ? framePreference[0] : 0;
             int bestOverflow = int.MaxValue;
+            bool preferDrawableFrames = HasDrawablePreferredFrame(frameGeometries, framePreference);
+            bool consideredCandidate = false;
 
             for (int i = 0; i < framePreference.Length; i++)
             {
                 int frameIndex = framePreference[i];
+                if (preferDrawableFrames && !IsDrawableFrameGeometry(frameGeometries, frameIndex))
+                {
+                    continue;
+                }
+
                 Rectangle candidate = CreateTooltipRectFromAnchor(
                     anchorPoint,
                     tooltipWidth,
                     tooltipHeight,
                     frameIndex,
                     frameGeometries);
+                consideredCandidate = true;
                 int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight, edgePadding);
                 if (overflow == 0)
                 {
@@ -145,6 +153,33 @@ namespace HaCreator.MapSimulator.UI
                     bestOverflow = overflow;
                     bestFrame = frameIndex;
                     bestRect = candidate;
+                }
+            }
+
+            if (!consideredCandidate)
+            {
+                for (int i = 0; i < framePreference.Length; i++)
+                {
+                    int frameIndex = framePreference[i];
+                    Rectangle candidate = CreateTooltipRectFromAnchor(
+                        anchorPoint,
+                        tooltipWidth,
+                        tooltipHeight,
+                        frameIndex,
+                        frameGeometries);
+                    int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight, edgePadding);
+                    if (overflow == 0)
+                    {
+                        tooltipFrameIndex = frameIndex;
+                        return candidate;
+                    }
+
+                    if (overflow < bestOverflow)
+                    {
+                        bestOverflow = overflow;
+                        bestFrame = frameIndex;
+                        bestRect = candidate;
+                    }
                 }
             }
 
@@ -204,6 +239,26 @@ namespace HaCreator.MapSimulator.UI
                 2 => new Rectangle(anchorPoint.X - tooltipWidth + 1, anchorPoint.Y, tooltipWidth, tooltipHeight),
                 _ => new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight)
             };
+        }
+
+        private static bool HasDrawablePreferredFrame(ReadOnlySpan<FrameGeometry> frameGeometries, ReadOnlySpan<int> framePreference)
+        {
+            for (int i = 0; i < framePreference.Length; i++)
+            {
+                if (IsDrawableFrameGeometry(frameGeometries, framePreference[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsDrawableFrameGeometry(ReadOnlySpan<FrameGeometry> frameGeometries, int frameIndex)
+        {
+            return (uint)frameIndex < (uint)frameGeometries.Length
+                   && frameGeometries[frameIndex].Width > 0
+                   && frameGeometries[frameIndex].Height > 0;
         }
 
         private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight, int edgePadding)

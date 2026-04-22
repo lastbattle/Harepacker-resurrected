@@ -133,6 +133,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, List<AnimationDisplayerFollowRegistrationEntry>> _animationDisplayerFollowAnimationIds = new();
         private readonly Dictionary<int, int> _animationDisplayerFollowRegistrationSignatures = new();
         private readonly Dictionary<int, AnimationDisplayerRemoteGenericUserStateOwnerState> _animationDisplayerRemoteGenericUserStateOwnerStates = new();
+        private readonly Dictionary<int, AnimationDisplayerRemoteMakerSkillOwnerState> _animationDisplayerRemoteMakerSkillOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerRemoteItemMakeOwnerState> _animationDisplayerRemoteItemMakeOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerRemoteUpgradeTombOwnerState> _animationDisplayerRemoteUpgradeTombOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerRemotePacketOwnedStringEffectOwnerState> _animationDisplayerRemotePacketOwnedStringEffectOwnerStates = new();
@@ -209,6 +210,15 @@ namespace HaCreator.MapSimulator
         private sealed class AnimationDisplayerRemoteItemMakeOwnerState
         {
             public bool Success { get; init; }
+            public string OwnerActionName { get; init; }
+            public bool OwnerFacingRight { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
+
+        private sealed class AnimationDisplayerRemoteMakerSkillOwnerState
+        {
+            public string EffectUol { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
             public int AnimationStartTime { get; init; }
@@ -719,6 +729,7 @@ namespace HaCreator.MapSimulator
             _animationEffects.ClearSecondarySkillAnimationOwners();
             ClearAnimationDisplayerFollowAnimations();
             _animationDisplayerRemoteGenericUserStateOwnerStates.Clear();
+            _animationDisplayerRemoteMakerSkillOwnerStates.Clear();
             _animationDisplayerRemoteItemMakeOwnerStates.Clear();
             _animationDisplayerRemoteUpgradeTombOwnerStates.Clear();
             _animationDisplayerRemotePacketOwnedStringEffectOwnerStates.Clear();
@@ -1003,11 +1014,7 @@ namespace HaCreator.MapSimulator
             }
 
             string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
-            if (!string.Equals(resolvedSpecialTextName, "Miss", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(resolvedSpecialTextName, "guard", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(resolvedSpecialTextName, "shot", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(resolvedSpecialTextName, "counter", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(resolvedSpecialTextName, "resist", StringComparison.OrdinalIgnoreCase))
+            if (!DamageNumberRenderer.IsSupportedSpecialTextName(resolvedSpecialTextName))
             {
                 return;
             }
@@ -1051,7 +1058,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (!TryGetAnimationDisplayerFrames(
-                    $"combatfeedback:{colorType}:{resolvedSpecialTextName}",
+                    $"combatfeedback:{effectUol}",
                     effectUol,
                     out List<IDXObject> frames))
             {
@@ -1811,13 +1818,19 @@ namespace HaCreator.MapSimulator
             int metadataDurationMs,
             int actionDurationMs = 0)
         {
+            int clampedMetadataDurationMs = Math.Max(0, metadataDurationMs);
+            int clampedActionDurationMs = Math.Max(0, actionDurationMs);
+            if (clampedMetadataDurationMs > 0 || clampedActionDurationMs > 0)
+            {
+                // Client evidence (`RESERVEDINFO::Update`, type 4):
+                // `CAvatar::SetOneTimeAction` owns completion timing. Keep simulator restore
+                // from ending earlier than either the metadata window or authored action window.
+                return Math.Max(1, Math.Max(clampedMetadataDurationMs, clampedActionDurationMs));
+            }
+
             return Math.Max(
                 1,
-                metadataDurationMs > 0
-                    ? metadataDurationMs
-                    : actionDurationMs > 0
-                        ? actionDurationMs
-                    : AnimationDisplayerReservedRemoteUtilityActionRestoreFallbackDurationMs);
+                AnimationDisplayerReservedRemoteUtilityActionRestoreFallbackDurationMs);
         }
 
         internal static (string PreviousActionName, bool? PreviousFacingRight) ResolveAnimationDisplayerReservedRemoteUtilityActionRestoreTarget(
@@ -2515,7 +2528,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            return Math.Max(0, currentTime - state.AnimationStartTime);
+            return ResolveAnimationDisplayerTickElapsedMs(currentTime, state.AnimationStartTime);
         }
 
         internal static IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> BuildAnimationDisplayerSpecificUserStateCandidates(
@@ -2587,8 +2600,21 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return currentTime - state.TransitionStartTime >= state.TransitionDurationMs
+            return ResolveAnimationDisplayerTickElapsedMs(currentTime, state.TransitionStartTime) >= state.TransitionDurationMs
                    && state.TransitionEndAlpha <= 0f;
+        }
+
+        private static int ResolveAnimationDisplayerTickElapsedMs(int currentTime, int startTime)
+        {
+            if (currentTime == int.MinValue || startTime == int.MinValue)
+            {
+                return 0;
+            }
+
+            long elapsed = unchecked((uint)(currentTime - startTime));
+            return elapsed >= int.MaxValue
+                ? int.MaxValue
+                : (int)elapsed;
         }
 
         internal static bool TryResolveAnimationDisplayerSpecificUserStateFrames(
@@ -3426,6 +3452,16 @@ namespace HaCreator.MapSimulator
             }
 
             int initialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(ownerContext, frames);
+            if (presentation.EffectType == (byte)RemoteUserEffectSubtype.MakerSkill)
+            {
+                initialElapsedMs = ResolveAnimationDisplayerRemoteMakerSkillInitialElapsed(
+                    presentation.CharacterId,
+                    effectUol,
+                    ownerActionName,
+                    ownerFacingRight,
+                    presentation.CurrentTime,
+                    ResolveAnimationDisplayerOneTimeFrameDurationMs(frames));
+            }
             Vector2 packetAnchorPosition = presentation.WorldOrigin ?? actor.Position;
             bool fallbackFacingRight = presentation.UseOwnerFacing && actor.FacingRight;
             _animationEffects.AddOneTimeAttached(
@@ -4363,6 +4399,7 @@ namespace HaCreator.MapSimulator
             }
 
             _animationDisplayerRemoteGenericUserStateOwnerStates.Remove(characterId);
+            _animationDisplayerRemoteMakerSkillOwnerStates.Remove(characterId);
             _animationDisplayerRemoteItemMakeOwnerStates.Remove(characterId);
             _animationDisplayerRemoteUpgradeTombOwnerStates.Remove(characterId);
             _animationDisplayerRemotePacketOwnedStringEffectOwnerStates.Remove(characterId);
@@ -4462,6 +4499,52 @@ namespace HaCreator.MapSimulator
                 new AnimationDisplayerRemoteItemMakeOwnerState
                 {
                     Success = success,
+                    OwnerActionName = ownerActionName,
+                    OwnerFacingRight = ownerFacingRight,
+                    AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                    DurationMs = durationMs
+                };
+
+            return initialElapsedMs;
+        }
+
+        private int ResolveAnimationDisplayerRemoteMakerSkillInitialElapsed(
+            int characterId,
+            string effectUol,
+            string ownerActionName,
+            bool ownerFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (characterId <= 0
+                || string.IsNullOrWhiteSpace(effectUol)
+                || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            int initialElapsedMs = 0;
+            if (_animationDisplayerRemoteMakerSkillOwnerStates.TryGetValue(
+                    characterId,
+                    out AnimationDisplayerRemoteMakerSkillOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = ResolveAnimationDisplayerRemoteMakerSkillRestoreElapsedCore(
+                    existingState.EffectUol,
+                    existingState.OwnerActionName,
+                    existingState.OwnerFacingRight,
+                    existingState.AnimationStartTime,
+                    effectUol,
+                    ownerActionName,
+                    ownerFacingRight,
+                    currentTime,
+                    durationMs);
+            }
+
+            _animationDisplayerRemoteMakerSkillOwnerStates[characterId] =
+                new AnimationDisplayerRemoteMakerSkillOwnerState
+                {
+                    EffectUol = effectUol,
                     OwnerActionName = ownerActionName,
                     OwnerFacingRight = ownerFacingRight,
                     AnimationStartTime = unchecked(currentTime - initialElapsedMs),
@@ -4707,6 +4790,30 @@ namespace HaCreator.MapSimulator
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
+        private static int ResolveAnimationDisplayerRemoteMakerSkillRestoreElapsedCore(
+            string previousEffectUol,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            string currentEffectUol,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || !string.Equals(previousEffectUol, currentEffectUol, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(previousActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
+                || previousFacingRight != currentFacingRight)
+            {
+                return 0;
+            }
+
+            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
         private static int ResolveAnimationDisplayerRemoteUpgradeTombRestoreElapsedCore(
             int previousItemId,
             string previousActionName,
@@ -4831,6 +4938,29 @@ namespace HaCreator.MapSimulator
             int durationMs)
         {
             return ResolveAnimationDisplayerRemoteGenericUserStateRestoreElapsedCore(
+                previousEffectUol,
+                previousActionName,
+                previousFacingRight,
+                previousAnimationStartTime,
+                currentEffectUol,
+                currentActionName,
+                currentFacingRight,
+                currentTime,
+                durationMs);
+        }
+
+        internal static int ResolveAnimationDisplayerRemoteMakerSkillRestoreElapsedForTesting(
+            string previousEffectUol,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            string currentEffectUol,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolveAnimationDisplayerRemoteMakerSkillRestoreElapsedCore(
                 previousEffectUol,
                 previousActionName,
                 previousFacingRight,
@@ -7320,33 +7450,12 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var indexedRows = new Dictionary<int, WzImageProperty>();
-            var seenSegments = new HashSet<string>(StringComparer.Ordinal);
-            for (int i = 0; i < childCount; i++)
-            {
-                WzImageProperty childProperty = children[i];
-                string childName = childProperty?.Name;
-                if (!TryParseAnimationDisplayerNonNegativeIndexSegment(childName, out int index)
-                    || !seenSegments.Add(childName))
-                {
-                    continue;
-                }
-
-                if (!indexedRows.ContainsKey(index))
-                {
-                    indexedRows[index] = childProperty;
-                }
-            }
-
-            if (indexedRows.Count == 0)
-            {
-                return null;
-            }
-
             var points = new List<Vector2>();
-            for (int index = 0; ; index++)
+            for (int index = 0; index < childCount; index++)
             {
-                if (!indexedRows.TryGetValue(index, out WzImageProperty indexedRow))
+                WzImageProperty indexedRow =
+                    resolvedGenerationPointProperty[index.ToString(CultureInfo.InvariantCulture)];
+                if (indexedRow == null)
                 {
                     break;
                 }

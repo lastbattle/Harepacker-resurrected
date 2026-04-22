@@ -54,6 +54,8 @@ namespace HaCreator.MapSimulator
         private Texture2D[] _initialQuizOwnerDigits;
         private Texture2D _initialQuizOwnerCommaTexture;
         private InitialQuizAnimationFrame[] _initialQuizOwnerAnimationFrames = Array.Empty<InitialQuizAnimationFrame>();
+        private Point _initialQuizOwnerBackgroundOrigin = Point.Zero;
+        private Point _initialQuizOwnerBackground2Origin = Point.Zero;
         private Point _initialQuizOwnerBackground3Origin = Point.Zero;
         private static readonly string[] InitialQuizOwnerInputFontFamilyCandidates =
         {
@@ -588,9 +590,9 @@ namespace HaCreator.MapSimulator
                 new Color(0, 0, 0, InitialQuizOwnerFrameFadeAlpha),
                 Color.Transparent);
 
-            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture, ownerBounds);
-            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture2, ownerBounds);
-            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture3, overlayBounds);
+            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture, ownerBounds, _initialQuizOwnerBackgroundOrigin);
+            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture2, ownerBounds, _initialQuizOwnerBackground2Origin);
+            DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture3, overlayBounds, Point.Zero);
 
             int displayedRemainingSeconds = _initialQuizOwnerHasDisplayedRemainingSeconds
                 ? _initialQuizOwnerDisplayedRemainingSeconds
@@ -1116,12 +1118,20 @@ namespace HaCreator.MapSimulator
             _spriteBatch.Draw(frame.Texture, drawBounds, Color.White);
         }
 
-        private void DrawInitialQuizOwnerLayer(Texture2D texture, Rectangle bounds)
+        private void DrawInitialQuizOwnerLayer(Texture2D texture, Rectangle bounds, Point origin)
         {
-            if (texture != null && bounds != Rectangle.Empty)
+            if (texture == null)
             {
-                _spriteBatch.Draw(texture, new Rectangle(bounds.X, bounds.Y, texture.Width, texture.Height), Color.White);
+                return;
             }
+
+            Rectangle drawBounds = ResolveInitialQuizOwnerLayerBounds(bounds, texture.Width, texture.Height, origin);
+            if (drawBounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            _spriteBatch.Draw(texture, drawBounds, Color.White);
         }
 
         private void DrawInitialQuizOwnerTimerDigits(Rectangle ownerBounds, int remainingSeconds)
@@ -1306,6 +1316,8 @@ namespace HaCreator.MapSimulator
                 ?? (preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
             _initialQuizOwnerBackgroundTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
             _initialQuizOwnerBackgroundTexture3 = LoadUiCanvasTexture(preferredBackground3 ?? fallbackBackground3);
+            _initialQuizOwnerBackgroundOrigin = ResolveCanvasOrigin((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
+            _initialQuizOwnerBackground2Origin = ResolveCanvasOrigin((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
             _initialQuizOwnerOkButtonNormalFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "normal");
             _initialQuizOwnerOkButtonHoverFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "mouseOver");
             _initialQuizOwnerOkButtonPressedFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "pressed");
@@ -1955,11 +1967,25 @@ namespace HaCreator.MapSimulator
                 return new Rectangle(ownerBounds.X + 22, ownerBounds.Y + 67, 234, 118);
             }
 
-            return new Rectangle(
-                ownerBounds.X - _initialQuizOwnerBackground3Origin.X,
-                ownerBounds.Y - _initialQuizOwnerBackground3Origin.Y,
+            return ResolveInitialQuizOwnerLayerBounds(
+                ownerBounds,
                 _initialQuizOwnerBackgroundTexture3.Width,
-                _initialQuizOwnerBackgroundTexture3.Height);
+                _initialQuizOwnerBackgroundTexture3.Height,
+                _initialQuizOwnerBackground3Origin);
+        }
+
+        internal static Rectangle ResolveInitialQuizOwnerLayerBounds(Rectangle ownerBounds, int textureWidth, int textureHeight, Point origin)
+        {
+            if (ownerBounds == Rectangle.Empty || textureWidth <= 0 || textureHeight <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                ownerBounds.X - origin.X,
+                ownerBounds.Y - origin.Y,
+                textureWidth,
+                textureHeight);
         }
 
         private static Point ResolveCanvasOrigin(WzCanvasProperty canvas)

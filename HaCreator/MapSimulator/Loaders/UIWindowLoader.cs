@@ -9206,7 +9206,9 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/1", basicImage, uiWindow1Image, device),
                 LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/2", basicImage, uiWindow1Image, device),
                 LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/0", basicImage, uiWindow1Image, device),
-                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/1", basicImage, uiWindow1Image, device));
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/1", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/2", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/3", basicImage, uiWindow1Image, device));
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;

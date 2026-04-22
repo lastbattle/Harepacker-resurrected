@@ -3884,15 +3884,6 @@ namespace HaCreator.MapSimulator
                 case LocalOverlayPacketInboxManager.BalloonMsgClientPacketType:
                     return TryApplyPacketOwnedBalloonPayload(payload, out message);
 
-                case LocalOverlayPacketInboxManager.DamageMeterClientPacketType:
-                    return TryApplyPacketOwnedDamageMeterPayload(payload, out message);
-
-                case LocalOverlayPacketInboxManager.NotifyHpDecByFieldClientPacketType:
-                    return TryApplyPacketOwnedFieldHazardPayload(payload, out message);
-
-                case LocalOverlayPacketInboxManager.PetConsumeResultPacketType:
-                    return TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
-
                 default:
                     message = $"Unsupported local overlay packet type {packetType}.";
                     return false;
@@ -4003,7 +3994,7 @@ namespace HaCreator.MapSimulator
                 int port = LocalOverlayPacketInboxManager.DefaultPort;
                 if (args.Length >= 2 && (!int.TryParse(args[1], out port) || port <= 0 || port > ushort.MaxValue))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
                 }
 
                 _localOverlayPacketInboxConfiguredPort = port;
@@ -4032,7 +4023,7 @@ namespace HaCreator.MapSimulator
                     rawHex: string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase));
             }
 
-            return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+            return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayPacketCommand(string[] args, bool rawHex)
@@ -4047,7 +4038,7 @@ namespace HaCreator.MapSimulator
 
             if (!LocalOverlayPacketInboxManager.TryParsePacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Local overlay packet type must be fade, fadeoutforce, balloon, damagemeter, hpdec, hazardresult, 240, 241, 243, 245, 267, or 1026.");
+                return ChatCommandHandler.CommandResult.Error("Local overlay packet type must be fade, fadeoutforce, balloon, 240, 241, or 245.");
             }
 
             byte[] payload = Array.Empty<byte>();

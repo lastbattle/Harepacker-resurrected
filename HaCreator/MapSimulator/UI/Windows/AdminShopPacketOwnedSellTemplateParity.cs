@@ -212,6 +212,39 @@ namespace HaCreator.MapSimulator.UI
             return isPacketOwnedSnapshotRow && isPreviewOnly;
         }
 
+        internal static int ComputePendingWishlistRegisterEntryIdentityScore(
+            int pendingItemId,
+            string pendingTitle,
+            int candidateItemId,
+            string candidateTitle)
+        {
+            bool itemMatches = pendingItemId > 0
+                && candidateItemId > 0
+                && pendingItemId == candidateItemId;
+            bool titleMatches = !string.IsNullOrWhiteSpace(pendingTitle)
+                && !string.IsNullOrWhiteSpace(candidateTitle)
+                && string.Equals(
+                    pendingTitle.Trim(),
+                    candidateTitle.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
+            if (itemMatches && titleMatches)
+            {
+                return 3;
+            }
+
+            if (itemMatches)
+            {
+                return 2;
+            }
+
+            if (titleMatches)
+            {
+                return 1;
+            }
+
+            return 0;
+        }
+
         private static bool IsPreferredCandidate(
             PacketOwnedCommodityMetadataCandidate candidate,
             PacketOwnedCommodityMetadataCandidate existing,

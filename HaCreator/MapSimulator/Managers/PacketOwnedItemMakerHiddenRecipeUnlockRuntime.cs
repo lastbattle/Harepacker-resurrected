@@ -16,6 +16,11 @@ namespace HaCreator.MapSimulator.Managers
     internal static class PacketOwnedItemMakerHiddenRecipeUnlockRuntime
     {
         public const int PacketType = 1019;
+        private enum EntryEncoding
+        {
+            BucketAndOutputItemId,
+            OutputItemIdOnly
+        }
 
         public static bool TryDecode(byte[] payload, out PacketOwnedItemMakerHiddenRecipeUnlock result, out string error)
         {
@@ -24,7 +29,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (payload == null || payload.Length == 0)
             {
-                error = "Maker-hidden-unlock payload must include at least the Int32 entry count.";
+                error = "Maker-hidden-unlock payload must include at least an entry-count field.";
                 return false;
             }
 
@@ -32,7 +37,7 @@ namespace HaCreator.MapSimulator.Managers
                 PacketOwnedPayloadEnvelopeRuntime.EnumerateDecodeCandidates(payload, (ushort)PacketType);
             if (decodeCandidates.Count == 0)
             {
-                error = "Maker-hidden-unlock payload must include at least the Int32 entry count.";
+                error = "Maker-hidden-unlock payload must include at least an entry-count field.";
                 return false;
             }
 
@@ -57,9 +62,39 @@ namespace HaCreator.MapSimulator.Managers
             result = null;
             error = null;
 
-            if (payload == null || payload.Length < sizeof(int))
+            if (payload == null || payload.Length < sizeof(ushort))
             {
-                error = "Maker-hidden-unlock payload must include at least the Int32 entry count.";
+                error = "Maker-hidden-unlock payload must include at least an entry-count field.";
+                return false;
+            }
+
+            string firstDecodeError = null;
+            if (TryDecodeWithCountWidth(payload, useCompactCount: false, EntryEncoding.BucketAndOutputItemId, out result, out error)
+                || TryDecodeWithCountWidth(payload, useCompactCount: false, EntryEncoding.OutputItemIdOnly, out result, out error)
+                || TryDecodeWithCountWidth(payload, useCompactCount: true, EntryEncoding.BucketAndOutputItemId, out result, out error)
+                || TryDecodeWithCountWidth(payload, useCompactCount: true, EntryEncoding.OutputItemIdOnly, out result, out error))
+            {
+                return true;
+            }
+
+            firstDecodeError ??= error;
+            error = firstDecodeError ?? "Maker-hidden-unlock payload could not be decoded.";
+            return false;
+        }
+
+        private static bool TryDecodeWithCountWidth(
+            byte[] payload,
+            bool useCompactCount,
+            EntryEncoding entryEncoding,
+            out PacketOwnedItemMakerHiddenRecipeUnlock result,
+            out string error)
+        {
+            result = null;
+            error = null;
+
+            int minimumLength = useCompactCount ? sizeof(ushort) : sizeof(int);
+            if (payload == null || payload.Length < minimumLength)
+            {
                 return false;
             }
 
@@ -68,10 +103,19 @@ namespace HaCreator.MapSimulator.Managers
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
 
-                int count = reader.ReadInt32();
+                int count = useCompactCount ? reader.ReadUInt16() : reader.ReadInt32();
                 if (count < 0)
                 {
                     error = "Maker-hidden-unlock entry count cannot be negative.";
+                    return false;
+                }
+
+                int entryWidth = entryEncoding == EntryEncoding.BucketAndOutputItemId
+                    ? sizeof(int) * 2
+                    : sizeof(int);
+                long requiredBytes = (long)entryWidth * count;
+                if (reader.BaseStream.Length - reader.BaseStream.Position < requiredBytes)
+                {
                     return false;
                 }
 
@@ -79,9 +123,21 @@ namespace HaCreator.MapSimulator.Managers
                 HashSet<(int BucketKey, int OutputItemId)> seen = new();
                 for (int i = 0; i < count; i++)
                 {
-                    EnsureReadable(reader, sizeof(int) * 2, "Maker-hidden-unlock entry payload is truncated.");
-                    int bucketKey = reader.ReadInt32();
-                    int outputItemId = reader.ReadInt32();
+                    int bucketKey;
+                    int outputItemId;
+                    if (entryEncoding == EntryEncoding.BucketAndOutputItemId)
+                    {
+                        EnsureReadable(reader, sizeof(int) * 2, "Maker-hidden-unlock entry payload is truncated.");
+                        bucketKey = reader.ReadInt32();
+                        outputItemId = reader.ReadInt32();
+                    }
+                    else
+                    {
+                        EnsureReadable(reader, sizeof(int), "Maker-hidden-unlock output-only entry payload is truncated.");
+                        bucketKey = -1;
+                        outputItemId = reader.ReadInt32();
+                    }
+
                     if (outputItemId <= 0)
                     {
                         throw new InvalidDataException("Maker-hidden-unlock entries must include a positive output item id.");
@@ -96,7 +152,6 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (reader.BaseStream.Position != reader.BaseStream.Length)
                 {
-                    error = $"Maker-hidden-unlock payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
                     return false;
                 }
 

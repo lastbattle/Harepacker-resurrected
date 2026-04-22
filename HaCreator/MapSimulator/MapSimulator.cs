@@ -725,6 +725,8 @@ namespace HaCreator.MapSimulator
         private int _lastCollisionCustomImpactMovePathAttribute = -1;
         private byte[] _lastCollisionCustomImpactMovePathPayload = Array.Empty<byte>();
         private int _lastPortalOwnedMovePathFlushAdmissionTick = int.MinValue;
+        private bool _hasPortalOwnedMovePathPostFlushCarry = false;
+        private MovePathElement _portalOwnedMovePathPostFlushCarry;
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -1008,6 +1010,63 @@ namespace HaCreator.MapSimulator
                 .SelectMany(page => page?.Cards ?? Array.Empty<MonsterBookCardSnapshot>())
                 .FirstOrDefault(card => card?.MobId == mobId);
             return Math.Max(0, matchedCard?.OwnedCopies ?? 0);
+        }
+
+        private bool IsSuccessDailyPlayQuestForQuestDemand(int questId)
+        {
+            if (questId <= 0 ||
+                !_questRuntime.TryGetQuestRecordValue(questId, out string recordValue) ||
+                string.IsNullOrWhiteSpace(recordValue))
+            {
+                return false;
+            }
+
+            if (TryResolveQuestRecordIntToken(recordValue, "count", out int successDays) &&
+                TryResolveQuestRecordIntToken(recordValue, "daylimit", out int targetDays) &&
+                targetDays > 0)
+            {
+                return successDays >= targetDays;
+            }
+
+            if (TryResolveQuestRecordIntToken(recordValue, "hour", out int todayHours) &&
+                TryResolveQuestRecordIntToken(recordValue, "minhour", out int requiredHours) &&
+                requiredHours > 0)
+            {
+                return todayHours >= requiredHours;
+            }
+
+            return false;
+        }
+
+        private int? ResolvePartyQuestRankCountForQuestDemand(int questId, string rankKey)
+        {
+            if (questId <= 0 ||
+                string.IsNullOrWhiteSpace(rankKey) ||
+                !_questRuntime.TryGetQuestRecordValue(questId, out string recordValue) ||
+                string.IsNullOrWhiteSpace(recordValue))
+            {
+                return null;
+            }
+
+            string normalizedRankKey = rankKey.Trim();
+            if (TryResolveQuestRecordIntToken(recordValue, normalizedRankKey, out int rankCount))
+            {
+                return Math.Max(0, rankCount);
+            }
+
+            return string.Equals(normalizedRankKey, "S", StringComparison.OrdinalIgnoreCase) &&
+                   TryResolveQuestRecordIntToken(recordValue, "rank", out rankCount)
+                ? Math.Max(0, rankCount)
+                : null;
+        }
+
+        private static bool TryResolveQuestRecordIntToken(string recordValue, string token, out int value)
+        {
+            value = 0;
+            return !string.IsNullOrWhiteSpace(recordValue) &&
+                   !string.IsNullOrWhiteSpace(token) &&
+                   QuestRuntimeManager.TryResolveQuestDetailRecordTokenValue(recordValue, token, out string textValue) &&
+                   int.TryParse(textValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
         }
 
         private void EnsureQuestWorldMapEntityIndex()
@@ -2166,8 +2225,12 @@ namespace HaCreator.MapSimulator
 
             if (_mapTransferManualDestination != null)
             {
-                string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegisterPreflightRestrictionMessage(
-                    _mapTransferManualDestination.MapId);
+                MapleLib.WzLib.WzStructure.MapInfo manualTargetMapInfo =
+                    ResolveMapTransferDestinationMapInfo(_mapTransferManualDestination.MapId);
+                string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
+                    _mapTransferManualDestination.MapId,
+                    manualTargetMapInfo,
+                    BuildFieldEntryRestrictionContext());
                 if (!string.IsNullOrWhiteSpace(registrationRestriction))
                 {
                     return registrationRestriction;
@@ -2181,8 +2244,10 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string currentMapRegistrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegisterPreflightRestrictionMessage(
-                _mapBoard?.MapInfo?.id ?? 0);
+            string currentMapRegistrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
+                _mapBoard?.MapInfo?.id ?? 0,
+                _mapBoard?.MapInfo,
+                BuildFieldEntryRestrictionContext());
             if (!string.IsNullOrWhiteSpace(currentMapRegistrationRestriction))
             {
                 return currentMapRegistrationRestriction;
@@ -5071,9 +5136,16 @@ namespace HaCreator.MapSimulator
                 0,
                 out string locationSummary,
                 out int channel);
+            CharacterBuild pendingProfileBuild = TryCreateRemoteCharacterInfoInspectionBuildFromPendingProfile(
+                resolvedCharacterId,
+                resolvedName,
+                out CharacterBuild resolvedPendingProfileBuild)
+                ? resolvedPendingProfileBuild
+                : null;
 
             CharacterBuild inspectionBuild = actor?.Build?.Clone()
                 ?? weddingSnapshot?.Build?.Clone()
+                ?? pendingProfileBuild
                 ?? CreateRemoteCharacterInfoInspectionFallbackBuild(
                     resolvedCharacterId,
                     resolvedName,
@@ -5221,6 +5293,159 @@ namespace HaCreator.MapSimulator
             return hasLevelMetadata || hasJobMetadata || allowNameOnlyFallback
                 ? build
                 : null;
+        }
+
+        private bool TryCreateRemoteCharacterInfoInspectionBuildFromPendingProfile(
+            int characterId,
+            string characterName,
+            out CharacterBuild build)
+        {
+            build = null;
+            if (characterId <= 0
+                || !_pendingRemoteUserProfilesByCharacterId.TryGetValue(characterId, out RemoteUserProfilePacket packet))
+            {
+                return false;
+            }
+
+            string fallbackName = !string.IsNullOrWhiteSpace(characterName)
+                ? characterName.Trim()
+                : $"Remote Character {characterId}";
+            build = CreateRemoteCharacterInfoInspectionFallbackBuild(
+                        characterId,
+                        fallbackName,
+                        trackedEntry: null,
+                        messengerSnapshot: null,
+                        allowNameOnlyFallback: true)
+                    ?? new CharacterBuild
+                    {
+                        Id = Math.Max(0, characterId),
+                        Name = fallbackName
+                    };
+            ApplyRemoteUserProfilePacketToCharacterInfoInspectionBuild(build, packet);
+            return true;
+        }
+
+        internal static void ApplyRemoteUserProfilePacketToCharacterInfoInspectionBuild(
+            CharacterBuild build,
+            RemoteUserProfilePacket packet)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            if (packet.Level.HasValue && packet.Level.Value > 0)
+            {
+                build.Level = Math.Max(1, packet.Level.Value);
+                build.HasAuthoritativeProfileLevel = true;
+            }
+
+            if (packet.JobId.HasValue && packet.JobId.Value >= 0)
+            {
+                build.Job = packet.JobId.Value;
+                build.JobName = SkillDataLoader.GetJobName(packet.JobId.Value);
+                build.HasAuthoritativeProfileJob = true;
+            }
+
+            if (packet.GuildName != null)
+            {
+                build.GuildName = string.IsNullOrWhiteSpace(packet.GuildName) ? string.Empty : packet.GuildName.Trim();
+                build.HasAuthoritativeProfileGuild = true;
+            }
+
+            if (packet.AllianceName != null)
+            {
+                build.AllianceName = string.IsNullOrWhiteSpace(packet.AllianceName) ? string.Empty : packet.AllianceName.Trim();
+                build.HasAuthoritativeProfileAlliance = true;
+            }
+
+            if (packet.Fame.HasValue)
+            {
+                build.Fame = packet.Fame.Value;
+                build.HasAuthoritativeProfileFame = true;
+            }
+
+            if (packet.WorldRank.HasValue)
+            {
+                build.WorldRank = Math.Max(0, packet.WorldRank.Value);
+                build.HasAuthoritativeProfileWorldRank = true;
+            }
+
+            if (packet.JobRank.HasValue)
+            {
+                build.JobRank = Math.Max(0, packet.JobRank.Value);
+                build.HasAuthoritativeProfileJobRank = true;
+            }
+
+            if (packet.HasRide.HasValue)
+            {
+                build.HasMonsterRiding = packet.HasRide.Value;
+                build.HasAuthoritativeProfileRide = true;
+            }
+
+            if (packet.HasPendantSlot.HasValue)
+            {
+                build.HasPendantSlotExtension = packet.HasPendantSlot.Value;
+                build.HasAuthoritativeProfilePendantSlot = true;
+            }
+
+            if (packet.HasPocketSlot.HasValue)
+            {
+                build.HasPocketSlot = packet.HasPocketSlot.Value;
+                build.HasAuthoritativeProfilePocketSlot = true;
+            }
+
+            bool hasTraitUpdate = false;
+            if (packet.TraitCharisma.HasValue)
+            {
+                build.TraitCharisma = Math.Max(0, packet.TraitCharisma.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitInsight.HasValue)
+            {
+                build.TraitInsight = Math.Max(0, packet.TraitInsight.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitWill.HasValue)
+            {
+                build.TraitWill = Math.Max(0, packet.TraitWill.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitCraft.HasValue)
+            {
+                build.TraitCraft = Math.Max(0, packet.TraitCraft.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitSense.HasValue)
+            {
+                build.TraitSense = Math.Max(0, packet.TraitSense.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitCharm.HasValue)
+            {
+                build.TraitCharm = Math.Max(0, packet.TraitCharm.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (hasTraitUpdate)
+            {
+                build.HasAuthoritativeProfileTraits = true;
+            }
+
+            if (packet.HasMedal.HasValue)
+            {
+                build.HasAuthoritativeProfileMedal = true;
+            }
+
+            if (packet.HasCollection.HasValue)
+            {
+                build.HasAuthoritativeProfileCollection = true;
+            }
         }
 
         private bool TryResolveCharacterInfoPresence(
@@ -6338,6 +6563,11 @@ namespace HaCreator.MapSimulator
             Action<int> releaseActiveKeydownSkill,
             Func<int, int, bool> requestClientSkillCancel)
         {
+            if (skillId == 1311006)
+            {
+                return false;
+            }
+
             if (beginClientCancelBatchScope == null
                 || releaseActiveKeydownSkill == null
                 || requestClientSkillCancel == null)
@@ -18261,7 +18491,9 @@ namespace HaCreator.MapSimulator
                     _mobPool?.UpdatePuppets(currentTick);
                     _mobPool?.SyncPuppetTargets(currentTick);
                     _mobPool?.SyncEncounterTargets(currentTick);
-                    _mobPool?.SyncHypnotizedTargets(currentTick);
+                    _mobPool?.SyncHypnotizedTargets(
+                        currentTick,
+                        mobId => _mobAttackSystem.PeekPacketOwnedLockedMobTargetId(mobId, currentTick));
                 });
             _mobAttackSystem.SetMobTargeting(
                 mobId => _mobPool?.GetMob(mobId),
@@ -19986,7 +20218,9 @@ namespace HaCreator.MapSimulator
             _mobPool?.UpdatePuppets(tickCount);
             _mobPool?.SyncPuppetTargets(tickCount);
             _mobPool?.SyncEncounterTargets(tickCount);
-            _mobPool?.SyncHypnotizedTargets(tickCount);
+            _mobPool?.SyncHypnotizedTargets(
+                tickCount,
+                mobId => _mobAttackSystem.PeekPacketOwnedLockedMobTargetId(mobId, tickCount));
 
 
             // Get actual player position from PlayerManager (not camera position)
@@ -24171,6 +24405,7 @@ namespace HaCreator.MapSimulator
             public bool CuresPoison { get; init; }
             public bool CuresSlow { get; init; }
             public bool CuresFreeze { get; init; }
+            public bool CuresAwake { get; init; }
             public bool CuresCurse { get; init; }
             public bool CuresPainMark { get; init; }
             public bool CuresDeathMark { get; init; }
@@ -24261,6 +24496,7 @@ namespace HaCreator.MapSimulator
                 CuresPoison ||
                 CuresSlow ||
                 CuresFreeze ||
+                CuresAwake ||
                 CuresCurse ||
                 CuresPainMark ||
                 CuresDeathMark ||
@@ -24889,6 +25125,7 @@ namespace HaCreator.MapSimulator
                 CuresPoison = ResolveConsumableIntValue(specProperty, specExProperty, "poison") > 0,
                 CuresSlow = ResolveConsumableIntValue(specProperty, specExProperty, "slow") > 0,
                 CuresFreeze = ResolveConsumableIntValue(specProperty, specExProperty, "freeze") > 0,
+                CuresAwake = ResolveConsumableIntValue(specProperty, specExProperty, "awake") > 0,
                 CuresCurse = ResolveConsumableIntValue(specProperty, specExProperty, "curse") > 0,
                 CuresPainMark = ResolveConsumableIntValue(specProperty, specExProperty, "painmark") > 0,
                 CuresDeathMark = ResolveConsumableIntValue(specProperty, specExProperty, "deathmark") > 0,
@@ -25101,6 +25338,11 @@ namespace HaCreator.MapSimulator
             if (effect.CuresFreeze)
             {
                 yield return PlayerMobStatusEffect.Freeze;
+            }
+
+            if (effect.CuresAwake)
+            {
+                yield return PlayerMobStatusEffect.StopMotion;
             }
 
 
@@ -25624,6 +25866,31 @@ namespace HaCreator.MapSimulator
             WzSubProperty fallbackMorphRandomProperty)
         {
             return ResolveConsumableRandomMorphTemplateIds(morphRandomProperty, fallbackMorphRandomProperty);
+        }
+
+        internal static bool ShouldConsumableCureStopMotionForTests(
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            if (ResolveConsumableIntValue(specProperty, specExProperty, "awake") <= 0)
+            {
+                return false;
+            }
+
+            ConsumableItemEffect effect = new()
+            {
+                CuresAwake = true
+            };
+
+            foreach (PlayerMobStatusEffect status in EnumerateCurablePlayerMobStatuses(effect))
+            {
+                if (status == PlayerMobStatusEffect.StopMotion)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
 
@@ -28494,6 +28761,8 @@ namespace HaCreator.MapSimulator
             CoconutField coconut = _specialFieldRuntime?.Minigames?.Coconut;
             bool coconutRuntimeActive = coconut?.IsActive == true;
             bool coconutHandledBasicActionAttack = false;
+            bool coconutOwnsBasicActionLane = coconutRuntimeActive
+                && coconut.ResolveLocalBasicActionOwnerActive(currentTick);
 
             if (coconutRuntimeActive)
             {
@@ -28513,10 +28782,11 @@ namespace HaCreator.MapSimulator
                 if (coconutHandledBasicActionAttack)
                 {
                     FlushPendingCoconutAttackRequests();
+                    coconutOwnsBasicActionLane = coconut.ResolveLocalBasicActionOwnerActive(currentTick);
                 }
             }
 
-            if (ShouldConsumeSharedReactorAttackAfterCoconutBasicAction(coconutRuntimeActive, coconutHandledBasicActionAttack))
+            if (ShouldConsumeSharedReactorAttackAfterCoconutBasicAction(coconutRuntimeActive, coconutOwnsBasicActionLane))
             {
                 return;
             }
@@ -28570,9 +28840,9 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldConsumeSharedReactorAttackAfterCoconutBasicAction(
             bool coconutRuntimeActive,
-            bool coconutHandledBasicActionAttack)
+            bool coconutOwnsBasicActionLane)
         {
-            return coconutRuntimeActive && coconutHandledBasicActionAttack;
+            return coconutRuntimeActive && coconutOwnsBasicActionLane;
         }
 
         private void UpsertLocalOwnedAffectedAreaFromAttack(
@@ -29753,6 +30023,7 @@ namespace HaCreator.MapSimulator
             }
 
         private readonly Dictionary<Keys, int> _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey = new();
+        private readonly HashSet<Keys> _skillMacroImeSuppressedConfiguredHotkeyPhysicalKeys = new();
 
         private bool TrySelectSkillMacroImeCandidate(int listIndex, int candidateIndex)
         {
@@ -29866,9 +30137,11 @@ namespace HaCreator.MapSimulator
             {
                 if (suppressImeOwnedForwarding)
                 {
+                    _skillMacroImeSuppressedConfiguredHotkeyPhysicalKeys.Add(key);
                     return;
                 }
 
+                _skillMacroImeSuppressedConfiguredHotkeyPhysicalKeys.Remove(key);
                 if (!TryResolveSkillMacroForwardedNonFunctionHotkeySlotForTesting(
                         key,
                         controlHeld,
@@ -29880,6 +30153,12 @@ namespace HaCreator.MapSimulator
 
                 _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey[key] = hotkeySlot;
                 HandleSkillMacroClientForwardedNonFunctionHotkeyStateChanged(hotkeySlot, keyDown: true);
+                return;
+            }
+
+            if (_skillMacroImeSuppressedConfiguredHotkeyPhysicalKeys.Remove(key))
+            {
+                _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey.Remove(key);
                 return;
             }
 
@@ -30696,7 +30975,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            bool interactPressed = _playerManager.Input.IsPressed(InputAction.Interact);
+            bool interactPressed = _playerManager.IsInteractPressedForWorldInput();
 
             if (!interactPressed)
 
@@ -31466,6 +31745,15 @@ namespace HaCreator.MapSimulator
                 CMovePathClientPacketCodec.ApplyPortalOwnedFlushCadenceHint(
                     normalizedPath,
                     flushAdmitted);
+            cadenceShapedPath = CMovePathClientPacketCodec.ApplyPortalOwnedPostFlushCarryHint(
+                cadenceShapedPath,
+                _hasPortalOwnedMovePathPostFlushCarry && !flushAdmitted,
+                _portalOwnedMovePathPostFlushCarry,
+                out bool consumedPostFlushCarry);
+            if (consumedPostFlushCarry)
+            {
+                _hasPortalOwnedMovePathPostFlushCarry = false;
+            }
             if (!CMovePathClientPacketCodec.TryEncode(
                     cadenceShapedPath,
                     out byte[] payload,
@@ -31478,6 +31766,15 @@ namespace HaCreator.MapSimulator
             if (flushAdmitted)
             {
                 _lastPortalOwnedMovePathFlushAdmissionTick = currentTime;
+                if (cadenceShapedPath.Count > 0)
+                {
+                    _portalOwnedMovePathPostFlushCarry = cadenceShapedPath[cadenceShapedPath.Count - 1];
+                    _hasPortalOwnedMovePathPostFlushCarry = true;
+                }
+                else
+                {
+                    _hasPortalOwnedMovePathPostFlushCarry = false;
+                }
             }
 
             encoded = true;
@@ -34744,7 +35041,9 @@ namespace HaCreator.MapSimulator
                 ResolveCurrentMorphTemplateIdForQuestDemand,
                 HasActiveBuffForQuestDemand,
                 ResolveMonsterBookOwnedCardTypeCountForQuestDemand,
-                ResolveMonsterBookCardCountByMobIdForQuestDemand);
+                ResolveMonsterBookCardCountByMobIdForQuestDemand,
+                IsSuccessDailyPlayQuestForQuestDemand,
+                ResolvePartyQuestRankCountForQuestDemand);
 
 
 
@@ -37907,7 +38206,9 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<StatusBarCooldownRenderData> GetStatusBarCooldownData(int currentTime)
         {
-            if (_statusBarCooldownRenderCacheTime == currentTime)
+            if (!ShouldRefreshStatusBarShortcutCooldownUiForClientParity(
+                currentTime,
+                _statusBarCooldownRenderCacheTime))
             {
                 return _statusBarCooldownRenderCache;
             }
@@ -38021,6 +38322,25 @@ namespace HaCreator.MapSimulator
             // Keep shortcut-tray intake on surface-owned cooldown UI state admission
             // so packet/server-owned cooldown rows can render without a separate timer gate.
             return hasCooldownState && cooldownState.DisplayInCooldownUi;
+        }
+
+        internal static bool ShouldRefreshStatusBarShortcutCooldownUiForClientParity(
+            int currentTime,
+            int lastRefreshTime)
+        {
+            // Client evidence: CUIStatusBar::Update triggers CQuickSlot::DrawSkillCooltime
+            // only when `timeGetTime() - m_tLastUpdateSkillCooltime > 1000`.
+            if (lastRefreshTime == int.MinValue)
+            {
+                return true;
+            }
+
+            if (currentTime < lastRefreshTime)
+            {
+                return true;
+            }
+
+            return currentTime - lastRefreshTime > 1000;
         }
 
 

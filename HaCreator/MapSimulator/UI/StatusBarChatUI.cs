@@ -1539,6 +1539,7 @@ namespace HaCreator.MapSimulator.UI
                     showScrollbar,
                     ResolveWhisperPickerDropdownScrollbarWidth());
                 _whisperPickerDropdownRowContentBounds = rowContentBounds;
+                int dropdownTextTopInset = StatusBarChatLayoutRules.ResolveWhisperPickerModalDropdownTextTopInset(showScrollbar);
 
                 for (int i = 0; i < visibleCount; i++)
                 {
@@ -1558,6 +1559,7 @@ namespace HaCreator.MapSimulator.UI
                         candidateText,
                         ResolveWhisperPickerClientComboSelectIndex(firstVisibleIndex, i),
                         ResolveWhisperPickerClientComboDeleteIndex(i),
+                        dropdownTextTopInset,
                         isSelected: candidateIndex == chatState.WhisperTargetPickerSelectionIndex,
                         registerHitRegion: true,
                         mouseState: mouseState);
@@ -1661,6 +1663,7 @@ namespace HaCreator.MapSimulator.UI
             string text,
             int clientComboSelectIndex,
             int clientComboDeleteIndex,
+            int textTopInset,
             bool isSelected,
             bool registerHitRegion,
             MouseState mouseState)
@@ -1707,7 +1710,7 @@ namespace HaCreator.MapSimulator.UI
                 clippedRowText,
                 new Vector2(
                     rowBounds.X + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextLeftInset,
-                    rowBounds.Y + StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextTopInset),
+                    rowBounds.Y + Math.Max(0, textTopInset)),
                 textColor,
                 isSelected || pressed ? Color.Black : new Color(255, 255, 255, 160));
 
@@ -3419,7 +3422,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool CanBeginWhisperFromCandidate(string whisperTargetCandidate, string localPlayerName)
         {
-            return MapSimulatorChat.ValidateWhisperTargetCandidate(
+            return MapSimulatorChat.ValidateExplicitWhisperTargetCandidate(
                 whisperTargetCandidate,
                 localPlayerName,
                 out _) == MapSimulatorChat.WhisperTargetValidationResult.Valid;

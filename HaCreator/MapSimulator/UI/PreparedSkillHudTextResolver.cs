@@ -67,6 +67,13 @@ namespace HaCreator.MapSimulator.UI
                 return $"Preparing {Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";
             }
 
+            if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.ReleaseArmed
+                && gaugeDurationMs <= 0
+                && preparedSkill.RemainingMs > 0)
+            {
+                return $"Preparing {Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";
+            }
+
             if (gaugeDurationMs > 0)
             {
                 if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.ReleaseArmed && progress >= 0.999f)

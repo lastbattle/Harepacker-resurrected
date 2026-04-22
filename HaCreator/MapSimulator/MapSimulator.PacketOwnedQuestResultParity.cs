@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator
         private bool _hasPendingPacketOwnedQuestResultAvailabilityRefresh;
         private bool _deferPacketOwnedQuestAvailabilityRefreshForCurrentPayload;
         private readonly List<PendingQuestDeliveryResultOwnership> _pendingQuestDeliveryResults = new();
+        private readonly List<PendingQuestDeliveryResultPhaseHint> _pendingQuestDeliveryResultPhaseHints = new();
         private int _pendingPacketOwnedStartQuestResponseQuestId;
         private int _pendingPacketOwnedStartQuestResponseSpeakerNpcId;
         private string _pendingPacketOwnedStartQuestResponseQuestName = string.Empty;
@@ -32,6 +33,7 @@ namespace HaCreator.MapSimulator
         private readonly PacketQuestResultFadeWindowRuntime _packetQuestResultFadeWindowRuntime = new();
         private const int PacketOwnedQuestResultStartQuestExclusiveRequestCooldownMs = 500;
         private const int MaxPendingQuestDeliveryResultOwnershipCount = 8;
+        private const int MaxPendingQuestDeliveryResultPhaseHintCount = 8;
 
         private bool TryApplyPacketOwnedQuestResultPayload(byte[] payload, out string message)
         {
@@ -1050,7 +1052,7 @@ namespace HaCreator.MapSimulator
         private bool TryResolvePendingQuestDeliveryQuestResult(int questId, out string outcome)
         {
             outcome = string.Empty;
-            QuestDetailDeliveryType deliveryTypeHint = ResolvePacketOwnedQuestDeliveryTypeHint(questId);
+            QuestDetailDeliveryType deliveryTypeHint = ConsumePendingQuestDeliveryResultPhaseHint(questId);
             bool? preferredCompletionPhase = deliveryTypeHint switch
             {
                 QuestDetailDeliveryType.Accept => false,
@@ -1093,6 +1095,65 @@ namespace HaCreator.MapSimulator
 
             _pendingQuestDeliveryResults.RemoveAt(ownershipIndex);
             return true;
+        }
+
+        private void RegisterPendingQuestDeliveryResultPhaseHint(int questId, QuestDetailDeliveryType deliveryType)
+        {
+            RegisterPendingQuestDeliveryResultPhaseHint(
+                _pendingQuestDeliveryResultPhaseHints,
+                questId,
+                deliveryType,
+                MaxPendingQuestDeliveryResultPhaseHintCount);
+        }
+
+        private QuestDetailDeliveryType ConsumePendingQuestDeliveryResultPhaseHint(int questId)
+        {
+            return ConsumePendingQuestDeliveryResultPhaseHint(
+                _pendingQuestDeliveryResultPhaseHints,
+                questId);
+        }
+
+        private static void RegisterPendingQuestDeliveryResultPhaseHint(
+            List<PendingQuestDeliveryResultPhaseHint> pendingHints,
+            int questId,
+            QuestDetailDeliveryType deliveryType,
+            int maxCount)
+        {
+            int normalizedQuestId = Math.Max(0, questId);
+            if (pendingHints == null
+                || normalizedQuestId <= 0
+                || deliveryType == QuestDetailDeliveryType.None)
+            {
+                return;
+            }
+
+            pendingHints.Add(new PendingQuestDeliveryResultPhaseHint(normalizedQuestId, deliveryType));
+            TrimPendingQuestDeliveryResultPhaseHintQueue(pendingHints, maxCount);
+        }
+
+        private static QuestDetailDeliveryType ConsumePendingQuestDeliveryResultPhaseHint(
+            List<PendingQuestDeliveryResultPhaseHint> pendingHints,
+            int questId)
+        {
+            int normalizedQuestId = Math.Max(0, questId);
+            if (pendingHints == null || pendingHints.Count == 0 || normalizedQuestId <= 0)
+            {
+                return QuestDetailDeliveryType.None;
+            }
+
+            for (int i = pendingHints.Count - 1; i >= 0; i--)
+            {
+                if (pendingHints[i].QuestId != normalizedQuestId)
+                {
+                    continue;
+                }
+
+                QuestDetailDeliveryType deliveryType = pendingHints[i].DeliveryType;
+                pendingHints.RemoveAt(i);
+                return deliveryType;
+            }
+
+            return QuestDetailDeliveryType.None;
         }
 
         private static int FindPendingQuestDeliveryResultOwnershipIndex(
@@ -1151,6 +1212,21 @@ namespace HaCreator.MapSimulator
             while (pendingResults.Count > maxCount)
             {
                 pendingResults.RemoveAt(0);
+            }
+        }
+
+        private static void TrimPendingQuestDeliveryResultPhaseHintQueue(
+            List<PendingQuestDeliveryResultPhaseHint> pendingHints,
+            int maxCount)
+        {
+            if (pendingHints == null || maxCount <= 0)
+            {
+                return;
+            }
+
+            while (pendingHints.Count > maxCount)
+            {
+                pendingHints.RemoveAt(0);
             }
         }
 
@@ -1335,6 +1411,101 @@ namespace HaCreator.MapSimulator
                 preferredCompletionPhase);
         }
 
+        internal static IReadOnlyList<QuestDetailDeliveryType> RegisterPendingQuestDeliveryResultPhaseHintsForTesting(
+            IReadOnlyList<int> existingQuestIds,
+            IReadOnlyList<QuestDetailDeliveryType> existingDeliveryTypes,
+            int questId,
+            QuestDetailDeliveryType deliveryType,
+            out IReadOnlyList<int> resultingQuestIds,
+            int maxCount = MaxPendingQuestDeliveryResultPhaseHintCount)
+        {
+            var pending = new List<PendingQuestDeliveryResultPhaseHint>();
+            if (existingQuestIds != null)
+            {
+                for (int i = 0; i < existingQuestIds.Count; i++)
+                {
+                    int existingQuestId = Math.Max(0, existingQuestIds[i]);
+                    if (existingQuestId <= 0)
+                    {
+                        continue;
+                    }
+
+                    QuestDetailDeliveryType existingType = existingDeliveryTypes != null
+                                                           && i < existingDeliveryTypes.Count
+                        ? existingDeliveryTypes[i]
+                        : QuestDetailDeliveryType.None;
+                    if (existingType == QuestDetailDeliveryType.None)
+                    {
+                        continue;
+                    }
+
+                    pending.Add(new PendingQuestDeliveryResultPhaseHint(existingQuestId, existingType));
+                }
+            }
+
+            RegisterPendingQuestDeliveryResultPhaseHint(
+                pending,
+                questId,
+                deliveryType,
+                Math.Max(1, maxCount));
+
+            var questIds = new int[pending.Count];
+            var types = new QuestDetailDeliveryType[pending.Count];
+            for (int i = 0; i < pending.Count; i++)
+            {
+                questIds[i] = pending[i].QuestId;
+                types[i] = pending[i].DeliveryType;
+            }
+
+            resultingQuestIds = questIds;
+            return types;
+        }
+
+        internal static QuestDetailDeliveryType ConsumePendingQuestDeliveryResultPhaseHintForTesting(
+            IReadOnlyList<int> queuedQuestIds,
+            IReadOnlyList<QuestDetailDeliveryType> queuedDeliveryTypes,
+            int questId,
+            out IReadOnlyList<int> remainingQuestIds,
+            out IReadOnlyList<QuestDetailDeliveryType> remainingDeliveryTypes)
+        {
+            var pending = new List<PendingQuestDeliveryResultPhaseHint>();
+            if (queuedQuestIds != null)
+            {
+                for (int i = 0; i < queuedQuestIds.Count; i++)
+                {
+                    int queuedQuestId = Math.Max(0, queuedQuestIds[i]);
+                    if (queuedQuestId <= 0)
+                    {
+                        continue;
+                    }
+
+                    QuestDetailDeliveryType deliveryType = queuedDeliveryTypes != null
+                                                           && i < queuedDeliveryTypes.Count
+                        ? queuedDeliveryTypes[i]
+                        : QuestDetailDeliveryType.None;
+                    if (deliveryType == QuestDetailDeliveryType.None)
+                    {
+                        continue;
+                    }
+
+                    pending.Add(new PendingQuestDeliveryResultPhaseHint(queuedQuestId, deliveryType));
+                }
+            }
+
+            QuestDetailDeliveryType consumed = ConsumePendingQuestDeliveryResultPhaseHint(pending, questId);
+            var remainingIds = new int[pending.Count];
+            var remainingTypesArray = new QuestDetailDeliveryType[pending.Count];
+            for (int i = 0; i < pending.Count; i++)
+            {
+                remainingIds[i] = pending[i].QuestId;
+                remainingTypesArray[i] = pending[i].DeliveryType;
+            }
+
+            remainingQuestIds = remainingIds;
+            remainingDeliveryTypes = remainingTypesArray;
+            return consumed;
+        }
+
         private readonly record struct PendingQuestDeliveryResultOwnership(
             int QuestId,
             bool CompletionPhase,
@@ -1343,6 +1514,10 @@ namespace HaCreator.MapSimulator
             int RequestedAtTick,
             string SourceContext,
             bool StartQuestRequestSent);
+
+        private readonly record struct PendingQuestDeliveryResultPhaseHint(
+            int QuestId,
+            QuestDetailDeliveryType DeliveryType);
 
         private static bool ApplyUnsupportedPacketOwnedQuestResult(int resultType, out string message)
         {

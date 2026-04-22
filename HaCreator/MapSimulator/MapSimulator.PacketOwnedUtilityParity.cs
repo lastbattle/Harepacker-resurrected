@@ -65,6 +65,14 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
         private const int PacketOwnedSkillLearnFailureSoundStringPoolId = 0x0508;
         private const int QuestAlarmRegistrationSyncMaxQuestCount = 5;
+        private static readonly char[] QuestAlarmRegistrationSyncListTokenSeparators =
+        {
+            ',',
+            ';',
+            '|',
+            '/',
+            '\\'
+        };
         private const int PacketOwnedSkillLearnMasteryBookLabelStringPoolId = 0x0F2F;
         private const int PacketOwnedSkillLearnSkillBookLabelStringPoolId = 0x0F30;
         private const int PacketOwnedSkillLearnCannotUseStringPoolId = 0x0F31;
@@ -354,6 +362,7 @@ namespace HaCreator.MapSimulator
         private bool _lastPacketOwnedRadioScheduleFromOfficialSession;
         private bool _packetOwnedRadioOfficialScheduleMutationObserved;
         private bool _packetOwnedRadioOfficialCreateLayerMutationObserved;
+        private bool _packetOwnedRadioLastObservedOfficialSessionConnected;
         private bool _packetOwnedRevivePremiumSafetyCharmOfficialMutationObserved;
         private bool _packetOwnedRadioSessionCreateLayerLeft;
         private int _packetOwnedRadioSessionCreateLayerMutationSequence = -1;
@@ -561,6 +570,7 @@ namespace HaCreator.MapSimulator
             _lastDeliveryDisallowedQuestIds.Clear();
             _packetOwnedDeliveryTypeHintsByQuestId.Clear();
             SetPacketOwnedQuestDeliveryTypeHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
+            RegisterPendingQuestDeliveryResultPhaseHint(_lastDeliveryQuestId, _lastPacketOwnedDeliveryType);
 
             if (disallowedQuestIds != null)
             {
@@ -2585,30 +2595,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string[] lines = text.Split(
-                new[] { "\r\n", "\n" },
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            for (int i = 0; i < lines.Length; i++)
+            foreach (string segment in EnumerateClassCompetitionStructuredSegments(text))
             {
-                string line = lines[i];
-                if (line.StartsWith("auth=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("auth:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("key=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("key:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("url=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("url:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("navigate=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("navigate:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("navigateurl=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("navigateurl:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("line=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("line:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("page=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("page:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("source=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("source:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("ladder:", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("ladder=", StringComparison.OrdinalIgnoreCase))
+                if (IsClassCompetitionStructuredPrefix(segment))
                 {
                     return true;
                 }
@@ -2695,12 +2684,8 @@ namespace HaCreator.MapSimulator
             string source = string.Empty;
             var pageLines = new List<string>();
             var ladderLines = new List<string>();
-            string[] lines = text.Split(
-                new[] { "\r\n", "\n" },
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            for (int i = 0; i < lines.Length; i++)
+            foreach (string line in EnumerateClassCompetitionStructuredSegments(text))
             {
-                string line = lines[i];
                 if (TryParseClassCompetitionPrefixedValue(line, "auth", out string authValue)
                     || TryParseClassCompetitionPrefixedValue(line, "key", out authValue))
                 {
@@ -2841,21 +2826,132 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string equalsPrefix = $"{key}=";
-            if (line.StartsWith(equalsPrefix, StringComparison.OrdinalIgnoreCase))
+            ReadOnlySpan<char> span = line.AsSpan().Trim();
+            if (span.Length <= key.Length)
             {
-                value = line[equalsPrefix.Length..].Trim();
-                return true;
+                return false;
             }
 
-            string colonPrefix = $"{key}:";
-            if (line.StartsWith(colonPrefix, StringComparison.OrdinalIgnoreCase))
+            ReadOnlySpan<char> keySpan = key.AsSpan();
+            if (!span.StartsWith(keySpan, StringComparison.OrdinalIgnoreCase))
             {
-                value = line[colonPrefix.Length..].Trim();
-                return true;
+                return false;
             }
 
-            return false;
+            int separatorIndex = key.Length;
+            while (separatorIndex < span.Length && char.IsWhiteSpace(span[separatorIndex]))
+            {
+                separatorIndex++;
+            }
+
+            if (separatorIndex >= span.Length || (span[separatorIndex] != '=' && span[separatorIndex] != ':'))
+            {
+                return false;
+            }
+
+            separatorIndex++;
+            while (separatorIndex < span.Length && char.IsWhiteSpace(span[separatorIndex]))
+            {
+                separatorIndex++;
+            }
+
+            value = span[separatorIndex..].ToString().Trim();
+            return true;
+        }
+
+        private static IEnumerable<string> EnumerateClassCompetitionStructuredSegments(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                yield break;
+            }
+
+            string[] lines = text.Split(
+                new[] { "\r\n", "\n" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].Trim();
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+
+                if (!TrySplitClassCompetitionStructuredLine(line, out List<string> splitSegments))
+                {
+                    yield return line;
+                    continue;
+                }
+
+                for (int segmentIndex = 0; segmentIndex < splitSegments.Count; segmentIndex++)
+                {
+                    yield return splitSegments[segmentIndex];
+                }
+            }
+        }
+
+        private static bool TrySplitClassCompetitionStructuredLine(string line, out List<string> segments)
+        {
+            segments = null;
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return false;
+            }
+
+            if (!line.Contains('&') && !line.Contains(';'))
+            {
+                return false;
+            }
+
+            string[] parts = line.Split(new[] { '&', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length <= 1)
+            {
+                return false;
+            }
+
+            int structuredCount = 0;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (IsClassCompetitionStructuredPrefix(parts[i]))
+                {
+                    structuredCount++;
+                }
+            }
+
+            if (structuredCount < 2)
+            {
+                return false;
+            }
+
+            segments = new List<string>(parts.Length);
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string part = parts[i].Trim();
+                if (part.Length > 0)
+                {
+                    segments.Add(part);
+                }
+            }
+
+            return segments.Count > 0;
+        }
+
+        private static bool IsClassCompetitionStructuredPrefix(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return false;
+            }
+
+            return TryParseClassCompetitionPrefixedValue(line, "auth", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "key", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "url", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "navigate", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "navigateurl", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "line", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "page", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "source", out _)
+                || TryParseClassCompetitionPrefixedValue(line, "ladder", out _);
         }
 
         private static bool TryExtractClassCompetitionAuthKeyFromNavigateUrl(
@@ -4794,18 +4890,31 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < movePath.Count; i++)
             {
                 int timeStamp = movePath[i].TimeStamp;
+                int sampleEndTime = ResolvePacketOwnedActiveEffectMotionBlurMovePathElementSampleEndTime(movePath[i]);
                 if (timeStamp < startTime)
                 {
                     startTime = timeStamp;
                 }
 
-                if (timeStamp > endTime)
+                if (sampleEndTime > endTime)
                 {
-                    endTime = timeStamp;
+                    endTime = sampleEndTime;
                 }
             }
 
             return true;
+        }
+
+        private static int ResolvePacketOwnedActiveEffectMotionBlurMovePathElementSampleEndTime(MovePathElement element)
+        {
+            int duration = Math.Max(0, (int)element.Duration);
+            long candidate = (long)element.TimeStamp + duration;
+            if (candidate > int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            return (int)Math.Max(element.TimeStamp, candidate);
         }
 
         private static PacketOwnedActiveEffectMotionBlurOwnerSample ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerState(
@@ -5211,14 +5320,14 @@ namespace HaCreator.MapSimulator
             bool autoSeparated = true,
             bool tightLine = false)
         {
-            string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
-            if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
-            {
-                TryPlayPacketOwnedWzSound(noticeSoundDescriptor, "UI.img", out _, out _);
-            }
-
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) is PacketOwnedRewardNoticeWindow noticeWindow)
             {
+                string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
+                if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
+                {
+                    TryPlayPacketOwnedWzSound(noticeSoundDescriptor, "UI.img", out _, out _);
+                }
+
                 noticeWindow.Configure(string.Empty, body, autoSeparated, tightLine);
                 ShowWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice, noticeWindow, trackDirectionModeOwner: true);
                 return;
@@ -5229,34 +5338,22 @@ namespace HaCreator.MapSimulator
 
         private bool ShowPacketOwnedRandomMesoBagWindow(PacketOwnedRandomMesoBagPresentation presentation)
         {
-            bool playedSound = false;
-            bool hasSoundDescriptor = !string.IsNullOrWhiteSpace(presentation.SoundDescriptor);
-            if (hasSoundDescriptor)
-            {
-                playedSound = TryPlayPacketOwnedWzSound(
-                    presentation.SoundDescriptor,
-                    "Item.img",
-                    out _,
-                    out _,
-                    strictClientSoundFamily: true,
-                    defaultVolume: PacketOwnedRewardResultRuntime.ResolveClientSoundVolumeScale(presentation.SoundVolume));
-            }
-
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RandomMesoBag) is RandomMesoBagWindow randomMesoBagWindow)
             {
-                randomMesoBagWindow.Configure(presentation);
-                if (hasSoundDescriptor && !playedSound)
+                if (!string.IsNullOrWhiteSpace(presentation.SoundDescriptor))
                 {
-                    ShowUtilityFeedbackMessage($"Random meso sack tried to play {presentation.SoundDescriptor}, but the sound asset was unavailable.");
+                    TryPlayPacketOwnedWzSound(
+                        presentation.SoundDescriptor,
+                        "Item.img",
+                        out _,
+                        out _,
+                        strictClientSoundFamily: true,
+                        defaultVolume: PacketOwnedRewardResultRuntime.ResolveClientSoundVolumeScale(presentation.SoundVolume));
                 }
 
+                randomMesoBagWindow.Configure(presentation);
                 ShowWindow(MapSimulatorWindowNames.RandomMesoBag, randomMesoBagWindow, trackDirectionModeOwner: true);
                 return true;
-            }
-
-            if (hasSoundDescriptor && !playedSound)
-            {
-                ShowUtilityFeedbackMessage($"Random meso sack tried to play {presentation.SoundDescriptor}, but the sound asset was unavailable.");
             }
 
             ShowUtilityFeedbackMessage($"{presentation.DescriptionText} {presentation.AmountText}".Trim());
@@ -6548,7 +6645,7 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                if (questIds.Length > 0)
+                if (hasQuestRegistrationList)
                 {
                     error = null;
                     return true;
@@ -6661,6 +6758,7 @@ namespace HaCreator.MapSimulator
 
             HashSet<int> parsedQuestIds = new();
             bool sawDirective = false;
+            bool sawQuestRegistrationListDirective = false;
             string[] segments = normalizedText.Split(
                 new[] { "\r\n", "\n", ",", ";" },
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -6706,6 +6804,12 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (TryParseQuestAlarmRegistrationSyncListDirective(segment, parsedQuestIds))
+                {
+                    sawQuestRegistrationListDirective = true;
+                    continue;
+                }
+
                 if (int.TryParse(segment, NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId)
                     && questId > 0
                     && parsedQuestIds.Count < QuestAlarmRegistrationSyncMaxQuestCount)
@@ -6730,14 +6834,66 @@ namespace HaCreator.MapSimulator
             }
 
             questIds = parsedQuestIds.ToArray();
-            hasQuestRegistrationList = questIds.Length > 0;
-            if (questIds.Length > 0 || sawDirective)
+            hasQuestRegistrationList = sawQuestRegistrationListDirective || questIds.Length > 0;
+            if (hasQuestRegistrationList || sawDirective)
             {
                 error = null;
                 return true;
             }
 
             return false;
+        }
+
+        private static bool TryParseQuestAlarmRegistrationSyncListDirective(string text, HashSet<int> destination)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            int separatorIndex = text.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                separatorIndex = text.IndexOf(':');
+            }
+
+            if (separatorIndex <= 0)
+            {
+                return false;
+            }
+
+            string candidateKey = text[..separatorIndex].Trim();
+            if (!string.Equals(candidateKey, "questIds", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "registeredQuestIds", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "registered", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "entries", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "rows", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(candidateKey, "quests", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string value = text[(separatorIndex + 1)..].Trim();
+            if (value.Length == 0)
+            {
+                return true;
+            }
+
+            string[] tokens = value.Split(
+                QuestAlarmRegistrationSyncListTokenSeparators,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            bool parsedAnyQuestId = false;
+            for (int i = 0; i < tokens.Length && destination.Count < QuestAlarmRegistrationSyncMaxQuestCount; i++)
+            {
+                if (int.TryParse(tokens[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId)
+                    && questId > 0)
+                {
+                    parsedAnyQuestId = true;
+                    destination.Add(questId);
+                }
+            }
+
+            return parsedAnyQuestId;
         }
 
         private static bool TryParseQuestAlarmRegistrationSyncFlagDirective(string text, string key, out bool value)
@@ -9229,6 +9385,7 @@ namespace HaCreator.MapSimulator
 
         private void UpdatePacketOwnedRadioSchedule(int currentTickCount)
         {
+            SyncPacketOwnedRadioOfficialSessionLifecycle();
             SyncPacketOwnedRadioCreateLayerContextLifecycle();
             SyncPacketOwnedRadioScheduleContextLifecycle();
             if (!IsPacketOwnedRadioPlaying())
@@ -9263,6 +9420,71 @@ namespace HaCreator.MapSimulator
             }
 
             _lastPacketOwnedRadioLastPollTick = currentTickCount;
+        }
+
+        private void SyncPacketOwnedRadioOfficialSessionLifecycle()
+        {
+            bool officialSessionConnected = _localUtilityOfficialSessionBridge.HasConnectedSession;
+            if (!ShouldResetPacketOwnedRadioOfficialMutationOwnershipOnSessionTransition(
+                    _packetOwnedRadioLastObservedOfficialSessionConnected,
+                    officialSessionConnected))
+            {
+                return;
+            }
+
+            _packetOwnedRadioLastObservedOfficialSessionConnected = officialSessionConnected;
+            _packetOwnedRadioOfficialScheduleMutationObserved = false;
+            _packetOwnedRadioOfficialCreateLayerMutationObserved = false;
+            if (!officialSessionConnected)
+            {
+                ShowUtilityFeedbackMessage(
+                    "Local utility official-session bridge disconnected; packet-owned radio mutation ownership is unlocked for the next runtime session.");
+                return;
+            }
+
+            bool stoppedNonOfficialRuntime = false;
+            if (ShouldResetPacketOwnedRadioRuntimeForOfficialSessionAttach(
+                    officialSessionConnected,
+                    IsPacketOwnedRadioPlaying(),
+                    _lastPacketOwnedRadioScheduleFromOfficialSession))
+            {
+                string trackName = GetPacketOwnedRadioTrackName();
+                StopPacketOwnedRadioSchedule(completed: false, emitChatNotice: false);
+                _lastPacketOwnedRadioScheduleFromOfficialSession = false;
+                _lastPacketOwnedRadioStatusMessage =
+                    $"Reset packet-owned radio playback for {FormatPacketOwnedRadioQuotedValue(trackName)} after the official-session bridge attached and ownership moved to packet mutation history.";
+                stoppedNonOfficialRuntime = true;
+            }
+
+            bool clearedScheduleContext = false;
+            if (ShouldClearPacketOwnedRadioContextOnOfficialSessionAttach(
+                    officialSessionConnected,
+                    _packetOwnedLocalUtilityContext.HasRadioScheduleContextValue,
+                    _packetOwnedLocalUtilityContext.RadioScheduleLastMutationSource))
+            {
+                ClearPacketOwnedRadioScheduleContext("official-session-attach-reset");
+                clearedScheduleContext = true;
+            }
+
+            bool clearedCreateLayerContext = false;
+            if (ShouldClearPacketOwnedRadioContextOnOfficialSessionAttach(
+                    officialSessionConnected,
+                    _packetOwnedLocalUtilityContext.HasRadioCreateLayerLeftContextValue,
+                    _packetOwnedLocalUtilityContext.RadioCreateLayerLastMutationSource))
+            {
+                ClearPacketOwnedRadioCreateLayerContext("official-session-attach-reset");
+                clearedCreateLayerContext = true;
+            }
+
+            if (stoppedNonOfficialRuntime || clearedScheduleContext || clearedCreateLayerContext)
+            {
+                ShowUtilityFeedbackMessage(
+                    $"Local utility official-session bridge attached; reset simulator-owned radio state (runtime={stoppedNonOfficialRuntime}, scheduleCtx={clearedScheduleContext}, createLayerCtx={clearedCreateLayerContext}) so ownership follows official packet mutation history.");
+                return;
+            }
+
+            ShowUtilityFeedbackMessage(
+                "Local utility official-session bridge attached; packet-owned radio mutation ownership now follows official packet history.");
         }
 
         private void UpdatePacketOwnedTutorRuntime(int currentTickCount)
@@ -9522,6 +9744,31 @@ namespace HaCreator.MapSimulator
             bool mutationFromOfficialSession)
         {
             return !officialMutationHistoryObserved || mutationFromOfficialSession;
+        }
+
+        internal static bool ShouldResetPacketOwnedRadioOfficialMutationOwnershipOnSessionTransition(
+            bool previouslyConnected,
+            bool currentlyConnected)
+        {
+            return previouslyConnected != currentlyConnected;
+        }
+
+        internal static bool ShouldResetPacketOwnedRadioRuntimeForOfficialSessionAttach(
+            bool officialSessionConnected,
+            bool sessionActive,
+            bool sessionFromOfficialSource)
+        {
+            return officialSessionConnected && sessionActive && !sessionFromOfficialSource;
+        }
+
+        internal static bool ShouldClearPacketOwnedRadioContextOnOfficialSessionAttach(
+            bool officialSessionConnected,
+            bool hasContextValue,
+            string lastMutationSource)
+        {
+            return officialSessionConnected
+                && hasContextValue
+                && !IsPacketOwnedRadioScheduleOfficialSessionSource(lastMutationSource);
         }
 
         internal static bool ShouldAllowPacketOwnedRadioMutationSource(
@@ -10598,6 +10845,18 @@ namespace HaCreator.MapSimulator
             bool hasPassiveTemporaryStatObject =
                 TryGetPacketOwnedBattleshipPassiveTemporaryStatObjectState(out bool resolvedPassiveTemporaryStatObject)
                 && resolvedPassiveTemporaryStatObject;
+            if (ShouldAllocatePacketOwnedBattleshipPassiveTemporaryStatObject(
+                    hasPassiveTemporaryStatTrackingOwner,
+                    isVehiclePresentationActive,
+                    hasPassiveTemporaryStatObject)
+                && _playerManager.Skills.TryAllocatePassiveVehicleTemporaryStatObjectForParity(
+                    PacketOwnedBattleshipSkillId,
+                    currentValue,
+                    maxValue,
+                    currTickCount))
+            {
+                hasPassiveTemporaryStatObject = true;
+            }
 
             if (!ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
                     hasPassiveTemporaryStatTrackingOwner,
@@ -10742,6 +11001,20 @@ namespace HaCreator.MapSimulator
             return hasPassiveTemporaryStatTrackingOwner
                 && isVehiclePresentationActive
                 && hasPassiveTemporaryStatObject;
+        }
+
+        internal static bool ShouldAllocatePacketOwnedBattleshipPassiveTemporaryStatObject(
+            bool hasPassiveTemporaryStatTrackingOwner,
+            bool isVehiclePresentationActive,
+            bool hasPassiveTemporaryStatObject)
+        {
+            // Client evidence: CWvsContext::SetSkillCooltimeOver does not allocate
+            // TEMPORARY_STAT objects itself. The simulator therefore models
+            // allocation through a separate owner-ready gate before applying the
+            // UpdatePassively-style mutation path.
+            return hasPassiveTemporaryStatTrackingOwner
+                && isVehiclePresentationActive
+                && !hasPassiveTemporaryStatObject;
         }
 
         internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(
@@ -18953,7 +19226,9 @@ namespace HaCreator.MapSimulator
                             entry.SourceTick,
                             entry.SortPriority,
                             entry.SortOrder,
-                            alarmText: string.Empty);
+                            alarmText: string.Empty,
+                            includeInCalendar: entry.IncludeInCalendar,
+                            rowLayout: entry.RowLayout);
                     }
                 }
 
@@ -18988,6 +19263,7 @@ namespace HaCreator.MapSimulator
                             Text = text,
                             Left = left,
                             Top = top,
+                            FontIndex = ResolvePacketOwnedEventAlarmLineFontIndex(lineFlags),
                             IsHighlighted = (lineFlags & 0x1) != 0,
                             TextColorArgb = colorArgb == 0 ? null : colorArgb
                         });
@@ -19152,7 +19428,9 @@ namespace HaCreator.MapSimulator
                             entry.SourceTick,
                             entry.SortPriority,
                             entry.SortOrder,
-                            alarmText: string.Empty);
+                            alarmText: string.Empty,
+                            includeInCalendar: entry.IncludeInCalendar,
+                            rowLayout: entry.RowLayout);
                     }
 
                     parsedEntries.Add(entry);
@@ -19733,9 +20011,88 @@ namespace HaCreator.MapSimulator
                                            || TryGetJsonBoolean(item, "showOnCalendar", out parsedIncludeInCalendar)
                                            || TryGetJsonBoolean(item, "calendarVisible", out parsedIncludeInCalendar))
                     || parsedIncludeInCalendar;
-                destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder, alarmText, includeInCalendar));
+                EventEntryRowLayoutSnapshot rowLayout = ResolvePacketOwnedEventRowLayoutSnapshot(eventItem, item);
+                destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder, alarmText, includeInCalendar, rowLayout));
                 index++;
             }
+        }
+
+        private static EventEntryRowLayoutSnapshot ResolvePacketOwnedEventRowLayoutSnapshot(
+            JsonElement primaryElement,
+            JsonElement fallbackElement)
+        {
+            EventEntryRowLayoutSnapshot primaryLayout = ResolvePacketOwnedEventRowLayoutSnapshot(primaryElement);
+            EventEntryRowLayoutSnapshot fallbackLayout = ResolvePacketOwnedEventRowLayoutSnapshot(fallbackElement);
+            if (primaryLayout?.HasAnyValue == true)
+            {
+                if (fallbackLayout?.HasAnyValue != true)
+                {
+                    return primaryLayout;
+                }
+
+                return new EventEntryRowLayoutSnapshot
+                {
+                    TitleLeft = primaryLayout.TitleLeft ?? fallbackLayout.TitleLeft,
+                    TitleTop = primaryLayout.TitleTop ?? fallbackLayout.TitleTop,
+                    TitleWidth = primaryLayout.TitleWidth ?? fallbackLayout.TitleWidth,
+                    DetailLeft = primaryLayout.DetailLeft ?? fallbackLayout.DetailLeft,
+                    DetailTop = primaryLayout.DetailTop ?? fallbackLayout.DetailTop,
+                    DetailWidth = primaryLayout.DetailWidth ?? fallbackLayout.DetailWidth,
+                    StatusLeft = primaryLayout.StatusLeft ?? fallbackLayout.StatusLeft,
+                    StatusTop = primaryLayout.StatusTop ?? fallbackLayout.StatusTop,
+                    StatusWidth = primaryLayout.StatusWidth ?? fallbackLayout.StatusWidth
+                };
+            }
+
+            return fallbackLayout ?? new EventEntryRowLayoutSnapshot();
+        }
+
+        private static EventEntryRowLayoutSnapshot ResolvePacketOwnedEventRowLayoutSnapshot(JsonElement element)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return new EventEntryRowLayoutSnapshot();
+            }
+
+            JsonElement layoutElement = element;
+            if (TryGetJsonObjectProperty(
+                    element,
+                    out JsonElement nestedLayoutElement,
+                    "rowLayout",
+                    "layout",
+                    "textLayout",
+                    "rowText",
+                    "bodyLayout"))
+            {
+                layoutElement = nestedLayoutElement;
+            }
+
+            return new EventEntryRowLayoutSnapshot
+            {
+                TitleLeft = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "titleLeft", "titleX"),
+                TitleTop = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "titleTop", "titleY"),
+                TitleWidth = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "titleWidth", "titleW"),
+                DetailLeft = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "detailLeft", "detailX"),
+                DetailTop = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "detailTop", "detailY"),
+                DetailWidth = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "detailWidth", "detailW"),
+                StatusLeft = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "statusLeft", "statusX"),
+                StatusTop = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "statusTop", "statusY"),
+                StatusWidth = ResolveOptionalPacketOwnedEventRowLayoutInt(layoutElement, element, "statusWidth", "statusW")
+            };
+        }
+
+        private static int? ResolveOptionalPacketOwnedEventRowLayoutInt(
+            JsonElement primaryElement,
+            JsonElement fallbackElement,
+            params string[] propertyNames)
+        {
+            if (TryGetJsonInt32Property(primaryElement, out int value, propertyNames)
+                || TryGetJsonInt32Property(fallbackElement, out value, propertyNames))
+            {
+                return value;
+            }
+
+            return null;
         }
 
         private static string ResolvePacketOwnedRankingEntryText(
@@ -19834,6 +20191,14 @@ namespace HaCreator.MapSimulator
             }
 
             string alarmText = tokenIndex < tokens.Length ? tokens[tokenIndex].Trim() : string.Empty;
+            tokenIndex++;
+            bool includeInCalendar = true;
+            EventEntryRowLayoutSnapshot rowLayout = ParsePacketOwnedEventRowLayoutFromTextTokens(tokens, tokenIndex, out bool? includeInCalendarOverride);
+            if (includeInCalendarOverride.HasValue)
+            {
+                includeInCalendar = includeInCalendarOverride.Value;
+            }
+
             entry = CreatePacketOwnedEventCalendarEntry(
                 scheduledAt,
                 title,
@@ -19843,8 +20208,151 @@ namespace HaCreator.MapSimulator
                 int.MinValue,
                 ResolvePacketOwnedEventEntrySortPriority(status),
                 sortOrder,
-                alarmText: alarmText);
+                alarmText: alarmText,
+                includeInCalendar: includeInCalendar,
+                rowLayout: rowLayout);
             return true;
+        }
+
+        private static EventEntryRowLayoutSnapshot ParsePacketOwnedEventRowLayoutFromTextTokens(
+            string[] tokens,
+            int startIndex,
+            out bool? includeInCalendar)
+        {
+            includeInCalendar = null;
+            if (tokens == null || tokens.Length == 0 || startIndex >= tokens.Length)
+            {
+                return new EventEntryRowLayoutSnapshot();
+            }
+
+            int? titleLeft = null;
+            int? titleTop = null;
+            int? titleWidth = null;
+            int? detailLeft = null;
+            int? detailTop = null;
+            int? detailWidth = null;
+            int? statusLeft = null;
+            int? statusTop = null;
+            int? statusWidth = null;
+
+            for (int i = Math.Max(0, startIndex); i < tokens.Length; i++)
+            {
+                string rawToken = tokens[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(rawToken))
+                {
+                    continue;
+                }
+
+                string[] segments = rawToken.Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                for (int segmentIndex = 0; segmentIndex < segments.Length; segmentIndex++)
+                {
+                    string segment = segments[segmentIndex];
+                    int separatorIndex = segment.IndexOf('=');
+                    if (separatorIndex < 0)
+                    {
+                        separatorIndex = segment.IndexOf(':');
+                    }
+
+                    if (separatorIndex <= 0 || separatorIndex >= segment.Length - 1)
+                    {
+                        continue;
+                    }
+
+                    string key = segment[..separatorIndex].Trim();
+                    string value = segment[(separatorIndex + 1)..].Trim();
+                    if (string.IsNullOrWhiteSpace(key))
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(key, "includeInCalendar", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(key, "showInCalendar", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(key, "calendarVisible", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (TryParsePacketOwnedLooseBoolean(value, out bool parsedIncludeInCalendar))
+                        {
+                            includeInCalendar = parsedIncludeInCalendar;
+                        }
+
+                        continue;
+                    }
+
+                    if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue))
+                    {
+                        continue;
+                    }
+
+                    switch (key.Trim().ToLowerInvariant())
+                    {
+                        case "titleleft":
+                        case "titlex":
+                            titleLeft = parsedValue;
+                            break;
+                        case "titletop":
+                        case "titley":
+                            titleTop = parsedValue;
+                            break;
+                        case "titlewidth":
+                        case "titlew":
+                            titleWidth = parsedValue;
+                            break;
+                        case "detailleft":
+                        case "detailx":
+                            detailLeft = parsedValue;
+                            break;
+                        case "detailtop":
+                        case "detaily":
+                            detailTop = parsedValue;
+                            break;
+                        case "detailwidth":
+                        case "detailw":
+                            detailWidth = parsedValue;
+                            break;
+                        case "statusleft":
+                        case "statusx":
+                            statusLeft = parsedValue;
+                            break;
+                        case "statustop":
+                        case "statusy":
+                            statusTop = parsedValue;
+                            break;
+                        case "statuswidth":
+                        case "statusw":
+                            statusWidth = parsedValue;
+                            break;
+                    }
+                }
+            }
+
+            return new EventEntryRowLayoutSnapshot
+            {
+                TitleLeft = titleLeft,
+                TitleTop = titleTop,
+                TitleWidth = titleWidth,
+                DetailLeft = detailLeft,
+                DetailTop = detailTop,
+                DetailWidth = detailWidth,
+                StatusLeft = statusLeft,
+                StatusTop = statusTop,
+                StatusWidth = statusWidth
+            };
+        }
+
+        private static bool TryParsePacketOwnedLooseBoolean(string value, out bool parsedValue)
+        {
+            if (bool.TryParse(value, out parsedValue))
+            {
+                return true;
+            }
+
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
+            {
+                parsedValue = intValue != 0;
+                return true;
+            }
+
+            parsedValue = false;
+            return false;
         }
 
         private static EventEntrySnapshot CreatePacketOwnedEventCalendarEntry(
@@ -19857,7 +20365,8 @@ namespace HaCreator.MapSimulator
             int sortPriority,
             int sortOrder,
             string alarmText = "",
-            bool includeInCalendar = true)
+            bool includeInCalendar = true,
+            EventEntryRowLayoutSnapshot rowLayout = null)
         {
             return new EventEntrySnapshot
             {
@@ -19869,6 +20378,7 @@ namespace HaCreator.MapSimulator
                 ScheduledAt = scheduledAt.Date,
                 SourceTick = sourceTick,
                 IncludeInCalendar = includeInCalendar,
+                RowLayout = rowLayout ?? new EventEntryRowLayoutSnapshot(),
                 SortPriority = sortPriority,
                 SortOrder = Math.Max(0, sortOrder)
             };

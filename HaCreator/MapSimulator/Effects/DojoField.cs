@@ -525,7 +525,8 @@ namespace HaCreator.MapSimulator.Effects
                     RecordDecodedPacket(PacketTypeClear, clearTargetMapId, decodedPayloadLength, BuildTransferPacketOption(clearTargetMapId, clearPortalName), trailingPayloadHex);
                     if (clearTargetMapId > 0)
                     {
-                        ShowClearResult(currentTimeMs, clearTargetMapId, clearPortalName);
+                        (int resolvedClearMapId, string resolvedClearPortalName) = ResolveClearTransferTarget(clearTargetMapId, clearPortalName);
+                        ShowClearResult(currentTimeMs, resolvedClearMapId, resolvedClearPortalName);
                     }
                     else
                     {
@@ -785,6 +786,27 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return ResolveNextFloorPortalName();
+        }
+        private (int MapId, string PortalName) ResolveClearTransferTarget(int targetMapId, string targetPortalName)
+        {
+            if (targetMapId <= 0)
+            {
+                return (-1, string.Empty);
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetPortalName))
+            {
+                return (targetMapId, targetPortalName);
+            }
+
+            int nextFloorMapId = ResolveNextFloorMapId();
+            string nextFloorPortalName = ResolveNextFloorPortalName();
+            if (targetMapId == nextFloorMapId && !string.IsNullOrWhiteSpace(nextFloorPortalName))
+            {
+                return (targetMapId, nextFloorPortalName);
+            }
+
+            return (targetMapId, string.Empty);
         }
         private (int MapId, string PortalName) ResolveNextFloorDestinationFromPortals(IEnumerable<PortalInstance> portals)
         {

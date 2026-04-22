@@ -7373,18 +7373,31 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = 0; i < movePath.Count; i++)
             {
                 int timeStamp = movePath[i].TimeStamp;
+                int sampleEndTime = ResolveRemoteActiveEffectMotionBlurMovePathElementSampleEndTime(movePath[i]);
                 if (timeStamp < startTime)
                 {
                     startTime = timeStamp;
                 }
 
-                if (timeStamp > endTime)
+                if (sampleEndTime > endTime)
                 {
-                    endTime = timeStamp;
+                    endTime = sampleEndTime;
                 }
             }
 
             return true;
+        }
+
+        private static int ResolveRemoteActiveEffectMotionBlurMovePathElementSampleEndTime(MovePathElement element)
+        {
+            int duration = Math.Max(0, (int)element.Duration);
+            long candidate = (long)element.TimeStamp + duration;
+            if (candidate > int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            return (int)Math.Max(element.TimeStamp, candidate);
         }
 
         internal static bool TryCreateRemoteActiveEffectMotionBlurLayerSnapshot(
@@ -8560,7 +8573,7 @@ namespace HaCreator.MapSimulator.Pools
                     static entry => entry.Key,
                     static entry => entry.Value with
                     {
-                        PairCharacterId = null,
+                        PairCharacterId = ResolvePortableChairExistingPairCharacterIdForParity(entry.Value),
                         Status = 0
                     });
             }
@@ -8569,7 +8582,7 @@ namespace HaCreator.MapSimulator.Pools
                 static entry => entry.Key,
                 static entry => entry.Value with
                 {
-                    PairCharacterId = null,
+                    PairCharacterId = ResolvePortableChairExistingPairCharacterIdForParity(entry.Value),
                     Status = 0
                 });
             Dictionary<int, int> participantIndexByCharacterId = resolvedParticipants
@@ -10376,18 +10389,18 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(
+                actor?.TemporaryStats ?? default,
+                ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0));
             bool hasEnergyChargeStyleValue = ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
                 actor?.TemporaryStats.HasWeaponCharge == true,
-                knownState.WeaponChargeValue);
+                knownState.WeaponChargeValue,
+                resolvedChargeSkillId);
             if (hasEnergyChargeStyleValue)
             {
                 ResolveRemoteEnergyChargeSkill(actor, knownState, out skillId, out skill);
                 return;
             }
-
-            int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(
-                actor?.TemporaryStats ?? default,
-                ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0));
 
             if (resolvedChargeSkillId.HasValue
                 && AfterImageChargeSkillResolver.IsKnownChargeSkillId(resolvedChargeSkillId.Value))
@@ -10489,10 +10502,12 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
             bool hasWeaponChargeMaskBit,
-            int? weaponChargeValue)
+            int? weaponChargeValue,
+            int? resolvedChargeSkillId = null)
         {
             int decodedWeaponChargeValue = weaponChargeValue.GetValueOrDefault();
             return hasWeaponChargeMaskBit
+                   && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(resolvedChargeSkillId.GetValueOrDefault())
                    && decodedWeaponChargeValue > 0
                    && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(decodedWeaponChargeValue);
         }
@@ -10962,8 +10977,14 @@ namespace HaCreator.MapSimulator.Pools
                 return endAlpha;
             }
 
+            if (currentTime == int.MinValue)
+            {
+                return startAlpha;
+            }
+
+            int elapsedTransitionMs = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, state.TransitionStartTime);
             float progress = MathHelper.Clamp(
-                (currentTime - state.TransitionStartTime) / (float)Math.Max(1, state.TransitionDurationMs),
+                elapsedTransitionMs / (float)Math.Max(1, state.TransitionDurationMs),
                 0f,
                 1f);
             return MathHelper.Lerp(startAlpha, endAlpha, progress);
@@ -10974,14 +10995,28 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime)
         {
             if (state == null
+                || currentTime == int.MinValue
                 || state.TransitionStartTime == int.MinValue
                 || state.TransitionDurationMs <= 0)
             {
                 return false;
             }
 
-            return currentTime - state.TransitionStartTime >= state.TransitionDurationMs
+            return ResolveRemoteTemporaryStatTickElapsedMs(currentTime, state.TransitionStartTime) >= state.TransitionDurationMs
                    && state.TransitionEndAlpha <= 0f;
+        }
+
+        private static int ResolveRemoteTemporaryStatTickElapsedMs(int currentTime, int startTime)
+        {
+            if (currentTime == int.MinValue || startTime == int.MinValue)
+            {
+                return 0;
+            }
+
+            long elapsed = unchecked((uint)(currentTime - startTime));
+            return elapsed >= int.MaxValue
+                ? int.MaxValue
+                : (int)elapsed;
         }
 
         private static RemoteTemporaryStatAvatarEffectState CloneRemoteTemporaryStatAvatarEffectState(
@@ -11314,6 +11349,17 @@ namespace HaCreator.MapSimulator.Pools
             int? weaponChargeValue)
         {
             return ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(hasWeaponChargeMaskBit, weaponChargeValue);
+        }
+
+        internal static bool ShouldTreatRemoteWeaponChargeAsEnergyChargeStyleForTesting(
+            bool hasWeaponChargeMaskBit,
+            int? weaponChargeValue,
+            int? resolvedChargeSkillId)
+        {
+            return ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
+                hasWeaponChargeMaskBit,
+                weaponChargeValue,
+                resolvedChargeSkillId);
         }
 
         internal static float ResolveRemoteTemporaryStatAvatarEffectTransitionAlphaForTesting(
@@ -11883,7 +11929,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int elapsedTime = Math.Max(0, currentTime - state.AnimationStartTime);
+            int elapsedTime = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, state.AnimationStartTime);
             if (drawFrontLayers)
             {
                 DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.OverlayAnimation, frame, screenX, screenY, elapsedTime, transitionAlpha);
@@ -13602,15 +13648,19 @@ namespace HaCreator.MapSimulator.Pools
                 return nearestMaskBaseElementChargeSkillId;
             }
 
-            return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
-                snapshot.RawPayload,
-                payloadMaskBaseOffset,
-                effectivePreferredSkillId,
-                out int payloadChargeSkillId)
-                ? payloadChargeSkillId
-                : AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
-                    ? effectivePreferredSkillId
-                    : null;
+            if (hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out int payloadChargeSkillId))
+            {
+                return payloadChargeSkillId;
+            }
+
+            return AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                ? effectivePreferredSkillId
+                : null;
         }
 
         internal static bool TryResolveChargeElementFromTemporaryStats(
@@ -13745,13 +13795,18 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            return AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
-                snapshot.RawPayload,
-                payloadMaskBaseOffset,
-                effectivePreferredSkillId,
-                out chargeElement)
-                || (AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
-                    && AfterImageChargeSkillResolver.TryGetChargeElement(effectivePreferredSkillId, out chargeElement));
+            if (hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            return AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                   && AfterImageChargeSkillResolver.TryGetChargeElement(effectivePreferredSkillId, out chargeElement);
         }
 
         internal static int ResolvePreferredRemoteAfterImageChargeSkillId(

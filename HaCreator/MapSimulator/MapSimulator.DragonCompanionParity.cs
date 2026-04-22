@@ -14,20 +14,22 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            while (dragonRuntime.TryConsumeClientVecCtrlEndUpdateActiveFlushPacket(out int packetOpcode))
+            while (dragonRuntime.TryConsumeClientVecCtrlEndUpdateActiveFlushPacket(
+                       out int packetOpcode,
+                       out byte[] packetPayload))
             {
-                DispatchDragonCompanionVecCtrlEndUpdateActivePacket(packetOpcode);
+                DispatchDragonCompanionVecCtrlEndUpdateActivePacket(packetOpcode, packetPayload);
             }
         }
 
-        private void DispatchDragonCompanionVecCtrlEndUpdateActivePacket(int packetOpcode)
+        private void DispatchDragonCompanionVecCtrlEndUpdateActivePacket(int packetOpcode, byte[] packetPayload)
         {
             if (packetOpcode <= 0)
             {
                 return;
             }
 
-            byte[] payload = Array.Empty<byte>();
+            byte[] payload = packetPayload ?? Array.Empty<byte>();
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(packetOpcode, payload, out _))
             {
                 return;

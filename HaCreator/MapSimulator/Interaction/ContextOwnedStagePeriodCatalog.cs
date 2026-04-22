@@ -109,10 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             ApplyThemeScopedEnableState(entry.StageTheme, entry.Keywords, keywordCache);
             ApplyThemeScopedEnableState(entry.StageTheme, entry.EnabledQuestIds, questCache);
-            if (stagePeriodCache != null && !string.IsNullOrWhiteSpace(entry.StageTheme))
-            {
-                stagePeriodCache[entry.StageTheme] = entry.Mode;
-            }
+            ApplyStagePeriodModeCache(entry.StageTheme, entry.Mode, stagePeriodCache);
         }
 
         internal static void ResetCacheData(
@@ -1079,7 +1076,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static HashSet<string> ParseThemeWideKeywordAugmentations(WzImageProperty themeProperty)
         {
-            HashSet<string> values = new(StringComparer.Ordinal);
+            HashSet<string> values = new(StringComparer.OrdinalIgnoreCase);
             if (themeProperty == null)
             {
                 return values;
@@ -1307,10 +1304,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (TKey key in enabledKeys ?? Enumerable.Empty<TKey>())
             {
-                if (!cache.TryGetValue(key, out ContextOwnedStageUnitEnableState state) || state == null)
+                TKey normalizedKey = ResolveExistingEquivalentKey(cache, key);
+                if (!cache.TryGetValue(normalizedKey, out ContextOwnedStageUnitEnableState state) || state == null)
                 {
                     state = new ContextOwnedStageUnitEnableState(stageTheme, enabled: true);
-                    cache[key] = state;
+                    cache[normalizedKey] = state;
                     continue;
                 }
 
@@ -1321,7 +1319,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static HashSet<TKey> CaptureEnabledValues<TKey>(IDictionary<TKey, ContextOwnedStageUnitEnableState> cache)
         {
-            HashSet<TKey> enabledValues = new();
+            HashSet<TKey> enabledValues = new(ResolveEnabledValueComparer<TKey>());
             if (cache == null)
             {
                 return enabledValues;
@@ -1336,6 +1334,69 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return enabledValues;
+        }
+
+        private static void ApplyStagePeriodModeCache(
+            string stageTheme,
+            byte mode,
+            IDictionary<string, byte> stagePeriodCache)
+        {
+            if (stagePeriodCache == null || string.IsNullOrWhiteSpace(stageTheme))
+            {
+                return;
+            }
+
+            string normalizedTheme = stageTheme.Trim();
+            string existingTheme = ResolveExistingEquivalentStringKey(stagePeriodCache, normalizedTheme);
+            stagePeriodCache[existingTheme ?? normalizedTheme] = mode;
+        }
+
+        private static TKey ResolveExistingEquivalentKey<TKey>(
+            IDictionary<TKey, ContextOwnedStageUnitEnableState> cache,
+            TKey key)
+        {
+            if (cache == null || key == null || typeof(TKey) != typeof(string))
+            {
+                return key;
+            }
+
+            string stringKey = ((string)(object)key)?.Trim();
+            if (string.IsNullOrWhiteSpace(stringKey))
+            {
+                return key;
+            }
+
+            string existingKey = ResolveExistingEquivalentStringKey(
+                cache as IDictionary<string, ContextOwnedStageUnitEnableState>,
+                stringKey);
+            return (TKey)(object)(existingKey ?? stringKey);
+        }
+
+        private static string ResolveExistingEquivalentStringKey<TValue>(
+            IDictionary<string, TValue> cache,
+            string key)
+        {
+            if (cache == null || string.IsNullOrWhiteSpace(key))
+            {
+                return null;
+            }
+
+            foreach (string existingKey in cache.Keys)
+            {
+                if (string.Equals(existingKey, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    return existingKey;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEqualityComparer<TKey> ResolveEnabledValueComparer<TKey>()
+        {
+            return typeof(TKey) == typeof(string)
+                ? (IEqualityComparer<TKey>)(object)StringComparer.OrdinalIgnoreCase
+                : EqualityComparer<TKey>.Default;
         }
     }
 

@@ -33,6 +33,19 @@ namespace HaCreator.MapSimulator.Interaction
         private const int SignVerticalOffset = 34;
         private const int MiniRoomBalloonVerticalOffset = 10;
         private const int ShopMiniRoomBalloonRaisedOffset = 7;
+        private const int MiniRoomLayoutBaselineBoardWidth = 166;
+        private const int MiniRoomLayoutBaselineBoardHeight = 166;
+        private const int MiniRoomLayoutLegacyIconX = 12;
+        private const int MiniRoomLayoutLegacyIconY = 83;
+        private const int MiniRoomLayoutLegacyCurrentCountX = 29;
+        private const int MiniRoomLayoutLegacyCurrentCountY = 85;
+        private const int MiniRoomLayoutLegacyMaxCountX = 46;
+        private const int MiniRoomLayoutLegacyMaxCountY = 85;
+        private const int MiniRoomLayoutLegacyStatusX = 97;
+        private const int MiniRoomLayoutLegacyStatusY = 84;
+        private const int MiniRoomLayoutLegacyTitleCenterX = 78;
+        private const int MiniRoomLayoutLegacyHeadlineY = 42;
+        private const int MiniRoomLayoutLegacyOwnerY = 61;
         private const int NameTagVerticalOffset = 8;
         private const int NameTagMinimumWidth = 58;
         private const int NameTagHorizontalPadding = 18;
@@ -1486,6 +1499,10 @@ namespace HaCreator.MapSimulator.Interaction
                 boardTexture.Width,
                 boardTexture.Height,
                 _activeMiniRoomBoardAssets?.SignboardOrigin);
+            MiniRoomBalloonLayout layout = ResolveMiniRoomBalloonLayout(
+                boardTexture.Width,
+                boardTexture.Height,
+                useTemplateLayoutScaling: _activeMiniRoomBoardAssets?.Signboard != null);
             int boardX = (int)boardPosition.X;
             int boardY = (int)boardPosition.Y;
 
@@ -1494,19 +1511,29 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (assets.PersonalShopIcon != null)
             {
-                spriteBatch.Draw(assets.PersonalShopIcon, new Vector2(boardX + 12, boardY + 83), Color.White);
+                spriteBatch.Draw(assets.PersonalShopIcon, new Vector2(boardX + layout.IconX, boardY + layout.IconY), Color.White);
             }
 
-            DrawMiniRoomBalloonCount(spriteBatch, assets.CurrentCountDigits, ResolveMiniRoomCurrentUsers(_activeSnapshot), boardX + 29, boardY + 85);
-            DrawMiniRoomBalloonCount(spriteBatch, assets.MaxCountDigits, ResolveMiniRoomMaxUsers(_activeSnapshot), boardX + 46, boardY + 85);
+            DrawMiniRoomBalloonCount(
+                spriteBatch,
+                assets.CurrentCountDigits,
+                ResolveMiniRoomCurrentUsers(_activeSnapshot),
+                boardX + layout.CurrentCountX,
+                boardY + layout.CurrentCountY);
+            DrawMiniRoomBalloonCount(
+                spriteBatch,
+                assets.MaxCountDigits,
+                ResolveMiniRoomMaxUsers(_activeSnapshot),
+                boardX + layout.MaxCountX,
+                boardY + layout.MaxCountY);
 
             Texture2D statusTexture = ResolveMiniRoomStatusTexture(_activeSnapshot, assets);
             if (statusTexture != null)
             {
-                spriteBatch.Draw(statusTexture, new Vector2(boardX + 97, boardY + 84), Color.White);
+                spriteBatch.Draw(statusTexture, new Vector2(boardX + layout.StatusX, boardY + layout.StatusY), Color.White);
             }
 
-            DrawMiniRoomBalloonText(spriteBatch, font, boardX, boardY);
+            DrawMiniRoomBalloonText(spriteBatch, font, boardX, boardY, layout);
             return true;
         }
 
@@ -1617,6 +1644,118 @@ namespace HaCreator.MapSimulator.Interaction
                 effectHeight,
                 configuredOrigin);
             return ((int)position.X, (int)position.Y);
+        }
+
+        internal static (
+            int IconX,
+            int IconY,
+            int CurrentCountX,
+            int CurrentCountY,
+            int MaxCountX,
+            int MaxCountY,
+            int StatusX,
+            int StatusY,
+            int TitleCenterX,
+            int HeadlineY,
+            int OwnerY) ResolveMiniRoomBalloonLayoutForTesting(
+            int boardWidth,
+            int boardHeight,
+            bool useTemplateLayoutScaling)
+        {
+            MiniRoomBalloonLayout layout = ResolveMiniRoomBalloonLayout(
+                boardWidth,
+                boardHeight,
+                useTemplateLayoutScaling);
+            return (
+                layout.IconX,
+                layout.IconY,
+                layout.CurrentCountX,
+                layout.CurrentCountY,
+                layout.MaxCountX,
+                layout.MaxCountY,
+                layout.StatusX,
+                layout.StatusY,
+                layout.TitleCenterX,
+                layout.HeadlineY,
+                layout.OwnerY);
+        }
+
+        private static MiniRoomBalloonLayout ResolveMiniRoomBalloonLayout(
+            int boardWidth,
+            int boardHeight,
+            bool useTemplateLayoutScaling)
+        {
+            return new MiniRoomBalloonLayout(
+                IconX: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyIconX,
+                    boardWidth,
+                    MiniRoomLayoutBaselineBoardWidth,
+                    useTemplateLayoutScaling),
+                IconY: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyIconY,
+                    boardHeight,
+                    MiniRoomLayoutBaselineBoardHeight,
+                    useTemplateLayoutScaling),
+                CurrentCountX: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyCurrentCountX,
+                    boardWidth,
+                    MiniRoomLayoutBaselineBoardWidth,
+                    useTemplateLayoutScaling),
+                CurrentCountY: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyCurrentCountY,
+                    boardHeight,
+                    MiniRoomLayoutBaselineBoardHeight,
+                    useTemplateLayoutScaling),
+                MaxCountX: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyMaxCountX,
+                    boardWidth,
+                    MiniRoomLayoutBaselineBoardWidth,
+                    useTemplateLayoutScaling),
+                MaxCountY: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyMaxCountY,
+                    boardHeight,
+                    MiniRoomLayoutBaselineBoardHeight,
+                    useTemplateLayoutScaling),
+                StatusX: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyStatusX,
+                    boardWidth,
+                    MiniRoomLayoutBaselineBoardWidth,
+                    useTemplateLayoutScaling),
+                StatusY: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyStatusY,
+                    boardHeight,
+                    MiniRoomLayoutBaselineBoardHeight,
+                    useTemplateLayoutScaling),
+                TitleCenterX: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyTitleCenterX,
+                    boardWidth,
+                    MiniRoomLayoutBaselineBoardWidth,
+                    useTemplateLayoutScaling),
+                HeadlineY: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyHeadlineY,
+                    boardHeight,
+                    MiniRoomLayoutBaselineBoardHeight,
+                    useTemplateLayoutScaling),
+                OwnerY: ResolveMiniRoomLayoutAxisOffset(
+                    MiniRoomLayoutLegacyOwnerY,
+                    boardHeight,
+                    MiniRoomLayoutBaselineBoardHeight,
+                    useTemplateLayoutScaling));
+        }
+
+        private static int ResolveMiniRoomLayoutAxisOffset(
+            int legacyOffset,
+            int actualSize,
+            int baselineSize,
+            bool useTemplateLayoutScaling)
+        {
+            if (!useTemplateLayoutScaling || actualSize <= 0 || baselineSize <= 0)
+            {
+                return legacyOffset;
+            }
+
+            float scale = actualSize / (float)baselineSize;
+            return (int)Math.Round(legacyOffset * scale);
         }
 
         private static Texture2D ResolveMiniRoomBalloonBoardTexture(
@@ -1746,7 +1885,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void DrawMiniRoomBalloonText(SpriteBatch spriteBatch, SpriteFont font, int boardX, int boardY)
+        private void DrawMiniRoomBalloonText(
+            SpriteBatch spriteBatch,
+            SpriteFont font,
+            int boardX,
+            int boardY,
+            MiniRoomBalloonLayout layout)
         {
             string headline = string.IsNullOrWhiteSpace(_activeSnapshot.MiniRoomBalloonTitle)
                 ? _activeSnapshot.Headline
@@ -1757,17 +1901,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            const int titleCenterX = 78;
-            const int headlineY = 42;
-            const int ownerY = 61;
-
             if (!string.IsNullOrWhiteSpace(headline))
             {
                 Vector2 headlineSize = font.MeasureString(headline) * HeadlineScale;
                 spriteBatch.DrawString(
                     font,
                     headline,
-                    new Vector2(boardX + titleCenterX - (headlineSize.X / 2f), boardY + headlineY),
+                    new Vector2(boardX + layout.TitleCenterX - (headlineSize.X / 2f), boardY + layout.HeadlineY),
                     Color.Black,
                     0f,
                     Vector2.Zero,
@@ -1782,7 +1922,7 @@ namespace HaCreator.MapSimulator.Interaction
                 spriteBatch.DrawString(
                     font,
                     ownerName,
-                    new Vector2(boardX + titleCenterX - (ownerSize.X / 2f), boardY + ownerY),
+                    new Vector2(boardX + layout.TitleCenterX - (ownerSize.X / 2f), boardY + layout.OwnerY),
                     new Color(72, 72, 72),
                     0f,
                     Vector2.Zero,
@@ -2431,6 +2571,19 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private readonly record struct EmployeeMiniRoomBoardEffectFrame(Texture2D Texture, int DelayMs, Vector2? Origin);
+
+        private readonly record struct MiniRoomBalloonLayout(
+            int IconX,
+            int IconY,
+            int CurrentCountX,
+            int CurrentCountY,
+            int MaxCountX,
+            int MaxCountY,
+            int StatusX,
+            int StatusY,
+            int TitleCenterX,
+            int HeadlineY,
+            int OwnerY);
 
         private sealed class EmployeeMiniRoomBoardAssets
         {

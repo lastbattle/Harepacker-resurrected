@@ -7485,6 +7485,13 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            bool sourceOrOverlayPlaneMetadataMissing = !lastInsertCanvasSourceLayer.HasValue
+                || !lastInsertCanvasOverlayTargetLayer.HasValue;
+            if (sourceOrOverlayPlaneMetadataMissing)
+            {
+                return true;
+            }
+
             bool insertTimelineRegressed = currentTime != int.MinValue
                 && lastInsertCanvasTime != int.MinValue
                 && currentTime < lastInsertCanvasTime;
@@ -10303,12 +10310,13 @@ namespace HaCreator.MapSimulator.Character
             CharacterPart mountedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(mountedVehicleId);
             if (mountedPart?.Slot == EquipSlot.TamingMob)
             {
-                bool canReuseActiveMountedStateBodyRelMove =
-                    ShouldReuseActiveMountedStateBodyRelMove(mountedVehicleId, mountedStatePart);
+                bool canReuseRenderedMountedBodyRelMove =
+                    ShouldReuseRenderedMountedBodyRelMove(mountedVehicleId, mountedStatePart, mountedPart);
                 if (TryResolveCurrentRenderedMountedClientBodyRelMoveY(
                         currentTime,
                         mountedVehicleId,
                         mountedStatePart,
+                        mountedPart,
                         out int mountedBodyRelMoveY))
                 {
                     return mountedBodyRelMoveY;
@@ -10318,7 +10326,7 @@ namespace HaCreator.MapSimulator.Character
                 {
                     int animationTime = GetRenderAnimationTime(currentTime);
 
-                    if (canReuseActiveMountedStateBodyRelMove
+                    if (canReuseRenderedMountedBodyRelMove
                         && TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out mountedBodyRelMoveY))
                     {
                         return mountedBodyRelMoveY;
@@ -10385,6 +10393,7 @@ namespace HaCreator.MapSimulator.Character
             int currentTime,
             int mountedVehicleId,
             CharacterPart mountedStatePart,
+            CharacterPart mountedSourcePart,
             out int bodyRelMoveY)
         {
             AssembledFrame frame = TryGetCurrentFrame(currentTime);
@@ -10392,6 +10401,7 @@ namespace HaCreator.MapSimulator.Character
                 frame,
                 mountedVehicleId,
                 mountedStatePart,
+                mountedSourcePart,
                 out bodyRelMoveY);
         }
 
@@ -10399,10 +10409,11 @@ namespace HaCreator.MapSimulator.Character
             AssembledFrame frame,
             int mountedVehicleId,
             CharacterPart mountedStatePart,
+            CharacterPart mountedSourcePart,
             out int bodyRelMoveY)
         {
             bodyRelMoveY = 0;
-            return ShouldReuseActiveMountedStateBodyRelMove(mountedVehicleId, mountedStatePart)
+            return ShouldReuseRenderedMountedBodyRelMove(mountedVehicleId, mountedStatePart, mountedSourcePart)
                 && TryResolveMountedClientBodyRelMoveY(frame, out bodyRelMoveY);
         }
 
@@ -10416,6 +10427,23 @@ namespace HaCreator.MapSimulator.Character
             return mountedVehicleId > 0
                 ? MatchesTamingMobItemId(mountedStatePart, mountedVehicleId)
                 : mountedStatePart?.Slot == EquipSlot.TamingMob;
+        }
+
+        internal static bool ShouldReuseRenderedMountedBodyRelMove(
+            int mountedVehicleId,
+            CharacterPart mountedStatePart,
+            CharacterPart mountedSourcePart)
+        {
+            if (ShouldReuseActiveMountedStateBodyRelMove(mountedVehicleId, mountedStatePart))
+            {
+                return true;
+            }
+
+            // Keep explicit vehicle ownership strict while still allowing transient
+            // mounted-state holes to reuse the currently rendered mounted frame when
+            // the requested vehicle id already resolves to the same mount source.
+            return mountedVehicleId > 0
+                   && MatchesTamingMobItemId(mountedSourcePart, mountedVehicleId);
         }
 
         internal bool TryResolveCurrentMountedClientBodyRelMoveY(

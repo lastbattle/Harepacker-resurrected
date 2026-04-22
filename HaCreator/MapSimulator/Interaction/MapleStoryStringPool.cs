@@ -54,6 +54,12 @@ namespace HaCreator.MapSimulator.Interaction
             // (`paramButton.sUOL`) for `UI/Login.img/CharSelect/BtSelect`, so pin it here
             // because generated-table ordering in this workspace resolves 0x146 incorrectly.
             [0x0146] = "UI/Login.img/CharSelect/BtSelect",
+            // Recovered from MapleStory.exe v95 `CUILogoutGift::CUILogoutGift` and
+            // `CUILogoutGift::TryShowLogoutGiftDialog`. The generated table drifts in this
+            // block and can resolve unrelated UserInfo/FriendRecommendations paths, so pin the
+            // logout-gift owner frame and completion text ids explicitly.
+            [0x16AA] = "UI/UIWindow.img/LogoutGift/backgrnd",
+            [0x16AB] = "Congratulations! Please come back in 3 days. Thank you!",
             // Recovered from MapleStory.exe v95 `CAvatarMegaphone::OnCreate`.
             // The owner chooses id 0x0FB0 or 0x0FB1 from measured sender-name width
             // before resolving the name-tag canvas through the resource manager.
@@ -502,7 +508,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string ResolveMobAngerGaugeBurstPath(string mobTemplateId)
         {
-            if (!int.TryParse(mobTemplateId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedTemplateId))
+            if (string.IsNullOrWhiteSpace(mobTemplateId))
+            {
+                return null;
+            }
+
+            if (!uint.TryParse(mobTemplateId.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out uint parsedTemplateId))
             {
                 return null;
             }
@@ -511,6 +522,16 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         public static string ResolveMobAngerGaugeBurstPath(int mobTemplateId)
+        {
+            if (mobTemplateId < 0)
+            {
+                return null;
+            }
+
+            return ResolveMobAngerGaugeBurstPath((uint)mobTemplateId);
+        }
+
+        public static string ResolveMobAngerGaugeBurstPath(uint mobTemplateId)
         {
             string templatePath = GetCompositeFormatOrFallback(
                 MobAngerGaugeBurstTemplatePathStringPoolId,

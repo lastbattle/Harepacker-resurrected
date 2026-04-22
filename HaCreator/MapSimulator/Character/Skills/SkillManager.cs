@@ -2474,6 +2474,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             35121009,
             35121010
         };
+        private static readonly HashSet<int> ClientDoActiveSkillSummonMonsterFamilySkillIds = new()
+        {
+            // WZ-first: unrecovered type-33 summon rows with concrete `summon/*` branches
+            // (`Skill/311.img/skill/3111005`, `Skill/321.img/skill/3211005`,
+            // `Skill/3512.img/skill/35121011`) still match the
+            // `CUserLocal::DoActiveSkill_SummonMonster` owner shape.
+            3111005,
+            3211005,
+            35121011
+        };
         private static readonly HashSet<int> ClientDoActiveSkillGroundedMechanicSummonSkillIds = new()
         {
             // `CUserLocal::DoActiveSkill_Summon` enforces a no-foothold reject on this explicit branch family.
@@ -2976,7 +2986,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int mapId = _currentMapInfoProvider?.Invoke()?.id ?? 0;
-            return IsClientTownPortalBlockedMapCategory(mapId);
+            bool isOnLadderOrRope = _player?.Physics?.IsOnLadderOrRope == true;
+            bool isOnFoothold = _player?.Physics?.IsOnFoothold() == true;
+            return ShouldRejectClientDoActiveTownPortalFamilyStateWithoutMessageCore(
+                skill,
+                isOnLadderOrRope,
+                isOnFoothold,
+                mapId);
         }
 
         private bool ShouldRejectClientDoActivePrepareFamilyStateWithoutMessage(SkillData skill, int currentTime)
@@ -3110,6 +3126,29 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int category = Math.Abs(mapId / 1_000_000) % 100;
             return category == ClientTownPortalBlockedMapCategory;
+        }
+
+        private static bool ShouldRejectClientDoActiveTownPortalFamilyStateWithoutMessageCore(
+            SkillData skill,
+            bool isOnLadderOrRope,
+            bool isOnFoothold,
+            int mapId)
+        {
+            if (!IsTownPortalDoActiveSkillFamily(skill))
+            {
+                return false;
+            }
+
+            if (IsClientTownPortalBlockedMapCategory(mapId))
+            {
+                return true;
+            }
+
+            // `CUserLocal::DoActiveSkill_TownPortal@0x93be00` silently rejects before
+            // packet send when either the vec-ctrl foothold slot is missing
+            // (`cmp [eax+1A0h], 0`) or the ladder/rope-like vec-ctrl state is set
+            // (`cmp [esi+18Ch], 0`).
+            return !isOnFoothold || isOnLadderOrRope;
         }
 
         private bool ShouldRejectClientDoActivePrepareFamilyCooldownStateWithoutMessage(SkillData skill, int currentTime)
@@ -4122,6 +4161,49 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return _passiveVehicleTemporaryStatStates.TryGetValue(skillId, out PassiveVehicleTemporaryStatState state)
                    && state?.HasTemporaryObject == true;
+        }
+
+        internal bool TryAllocatePassiveVehicleTemporaryStatObjectForParity(
+            int skillId,
+            int currentValue,
+            int maxValue,
+            int currentTime)
+        {
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            if (_passiveVehicleTemporaryStatStates.TryGetValue(skillId, out PassiveVehicleTemporaryStatState existingState)
+                && existingState?.HasTemporaryObject == true)
+            {
+                return true;
+            }
+
+            int normalizedCurrentValue = Math.Max(0, currentValue);
+            if (normalizedCurrentValue <= 0)
+            {
+                return false;
+            }
+
+            int normalizedMaxValue = Math.Max(normalizedCurrentValue, maxValue);
+            bool isAlerting = IsPassiveVehicleDurabilityAlertActiveForParity(normalizedCurrentValue, normalizedMaxValue);
+            _passiveVehicleTemporaryStatStates[skillId] = new PassiveVehicleTemporaryStatState
+            {
+                SkillId = skillId,
+                CurrentValue = normalizedCurrentValue,
+                MaxValue = normalizedMaxValue,
+                StartTime = currentTime,
+                LastUpdatedTime = int.MinValue,
+                UpdateSequence = 0,
+                HasTemporaryObject = true,
+                AlertThresholdValue = ResolvePassiveVehicleDurabilityAlertThresholdForParity(normalizedMaxValue),
+                IsAlerting = isAlerting,
+                LayerUpdateSequence = 0,
+                LowDurabilityAlertSequence = 0,
+                LowDurabilityAlertStartTime = int.MinValue
+            };
+            return true;
         }
 
         private void ClearCooldownPresentationState(int skillId)
@@ -5935,7 +6017,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (mountPart.Animations.TryGetValue(actionName, out animation)
-                && animation?.Frames?.Count > 0)
+                && IsExactPublishedTamingMobAnimation(animation, actionName))
             {
                 return true;
             }
@@ -5956,11 +6038,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (animation?.Frames?.Count > 0)
             {
                 mountPart.Animations[actionName] = animation;
-                return true;
+                if (IsExactPublishedTamingMobAnimation(animation, actionName))
+                {
+                    return true;
+                }
             }
 
             animation = null;
             return false;
+        }
+
+        private static bool IsExactPublishedTamingMobAnimation(CharacterAnimation animation, string actionName)
+        {
+            if (animation?.Frames?.Count <= 0 || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            // Guard the exact-root seam from cached alias frames (e.g. unknown key -> stand1).
+            return string.IsNullOrWhiteSpace(animation.ActionName)
+                   || string.Equals(animation.ActionName, actionName, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool ShouldTreatSitAsExactPublishedClientOwnedVehicleCurrentAction(
@@ -7881,8 +7978,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             NotifyAttackAreaResolved(
                 worldHitbox,
                 currentTime,
-                skill.SkillId,
-                ownerLane: LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion);
+                skill.SkillId);
 
             List<DropItem> explosiveDrops = _dropPool.GetExplosiveDropInRect(
                 worldHitbox.Left + (worldHitbox.Width * 0.5f),
@@ -7896,6 +7992,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (explosiveDrops.Count == 0)
                 return true;
+
+            TryNotifyLocalAttackAreaResolved(
+                worldHitbox,
+                currentTime,
+                skill.SkillId,
+                LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion,
+                resolvedOwnerCount: explosiveDrops.Count);
 
             _dropPool.ConsumeMesosForExplosion(explosiveDrops, currentTime);
 
@@ -8889,17 +8992,62 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool HasClientShowSkillEffectSummonPlacementMetadata(SkillData skill)
         {
             return skill != null
-                && (skill.SummonAnimation != null
-                    || skill.SummonSpawnAnimation != null
-                    || skill.SummonAttackAnimation != null
-                    || skill.SummonHitAnimation != null
-                    || skill.SummonRemovalAnimation != null);
+                && (HasClientShowSkillEffectSummonPlacementAnimation(skill.SummonAnimation)
+                    || HasClientShowSkillEffectSummonPlacementAnimation(skill.SummonSpawnAnimation)
+                    || HasClientShowSkillEffectSummonPlacementAnimation(skill.SummonAttackAnimation)
+                    || HasClientShowSkillEffectSummonPlacementAnimation(skill.SummonHitAnimation)
+                    || HasClientShowSkillEffectSummonPlacementAnimation(skill.SummonRemovalAnimation));
+        }
+
+        private static bool HasClientShowSkillEffectSummonPlacementAnimation(SkillAnimation animation)
+        {
+            if (animation == null)
+            {
+                return false;
+            }
+
+            if ((animation.Frames?.Count ?? 0) > 0)
+            {
+                return true;
+            }
+
+            IReadOnlyList<SkillAnimation> variants = animation.VariantAnimations;
+            if (variants == null || variants.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < variants.Count; i++)
+            {
+                if ((variants[i]?.Frames?.Count ?? 0) > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsClientLocalShowSkillEffectSummonMonsterFamilySkill(SkillData skill)
+        {
+            if (skill?.SkillId <= 0)
+            {
+                return false;
+            }
+
+            if (ClientDoActiveSkillSummonMonsterFamilySkillIds.Contains(skill.SkillId))
+            {
+                return true;
+            }
+
+            return skill.ClientInfoType == 33
+                   && HasClientShowSkillEffectSummonPlacementMetadata(skill)
+                   && !ClientDoActiveSkillSummonFamilySkillIds.Contains(skill.SkillId);
         }
 
         private static bool ShouldUseClientLocalShowSkillEffectPlacementOwnedPointOffset(SkillData skill)
         {
-            if (skill?.SkillId <= 0
-                || !HasClientShowSkillEffectSummonPlacementMetadata(skill))
+            if (skill?.SkillId <= 0)
             {
                 return false;
             }
@@ -8912,8 +9060,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // WZ-first fallback: unrecovered local summon rows with `info/type=33`
             // that still author concrete summon branches match the
             // `DoActiveSkill_SummonMonster` caller family shape.
-            return skill.ClientInfoType == 33
-                   && !ClientDoActiveSkillSummonFamilySkillIds.Contains(skill.SkillId);
+            return IsClientLocalShowSkillEffectSummonMonsterFamilySkill(skill);
         }
 
         private static bool ShouldUseClientLocalShowSkillEffectNegativeLastIndex(SkillData skill)
@@ -8931,9 +9078,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Keep `nLast = 0x7FFFFFFF` on recovered `DoActiveSkill_Summon` rows
             // while allowing unrecovered `DoActiveSkill_SummonMonster`-style rows
             // to preserve caller-owned `nLast = -1`.
-            return skill.ClientInfoType == 33
-                   && HasClientShowSkillEffectSummonPlacementMetadata(skill)
-                   && !ClientDoActiveSkillSummonFamilySkillIds.Contains(skill.SkillId);
+            return IsClientLocalShowSkillEffectSummonMonsterFamilySkill(skill);
         }
 
         internal static Point ResolveClientShowSkillEffectPointOffsetFromWorldPositions(Vector2 casterPosition, Vector2 effectOrigin)
@@ -11521,11 +11666,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                         0x0C9B,
                         "This location is too close to a portal.");
                 }
-
-                if (!isOnFoothold)
-                {
-                    return "This town-portal skill requires foothold support.";
-                }
             }
 
             if (IsSmokeShellDoActiveSkillFamily(skill))
@@ -11628,6 +11768,19 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsClientTownPortalBlockedMapCategoryForTesting(int mapId)
         {
             return IsClientTownPortalBlockedMapCategory(mapId);
+        }
+
+        internal static bool ShouldRejectClientDoActiveTownPortalFamilyStateWithoutMessageForTesting(
+            SkillData skill,
+            bool isOnLadderOrRope,
+            bool isOnFoothold,
+            int mapId)
+        {
+            return ShouldRejectClientDoActiveTownPortalFamilyStateWithoutMessageCore(
+                skill,
+                isOnLadderOrRope,
+                isOnFoothold,
+                mapId);
         }
 
         internal static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
@@ -12448,6 +12601,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            if (!ShouldTrackDeferredMovingShootAntiRepeatState(pending.Skill))
+            {
+                return;
+            }
+
             _lastDeferredMovingShootExecution = new DeferredMovingShootExecutionState
             {
                 SkillId = pending.Skill?.SkillId ?? 0,
@@ -12570,6 +12728,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static int ResolveMovingShootAntiRepeatCountLimit(DeferredSkillPayload pending)
         {
             return ResolveMovingShootAntiRepeatCountLimit(pending?.Skill);
+        }
+
+        internal static bool ShouldTrackDeferredMovingShootAntiRepeatState(SkillData skill)
+        {
+            // `TryDoingSmoothingMovingShootAttack` short-circuits skill 33121009 before
+            // `CAntiRepeat::TryRepeat`, so delayed execution for that bypass row must not
+            // mutate the carried anti-repeat state.
+            return (skill?.SkillId ?? 0) != ClientMovingShootAntiRepeatBypassSkillId;
         }
 
         private Point ResolveDeferredMovingShootLiveWorldPosition()
@@ -13918,7 +14084,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 localAttackAreaOwnerLane != LocalAttackAreaOwnerLane.None
                     ? localAttackAreaOwnerLane
                     : ResolveLocalAttackAreaOwnerLane(mode);
-            NotifyAttackAreaResolved(worldHitbox, currentTime, skill.SkillId, ownerLane: resolvedOwnerLane);
+            NotifyAttackAreaResolved(worldHitbox, currentTime, skill.SkillId);
             int maxTargets = Math.Max(1, levelData.MobCount);
             int attackCount = Math.Max(1, levelData.AttackCount);
             List<MobItem> targets = ResolveTargetsInHitbox(
@@ -13933,6 +14099,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 attackTargetSelectionMode);
             if (targets.Count == 0)
                 return false;
+
+            TryNotifyLocalAttackAreaResolved(
+                worldHitbox,
+                currentTime,
+                skill.SkillId,
+                resolvedOwnerLane,
+                targets.Count);
 
             if (queueFollowUps && ShouldUseQueuedSerialAttack(skill))
             {
@@ -17763,6 +17936,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int alphaStart = ResolveBulletAfterimageStartAlpha(owner.Presentation, frame);
             int fallbackAlphaVectorStart = ResolveBulletAfterimageAlphaVectorStart(alphaStart, frame, frameElapsedMs);
             int alphaVectorStart = ResolveBulletAfterimageLayerAlphaVectorStart(
+                owner,
                 previousLayer,
                 fallbackAlphaVectorStart,
                 currentTime);
@@ -17968,10 +18142,18 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         internal static int ResolveBulletAfterimageLayerAlphaVectorStart(
+            ActiveBulletAnimationOwner owner,
             ProjectileAfterimageLayer previousLayer,
             int fallbackAlphaVectorStart,
             int currentTime)
         {
+            // CAfterImageBullet::Update clones alpha vector state from the active bullet layer each tick.
+            // Prefer the active main-layer alpha start when that identity is available.
+            if (owner?.MainLayerObjectId > 0)
+            {
+                return Math.Clamp(fallbackAlphaVectorStart, 0, 255);
+            }
+
             if (previousLayer == null)
             {
                 return Math.Clamp(fallbackAlphaVectorStart, 0, 255);
@@ -22662,15 +22844,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             TryRegisterSecondaryFootholdOwner(worldHitbox, currentTime, skillId);
             int resolvedDamage = Math.Max(1, damage);
             OnAttackAreaResolved?.Invoke(worldHitbox, currentTime, skillId, resolvedDamage);
-            if (skillId > 0 && ownerLane != LocalAttackAreaOwnerLane.None)
+            TryNotifyLocalAttackAreaResolved(worldHitbox, currentTime, skillId, ownerLane, resolvedOwnerCount: 1);
+        }
+
+        private void TryNotifyLocalAttackAreaResolved(
+            Rectangle worldHitbox,
+            int currentTime,
+            int skillId,
+            LocalAttackAreaOwnerLane ownerLane,
+            int resolvedOwnerCount)
+        {
+            if (worldHitbox.Width <= 0
+                || worldHitbox.Height <= 0
+                || skillId <= 0
+                || !ShouldDispatchLocalAttackAreaResolution(ownerLane, resolvedOwnerCount))
             {
-                OnLocalAttackAreaResolved?.Invoke(new LocalAttackAreaResolution(
-                    worldHitbox,
-                    currentTime,
-                    skillId,
-                    resolvedDamage,
-                    ownerLane));
+                return;
             }
+
+            OnLocalAttackAreaResolved?.Invoke(new LocalAttackAreaResolution(
+                worldHitbox,
+                currentTime,
+                skillId,
+                1,
+                ownerLane));
+        }
+
+        internal static bool ShouldDispatchLocalAttackAreaResolution(
+            LocalAttackAreaOwnerLane ownerLane,
+            int resolvedOwnerCount)
+        {
+            return ownerLane != LocalAttackAreaOwnerLane.None
+                   && resolvedOwnerCount > 0;
         }
 
         private void TryRegisterSecondaryFootholdOwner(Rectangle worldHitbox, int currentTime, int skillId)
@@ -26695,7 +26900,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || activeTemporaryStatsByLabel.ContainsKey(StrengthBuffLabel)
                     || activeTemporaryStatsByLabel.ContainsKey(DexterityBuffLabel)
                     || activeTemporaryStatsByLabel.ContainsKey(IntelligenceBuffLabel)
-                    || activeTemporaryStatsByLabel.ContainsKey(LuckBuffLabel);
+                    || activeTemporaryStatsByLabel.ContainsKey(LuckBuffLabel)
+                    || IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
             }
 
             if (string.Equals(label, BoosterBuffLabel, StringComparison.OrdinalIgnoreCase))

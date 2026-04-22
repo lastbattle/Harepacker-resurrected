@@ -1154,6 +1154,10 @@ namespace HaCreator.MapSimulator
                 skillEntries.Add((primarySkill, primaryLevelData));
             }
 
+            int resolvedHostileCompanionLevel = ResolveRemoteAffectedAreaHostileCompanionSkillLevel(
+                skillLevel,
+                primaryLevelData);
+
             if (supportSkills != null)
             {
                 for (int i = 0; i < supportSkills.Length; i++)
@@ -1166,7 +1170,7 @@ namespace HaCreator.MapSimulator
 
                     SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(
                         supportSkill,
-                        skillLevel,
+                        resolvedHostileCompanionLevel,
                         preferPvpLevelData);
                     if (supportLevelData != null)
                     {
@@ -1189,6 +1193,13 @@ namespace HaCreator.MapSimulator
             }
 
             return hostileRuntimes;
+        }
+
+        internal static int ResolveRemoteAffectedAreaHostileCompanionSkillLevel(
+            int runtimeSkillLevel,
+            SkillLevelData primaryLevelData)
+        {
+            return ResolveRemoteAffectedAreaSupportSkillLevel(runtimeSkillLevel, primaryLevelData);
         }
 
         private static SkillLevelData ResolveRemoteAffectedAreaSkillLevel(

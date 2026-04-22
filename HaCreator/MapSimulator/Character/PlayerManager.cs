@@ -1546,6 +1546,26 @@ namespace HaCreator.MapSimulator.Character
             return _mobStatusController.TryGetFearVisualState(currentTime, out intensity, out remainingDurationMs);
         }
 
+        internal bool IsInteractPressedForWorldInput()
+        {
+            if (Input == null)
+            {
+                return false;
+            }
+
+            if (IsInteractBlockedByMobStatus(_currentMobStatusState))
+            {
+                return false;
+            }
+
+            return Input.IsPressed(InputAction.Interact);
+        }
+
+        internal static bool IsInteractBlockedByMobStatus(PlayerMobStatusFrameState state)
+        {
+            return state.MovementLocked || state.ForcedHorizontalDirection != 0;
+        }
+
         internal int AdjustMobAffectedExperienceReward(int baseAmount, int currentTime)
         {
             return _mobStatusController?.AdjustExperienceReward(baseAmount, currentTime) ?? Math.Max(0, baseAmount);
@@ -1824,6 +1844,8 @@ namespace HaCreator.MapSimulator.Character
                 inputState.AttackPressed = false;
                 inputState.Pickup = false;
                 inputState.PickupPressed = false;
+                inputState.Interact = false;
+                inputState.InteractPressed = false;
                 return inputState;
             }
 
@@ -1843,6 +1865,8 @@ namespace HaCreator.MapSimulator.Character
                 inputState.AttackPressed = false;
                 inputState.Pickup = false;
                 inputState.PickupPressed = false;
+                inputState.Interact = false;
+                inputState.InteractPressed = false;
             }
 
             if (_currentMobStatusState.JumpBlocked)

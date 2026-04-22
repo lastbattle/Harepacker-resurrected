@@ -682,6 +682,16 @@ namespace HaCreator.MapSimulator
                 return observedOwnerId;
             }
 
+            if (TryResolveObservedDropPartyLinkedOwnerAlias(
+                _observedDropPartyActorParents,
+                _observedDropPartyActorOwners,
+                actorId,
+                out int linkedOwnerCharacterId,
+                out _))
+            {
+                return linkedOwnerCharacterId;
+            }
+
             return actorId;
         }
 
@@ -1282,6 +1292,74 @@ namespace HaCreator.MapSimulator
             return rootActorId;
         }
 
+        internal static bool TryResolveObservedDropPartyLinkedOwnerAlias(
+            System.Collections.Generic.IDictionary<int, int> actorParents,
+            IReadOnlyDictionary<int, int> actorOwners,
+            int actorId,
+            out int ownerCharacterId,
+            out int slotIndex)
+        {
+            ownerCharacterId = 0;
+            slotIndex = 0;
+            if (actorParents == null || actorId == 0 || !actorParents.ContainsKey(actorId))
+            {
+                return false;
+            }
+
+            int targetRoot = FindObservedDropPartyActorRoot(actorParents, actorId);
+            int[] linkedActorIds = actorParents.Keys.ToArray();
+
+            bool foundOwnerAlias = false;
+            int bestOwnerAliasSlot = int.MaxValue;
+            int bestOwnerAliasOwnerId = 0;
+            foreach (int linkedActorId in linkedActorIds)
+            {
+                if (FindObservedDropPartyActorRoot(actorParents, linkedActorId) != targetRoot)
+                {
+                    continue;
+                }
+
+                if (!TryDecodeRemotePetPickupActorId(linkedActorId, out int decodedOwnerCharacterId, out int decodedSlotIndex))
+                {
+                    continue;
+                }
+
+                if (!foundOwnerAlias || decodedSlotIndex < bestOwnerAliasSlot)
+                {
+                    bestOwnerAliasOwnerId = decodedOwnerCharacterId;
+                    bestOwnerAliasSlot = decodedSlotIndex;
+                    foundOwnerAlias = true;
+                }
+            }
+
+            if (foundOwnerAlias && bestOwnerAliasOwnerId > 0)
+            {
+                ownerCharacterId = bestOwnerAliasOwnerId;
+                slotIndex = bestOwnerAliasSlot;
+                return true;
+            }
+
+            foreach (int linkedActorId in linkedActorIds)
+            {
+                if (FindObservedDropPartyActorRoot(actorParents, linkedActorId) != targetRoot)
+                {
+                    continue;
+                }
+
+                if (linkedActorId != 0
+                    && actorOwners != null
+                    && actorOwners.TryGetValue(linkedActorId, out int observedOwnerCharacterId)
+                    && observedOwnerCharacterId > 0)
+                {
+                    ownerCharacterId = observedOwnerCharacterId;
+                    slotIndex = 0;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         internal static bool ShouldSurfacePickupNotice(
             DropOwnershipType ownershipType,
             int ownerId,
@@ -1539,6 +1617,21 @@ namespace HaCreator.MapSimulator
                     {
                         RememberPredictedRemotePetPickupActorPosition(actorId, remotePetPosition);
                         return remotePetPosition;
+                    }
+
+                    if (TryResolveObservedDropPartyLinkedOwnerAlias(
+                            _observedDropPartyActorParents,
+                            _observedDropPartyActorOwners,
+                            actorId,
+                            out int linkedOwnerCharacterId,
+                            out int linkedSlotIndex)
+                        && TryResolveRemotePetPickupPositionByOwnerForPacketParity(
+                            linkedOwnerCharacterId,
+                            linkedSlotIndex,
+                            actorId,
+                            out Vector2 linkedOwnerScopedPetPosition))
+                    {
+                        return linkedOwnerScopedPetPosition;
                     }
 
                     if (TryResolveRemotePetPickupOwnerAndSlotForPacketParity(

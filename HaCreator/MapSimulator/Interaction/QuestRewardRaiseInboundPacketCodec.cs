@@ -18,6 +18,11 @@ namespace HaCreator.MapSimulator.Interaction
         QuestRewardRaisePacketPayload Payload,
         byte[] RawPayload);
 
+    internal sealed record QuestRewardRaiseClientCompactPutItemPayload(
+        MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType InventoryType,
+        int SlotIndex,
+        int ItemId);
+
     internal static class QuestRewardRaiseInboundPacketCodec
     {
         internal static bool TryDecodeClientPutItemAddOrConfirm(
@@ -93,6 +98,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             packet = new QuestRewardRaiseInboundPacket(kind, success, decodedPayload, payload.ToArray());
+            return true;
+        }
+
+        internal static bool TryDecodeClientCompactPutItemPayload(
+            byte[] payload,
+            out QuestRewardRaiseClientCompactPutItemPayload decoded,
+            out string error)
+        {
+            decoded = null;
+            error = null;
+            if (payload == null)
+            {
+                error = "Raise compact PutItem payload is missing.";
+                return false;
+            }
+
+            const int compactPayloadLength = sizeof(byte) + sizeof(ushort) + sizeof(int);
+            if (payload.Length != compactPayloadLength)
+            {
+                error = $"Raise compact PutItem payload must be exactly {compactPayloadLength} bytes.";
+                return false;
+            }
+
+            MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType inventoryType =
+                (MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType)payload[0];
+            ushort oneBasedSlot = BitConverter.ToUInt16(payload, sizeof(byte));
+            int itemId = BitConverter.ToInt32(payload, sizeof(byte) + sizeof(ushort));
+            decoded = new QuestRewardRaiseClientCompactPutItemPayload(
+                inventoryType,
+                oneBasedSlot > 0 ? oneBasedSlot - 1 : -1,
+                Math.Max(0, itemId));
             return true;
         }
 

@@ -1745,7 +1745,9 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> stagedEntries =
                 (mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) > 0
                     ? mtsStageWindow.ItcPacketCatalogEntries
-                    : mtsStageWindow?.ItcWishPacketEntries;
+                    : (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) > 0
+                        ? mtsStageWindow.ItcWishPacketEntries
+                        : mtsStageWindow?.ItcResultPacketEntries;
             if (mtsStageWindow?.ItcWishPacketEntries.Count > 0)
             {
                 lines.Add($"Wish-sale rows {mtsStageWindow.ItcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
@@ -1753,6 +1755,10 @@ namespace HaCreator.MapSimulator
             else if ((mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) > 0)
             {
                 lines.Add($"Main-list rows {mtsStageWindow.ItcPacketCatalogEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
+            }
+            else if ((mtsStageWindow?.ItcResultPacketEntries.Count ?? 0) > 0)
+            {
+                lines.Add($"Fallback result rows {mtsStageWindow.ItcResultPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
             }
 
             if (stagedEntries != null)
@@ -1786,29 +1792,45 @@ namespace HaCreator.MapSimulator
             bool shouldUsePacketFallback = snapshot == null
                 || (snapshot.TotalCount <= 0
                     && ((mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) > 0
-                        || (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) > 0));
+                        || (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) > 0
+                        || (mtsStageWindow?.ItcResultPacketEntries.Count ?? 0) > 0));
             if (shouldUsePacketFallback)
             {
                 IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> sourceEntries =
                     (mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) > 0
                         ? mtsStageWindow.ItcPacketCatalogEntries
-                        : mtsStageWindow?.ItcWishPacketEntries;
+                        : (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) > 0
+                            ? mtsStageWindow.ItcWishPacketEntries
+                            : mtsStageWindow?.ItcResultPacketEntries;
                 List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(sourceEntries);
                 int sortType = mtsStageWindow?.ItcNormalItemSortType ?? 0;
                 int category = mtsStageWindow?.ItcNormalItemCategory ?? 0;
                 int subCategory = mtsStageWindow?.ItcNormalItemSubCategory ?? 0;
                 int totalCount = mtsStageWindow?.ItcCurrentCategoryItemCount ?? 0;
                 bool usingWishEntries = (mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) <= 0 && (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) > 0;
+                bool usingResultEntries = (mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) <= 0
+                    && (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) <= 0
+                    && (mtsStageWindow?.ItcResultPacketEntries.Count ?? 0) > 0;
                 return new CashShopStageChildWindow.ListOwnerState
                 {
-                    PaneLabel = usingWishEntries ? "CITC wish-sale list" : "CITC packet list",
+                    PaneLabel = usingWishEntries
+                        ? "CITC wish-sale list"
+                        : usingResultEntries
+                            ? "CITC result fallback"
+                            : "CITC packet list",
                     BrowseModeLabel = $"Sort {sortType.ToString(CultureInfo.InvariantCulture)}",
                     CategoryLabel = $"Category {category.ToString(CultureInfo.InvariantCulture)}/{subCategory.ToString(CultureInfo.InvariantCulture)}",
                     FooterMessage = mtsStageWindow?.ItcNormalItemLastSummary ?? "CITC packet list unavailable.",
                     SelectedEntryDetail = packetEntries.FirstOrDefault()?.Detail ?? string.Empty,
                     SelectedIndex = packetEntries.Count > 0 ? 0 : -1,
                     ScrollOffset = 0,
-                    TotalCount = Math.Max(usingWishEntries ? (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) : totalCount, packetEntries.Count),
+                    TotalCount = Math.Max(
+                        usingWishEntries
+                            ? (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0)
+                            : usingResultEntries
+                                ? (mtsStageWindow?.ItcResultPacketEntries.Count ?? 0)
+                                : totalCount,
+                        packetEntries.Count),
                     PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
                     HasKeyFocusCanvas = true,
                     VisibleEntries = packetEntries,
@@ -2234,25 +2256,24 @@ namespace HaCreator.MapSimulator
                     out bool receiveGiftAccepted,
                     out int receiveGiftNextIndex))
             {
-                string message = string.Join(
-                    " ",
-                    new[] { receiveGiftSummary, receiveGiftOwnerNotice }
-                        .Where(part => !string.IsNullOrWhiteSpace(part)));
-                if (!string.IsNullOrWhiteSpace(message))
+                if (receiveGiftAccepted)
                 {
-                    if (receiveGiftAccepted)
-                    {
-                        _chat?.AddSystemMessage(message, currTickCount);
-                    }
-                    else
+                    ShowCashReceiveGiftFollowUpNoticeDialog(
+                        stageWindow,
+                        receiveGiftNextIndex,
+                        receiveGiftOwnerNotice,
+                        receiveGiftSummary);
+                }
+                else
+                {
+                    string message = string.Join(
+                        " ",
+                        new[] { receiveGiftSummary, receiveGiftOwnerNotice }
+                            .Where(part => !string.IsNullOrWhiteSpace(part)));
+                    if (!string.IsNullOrWhiteSpace(message))
                     {
                         _chat?.AddErrorMessage(message, currTickCount);
                     }
-                }
-
-                if (receiveGiftNextIndex < 0)
-                {
-                    return;
                 }
             }
 
@@ -2819,11 +2840,7 @@ namespace HaCreator.MapSimulator
             string dispatchSummary = DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText);
             string message = stageWindow.StageReceiveGiftAcceptRequest(selectedGiftIndex, normalizedReplyText, dispatchSummary);
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
-            int nextGiftIndex = selectedGiftIndex + 1 < stageWindow.CashGiftPacketEntries.Count
-                ? selectedGiftIndex + 1
-                : -1;
-            string ownerNotice = stageWindow.BuildReceiveGiftAcceptOwnerNotice(selectedGift, normalizedReplyText);
-            ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, message);
+            _chat?.AddSystemMessage(message, currTickCount);
         }
 
         private static IEnumerable<string> BuildCashReceiveGiftSpecialistMessages(

@@ -97,6 +97,7 @@ namespace HaCreator.MapSimulator.UI
             ("seal", "Seal"),
             ("darkness", "Darkness"),
             ("weakness", "Weakness"),
+            ("awake", "Sleep"),
             ("curse", "Curse"),
             ("painmark", "Pain Mark"),
             ("stun", "Stun"),

@@ -205,7 +205,7 @@ namespace HaCreator.MapSimulator
                 ShowRewardRouletteVisual = TryShowPacketOwnedRewardRouletteEffect,
                 ResolveMobName = ResolvePacketFieldFeedbackMobName,
                 ResolveMobMaxHp = ResolvePacketFieldFeedbackMobMaxHp,
-                ResolveMapName = mapId => ResolveMapTransferDisplayName(mapId, null),
+                ResolveMapName = ResolvePacketOwnedWhisperMapLocationName,
                 HasMapTransferTarget = HasPacketOwnedWhisperTransferTarget,
                 ResolveItemName = ResolvePacketFieldFeedbackItemName,
                 ResolveChannelName = ResolvePacketFieldFeedbackChannelName,
@@ -246,23 +246,19 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryGetVisiblePacketOwnedWhisperUserListWindow(out _))
-            {
-                ShowUtilityFeedbackMessage(
-                    $"Ignored packet-owned user-list location update for {target.Trim()} because the SocialList owner is not active.");
-                return;
-            }
-
             _socialListRuntime.SetPacketWhisperLocationInfo(target, locationText, result, value);
             string normalizedLocation = locationText?.Trim() ?? string.Empty;
+            string ownerSuffix = TryGetPacketOwnedWhisperUserListWindow(out _)
+                ? " and invalidated the user-list owner."
+                : " without an active user-list owner window.";
             ShowUtilityFeedbackMessage(string.IsNullOrWhiteSpace(normalizedLocation)
-                ? $"Invalidated packet-owned user-list location for {target.Trim()} (result={result}, value={value})."
-                : $"Updated packet-owned user-list location for {target.Trim()} (result={result}, value={value}).");
+                ? $"Invalidated packet-owned user-list location for {target.Trim()} (result={result}, value={value}){ownerSuffix}"
+                : $"Updated packet-owned user-list location for {target.Trim()} (result={result}, value={value}){ownerSuffix}");
         }
 
         private void InvalidatePacketOwnedWhisperUserListWindow()
         {
-            if (!TryGetVisiblePacketOwnedWhisperUserListWindow(out SocialListWindow socialListWindow))
+            if (!TryGetPacketOwnedWhisperUserListWindow(out SocialListWindow socialListWindow))
             {
                 return;
             }
@@ -270,10 +266,10 @@ namespace HaCreator.MapSimulator
             socialListWindow.InvalidatePacketOwnedSnapshot();
         }
 
-        private bool TryGetVisiblePacketOwnedWhisperUserListWindow(out SocialListWindow socialListWindow)
+        private bool TryGetPacketOwnedWhisperUserListWindow(out SocialListWindow socialListWindow)
         {
             socialListWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.SocialList) as SocialListWindow;
-            return socialListWindow != null && socialListWindow.IsVisible;
+            return socialListWindow != null;
         }
 
         private void ShowPacketOwnedFieldWarning(string message)
@@ -616,6 +612,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!HasPacketOwnedWhisperTransferTarget(mapId))
+            {
+                ShowUtilityFeedbackMessage(
+                    $"Whisper follow transfer is unavailable because map {mapId} has no packet-owned follow target metadata.");
+                return false;
+            }
+
             string restrictionMessage = GetCurrentMapTransferRestrictionMessage();
             if (!string.IsNullOrWhiteSpace(restrictionMessage))
             {
@@ -752,22 +755,30 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (_mapBoard?.MapInfo?.id == mapId)
+            return !string.IsNullOrWhiteSpace(ResolvePacketOwnedWhisperMapLocationName(mapId));
+        }
+
+        private string ResolvePacketOwnedWhisperMapLocationName(int mapId)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
             {
-                return true;
+                return string.Empty;
             }
 
-            if (ResolveMapTransferDestinationMapInfo(mapId) != null)
+            if (TryResolveMapNamePartsFromCache(mapId, out string mapName, out string streetName))
             {
-                return true;
+                if (!string.IsNullOrWhiteSpace(mapName))
+                {
+                    return mapName.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(streetName))
+                {
+                    return streetName.Trim();
+                }
             }
 
-            if (TryResolveMapDisplayNameFromCache(mapId, out _))
-            {
-                return true;
-            }
-
-            return TryGetMapImageForMetadataLookup(mapId) != null;
+            return string.Empty;
         }
 
         private void ShowPacketOwnedBossTimerClock(PacketFieldBossTimerVisualState state)

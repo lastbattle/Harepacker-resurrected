@@ -696,6 +696,7 @@ namespace HaCreator.MapSimulator
                 bool replaceExisting = ReadBoolean(payloadRoot, true, "replaceExisting", "replace", "overwrite", "replace_existing");
                 bool? saveAccepted = ReadNullableBoolean(payloadRoot, "success", "succeeded", "ok", "accepted", "saved", "saveAccepted", "save_accepted", "saveOk", "save_ok", "acknowledged", "ack");
                 bool? saveRejected = ReadNullableBoolean(payloadRoot, "failure", "failed", "rejected", "error", "denied", "saveRejected", "save_rejected", "saveFail", "save_fail", "nack", "reject");
+                int? saveResultCode = ReadMonsterBookSaveResultCode(payloadRoot);
                 int? requestId = NormalizePositiveInt(ReadInt(payloadRoot, "requestId", "requestToken", "requestSeq", "sequence", "request_id", "requestID", "reqId", "requestNo"));
                 int? characterId = NormalizePositiveInt(ReadInt(payloadRoot, "characterId", "charId", "id", "character_id", "ownerId", "owner_id"));
                 string characterName = ReadString(payloadRoot, "characterName", "charName", "name", "ownerName", "character_name", "owner_name");
@@ -719,11 +720,17 @@ namespace HaCreator.MapSimulator
                     saveRejected = ReadNullableBoolean(root, "failure", "failed", "rejected", "error", "denied", "saveRejected", "save_rejected", "saveFail", "save_fail", "nack", "reject");
                 }
 
+                if (!saveResultCode.HasValue && usedNestedRoot)
+                {
+                    saveResultCode = ReadMonsterBookSaveResultCode(root);
+                }
+
                 if (TryResolveMonsterBookOwnershipSaveResultJsonObject(payloadRoot, root, usedNestedRoot, out JsonElement saveResultElement))
                 {
                     requestId ??= NormalizePositiveInt(ReadInt(saveResultElement, "requestId", "requestToken", "requestSeq", "sequence", "token", "seq", "request_id", "requestID", "reqId", "requestNo"));
                     saveAccepted ??= ReadNullableBoolean(saveResultElement, "success", "succeeded", "ok", "accepted", "saved", "saveAccepted", "save_accepted", "saveOk", "save_ok", "acknowledged", "ack");
                     saveRejected ??= ReadNullableBoolean(saveResultElement, "failure", "failed", "rejected", "error", "denied", "saveRejected", "save_rejected", "saveFail", "save_fail", "nack", "reject");
+                    saveResultCode ??= ReadMonsterBookSaveResultCode(saveResultElement);
                     if (string.IsNullOrWhiteSpace(statusText))
                     {
                         statusText = ReadString(saveResultElement, "statusText", "message", "text", "notice", "status_text", "status", "detail");
@@ -733,6 +740,11 @@ namespace HaCreator.MapSimulator
                 if (!saveAccepted.HasValue && saveRejected == true)
                 {
                     saveAccepted = false;
+                }
+
+                if (!saveAccepted.HasValue && saveResultCode.HasValue)
+                {
+                    saveAccepted = ResolveMonsterBookSaveAcceptedFromResultCode(saveResultCode.Value);
                 }
 
                 if (payloadRoot.TryGetProperty("owner", out JsonElement ownerElement)
@@ -2071,6 +2083,25 @@ namespace HaCreator.MapSimulator
             }
 
             return null;
+        }
+
+        private static int? ReadMonsterBookSaveResultCode(JsonElement root)
+        {
+            return ReadInt(root,
+                "result",
+                "resultCode",
+                "result_code",
+                "errorCode",
+                "error_code",
+                "code",
+                "statusCode",
+                "status_code");
+        }
+
+        private static bool ResolveMonsterBookSaveAcceptedFromResultCode(int resultCode)
+        {
+            // Save-ack payloads in this owner seam commonly use 0=success and non-zero=failure.
+            return resultCode == 0;
         }
 
         private static bool ReadBoolean(JsonElement root, bool defaultValue, params string[] names)

@@ -587,6 +587,19 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
+                    if (request.SourceInventoryIndex < 0)
+                    {
+                        rejectReason = "Inventory-operation add entry is missing the requested source inventory slot metadata.";
+                        return false;
+                    }
+
+                    short expectedSourcePosition = (short)(request.SourceInventoryIndex + 1);
+                    if (targetPosition != expectedSourcePosition)
+                    {
+                        rejectReason = "Inventory-operation add entry did not return the displaced target-slot item to the requested source inventory slot.";
+                        return false;
+                    }
+
                     bool sawExpectedTargetRemoveForInventoryToCharacter = inventoryType switch
                     {
                         ClientEquipInventoryType => operationContext.SawExpectedTargetEquipRemove,
@@ -1544,9 +1557,15 @@ namespace HaCreator.MapSimulator.UI
                            && IsExpectedCharacterSourceInventory(request, inventoryType)
                            && targetPosition == ToClientEquipPosition(request.SourceEquipSlot.Value);
                 case EquipmentChangeRequestKind.InventoryToCharacter:
-                    return request.TargetEquipSlot.HasValue
-                           && IsSupportedClientCharacterInventoryType(inventoryType)
-                           && targetPosition > 0;
+                    if (!request.TargetEquipSlot.HasValue
+                        || request.SourceInventoryIndex < 0)
+                    {
+                        return false;
+                    }
+
+                    short expectedSourcePosition = (short)(request.SourceInventoryIndex + 1);
+                    return inventoryType == (byte)request.SourceInventoryType
+                           && targetPosition == expectedSourcePosition;
                 default:
                     return false;
             }

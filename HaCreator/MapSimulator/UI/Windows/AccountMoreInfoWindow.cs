@@ -63,7 +63,10 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _comboBoxButtonTexture;
         private Texture2D _checkboxUncheckedTexture;
         private Texture2D _checkboxCheckedTexture;
+        private Texture2D _checkboxUncheckedHoverTexture;
+        private Texture2D _checkboxCheckedHoverTexture;
         private Texture2D _fallbackPixelTexture;
+        private MouseState _currentMouseState;
 
         internal AccountMoreInfoWindow(IDXObject frame, string windowName)
             : base(frame)
@@ -97,13 +100,17 @@ namespace HaCreator.MapSimulator.UI
             Texture2D comboBoxMiddleTexture,
             Texture2D comboBoxButtonTexture,
             Texture2D checkboxUncheckedTexture,
-            Texture2D checkboxCheckedTexture)
+            Texture2D checkboxCheckedTexture,
+            Texture2D checkboxUncheckedHoverTexture,
+            Texture2D checkboxCheckedHoverTexture)
         {
             _comboBoxLeftTexture = comboBoxLeftTexture;
             _comboBoxMiddleTexture = comboBoxMiddleTexture;
             _comboBoxButtonTexture = comboBoxButtonTexture;
             _checkboxUncheckedTexture = checkboxUncheckedTexture;
             _checkboxCheckedTexture = checkboxCheckedTexture;
+            _checkboxUncheckedHoverTexture = checkboxUncheckedHoverTexture;
+            _checkboxCheckedHoverTexture = checkboxCheckedHoverTexture;
         }
 
         internal void InitializeActionButtons(UIObject okButton, UIObject cancelButton)
@@ -147,6 +154,7 @@ namespace HaCreator.MapSimulator.UI
 
             KeyboardState keyboard = Keyboard.GetState();
             MouseState mouse = Mouse.GetState();
+            _currentMouseState = mouse;
             if (IsVisible && snapshot.IsOpen)
             {
                 HandleKeyboardInput(keyboard);
@@ -272,7 +280,8 @@ namespace HaCreator.MapSimulator.UI
                 bool selected = i < safeSelections.Count && safeSelections[i];
                 Point relativePosition = positions[i];
                 Rectangle bounds = new(Position.X + relativePosition.X, Position.Y + relativePosition.Y, CheckboxSize, CheckboxSize);
-                Texture2D checkboxTexture = selected ? _checkboxCheckedTexture : _checkboxUncheckedTexture;
+                bool hovered = bounds.Contains(_currentMouseState.X, _currentMouseState.Y);
+                Texture2D checkboxTexture = ResolveCheckboxTexture(selected, hovered);
                 if (checkboxTexture != null)
                 {
                     sprite.Draw(checkboxTexture, new Vector2(bounds.X, bounds.Y), Color.White);
@@ -303,6 +312,28 @@ namespace HaCreator.MapSimulator.UI
                         66f);
                 }
             }
+        }
+
+        internal static int ResolveCheckboxFrameIndexForTesting(bool selected, bool hovered)
+        {
+            if (!hovered)
+            {
+                return selected ? 1 : 0;
+            }
+
+            return selected ? 3 : 2;
+        }
+
+        private Texture2D ResolveCheckboxTexture(bool selected, bool hovered)
+        {
+            return ResolveCheckboxFrameIndexForTesting(selected, hovered) switch
+            {
+                0 => _checkboxUncheckedTexture,
+                1 => _checkboxCheckedTexture,
+                2 => _checkboxUncheckedHoverTexture ?? _checkboxUncheckedTexture,
+                3 => _checkboxCheckedHoverTexture ?? _checkboxCheckedTexture,
+                _ => selected ? _checkboxCheckedTexture : _checkboxUncheckedTexture
+            };
         }
 
         private void HandleKeyboardInput(KeyboardState keyboard)

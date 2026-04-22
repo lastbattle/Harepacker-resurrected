@@ -135,21 +135,15 @@ namespace HaCreator.MapSimulator.Fields
                     state.IsPlayerActive,
                     state.HasReadyFieldInterface));
 
-            if (state.HasReadyFieldInterface)
+            if (shouldKeepPending)
             {
-                if (!shouldKeepPending)
-                {
-                    return QueuedRetryDecision.Clear;
-                }
-
-                return state.HasBoundPlayer && state.IsPlayerActive
-                    ? QueuedRetryDecision.ReplayHandleUpKeyDown
-                    : QueuedRetryDecision.KeepPending;
+                return QueuedRetryDecision.KeepPending;
             }
 
-            return shouldKeepPending
-                ? QueuedRetryDecision.KeepPending
-                : QueuedRetryDecision.Clear;
+            // Once one-time ownership is complete and interface admission is recovered,
+            // the queued path must replay through HandleUpKeyDown so the pending owner is
+            // consumed by the same admission seam used by TryPassiveTransferField.
+            return QueuedRetryDecision.ReplayHandleUpKeyDown;
         }
 
         public static bool ShouldCancelQueuedRetryOnHorizontalKeyDown(

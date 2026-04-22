@@ -2623,7 +2623,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateOneADayRewardSessionObject(OneADayOwnerState state, int sessionByte)
         {
-            bool packetOwned = state?.HasPacketRewardSessionByte == true;
+            bool packetOwned = state?.HasPacketRewardSessionByte ?? _oneADayRewardSessionPacketOwned;
             bool pending = _oneADayPending;
             int countdownDeadlineTick = _oneADayCountdownDeadlineTick;
             string packetStateSignature = state?.PacketStateSignature ?? string.Empty;
@@ -2634,17 +2634,18 @@ namespace HaCreator.MapSimulator.UI
                 || _oneADayRewardSessionObject.IsPending != pending
                 || _oneADayRewardSessionObject.CountdownDeadlineTick != countdownDeadlineTick
                 || !string.Equals(_oneADayRewardSessionObject.PacketStateSignature, packetStateSignature, StringComparison.Ordinal);
+            int revision = Math.Max(_oneADayRewardSessionObject.Revision, _oneADayRewardSessionRevision);
+            if (changed)
+            {
+                revision++;
+            }
 
             _oneADayRewardSessionObject.PacketOwned = packetOwned;
             _oneADayRewardSessionObject.SessionByte = sessionByte;
             _oneADayRewardSessionObject.IsPending = pending;
             _oneADayRewardSessionObject.CountdownDeadlineTick = countdownDeadlineTick;
             _oneADayRewardSessionObject.PacketStateSignature = packetStateSignature;
-            _oneADayRewardSessionObject.Revision = _oneADayRewardSessionRevision;
-            if (changed)
-            {
-                _oneADayRewardSessionObject.Revision = Math.Max(_oneADayRewardSessionObject.Revision, _oneADayRewardSessionRevision + 1);
-            }
+            _oneADayRewardSessionObject.Revision = revision;
         }
 
         private string ResolveOneADayPlateName(OneADayOwnerState state)
@@ -2757,10 +2758,16 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
-            if (state == null || string.IsNullOrWhiteSpace(layerKey))
+            if (string.IsNullOrWhiteSpace(layerKey))
             {
                 return true;
+            }
+
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
+            {
+                // Prevent a transient full-plate stack before packet-backed owner state is seeded.
+                return string.Equals(layerKey, "NoItem", StringComparison.Ordinal);
             }
 
             if (string.Equals(layerKey, "Base01", StringComparison.Ordinal))

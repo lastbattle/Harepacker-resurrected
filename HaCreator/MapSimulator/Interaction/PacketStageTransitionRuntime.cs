@@ -29,6 +29,32 @@ namespace HaCreator.MapSimulator.Interaction
             0x20UL,
             0x40UL
         };
+        private static readonly ulong[] CharacterDataKnownSectionFlags =
+        {
+            CharacterDataStatFlag,
+            0x2UL,
+            0x4UL,
+            0x8UL,
+            0x10UL,
+            0x20UL,
+            0x40UL,
+            0x80UL,
+            CharacterDataSkillRecordFlag,
+            CharacterDataSkillExpirationFlag,
+            CharacterDataMiniGameRecordFlag,
+            CharacterDataRelationshipRecordFlag,
+            CharacterDataMapTransferFlag,
+            CharacterDataSkillCooldownFlag,
+            CharacterDataInt16ValueRecordFlag,
+            CharacterDataQuestRecordFlag,
+            CharacterDataShortFileTimeRecordFlag,
+            CharacterDataNewYearCardRecordFlag,
+            CharacterDataQuestExRecordFlag,
+            CharacterDataTwoIntValueRecordFlag,
+            CharacterDataWildHunterInfoFlag,
+            CharacterDataQuestCompleteRecordFlag,
+            CharacterDataVisitorQuestRecordFlag
+        };
 
         private const ulong CharacterDataSkillRecordFlag = 0x100UL;
         private const ulong CharacterDataStatFlag = 0x1UL;
@@ -1103,13 +1129,21 @@ namespace HaCreator.MapSimulator.Interaction
                     statTrailerByteCount = checked((int)(reader.BaseStream.Position - statTrailerStart));
                 }
 
+                int statSectionByteCount = checked(statByteCount + statTrailerByteCount);
+                Dictionary<ulong, int> decodedSectionByteCounts = EnsureCharacterDataKnownSectionByteCountDefaults(
+                    new Dictionary<ulong, int>
+                    {
+                        [CharacterDataStatFlag] = statSectionByteCount
+                    });
                 snapshot = snapshot with
                 {
                     CharacterDataDecodePreludeByteCount = 0,
                     CharacterDataDamageSeedByteCount = sizeof(int) * 3,
                     CharacterDataStatByteCount = statByteCount,
                     CharacterDataStatTrailerByteCount = statTrailerByteCount,
-                    CharacterDataDecodeByteCount = checked((int)(reader.BaseStream.Position - restorePosition))
+                    CharacterDataDecodeByteCount = checked((int)(reader.BaseStream.Position - restorePosition)),
+                    DecodedSectionFlags = CharacterDataStatFlag,
+                    DecodedSectionByteCounts = decodedSectionByteCounts
                 };
                 head = new PacketCharacterDataTransferHead(snapshot.FieldId, snapshot.PortalIndex, snapshot.Hp);
                 return true;
@@ -1197,6 +1231,12 @@ namespace HaCreator.MapSimulator.Interaction
                     statTrailerByteCount = checked((int)(reader.BaseStream.Position - statTrailerStart));
                 }
 
+                int statSectionByteCount = checked(statByteCount + statTrailerByteCount);
+                Dictionary<ulong, int> decodedSectionByteCounts = EnsureCharacterDataKnownSectionByteCountDefaults(
+                    new Dictionary<ulong, int>
+                    {
+                        [CharacterDataStatFlag] = statSectionByteCount
+                    });
                 snapshot = snapshot with
                 {
                     CombatOrders = combatOrders,
@@ -1218,7 +1258,8 @@ namespace HaCreator.MapSimulator.Interaction
                     CharacterDataDamageSeedByteCount = 0,
                     CharacterDataStatByteCount = statByteCount,
                     CharacterDataStatTrailerByteCount = statTrailerByteCount,
-                    DecodedSectionFlags = CharacterDataStatFlag
+                    DecodedSectionFlags = CharacterDataStatFlag,
+                    DecodedSectionByteCounts = decodedSectionByteCounts
                 };
 
                 snapshot = DecodeCharacterDataOwnedPreludeSections(reader, characterDataFlags, snapshot);
@@ -1243,6 +1284,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     CharacterDataDecodeByteCount = consumedBytes
                 };
+                snapshot = ApplyCharacterDataKnownSectionByteCountDefaults(snapshot);
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -3320,6 +3362,31 @@ namespace HaCreator.MapSimulator.Interaction
             return snapshot?.DecodedSectionByteCounts != null
                 ? new Dictionary<ulong, int>(snapshot.DecodedSectionByteCounts)
                 : new Dictionary<ulong, int>();
+        }
+
+        private static PacketCharacterDataSnapshot ApplyCharacterDataKnownSectionByteCountDefaults(PacketCharacterDataSnapshot snapshot)
+        {
+            Dictionary<ulong, int> byteCounts = EnsureCharacterDataKnownSectionByteCountDefaults(
+                CloneDecodedSectionByteCounts(snapshot));
+            return snapshot with
+            {
+                DecodedSectionByteCounts = byteCounts
+            };
+        }
+
+        private static Dictionary<ulong, int> EnsureCharacterDataKnownSectionByteCountDefaults(Dictionary<ulong, int> byteCounts)
+        {
+            byteCounts ??= new Dictionary<ulong, int>();
+            for (int index = 0; index < CharacterDataKnownSectionFlags.Length; index++)
+            {
+                ulong sectionFlag = CharacterDataKnownSectionFlags[index];
+                if (!byteCounts.ContainsKey(sectionFlag))
+                {
+                    byteCounts[sectionFlag] = 0;
+                }
+            }
+
+            return byteCounts;
         }
 
         private static int[] ReadCharacterDataMapTransferFields(BinaryReader reader, int count)

@@ -39,6 +39,9 @@ namespace HaCreator.MapSimulator.Effects
         /// <summary>Y offset for critical effect (above digits)</summary>
         public const int CRITICAL_EFFECT_OFFSET_Y = -30;
 
+        /// <summary>Leading horizontal padding applied by native critical-digit composition.</summary>
+        public const int CRITICAL_LEADING_SPACING_PX = 30;
+
         /// <summary>Stacking offset for multi-hit damage numbers (should be >= digit height)</summary>
         public const int MULTI_HIT_STACK_OFFSET_Y = 20;
 
@@ -562,6 +565,16 @@ namespace HaCreator.MapSimulator.Effects
             return colorType == DamageColorType.Red && isCritical;
         }
 
+        internal static bool IsSupportedSpecialTextName(string specialTextName)
+        {
+            return specialTextName != null
+                && (specialTextName.Equals("Miss", StringComparison.OrdinalIgnoreCase)
+                    || specialTextName.Equals("guard", StringComparison.OrdinalIgnoreCase)
+                    || specialTextName.Equals("shot", StringComparison.OrdinalIgnoreCase)
+                    || specialTextName.Equals("counter", StringComparison.OrdinalIgnoreCase)
+                    || specialTextName.Equals("resist", StringComparison.OrdinalIgnoreCase));
+        }
+
         internal static bool IsSupportedColorType(DamageColorType colorType)
         {
             return colorType == DamageColorType.Red
@@ -618,7 +631,7 @@ namespace HaCreator.MapSimulator.Effects
                 return (Array.Empty<DigitLayoutEntry>(), 0, 0);
 
             List<DigitLayoutEntry> entries = new(damageString.Length);
-            int accumulatedX = addCriticalSpacing ? 30 : 0;
+            int accumulatedX = addCriticalSpacing ? DamageNumberConstants.CRITICAL_LEADING_SPACING_PX : 0;
             int previousOverlap = 0;
             bool useLargeDigitSet = true;
             int minLeft = int.MaxValue;
@@ -724,6 +737,10 @@ namespace HaCreator.MapSimulator.Effects
                 largeDigitSet,
                 smallDigitSet,
                 useCriticalPresentation);
+            int criticalLeadingSpacing = useCriticalPresentation
+                ? DamageNumberConstants.CRITICAL_LEADING_SPACING_PX
+                : 0;
+            int composedWidth = Math.Max(0, totalWidth + criticalLeadingSpacing);
 
             int baselineY = DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y;
             PreparedDigitDrawInfo[] digits = new PreparedDigitDrawInfo[layoutEntries.Length];
@@ -736,7 +753,7 @@ namespace HaCreator.MapSimulator.Effects
                 digits[i] = new PreparedDigitDrawInfo(
                     entry.Digit,
                     entry.UseLargeDigitSet,
-                    entry.RelativeX - origin.X - leftOffset,
+                    entry.RelativeX - origin.X - leftOffset + criticalLeadingSpacing,
                     baselineY - origin.Y);
             }
 
@@ -746,7 +763,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 criticalBanner = new PreparedSpriteDrawInfo(
                     "effect",
-                    -(largeDigitSet.CriticalEffectOrigin.X - totalWidth / 2),
+                    -(largeDigitSet.CriticalEffectOrigin.X - composedWidth / 2),
                     DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y
                     + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y
                     - largeDigitSet.CriticalEffectOrigin.Y);
@@ -754,14 +771,14 @@ namespace HaCreator.MapSimulator.Effects
 
             return new PreparedDamageNumberVisual(
                 damageString,
-                Math.Max(0, totalWidth),
+                composedWidth,
                 ResolveCompositeCanvasHeight(),
                 DamageNumberFormatStringPoolId,
                 digits,
                 null,
                 criticalBanner,
                 BuildRecoveredCompositionTrace(
-                    Math.Max(0, totalWidth),
+                    composedWidth,
                     ResolveCompositeCanvasHeight(),
                     digits,
                     largeDigitSet,

@@ -709,6 +709,17 @@ namespace HaCreator.MapSimulator
                 && hasPendingAuthoritativeSubmitTransport;
         }
 
+        internal static bool HasPendingAuthoritativeSubmitTransportState(
+            bool usesOfficialSessionBridgeTransport,
+            bool hasSubmittedRawPacket,
+            bool bridgeHasQueuedPacket,
+            bool bridgeHasSentPacket)
+        {
+            return usesOfficialSessionBridgeTransport
+                && hasSubmittedRawPacket
+                && (bridgeHasQueuedPacket || bridgeHasSentPacket);
+        }
+
         private bool HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(string resultSource)
         {
             if (_lastPacketOwnedAntiMacroSubmitTransportPath != PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
@@ -732,14 +743,29 @@ namespace HaCreator.MapSimulator
 
         private bool HasPacketOwnedAntiMacroPendingAuthoritativeSubmitTransport()
         {
-            if (_lastPacketOwnedAntiMacroSubmitTransportPath != PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
-                && _lastPacketOwnedAntiMacroSubmitTransportPath != PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge)
-            {
-                return false;
-            }
-
-            return _lastPacketOwnedAntiMacroSubmittedRawPacket != null
+            bool usesOfficialSessionBridgeTransport =
+                _lastPacketOwnedAntiMacroSubmitTransportPath == PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
+                || _lastPacketOwnedAntiMacroSubmitTransportPath == PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge;
+            bool hasSubmittedRawPacket =
+                _lastPacketOwnedAntiMacroSubmittedRawPacket != null
                 && _lastPacketOwnedAntiMacroSubmittedRawPacket.Length > 0;
+            bool bridgeHasQueuedPacket = hasSubmittedRawPacket
+                && _localUtilityOfficialSessionBridge.HasQueuedOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket);
+            bool bridgeHasSentPacket = hasSubmittedRawPacket
+                && _localUtilityOfficialSessionBridge.HasSentOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket);
+
+            // Keep authoritative submit tracking only while opcode 117 is either
+            // still queued on the official-session bridge or has actually been
+            // injected into the bridged Maple socket.
+            return HasPendingAuthoritativeSubmitTransportState(
+                usesOfficialSessionBridgeTransport,
+                hasSubmittedRawPacket,
+                bridgeHasQueuedPacket,
+                bridgeHasSentPacket);
         }
 
         private bool HasPacketOwnedAntiMacroAuthoritativeResultEvidence(string resultSource, IReadOnlyList<byte> payload)

@@ -662,6 +662,7 @@ namespace HaCreator.MapSimulator
                 ScheduledAt = entry.ScheduledAt.Date,
                 SourceTick = entry.SourceTick == int.MinValue ? defaultSourceTick : entry.SourceTick,
                 IncludeInCalendar = entry.IncludeInCalendar,
+                RowLayout = entry.RowLayout ?? new EventEntryRowLayoutSnapshot(),
                 SortPriority = entry.SortPriority,
                 SortOrder = Math.Max(0, sortOrder)
             };

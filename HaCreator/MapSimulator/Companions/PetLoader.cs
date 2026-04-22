@@ -1266,8 +1266,19 @@ namespace HaCreator.MapSimulator.Companions
                 using (SDG graphics = SDG.FromImage(composedBitmap))
                 {
                     graphics.Clear(SD.Color.Transparent);
-                    graphics.DrawImage(baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
-                    graphics.DrawImage(overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
+                    bool drawOverlayAfterBase = ShouldDrawPetWearOverlayAfterBase(
+                        ResolveCanvasZ(baseCanvas),
+                        ResolveCanvasZ(overlayCanvas));
+                    if (drawOverlayAfterBase)
+                    {
+                        graphics.DrawImage(baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
+                        graphics.DrawImage(overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
+                    }
+                    else
+                    {
+                        graphics.DrawImage(overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
+                        graphics.DrawImage(baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
+                    }
                 }
 
                 Texture2D texture = composedBitmap.ToTexture2DAndDispose(_device);
@@ -1301,6 +1312,13 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return ClientPetActionDefaultDelay;
+        }
+
+        internal static bool ShouldDrawPetWearOverlayAfterBase(int? baseZ, int? overlayZ)
+        {
+            int resolvedBaseZ = baseZ ?? 0;
+            int resolvedOverlayZ = overlayZ ?? 0;
+            return resolvedOverlayZ >= resolvedBaseZ;
         }
 
         private static Rectangle ResolveCanvasBounds(WzCanvasProperty canvas, int width, int height)
@@ -1357,6 +1375,11 @@ namespace HaCreator.MapSimulator.Companions
 
             vector = new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
             return true;
+        }
+
+        private static int? ResolveCanvasZ(WzCanvasProperty canvas)
+        {
+            return GetIntValue(canvas?["z"]);
         }
 
         private static bool TryGetBitmapDimensions(SD.Bitmap bitmap, out int width, out int height)

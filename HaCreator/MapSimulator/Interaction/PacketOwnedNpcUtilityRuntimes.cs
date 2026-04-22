@@ -1637,7 +1637,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
-                    if (!HasPendingFeeCalculationRequest || _pendingFeeCalculationOwnerRowIndex <= 0)
+                    if (!HasPendingFeeCalculationRequest || _pendingFeeCalculationOwnerRowIndex < 0)
                     {
                         StatusMessage = "CStoreBankDlg ignored packet 370 subtype 36 because no selected-row SendCalculateFeeRequest owner state is pending.";
                         AppendNote(StatusMessage);
@@ -3285,13 +3285,33 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            short length = reader.ReadInt16();
-            if (length < 0 || stream.Length - stream.Position < length)
+            short lengthToken = reader.ReadInt16();
+            if (lengthToken == 0)
+            {
+                value = string.Empty;
+                return true;
+            }
+
+            if (lengthToken > 0)
+            {
+                int byteLength = lengthToken;
+                if (stream.Length - stream.Position < byteLength)
+                {
+                    return false;
+                }
+
+                value = Encoding.ASCII.GetString(reader.ReadBytes(byteLength)).Trim();
+                return true;
+            }
+
+            int charLength = -lengthToken;
+            int unicodeByteLength = checked(charLength * sizeof(char));
+            if (charLength <= 0 || stream.Length - stream.Position < unicodeByteLength)
             {
                 return false;
             }
 
-            value = Encoding.ASCII.GetString(reader.ReadBytes(length)).Trim();
+            value = Encoding.Unicode.GetString(reader.ReadBytes(unicodeByteLength)).Trim();
             return true;
         }
 
@@ -4237,14 +4257,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (elapsedTick > 0)
             {
                 _recoveryTotalUseItemSeconds += elapsedTick / 1000d;
-            }
+                if (_recoveryTotalUseItemSeconds > 0d)
+                {
+                    _recoveryForecastUsePerHour = (int)((_recoveryTotalUseItem / _recoveryTotalUseItemSeconds) * 3600d);
+                }
 
-            if (_recoveryTotalUseItemSeconds > 0d)
-            {
-                _recoveryForecastUsePerHour = (int)((_recoveryTotalUseItem / _recoveryTotalUseItemSeconds) * 3600d);
+                _recoveryLastUseItemTick = nowTick;
             }
-
-            _recoveryLastUseItemTick = nowTick;
         }
 
         private void CheckTotalDamageOverflow()

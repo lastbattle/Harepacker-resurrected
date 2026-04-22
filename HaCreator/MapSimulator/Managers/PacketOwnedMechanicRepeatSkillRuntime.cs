@@ -60,6 +60,12 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly Regex Sg88MoveActionFieldValueRegex = new(
             @"[""']?(?<label>(?:raw[\s_\-]*)?move[\s_\-]*action)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex Sg88VecCtrlMismatchClassAssignmentRegex = new(
+            @"[""']?(?<label>(?:vec(?:tor)?[\s_\-]*)?(?:ctrl|control|owner|state)[\s_\-]*(?:mismatch|diff|parity)|vec[\s_\-]*mismatch)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        private static readonly Regex Sg88VecCtrlFieldValueRegex = new(
+            @"[""']?(?<label>vec(?:tor)?[\s_\-]*(?:ctrl|control|owner|state)(?:[\s_\-]*byte)?|vec[\s_\-]*owner)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         public const int RepeatSkillModeEndAckPacketType = 1020;
         public const int Sg88ManualAttackConfirmPacketType = 1021;
@@ -803,6 +809,45 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
+        internal static bool TryExtractSg88ReplayParityVecCtrlMismatchClass(
+            string decodeDetail,
+            out string mismatchClass)
+        {
+            mismatchClass = null;
+            if (string.IsNullOrWhiteSpace(decodeDetail))
+            {
+                return false;
+            }
+
+            if (TryExtractSg88ReplayParityVecCtrlMismatchClassByRegex(
+                    decodeDetail,
+                    Sg88VecCtrlMismatchClassAssignmentRegex,
+                    out mismatchClass)
+                || TryExtractSg88ReplayParityVecCtrlMismatchClassByRegex(
+                    decodeDetail,
+                    Sg88VecCtrlFieldValueRegex,
+                    out mismatchClass))
+            {
+                return true;
+            }
+
+            if (decodeDetail.IndexOf("vecCtrlHighBitsOnly", StringComparison.OrdinalIgnoreCase) >= 0
+                || decodeDetail.IndexOf("vectorControlHighBitsOnly", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                mismatchClass = "highBitsOnly";
+                return true;
+            }
+
+            if (decodeDetail.IndexOf("vecCtrlLowBitChanged", StringComparison.OrdinalIgnoreCase) >= 0
+                || decodeDetail.IndexOf("vectorControlLowBitChanged", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                mismatchClass = "lowBitChanged";
+                return true;
+            }
+
+            return false;
+        }
+
         private static bool TryExtractSg88ReplayParityMoveActionMismatchClassByRegex(
             string decodeDetail,
             Regex matcher,
@@ -815,6 +860,29 @@ namespace HaCreator.MapSimulator.Managers
                 Group valueGroup = match.Groups["value"];
                 if (!valueGroup.Success
                     || !TryNormalizeSg88MoveActionMismatchClassToken(valueGroup.Value, out string normalizedClass))
+                {
+                    continue;
+                }
+
+                mismatchClass = normalizedClass;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryExtractSg88ReplayParityVecCtrlMismatchClassByRegex(
+            string decodeDetail,
+            Regex matcher,
+            out string mismatchClass)
+        {
+            mismatchClass = null;
+            MatchCollection matches = matcher.Matches(decodeDetail);
+            foreach (Match match in matches.Cast<Match>())
+            {
+                Group valueGroup = match.Groups["value"];
+                if (!valueGroup.Success
+                    || !TryNormalizeSg88VecCtrlMismatchClassToken(valueGroup.Value, out string normalizedClass))
                 {
                     continue;
                 }
@@ -856,6 +924,53 @@ namespace HaCreator.MapSimulator.Managers
                 case "changedlowbits":
                 case "moveactionlowbitchanged":
                     mismatchClass = "lowBitChanged";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryNormalizeSg88VecCtrlMismatchClassToken(string token, out string mismatchClass)
+        {
+            mismatchClass = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalized = token.Trim()
+                .Trim('"', '\'')
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            switch (normalized)
+            {
+                case "highbitsonly":
+                case "vecctrlhighbitsonly":
+                case "vectorcontrolhighbitsonly":
+                case "samelowbit":
+                case "samelowbits":
+                    mismatchClass = "highBitsOnly";
+                    return true;
+                case "lowbitchanged":
+                case "differentlowbit":
+                case "differentlowbits":
+                case "changedlowbit":
+                case "changedlowbits":
+                case "vecctrllowbitchanged":
+                case "vectorcontrollowbitchanged":
+                    mismatchClass = "lowBitChanged";
+                    return true;
+                case "zerotononzero":
+                case "fromzerotononzero":
+                case "nonzerofromzero":
+                    mismatchClass = "zeroToNonZero";
+                    return true;
+                case "nonzerotozero":
+                case "fromnonzerotozero":
+                case "zerofromnonzero":
+                    mismatchClass = "nonZeroToZero";
                     return true;
                 default:
                     return false;

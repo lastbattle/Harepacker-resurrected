@@ -1574,10 +1574,17 @@ namespace HaCreator.MapSimulator.Loaders
         {
             WzImageProperty infoProperty = WzInfoTools.GetRealProperty(mobStateProperty?["info"]);
             WzSubProperty infoNode = infoProperty as WzSubProperty;
-            int reverseFlag = (int)InfoTool.GetOptionalInt(mobStateProperty?["reverse"], 0);
-            reverseFlag = Math.Max(reverseFlag, (int)InfoTool.GetOptionalInt(infoNode?["reverse"], 0));
-            reverseFlag = Math.Max(reverseFlag, (int)InfoTool.GetOptionalInt(infoNode?["range"]?["reverse"], 0));
+            // CActionMan::LoadMobAction checks an action-level replay flag (StringPool id 0x049F),
+            // which is authored as `zigzag` on many mob actions. Keep the older `reverse` seam too.
+            int reverseFlag = ReadOptionalInt(mobStateProperty, 0, "reverse", "zigzag");
+            reverseFlag = Math.Max(reverseFlag, ReadOptionalInt(infoNode, 0, "reverse", "zigzag"));
+            reverseFlag = Math.Max(reverseFlag, ReadOptionalInt(infoNode?["range"], 0, "reverse", "zigzag"));
             return reverseFlag != 0;
+        }
+
+        internal static bool ShouldAppendReversePlaybackForTests(WzSubProperty mobStateProperty)
+        {
+            return ShouldAppendReversePlayback(mobStateProperty);
         }
 
         internal static void AppendReversePlaybackForTests<T>(List<T> items)

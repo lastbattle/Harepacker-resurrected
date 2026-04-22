@@ -176,6 +176,7 @@ namespace HaCreator.MapSimulator.Interaction
         CreateGuildAgreement = 3,
         GuildInvite = 5,
         GuildMarkInput = 17,
+        GuildDataSnapshot = 28,
         Notice35 = 35,
         Notice37 = 37,
         Notice42 = 42,
@@ -220,7 +221,9 @@ namespace HaCreator.MapSimulator.Interaction
         string DirectNotice = null,
         byte RawSubtype = 0,
         bool UsesSharedResultNoticeFallback = false,
-        string ExplicitBranchSummary = null);
+        string ExplicitBranchSummary = null,
+        string GuildName = null,
+        IReadOnlyList<SocialListGuildSkillRecordPacket> GuildSkillRecords = null);
 
     internal readonly record struct SocialListGuildSkillRecordPacket(
         int SkillId,
@@ -1064,6 +1067,63 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
+                    case SocialListClientGuildResultKind.GuildDataSnapshot:
+                    {
+                        int guildId = reader.ReadInt32();
+                        string guildName = reader.ReadString16().Trim();
+                        for (int i = 0; i < 5; i++)
+                        {
+                            _ = reader.ReadString16();
+                        }
+
+                        int memberCount = reader.ReadByte();
+                        if (memberCount > 0)
+                        {
+                            _ = reader.ReadBytes(memberCount * sizeof(int));
+                            _ = reader.ReadBytes(memberCount * 37);
+                        }
+
+                        _ = reader.ReadInt32(); // nMaxMemberNum
+                        _ = reader.ReadUInt16(); // nMarkBg
+                        _ = reader.ReadByte(); // nMarkBgColor
+                        _ = reader.ReadUInt16(); // nMark
+                        _ = reader.ReadByte(); // nMarkColor
+                        string notice = reader.ReadString16().Trim();
+                        int guildPoints = reader.ReadInt32();
+                        _ = reader.ReadInt32(); // nAllianceID
+                        int guildLevel = reader.ReadByte();
+                        int skillCount = reader.ReadUInt16();
+                        List<SocialListGuildSkillRecordPacket> skillRecords = new(Math.Max(0, skillCount));
+                        for (int i = 0; i < skillCount; i++)
+                        {
+                            if (!TryReadGuildSkillRecord(ref reader, out SocialListGuildSkillRecordPacket skillRecord, out string skillError))
+                            {
+                                error = skillError;
+                                return false;
+                            }
+
+                            skillRecords.Add(skillRecord);
+                        }
+
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            guildId,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            notice,
+                            null,
+                            guildPoints,
+                            guildLevel,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            RawSubtype: rawSubtype,
+                            GuildName: guildName,
+                            GuildSkillRecords: skillRecords);
+                        return true;
+                    }
+
                     case SocialListClientGuildResultKind.Notice35:
                     case SocialListClientGuildResultKind.Notice37:
                     case SocialListClientGuildResultKind.Notice42:
@@ -1478,6 +1538,41 @@ namespace HaCreator.MapSimulator.Interaction
                 1,
                 out _);
             return FormatSingleStringArgument(format, name);
+        }
+
+        private static bool TryReadGuildSkillRecord(
+            ref PacketReader reader,
+            out SocialListGuildSkillRecordPacket skillRecord,
+            out string error)
+        {
+            skillRecord = default;
+            error = null;
+
+            int skillId = reader.ReadInt32();
+            int skillLevel = reader.ReadUInt16();
+            long expirationFileTime = reader.ReadInt64();
+            string buyCharacterName = reader.ReadString16().Trim();
+            if (skillId <= 0)
+            {
+                error = "Client guild-result skill-record skill id must be positive.";
+                return false;
+            }
+
+            DateTimeOffset? expiration = null;
+            if (expirationFileTime > 0)
+            {
+                try
+                {
+                    expiration = DateTimeOffset.FromFileTime(expirationFileTime);
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    expiration = null;
+                }
+            }
+
+            skillRecord = new SocialListGuildSkillRecordPacket(skillId, skillLevel, expiration, buyCharacterName);
+            return true;
         }
 
         public static bool TryParseGuildSkillResult(ReadOnlySpan<byte> payload, out GuildSkillResultPacket packet, out string error)

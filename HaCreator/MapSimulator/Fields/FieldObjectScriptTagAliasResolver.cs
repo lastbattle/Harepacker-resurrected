@@ -347,6 +347,19 @@ namespace HaCreator.MapSimulator.Fields
                 return string.Empty;
             }
 
+            if (TryTrimCallbackInvokerTargetExpression(normalizedValue, out string callbackTargetExpression)
+                && !string.Equals(callbackTargetExpression, normalizedValue, StringComparison.OrdinalIgnoreCase))
+            {
+                string callbackTargetAlias = ResolveAssignmentAliasCandidate(
+                    callbackTargetExpression,
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (!string.IsNullOrWhiteSpace(callbackTargetAlias))
+                {
+                    return callbackTargetAlias;
+                }
+            }
+
             if (TryResolveBracketVariableAliasCandidate(
                     normalizedValue,
                     localAliasMap,
@@ -605,6 +618,18 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             yield return normalizedCandidate;
+
+            if (TryTrimCallbackInvokerTargetExpression(normalizedCandidate, out string callbackTargetExpression)
+                && !string.Equals(callbackTargetExpression, normalizedCandidate, StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string callbackTargetCandidate in EnumerateCanonicalAliasCandidates(
+                             callbackTargetExpression,
+                             localAliasMap,
+                             objectMemberAliasMap))
+                {
+                    yield return callbackTargetCandidate;
+                }
+            }
 
             if (TryResolveIndexedObjectAliasCandidate(
                     normalizedCandidate,
@@ -1290,6 +1315,42 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return -1;
+        }
+
+        private static bool TryTrimCallbackInvokerTargetExpression(string value, out string targetExpression)
+        {
+            targetExpression = string.Empty;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            int openIndex = normalizedValue.IndexOf('(');
+            if (openIndex <= 0)
+            {
+                return false;
+            }
+
+            string callPrefix = normalizedValue[..openIndex].TrimEnd();
+            if (callPrefix.EndsWith(".call", StringComparison.OrdinalIgnoreCase))
+            {
+                targetExpression = callPrefix[..^".call".Length].TrimEnd();
+            }
+            else if (callPrefix.EndsWith(".apply", StringComparison.OrdinalIgnoreCase))
+            {
+                targetExpression = callPrefix[..^".apply".Length].TrimEnd();
+            }
+            else if (callPrefix.EndsWith(".bind", StringComparison.OrdinalIgnoreCase))
+            {
+                targetExpression = callPrefix[..^".bind".Length].TrimEnd();
+            }
+            else
+            {
+                return false;
+            }
+
+            return !string.IsNullOrWhiteSpace(targetExpression);
         }
 
         private static IEnumerable<string> SplitFunctionArguments(string value)

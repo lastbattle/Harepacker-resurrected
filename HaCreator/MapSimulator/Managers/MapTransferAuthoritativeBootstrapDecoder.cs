@@ -1215,19 +1215,18 @@ namespace HaCreator.MapSimulator.Managers
                 if (trailingByteCount == 0)
                 {
                     matchedKnownTail = true;
-                    return true;
-                }
-
-                if (trailingByteCount == SetFieldServerFileTimeByteLength ||
-                    trailingByteCount == LogoutGiftConfigByteLength ||
-                    trailingByteCount == LogoutGiftConfigByteLength + SetFieldServerFileTimeByteLength)
-                {
-                    matchedKnownTail = true;
-                    tailCandidateScore = GetKnownCharacterDataTailCandidateScore(trailingByteCount);
+                    tailCandidateScore = GetKnownCharacterDataTailCandidateScore(0);
                     return true;
                 }
 
                 ReadOnlySpan<byte> trailingTail = payload[(int)stream.Position..];
+                if (TryValidateExactKnownTrailingTail(trailingTail, out bool matchedExactTail, out int exactTailCandidateScore))
+                {
+                    matchedKnownTail = matchedExactTail;
+                    tailCandidateScore = exactTailCandidateScore;
+                    return true;
+                }
+
                 if (TryValidateKnownTrailingLogoutGiftTail(trailingTail, out bool matchedKnownLogoutGiftTail))
                 {
                     matchedKnownTail = matchedKnownLogoutGiftTail;
@@ -1258,8 +1257,56 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (Exception) when (payload.Length > 0)
             {
+                if (payload.Length <= MaximumOpaquePostMapTransferTailByteLength)
+                {
+                    tailCandidateScore = GetBoundedOpaqueTailCandidateScore(payload.Length);
+                    return true;
+                }
+
                 return false;
             }
+        }
+
+        private static bool TryValidateExactKnownTrailingTail(
+            ReadOnlySpan<byte> trailingTail,
+            out bool matchedKnownTail,
+            out int tailCandidateScore)
+        {
+            matchedKnownTail = false;
+            tailCandidateScore = int.MinValue;
+            if (trailingTail.Length == SetFieldServerFileTimeByteLength &&
+                TryMatchTrailingServerFileTimeSuffix(trailingTail.ToArray(), out int opaqueBeforeServerFileTimeLength) &&
+                opaqueBeforeServerFileTimeLength == 0)
+            {
+                matchedKnownTail = true;
+                tailCandidateScore = GetKnownCharacterDataTailCandidateScore(trailingTail.Length);
+                return true;
+            }
+
+            if (trailingTail.Length == LogoutGiftConfigByteLength ||
+                trailingTail.Length == LogoutGiftConfigByteLength + SetFieldServerFileTimeByteLength)
+            {
+                if (TryValidateKnownTrailingLogoutGiftTail(trailingTail, out bool matchedKnownLogoutGiftTail))
+                {
+                    matchedKnownTail = matchedKnownLogoutGiftTail;
+                    tailCandidateScore = matchedKnownLogoutGiftTail
+                        ? GetKnownCharacterDataTailCandidateScore(trailingTail.Length)
+                        : GetRecognizedLogoutGiftTailCandidateScore(trailingTail.Length);
+                    return true;
+                }
+
+                if (trailingTail.Length == LogoutGiftConfigByteLength + SetFieldServerFileTimeByteLength &&
+                    TryValidateKnownTrailingServerFileTimeTail(trailingTail, out bool matchedKnownServerFileTimeTail))
+                {
+                    matchedKnownTail = matchedKnownServerFileTimeTail;
+                    tailCandidateScore = matchedKnownServerFileTimeTail
+                        ? GetKnownCharacterDataTailCandidateScore(trailingTail.Length)
+                        : GetBoundedOpaqueTailCandidateScore(trailingTail.Length);
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static int GetKnownCharacterDataTailCandidateScore(long trailingByteCount)

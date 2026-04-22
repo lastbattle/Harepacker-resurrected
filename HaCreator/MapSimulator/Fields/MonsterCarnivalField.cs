@@ -1273,6 +1273,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int VariantActionTrailCapacity = 4;
         private const int VariantTransportTrailCapacity = 6;
         private const int Season2TimerTrailCapacity = 6;
+        private const int Season2ChatRouteTrailCapacity = 6;
 
         private readonly Dictionary<int, int> _mobSpellCounts = new();
         private readonly Dictionary<int, int> _skillUseCounts = new();
@@ -1308,6 +1309,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Queue<string> _variantActionTrail = new();
         private readonly Queue<string> _variantTransportTrail = new();
         private readonly Queue<string> _season2SubDialogTimerTrail = new();
+        private readonly Queue<string> _season2ChatRouteTrail = new();
         private readonly MonsterCarnivalUiWindowState _uiWindowState = new();
         private MonsterCarnivalVariantSessionPhase _variantSessionPhase;
         private string _variantSessionSummary;
@@ -1748,6 +1750,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _lastRequestFailureChatRoute =
                     $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult(reject) reason={reasonCode} -> CUIStatusBar::ChatLogAdd(type=7,item=-1)";
+                RecordSeason2ChatRouteEvent($"request-failure(reason={reasonCode},route=chat7)");
             }
             else
             {
@@ -1782,6 +1785,7 @@ namespace HaCreator.MapSimulator.Fields
                 _season2SubDialogDeadlineTick = null;
                 _season2SubDialogTimerSummary = "Season 2 sub dialog timer closed by OnShowGameResult.";
                 RecordSeason2SubDialogTimerEvent("result-close(deadline=none)");
+                RecordSeason2ChatRouteEvent($"result(code={resultCode},route=chat12)");
             }
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.ResultRoute,
@@ -1805,6 +1809,7 @@ namespace HaCreator.MapSimulator.Fields
             UpdateSeason2SubDialogOnProcessForDeath(team, characterName, lostCp, tickCount);
             _lastDeathChatRoute =
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnProcessForDeath -> CUIStatusBar::ChatLogAdd(type=7,item=-1)";
+            RecordSeason2ChatRouteEvent($"death(route=chat7,cpLoss={Math.Max(0, lostCp)})");
             RecordRecoveredClientOwnerAction(
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnProcessForDeath decoded packet CP loss {Math.Max(0, lostCp)} for {FormatTeam(team)} without mutating CP counters.",
                 lostCp > 0
@@ -1929,7 +1934,7 @@ namespace HaCreator.MapSimulator.Fields
 
             bool countAlreadyApplied = false;
             MonsterCarnivalEntry entry;
-            if (!TryDequeuePendingGuardianPlacement(resolvedTeam, out PendingGuardianPlacement pendingPlacement))
+            if (!TryDequeuePendingGuardianPlacement(resolvedTeam, resolvedSlotIndex, out PendingGuardianPlacement pendingPlacement))
             {
                 entry = ResolveGuardianEntryForSlot(resolvedSlotIndex);
             }
@@ -2073,6 +2078,7 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalStringPoolMessage teamLabel = GetTeamLabelMessage(team);
             _lastMemberOutChatRoute =
                 $"{ownerLabel}::OnShowMemberOutMsg(type={messageType}) -> StringPool 0x{memberOutStringPoolId:X}/0x{teamLabel.StringPoolId:X} -> CUIStatusBar::ChatLogAdd(type=12,item=-1)";
+            RecordSeason2ChatRouteEvent($"member-out(type={messageType},route=chat12)");
             ShowStatus(BuildMemberOutMessage(messageType, team, characterName), tickCount);
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.MemberState,
@@ -2437,6 +2443,7 @@ namespace HaCreator.MapSimulator.Fields
             _variantActionTrail.Clear();
             _variantTransportTrail.Clear();
             _season2SubDialogTimerTrail.Clear();
+            _season2ChatRouteTrail.Clear();
             _uiWindowState.Reset();
             _variantSessionPhase = MonsterCarnivalVariantSessionPhase.None;
             _variantSessionSummary = null;
@@ -2490,6 +2497,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastDeathChatRoute = null;
             _variantTransportTrail.Clear();
             _season2SubDialogTimerTrail.Clear();
+            _season2ChatRouteTrail.Clear();
             _variantTransportPacketCount = 0;
             _variantEnterPacketCount = 0;
             _variantRequestPacketCount = 0;
@@ -3121,7 +3129,7 @@ namespace HaCreator.MapSimulator.Fields
             return _definition.ResolvedFieldType switch
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | transport={BuildVariantTransportSummary()} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | transport={BuildVariantTransportSummary()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | death route={_lastDeathChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result route={_lastResultChatRoute ?? "none"} | ui={_uiWindowState.DescribeStatus()} | subDialog={DescribeSeason2SubDialogState()} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | transport={BuildVariantTransportSummary()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | death route={_lastDeathChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | delegated result route={_lastResultChatRoute ?? "none"} | chatTrail={BuildSeason2ChatRouteTrailSummary()} | ui={_uiWindowState.DescribeStatus()} | subDialog={DescribeSeason2SubDialogState()} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} directPackets=346/353 + forwardedSharedRoutes | phase={DescribeVariantSessionPhase()} | clock={DescribeOwnedClockState(Environment.TickCount)} | transport={BuildVariantTransportSummary()} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F -> CUIStatusBar::ChatLogAdd(type=7,item=-1) route={_lastRequestFailureChatRoute ?? "none"} | death route={_lastDeathChatRoute ?? "none"} | memberOut route={_lastMemberOutChatRoute ?? "none"} | result route={_lastResultChatRoute ?? "none"} | delegated={BuildVariantDelegatedPacketSummary()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
@@ -3675,7 +3683,10 @@ namespace HaCreator.MapSimulator.Fields
             _pendingGuardianPlacements.Enqueue(new PendingGuardianPlacement(entry, team, countAlreadyApplied));
         }
 
-        private bool TryDequeuePendingGuardianPlacement(MonsterCarnivalTeam team, out PendingGuardianPlacement placement)
+        private bool TryDequeuePendingGuardianPlacement(
+            MonsterCarnivalTeam team,
+            int preferredSlotIndex,
+            out PendingGuardianPlacement placement)
         {
             placement = default;
             if (_pendingGuardianPlacements.Count <= 0)
@@ -3685,8 +3696,12 @@ namespace HaCreator.MapSimulator.Fields
 
             int pendingCount = _pendingGuardianPlacements.Count;
             List<PendingGuardianPlacement> unmatched = new(pendingCount);
-            bool hasMatch = false;
-            PendingGuardianPlacement matchedPlacement = default;
+            bool hasExactSlotTeamMatch = false;
+            PendingGuardianPlacement exactSlotTeamMatch = default;
+            bool hasExactSlotMatch = false;
+            PendingGuardianPlacement exactSlotMatch = default;
+            bool hasTeamMatch = false;
+            PendingGuardianPlacement teamMatch = default;
             for (int i = 0; i < pendingCount; i++)
             {
                 PendingGuardianPlacement next = _pendingGuardianPlacements.Dequeue();
@@ -3695,24 +3710,43 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                if (!hasMatch && next.Team == team)
+                bool slotMatches = preferredSlotIndex >= 0 && next.Entry.Index == preferredSlotIndex;
+                if (!hasExactSlotTeamMatch && slotMatches && next.Team == team)
                 {
-                    matchedPlacement = next;
-                    hasMatch = true;
+                    exactSlotTeamMatch = next;
+                    hasExactSlotTeamMatch = true;
+                    continue;
+                }
+
+                if (!hasExactSlotMatch && slotMatches)
+                {
+                    exactSlotMatch = next;
+                    hasExactSlotMatch = true;
+                    continue;
+                }
+
+                if (!hasTeamMatch && next.Team == team)
+                {
+                    teamMatch = next;
+                    hasTeamMatch = true;
                     continue;
                 }
 
                 unmatched.Add(next);
             }
 
-            if (hasMatch)
+            if (hasExactSlotTeamMatch || hasExactSlotMatch || hasTeamMatch)
             {
                 foreach (PendingGuardianPlacement pending in unmatched)
                 {
                     _pendingGuardianPlacements.Enqueue(pending);
                 }
 
-                placement = matchedPlacement;
+                placement = hasExactSlotTeamMatch
+                    ? exactSlotTeamMatch
+                    : hasExactSlotMatch
+                        ? exactSlotMatch
+                        : teamMatch;
                 return true;
             }
 
@@ -4065,6 +4099,20 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private void RecordSeason2ChatRouteEvent(string summary)
+        {
+            if (_definition?.IsSeason2Mode != true || string.IsNullOrWhiteSpace(summary))
+            {
+                return;
+            }
+
+            _season2ChatRouteTrail.Enqueue(summary.Trim());
+            while (_season2ChatRouteTrail.Count > Season2ChatRouteTrailCapacity)
+            {
+                _season2ChatRouteTrail.Dequeue();
+            }
+        }
+
         private void RecordVariantTransportPacket(int packetType, bool rawPacket, string delegatedOwner)
         {
             if (!ShouldTrackVariantClientOwnerAction())
@@ -4118,16 +4166,16 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_definition?.IsReviveMode == true)
             {
-                bool isDirectReviveOwnerPacket = packetType is 1 or 346 or 4 or 353;
+                bool isDirectReviveOwnerPacket = rawPacket && packetType is 346 or 353;
                 if (isDirectReviveOwnerPacket)
                 {
                     _reviveDirectPacketCount++;
                     reviveRoute = "direct";
-                    if (packetType is 1 or 346)
+                    if (packetType == 346)
                     {
                         _reviveRoundSequence++;
                     }
-                    else if (packetType is 4 or 353)
+                    else if (packetType == 353)
                     {
                         _reviveResultSequence++;
                     }
@@ -4344,10 +4392,11 @@ namespace HaCreator.MapSimulator.Fields
                 ? string.Empty
                 : $" {_season2SubDialogTimerSummary}";
             string timerTrail = BuildSeason2SubDialogTimerTrailSummary();
+            string chatTrail = BuildSeason2ChatRouteTrailSummary();
 
             return string.IsNullOrWhiteSpace(_season2SubDialogSummary)
-                ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},timerTrail={timerTrail}){timerSummary}"
-                : $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},timerTrail={timerTrail}) {_season2SubDialogSummary}{timerSummary}";
+                ? $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},timerTrail={timerTrail},chatTrail={chatTrail}){timerSummary}"
+                : $"{visibilityLabel} ({detail},phase={phaseLabel},{timerLabel},timerTrail={timerTrail},chatTrail={chatTrail}) {_season2SubDialogSummary}{timerSummary}";
         }
 
         private void InitializeClientOwnedUiWindowState(MonsterCarnivalFieldDefinition definition)
@@ -4749,6 +4798,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Join(" => ", _season2SubDialogTimerTrail.Select(entry => TrimVariantActionText(entry, 40)));
+        }
+
+        private string BuildSeason2ChatRouteTrailSummary()
+        {
+            if (_definition?.IsSeason2Mode != true || _season2ChatRouteTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _season2ChatRouteTrail.Select(entry => TrimVariantActionText(entry, 40)));
         }
 
         private string BuildInitialVariantSessionSummary(MonsterCarnivalFieldDefinition definition)

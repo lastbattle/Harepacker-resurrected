@@ -169,6 +169,7 @@ namespace HaCreator.MapSimulator.Interaction
                     or SocialListClientGuildResultKind.GuildMarkInput => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildExplicitBranchSummary(packet)),
+                SocialListClientGuildResultKind.GuildDataSnapshot => ApplyClientGuildDataSnapshot(packet),
                 SocialListClientGuildResultKind.SkillRecord when packet.GuildSkillRecord.HasValue =>
                     BuildClientGuildSkillRecordSummary(packet),
                 SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(
@@ -191,6 +192,28 @@ namespace HaCreator.MapSimulator.Interaction
                     SocialListTab.Guild,
                     BuildClientGuildResultFallbackNoticeSummary(packet))
             };
+        }
+
+        private string ApplyClientGuildDataSnapshot(SocialListClientGuildResultPacket packet)
+        {
+            if (ShouldIgnoreGuildScopedResult(packet.GuildId, out int activeGuildId))
+            {
+                return $"Ignored client OnGuildResult({packet.RawSubtype}) for guild {packet.GuildId} because the active packet-owned guild context is {activeGuildId}.";
+            }
+
+            RememberPacketGuildId(packet.GuildId);
+            string resolvedGuildName = string.IsNullOrWhiteSpace(packet.GuildName)
+                ? ResolveEffectiveGuildName(null, hasGuildMembership: true)
+                : packet.GuildName.Trim();
+            SetPacketGuildUiContext(
+                hasGuildMembership: true,
+                resolvedGuildName,
+                packet.GuildLevel);
+            SetPacketGuildPointsAndLevel(packet.GuildPoints, packet.GuildLevel, packet.GuildId);
+
+            int skillRecordCount = packet.GuildSkillRecords?.Count ?? 0;
+            string summary = $"Client OnGuildResult({packet.RawSubtype}) decoded guild snapshot for {resolvedGuildName} (id={packet.GuildId}, level={Math.Max(0, packet.GuildLevel)}, points={Math.Max(0, packet.GuildPoints)}, skillRecords={skillRecordCount}).";
+            return SetPacketSyncSummary(SocialListTab.Guild, summary);
         }
 
         private string BuildClientGuildSkillRecordSummary(SocialListClientGuildResultPacket packet)

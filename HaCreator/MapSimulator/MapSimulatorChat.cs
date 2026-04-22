@@ -1156,7 +1156,7 @@ namespace HaCreator.MapSimulator
 
         public void BeginWhisperFromChatLog(string whisperTarget, int tickCount)
         {
-            WhisperTargetValidationResult validationResult = ValidateWhisperTargetCandidate(
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
                 whisperTarget,
                 _localPlayerName,
                 out string normalizedTarget);
@@ -1171,7 +1171,7 @@ namespace HaCreator.MapSimulator
 
         public void RememberWhisperTarget(string whisperTarget)
         {
-            WhisperTargetValidationResult validationResult = ValidateWhisperTargetCandidate(
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
                 whisperTarget,
                 _localPlayerName,
                 out string normalizedTarget);

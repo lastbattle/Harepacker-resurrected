@@ -296,6 +296,19 @@ namespace HaCreator.MapSimulator.Character
                     ("stabO1", 0, -300),
                     ("stabO1", 1, 420),
                     ("alert", 0, 90)),
+                // Legacy helper create rows remain authored in Character/00002000 and are
+                // still used as fallback when create2/3/4 branches are unavailable.
+                // WZ-backed rows:
+                // - create0/{0,1}: shoot2/2/450, shoot2/1/450
+                // - create1/{0,1,2,3}: shoot2/2/180, shoot2/0/270, shoot2/2/180, shoot2/0/270
+                ["create0"] = CreateIndexedPieces(
+                    ("shoot2", 2, 450),
+                    ("shoot2", 1, 450)),
+                ["create1"] = CreateIndexedPieces(
+                    ("shoot2", 2, 180),
+                    ("shoot2", 0, 270),
+                    ("shoot2", 2, 180),
+                    ("shoot2", 0, 270)),
                 // Additional mounted client-init action rows from Character/00002000.
                 // Keep these as built-in fallback piece plans so loader-owned event-delay
                 // shaping remains intact when mounted rows are missing from a dataset.
@@ -1796,7 +1809,19 @@ namespace HaCreator.MapSimulator.Character
             "resurrection",
             "dash",
             "octopus",
-            "darksight"
+            "darksight",
+            // Character/00002000 still publishes client-init `ghost*` helper rows under
+            // the same action-table surface (raw 103..110). Keep these admitted on the
+            // fallback seam so missing mounted rows still resolve through loader-owned
+            // alias remap instead of dropping out of helper fallback coverage.
+            "ghostwalk",
+            "ghoststand",
+            "ghostjump",
+            "ghostproneStab",
+            "ghostladder",
+            "ghostrope",
+            "ghostfly",
+            "ghostsit"
         };
 
         private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)

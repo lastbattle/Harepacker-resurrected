@@ -10,7 +10,8 @@ namespace HaCreator.MapSimulator.Physics
             IReadOnlyList<MovePathElement> path,
             out byte[] payload,
             out string error,
-            bool includeClientRandomCounts = false)
+            bool includeClientRandomCounts = false,
+            bool includeClientFlushTail = false)
         {
             payload = Array.Empty<byte>();
             error = null;
@@ -38,6 +39,11 @@ namespace HaCreator.MapSimulator.Physics
             for (int i = 0; i < path.Count; i++)
             {
                 WriteElement(writer, path[i], includeClientRandomCounts);
+            }
+
+            if (includeClientFlushTail)
+            {
+                WriteFlushTail(writer, path, start);
             }
 
             writer.Flush();
@@ -103,6 +109,41 @@ namespace HaCreator.MapSimulator.Physics
             }
 
             return new[] { path[path.Count - 1] };
+        }
+
+        internal static IReadOnlyList<MovePathElement> ApplyPortalOwnedPostFlushCarryHint(
+            IReadOnlyList<MovePathElement> path,
+            bool hasCarry,
+            MovePathElement carry,
+            out bool consumedCarry)
+        {
+            consumedCarry = false;
+            if (!hasCarry)
+            {
+                return path ?? Array.Empty<MovePathElement>();
+            }
+
+            if (path == null || path.Count == 0)
+            {
+                return Array.Empty<MovePathElement>();
+            }
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (HasSameEncodedShape(path[i], carry))
+                {
+                    consumedCarry = true;
+                    return path;
+                }
+            }
+
+            if (path.Count != 1)
+            {
+                return path;
+            }
+
+            consumedCarry = true;
+            return new[] { carry, path[0] };
         }
 
         private static void WriteElement(BinaryWriter writer, MovePathElement element, bool includeClientRandomCounts)
@@ -196,6 +237,31 @@ namespace HaCreator.MapSimulator.Physics
             return (byte)((actionCode << 1) | (facingRight ? 0 : 1));
         }
 
+        private static void WriteFlushTail(BinaryWriter writer, IReadOnlyList<MovePathElement> path, MovePathElement start)
+        {
+            writer.Write((byte)0);
+
+            short left = ClampToShort(start.X);
+            short top = ClampToShort(start.Y);
+            short right = left;
+            short bottom = top;
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                short x = ClampToShort(path[i].X);
+                short y = ClampToShort(path[i].Y);
+                left = (short)Math.Min(left, x);
+                top = (short)Math.Min(top, y);
+                right = (short)Math.Max(right, x);
+                bottom = (short)Math.Max(bottom, y);
+            }
+
+            writer.Write(left);
+            writer.Write(top);
+            writer.Write(right);
+            writer.Write(bottom);
+        }
+
         private static short ClampToShort(int value)
         {
             return (short)Math.Clamp(value, short.MinValue, short.MaxValue);
@@ -243,6 +309,24 @@ namespace HaCreator.MapSimulator.Physics
 
             return (previousVelocity < 0 && currentVelocity < 0)
                 || (previousVelocity > 0 && currentVelocity > 0);
+        }
+
+        private static bool HasSameEncodedShape(MovePathElement left, MovePathElement right)
+        {
+            return left.MovePathAttribute == right.MovePathAttribute
+                   && left.X == right.X
+                   && left.Y == right.Y
+                   && left.VelocityX == right.VelocityX
+                   && left.VelocityY == right.VelocityY
+                   && left.FootholdId == right.FootholdId
+                   && left.FallStartFootholdId == right.FallStartFootholdId
+                   && left.Action == right.Action
+                   && left.FacingRight == right.FacingRight
+                   && left.Duration == right.Duration
+                   && left.XOffset == right.XOffset
+                   && left.YOffset == right.YOffset
+                   && left.RandomCount == right.RandomCount
+                   && left.ActualRandomCount == right.ActualRandomCount;
         }
     }
 }

@@ -353,6 +353,14 @@ namespace HaCreator.MapSimulator.Companions
                                     out bool terminateAfterHeader,
                                     out rejectReason))
                             {
+                                if (recoveredMutations.Count > 0
+                                    && IsPassiveAddEntryRecoveryTerminatorReason(rejectReason))
+                                {
+                                    terminatedAfterHeader = true;
+                                    i = operationCount;
+                                    break;
+                                }
+
                                 return false;
                             }
 
@@ -1689,6 +1697,27 @@ namespace HaCreator.MapSimulator.Companions
             bool hasCashSerial,
             out string rejectReason)
         {
+            long entryStart = reader?.BaseStream?.Position ?? 0;
+            if (TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, statFieldCount: 15, out rejectReason))
+            {
+                return true;
+            }
+
+            if (reader?.BaseStream is not { CanSeek: true } stream)
+            {
+                return false;
+            }
+
+            stream.Position = entryStart;
+            return TryReadClientInventoryOperationEquipBody(reader, hasCashSerial, statFieldCount: 14, out rejectReason);
+        }
+
+        private static bool TryReadClientInventoryOperationEquipBody(
+            BinaryReader reader,
+            bool hasCashSerial,
+            int statFieldCount,
+            out string rejectReason)
+        {
             rejectReason = null;
             if (reader == null)
             {
@@ -1697,19 +1726,18 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             Stream stream = reader.BaseStream;
-            // Client evidence: GW_ItemSlotEquip::RawDecode (0x4f8360) decodes this
-            // block as nRUC, nCUC, then 15 Int16 stat fields (STR..JUMP), without
-            // a version-dependent 14-stat variant in v95.
-            const int equipStatFieldCount = 15;
+            // Client evidence: GW_ItemSlotEquip::RawDecode (0x4f8360) decodes a
+            // 15-stat STR..JUMP block in v95. Keep a 14-stat fallback here to
+            // preserve recovery when mixed retail captures omit one stat entry.
             const int equipStatHeaderByteLength = sizeof(byte) * 2;
-            if (!TryEnsureRemaining(stream, equipStatHeaderByteLength + (sizeof(short) * equipStatFieldCount), out rejectReason))
+            if (!TryEnsureRemaining(stream, equipStatHeaderByteLength + (sizeof(short) * statFieldCount), out rejectReason))
             {
                 return false;
             }
 
             _ = reader.ReadByte();
             _ = reader.ReadByte();
-            for (int i = 0; i < equipStatFieldCount; i++)
+            for (int i = 0; i < statFieldCount; i++)
             {
                 _ = reader.ReadInt16();
             }
@@ -1928,6 +1956,18 @@ namespace HaCreator.MapSimulator.Companions
         {
             rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
             return false;
+        }
+
+        private static bool IsPassiveAddEntryRecoveryTerminatorReason(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                return false;
+            }
+
+            return string.Equals(reason, "Inventory-operation add entry is truncated.", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Inventory-operation add entry used unsupported GW_ItemSlotBase type ", StringComparison.OrdinalIgnoreCase)
+                   || reason.StartsWith("Inventory-operation add entry maple string length is invalid.", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

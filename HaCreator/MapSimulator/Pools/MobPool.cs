@@ -1027,7 +1027,7 @@ namespace HaCreator.MapSimulator.Pools
             return candidate.ObjectId < currentBest.ObjectId;
         }
 
-        public void SyncHypnotizedTargets(int currentTick)
+        public void SyncHypnotizedTargets(int currentTick, Func<int, int?> packetOwnedHypnotizeTargetResolver = null)
         {
             if (_activeMobs.Count < 2)
             {
@@ -1052,7 +1052,8 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                MobItem target = HypnotizeTargetResolver.ResolveTarget(mob, _activeMobs);
+                int preferredTargetId = packetOwnedHypnotizeTargetResolver?.Invoke(mob.PoolId) ?? 0;
+                MobItem target = HypnotizeTargetResolver.ResolveTarget(mob, _activeMobs, preferredTargetId);
                 if (target == null)
                 {
                     mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Hypnotize);

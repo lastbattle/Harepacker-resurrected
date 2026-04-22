@@ -8070,7 +8070,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (current == '\\' && i < token.Length - 1)
                 {
                     char escaped = token[i + 1];
-                    if (escaped == '/' || escaped == '\\' || escaped == ':')
+                    if (IsPacketMobAttackGeneralEffectEscapedSyntaxCharacter(escaped))
                     {
                         normalizedBuilder.Append(escaped == '\\' ? '/' : escaped);
                         i++;
@@ -8085,7 +8085,7 @@ namespace HaCreator.MapSimulator.Pools
                         token[i + 2],
                         out char decoded))
                 {
-                    if (decoded == '/' || decoded == '\\' || decoded == ':')
+                    if (IsPacketMobAttackGeneralEffectEscapedSyntaxCharacter(decoded))
                     {
                         normalizedBuilder.Append(decoded == '\\' ? '/' : decoded);
                         i += 2;
@@ -8097,6 +8097,28 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalizedBuilder.ToString();
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectEscapedSyntaxCharacter(char character)
+        {
+            return character == '/'
+                   || character == '\\'
+                   || character == ':'
+                   || character == '='
+                   || character == '+'
+                   || character == '-'
+                   || character == '.'
+                   || character == '_'
+                   || character == '"'
+                   || character == '\''
+                   || character == '('
+                   || character == ')'
+                   || character == '['
+                   || character == ']'
+                   || character == '{'
+                   || character == '}'
+                   || character == '<'
+                   || character == '>';
         }
 
         private static bool TryParsePacketMobAttackGeneralEffectPercentEncodedChar(
@@ -8171,7 +8193,21 @@ namespace HaCreator.MapSimulator.Pools
         private static bool IsPacketMobAttackGeneralEffectNestedNonSourceAssignmentNoiseToken(
             string token)
         {
+            return IsPacketMobAttackGeneralEffectNestedNonSourceAssignmentNoiseToken(
+                token,
+                remainingDepth: 8);
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectNestedNonSourceAssignmentNoiseToken(
+            string token,
+            int remainingDepth)
+        {
             if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (remainingDepth <= 0)
             {
                 return false;
             }
@@ -8188,7 +8224,6 @@ namespace HaCreator.MapSimulator.Pools
             string nestedPrefix = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(
                 token.Substring(0, nestedAssignmentIndex));
             if (string.IsNullOrWhiteSpace(nestedPrefix)
-                || IsPacketMobAttackSourceAliasSegment(nestedPrefix)
                 || IsPacketMobAttackCategorySegment(nestedPrefix))
             {
                 return false;
@@ -8196,6 +8231,13 @@ namespace HaCreator.MapSimulator.Pools
 
             string nestedSuffix = NormalizePacketMobAttackGeneralEffectPathTokenShell(
                 token.Substring(nestedAssignmentIndex + nestedAssignmentDelimiterLength));
+            if (IsPacketMobAttackSourceAliasSegment(nestedPrefix))
+            {
+                return IsPacketMobAttackGeneralEffectNestedNonSourceAssignmentNoiseToken(
+                    nestedSuffix,
+                    remainingDepth - 1);
+            }
+
             return !string.IsNullOrWhiteSpace(nestedSuffix);
         }
 

@@ -236,6 +236,13 @@ namespace HaCreator.MapSimulator.Fields
 
         internal static string GetWindowRestrictionMessage(long fieldLimit, string windowName)
         {
+            if (string.Equals(windowName, MapSimulatorWindowNames.QuestTimer, StringComparison.Ordinal) ||
+                string.Equals(windowName, MapSimulatorWindowNames.QuestTimerAction, StringComparison.Ordinal) ||
+                MapSimulatorWindowNames.IsQuestTimerRuntimeWindowName(windowName))
+            {
+                return GetQuestAlertRestrictionMessage(fieldLimit);
+            }
+
             return windowName switch
             {
                 MapSimulatorWindowNames.MemoMailbox or

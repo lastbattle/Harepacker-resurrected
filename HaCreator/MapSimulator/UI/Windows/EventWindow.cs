@@ -394,7 +394,8 @@ namespace HaCreator.MapSimulator.UI
                     bounds,
                     slotBounds,
                     _statusLaneAnchorOffset,
-                    _statusLaneMaxWidth);
+                    _statusLaneMaxWidth,
+                    entry.RowLayout);
                 DrawTrimmedText(sprite, entry.Title, textLayout.TitleX, textLayout.TitleY, textLayout.TitleMaxWidth, Color.White);
                 DrawTrimmedText(sprite, entry.StatusText, textLayout.StatusX, textLayout.StatusY, textLayout.StatusMaxWidth, new Color(255, 228, 151));
                 (string primaryDetail, string secondaryDetail) = ResolveEventRowDetailLines(entry);
@@ -1027,6 +1028,62 @@ namespace HaCreator.MapSimulator.UI
                 statusLeft,
                 statusTop,
                 statusWidth);
+        }
+
+        internal static EventRowTextLayout ResolveEventRowTextLayout(
+            Rectangle rowBounds,
+            Rectangle slotBounds,
+            Point statusLaneAnchorOffset,
+            int authoredStatusWidth,
+            EventEntryRowLayoutSnapshot rowLayout)
+        {
+            EventRowTextLayout fallbackLayout = ResolveEventRowTextLayout(
+                rowBounds,
+                slotBounds,
+                statusLaneAnchorOffset,
+                authoredStatusWidth);
+            if (rowLayout?.HasAnyValue != true)
+            {
+                return fallbackLayout;
+            }
+
+            int fallbackContentLeft = slotBounds.Right + 10;
+            int titleX = rowBounds.X + Math.Max(0, rowLayout.TitleLeft ?? (fallbackLayout.TitleX - rowBounds.X));
+            int titleY = rowBounds.Y + Math.Max(0, rowLayout.TitleTop ?? (fallbackLayout.TitleY - rowBounds.Y));
+            float titleWidth = Math.Max(
+                40f,
+                rowLayout.TitleWidth ?? fallbackLayout.TitleMaxWidth);
+
+            int detailX = rowBounds.X + Math.Max(0, rowLayout.DetailLeft ?? (fallbackLayout.DetailX - rowBounds.X));
+            int detailY = rowBounds.Y + Math.Max(0, rowLayout.DetailTop ?? (fallbackLayout.DetailY - rowBounds.Y));
+            float detailWidth = Math.Max(
+                40f,
+                rowLayout.DetailWidth ?? fallbackLayout.DetailWidth);
+
+            int statusX = rowBounds.X + Math.Max(0, rowLayout.StatusLeft ?? (fallbackLayout.StatusX - rowBounds.X));
+            int statusY = rowBounds.Y + Math.Max(0, rowLayout.StatusTop ?? (fallbackLayout.StatusY - rowBounds.Y));
+            int statusWidth = Math.Max(
+                40,
+                rowLayout.StatusWidth ?? fallbackLayout.StatusMaxWidth);
+
+            // Keep authored lanes inside the row bounds to avoid malformed injected geometry.
+            titleX = Math.Clamp(titleX, fallbackContentLeft, rowBounds.Right - 40);
+            detailX = Math.Clamp(detailX, fallbackContentLeft, rowBounds.Right - 40);
+            statusX = Math.Clamp(statusX, fallbackContentLeft, rowBounds.Right - 40);
+            titleWidth = Math.Min(titleWidth, rowBounds.Right - titleX - 5f);
+            detailWidth = Math.Min(detailWidth, rowBounds.Right - detailX - 5f);
+            statusWidth = Math.Min(statusWidth, Math.Max(40, rowBounds.Right - statusX - 5));
+
+            return new EventRowTextLayout(
+                titleX,
+                titleY,
+                Math.Max(40f, titleWidth),
+                detailX,
+                detailY,
+                Math.Max(40f, detailWidth),
+                statusX,
+                statusY,
+                Math.Max(40, statusWidth));
         }
 
         private int GetRowsPerPage()

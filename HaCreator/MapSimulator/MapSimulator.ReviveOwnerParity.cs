@@ -660,6 +660,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (property is WzSubProperty scalarContainer
+                && TryResolveReviveOwnerScalarProperty(scalarContainer, out WzImageProperty scalarProperty))
+            {
+                property = scalarProperty;
+            }
+
             if (property is WzStringProperty stringProperty)
             {
                 string rawValue = stringProperty.Value?.Trim();
@@ -723,6 +729,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (property is WzSubProperty scalarContainer
+                && TryResolveReviveOwnerScalarProperty(scalarContainer, out WzImageProperty scalarProperty))
+            {
+                property = scalarProperty;
+            }
+
             if (property is WzStringProperty stringProperty)
             {
                 string rawValue = stringProperty.Value?.Trim();
@@ -779,6 +791,51 @@ namespace HaCreator.MapSimulator
                     value = 0;
                     return false;
             }
+        }
+
+        private static bool TryResolveReviveOwnerScalarProperty(WzSubProperty property, out WzImageProperty scalarProperty)
+        {
+            scalarProperty = null;
+            if (property?.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return false;
+            }
+
+            string[] preferredScalarChildNames = { "value", "val", "data", "0" };
+            foreach (string childName in preferredScalarChildNames)
+            {
+                WzImageProperty child = FindReviveOwnerChildProperty(property, childName);
+                if (TryGetReviveOwnerScalarPropertyCandidate(child, out scalarProperty))
+                {
+                    return true;
+                }
+            }
+
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (TryGetReviveOwnerScalarPropertyCandidate(child, out scalarProperty))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetReviveOwnerScalarPropertyCandidate(WzImageProperty property, out WzImageProperty scalarProperty)
+        {
+            scalarProperty = ResolveReviveOwnerLinkedProperty(property);
+            if (scalarProperty == null)
+            {
+                return false;
+            }
+
+            return scalarProperty is WzStringProperty
+                or WzIntProperty
+                or WzShortProperty
+                or WzLongProperty
+                or WzFloatProperty
+                or WzDoubleProperty;
         }
 
         private bool IsUpgradeTombReviveUsable()

@@ -241,6 +241,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<PacketCatalogEntry> _itcSalePacketEntries = new();
         private readonly List<PacketCatalogEntry> _itcPurchasePacketEntries = new();
         private readonly List<PacketCatalogEntry> _itcWishPacketEntries = new();
+        private readonly List<PacketCatalogEntry> _itcResultPacketEntries = new();
 
         private SpriteFont _font;
         private CharacterBuild _build;
@@ -404,6 +405,7 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<PacketCatalogEntry> ItcSalePacketEntries => _itcSalePacketEntries;
         public IReadOnlyList<PacketCatalogEntry> ItcPurchasePacketEntries => _itcPurchasePacketEntries;
         public IReadOnlyList<PacketCatalogEntry> ItcWishPacketEntries => _itcWishPacketEntries;
+        public IReadOnlyList<PacketCatalogEntry> ItcResultPacketEntries => _itcResultPacketEntries;
 
         public override void SetFont(SpriteFont font)
         {
@@ -554,6 +556,7 @@ namespace HaCreator.MapSimulator.UI
             _itcSalePacketEntries.Clear();
             _itcPurchasePacketEntries.Clear();
             _itcWishPacketEntries.Clear();
+            _itcResultPacketEntries.Clear();
             _itcNormalItemLastSummary = "No ITC normal-item packet routed yet.";
 
             if (_stageKind == CashServiceStageKind.CashShop)
@@ -898,6 +901,13 @@ namespace HaCreator.MapSimulator.UI
                         lines.Add($"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}");
                     }
                 }
+                else if (_itcResultPacketEntries.Count > 0)
+                {
+                    foreach (PacketCatalogEntry entry in _itcResultPacketEntries.Take(3))
+                    {
+                        lines.Add($"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}");
+                    }
+                }
             }
 
             if (_packetRouteOrder.Count == 0)
@@ -970,6 +980,11 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 AppendStatusDetail(detailLines, _itcNormalItemLastSummary, suppressDefaultPrefix: "No ITC normal-item packet");
+                foreach (PacketCatalogEntry entry in _itcResultPacketEntries.Take(2))
+                {
+                    AppendStatusDetail(detailLines, entry.Detail);
+                    AppendStatusDetail(detailLines, entry.PacketFieldSummary);
+                }
             }
 
             return new CashStatusSnapshot
@@ -1018,9 +1033,11 @@ namespace HaCreator.MapSimulator.UI
                     ? $"{_itcPurchasePacketEntries[0].Title} at {_itcPurchasePacketEntries[0].PriceLabel}."
                     : (_itcWishPacketEntries.Count > 0
                         ? $"{_itcWishPacketEntries[0].Title} at {_itcWishPacketEntries[0].PriceLabel} remains in the wish-sale owner."
+                    : (_itcResultPacketEntries.Count > 0
+                        ? $"{_itcResultPacketEntries[0].Title} staged at {_itcResultPacketEntries[0].PriceLabel} through packet-owned fallback rows."
                     : (_itcNormalItemMutationCount > 0
                         ? $"Last listing {_itcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {_itcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos."
-                        : "No listing payload has reached the purchase owner yet.")),
+                        : "No listing payload has reached the purchase owner yet."))),
                 _statusMessage
             };
 
@@ -1275,82 +1292,82 @@ namespace HaCreator.MapSimulator.UI
             {
                 21 => TryApplyItcCatalogList(packetPayload, isSearchResult: false, out string listMessage)
                     ? listMessage
-                    : BuildPacketDecodeFailure("CITC::OnGetITCListDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnGetITCListDone"),
                 22 => BuildItcFailureMessage(packetPayload, "CITC::OnGetITCListFailed"),
                 23 => TryApplyItcCatalogList(packetPayload, isSearchResult: true, out string searchMessage)
                     ? searchMessage
-                    : BuildPacketDecodeFailure("CITC::OnGetSearchITCListDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnGetSearchITCListDone"),
                 24 => BuildItcFailureMessage(packetPayload, "CITC::OnGetSearchITCListFailed"),
                 29 => TryApplyItcRegisterSaleEntryDone(packetPayload, out string registerSaleEntryDoneMessage)
                     ? registerSaleEntryDoneMessage
-                    : BuildPacketDecodeFailure("CITC::OnNormalItemResRegisterSaleEntryDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnNormalItemResRegisterSaleEntryDone"),
                 30 => TryApplyItcRegisterSaleEntryFailed(packetPayload, out string registerSaleEntryFailedMessage)
                     ? registerSaleEntryFailedMessage
-                    : BuildPacketDecodeFailure("CITC::OnNormalItemResRegisterSaleEntryFailed", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnNormalItemResRegisterSaleEntryFailed"),
                 31 => TryApplyItcSaleCurrentItemToWishDone(packetPayload, out string saleCurrentItemToWishDoneMessage)
                     ? saleCurrentItemToWishDoneMessage
-                    : BuildPacketDecodeFailure("CITC::OnSaleCurrentItemToWishDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnSaleCurrentItemToWishDone"),
                 32 => TryApplyItcSaleCurrentItemToWishFailed(packetPayload, out string saleCurrentItemToWishFailedMessage)
                     ? saleCurrentItemToWishFailedMessage
-                    : BuildPacketDecodeFailure("CITC::OnSaleCurrentItemToWishFailed", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnSaleCurrentItemToWishFailed"),
                 33 => TryApplyItcUserItemList(packetPayload, isPurchaseList: true, out string purchaseMessage)
                     ? purchaseMessage
-                    : BuildPacketDecodeFailure("CITC::OnGetUserPurchaseItemDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnGetUserPurchaseItemDone"),
                 34 => BuildItcFailureMessage(packetPayload, "CITC::OnGetUserPurchaseItemFailed"),
                 35 => TryApplyItcUserItemList(packetPayload, isPurchaseList: false, out string saleMessage)
                     ? saleMessage
-                    : BuildPacketDecodeFailure("CITC::OnGetUserSaleItemDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnGetUserSaleItemDone"),
                 36 => BuildItcFailureMessage(packetPayload, "CITC::OnGetUserSaleItemFailed"),
                 37 => TryApplyItcCancelSaleDone(packetPayload, out string cancelSaleMessage)
                     ? cancelSaleMessage
-                    : BuildPacketDecodeFailure("CITC::OnCancelSaleItemDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnCancelSaleItemDone"),
                 38 => BuildItcFailureMessage(packetPayload, "CITC::OnCancelSaleItemFailed"),
                 39 => TryApplyItcMovePurchaseItemToStorage(packetPayload, out string movePurchaseMessage)
                     ? movePurchaseMessage
-                    : BuildPacketDecodeFailure("CITC::OnMoveITCPurchaseItemLtoSDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnMoveITCPurchaseItemLtoSDone"),
                 40 => BuildItcFailureMessage(packetPayload, "CITC::OnMoveITCPurchaseItemLtoSFailed"),
                 41 => TryApplyItcWishMutation(packetPayload, "CITC::OnSetZzimDone", addSelectedCatalogEntry: true, removeCurrentWishEntry: false, out string setWishMessage)
                     ? setWishMessage
-                    : BuildPacketDecodeFailure("CITC::OnSetZzimDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnSetZzimDone"),
                 42 => BuildItcFailureMessage(packetPayload, "CITC::OnSetZzimFailed"),
                 43 => TryApplyItcWishMutation(packetPayload, "CITC::OnDeleteZzimDone", addSelectedCatalogEntry: false, removeCurrentWishEntry: true, out string deleteWishMessage)
                     ? deleteWishMessage
-                    : BuildPacketDecodeFailure("CITC::OnDeleteZzimDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnDeleteZzimDone"),
                 44 => BuildItcFailureMessage(packetPayload, "CITC::OnDeleteZzimFailed"),
                 45 => TryApplyItcWishSaleList(packetPayload, out string loadWishMessage)
                     ? loadWishMessage
-                    : BuildPacketDecodeFailure("CITC::OnLoadWishSaleListDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnLoadWishSaleListDone"),
                 46 => BuildItcFailureMessage(packetPayload, "CITC::OnLoadWishSaleListFailed"),
                 47 => TryApplyItcBuyCatalogItemDone(packetPayload, "CITC::OnBuyWishDone", fromWishList: true, out string buyWishMessage)
                     ? buyWishMessage
-                    : BuildPacketDecodeFailure("CITC::OnBuyWishDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnBuyWishDone"),
                 48 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyWishFailed"),
                 49 => TryApplyItcWishMutation(packetPayload, "CITC::OnCancelWishDone", addSelectedCatalogEntry: false, removeCurrentWishEntry: true, out string cancelWishMessage)
                     ? cancelWishMessage
-                    : BuildPacketDecodeFailure("CITC::OnCancelWishDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnCancelWishDone"),
                 50 => BuildItcFailureMessage(packetPayload, "CITC::OnCancelWishFailed"),
                 51 => TryApplyItcBuyCatalogItemDone(packetPayload, "CITC::OnBuyItemDone", fromWishList: false, out string buyItemMessage)
                     ? buyItemMessage
-                    : BuildPacketDecodeFailure("CITC::OnBuyItemDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnBuyItemDone"),
                 52 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyItemFailed"),
                 53 => TryApplyItcBuyCatalogItemDone(packetPayload, "CITC::OnBuyZzimItemDone", fromWishList: true, out string buyWishCatalogMessage)
                     ? buyWishCatalogMessage
-                    : BuildPacketDecodeFailure("CITC::OnBuyZzimItemDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnBuyZzimItemDone"),
                 54 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyZzimItemFailed"),
                 55 => TryApplyItcWishMutation(packetPayload, "CITC::OnRegisterWishItemDone", addSelectedCatalogEntry: true, removeCurrentWishEntry: false, out string registerWishMessage)
                     ? registerWishMessage
-                    : BuildPacketDecodeFailure("CITC::OnRegisterWishItemDone", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnRegisterWishItemDone"),
                 56 => BuildItcFailureMessage(packetPayload, "CITC::OnRegisterWishItemFailed"),
                 60 => TryApplyItcBidAuctionFailed(packetPayload, out string bidAuctionFailedMessage)
                     ? bidAuctionFailedMessage
-                    : BuildPacketDecodeFailure("CITC::OnBidAuctionFailed", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnBidAuctionFailed"),
                 61 => TryApplyItcCancelWishNotification(packetPayload, out string cancelWishNoticeMessage)
                     ? cancelWishNoticeMessage
-                    : BuildPacketDecodeFailure("CITC::OnNotifyCancelWishResult", packetPayload),
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnNotifyCancelWishResult"),
                 62 => TryApplyItcSuccessBidInfoResult(packetPayload, out string successBidInfoMessage)
                     ? successBidInfoMessage
-                    : BuildPacketDecodeFailure("CITC::OnSuccessBidInfoResult", packetPayload),
-                _ => $"{GetItcNormalItemSubtypeLabel(_itcNormalItemSubtype)} reached CITC with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state."
+                    : BuildItcDecodeFailureMessage(packetPayload, "CITC::OnSuccessBidInfoResult"),
+                _ => BuildItcUnknownResultSummary(packetPayload, _itcNormalItemSubtype, GetItcNormalItemSubtypeLabel(_itcNormalItemSubtype))
             };
             return _itcNormalItemLastSummary;
         }
@@ -4073,6 +4090,14 @@ namespace HaCreator.MapSimulator.UI
 
             _noticeState = $"Register-sale failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
             message = $"CITC::OnNormalItemResRegisterSaleEntryFailed rejected the focused listing (reason {reason.ToString(CultureInfo.InvariantCulture)}).";
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = "Register sale failed",
+                Detail = message,
+                Seller = "CITC sale owner",
+                PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Failed"
+            });
             return true;
         }
 
@@ -4105,6 +4130,14 @@ namespace HaCreator.MapSimulator.UI
 
             _noticeState = $"Sale-to-wish failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
             message = $"CITC::OnSaleCurrentItemToWishFailed rejected the focused listing (reason {reason.ToString(CultureInfo.InvariantCulture)}).";
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = "Sale-to-wish failed",
+                Detail = message,
+                Seller = "CITC wish owner",
+                PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Failed"
+            });
             return true;
         }
 
@@ -4121,6 +4154,14 @@ namespace HaCreator.MapSimulator.UI
 
             _noticeState = $"Bid auction failed with reason {reason.ToString(CultureInfo.InvariantCulture)}.";
             message = $"CITC::OnBidAuctionFailed reported reason {reason.ToString(CultureInfo.InvariantCulture)}.";
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = "Bid failed",
+                Detail = message,
+                Seller = "CITC purchase owner",
+                PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Failed"
+            });
             return true;
         }
 
@@ -4200,6 +4241,15 @@ namespace HaCreator.MapSimulator.UI
                 : $"Success-bid info arrived without an explicit winning price and refreshed {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} purchase owner row(s).";
             message =
                 $"CITC::OnSuccessBidInfoResult updated {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} packet-owned purchase row(s) from bid info ({updatedRows.ToString(CultureInfo.InvariantCulture)} decoded ITC row(s), listing hint {listingIdHint.ToString(CultureInfo.InvariantCulture)}).";
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = "Success bid info",
+                Detail = message,
+                Seller = "CITC purchase owner",
+                PriceLabel = winningPrice > 0 ? winningPrice.ToString("N0", CultureInfo.InvariantCulture) : string.Empty,
+                StateLabel = "Bid success",
+                ListingId = listingIdHint
+            });
             UpdateItcSelectionFromPrimaryList(_itcPurchasePacketEntries);
             return true;
         }
@@ -4271,6 +4321,15 @@ namespace HaCreator.MapSimulator.UI
                 : $"Wish cancellation notice reported reason {reason.ToString(CultureInfo.InvariantCulture)} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) still pending.";
             message =
                 $"CITC::OnNotifyCancelWishResult surfaced reason {reason.ToString(CultureInfo.InvariantCulture)} for {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) and decoded {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s) (listing hint {listingIdHint.ToString(CultureInfo.InvariantCulture)}, removed {removedCount.ToString(CultureInfo.InvariantCulture)}).";
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = "Cancel wish notice",
+                Detail = message,
+                Seller = "CITC wish owner",
+                PriceLabel = $"Reason {reason.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = reason == 0 ? "Processed" : "Pending",
+                ListingId = listingIdHint
+            });
             UpdateItcSelectionFromPrimaryList(_itcWishPacketEntries);
             return true;
         }
@@ -6044,16 +6103,131 @@ namespace HaCreator.MapSimulator.UI
         private string BuildItcFailureMessage(byte[] payload, string ownerName)
         {
             int reason = payload.Length >= 2 ? payload[1] : -1;
-            _noticeState = reason >= 0
+            string message = reason >= 0
                 ? $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}."
                 : $"{ownerName} failed before a reason byte could be decoded.";
-            return _noticeState;
+
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(payload, startOffset: 2, maxCount: 2);
+            if (decodedRows.Count > 0)
+            {
+                message += $" Decoded {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s).";
+                foreach (PacketCatalogEntry row in decodedRows)
+                {
+                    AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Failed body"));
+                }
+            }
+
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = ownerName,
+                Detail = message,
+                Seller = "CITC",
+                PriceLabel = reason >= 0 ? $"Reason {reason.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = "Failed"
+            });
+            _noticeState = message;
+            return message;
         }
 
         private string BuildItcSimpleResult(string ownerName, string fallbackMessage, byte[] payload)
         {
             _noticeState = fallbackMessage;
             return $"{ownerName} completed with {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s). {fallbackMessage}";
+        }
+
+        private string BuildItcDecodeFailureMessage(byte[] payload, string ownerName)
+        {
+            string message = BuildPacketDecodeFailure(ownerName, payload);
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(payload, startOffset: 1, maxCount: 2);
+            if (decodedRows.Count > 0)
+            {
+                message += $" Recovered {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s) into packet-owned fallback state.";
+                foreach (PacketCatalogEntry row in decodedRows)
+                {
+                    AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Decoded fallback"));
+                }
+            }
+
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = ownerName,
+                Detail = message,
+                Seller = "CITC",
+                PriceLabel = payload?.Length > 0 ? $"{payload.Length.ToString(CultureInfo.InvariantCulture)} bytes" : "0 bytes",
+                StateLabel = "Decode failed"
+            });
+            _noticeState = message;
+            return message;
+        }
+
+        private string BuildItcUnknownResultSummary(byte[] payload, int subtype, string subtypeLabel)
+        {
+            byte[] packetPayload = payload ?? Array.Empty<byte>();
+            string summary =
+                $"{subtypeLabel} reached CITC with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state.";
+            List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntriesFromPayload(packetPayload, startOffset: 1, maxCount: 2);
+            if (decodedRows.Count > 0)
+            {
+                summary += $" Decoded {decodedRows.Count.ToString(CultureInfo.InvariantCulture)} trailing ITC row(s) into fallback result ownership.";
+                foreach (PacketCatalogEntry row in decodedRows)
+                {
+                    AppendItcResultPacketEntry(ClonePacketCatalogEntry(row, "Unknown body"));
+                }
+            }
+
+            AppendItcResultPacketEntry(new PacketCatalogEntry
+            {
+                Title = subtypeLabel,
+                Detail = summary,
+                Seller = "CITC",
+                PriceLabel = $"Subtype {subtype.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Unknown"
+            });
+            _noticeState = summary;
+            return summary;
+        }
+
+        private List<PacketCatalogEntry> TryDecodeTrailingItcItemEntriesFromPayload(byte[] payload, int startOffset, int maxCount)
+        {
+            if (payload == null || payload.Length <= 0 || maxCount <= 0)
+            {
+                return new List<PacketCatalogEntry>();
+            }
+
+            int offset = Math.Clamp(startOffset, 0, payload.Length);
+            if (offset >= payload.Length)
+            {
+                return new List<PacketCatalogEntry>();
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            stream.Position = offset;
+            return TryDecodeTrailingItcItemEntries(reader, maxCount);
+        }
+
+        private void AppendItcResultPacketEntry(PacketCatalogEntry entry)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(entry.Title))
+            {
+                entry.Title = "ITC result";
+            }
+
+            if (string.IsNullOrWhiteSpace(entry.StateLabel))
+            {
+                entry.StateLabel = "Result";
+            }
+
+            _itcResultPacketEntries.Insert(0, entry);
+            if (_itcResultPacketEntries.Count > 24)
+            {
+                _itcResultPacketEntries.RemoveRange(24, _itcResultPacketEntries.Count - 24);
+            }
         }
 
         private void RecordPacketRoute(int packetType, string label, string detail, int tickCount)

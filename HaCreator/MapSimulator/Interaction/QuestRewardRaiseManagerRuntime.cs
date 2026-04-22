@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -194,6 +195,35 @@ namespace HaCreator.MapSimulator.Interaction
 
             _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
             return retainedState;
+        }
+
+        public QuestRewardRaiseState FindObservedRaiseByPieceHint(InventoryType inventoryType, int slotIndex, int itemId)
+        {
+            if (MatchesPieceHint(ActiveRaise, inventoryType, slotIndex, itemId))
+            {
+                return ActiveRaise;
+            }
+
+            QuestRewardRaiseState fallbackByItem = null;
+            foreach (QuestRewardRaiseState retainedState in _retainedClosedRaisesByQuestId.Values)
+            {
+                if (retainedState?.PlacedPieces == null || retainedState.PlacedPieces.Count == 0)
+                {
+                    continue;
+                }
+
+                if (MatchesPieceHint(retainedState, inventoryType, slotIndex, itemId))
+                {
+                    return retainedState;
+                }
+
+                if (fallbackByItem == null && itemId > 0 && retainedState.PlacedPieces.Exists(piece => piece.ItemId == itemId))
+                {
+                    fallbackByItem = retainedState;
+                }
+            }
+
+            return fallbackByItem;
         }
 
         public bool TrySetQrDataForQuest(int questId, int qrData, out QuestRewardRaiseState updatedState)
@@ -458,6 +488,48 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return 0;
+        }
+
+        private static bool MatchesPieceHint(
+            QuestRewardRaiseState state,
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId)
+        {
+            if (state?.PlacedPieces == null || state.PlacedPieces.Count == 0)
+            {
+                return false;
+            }
+
+            bool hasSlotHint = inventoryType != InventoryType.NONE && slotIndex >= 0;
+            if (hasSlotHint)
+            {
+                for (int i = 0; i < state.PlacedPieces.Count; i++)
+                {
+                    QuestRewardRaisePlacedPiece piece = state.PlacedPieces[i];
+                    if (piece.InventoryType == inventoryType
+                        && piece.SlotIndex == slotIndex
+                        && (itemId <= 0 || piece.ItemId == itemId))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < state.PlacedPieces.Count; i++)
+            {
+                if (state.PlacedPieces[i].ItemId == itemId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public QuestRewardRaiseState DestroyByQuestId(int questId)
