@@ -258,6 +258,27 @@ namespace HaCreator.MapSimulator
 
             if (_pendingItemUpgradeOwnerRequest == null)
             {
+                if (TryResolveItemUpgradePacketOwnedNoticeOnlyResult(
+                        decodeState.ResultCode,
+                        decodeState.HasReasonCode ? decodeState.ReasonCode : (int?)null,
+                        decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : _itemUpgradeOwnerLastResultValue,
+                        out string packetOwnedNoticeWithoutPendingRequest))
+                {
+                    ShowUtilityFeedbackMessage(packetOwnedNoticeWithoutPendingRequest);
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
+                    {
+                        itemUpgradeWindow.SetOwnerStatusMessage(packetOwnedNoticeWithoutPendingRequest, success: false);
+                    }
+
+                    message = $"Applied packet-owned item-upgrade notice result code {decodeState.ResultCode} without a pending request.";
+                    if (consumedQuestStartLatch)
+                    {
+                        message = $"{message} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch.";
+                    }
+
+                    return true;
+                }
+
                 message = $"Observed packet-owned item-upgrade result code {decodeState.ResultCode}, but no pending request is waiting for it.";
                 if (consumedQuestStartLatch)
                 {

@@ -426,9 +426,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             SkillData skill,
             SummonAssistType currentAssistType)
         {
-            if (skill == null
-                || HasMinionAbilityToken(skill.MinionAbility, "summon")
-                || HasSupportOwnedMinionAbilityCue(skill))
+            if (skill == null)
             {
                 return currentAssistType;
             }

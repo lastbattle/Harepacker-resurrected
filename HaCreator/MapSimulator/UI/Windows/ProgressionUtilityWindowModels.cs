@@ -1451,8 +1451,16 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<string>();
             }
 
+            // Keep explicit line-break payloads on the analyzer-wrapped single-lane path.
+            // CBookDlg::SetPage feeds each text block through CTextAnalyzer directly, so
+            // synthetic compact clause splitting should only apply to same-line delimiters.
+            if (detail.IndexOf('\r') >= 0 || detail.IndexOf('\n') >= 0)
+            {
+                return Array.Empty<string>();
+            }
+
             string[] clauses = Regex
-                .Split(detail.Trim(), @"\s{2,}", RegexOptions.CultureInvariant)
+                .Split(detail.Trim(), @"[^\S\r\n]{2,}", RegexOptions.CultureInvariant)
                 .Select(clause => clause.Trim())
                 .Where(clause => clause.Length > 0)
                 .ToArray();
@@ -1790,6 +1798,32 @@ namespace HaCreator.MapSimulator.UI
         public int SortPriority { get; init; }
         public int SortOrder { get; init; }
         public bool IncludeInCalendar { get; init; } = true;
+        public EventEntryRowLayoutSnapshot RowLayout { get; init; }
+            = new EventEntryRowLayoutSnapshot();
+    }
+
+    internal sealed class EventEntryRowLayoutSnapshot
+    {
+        public int? TitleLeft { get; init; }
+        public int? TitleTop { get; init; }
+        public int? TitleWidth { get; init; }
+        public int? DetailLeft { get; init; }
+        public int? DetailTop { get; init; }
+        public int? DetailWidth { get; init; }
+        public int? StatusLeft { get; init; }
+        public int? StatusTop { get; init; }
+        public int? StatusWidth { get; init; }
+
+        public bool HasAnyValue =>
+            TitleLeft.HasValue
+            || TitleTop.HasValue
+            || TitleWidth.HasValue
+            || DetailLeft.HasValue
+            || DetailTop.HasValue
+            || DetailWidth.HasValue
+            || StatusLeft.HasValue
+            || StatusTop.HasValue
+            || StatusWidth.HasValue;
     }
 
     internal sealed class EventAlarmLineSnapshot

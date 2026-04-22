@@ -1975,6 +1975,21 @@ namespace HaCreator.MapSimulator.Entities
             frame.DrawObject(sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, null);
         }
 
+        private float ResolveCurrentFrameAlpha(int tickCount)
+        {
+            MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
+            if (frameMetadata?.HasAlphaRange != true)
+            {
+                return 1f;
+            }
+
+            int frameDelay = Math.Max(1, _animationController?.CurrentFrameDelayMs ?? 1);
+            int elapsed = _animationController?.GetElapsedInCurrentFrameMs(tickCount) ?? 0;
+            float progress = MathHelper.Clamp((float)elapsed / frameDelay, 0f, 1f);
+            float alpha = MathHelper.Lerp(frameMetadata.AlphaStart / 255f, frameMetadata.AlphaEnd / 255f, progress);
+            return MathHelper.Clamp(alpha, 0f, 1f);
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -2030,13 +2045,15 @@ namespace HaCreator.MapSimulator.Entities
                     renderParameters.RenderWidth, renderParameters.RenderHeight))
                 {
                     float spawnAlpha = GetSpawnAlpha(TickCount);
+                    float frameAlpha = ResolveCurrentFrameAlpha(TickCount);
+                    float combinedAlpha = spawnAlpha * frameAlpha;
                     Color statusTint = GetStatusTint(TickCount);
-                    if (spawnAlpha < 1f || statusTint != Color.White)
+                    if (combinedAlpha < 1f || statusTint != Color.White)
                     {
                         drawFrame.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
                             drawFrame.X - adjustedShiftX,
                             drawFrame.Y - shiftCenteredY,
-                            statusTint * spawnAlpha,
+                            statusTint * combinedAlpha,
                             flip,
                             drawReflectionInfo);
                     }

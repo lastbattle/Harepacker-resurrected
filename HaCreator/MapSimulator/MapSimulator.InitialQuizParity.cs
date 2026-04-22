@@ -84,6 +84,8 @@ namespace HaCreator.MapSimulator
         private bool _initialQuizOwnerPressedOkButton;
         private bool _initialQuizOwnerResultSent;
         private bool _initialQuizOwnerTimeoutCloseArmed;
+        private int _initialQuizOwnerDisplayedRemainingSeconds;
+        private bool _initialQuizOwnerHasDisplayedRemainingSeconds;
         private InitialQuizOwnerFocusTarget _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
         private InitialQuizOwnerCaptureState _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
         private InitialQuizOwnerChildControlState _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Inactive;
@@ -174,6 +176,17 @@ namespace HaCreator.MapSimulator
             DestroyInitialQuizOwnerControlStack();
             EnsureInitialQuizOwnerControlStackCreated();
             ResetInitialQuizOwnerHeldEditKey();
+            if (_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot snapshot))
+            {
+                _initialQuizOwnerDisplayedRemainingSeconds = Math.Max(0, snapshot.RemainingSeconds);
+                _initialQuizOwnerHasDisplayedRemainingSeconds = true;
+            }
+            else
+            {
+                _initialQuizOwnerDisplayedRemainingSeconds = 0;
+                _initialQuizOwnerHasDisplayedRemainingSeconds = false;
+            }
+
             _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Active;
             _initialQuizOwnerCaptureState = ResolveInitialQuizOwnerCaptureState(
                 ownerActive: true,
@@ -193,6 +206,8 @@ namespace HaCreator.MapSimulator
             ClearInitialQuizOwnerCompositionText();
             ClearInitialQuizOwnerImeCandidateList();
             ResetInitialQuizOwnerHeldEditKey();
+            _initialQuizOwnerDisplayedRemainingSeconds = 0;
+            _initialQuizOwnerHasDisplayedRemainingSeconds = false;
             _initialQuizOwnerChildControlState = InitialQuizOwnerChildControlState.Inactive;
             _initialQuizOwnerCaptureState = InitialQuizOwnerCaptureState.None;
         }
@@ -209,6 +224,12 @@ namespace HaCreator.MapSimulator
                 ownerActive: true,
                 _initialQuizOwnerFocusTarget);
             _initialQuizOwnerChildControlState = ResolveInitialQuizOwnerChildControlState(snapshot.RemainingSeconds);
+            _initialQuizOwnerDisplayedRemainingSeconds = ResolveInitialQuizOwnerDisplayedRemainingSeconds(
+                _initialQuizOwnerHasDisplayedRemainingSeconds
+                    ? _initialQuizOwnerDisplayedRemainingSeconds
+                    : null,
+                snapshot.RemainingSeconds);
+            _initialQuizOwnerHasDisplayedRemainingSeconds = true;
 
             InitialQuizOwnerTimeoutBehavior timeoutBehavior = ResolveInitialQuizOwnerTimeoutBehavior(
                 snapshot.RemainingSeconds,
@@ -569,7 +590,10 @@ namespace HaCreator.MapSimulator
             DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture2, ownerBounds);
             DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture3, overlayBounds);
 
-            DrawInitialQuizOwnerTimerDigits(ownerBounds, snapshot.RemainingSeconds);
+            int displayedRemainingSeconds = _initialQuizOwnerHasDisplayedRemainingSeconds
+                ? _initialQuizOwnerDisplayedRemainingSeconds
+                : snapshot.RemainingSeconds;
+            DrawInitialQuizOwnerTimerDigits(ownerBounds, displayedRemainingSeconds);
             DrawInitialQuizOwnerAnimationFrame(ownerBounds, currentTickCount);
 
             DrawInitialQuizOwnerSingleLineText(
@@ -1573,6 +1597,28 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldDrawInitialQuizOwnerCursor(int currentTickCount, int cursorBlinkStartedAt)
         {
             return ((currentTickCount - cursorBlinkStartedAt) / 500) % 2 == 0;
+        }
+
+        internal static int ResolveInitialQuizOwnerDisplayedRemainingSeconds(
+            int? previousDisplayedRemainingSeconds,
+            int currentRemainingSeconds)
+        {
+            int current = Math.Max(0, currentRemainingSeconds);
+            if (!previousDisplayedRemainingSeconds.HasValue)
+            {
+                return current;
+            }
+
+            int previous = Math.Max(0, previousDisplayedRemainingSeconds.Value);
+            if (current == previous)
+            {
+                return previous;
+            }
+
+            // `CUIInitialQuiz::Update` invalidates countdown changes only once the clock reaches <= 120s.
+            return current <= 120
+                ? current
+                : previous;
         }
 
         internal static int ResolveInitialQuizOwnerVisibleStart(IReadOnlyList<int> glyphWidths, int cursorIndex, int maxWidth)

@@ -87,5 +87,14 @@ namespace HaCreator.MapSimulator.Entities
             string ownerPath = MapleStoryStringPool.ResolveMobAngerGaugeBurstPath(mobTemplateId);
             return !string.IsNullOrWhiteSpace(ownerPath) ? ownerPath : loadedEffectPath;
         }
+
+        public static bool CanRegisterOwnerBurst(
+            IReadOnlyList<IDXObject> frames,
+            string effectPath)
+        {
+            return frames != null
+                && frames.Count > 0
+                && !string.IsNullOrWhiteSpace(effectPath);
+        }
     }
 }

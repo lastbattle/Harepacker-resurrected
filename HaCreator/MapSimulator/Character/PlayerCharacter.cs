@@ -5768,16 +5768,16 @@ namespace HaCreator.MapSimulator.Character
                 out bool drawUnderFaceEffectsNow,
                 out bool drawShadowPartnerNow);
 
-            if (drawUnderFaceOverlayNow)
-            {
-                drawUnderFaceOverlay?.Invoke();
-                underFaceOverlayDrawn = true;
-            }
-
             if (drawShadowPartnerNow)
             {
                 DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
                 shadowPartnerDrawn = true;
+            }
+
+            if (drawUnderFaceOverlayNow)
+            {
+                drawUnderFaceOverlay?.Invoke();
+                underFaceOverlayDrawn = true;
             }
 
             if (drawUnderFaceEffectsNow)
@@ -7472,6 +7472,14 @@ namespace HaCreator.MapSimulator.Character
                 && lastInsertCanvasTime != int.MinValue
                 && currentTime < lastInsertCanvasTime;
             if (insertTimelineRegressed)
+            {
+                return true;
+            }
+
+            bool insertTimelineAdvanced = currentTime != int.MinValue
+                && lastInsertCanvasTime != int.MinValue
+                && currentTime > lastInsertCanvasTime;
+            if (insertTimelineAdvanced)
             {
                 return true;
             }
@@ -10028,6 +10036,38 @@ namespace HaCreator.MapSimulator.Character
                 out bool drawUnderFaceEffects,
                 out bool drawShadowPartner);
             return (drawUnderFaceOverlay, drawUnderFaceEffects, drawShadowPartner);
+        }
+
+        internal static IReadOnlyList<string> ResolveUnderFaceSeamDrawOrderForTesting(
+            bool underFaceOverlayDrawn,
+            bool underFaceDrawn,
+            bool shadowPartnerDrawn)
+        {
+            ResolveUnderFaceSeamDrawAdmissions(
+                underFaceOverlayDrawn,
+                underFaceDrawn,
+                shadowPartnerDrawn,
+                out bool drawUnderFaceOverlay,
+                out bool drawUnderFaceEffects,
+                out bool drawShadowPartner);
+
+            var order = new List<string>(3);
+            if (drawShadowPartner)
+            {
+                order.Add("ShadowPartner");
+            }
+
+            if (drawUnderFaceOverlay)
+            {
+                order.Add("UnderFaceOverlay");
+            }
+
+            if (drawUnderFaceEffects)
+            {
+                order.Add("UnderFaceEffects");
+            }
+
+            return order;
         }
 
         internal static string ResolveMirrorImageActionOwnerNameForTesting()

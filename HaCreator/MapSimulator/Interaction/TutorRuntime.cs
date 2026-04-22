@@ -172,11 +172,29 @@ namespace HaCreator.MapSimulator.Interaction
             public void ApplyMessage(TutorMessageSnapshot snapshot)
             {
                 Message = snapshot;
+                LastMutationTick = snapshot.MessageStartedAt != int.MinValue
+                    ? snapshot.MessageStartedAt
+                    : LastMutationTick;
             }
 
             public void ClearMessage()
             {
                 Message = default;
+            }
+
+            public bool TryGetVisibleMessage(int currentTick, out TutorMessageSnapshot snapshot)
+            {
+                snapshot = Message;
+                return snapshot.MessageKind != TutorMessageKind.None
+                    && snapshot.MessageExpiresAt != int.MinValue
+                    && currentTick < snapshot.MessageExpiresAt;
+            }
+
+            public int ResolveNextMessageSequenceId()
+            {
+                return Message.MessageKind == TutorMessageKind.None
+                    ? 1
+                    : Math.Max(1, Message.MessageSequenceId + 1);
             }
         }
 

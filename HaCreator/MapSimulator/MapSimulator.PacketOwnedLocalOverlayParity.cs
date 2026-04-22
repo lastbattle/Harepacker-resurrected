@@ -956,35 +956,7 @@ namespace HaCreator.MapSimulator
             out PacketOwnedBalloonTextStyle style)
         {
             style = new PacketOwnedBalloonTextStyle(baseColor, false, 1f, false, Color.Transparent);
-            string normalized = value?.Trim();
-            if (string.IsNullOrWhiteSpace(normalized)
-                || normalized.Equals("0", StringComparison.OrdinalIgnoreCase)
-                || normalized.Equals("basic", StringComparison.OrdinalIgnoreCase)
-                || normalized.Equals("summary", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            int tableId;
-            if (!int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out tableId))
-            {
-                tableId = normalized.ToLowerInvariant() switch
-                {
-                    "select" => 3,
-                    "reward" => 8,
-                    "prob" => 6,
-                    "default" => 0,
-                    "black" => 0,
-                    "red" => 2,
-                    "green" => 4,
-                    "blue" => 6,
-                    "purple" => 8,
-                    "magenta" => 8,
-                    _ => -1
-                };
-            }
-
-            if (tableId < 0 || tableId > 11)
+            if (!PacketOwnedBalloonTextFormatter.TryResolveFontTableIndex(value, out int tableId))
             {
                 return false;
             }
@@ -4289,28 +4261,28 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryDecodePacketOwnedFieldFadeOutForcePayload(
             byte[] payload,
-            out int fadeOutMs,
+            out int layerZ,
             out string message)
         {
             return TryDecodeSingleInt32LocalUtilityPayload(
                 payload,
                 "Field-fade-out-force",
-                "fade-out duration",
-                out fadeOutMs,
+                "fade layer",
+                out layerZ,
                 out message);
         }
 
         private bool TryApplyPacketOwnedFieldFadeOutForcePayload(byte[] payload, out string message)
         {
-            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int fadeOutMs, out message))
+            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int layerZ, out message))
             {
                 return false;
             }
 
-            int forcedCount = _packetOwnedFieldFadeOverlay.ForceFadeOutPending(fadeOutMs, currTickCount);
-            message = forcedCount > 0
-                ? $"Forced fade-out on {forcedCount} packet-authored field fade entr{(forcedCount == 1 ? "y" : "ies")} over {Math.Max(0, fadeOutMs)}ms."
-                : "No packet-authored field fade entries were eligible for force fade-out.";
+            int removedCount = _packetOwnedFieldFadeOverlay.RemoveLayer(layerZ);
+            message = removedCount > 0
+                ? $"Cleared {removedCount} packet-authored field fade entr{(removedCount == 1 ? "y" : "ies")} on layer {layerZ}."
+                : $"No packet-authored field fade entries were active on layer {layerZ}.";
             return true;
         }
 

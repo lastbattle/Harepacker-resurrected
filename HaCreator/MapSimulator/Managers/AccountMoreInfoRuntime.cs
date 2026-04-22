@@ -424,12 +424,38 @@ namespace HaCreator.MapSimulator.Managers
                 return Array.Empty<int>();
             }
 
-            return lookup
-                .Where(entry => entry.Key != 0 && !string.IsNullOrWhiteSpace(entry.Value))
-                .OrderBy(entry => entry.Value, StringComparer.Ordinal)
-                .Select(entry => entry.Key)
-                .Prepend(0)
-                .ToArray();
+            Dictionary<string, int> nameToItemParam = new(StringComparer.Ordinal);
+            List<string> sortedNames = new();
+            foreach (KeyValuePair<int, string> entry in lookup)
+            {
+                if (entry.Key == 0 || string.IsNullOrWhiteSpace(entry.Value))
+                {
+                    continue;
+                }
+
+                // CUIAccountMoreInfo::LoadCountryName keeps a sorted name list and
+                // resolves each displayed name through a name->SN map on insertion.
+                // If duplicate names exist, later entries overwrite the map slot.
+                sortedNames.Add(entry.Value);
+                nameToItemParam[entry.Value] = entry.Key;
+            }
+
+            if (sortedNames.Count == 0)
+            {
+                return new[] { 0 };
+            }
+
+            sortedNames.Sort(StringComparer.Ordinal);
+            List<int> itemParams = new(sortedNames.Count + 1) { 0 };
+            foreach (string name in sortedNames)
+            {
+                if (nameToItemParam.TryGetValue(name, out int itemParam))
+                {
+                    itemParams.Add(itemParam);
+                }
+            }
+
+            return itemParams;
         }
 
         internal static int SelectClientComboItemParamForLoad(int requestedValue, IReadOnlyList<int> itemParams, int fallbackValue = 0)

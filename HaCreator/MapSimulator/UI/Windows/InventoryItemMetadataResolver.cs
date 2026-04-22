@@ -2389,7 +2389,8 @@ namespace HaCreator.MapSimulator.UI
                    || infoProperty["speed"] != null
                    || infoProperty["rotateSpeed"] != null
                    || infoProperty["isBgmOrEffect"] != null
-                   || infoProperty["NoCancel"] != null;
+                   || infoProperty["repeat"] != null
+                   || TryGetWeatherNoCancelProperty(infoProperty) != null;
         }
 
         private static void AppendInfoNpcMetadataLines(
@@ -3386,20 +3387,37 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add($"Weather Rotation Speed: {rotateSpeed.ToString(CultureInfo.InvariantCulture)}");
             }
 
-            if (GetIntValue(infoProperty["isBgmOrEffect"]) == 1)
+            if (infoProperty["isBgmOrEffect"] != null)
             {
-                metadataLines.Add("Weather BGM/Effect broadcast");
+                metadataLines.Add(GetIntValue(infoProperty["isBgmOrEffect"]) == 1
+                    ? "Weather BGM/Effect broadcast"
+                    : "Weather local visual effect");
             }
 
-            if (GetIntValue(infoProperty["repeat"]) == 1)
+            if (infoProperty["repeat"] != null)
             {
-                metadataLines.Add("Weather effect repeats");
+                metadataLines.Add(GetIntValue(infoProperty["repeat"]) == 1
+                    ? "Weather effect repeats"
+                    : "Weather effect does not repeat");
             }
 
-            if (GetIntValue(infoProperty["NoCancel"]) == 1)
+            WzImageProperty noCancelProperty = TryGetWeatherNoCancelProperty(infoProperty);
+            if (noCancelProperty != null)
             {
-                metadataLines.Add("Weather effect cannot be canceled manually");
+                metadataLines.Add(GetIntValue(noCancelProperty) == 1
+                    ? "Weather effect cannot be canceled manually"
+                    : "Weather effect can be canceled manually");
             }
+        }
+
+        private static WzImageProperty TryGetWeatherNoCancelProperty(WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return null;
+            }
+
+            return infoProperty["NoCancel"] ?? infoProperty["noCancel"];
         }
 
         private static void AppendAuthoredScheduleMetadataLines(List<string> metadataLines, WzSubProperty scheduleProperty)

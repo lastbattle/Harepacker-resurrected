@@ -453,6 +453,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            property = ResolveReviveOwnerLinkedProperty(property);
             if (property is WzVectorProperty vectorProperty)
             {
                 point = new Vector2(vectorProperty.X.Value, vectorProperty.Y.Value);
@@ -619,9 +620,28 @@ namespace HaCreator.MapSimulator
                 candidate => string.Equals(candidate?.Name, childName, StringComparison.OrdinalIgnoreCase));
         }
 
+        private static WzImageProperty ResolveReviveOwnerLinkedProperty(WzImageProperty property)
+        {
+            const int maxDepth = 8;
+            WzImageProperty resolved = property;
+            for (int depth = 0; depth < maxDepth && resolved is WzUOLProperty uolProperty; depth++)
+            {
+                if (uolProperty.WzValue is not WzImageProperty linkedProperty
+                    || ReferenceEquals(linkedProperty, resolved))
+                {
+                    break;
+                }
+
+                resolved = linkedProperty;
+            }
+
+            return resolved;
+        }
+
         private static bool TryReadReviveOwnerBoolean(WzImageProperty property, out bool value)
         {
             value = false;
+            property = ResolveReviveOwnerLinkedProperty(property);
             if (property == null)
             {
                 return false;
@@ -684,6 +704,7 @@ namespace HaCreator.MapSimulator
         private static bool TryReadReviveOwnerInt(WzImageProperty property, out int value)
         {
             value = 0;
+            property = ResolveReviveOwnerLinkedProperty(property);
             if (property == null)
             {
                 return false;
@@ -723,6 +744,7 @@ namespace HaCreator.MapSimulator
 
         private static bool TryReadReviveOwnerNumericScalar(WzImageProperty property, out double value)
         {
+            property = ResolveReviveOwnerLinkedProperty(property);
             switch (property)
             {
                 case WzIntProperty intProperty:

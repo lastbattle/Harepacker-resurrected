@@ -488,9 +488,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int relativeY = releaseY - dropdownBounds.Y;
+            if (relativeY < 0)
+            {
+                return -1;
+            }
+
             int visibleRowIndex = relativeY / rowHeight;
             int clientRowIndex = firstVisibleIndex + visibleRowIndex;
-            return Math.Clamp(clientRowIndex, 0, candidateCount - 1);
+            if (clientRowIndex < 0 || clientRowIndex >= candidateCount)
+            {
+                return -1;
+            }
+
+            return clientRowIndex;
         }
 
         internal static int ResolveWhisperPickerClientComboRowIndexFromReleasePoint(
@@ -530,8 +540,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int relativeY = releaseY - dropdownBounds.Y;
+            if (relativeY < 0)
+            {
+                return -1;
+            }
+
             int visibleRowIndex = relativeY / rowHeight;
-            return Math.Clamp(visibleRowIndex, 0, candidateCount - 1);
+            return visibleRowIndex >= 0 && visibleRowIndex < candidateCount
+                ? visibleRowIndex
+                : -1;
         }
 
         internal static int ResolveWhisperPickerClientComboDeleteIndexFromReleasePoint(

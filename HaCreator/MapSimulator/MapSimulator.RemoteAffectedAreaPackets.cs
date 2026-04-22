@@ -1390,11 +1390,38 @@ namespace HaCreator.MapSimulator
                    || _specialFieldRuntime?.Minigames?.MonsterCarnival?.IsVisible == true;
         }
 
+        internal static bool ResolveRemoteAffectedAreaEnemyInPvpContext(
+            int ownerId,
+            int localPlayerId,
+            bool hasPvpOwnershipContext,
+            bool hasResolvedOwnerTeam,
+            bool resolvedOwnerIsEnemy,
+            bool hasAreaOwnerEnemySnapshot,
+            bool areaOwnerIsEnemySnapshot,
+            bool hasExplicitHostileMetadata,
+            bool hasExplicitFriendlyMetadata,
+            bool ownerIsPartyMember)
+        {
+            if (localPlayerId <= 0 || ownerId == localPlayerId || !hasPvpOwnershipContext)
+            {
+                return false;
+            }
+
+            return ResolveRemoteAffectedAreaOwnerEnemyDecision(
+                hasResolvedOwnerTeam,
+                resolvedOwnerIsEnemy,
+                hasAreaOwnerEnemySnapshot,
+                areaOwnerIsEnemySnapshot,
+                hasExplicitHostileMetadata,
+                hasExplicitFriendlyMetadata,
+                ownerId > 0 && ownerIsPartyMember);
+        }
+
         private bool IsAffectedAreaOwnerEnemyInPvpContext(int areaObjectId, int ownerId)
         {
             PlayerCharacter player = _playerManager?.Player;
             int localPlayerId = player?.Build?.Id ?? 0;
-            if (ownerId <= 0 || localPlayerId <= 0 || ownerId == localPlayerId)
+            if (localPlayerId <= 0 || ownerId == localPlayerId)
             {
                 return false;
             }
@@ -1409,12 +1436,13 @@ namespace HaCreator.MapSimulator
 
             bool hasResolvedOwnerTeam = false;
             bool resolvedOwnerIsEnemy = false;
-            if (TryResolveBattlefieldAffectedAreaOwnerTeam(areaObjectId, ownerId, out int ownerBattlefieldTeamId, out int localBattlefieldTeamId))
+            if (ownerId > 0
+                && TryResolveBattlefieldAffectedAreaOwnerTeam(areaObjectId, ownerId, out int ownerBattlefieldTeamId, out int localBattlefieldTeamId))
             {
                 hasResolvedOwnerTeam = true;
                 resolvedOwnerIsEnemy = ownerBattlefieldTeamId != localBattlefieldTeamId;
             }
-            else
+            else if (ownerId > 0)
             {
                 Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
                 if (TryResolveMonsterCarnivalAffectedAreaOwnerTeam(areaObjectId, ownerId, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
@@ -1435,7 +1463,10 @@ namespace HaCreator.MapSimulator
             bool hasAreaOwnerEnemySnapshot =
                 areaObjectId > 0
                 && _remoteAffectedAreaEnemyOwnersByAreaObjectId.TryGetValue(areaObjectId, out areaOwnerIsEnemySnapshot);
-            return ResolveRemoteAffectedAreaOwnerEnemyDecision(
+            return ResolveRemoteAffectedAreaEnemyInPvpContext(
+                ownerId,
+                localPlayerId,
+                hasPvpOwnershipContext,
                 hasResolvedOwnerTeam,
                 resolvedOwnerIsEnemy,
                 hasAreaOwnerEnemySnapshot,

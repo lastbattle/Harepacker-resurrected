@@ -69,6 +69,12 @@ namespace HaCreator.MapSimulator.UI
         /// Used by the simulator to keep scripted ownership aligned across launcher paths.
         /// </summary>
         public Action<UIWindowBase> BeforeShowWindow { get; set; }
+
+        /// <summary>
+        /// Optional callback invoked before opening a hidden window via keyboard toggle flow.
+        /// Returning false keeps the window closed.
+        /// </summary>
+        public Func<string, bool> BeforeToggleWindowOpen { get; set; }
         #endregion
 
         #region Properties
@@ -371,6 +377,14 @@ namespace HaCreator.MapSimulator.UI
             if (EnsureWindowRegistered(windowName) &&
                 windowsByName.TryGetValue(windowName, out var window))
             {
+                if (!window.IsVisible)
+                {
+                    if (BeforeToggleWindowOpen != null && !BeforeToggleWindowOpen(windowName))
+                    {
+                        return;
+                    }
+                }
+
                 window.ToggleVisibility(tickCount);
 
                 if (window.IsVisible)

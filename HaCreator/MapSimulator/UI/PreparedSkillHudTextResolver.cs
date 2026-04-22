@@ -38,6 +38,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (preparedSkill.IsPreparingPhase)
             {
+                if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.ReleaseArmed
+                    && gaugeDurationMs > 0
+                    && progress >= 0.999f)
+                {
+                    return "Release";
+                }
+
                 int preparingRemainingMs = preparedSkill.PrepareRemainingMs > 0
                     ? preparedSkill.PrepareRemainingMs
                     : preparedSkill.RemainingMs;

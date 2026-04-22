@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.Managers
@@ -51,7 +52,7 @@ namespace HaCreator.MapSimulator.Managers
             @"[""']?(?<label>mismatch[\s_\-]*byte|mismatch[\s_\-]*byte[\s_\-]*index|byte[\s_\-]*index)[""']?\s*[:=]\s*(?<value>[^\s;\),|]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchFieldListAssignmentRegex = new(
-            @"[""']?(?<label>mismatch[\s_\-]*fields|mismatch[\s_\-]*field|mismatch[\s_\-]*field[\s_\-]*names|mismatch[\s_\-]*field[\s_\-]*name|field[\s_\-]*names|field[\s_\-]*name|fields|field)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^;\)\r\n]+)",
+            @"[""']?(?<label>mismatch[\s_\-]*fields[\s_\-]*list|mismatch[\s_\-]*field[\s_\-]*list|mismatch[\s_\-]*fields|mismatch[\s_\-]*field|mismatch[\s_\-]*field[\s_\-]*names|mismatch[\s_\-]*field[\s_\-]*name|field[\s_\-]*names|field[\s_\-]*name|fields[\s_\-]*list|field[\s_\-]*list|fields|field)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^;\)\r\n]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MoveActionMismatchClassAssignmentRegex = new(
             @"[""']?(?<label>move[\s_\-]*action[\s_\-]*(?:mismatch|diff|parity)|move[\s_\-]*mismatch)[""']?\s*[:=]\s*[""']?(?<value>[A-Za-z][A-Za-z0-9_\- ]*)",
@@ -921,6 +922,14 @@ namespace HaCreator.MapSimulator.Managers
                 return Array.Empty<int>();
             }
 
+            bool parsedJsonLike = TryParseSg88ReplayParityMismatchFieldListJsonLike(normalizedSegment, parsedByteIndices);
+            if (parsedJsonLike)
+            {
+                return parsedByteIndices
+                    .OrderBy(index => index)
+                    .ToArray();
+            }
+
             string[] tokens = normalizedSegment.Split(
                 Sg88MismatchFieldListSeparators,
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -981,6 +990,256 @@ namespace HaCreator.MapSimulator.Managers
             return parsedByteIndices
                 .OrderBy(index => index)
                 .ToArray();
+        }
+
+        private static bool TryParseSg88ReplayParityMismatchFieldListJsonLike(string normalizedSegment, ISet<int> parsedByteIndices)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedSegment)
+                || parsedByteIndices == null
+                || normalizedSegment.Length == 0)
+            {
+                return false;
+            }
+
+            char first = normalizedSegment[0];
+            if (first != '{' && first != '[')
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(normalizedSegment);
+                CollectSg88ReplayParityMismatchFieldIndicesFromJsonElement(document.RootElement, parsedByteIndices);
+                return true;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private static void CollectSg88ReplayParityMismatchFieldIndicesFromJsonElement(
+            JsonElement element,
+            ISet<int> parsedByteIndices)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (JsonProperty property in element.EnumerateObject())
+                    {
+                        string propertyName = property.Name;
+                        if (string.IsNullOrWhiteSpace(propertyName))
+                        {
+                            CollectSg88ReplayParityMismatchFieldIndicesFromJsonElement(property.Value, parsedByteIndices);
+                            continue;
+                        }
+
+                        if (TryMapSg88MismatchFieldTokenToByteIndices(propertyName, out int[] mappedFromName)
+                            && IsSg88MismatchAffirmativeJsonValue(property.Value))
+                        {
+                            foreach (int index in mappedFromName)
+                            {
+                                if (index >= 0)
+                                {
+                                    parsedByteIndices.Add(index);
+                                }
+                            }
+                        }
+
+                        if (IsSg88MismatchFieldValueLabel(propertyName)
+                            && TryExtractSg88ReplayParityMismatchFieldIndicesFromJsonValue(property.Value, out int[] mappedFromValue))
+                        {
+                            foreach (int index in mappedFromValue)
+                            {
+                                if (index >= 0)
+                                {
+                                    parsedByteIndices.Add(index);
+                                }
+                            }
+                        }
+
+                        CollectSg88ReplayParityMismatchFieldIndicesFromJsonElement(property.Value, parsedByteIndices);
+                    }
+
+                    break;
+                case JsonValueKind.Array:
+                    foreach (JsonElement item in element.EnumerateArray())
+                    {
+                        CollectSg88ReplayParityMismatchFieldIndicesFromJsonElement(item, parsedByteIndices);
+                    }
+
+                    break;
+                case JsonValueKind.String:
+                    if (TryExtractSg88ReplayParityMismatchFieldIndicesFromTextToken(element.GetString(), out int[] mapped))
+                    {
+                        foreach (int index in mapped)
+                        {
+                            if (index >= 0)
+                            {
+                                parsedByteIndices.Add(index);
+                            }
+                        }
+                    }
+
+                    break;
+            }
+        }
+
+        private static bool TryExtractSg88ReplayParityMismatchFieldIndicesFromJsonValue(
+            JsonElement value,
+            out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.String:
+                    return TryExtractSg88ReplayParityMismatchFieldIndicesFromTextToken(value.GetString(), out byteIndices);
+                case JsonValueKind.Array:
+                {
+                    HashSet<int> parsedIndices = new();
+                    foreach (JsonElement item in value.EnumerateArray())
+                    {
+                        if (TryExtractSg88ReplayParityMismatchFieldIndicesFromJsonValue(item, out int[] nestedIndices))
+                        {
+                            foreach (int index in nestedIndices)
+                            {
+                                if (index >= 0)
+                                {
+                                    parsedIndices.Add(index);
+                                }
+                            }
+                        }
+                    }
+
+                    if (parsedIndices.Count == 0)
+                    {
+                        return false;
+                    }
+
+                    byteIndices = parsedIndices.OrderBy(index => index).ToArray();
+                    return true;
+                }
+                case JsonValueKind.Object:
+                {
+                    HashSet<int> parsedIndices = new();
+                    CollectSg88ReplayParityMismatchFieldIndicesFromJsonElement(value, parsedIndices);
+                    if (parsedIndices.Count == 0)
+                    {
+                        return false;
+                    }
+
+                    byteIndices = parsedIndices.OrderBy(index => index).ToArray();
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryExtractSg88ReplayParityMismatchFieldIndicesFromTextToken(
+            string token,
+            out int[] byteIndices)
+        {
+            byteIndices = Array.Empty<int>();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (TryParseSg88ReplayParityMismatchFieldToken(token, out int[] mapped))
+            {
+                byteIndices = mapped;
+                return true;
+            }
+
+            string normalizedToken = NormalizeSg88MismatchByteToken(token).Trim().Trim('"', '\'');
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return false;
+            }
+
+            string[] delimitedTokens = normalizedToken.Split(
+                Sg88MismatchFieldListSeparators,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            HashSet<int> parsedIndices = new();
+            foreach (string delimitedToken in delimitedTokens)
+            {
+                if (!TryParseSg88ReplayParityMismatchFieldToken(delimitedToken, out int[] parsed))
+                {
+                    continue;
+                }
+
+                foreach (int index in parsed)
+                {
+                    if (index >= 0)
+                    {
+                        parsedIndices.Add(index);
+                    }
+                }
+            }
+
+            if (parsedIndices.Count == 0)
+            {
+                return false;
+            }
+
+            byteIndices = parsedIndices.OrderBy(index => index).ToArray();
+            return true;
+        }
+
+        private static bool IsSg88MismatchFieldValueLabel(string label)
+        {
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return false;
+            }
+
+            string normalized = label.Trim()
+                .Trim('"', '\'')
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized is
+                "field" or "fields"
+                or "fieldname" or "fieldnames"
+                or "fieldlist" or "fieldslist"
+                or "mismatchfield" or "mismatchfields"
+                or "mismatchfieldname" or "mismatchfieldnames"
+                or "mismatchfieldlist" or "mismatchfieldslist";
+        }
+
+        private static bool IsSg88MismatchAffirmativeJsonValue(JsonElement value)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.True:
+                    return true;
+                case JsonValueKind.False:
+                case JsonValueKind.Null:
+                case JsonValueKind.Undefined:
+                    return false;
+                case JsonValueKind.Number:
+                    if (value.TryGetInt64(out long integral))
+                    {
+                        return integral != 0;
+                    }
+
+                    return value.TryGetDouble(out double floating) && Math.Abs(floating) > double.Epsilon;
+                case JsonValueKind.String:
+                    return !IsSg88MismatchFalseLikeValueToken(value.GetString());
+                case JsonValueKind.Array:
+                    return value.EnumerateArray().Any(IsSg88MismatchAffirmativeJsonValue);
+                case JsonValueKind.Object:
+                    return value.EnumerateObject().Any(property => IsSg88MismatchAffirmativeJsonValue(property.Value));
+                default:
+                    return false;
+            }
         }
 
         private static bool TryParseSg88ReplayParityMismatchFieldToken(string token, out int[] byteIndices)
@@ -1110,6 +1369,44 @@ namespace HaCreator.MapSimulator.Managers
                 normalized = normalized.Substring("payload".Length);
             }
 
+            string[] prefixedAliases =
+            {
+                "mismatchfieldnames",
+                "mismatchfieldslist",
+                "mismatchfieldname",
+                "mismatchfieldlist",
+                "mismatchfields",
+                "mismatchfield",
+                "fieldnames",
+                "fieldslist",
+                "fieldname",
+                "fieldlist",
+                "fields",
+                "field"
+            };
+            bool trimmedPrefix;
+            do
+            {
+                trimmedPrefix = false;
+                for (int i = 0; i < prefixedAliases.Length; i++)
+                {
+                    string alias = prefixedAliases[i];
+                    if (!normalized.StartsWith(alias, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    normalized = normalized.Substring(alias.Length);
+                    trimmedPrefix = true;
+                    break;
+                }
+            } while (trimmedPrefix && normalized.Length > 0);
+
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
             switch (normalized)
             {
                 case "opcode":
@@ -1119,6 +1416,9 @@ namespace HaCreator.MapSimulator.Managers
                 case "requesttick":
                 case "requestat":
                 case "requesttimestamp":
+                case "requesttimems":
+                case "requestms":
+                case "requestedat":
                 case "tick":
                     byteIndices = new[] { 2, 3, 4, 5 };
                     return true;
@@ -1128,16 +1428,23 @@ namespace HaCreator.MapSimulator.Managers
                     return true;
                 case "skilllevel":
                 case "skilllvl":
+                case "skilllv":
+                case "slv":
+                case "lv":
                 case "level":
                     byteIndices = new[] { 10 };
                     return true;
                 case "x":
                 case "xpos":
+                case "posx":
+                case "coordx":
                 case "positionx":
                     byteIndices = new[] { 11, 12 };
                     return true;
                 case "y":
                 case "ypos":
+                case "posy":
+                case "coordy":
                 case "positiony":
                     byteIndices = new[] { 13, 14 };
                     return true;
@@ -1146,6 +1453,8 @@ namespace HaCreator.MapSimulator.Managers
                 case "moveactionbyte":
                 case "moveactionflag":
                 case "rawmoveaction":
+                case "rawmove":
+                case "movebyte":
                 case "moveactionlowbit":
                     byteIndices = new[] { Sg88FirstUseMoveActionByteIndex };
                     return true;
@@ -1155,6 +1464,8 @@ namespace HaCreator.MapSimulator.Managers
                 case "vecctrlstate":
                 case "vectorctrl":
                 case "vectorcontrol":
+                case "vec":
+                case "vecowner":
                     byteIndices = new[] { Sg88FirstUseVecCtrlByteIndex };
                     return true;
                 default:

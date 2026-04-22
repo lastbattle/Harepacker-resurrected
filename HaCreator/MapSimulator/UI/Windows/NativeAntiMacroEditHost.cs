@@ -1534,8 +1534,7 @@ namespace HaCreator.MapSimulator.UI
                 resolvedText,
                 currentCaret,
                 anchor,
-                moveRight,
-                shiftHeld: false);
+                moveRight);
         }
 
         internal static int ResolveClientBackspaceSelectionStart(string text, int caretIndex)

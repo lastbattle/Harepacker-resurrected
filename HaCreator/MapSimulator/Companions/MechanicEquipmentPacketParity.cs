@@ -175,6 +175,9 @@ namespace HaCreator.MapSimulator.Companions
                 }
 
                 MechanicInventoryOperationContext operationContext = default;
+                bool requiresSecondaryStatChangedPointTrailer = false;
+                bool sawMatchingSwap = false;
+                bool sawMatchingAddEntry = false;
                 for (int i = 0; i < operationCount; i++)
                 {
                     if (stream.Length - stream.Position < sizeof(byte) * 2 + sizeof(short))
@@ -197,9 +200,14 @@ namespace HaCreator.MapSimulator.Companions
                             }
 
                             short toPosition = reader.ReadInt16();
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailer(
+                                    inventoryType,
+                                    fromPosition,
+                                    toPosition);
                             if (TryMatchesMechanicInventoryOperationSwap(request, inventoryType, fromPosition, toPosition, out rejectReason))
                             {
-                                return true;
+                                sawMatchingSwap = true;
                             }
 
                             break;
@@ -214,6 +222,8 @@ namespace HaCreator.MapSimulator.Companions
                             _ = reader.ReadInt16();
                             break;
                         case 3:
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailerForRemove(inventoryType, fromPosition);
                             operationContext = ObserveMechanicRemoveEntry(request, operationContext, inventoryType, fromPosition);
                             break;
                         case 4:
@@ -242,7 +252,8 @@ namespace HaCreator.MapSimulator.Companions
 
                             if (matchedByHeader)
                             {
-                                return true;
+                                sawMatchingAddEntry = true;
+                                break;
                             }
 
                             if (TryMatchesMechanicInventoryOperationAdd(
@@ -253,7 +264,7 @@ namespace HaCreator.MapSimulator.Companions
                                     addedItemId,
                                     out rejectReason))
                             {
-                                return true;
+                                sawMatchingAddEntry = true;
                             }
 
                             break;
@@ -264,6 +275,19 @@ namespace HaCreator.MapSimulator.Companions
                             // entries instead of rejecting mechanic completion eagerly.
                             break;
                     }
+                }
+
+                if (!TryConsumeClientInventoryOperationTrailer(
+                        reader,
+                        requiresSecondaryStatChangedPointTrailer,
+                        out rejectReason))
+                {
+                    return false;
+                }
+
+                if (sawMatchingSwap || sawMatchingAddEntry)
+                {
+                    return true;
                 }
             }
             catch (Exception ex)
@@ -304,6 +328,8 @@ namespace HaCreator.MapSimulator.Companions
                 }
 
                 Dictionary<MechanicEquipSlot, int> recoveredMutations = new();
+                bool requiresSecondaryStatChangedPointTrailer = false;
+                bool terminatedAfterHeader = false;
                 for (int i = 0; i < operationCount; i++)
                 {
                     if (stream.Length - stream.Position < sizeof(byte) * 2 + sizeof(short))
@@ -337,6 +363,7 @@ namespace HaCreator.MapSimulator.Companions
 
                             if (terminateAfterHeader)
                             {
+                                terminatedAfterHeader = true;
                                 i = operationCount;
                             }
 
@@ -360,6 +387,11 @@ namespace HaCreator.MapSimulator.Companions
                             }
 
                             short toPosition = reader.ReadInt16();
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailer(
+                                    inventoryType,
+                                    fromPosition,
+                                    toPosition);
                             if (inventoryType != ClientEquipInventoryType)
                             {
                                 break;
@@ -389,6 +421,8 @@ namespace HaCreator.MapSimulator.Companions
                             break;
                         }
                         case 3:
+                            requiresSecondaryStatChangedPointTrailer = requiresSecondaryStatChangedPointTrailer
+                                || ShouldRequireSecondaryStatChangedPointTrailerForRemove(inventoryType, fromPosition);
                             if (inventoryType == ClientEquipInventoryType
                                 && TryResolveMechanicSlotFromClientPosition(fromPosition, out MechanicEquipSlot removedSlot))
                             {
@@ -406,6 +440,15 @@ namespace HaCreator.MapSimulator.Companions
                             _ = reader.ReadInt32();
                             break;
                     }
+                }
+
+                if (!terminatedAfterHeader
+                    && !TryConsumeClientInventoryOperationTrailer(
+                        reader,
+                        requiresSecondaryStatChangedPointTrailer,
+                        out rejectReason))
+                {
+                    return false;
                 }
 
                 if (recoveredMutations.Count == 0)
@@ -1819,6 +1862,58 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             value = Encoding.Unicode.GetString(reader.ReadBytes(unicodeByteLength));
+            return true;
+        }
+
+        private static bool ShouldRequireSecondaryStatChangedPointTrailer(
+            byte inventoryType,
+            short sourcePosition,
+            short targetPosition)
+        {
+            return inventoryType == ClientEquipInventoryType
+                   && (sourcePosition < 0 || targetPosition < 0);
+        }
+
+        private static bool ShouldRequireSecondaryStatChangedPointTrailerForRemove(
+            byte inventoryType,
+            short sourcePosition)
+        {
+            return inventoryType == ClientEquipInventoryType
+                   && sourcePosition < 0;
+        }
+
+        private static bool TryConsumeClientInventoryOperationTrailer(
+            BinaryReader reader,
+            bool requiresSecondaryStatChangedPointTrailer,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (reader?.BaseStream == null)
+            {
+                rejectReason = "Inventory-operation payload stream is unavailable while decoding trailer data.";
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            long remainingBytes = stream.Length - stream.Position;
+            if (requiresSecondaryStatChangedPointTrailer)
+            {
+                if (remainingBytes < sizeof(byte))
+                {
+                    rejectReason = "Inventory-operation payload is missing the equip secondary-stat changed-point trailer.";
+                    return false;
+                }
+
+                _ = reader.ReadByte();
+                remainingBytes -= sizeof(byte);
+            }
+
+            if (remainingBytes != 0)
+            {
+                rejectReason = "Inventory-operation payload contained unsupported trailing bytes.";
+                return false;
+            }
+
             return true;
         }
 

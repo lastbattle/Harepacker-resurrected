@@ -1157,6 +1157,51 @@ namespace HaCreator.MapSimulator.Interaction
                    && currentOwnedCardTypes > maxOwnedCardTypes.Value;
         }
 
+        internal static bool HasUnmetMonsterBookCardDemandForTesting(
+            IReadOnlyList<(int MobId, int? MinCount, int? MaxCount)> requirements,
+            Func<int, int> resolveCardCountByMobIdProvider)
+        {
+            if (requirements == null || requirements.Count == 0)
+            {
+                return false;
+            }
+
+            if (resolveCardCountByMobIdProvider == null)
+            {
+                for (int i = 0; i < requirements.Count; i++)
+                {
+                    if (requirements[i].MobId > 0)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                (int mobId, int? minCount, int? maxCount) = requirements[i];
+                if (mobId <= 0)
+                {
+                    continue;
+                }
+
+                int currentCount = Math.Max(0, resolveCardCountByMobIdProvider(mobId));
+                if (minCount.HasValue && minCount.Value >= 0 && currentCount < minCount.Value)
+                {
+                    return true;
+                }
+
+                if (maxCount.HasValue && maxCount.Value >= 0 && currentCount > maxCount.Value)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static bool HasUnmetMonsterBookCardDemand(
             IReadOnlyList<QuestMonsterBookCardRequirement> requirements,
             Func<int, int> resolveCardCountByMobIdProvider)
@@ -9105,6 +9150,31 @@ namespace HaCreator.MapSimulator.Interaction
         private static IReadOnlyList<QuestMonsterBookCardRequirement> ParseMonsterBookCardRequirements(
             WzImageProperty property)
         {
+            static int? ParseFirstInt(WzImageProperty owner, params string[] keys)
+            {
+                if (owner == null || keys == null || keys.Length == 0)
+                {
+                    return null;
+                }
+
+                for (int keyIndex = 0; keyIndex < keys.Length; keyIndex++)
+                {
+                    string key = keys[keyIndex];
+                    if (string.IsNullOrWhiteSpace(key))
+                    {
+                        continue;
+                    }
+
+                    int? parsed = ParseInt(owner[key]);
+                    if (parsed.HasValue)
+                    {
+                        return parsed;
+                    }
+                }
+
+                return null;
+            }
+
             if (property?.WzProperties == null || property.WzProperties.Count == 0)
             {
                 return Array.Empty<QuestMonsterBookCardRequirement>();
@@ -9119,13 +9189,40 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                int mobId = ParseInt(child["id"])
-                    ?? ParseInt(child["mob"])
+                int mobId = ParseFirstInt(
+                        child,
+                        "id",
+                        "nID",
+                        "mob",
+                        "mobID",
+                        "nMobID",
+                        "mobId",
+                        "cardID",
+                        "cardId")
                     ?? (int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedMobId)
                         ? parsedMobId
                         : 0);
-                int? minCount = ParseInt(child["min"]);
-                int? maxCount = ParseInt(child["max"]);
+                int? minCount = ParseFirstInt(
+                    child,
+                    "min",
+                    "nMin",
+                    "minCount",
+                    "countMin");
+                int? maxCount = ParseFirstInt(
+                    child,
+                    "max",
+                    "nMax",
+                    "maxCount",
+                    "countMax");
+                if (!minCount.HasValue && !maxCount.HasValue)
+                {
+                    int? scalarCount = ParseInt(child);
+                    if (scalarCount.HasValue)
+                    {
+                        minCount = scalarCount;
+                    }
+                }
+
                 if (mobId <= 0 || (!minCount.HasValue && !maxCount.HasValue))
                 {
                     continue;
@@ -9928,7 +10025,9 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < stopProperty.WzProperties.Count; i++)
             {
                 WzImageProperty branchProperty = stopProperty.WzProperties[i];
-                if (branchProperty == null || string.IsNullOrWhiteSpace(branchProperty.Name))
+                if (branchProperty == null ||
+                    string.IsNullOrWhiteSpace(branchProperty.Name) ||
+                    IsConversationStopMetadataPropertyName(branchProperty.Name))
                 {
                     continue;
                 }
@@ -10357,7 +10456,9 @@ namespace HaCreator.MapSimulator.Interaction
                 for (int i = 0; i < stopProperty.WzProperties.Count; i++)
                 {
                     WzImageProperty branchProperty = stopProperty.WzProperties[i];
-                    if (branchProperty == null || string.IsNullOrWhiteSpace(branchProperty.Name))
+                    if (branchProperty == null ||
+                        string.IsNullOrWhiteSpace(branchProperty.Name) ||
+                        IsConversationStopMetadataPropertyName(branchProperty.Name))
                     {
                         continue;
                     }
@@ -10398,6 +10499,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return Array.Empty<NpcInteractionPage>();
+        }
+
+        private static bool IsConversationStopMetadataPropertyName(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return true;
+            }
+
+            return propertyName.Equals("answer", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("illustration", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("flip", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool HasUnmetQuestRecordRequirements(

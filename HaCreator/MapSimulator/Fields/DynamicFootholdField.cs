@@ -709,7 +709,7 @@ namespace HaCreator.MapSimulator.Fields
                 return canonicalName;
             }
 
-            if (piece is int pieceValue && pieceValue >= 0)
+            if (piece is int pieceValue)
             {
                 canonicalName = $"{canonicalName}/piece/{pieceValue.ToString(CultureInfo.InvariantCulture)}";
             }
@@ -789,6 +789,12 @@ namespace HaCreator.MapSimulator.Fields
                 case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
                     value = (int)longProperty.Value;
                     return true;
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    return int.TryParse(
+                        stringProperty.Value.Trim(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out value);
                 default:
                     return false;
             }

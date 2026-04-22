@@ -1412,6 +1412,12 @@ namespace HaCreator.MapSimulator.Loaders
 
             Point? headAnchor = TryGetVector(canvasProperty?["head"]);
             List<Rectangle> multiBodyBounds = TryGetMultiBodyBounds(canvasProperty);
+            int? alphaStart = TryGetOptionalInt(canvasProperty?["a0"]);
+            int? alphaEnd = TryGetOptionalInt(canvasProperty?["a1"]);
+            bool hasAlphaRange = alphaStart.HasValue || alphaEnd.HasValue;
+            byte resolvedAlphaStart = (byte)Math.Clamp(alphaStart ?? byte.MaxValue, byte.MinValue, byte.MaxValue);
+            byte resolvedAlphaEnd = (byte)Math.Clamp(alphaEnd ?? resolvedAlphaStart, byte.MinValue, byte.MaxValue);
+            int layerZ = TryGetOptionalInt(canvasProperty?["z"]) ?? 0;
 
             return new MobAnimationSet.FrameMetadata
             {
@@ -1421,7 +1427,11 @@ namespace HaCreator.MapSimulator.Loaders
                 FrameBounds = frameBounds,
                 HasHeadAnchor = headAnchor.HasValue,
                 HeadAnchor = headAnchor ?? Point.Zero,
-                MultiBodyBounds = multiBodyBounds
+                MultiBodyBounds = multiBodyBounds,
+                HasAlphaRange = hasAlphaRange,
+                AlphaStart = resolvedAlphaStart,
+                AlphaEnd = resolvedAlphaEnd,
+                LayerZ = layerZ
             };
         }
 
@@ -1463,7 +1473,11 @@ namespace HaCreator.MapSimulator.Loaders
                 FrameBounds = new Rectangle(0, 0, 1, 1),
                 HasHeadAnchor = false,
                 HeadAnchor = Point.Zero,
-                MultiBodyBounds = null
+                MultiBodyBounds = null,
+                HasAlphaRange = false,
+                AlphaStart = byte.MaxValue,
+                AlphaEnd = byte.MaxValue,
+                LayerZ = 0
             };
         }
 
@@ -1492,6 +1506,18 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return null;
+        }
+
+        private static int? TryGetOptionalInt(WzImageProperty property)
+        {
+            property = WzInfoTools.GetRealProperty(property);
+            if (property == null)
+            {
+                return null;
+            }
+
+            int value = InfoTool.GetInt(property, int.MinValue);
+            return value != int.MinValue ? value : null;
         }
 
         private static bool TryBuildRect(WzImageProperty ltProperty, WzImageProperty rbProperty, out Rectangle rectangle)

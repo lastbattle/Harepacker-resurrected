@@ -375,91 +375,58 @@ namespace HaCreator.MapSimulator.Managers
         {
             result = null;
             error = null;
-
-            List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargets = null;
-            List<PacketOwnedItemMakerSessionHiddenEntry> hiddenEntries = null;
-            if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeDisassemblyTargets))
+            long payloadStart = reader.BaseStream.Position;
+            bool[] compactCountModes = { false, true };
+            for (int countModeIndex = 0; countModeIndex < compactCountModes.Length; countModeIndex++)
             {
-                int count = ReadNonNegativeCount16(reader, "Maker-session compact disassembly target count is missing or negative.");
-                if (count > 0)
+                bool useByteCounts = compactCountModes[countModeIndex];
+                reader.BaseStream.Position = payloadStart;
+                List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargets = null;
+                List<PacketOwnedItemMakerSessionHiddenEntry> hiddenEntries = null;
+
+                if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeDisassemblyTargets))
                 {
-                    disassemblyTargets = new List<PacketOwnedItemMakerDisassemblyTargetEntry>(count);
-                    bool requiresPositiveItemId = disassemblyEncoding is DisassemblyTargetEntryEncoding.WideSlotInt32
-                        or DisassemblyTargetEntryEncoding.CompactSlotUInt16;
-                    int disassemblyEntryWidth = disassemblyEncoding switch
+                    if (!TryReadDisassemblyTargetEntries16(
+                            reader,
+                            disassemblyEncoding,
+                            requirePositiveItemId: disassemblyEncoding is DisassemblyTargetEntryEncoding.WideSlotInt32
+                                or DisassemblyTargetEntryEncoding.CompactSlotUInt16,
+                            "Maker-session compact disassembly target",
+                            out disassemblyTargets,
+                            useByteCount: useByteCounts))
                     {
-                        DisassemblyTargetEntryEncoding.CompactSlotUInt16 => sizeof(ushort) + sizeof(int),
-                        DisassemblyTargetEntryEncoding.WideSlotOnlyInt32 => sizeof(int),
-                        DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16 => sizeof(ushort),
-                        _ => sizeof(int) * 2
-                    };
-                    for (int i = 0; i < count; i++)
-                    {
-                        EnsureReadable(reader, disassemblyEntryWidth, "Maker-session compact disassembly target entry is truncated.");
-                        int slotIndex;
-                        int itemId;
-                        switch (disassemblyEncoding)
-                        {
-                            case DisassemblyTargetEntryEncoding.CompactSlotUInt16:
-                                slotIndex = reader.ReadUInt16();
-                                itemId = reader.ReadInt32();
-                                break;
-                            case DisassemblyTargetEntryEncoding.WideSlotOnlyInt32:
-                                slotIndex = reader.ReadInt32();
-                                itemId = 0;
-                                break;
-                            case DisassemblyTargetEntryEncoding.CompactSlotOnlyUInt16:
-                                slotIndex = reader.ReadUInt16();
-                                itemId = 0;
-                                break;
-                            default:
-                                slotIndex = reader.ReadInt32();
-                                itemId = reader.ReadInt32();
-                                break;
-                        }
-
-                        if (slotIndex < 0)
-                        {
-                            throw new InvalidDataException("Maker-session compact disassembly target slots must be zero-based and non-negative.");
-                        }
-
-                        if (requiresPositiveItemId && itemId <= 0)
-                        {
-                            throw new InvalidDataException("Maker-session compact disassembly target entries must include a positive item id.");
-                        }
-
-                        disassemblyTargets.Add(new PacketOwnedItemMakerDisassemblyTargetEntry(slotIndex, itemId));
+                        continue;
                     }
                 }
-            }
 
-            if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList))
-            {
-                if (!TryReadHiddenRecipeEntries16(
+                if (flags.HasFlag(PacketOwnedItemMakerSessionFlags.HasAuthoritativeHiddenRecipeList)
+                    && !TryReadHiddenRecipeEntries16(
                         reader,
                         hiddenEncoding,
                         requirePositiveOutputItemId: true,
                         "Maker-session compact hidden recipe",
-                        out hiddenEntries))
+                        out hiddenEntries,
+                        useByteCount: useByteCounts))
                 {
-                    error = "Maker-session compact hidden recipe entries are truncated or invalid.";
-                    return false;
+                    continue;
                 }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    continue;
+                }
+
+                result = new PacketOwnedItemMakerSession
+                {
+                    Flags = flags,
+                    DisassemblyTargets = disassemblyTargets ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
+                    HiddenRecipeEntries = hiddenEntries ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
+                };
+                return true;
             }
 
-            if (reader.BaseStream.Position != reader.BaseStream.Length)
-            {
-                error = $"Maker-session compact payload left {reader.BaseStream.Length - reader.BaseStream.Position} unread byte(s).";
-                return false;
-            }
-
-            result = new PacketOwnedItemMakerSession
-            {
-                Flags = flags,
-                DisassemblyTargets = disassemblyTargets ?? (IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry>)Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>(),
-                HiddenRecipeEntries = hiddenEntries ?? (IReadOnlyList<PacketOwnedItemMakerSessionHiddenEntry>)Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>()
-            };
-            return true;
+            error = "Maker-session compact payload entries are truncated or invalid.";
+            return false;
         }
 
         private static bool TryDecodeCompactDeltaPayload(
@@ -714,7 +681,8 @@ namespace HaCreator.MapSimulator.Managers
             DisassemblyTargetEntryEncoding encoding,
             bool requirePositiveItemId,
             string label,
-            out List<PacketOwnedItemMakerDisassemblyTargetEntry> entries)
+            out List<PacketOwnedItemMakerDisassemblyTargetEntry> entries,
+            bool useByteCount = false)
         {
             entries = null;
             if (reader == null)
@@ -725,7 +693,9 @@ namespace HaCreator.MapSimulator.Managers
             long startPosition = reader.BaseStream.Position;
             try
             {
-                int count = ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
+                int count = useByteCount
+                    ? ReadNonNegativeCount8(reader, $"{label} count is missing or negative.")
+                    : ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
                 if (count <= 0)
                 {
                     return true;
@@ -1215,33 +1185,39 @@ namespace HaCreator.MapSimulator.Managers
             HiddenRecipeEntryEncoding[] hiddenRemovalEncodings = deltaFlags.HasFlag(PacketOwnedItemMakerSessionDeltaFlags.HasHiddenRecipeRemovals)
                 ? new[] { HiddenRecipeEntryEncoding.Pair, HiddenRecipeEntryEncoding.OutputOnly }
                 : new[] { HiddenRecipeEntryEncoding.Pair };
+            bool[] compactCountModes = { false, true };
 
-            for (int additionEncodingIndex = 0; additionEncodingIndex < disassemblyAdditionEncodings.Length; additionEncodingIndex++)
+            for (int countModeIndex = 0; countModeIndex < compactCountModes.Length; countModeIndex++)
             {
-                DisassemblyTargetEntryEncoding disassemblyAdditionEncoding = disassemblyAdditionEncodings[additionEncodingIndex];
-                for (int removalEncodingIndex = 0; removalEncodingIndex < disassemblyRemovalEncodings.Length; removalEncodingIndex++)
+                bool useByteCounts = compactCountModes[countModeIndex];
+                for (int additionEncodingIndex = 0; additionEncodingIndex < disassemblyAdditionEncodings.Length; additionEncodingIndex++)
                 {
-                    DisassemblyTargetEntryEncoding disassemblyRemovalEncoding = disassemblyRemovalEncodings[removalEncodingIndex];
-                    for (int hiddenAdditionEncodingIndex = 0; hiddenAdditionEncodingIndex < hiddenAdditionEncodings.Length; hiddenAdditionEncodingIndex++)
+                    DisassemblyTargetEntryEncoding disassemblyAdditionEncoding = disassemblyAdditionEncodings[additionEncodingIndex];
+                    for (int removalEncodingIndex = 0; removalEncodingIndex < disassemblyRemovalEncodings.Length; removalEncodingIndex++)
                     {
-                        HiddenRecipeEntryEncoding hiddenAdditionEncoding = hiddenAdditionEncodings[hiddenAdditionEncodingIndex];
-                        for (int hiddenRemovalEncodingIndex = 0; hiddenRemovalEncodingIndex < hiddenRemovalEncodings.Length; hiddenRemovalEncodingIndex++)
+                        DisassemblyTargetEntryEncoding disassemblyRemovalEncoding = disassemblyRemovalEncodings[removalEncodingIndex];
+                        for (int hiddenAdditionEncodingIndex = 0; hiddenAdditionEncodingIndex < hiddenAdditionEncodings.Length; hiddenAdditionEncodingIndex++)
                         {
-                            HiddenRecipeEntryEncoding hiddenRemovalEncoding = hiddenRemovalEncodings[hiddenRemovalEncodingIndex];
-                            if (TryReadCompactDeltaListsWithEncodings(
-                                    reader,
-                                    payloadStart,
-                                    deltaFlags,
-                                    disassemblyAdditionEncoding,
-                                    disassemblyRemovalEncoding,
-                                    hiddenAdditionEncoding,
-                                    hiddenRemovalEncoding,
-                                    out disassemblyTargetAdditions,
-                                    out disassemblyTargetRemovals,
-                                    out hiddenRecipeAdditions,
-                                    out hiddenRecipeRemovals))
+                            HiddenRecipeEntryEncoding hiddenAdditionEncoding = hiddenAdditionEncodings[hiddenAdditionEncodingIndex];
+                            for (int hiddenRemovalEncodingIndex = 0; hiddenRemovalEncodingIndex < hiddenRemovalEncodings.Length; hiddenRemovalEncodingIndex++)
                             {
-                                return true;
+                                HiddenRecipeEntryEncoding hiddenRemovalEncoding = hiddenRemovalEncodings[hiddenRemovalEncodingIndex];
+                                if (TryReadCompactDeltaListsWithEncodings(
+                                        reader,
+                                        payloadStart,
+                                        deltaFlags,
+                                        disassemblyAdditionEncoding,
+                                        disassemblyRemovalEncoding,
+                                        hiddenAdditionEncoding,
+                                        hiddenRemovalEncoding,
+                                        useByteCounts,
+                                        out disassemblyTargetAdditions,
+                                        out disassemblyTargetRemovals,
+                                        out hiddenRecipeAdditions,
+                                        out hiddenRecipeRemovals))
+                                {
+                                    return true;
+                                }
                             }
                         }
                     }
@@ -1261,6 +1237,7 @@ namespace HaCreator.MapSimulator.Managers
             DisassemblyTargetEntryEncoding disassemblyRemovalEncoding,
             HiddenRecipeEntryEncoding hiddenAdditionEncoding,
             HiddenRecipeEntryEncoding hiddenRemovalEncoding,
+            bool useByteCounts,
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetAdditions,
             out List<PacketOwnedItemMakerDisassemblyTargetEntry> disassemblyTargetRemovals,
             out List<PacketOwnedItemMakerSessionHiddenEntry> hiddenRecipeAdditions,
@@ -1278,7 +1255,8 @@ namespace HaCreator.MapSimulator.Managers
                     disassemblyAdditionEncoding,
                     requirePositiveItemId: false,
                     "Maker-session delta disassembly target addition",
-                    out disassemblyTargetAdditions))
+                    out disassemblyTargetAdditions,
+                    useByteCount: useByteCounts))
             {
                 return false;
             }
@@ -1289,7 +1267,8 @@ namespace HaCreator.MapSimulator.Managers
                     disassemblyRemovalEncoding,
                     requirePositiveItemId: false,
                     "Maker-session delta disassembly target removal",
-                    out disassemblyTargetRemovals))
+                    out disassemblyTargetRemovals,
+                    useByteCount: useByteCounts))
             {
                 return false;
             }
@@ -1300,7 +1279,8 @@ namespace HaCreator.MapSimulator.Managers
                     hiddenAdditionEncoding,
                     requirePositiveOutputItemId: true,
                     "Maker-session delta hidden recipe addition",
-                    out hiddenRecipeAdditions))
+                    out hiddenRecipeAdditions,
+                    useByteCount: useByteCounts))
             {
                 return false;
             }
@@ -1311,7 +1291,8 @@ namespace HaCreator.MapSimulator.Managers
                     hiddenRemovalEncoding,
                     requirePositiveOutputItemId: false,
                     "Maker-session delta hidden recipe removal",
-                    out hiddenRecipeRemovals))
+                    out hiddenRecipeRemovals,
+                    useByteCount: useByteCounts))
             {
                 return false;
             }
@@ -1546,6 +1527,15 @@ namespace HaCreator.MapSimulator.Managers
                             additionsFirst,
                             firstEncoding,
                             secondEncoding,
+                            useByteCount: false,
+                            out additions,
+                            out removals)
+                        && !TryDecodeHiddenTailTwoListsWithEncodings(
+                            payload,
+                            additionsFirst,
+                            firstEncoding,
+                            secondEncoding,
+                            useByteCount: true,
                             out additions,
                             out removals))
                     {
@@ -1566,6 +1556,7 @@ namespace HaCreator.MapSimulator.Managers
             bool additionsFirst,
             HiddenRecipeEntryEncoding firstEncoding,
             HiddenRecipeEntryEncoding secondEncoding,
+            bool useByteCount,
             out List<PacketOwnedItemMakerSessionHiddenEntry> additions,
             out List<PacketOwnedItemMakerSessionHiddenEntry> removals)
         {
@@ -1582,7 +1573,8 @@ namespace HaCreator.MapSimulator.Managers
                         firstEncoding,
                         requirePositiveOutputItemId: firstListRequiresPositiveOutput,
                         "Maker-session compact delta hidden recipe first list",
-                        out List<PacketOwnedItemMakerSessionHiddenEntry> firstList))
+                        out List<PacketOwnedItemMakerSessionHiddenEntry> firstList,
+                        useByteCount))
                 {
                     return false;
                 }
@@ -1592,7 +1584,8 @@ namespace HaCreator.MapSimulator.Managers
                         secondEncoding,
                         requirePositiveOutputItemId: secondListRequiresPositiveOutput,
                         "Maker-session compact delta hidden recipe second list",
-                        out List<PacketOwnedItemMakerSessionHiddenEntry> secondList))
+                        out List<PacketOwnedItemMakerSessionHiddenEntry> secondList,
+                        useByteCount))
                 {
                     return false;
                 }
@@ -1679,7 +1672,15 @@ namespace HaCreator.MapSimulator.Managers
                         encoding,
                         requirePositiveOutputItemId: isAdditionList,
                         "Maker-session compact delta hidden recipe list",
-                        out entries))
+                        out entries,
+                        useByteCount: false)
+                    && !TryReadHiddenRecipeEntries16(
+                        reader,
+                        encoding,
+                        requirePositiveOutputItemId: isAdditionList,
+                        "Maker-session compact delta hidden recipe list",
+                        out entries,
+                        useByteCount: true))
                 {
                     return false;
                 }
@@ -1705,7 +1706,8 @@ namespace HaCreator.MapSimulator.Managers
             HiddenRecipeEntryEncoding encoding,
             bool requirePositiveOutputItemId,
             string label,
-            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries,
+            bool useByteCount = false)
         {
             entries = null;
             if (reader == null)
@@ -1716,7 +1718,9 @@ namespace HaCreator.MapSimulator.Managers
             long startPosition = reader.BaseStream.Position;
             try
             {
-                int count = ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
+                int count = useByteCount
+                    ? ReadNonNegativeCount8(reader, $"{label} count is missing or negative.")
+                    : ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
                 if (count <= 0)
                 {
                     return true;
@@ -2179,6 +2183,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             EnsureReadable(reader, sizeof(ushort), message);
             return reader.ReadUInt16();
+        }
+
+        private static int ReadNonNegativeCount8(BinaryReader reader, string message)
+        {
+            EnsureReadable(reader, sizeof(byte), message);
+            return reader.ReadByte();
         }
     }
 }

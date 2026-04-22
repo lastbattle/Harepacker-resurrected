@@ -1173,7 +1173,7 @@ namespace HaCreator.MapSimulator.Effects
 
         internal static string ResolveLargeDigitSetName(DamageColorType colorType, bool isCritical)
         {
-            if (isCritical)
+            if (UsesCriticalPresentation(colorType, isCritical))
             {
                 return "NoCri1";
             }
@@ -1188,7 +1188,7 @@ namespace HaCreator.MapSimulator.Effects
 
         internal static string ResolveSmallDigitSetName(DamageColorType colorType, bool isCritical)
         {
-            if (isCritical)
+            if (UsesCriticalPresentation(colorType, isCritical))
             {
                 return "NoCri0";
             }

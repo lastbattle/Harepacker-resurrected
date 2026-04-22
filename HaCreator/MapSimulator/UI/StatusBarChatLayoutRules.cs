@@ -290,15 +290,15 @@ namespace HaCreator.MapSimulator.UI
             bool showScrollbar,
             int scrollbarWidth)
         {
-            if (!showScrollbar)
+            int contentWidth = Math.Max(1, listBounds.Width - 2);
+            if (showScrollbar)
             {
-                return listBounds;
+                int safeScrollbarWidth = Math.Max(1, scrollbarWidth);
+                // CCtrlComboBoxSelect::Draw computes inner row width as m_width - 2 - scrollbarWidth
+                // when the select window owns a scrollbar lane.
+                contentWidth = Math.Max(1, contentWidth - safeScrollbarWidth);
             }
 
-            int safeScrollbarWidth = Math.Max(1, scrollbarWidth);
-            // CCtrlComboBoxSelect::Draw computes inner row width as m_width - 2 - scrollbarWidth
-            // when the select window owns a scrollbar lane.
-            int contentWidth = Math.Max(1, listBounds.Width - safeScrollbarWidth - 2);
             return new Rectangle(listBounds.X, listBounds.Y, contentWidth, listBounds.Height);
         }
 

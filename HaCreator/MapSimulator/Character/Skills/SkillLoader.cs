@@ -6100,6 +6100,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (normalizedSegment.Contains("summon", StringComparison.Ordinal)
                     || normalizedSegment.Contains("uol", StringComparison.Ordinal)
+                    || normalizedSegment.Contains("owner", StringComparison.Ordinal)
                     || normalizedSegment.Contains("requireskill", StringComparison.Ordinal)
                     || normalizedSegment.Contains("affectedskill", StringComparison.Ordinal)
                     || normalizedSegment.Contains("dummyof", StringComparison.Ordinal)
@@ -6207,6 +6208,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (!LooksLikeClientSummonedUolHeuristicOwnerPath(RelativePath))
                 {
                     continue;
+                }
+
+                if (TryParseRequiredSkillId(Branch.Name, out int branchSkillId))
+                {
+                    foreach (int candidateSkillId in ExpandClientSummonedUolHeuristicLinkedSkillIdCandidates(
+                                 branchSkillId,
+                                 contextSkillId))
+                    {
+                        if (yieldedSkillIds.Add(candidateSkillId))
+                        {
+                            yield return candidateSkillId;
+                        }
+                    }
                 }
 
                 foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNames(Branch))

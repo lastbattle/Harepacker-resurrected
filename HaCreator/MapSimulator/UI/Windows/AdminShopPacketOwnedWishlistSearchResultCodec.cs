@@ -276,30 +276,49 @@ namespace HaCreator.MapSimulator.UI
 
         // Some official-session captures only expose a compact wishlist row payload:
         // [serviceSessionId:int32][searchSessionId:int32][itemCount:uint16][itemId:int32 * itemCount]
-        // Keep this path strict so unrelated subtype-4 tails are not decoded accidentally.
+        // Some captures also end at the 8-byte session header with no decoded row list.
+        // Keep this path strict so unrelated subtype-4 tails are not decoded accidentally,
+        // but preserve payload-authored session ids when row decoding is unavailable.
         private static bool TryDecodeLegacy(
             byte[] payload,
             out AdminShopPacketOwnedWishlistSearchSnapshot snapshot)
         {
             snapshot = null;
             payload ??= Array.Empty<byte>();
-            if (payload.Length < LegacyHeaderSize)
+            if (payload.Length < sizeof(int) * 2)
             {
                 return false;
             }
 
             int serviceSessionId = BitConverter.ToInt32(payload, 0);
             int searchSessionId = BitConverter.ToInt32(payload, sizeof(int));
+            if (payload.Length < LegacyHeaderSize)
+            {
+                snapshot = BuildStateOnlyLegacySnapshot(
+                    serviceSessionId,
+                    searchSessionId,
+                    payload.Length - (sizeof(int) * 2));
+                return true;
+            }
+
             int itemCount = BitConverter.ToUInt16(payload, sizeof(int) * 2);
             if (itemCount < 0 || itemCount > 1024)
             {
-                return false;
+                snapshot = BuildStateOnlyLegacySnapshot(
+                    serviceSessionId,
+                    searchSessionId,
+                    payload.Length - (sizeof(int) * 2));
+                return true;
             }
 
             int expectedLength = LegacyHeaderSize + (itemCount * sizeof(int));
             if (payload.Length < expectedLength)
             {
-                return false;
+                snapshot = BuildStateOnlyLegacySnapshot(
+                    serviceSessionId,
+                    searchSessionId,
+                    payload.Length - (sizeof(int) * 2));
+                return true;
             }
 
             List<AdminShopPacketOwnedWishlistSearchResultRow> rows = new(itemCount);
@@ -328,9 +347,29 @@ namespace HaCreator.MapSimulator.UI
                 PriceRangeIndex = -1,
                 ItemIds = rows.Select(row => row.ItemId).ToList(),
                 ResultRows = rows,
+                IsStateOnlySessionSnapshot = false,
                 TrailingByteCount = payload.Length - expectedLength
             };
             return true;
+        }
+
+        private static AdminShopPacketOwnedWishlistSearchSnapshot BuildStateOnlyLegacySnapshot(
+            int serviceSessionId,
+            int searchSessionId,
+            int trailingByteCount)
+        {
+            return new AdminShopPacketOwnedWishlistSearchSnapshot
+            {
+                ServiceSessionId = serviceSessionId,
+                SearchSessionId = searchSessionId,
+                Query = string.Empty,
+                CategoryKey = string.Empty,
+                PriceRangeIndex = -1,
+                ItemIds = Array.Empty<int>(),
+                ResultRows = Array.Empty<AdminShopPacketOwnedWishlistSearchResultRow>(),
+                IsStateOnlySessionSnapshot = true,
+                TrailingByteCount = Math.Max(0, trailingByteCount)
+            };
         }
     }
 }

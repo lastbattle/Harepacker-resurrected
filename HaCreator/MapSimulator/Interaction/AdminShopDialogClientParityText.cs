@@ -15,6 +15,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int BlockedRequestStringPoolId = 0x123F;
         internal const int BusyRequestStringPoolId = 0x1240;
         internal const int CommonNoticeStringPoolId = 0x16ED;
+        internal const int BuyTreatSinglyConfirmStringPoolId = 0x361;
+        internal const int BuyAskItemCountStringPoolId = 0x362;
+        internal const int SellTreatSinglyConfirmStringPoolId = 0x363;
+        internal const int SellAskItemCountStringPoolId = 0x364;
+        internal const int InvalidSourceSlotStringPoolId = 3448;
+        internal const int MissingSourceItemStringPoolId = 4673;
+        internal const int NotEnoughMesoStringPoolId = 0x1A8B;
 
         internal static string GetOpenRejectedNotice()
         {
@@ -29,6 +36,62 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.GetOrFallback(
                 WishlistClosePromptStringPoolId,
                 "Would you like to open the admin-shop wish list before closing? (StringPool 0x1237).",
+                appendFallbackSuffix: true);
+        }
+
+        internal static string GetBuyTreatSinglyConfirmPrompt()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                BuyTreatSinglyConfirmStringPoolId,
+                "Confirm this single-item Cash Shop request? (StringPool 0x361).",
+                appendFallbackSuffix: true);
+        }
+
+        internal static string GetBuyAskItemCountPrompt()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                BuyAskItemCountStringPoolId,
+                "Choose the request count for this Cash Shop row. (StringPool 0x362).",
+                appendFallbackSuffix: true);
+        }
+
+        internal static string GetSellTreatSinglyConfirmPrompt()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                SellTreatSinglyConfirmStringPoolId,
+                "Confirm this single-source admin-shop trade? (StringPool 0x363).",
+                appendFallbackSuffix: true);
+        }
+
+        internal static string GetSellAskItemCountPrompt()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                SellAskItemCountStringPoolId,
+                "Choose the source-item count for this admin-shop trade. (StringPool 0x364).",
+                appendFallbackSuffix: true);
+        }
+
+        internal static string GetInvalidSourceSlotNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                InvalidSourceSlotStringPoolId,
+                "This source slot can no longer be traded in the admin shop. (StringPool 3448).",
+                appendFallbackSuffix: true);
+        }
+
+        internal static string GetMissingSourceItemNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                MissingSourceItemStringPoolId,
+                "You do not have the required source item for this admin-shop trade. (StringPool 4673).",
+                appendFallbackSuffix: true);
+        }
+
+        internal static string GetNotEnoughMesoNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                NotEnoughMesoStringPoolId,
+                "You do not have enough mesos. (StringPool 0x1A8B).",
                 appendFallbackSuffix: true);
         }
 

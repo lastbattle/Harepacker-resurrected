@@ -28,6 +28,18 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\[\s*[""'](?<name>[A-Za-z_][A-Za-z0-9_]*)[""']\s*\]\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex BracketMemberAliasInvokerInvocationPattern = new(
+            @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\[\s*[""'](?<name>[A-Za-z_][A-Za-z0-9_]*)[""']\s*\]\s*\.\s*(?:call|apply|bind)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex MemberAliasInvocationPattern = new(
+            @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex MemberAliasInvokerInvocationPattern = new(
+            @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:call|apply|bind)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         internal readonly record struct PublishedTagMutation(
             IReadOnlyList<string> TagsToEnable,
             IReadOnlyList<string> TagsToDisable);
@@ -256,6 +268,11 @@ namespace HaCreator.MapSimulator.Fields
                 return variableAlias;
             }
 
+            if (TryResolveMemberLeafAliasCandidate(normalizedValue, localAliasMap, out string memberAlias))
+            {
+                return memberAlias;
+            }
+
             if (IsFunctionExpressionText(normalizedValue))
             {
                 string functionAlias = ResolveFunctionExpressionAliasCandidate(normalizedValue);
@@ -341,6 +358,11 @@ namespace HaCreator.MapSimulator.Fields
                 return string.Empty;
             }
 
+            if (TryResolveFunctionBodyMemberInvocationAlias(value, out string memberAlias))
+            {
+                return memberAlias;
+            }
+
             foreach (string functionAliasName in EnumerateFunctionAliasNames(value))
             {
                 if (IsPotentialFunctionAliasName(functionAliasName))
@@ -367,7 +389,75 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            foreach (Match match in BracketMemberAliasInvokerInvocationPattern.Matches(value))
+            {
+                string aliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (IsPotentialFunctionAliasName(aliasName))
+                {
+                    return aliasName;
+                }
+            }
+
             return string.Empty;
+        }
+
+        private static bool TryResolveFunctionBodyMemberInvocationAlias(string value, out string aliasName)
+        {
+            aliasName = string.Empty;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            foreach (Match match in MemberAliasInvokerInvocationPattern.Matches(value))
+            {
+                string candidateAliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (!IsPotentialFunctionAliasName(candidateAliasName))
+                {
+                    continue;
+                }
+
+                aliasName = candidateAliasName;
+                return true;
+            }
+
+            foreach (Match match in MemberAliasInvocationPattern.Matches(value))
+            {
+                string candidateAliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (!IsPotentialFunctionAliasName(candidateAliasName))
+                {
+                    continue;
+                }
+
+                aliasName = candidateAliasName;
+                return true;
+            }
+
+            foreach (Match match in BracketMemberAliasInvokerInvocationPattern.Matches(value))
+            {
+                string candidateAliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (!IsPotentialFunctionAliasName(candidateAliasName))
+                {
+                    continue;
+                }
+
+                aliasName = candidateAliasName;
+                return true;
+            }
+
+            foreach (Match match in BracketMemberAliasInvocationPattern.Matches(value))
+            {
+                string candidateAliasName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value);
+                if (!IsPotentialFunctionAliasName(candidateAliasName))
+                {
+                    continue;
+                }
+
+                aliasName = candidateAliasName;
+                return true;
+            }
+
+            return false;
         }
 
         private static IEnumerable<string> EnumerateCanonicalAliasCandidates(
@@ -475,6 +565,294 @@ namespace HaCreator.MapSimulator.Fields
                     yield return bracketMemberName;
                 }
             }
+
+            foreach (string bracketExpressionAlias in EnumerateBracketExpressionAliasCandidates(normalizedValue))
+            {
+                yield return bracketExpressionAlias;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateBracketExpressionAliasCandidates(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            int cursor = 0;
+            while (cursor < value.Length)
+            {
+                int openIndex = value.IndexOf('[', cursor);
+                if (openIndex < 0 || openIndex >= value.Length - 1)
+                {
+                    yield break;
+                }
+
+                int closeIndex = FindMatchingCloseBracket(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    cursor = openIndex + 1;
+                    continue;
+                }
+
+                string expression = value[(openIndex + 1)..closeIndex];
+                if (TryResolveStaticBracketExpressionAlias(expression, out string aliasName))
+                {
+                    yield return aliasName;
+                }
+
+                cursor = closeIndex + 1;
+            }
+        }
+
+        private static bool TryResolveMemberLeafAliasCandidate(
+            string value,
+            IReadOnlyDictionary<string, string> localAliasMap,
+            out string aliasName)
+        {
+            aliasName = string.Empty;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            foreach (string candidate in EnumerateMemberAliasCandidates(value))
+            {
+                string normalizedCandidate = NormalizeFunctionAliasArgument(candidate).TrimEnd(';');
+                if (string.IsNullOrWhiteSpace(normalizedCandidate))
+                {
+                    continue;
+                }
+
+                if (IsPotentialFunctionAliasName(normalizedCandidate))
+                {
+                    aliasName = normalizedCandidate;
+                    return true;
+                }
+
+                if (localAliasMap != null
+                    && localAliasMap.TryGetValue(normalizedCandidate, out string mappedAlias))
+                {
+                    string normalizedMappedAlias = NormalizeFunctionAliasArgument(mappedAlias).TrimEnd(';');
+                    if (IsPotentialFunctionAliasName(normalizedMappedAlias))
+                    {
+                        aliasName = normalizedMappedAlias;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static int FindMatchingCloseBracket(string value, int openIndex)
+        {
+            int depth = 0;
+            char quote = '\0';
+            for (int i = openIndex; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '[')
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (current != ']')
+                {
+                    continue;
+                }
+
+                depth--;
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static bool TryResolveStaticBracketExpressionAlias(string expression, out string aliasName)
+        {
+            aliasName = string.Empty;
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                return false;
+            }
+
+            string normalizedExpression = StripOuterBalancedParentheses(expression.Trim());
+            if (TryReadQuotedLiteral(normalizedExpression, out string quotedAliasName)
+                && IsPotentialFunctionAliasName(quotedAliasName))
+            {
+                aliasName = quotedAliasName;
+                return true;
+            }
+
+            IReadOnlyList<string> tokens = SplitTopLevelByPlus(normalizedExpression);
+            if (tokens.Count <= 1)
+            {
+                return false;
+            }
+
+            var builder = new StringBuilder();
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                string token = StripOuterBalancedParentheses(tokens[i]).Trim();
+                if (TryReadQuotedLiteral(token, out string quotedToken))
+                {
+                    builder.Append(quotedToken);
+                    continue;
+                }
+
+                if (int.TryParse(token, out int numericToken))
+                {
+                    builder.Append(numericToken);
+                    continue;
+                }
+
+                return false;
+            }
+
+            string resolvedAliasName = NormalizeFunctionAliasArgument(builder.ToString()).TrimEnd(';');
+            if (!IsPotentialFunctionAliasName(resolvedAliasName))
+            {
+                return false;
+            }
+
+            aliasName = resolvedAliasName;
+            return true;
+        }
+
+        private static IReadOnlyList<string> SplitTopLevelByPlus(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return Array.Empty<string>();
+            }
+
+            var tokens = new List<string>();
+            int tokenStart = 0;
+            int groupingDepth = 0;
+            char quote = '\0';
+            for (int i = 0; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '(' || current == '[' || current == '{')
+                {
+                    groupingDepth++;
+                    continue;
+                }
+
+                if (current == ')' || current == ']' || current == '}')
+                {
+                    if (groupingDepth > 0)
+                    {
+                        groupingDepth--;
+                    }
+
+                    continue;
+                }
+
+                if (groupingDepth == 0 && current == '+')
+                {
+                    tokens.Add(value[tokenStart..i]);
+                    tokenStart = i + 1;
+                }
+            }
+
+            tokens.Add(value[tokenStart..]);
+            return tokens;
+        }
+
+        private static string StripOuterBalancedParentheses(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string current = value.Trim();
+            while (current.Length >= 2 && current[0] == '(' && current[^1] == ')')
+            {
+                int closeIndex = FindMatchingCloseParenthesis(current, 0);
+                if (closeIndex != current.Length - 1)
+                {
+                    break;
+                }
+
+                current = current[1..^1].Trim();
+            }
+
+            return current;
+        }
+
+        private static bool TryReadQuotedLiteral(string value, out string literal)
+        {
+            literal = string.Empty;
+            if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+            {
+                return false;
+            }
+
+            char quote = value[0];
+            if ((quote != '"' && quote != '\'') || value[^1] != quote)
+            {
+                return false;
+            }
+
+            string innerValue = value[1..^1];
+            if (innerValue.IndexOf(quote) >= 0)
+            {
+                return false;
+            }
+
+            literal = innerValue;
+            return true;
         }
 
         private static IEnumerable<string> EnumerateQuotedAliasArguments(string scriptName)
@@ -1073,6 +1451,9 @@ namespace HaCreator.MapSimulator.Fields
                 case "return":
                 case "catch":
                 case "new":
+                case "call":
+                case "apply":
+                case "bind":
                     return false;
                 default:
                     return true;

@@ -172,6 +172,10 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal enum SocialListClientGuildResultKind : byte
     {
+        GuildNameInput = 1,
+        CreateGuildAgreement = 3,
+        GuildInvite = 5,
+        GuildMarkInput = 17,
         Notice35 = 35,
         Notice37 = 37,
         Notice42 = 42,
@@ -215,7 +219,8 @@ namespace HaCreator.MapSimulator.Interaction
         string GuildBoardAuthKey = null,
         string DirectNotice = null,
         byte RawSubtype = 0,
-        bool UsesSharedResultNoticeFallback = false);
+        bool UsesSharedResultNoticeFallback = false,
+        string ExplicitBranchSummary = null);
 
     internal readonly record struct SocialListGuildSkillRecordPacket(
         int SkillId,
@@ -919,6 +924,146 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind kind = (SocialListClientGuildResultKind)rawSubtype;
                 switch (kind)
                 {
+                    case SocialListClientGuildResultKind.GuildNameInput:
+                    {
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            0,
+                            0,
+                            null,
+                            null,
+                            RawSubtype: rawSubtype,
+                            UsesSharedResultNoticeFallback: false,
+                            ExplicitBranchSummary: "Client OnGuildResult(1) opened the guild-name input dialog.");
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.CreateGuildAgreement:
+                    {
+                        if (!reader.HasRemaining)
+                        {
+                            packet = new SocialListClientGuildResultPacket(
+                                kind,
+                                0,
+                                Array.Empty<GuildRankingSeedEntry>(),
+                                Array.Empty<string>(),
+                                null,
+                                null,
+                                0,
+                                0,
+                                HasExplicitNotice: false,
+                                null,
+                                default,
+                                null,
+                                0,
+                                0,
+                                null,
+                                null,
+                                RawSubtype: rawSubtype,
+                                UsesSharedResultNoticeFallback: false,
+                                ExplicitBranchSummary: "Client OnGuildResult(3) followed the party-boss create-guild branch.");
+                            return true;
+                        }
+
+                        int partyId = reader.ReadInt32();
+                        string masterName = reader.HasRemaining ? reader.ReadString16().Trim() : string.Empty;
+                        string guildName = reader.HasRemaining ? reader.ReadString16().Trim() : string.Empty;
+                        string summary = string.IsNullOrWhiteSpace(masterName) && string.IsNullOrWhiteSpace(guildName)
+                            ? $"Client OnGuildResult(3) opened the create-guild agreement flow for party {partyId}."
+                            : $"Client OnGuildResult(3) opened the create-guild agreement for party {partyId}: master={masterName}, guild={guildName}.";
+
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            0,
+                            0,
+                            null,
+                            null,
+                            RawSubtype: rawSubtype,
+                            UsesSharedResultNoticeFallback: false,
+                            ExplicitBranchSummary: summary);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.GuildInvite:
+                    {
+                        int inviterId = reader.ReadInt32();
+                        string inviterName = reader.ReadString16().Trim();
+                        int inviterLevel = reader.ReadInt32();
+                        int inviterJobId = reader.ReadInt32();
+                        string summary = string.IsNullOrWhiteSpace(inviterName)
+                            ? $"Client OnGuildResult(5) opened a guild invite from #{inviterId} (Lv. {inviterLevel}, job {inviterJobId})."
+                            : $"Client OnGuildResult(5) opened a guild invite from {inviterName} (#{inviterId}, Lv. {inviterLevel}, job {inviterJobId}).";
+
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            0,
+                            0,
+                            null,
+                            null,
+                            RawSubtype: rawSubtype,
+                            UsesSharedResultNoticeFallback: false,
+                            ExplicitBranchSummary: summary);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.GuildMarkInput:
+                    {
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            0,
+                            0,
+                            null,
+                            null,
+                            RawSubtype: rawSubtype,
+                            UsesSharedResultNoticeFallback: false,
+                            ExplicitBranchSummary: "Client OnGuildResult(17) opened the guild-mark input dialog.");
+                        return true;
+                    }
+
                     case SocialListClientGuildResultKind.Notice35:
                     case SocialListClientGuildResultKind.Notice37:
                     case SocialListClientGuildResultKind.Notice42:

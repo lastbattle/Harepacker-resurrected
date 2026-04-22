@@ -1303,11 +1303,11 @@ namespace HaCreator.MapSimulator.UI
                     ? movePurchaseMessage
                     : BuildPacketDecodeFailure("CITC::OnMoveITCPurchaseItemLtoSDone", packetPayload),
                 40 => BuildItcFailureMessage(packetPayload, "CITC::OnMoveITCPurchaseItemLtoSFailed"),
-                41 => TryApplyItcWishMutation("CITC::OnSetZzimDone", addSelectedCatalogEntry: true, removeCurrentWishEntry: false, out string setWishMessage)
+                41 => TryApplyItcWishMutation(packetPayload, "CITC::OnSetZzimDone", addSelectedCatalogEntry: true, removeCurrentWishEntry: false, out string setWishMessage)
                     ? setWishMessage
                     : BuildPacketDecodeFailure("CITC::OnSetZzimDone", packetPayload),
                 42 => BuildItcFailureMessage(packetPayload, "CITC::OnSetZzimFailed"),
-                43 => TryApplyItcWishMutation("CITC::OnDeleteZzimDone", addSelectedCatalogEntry: false, removeCurrentWishEntry: true, out string deleteWishMessage)
+                43 => TryApplyItcWishMutation(packetPayload, "CITC::OnDeleteZzimDone", addSelectedCatalogEntry: false, removeCurrentWishEntry: true, out string deleteWishMessage)
                     ? deleteWishMessage
                     : BuildPacketDecodeFailure("CITC::OnDeleteZzimDone", packetPayload),
                 44 => BuildItcFailureMessage(packetPayload, "CITC::OnDeleteZzimFailed"),
@@ -1315,23 +1315,23 @@ namespace HaCreator.MapSimulator.UI
                     ? loadWishMessage
                     : BuildPacketDecodeFailure("CITC::OnLoadWishSaleListDone", packetPayload),
                 46 => BuildItcFailureMessage(packetPayload, "CITC::OnLoadWishSaleListFailed"),
-                47 => TryApplyItcBuyCatalogItemDone("CITC::OnBuyWishDone", fromWishList: true, out string buyWishMessage)
+                47 => TryApplyItcBuyCatalogItemDone(packetPayload, "CITC::OnBuyWishDone", fromWishList: true, out string buyWishMessage)
                     ? buyWishMessage
                     : BuildPacketDecodeFailure("CITC::OnBuyWishDone", packetPayload),
                 48 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyWishFailed"),
-                49 => TryApplyItcWishMutation("CITC::OnCancelWishDone", addSelectedCatalogEntry: false, removeCurrentWishEntry: true, out string cancelWishMessage)
+                49 => TryApplyItcWishMutation(packetPayload, "CITC::OnCancelWishDone", addSelectedCatalogEntry: false, removeCurrentWishEntry: true, out string cancelWishMessage)
                     ? cancelWishMessage
                     : BuildPacketDecodeFailure("CITC::OnCancelWishDone", packetPayload),
                 50 => BuildItcFailureMessage(packetPayload, "CITC::OnCancelWishFailed"),
-                51 => TryApplyItcBuyCatalogItemDone("CITC::OnBuyItemDone", fromWishList: false, out string buyItemMessage)
+                51 => TryApplyItcBuyCatalogItemDone(packetPayload, "CITC::OnBuyItemDone", fromWishList: false, out string buyItemMessage)
                     ? buyItemMessage
                     : BuildPacketDecodeFailure("CITC::OnBuyItemDone", packetPayload),
                 52 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyItemFailed"),
-                53 => TryApplyItcBuyCatalogItemDone("CITC::OnBuyZzimItemDone", fromWishList: true, out string buyWishCatalogMessage)
+                53 => TryApplyItcBuyCatalogItemDone(packetPayload, "CITC::OnBuyZzimItemDone", fromWishList: true, out string buyWishCatalogMessage)
                     ? buyWishCatalogMessage
                     : BuildPacketDecodeFailure("CITC::OnBuyZzimItemDone", packetPayload),
                 54 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyZzimItemFailed"),
-                55 => TryApplyItcWishMutation("CITC::OnRegisterWishItemDone", addSelectedCatalogEntry: true, removeCurrentWishEntry: false, out string registerWishMessage)
+                55 => TryApplyItcWishMutation(packetPayload, "CITC::OnRegisterWishItemDone", addSelectedCatalogEntry: true, removeCurrentWishEntry: false, out string registerWishMessage)
                     ? registerWishMessage
                     : BuildPacketDecodeFailure("CITC::OnRegisterWishItemDone", packetPayload),
                 56 => BuildItcFailureMessage(packetPayload, "CITC::OnRegisterWishItemFailed"),
@@ -3904,7 +3904,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryApplyItcCancelSaleDone(byte[] payload, out string message)
         {
-            bool removedByListingId = TryRemoveFocusedItcEntryByListingId(_itcSalePacketEntries, out PacketCatalogEntry removedEntry);
+            int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1, _itcSalePacketEntries);
+            PacketCatalogEntry removedEntry = null;
+            bool removedByListingId = listingIdHint > 0
+                ? TryRemoveEntryByListingId(_itcSalePacketEntries, listingIdHint, out removedEntry)
+                : TryRemoveFocusedItcEntryByListingId(_itcSalePacketEntries, out removedEntry);
             if (!removedByListingId)
             {
                 RemovePrimaryEntry(_itcSalePacketEntries, out removedEntry);
@@ -3932,7 +3936,11 @@ namespace HaCreator.MapSimulator.UI
             _ = reader.ReadByte();
             int inventoryTab = Math.Max(0, reader.ReadInt32());
             int slotIndex = Math.Max(0, reader.ReadInt32());
-            bool removedByListingId = TryRemoveFocusedItcEntryByListingId(_itcPurchasePacketEntries, out PacketCatalogEntry movedEntry);
+            int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1 + (sizeof(int) * 2), _itcPurchasePacketEntries);
+            PacketCatalogEntry movedEntry = null;
+            bool removedByListingId = listingIdHint > 0
+                ? TryRemoveEntryByListingId(_itcPurchasePacketEntries, listingIdHint, out movedEntry)
+                : TryRemoveFocusedItcEntryByListingId(_itcPurchasePacketEntries, out movedEntry);
             if (!removedByListingId)
             {
                 RemovePrimaryEntry(_itcPurchasePacketEntries, out movedEntry);
@@ -3948,12 +3956,16 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private bool TryApplyItcWishMutation(
+            byte[] payload,
             string ownerName,
             bool addSelectedCatalogEntry,
             bool removeCurrentWishEntry,
             out string message)
         {
-            PacketCatalogEntry focusedCatalogEntry = ResolveFocusedItcEntry(_itcPacketCatalogEntries);
+            int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1, _itcPacketCatalogEntries, _itcWishPacketEntries);
+            PacketCatalogEntry focusedCatalogEntry = listingIdHint > 0
+                ? _itcPacketCatalogEntries.FirstOrDefault(candidate => candidate.ListingId == listingIdHint)
+                : ResolveFocusedItcEntry(_itcPacketCatalogEntries);
             if (addSelectedCatalogEntry && focusedCatalogEntry != null)
             {
                 UpsertWishEntry(_itcWishPacketEntries, ClonePacketCatalogEntry(focusedCatalogEntry, "Wish"));
@@ -3962,7 +3974,9 @@ namespace HaCreator.MapSimulator.UI
             PacketCatalogEntry removedWishEntry = null;
             if (removeCurrentWishEntry)
             {
-                if (!TryRemoveFocusedItcEntryByListingId(_itcWishPacketEntries, out removedWishEntry))
+                if (listingIdHint > 0
+                    ? !TryRemoveEntryByListingId(_itcWishPacketEntries, listingIdHint, out removedWishEntry)
+                    : !TryRemoveFocusedItcEntryByListingId(_itcWishPacketEntries, out removedWishEntry))
                 {
                     RemovePrimaryEntry(_itcWishPacketEntries, out removedWishEntry);
                 }
@@ -3983,10 +3997,14 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private bool TryApplyItcBuyCatalogItemDone(string ownerName, bool fromWishList, out string message)
+        private bool TryApplyItcBuyCatalogItemDone(byte[] payload, string ownerName, bool fromWishList, out string message)
         {
             List<PacketCatalogEntry> source = fromWishList ? _itcWishPacketEntries : _itcPacketCatalogEntries;
-            bool removedByListingId = TryRemoveFocusedItcEntryByListingId(source, out PacketCatalogEntry removedEntry);
+            int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1, source, _itcPacketCatalogEntries, _itcWishPacketEntries);
+            PacketCatalogEntry removedEntry = null;
+            bool removedByListingId = listingIdHint > 0
+                ? TryRemoveEntryByListingId(source, listingIdHint, out removedEntry)
+                : TryRemoveFocusedItcEntryByListingId(source, out removedEntry);
             if (!removedByListingId)
             {
                 RemovePrimaryEntry(source, out removedEntry);
@@ -4052,6 +4070,7 @@ namespace HaCreator.MapSimulator.UI
         private bool TryApplyItcSaleCurrentItemToWishDone(byte[] payload, out string message)
         {
             bool applied = TryApplyItcWishMutation(
+                payload,
                 "CITC::OnSaleCurrentItemToWishDone",
                 addSelectedCatalogEntry: true,
                 removeCurrentWishEntry: false,
@@ -4109,8 +4128,13 @@ namespace HaCreator.MapSimulator.UI
             _ = reader.ReadByte();
             int winningPrice = Math.Max(0, reader.ReadInt32());
             int itemCount = Math.Max(0, reader.ReadInt32());
-            int listingIdHint = 0;
+            int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1 + (sizeof(int) * 2), _itcPurchasePacketEntries, _itcPacketCatalogEntries);
             List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(reader, Math.Max(1, Math.Min(itemCount, 4)));
+            if (listingIdHint <= 0)
+            {
+                listingIdHint = decodedRows.FirstOrDefault(candidate => candidate?.ListingId > 0)?.ListingId ?? 0;
+            }
+
             int updatedRows = 0;
             foreach (PacketCatalogEntry decodedRow in decodedRows)
             {
@@ -4185,8 +4209,13 @@ namespace HaCreator.MapSimulator.UI
             _ = reader.ReadByte();
             int reason = reader.ReadInt32();
             int itemCount = reader.ReadInt32();
-            int listingIdHint = 0;
+            int listingIdHint = ResolveItcListingIdHintFromPayload(payload, 1 + (sizeof(int) * 2), _itcWishPacketEntries);
             List<PacketCatalogEntry> decodedRows = TryDecodeTrailingItcItemEntries(reader, Math.Max(1, Math.Min(itemCount, 4)));
+            if (listingIdHint <= 0)
+            {
+                listingIdHint = decodedRows.FirstOrDefault(candidate => candidate?.ListingId > 0)?.ListingId ?? 0;
+            }
+
             int removedCount = 0;
             if (reason == 0)
             {
@@ -5824,6 +5853,80 @@ namespace HaCreator.MapSimulator.UI
             {
                 target.RemoveAt(index);
             }
+        }
+
+        private static bool TryRemoveEntryByListingId(List<PacketCatalogEntry> target, int listingId, out PacketCatalogEntry removedEntry)
+        {
+            removedEntry = null;
+            if (target == null || listingId <= 0)
+            {
+                return false;
+            }
+
+            int index = target.FindIndex(candidate => candidate.ListingId == listingId);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            removedEntry = target[index];
+            target.RemoveAt(index);
+            return true;
+        }
+
+        private int ResolveItcListingIdHintFromPayload(
+            byte[] payload,
+            int startOffset,
+            params IReadOnlyList<PacketCatalogEntry>[] candidateLists)
+        {
+            if (payload == null || payload.Length < startOffset + sizeof(int))
+            {
+                return 0;
+            }
+
+            int selectedListingId = Math.Max(0, _itcNormalItemSelectedListingId);
+            int maxProbeCount = Math.Min(8, (payload.Length - startOffset) / sizeof(int));
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            stream.Position = Math.Max(0, startOffset);
+            for (int i = 0; i < maxProbeCount && stream.Length - stream.Position >= sizeof(int); i++)
+            {
+                int candidate = reader.ReadInt32();
+                if (candidate <= 0)
+                {
+                    continue;
+                }
+
+                if (candidate == selectedListingId)
+                {
+                    return candidate;
+                }
+
+                if (IsKnownItcListingId(candidate, candidateLists))
+                {
+                    return candidate;
+                }
+            }
+
+            return 0;
+        }
+
+        private static bool IsKnownItcListingId(int listingId, params IReadOnlyList<PacketCatalogEntry>[] candidateLists)
+        {
+            if (listingId <= 0 || candidateLists == null)
+            {
+                return false;
+            }
+
+            foreach (IReadOnlyList<PacketCatalogEntry> list in candidateLists)
+            {
+                if (list?.Any(entry => entry != null && entry.ListingId == listingId) == true)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private PacketCatalogEntry ResolveFocusedItcEntry(IReadOnlyList<PacketCatalogEntry> entries)

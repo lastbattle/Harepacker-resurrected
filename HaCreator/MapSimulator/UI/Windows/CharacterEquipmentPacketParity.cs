@@ -1467,15 +1467,41 @@ namespace HaCreator.MapSimulator.UI
                 switch (slotType)
                 {
                     case ItemSlotTypeEquip:
-                        return TryReadClientEquipAddEntryBody(reader, hasCashSerial, out rejectReason);
+                        if (TryReadClientEquipAddEntryBody(reader, hasCashSerial, out rejectReason))
+                        {
+                            return true;
+                        }
+
+                        break;
                     case ItemSlotTypeBundle:
-                        return TryReadClientBundleAddEntryBody(reader, itemId, out rejectReason);
+                        if (TryReadClientBundleAddEntryBody(reader, itemId, out rejectReason))
+                        {
+                            return true;
+                        }
+
+                        break;
                     case ItemSlotTypePet:
-                        return TryReadClientPetAddEntryBody(reader, out rejectReason);
+                        if (TryReadClientPetAddEntryBody(reader, out rejectReason))
+                        {
+                            return true;
+                        }
+
+                        break;
                     default:
                         rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
                         return false;
                 }
+
+                if (matchedByHeader)
+                {
+                    // CWvsContext::OnInventoryOperation reads the mode-0 owner/position header
+                    // before descending into GW_ItemSlotBase::Decode. Keep ownership recovery on
+                    // the header match when local deep item-body decode is unavailable.
+                    rejectReason = null;
+                    return true;
+                }
+
+                return false;
             }
             catch (EndOfStreamException)
             {

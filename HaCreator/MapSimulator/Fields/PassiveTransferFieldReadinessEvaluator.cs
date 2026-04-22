@@ -107,6 +107,7 @@ namespace HaCreator.MapSimulator.Fields
             // transitions or local owner bindings (player bound/active) are transiently
             // unavailable in that window.
             return !state.HasReadyFieldInterface
+                   || state.HasPendingMapChange
                    || !state.HasBoundPlayer
                    || !state.IsPlayerActive
                    || !state.HasLiveFieldInterface;

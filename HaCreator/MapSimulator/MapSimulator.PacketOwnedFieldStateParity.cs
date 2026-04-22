@@ -238,10 +238,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+            if (!TryDecodeFieldSpecificCurrentWrapperRelayPacketChain(
                     payload,
                     out int packetType,
                     out byte[] packetPayload,
+                    out string relayEvidence,
                     out _))
             {
                 return false;
@@ -258,9 +259,72 @@ namespace HaCreator.MapSimulator
             }
 
             string relaySummary = $"CField::OnFieldSpecificData decoded wrapper relay packet {packetType} with {packetPayload.Length} payload byte(s).";
+            if (!string.IsNullOrWhiteSpace(relayEvidence))
+            {
+                relaySummary = $"{relaySummary} {relayEvidence}";
+            }
+
             message = string.IsNullOrWhiteSpace(wrapperMessage)
                 ? relaySummary
                 : $"{relaySummary} {wrapperMessage}";
+            return true;
+        }
+
+        internal static bool TryDecodeFieldSpecificCurrentWrapperRelayPacketChain(
+            byte[] payload,
+            out int packetType,
+            out byte[] packetPayload,
+            out string relayEvidence,
+            out string error)
+        {
+            packetType = -1;
+            packetPayload = Array.Empty<byte>();
+            relayEvidence = string.Empty;
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int relayedPacketType,
+                    out byte[] relayedPayload,
+                    out string relayDecodeError))
+            {
+                error = relayDecodeError;
+                return false;
+            }
+
+            List<int> relayPacketTypes = new() { relayedPacketType };
+            packetType = relayedPacketType;
+            packetPayload = relayedPayload;
+            const int maxNestedRelayDepth = 8;
+            for (int depth = 1; depth < maxNestedRelayDepth && packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode; depth++)
+            {
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        packetPayload,
+                        out relayedPacketType,
+                        out relayedPayload,
+                        out relayDecodeError))
+                {
+                    error = relayDecodeError;
+                    return false;
+                }
+
+                relayPacketTypes.Add(relayedPacketType);
+                packetType = relayedPacketType;
+                packetPayload = relayedPayload;
+            }
+
+            relayEvidence = relayPacketTypes.Count > 1
+                ? $"Decoded wrapper relay packet-id prefixes {string.Join("->", relayPacketTypes)}."
+                : string.Empty;
+
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                error =
+                    $"Field-specific wrapper relay decode exceeded bounded depth while unwrapping nested packet id {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode}. {relayEvidence}";
+                return false;
+            }
+
             return true;
         }
 
@@ -310,47 +374,27 @@ namespace HaCreator.MapSimulator
             packetPayload = Array.Empty<byte>();
             evidence = string.Empty;
             payload ??= Array.Empty<byte>();
-
-            List<int> relayPrefixChain = new();
-            byte[] relayPayload = payload;
-            const int maxNestedRelayDepth = 8;
-            for (int depth = 0; depth < maxNestedRelayDepth; depth++)
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int relayPacketType,
+                    out byte[] relayPayload,
+                    out _))
             {
-                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
-                        relayPayload,
-                        out int relayPacketType,
-                        out byte[] nestedPayload,
-                        out _))
-                {
-                    return false;
-                }
-
-                relayPrefixChain.Add(relayPacketType);
-                if (relayPacketType == SpecialFieldRuntimeCoordinator.FieldSpecificDataRelayOpcode
-                    && DojoField.TryDecodeFieldSpecificPacketPayload(
-                        nestedPayload,
-                        out packetType,
-                        out packetPayload,
-                        out _))
-                {
-                    evidence = $"nested-relay:{string.Join("->", relayPrefixChain)}";
-                    return true;
-                }
-
-                if (relayPacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
-                    && relayPacketType != SpecialFieldRuntimeCoordinator.FieldSpecificDataRelayOpcode)
-                {
-                    return false;
-                }
-
-                relayPayload = nestedPayload;
-                if (relayPayload.Length < sizeof(ushort))
-                {
-                    break;
-                }
+                return false;
             }
 
-            return false;
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeDojoPacketFromRelayPrefixChain(
+                    relayPacketType,
+                    relayPayload,
+                    out packetType,
+                    out packetPayload,
+                    out string relayEvidence))
+            {
+                return false;
+            }
+
+            evidence = $"nested-relay:{relayEvidence}";
+            return true;
         }
 
         private bool TryApplyStructuredFieldSpecificDataPayload(byte[] payload, int currentTick, out string message)

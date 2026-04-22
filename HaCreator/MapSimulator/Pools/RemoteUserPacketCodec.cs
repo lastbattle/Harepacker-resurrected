@@ -177,7 +177,14 @@ namespace HaCreator.MapSimulator.Pools
         int? YellowAuraValue,
         bool HasBlessingArmor,
         RemoteUserTemporaryStatExtendedState ExtendedState = default,
-        int? WeaponChargeValue = null)
+        int? WeaponChargeValue = null,
+        int? StunValue = null,
+        int? DarknessValue = null,
+        int? SealValue = null,
+        int? WeaknessValue = null,
+        int? CurseValue = null,
+        int? PoisonValue = null,
+        short? PoisonValueShort = null)
     {
         public const int DarkAuraSkillId = 32001003;
         public const int BlueAuraSkillId = 32101002;
@@ -211,7 +218,14 @@ namespace HaCreator.MapSimulator.Pools
             || YellowAuraValue.HasValue
             || HasBlessingArmor
             || ExtendedState.HasAnyKnownState
-            || WeaponChargeValue.HasValue;
+            || WeaponChargeValue.HasValue
+            || StunValue.HasValue
+            || DarknessValue.HasValue
+            || SealValue.HasValue
+            || WeaknessValue.HasValue
+            || CurseValue.HasValue
+            || PoisonValue.HasValue
+            || PoisonValueShort.HasValue;
 
         public bool IsHiddenLikeClient =>
             HasDarkSight
@@ -3597,6 +3611,19 @@ namespace HaCreator.MapSimulator.Pools
             if (hasMinimapIconNpcPathContext)
             {
                 return string.Equals(normalizedMarkerName, "iconnpc", StringComparison.Ordinal);
+            }
+
+            if (isPlainMarkerToken)
+            {
+                if (KnownMinimapIconDirectionAncillaryMarkerNames.Contains(normalizedMarkerName))
+                {
+                    return true;
+                }
+
+                if (string.Equals(normalizedMarkerName, "iconnpc", StringComparison.Ordinal))
+                {
+                    return true;
+                }
             }
 
             if (!KnownDefaultHelperAncillaryMarkerNames.Contains(normalizedMarkerName))

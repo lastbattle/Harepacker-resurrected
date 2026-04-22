@@ -6155,6 +6155,11 @@ namespace HaCreator.MapSimulator.Pools
             string previousNormalizedSourcePath = null;
             for (int i = 0; i < sourcePathTokens.Count; i++)
             {
+                if (IsPacketMobAttackGeneralEffectNonSourceAssignmentNoiseToken(sourcePathTokens[i]))
+                {
+                    continue;
+                }
+
                 string token = NormalizePacketMobAttackGeneralEffectPathToken(sourcePathTokens[i]);
                 if (string.IsNullOrWhiteSpace(token))
                 {
@@ -6550,7 +6555,19 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return int.TryParse(normalized, out value);
+            char sign = normalized[0];
+            string magnitudeToken = NormalizePacketMobAttackGeneralEffectNumericToken(normalized.Substring(1));
+            if (!int.TryParse(
+                    magnitudeToken,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int magnitude))
+            {
+                return false;
+            }
+
+            value = sign == '-' ? -magnitude : magnitude;
+            return true;
         }
 
         private static bool TryParsePacketMobAttackGeneralEffectSourceAliasSignedFrameOffset(
@@ -6665,12 +6682,20 @@ namespace HaCreator.MapSimulator.Pools
             string rawOffsetToken = aliasToken.Substring(delimiterIndex + 1);
             if (delimiter == '+')
             {
-                return int.TryParse(rawOffsetToken, out frameOffset);
+                return int.TryParse(
+                    NormalizePacketMobAttackGeneralEffectNumericToken(rawOffsetToken),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out frameOffset);
             }
 
             if (delimiter == '-')
             {
-                if (!int.TryParse(rawOffsetToken, out int parsedMagnitude))
+                if (!int.TryParse(
+                        NormalizePacketMobAttackGeneralEffectNumericToken(rawOffsetToken),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out int parsedMagnitude))
                 {
                     return false;
                 }
@@ -6699,7 +6724,19 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return int.TryParse(trimmedToken, out frameOffset);
+            char sign = trimmedToken[0];
+            string magnitudeToken = NormalizePacketMobAttackGeneralEffectNumericToken(trimmedToken.Substring(1));
+            if (!int.TryParse(
+                    magnitudeToken,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int magnitude))
+            {
+                return false;
+            }
+
+            frameOffset = sign == '-' ? -magnitude : magnitude;
+            return true;
         }
 
         private static bool TryParsePacketMobAttackGeneralEffectSiblingFrameIndex(
@@ -8096,6 +8133,36 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectNonSourceAssignmentNoiseToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string normalizedToken = NormalizePacketMobAttackGeneralEffectPathTokenShell(token);
+            int assignmentIndex = FindPacketMobAttackGeneralEffectPathAssignmentIndex(
+                normalizedToken,
+                out int assignmentDelimiterLength);
+            if (assignmentIndex <= 0 || assignmentIndex + assignmentDelimiterLength >= normalizedToken.Length)
+            {
+                return false;
+            }
+
+            string assignmentPrefix = NormalizePacketMobAttackGeneralEffectSiblingFrameToken(
+                normalizedToken.Substring(0, assignmentIndex));
+            if (string.IsNullOrWhiteSpace(assignmentPrefix)
+                || IsPacketMobAttackSourceAliasSegment(assignmentPrefix)
+                || IsPacketMobAttackCategorySegment(assignmentPrefix))
+            {
+                return false;
+            }
+
+            string assignmentSuffix = NormalizePacketMobAttackGeneralEffectPathTokenShell(
+                normalizedToken.Substring(assignmentIndex + assignmentDelimiterLength));
+            return !string.IsNullOrWhiteSpace(assignmentSuffix);
         }
 
         private static int FindPacketMobAttackGeneralEffectPathAssignmentIndex(

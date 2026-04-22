@@ -63,6 +63,18 @@ namespace HaCreator.MapSimulator.Entities
         int ReceiveTime,
         int MoveAction);
 
+    public readonly record struct MobPacketMovePathElement(
+        float X,
+        float Y,
+        float VelocityX,
+        float VelocityY,
+        MobMoveType MoveType,
+        MobJumpState JumpState,
+        MobAction Action,
+        bool FacingRight,
+        int TimeStamp,
+        int MoveAction);
+
     /// <summary>
     /// Stores movement state and physics for a mob in the MapSimulator.
     /// Based on MapleNecrocer's Mob.cs implementation.
@@ -255,6 +267,7 @@ namespace HaCreator.MapSimulator.Entities
         private Random _random = new Random();
         private int _nextDirectionChangeTime = 0;
         private int _directionChangeCooldown = 0;  // Prevents rapid direction flipping
+        private readonly List<MobPacketMovePathElement> _packetMovePathBuffer = new();
 
         // Spawn position (for reference)
         private int _spawnX;
@@ -645,6 +658,16 @@ namespace HaCreator.MapSimulator.Entities
         /// buffered path entries, so this seam stores an equivalent runtime snapshot.
         /// </summary>
         public MobPacketMoveInterruptSnapshot? LastPacketMoveInterruptSnapshot { get; private set; }
+        public int LastPacketMoveInterruptTruncatedElementCount { get; private set; }
+        public int LastPacketMovePathRebaseTime { get; private set; } = int.MinValue;
+        public int LastPacketOwnedMoveAction { get; private set; } = -1;
+        public int LastPacketOwnedMoveActionUpdateTime { get; private set; } = int.MinValue;
+        public IReadOnlyList<MobPacketMovePathElement> PacketMovePathBuffer => _packetMovePathBuffer;
+
+        internal void QueuePacketMovePathElement(MobPacketMovePathElement element)
+        {
+            _packetMovePathBuffer.Add(element);
+        }
 
         public void ApplyPacketMoveInterrupt(
             bool notForceLandingWhenDiscard,
@@ -662,6 +685,9 @@ namespace HaCreator.MapSimulator.Entities
             if (moveAction >= 0)
             {
                 CurrentAction = ResolvePacketOwnedMoveAction(moveAction, CurrentAction);
+                ApplyPacketOwnedMoveState(moveAction);
+                LastPacketOwnedMoveAction = moveAction;
+                LastPacketOwnedMoveActionUpdateTime = Math.Max(0, receiveTime);
             }
 
             LastPacketMoveInterruptSnapshot = new MobPacketMoveInterruptSnapshot(
@@ -675,6 +701,8 @@ namespace HaCreator.MapSimulator.Entities
                 FlipX,
                 receiveTime,
                 moveAction);
+
+            RebasePacketMovePathBufferAtInterrupt(receiveTime, moveAction);
 
             _pendingDirection = MobMoveDirection.None;
             _framesSinceDirectionChange = 0;
@@ -724,6 +752,54 @@ namespace HaCreator.MapSimulator.Entities
                 2 or 3 => MobAction.Jump,
                 _ => fallback
             };
+        }
+
+        private void RebasePacketMovePathBufferAtInterrupt(int receiveTime, int moveAction)
+        {
+            int rebaseTime = Math.Max(0, receiveTime);
+            int bufferedBefore = _packetMovePathBuffer.Count;
+            LastPacketMovePathRebaseTime = rebaseTime;
+
+            var rebasedElement = new MobPacketMovePathElement(
+                X,
+                Y,
+                VelocityX,
+                VelocityY,
+                MoveType,
+                JumpState,
+                CurrentAction,
+                FlipX,
+                rebaseTime,
+                moveAction);
+
+            _packetMovePathBuffer.Clear();
+            _packetMovePathBuffer.Add(rebasedElement);
+
+            // Mirrors CMovePath::DiscardByInterrupt reducing buffered elements to
+            // a fresh m_elemLast snapshot owned by the receive tick.
+            LastPacketMoveInterruptTruncatedElementCount = bufferedBefore;
+        }
+
+        private void ApplyPacketOwnedMoveState(int moveAction)
+        {
+            switch (moveAction)
+            {
+                case 0:
+                    JumpState = MobJumpState.None;
+                    break;
+                case 1:
+                    MoveType = MobMoveType.Move;
+                    JumpState = MobJumpState.None;
+                    break;
+                case 2:
+                case 3:
+                    MoveType = MobMoveType.Jump;
+                    if (JumpState == MobJumpState.None)
+                    {
+                        JumpState = VelocityY >= 0f ? MobJumpState.Falling : MobJumpState.Jumping;
+                    }
+                    break;
+            }
         }
 
         /// <summary>

@@ -2298,10 +2298,34 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!TryResolveLiveInventorySlot(_pendingPutInventoryType, _pendingPutInventoryRowIndex, out InventorySlotData liveSlot))
+            {
+                _statusMessage = "CTrunkDlg::SendPutItemRequest aborted because CharacterData::GetItem no longer resolves the staged inventory row.";
+                CancelMesoEntry();
+                UpdateButtonStates();
+                return;
+            }
+
+            if (!MatchesPendingPutIdentity(_pendingPutSlotData, liveSlot))
+            {
+                _statusMessage = "CTrunkDlg::SendPutItemRequest aborted because CharacterData::GetItem pointer-identity changed after AskItemCount.";
+                CancelMesoEntry();
+                UpdateButtonStates();
+                return;
+            }
+
+            if (requestedQuantity > Math.Max(1, liveSlot.Quantity))
+            {
+                _statusMessage = $"CTrunkDlg::SendPutItemRequest aborted because AskItemCount {requestedQuantity.ToString(CultureInfo.InvariantCulture)} exceeds live quantity {Math.Max(1, liveSlot.Quantity).ToString(CultureInfo.InvariantCulture)}.";
+                CancelMesoEntry();
+                UpdateButtonStates();
+                return;
+            }
+
             PacketOwnedTrunkRequestResult packetOwnedResult = PacketOwnedPutItemRequested(
                 _pendingPutInventoryType,
                 _pendingPutInventoryRowIndex,
-                _pendingPutSlotData,
+                liveSlot,
                 requestedQuantity);
             _statusMessage = string.IsNullOrWhiteSpace(packetOwnedResult.Message)
                 ? packetOwnedResult.Accepted
@@ -2314,6 +2338,43 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateButtonStates();
+        }
+
+        private bool TryResolveLiveInventorySlot(InventoryType inventoryType, int rowIndex, out InventorySlotData liveSlot)
+        {
+            liveSlot = null;
+            if (_inventory == null || rowIndex < 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> rows = _inventory.GetSlots(inventoryType) ?? Array.Empty<InventorySlotData>();
+            if (rowIndex >= rows.Count)
+            {
+                return false;
+            }
+
+            liveSlot = rows[rowIndex];
+            return liveSlot != null;
+        }
+
+        private static bool MatchesPendingPutIdentity(InventorySlotData stagedSlot, InventorySlotData liveSlot)
+        {
+            if (ReferenceEquals(stagedSlot, liveSlot))
+            {
+                return true;
+            }
+
+            if (stagedSlot == null || liveSlot == null)
+            {
+                return false;
+            }
+
+            return stagedSlot.ItemId == liveSlot.ItemId
+                && stagedSlot.ClientItemToken.GetValueOrDefault() == liveSlot.ClientItemToken.GetValueOrDefault()
+                && stagedSlot.CashItemSerialNumber.GetValueOrDefault() == liveSlot.CashItemSerialNumber.GetValueOrDefault()
+                && stagedSlot.OwnerAccountId.GetValueOrDefault() == liveSlot.OwnerAccountId.GetValueOrDefault()
+                && stagedSlot.OwnerCharacterId.GetValueOrDefault() == liveSlot.OwnerCharacterId.GetValueOrDefault();
         }
 
         private static char? KeyToDigit(Keys key)

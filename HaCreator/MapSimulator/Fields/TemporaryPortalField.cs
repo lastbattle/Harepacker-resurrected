@@ -2625,10 +2625,10 @@ namespace HaCreator.MapSimulator.Fields
                 return qualityComparison > 0;
             }
 
-            if (existingSourceMapId == sourceMapId
-                && existingObservationSource == observationSource)
+            if (existingObservationSource == observationSource
+                && recordedAt != existingRecordedAt)
             {
-                return recordedAt != existingRecordedAt;
+                return recordedAt > existingRecordedAt;
             }
 
             return existingSourceMapId != sourceMapId

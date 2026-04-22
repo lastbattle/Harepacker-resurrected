@@ -1859,8 +1859,14 @@ namespace HaCreator.MapSimulator.Character
             // explicit mapped aliases first when present, but let the resolver continue
             // into the published combat fallback surface when none of those aliases are
             // authored on the active morph template.
+            //
+            // Apply that same fallback rule to other skill-authored names that are not
+            // present in the client raw morph action table. Those requests can still be
+            // mapped through explicit aliases first, but should not hard-stop when their
+            // mapped aliases are absent on the active morph template.
             return !string.Equals(actionName, "shot", StringComparison.OrdinalIgnoreCase)
-                   && !string.Equals(actionName, "edgeSpiral", StringComparison.OrdinalIgnoreCase);
+                   && !string.Equals(actionName, "edgeSpiral", StringComparison.OrdinalIgnoreCase)
+                   && IsClientConfirmedMorphActionName(actionName);
         }
 
         private static bool IsGenericMeleeAttackAction(string actionName)

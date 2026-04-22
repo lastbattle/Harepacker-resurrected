@@ -132,6 +132,23 @@ namespace HaCreator.MapSimulator
             return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
         }
 
+        private string ExecuteCashServiceClientCancelIngress(Func<string> action)
+        {
+            return ExecuteCashServiceClientCancelIngressForTests(
+                Environment.TickCount,
+                ReleaseActiveKeydownSkillForClientCancelIngress,
+                action);
+        }
+
+        internal static string ExecuteCashServiceClientCancelIngressForTests(
+            int currentTime,
+            Action<int> releaseActiveKeydownSkillForClientCancelIngress,
+            Func<string> action)
+        {
+            releaseActiveKeydownSkillForClientCancelIngress?.Invoke(currentTime);
+            return action?.Invoke() ?? string.Empty;
+        }
+
         private void WireCashServiceOwnerWindows()
         {
             IInventoryRuntime inventoryRuntime = uiWindowManager?.InventoryWindow as IInventoryRuntime;
@@ -222,10 +239,10 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.SetInventoryVisibleRowProvider((tabName, scrollOffset, maxRows) =>
                     BuildCashServiceInventoryOwnerRows(inventoryRuntime, tabName, scrollOffset, maxRows));
                 inventoryWindow.SetInventoryStateProvider(() => BuildCashShopInventoryOwnerState(cashShopWindow));
-                inventoryWindow.SetExternalAction("BtExTrunk", () =>
-                {
-                    return cashShopWindow.ExecuteCashStageInventoryAction("BtExTrunk");
-                });
+                inventoryWindow.SetExternalAction(
+                    "BtExTrunk",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => cashShopWindow.ExecuteCashStageInventoryAction("BtExTrunk")));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopList) is CashShopStageChildWindow listWindow)
@@ -234,10 +251,22 @@ namespace HaCreator.MapSimulator
                 listWindow.SetContentProvider(() => BuildCashShopListOwnerLines(cashShopWindow));
                 listWindow.SetListRowSelectionAction(cashShopWindow.SelectListOwnerVisibleRow);
                 listWindow.SetListScrollAction(cashShopWindow.MoveListOwnerSelection);
-                listWindow.SetExternalAction("BtBuy", () => ShowCashPurchaseConfirmDialog(cashShopWindow));
-                listWindow.SetExternalAction("BtGift", () => cashShopWindow.ExecuteCashStageListAction("BtGift"));
-                listWindow.SetExternalAction("BtReserve", () => cashShopWindow.ExecuteCashStageListAction("BtReserve"));
-                listWindow.SetExternalAction("BtRemove", () => cashShopWindow.ExecuteCashStageListAction("BtRemove"));
+                listWindow.SetExternalAction(
+                    "BtBuy",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => ShowCashPurchaseConfirmDialog(cashShopWindow)));
+                listWindow.SetExternalAction(
+                    "BtGift",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => cashShopWindow.ExecuteCashStageListAction("BtGift")));
+                listWindow.SetExternalAction(
+                    "BtReserve",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => cashShopWindow.ExecuteCashStageListAction("BtReserve")));
+                listWindow.SetExternalAction(
+                    "BtRemove",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => cashShopWindow.ExecuteCashStageListAction("BtRemove")));
                 listWindow.SetExternalAction("TogglePane", cashShopWindow.ToggleListOwnerPane);
                 listWindow.SetExternalAction("PageUp", () => cashShopWindow.MoveListOwnerSelectionByPage(-1));
                 listWindow.SetExternalAction("PageDown", () => cashShopWindow.MoveListOwnerSelectionByPage(1));
@@ -270,13 +299,18 @@ namespace HaCreator.MapSimulator
                 });
                 statusWindow.SetExternalAction("BtCharge", () => "CCSWnd_Status kept the dedicated charge button armed; live billing flow remains outside the simulator.");
                 statusWindow.SetExternalAction("BtCheck", () => BuildCashShopStatusOwnerLines()[0]);
-                statusWindow.SetExternalAction("BtCoupon", () =>
-                    ShowCashCouponDialog());
-                statusWindow.SetExternalAction("BtExit", () =>
-                {
-                    HideCashShopOwnerFamilyWindows();
-                    return "CCSWnd_Status closed the parent CCashShop owner family.";
-                });
+                statusWindow.SetExternalAction(
+                    "BtCoupon",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        ShowCashCouponDialog));
+                statusWindow.SetExternalAction(
+                    "BtExit",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () =>
+                        {
+                            HideCashShopOwnerFamilyWindows();
+                            return "CCSWnd_Status closed the parent CCashShop owner family.";
+                        }));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopOneADay) is CashShopStageChildWindow oneADayWindow)
@@ -382,29 +416,44 @@ namespace HaCreator.MapSimulator
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
                     };
                 });
-                oneADayWindow.SetExternalAction("BtBuy", () =>
-                {
-                    string summary = BuildCashShopOneADayCurrentPurchaseSummary();
-                    return string.IsNullOrWhiteSpace(summary)
-                        ? "CCSWnd_OneADay routed the dedicated today-item buy button through the packet-owned reward lane."
-                        : summary;
-                });
-                oneADayWindow.SetExternalAction("BtItemBox", () =>
-                {
-                    string summary = BuildCashShopOneADayItemBoxSummary();
-                    return string.IsNullOrWhiteSpace(summary)
-                        ? "CCSWnd_OneADay moved owner focus through the dedicated item-box lane."
-                        : summary;
-                });
-                oneADayWindow.SetExternalAction("BtJoin", () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
-                    ? "CCSWnd_OneADay joined the packet-armed reward session preview."
-                    : oneADayWindow.CurrentOwnerStatusMessage);
-                oneADayWindow.SetExternalAction("BtShortcut", () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
-                    ? "CCSWnd_OneADay switched focus to the shortcut-help plate owner."
-                    : oneADayWindow.CurrentOwnerStatusMessage);
-                oneADayWindow.SetExternalAction("BtClose", () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
-                    ? "CCSWnd_OneADay dismissed the current reward plate preview."
-                    : oneADayWindow.CurrentOwnerStatusMessage);
+                oneADayWindow.SetExternalAction(
+                    "BtBuy",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () =>
+                        {
+                            string summary = BuildCashShopOneADayCurrentPurchaseSummary();
+                            return string.IsNullOrWhiteSpace(summary)
+                                ? "CCSWnd_OneADay routed the dedicated today-item buy button through the packet-owned reward lane."
+                                : summary;
+                        }));
+                oneADayWindow.SetExternalAction(
+                    "BtItemBox",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () =>
+                        {
+                            string summary = BuildCashShopOneADayItemBoxSummary();
+                            return string.IsNullOrWhiteSpace(summary)
+                                ? "CCSWnd_OneADay moved owner focus through the dedicated item-box lane."
+                                : summary;
+                        }));
+                oneADayWindow.SetExternalAction(
+                    "BtJoin",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
+                            ? "CCSWnd_OneADay joined the packet-armed reward session preview."
+                            : oneADayWindow.CurrentOwnerStatusMessage));
+                oneADayWindow.SetExternalAction(
+                    "BtShortcut",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
+                            ? "CCSWnd_OneADay switched focus to the shortcut-help plate owner."
+                            : oneADayWindow.CurrentOwnerStatusMessage));
+                oneADayWindow.SetExternalAction(
+                    "BtClose",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => string.IsNullOrWhiteSpace(oneADayWindow.CurrentOwnerStatusMessage)
+                            ? "CCSWnd_OneADay dismissed the current reward plate preview."
+                            : oneADayWindow.CurrentOwnerStatusMessage));
             }
         }
 
@@ -422,7 +471,11 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(windowName) is CashServiceModalOwnerWindow modalWindow)
             {
                 modalWindow.SetFont(_fontChat);
-                modalWindow.SetButtonHandler(buttonHandler);
+                modalWindow.SetButtonHandler(buttonIndex =>
+                {
+                    ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
+                    buttonHandler?.Invoke(buttonIndex);
+                });
             }
         }
 
@@ -1140,8 +1193,9 @@ namespace HaCreator.MapSimulator
             CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
             CashShopListArtSnapshot artSnapshot = ResolveCashShopListArtSnapshot();
             IReadOnlyList<string> recentPackets = stageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>();
+            bool preferPacketOwnedList = ShouldPreferStagePacketOwnedCashList(snapshot, stageWindow);
             if (stageWindow != null
-                && (snapshot == null || (snapshot.TotalCount <= 0 && stageWindow.CashPacketCatalogEntries.Count > 0)))
+                && (snapshot == null || snapshot.TotalCount <= 0 || preferPacketOwnedList))
             {
                 List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(stageWindow.CashPacketCatalogEntries);
                 return new CashShopStageChildWindow.ListOwnerState
@@ -1206,6 +1260,29 @@ namespace HaCreator.MapSimulator
                 VisibleEntries = entries,
                 RecentPackets = recentPackets
             };
+        }
+
+        private static bool ShouldPreferStagePacketOwnedCashList(AdminShopDialogUI.ListOwnerSnapshot snapshot, CashServiceStageWindow stageWindow)
+        {
+            if (stageWindow == null || stageWindow.CashPacketCatalogEntries.Count <= 0)
+            {
+                return false;
+            }
+
+            if (snapshot == null || snapshot.TotalCount <= 0)
+            {
+                return true;
+            }
+
+            string packetPaneLabel = stageWindow.CashPacketPaneLabel?.Trim();
+            string packetBrowseMode = stageWindow.CashPacketBrowseModeLabel?.Trim();
+            if (string.Equals(packetPaneLabel, "Packet wishlist", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(packetBrowseMode, "Wish", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private static CashShopListArtSnapshot ResolveCashShopListArtSnapshot()
@@ -1505,20 +1582,28 @@ namespace HaCreator.MapSimulator
             {
                 saleWindow.SetFont(_fontChat);
                 saleWindow.SetContentProvider(mtsStageWindow.DescribeSaleOwnerState);
-                saleWindow.SetExternalAction("BtShoppingBasket", () =>
-                    $"CITCWnd_Sale kept shopping-basket ownership in the ITC stage (normal-item mutations: {mtsStageWindow.ItcNormalItemMutationCount.ToString(CultureInfo.InvariantCulture)}).");
-                saleWindow.SetExternalAction("BtBuy", () =>
-                    $"CITCWnd_Sale staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {mtsStageWindow.ItcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos.");
+                saleWindow.SetExternalAction(
+                    "BtShoppingBasket",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => $"CITCWnd_Sale kept shopping-basket ownership in the ITC stage (normal-item mutations: {mtsStageWindow.ItcNormalItemMutationCount.ToString(CultureInfo.InvariantCulture)})."));
+                saleWindow.SetExternalAction(
+                    "BtBuy",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => $"CITCWnd_Sale staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {mtsStageWindow.ItcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos."));
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcPurchase) is CashShopStageChildWindow purchaseWindow)
             {
                 purchaseWindow.SetFont(_fontChat);
                 purchaseWindow.SetContentProvider(mtsStageWindow.DescribePurchaseOwnerState);
-                purchaseWindow.SetExternalAction("BtRegistration", () =>
-                    $"CITCWnd_Purchase armed listing registration on category {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}, page {mtsStageWindow.ItcNormalItemPage.ToString(CultureInfo.InvariantCulture)}.");
-                purchaseWindow.SetExternalAction("BtSell", () =>
-                    "CITCWnd_Purchase switched focus back to the dedicated sale owner.");
+                purchaseWindow.SetExternalAction(
+                    "BtRegistration",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => $"CITCWnd_Purchase armed listing registration on category {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}, page {mtsStageWindow.ItcNormalItemPage.ToString(CultureInfo.InvariantCulture)}."));
+                purchaseWindow.SetExternalAction(
+                    "BtSell",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CITCWnd_Purchase switched focus back to the dedicated sale owner."));
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcInventory) is CashShopStageChildWindow inventoryWindow)
@@ -1575,21 +1660,32 @@ namespace HaCreator.MapSimulator
             {
                 subTabWindow.SetFont(_fontChat);
                 subTabWindow.SetContentProvider(mtsStageWindow.DescribeSubTabOwnerState);
-                subTabWindow.SetExternalAction("BtSearch", () =>
-                    $"CITCWnd_SubTab search stayed on category {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}, page {mtsStageWindow.ItcNormalItemPage.ToString(CultureInfo.InvariantCulture)}.");
+                subTabWindow.SetExternalAction(
+                    "BtSearch",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => $"CITCWnd_SubTab search stayed on category {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}, page {mtsStageWindow.ItcNormalItemPage.ToString(CultureInfo.InvariantCulture)}."));
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcList) is CashShopStageChildWindow listWindow)
             {
                 listWindow.SetFont(_fontChat);
                 listWindow.SetContentProvider(() => BuildItcListOwnerLines(mtsWindow, mtsStageWindow));
-                listWindow.SetExternalAction("BtBuy", () =>
-                    $"CITCWnd_List buy staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}.");
-                listWindow.SetExternalAction("BtDelete", () =>
-                    $"CITCWnd_List delete staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}.");
-                listWindow.SetExternalAction("BtCancel", () => "CITCWnd_List cancelled the currently staged action.");
-                listWindow.SetExternalAction("BtBuy1", () =>
-                    $"CITCWnd_List opened alternate buy confirmation for listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}.");
+                listWindow.SetExternalAction(
+                    "BtBuy",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => $"CITCWnd_List buy staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}."));
+                listWindow.SetExternalAction(
+                    "BtDelete",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => $"CITCWnd_List delete staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}."));
+                listWindow.SetExternalAction(
+                    "BtCancel",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CITCWnd_List cancelled the currently staged action."));
+                listWindow.SetExternalAction(
+                    "BtBuy1",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => $"CITCWnd_List opened alternate buy confirmation for listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}."));
                 listWindow.SetListStateProvider(() => BuildItcListOwnerState(mtsWindow, mtsStageWindow));
             }
 
@@ -1606,14 +1702,22 @@ namespace HaCreator.MapSimulator
                     StatusMessage = mtsStageWindow.StatusMessage,
                     DetailSummaries = mtsStageWindow.GetStatusOwnerDetailLines()
                 });
-                statusWindow.SetExternalAction("BtCharge", () => "CITCWnd_Status kept charge ownership on the ITC stage.");
-                statusWindow.SetExternalAction("BtCheck", () =>
-                    $"CITCWnd_Status queried balances after {mtsStageWindow.ItcNormalItemMutationCount.ToString(CultureInfo.InvariantCulture)} normal-item mutation(s).");
-                statusWindow.SetExternalAction("BtExit", () =>
-                {
-                    HideItcOwnerFamilyWindows();
-                    return "CITCWnd_Status closed the parent CITC owner family.";
-                });
+                statusWindow.SetExternalAction(
+                    "BtCharge",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => "CITCWnd_Status kept charge ownership on the ITC stage."));
+                statusWindow.SetExternalAction(
+                    "BtCheck",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () => $"CITCWnd_Status queried balances after {mtsStageWindow.ItcNormalItemMutationCount.ToString(CultureInfo.InvariantCulture)} normal-item mutation(s)."));
+                statusWindow.SetExternalAction(
+                    "BtExit",
+                    () => ExecuteCashServiceClientCancelIngress(
+                        () =>
+                        {
+                            HideItcOwnerFamilyWindows();
+                            return "CITCWnd_Status closed the parent CITC owner family.";
+                        }));
             }
         }
 
@@ -2108,24 +2212,6 @@ namespace HaCreator.MapSimulator
             if (stageWindow.CashItemResultSubtype == 90 && stageWindow.CashGiftPacketEntries.Count > 0)
             {
                 ShowCashReceiveGiftDialog(stageWindow, 0);
-                return;
-            }
-
-            int cashItemSubtype = stageWindow.CashItemResultSubtype;
-            if ((cashItemSubtype == 107 || cashItemSubtype == 108)
-                && stageWindow.TryFinalizeReceiveGiftAcceptResult(
-                    cashItemSubtype,
-                    out string summary,
-                    out string ownerNotice,
-                    out bool accepted,
-                    out int nextGiftIndex))
-            {
-                if (!string.IsNullOrWhiteSpace(summary))
-                {
-                    _chat?.AddSystemMessage(summary, currTickCount);
-                }
-
-                ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, summary, accepted);
             }
         }
 
@@ -2301,8 +2387,7 @@ namespace HaCreator.MapSimulator
             CashServiceStageWindow stageWindow,
             int nextGiftIndex,
             string ownerNotice,
-            string acceptanceSummary,
-            bool accepted)
+            string acceptanceSummary)
         {
             if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, out CashServiceModalOwnerWindow modalWindow))
             {
@@ -2320,9 +2405,7 @@ namespace HaCreator.MapSimulator
                 {
                     ownerNotice,
                     acceptanceSummary,
-                    accepted
-                        ? "Client subtype 107 branch: the accepted row was consumed before the next DoModal owner turn."
-                        : "Client subtype 108 branch: the current row remains queued and returns through another DoModal owner turn.",
+                    "Client evidence: OnCashItemResLoadGiftDone sends opcode 154 and shows StringPool[0xAC0] notice immediately after each CDialog::DoModal return value 1.",
                     $"Decoded queue still has {remainingRows.ToString(CultureInfo.InvariantCulture)} row(s) after this accept branch."
                 },
                 new[]
@@ -2336,9 +2419,7 @@ namespace HaCreator.MapSimulator
                     }
                 },
                 footer: hasNextGiftRow
-                    ? accepted
-                        ? "Follow-up notice acknowledged: the next packet-owned gift row will open on OK."
-                        : "Follow-up notice acknowledged: the same packet-owned gift row will reopen on OK for another accept attempt."
+                    ? "Follow-up notice acknowledged: the next packet-owned gift row will open on OK."
                     : "Follow-up notice acknowledged: no additional packet-owned gift rows remain.");
             _cashReceiveGiftFollowUpNoticePending = true;
             _cashReceiveGiftFollowUpNoticeNextIndex = nextGiftIndex;
@@ -2689,9 +2770,13 @@ namespace HaCreator.MapSimulator
             }
 
             string dispatchSummary = DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, normalizedReplyText);
-            string message = stageWindow.StageReceiveGiftAcceptRequest(selectedGiftIndex, normalizedReplyText, dispatchSummary);
+            string message = stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, normalizedReplyText, dispatchSummary);
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
-            _chat?.AddSystemMessage(message, currTickCount);
+            int nextGiftIndex = stageWindow.CashGiftPacketEntries.Count > 0
+                ? Math.Clamp(selectedGiftIndex, 0, stageWindow.CashGiftPacketEntries.Count - 1)
+                : -1;
+            string ownerNotice = stageWindow.BuildReceiveGiftAcceptOwnerNotice(selectedGift, normalizedReplyText);
+            ShowCashReceiveGiftFollowUpNoticeDialog(stageWindow, nextGiftIndex, ownerNotice, message);
         }
 
         private static IEnumerable<string> BuildCashReceiveGiftSpecialistMessages(

@@ -168,6 +168,38 @@ namespace HaCreator.MapSimulator
             return availableActionOrder.FirstOrDefault() ?? AnimationKeys.Stand;
         }
 
+        internal static int ResolveRepairNpcActionSetIndex(
+            IReadOnlyList<NpcClientActionSetLoader.NpcClientActionSetDefinition> actionSets,
+            int? shopActionId,
+            int automaticActionSetIndex,
+            int preferredActionSetIndex,
+            IEnumerable<string> preferredActionCandidates)
+        {
+            if (actionSets == null || actionSets.Count <= 0 || shopActionId.GetValueOrDefault() <= 0)
+            {
+                return automaticActionSetIndex;
+            }
+
+            if (TryGetActionSetByIndex(actionSets, automaticActionSetIndex, out NpcClientActionSetLoader.NpcClientActionSetDefinition automaticSet)
+                && ActionSetContainsAnyCandidate(automaticSet, preferredActionCandidates))
+            {
+                return automaticActionSetIndex;
+            }
+
+            if (preferredActionSetIndex == automaticActionSetIndex)
+            {
+                return automaticActionSetIndex;
+            }
+
+            if (TryGetActionSetByIndex(actionSets, preferredActionSetIndex, out NpcClientActionSetLoader.NpcClientActionSetDefinition preferredSet)
+                && ActionSetContainsAnyCandidate(preferredSet, preferredActionCandidates))
+            {
+                return preferredActionSetIndex;
+            }
+
+            return automaticActionSetIndex;
+        }
+
         internal static bool TryEncodeEquippedPosition(EquipSlot slot, int itemId, out int encodedPosition)
         {
             if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out byte bodyPart)
@@ -425,6 +457,58 @@ namespace HaCreator.MapSimulator
                 _ => 0
             };
             return IsClientEncodableBodyPart(bodyPart);
+        }
+
+        private static bool ActionSetContainsAnyCandidate(
+            NpcClientActionSetLoader.NpcClientActionSetDefinition actionSet,
+            IEnumerable<string> candidates)
+        {
+            if (actionSet.Actions == null || actionSet.Actions.Count <= 0 || candidates == null)
+            {
+                return false;
+            }
+
+            HashSet<string> candidateSet = candidates
+                .Where(static candidate => !string.IsNullOrWhiteSpace(candidate))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (candidateSet.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actionSet.Actions.Count; i++)
+            {
+                string actionName = actionSet.Actions[i]?.Name;
+                if (!string.IsNullOrWhiteSpace(actionName) && candidateSet.Contains(actionName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetActionSetByIndex(
+            IReadOnlyList<NpcClientActionSetLoader.NpcClientActionSetDefinition> actionSets,
+            int index,
+            out NpcClientActionSetLoader.NpcClientActionSetDefinition actionSet)
+        {
+            actionSet = default;
+            if (actionSets == null || actionSets.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                if (actionSets[i].Index == index)
+                {
+                    actionSet = actionSets[i];
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static IReadOnlyList<(string Key, bool Enabled)> ResolveRequiredJobBadgeStates(int requiredJobMask)

@@ -330,7 +330,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// </summary>
         private static string GetTypeName(DamageColorType colorType, DamageNumberSize size, bool isCritical)
         {
-            if (isCritical)
+            if (isCritical && colorType == DamageColorType.Red)
             {
                 return size == DamageNumberSize.Large ? "NoCri1" : "NoCri0";
             }

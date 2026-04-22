@@ -135,7 +135,9 @@ namespace HaCreator.MapSimulator.Effects
             TemporaryStatReset,
             GuildNameChanged,
             Profile,
-            GuildMarkChanged
+            GuildMarkChanged,
+            RelationshipRecordAdd,
+            RelationshipRecordRemove
         }
 
         private readonly record struct PendingWeddingRemoteParticipantOperation(
@@ -148,7 +150,11 @@ namespace HaCreator.MapSimulator.Effects
             int MarkBackgroundId,
             int MarkBackgroundColor,
             int MarkId,
-            int MarkColor);
+            int MarkColor,
+            RemoteRelationshipOverlayType RelationshipType = RemoteRelationshipOverlayType.Generic,
+            RemoteUserRelationshipRecord RelationshipRecord = default,
+            int? RelationshipRemoveCharacterId = null,
+            long? RelationshipRemoveItemSerial = null);
 
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()

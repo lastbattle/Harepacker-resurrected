@@ -1414,12 +1414,20 @@ namespace HaCreator.MapSimulator.UI
 
             SkillManager.CooldownUiState cooldownState = default;
             bool hasCooldownState = _skillManager != null
-                && _skillManager.TryGetCooldownUiState(skillId, currentTime, out cooldownState);
+                && _skillManager.TryGetCooldownUiState(
+                    skillId,
+                    currentTime,
+                    SkillManager.CooldownMaskSurface.SkillBookBigBang,
+                    out cooldownState);
+            var tooltipCooldownState = SkillManager.ResolveTooltipCooldownStateForSurface(
+                hasCooldownState,
+                cooldownState,
+                SkillManager.CooldownMaskSurface.SkillBookBigBang);
             return SkillCooldownTooltipText.BuildSkillTooltipMarkup(
                 levelData,
-                hasCooldownState,
-                hasCooldownState ? cooldownState.RemainingMs : 0,
-                hasCooldownState ? cooldownState.TooltipStateText : null);
+                tooltipCooldownState.HasCooldownState,
+                tooltipCooldownState.RemainingMs,
+                tooltipCooldownState.TooltipStateText);
         }
 
         private static float CalculateTooltipSectionHeight(

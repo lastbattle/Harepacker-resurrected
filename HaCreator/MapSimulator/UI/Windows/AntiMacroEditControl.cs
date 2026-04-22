@@ -485,29 +485,35 @@ namespace HaCreator.MapSimulator.UI
             if (Pressed(keyboardState, previousKeyboardState, Keys.Left))
             {
                 ClearCompositionText();
-                MoveCaret(ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: false, shiftHeld), shiftHeld);
+                MoveCaret(ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: false), extendSelection: false);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.Right))
             {
                 ClearCompositionText();
-                MoveCaret(ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: true, shiftHeld), shiftHeld);
+                MoveCaret(ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: true), extendSelection: false);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.Home))
             {
-                ClearCompositionText();
-                MoveCaret(0, shiftHeld);
-                _caretBlinkTick = Environment.TickCount;
+                if (ShouldMoveCaretToBoundary(ctrlHeld))
+                {
+                    ClearCompositionText();
+                    MoveCaret(0, extendSelection: false);
+                    _caretBlinkTick = Environment.TickCount;
+                }
             }
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.End))
             {
-                ClearCompositionText();
-                MoveCaret(_inputText.Length, shiftHeld);
-                _caretBlinkTick = Environment.TickCount;
+                if (ShouldMoveCaretToBoundary(ctrlHeld))
+                {
+                    ClearCompositionText();
+                    MoveCaret(_inputText.Length, extendSelection: false);
+                    _caretBlinkTick = Environment.TickCount;
+                }
             }
         }
 
@@ -1099,7 +1105,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        internal static int ResolveArrowCaretIndex(string text, int caretIndex, int selectionAnchorIndex, bool moveRight, bool shiftHeld)
+        internal static int ResolveArrowCaretIndex(string text, int caretIndex, int selectionAnchorIndex, bool moveRight)
         {
             string resolvedText = text ?? string.Empty;
             int resolvedCaretIndex = Math.Clamp(caretIndex, 0, resolvedText.Length);
@@ -1107,7 +1113,9 @@ namespace HaCreator.MapSimulator.UI
                 ? -1
                 : Math.Clamp(selectionAnchorIndex, 0, resolvedText.Length);
 
-            if (!shiftHeld && resolvedSelectionAnchor >= 0 && resolvedSelectionAnchor != resolvedCaretIndex)
+            // `CCtrlEdit::OnKey` does not keep a Shift-extend selection branch for
+            // left/right arrows, so collapse any active selection first.
+            if (resolvedSelectionAnchor >= 0 && resolvedSelectionAnchor != resolvedCaretIndex)
             {
                 return moveRight
                     ? Math.Max(resolvedSelectionAnchor, resolvedCaretIndex)
@@ -1117,6 +1125,12 @@ namespace HaCreator.MapSimulator.UI
             return moveRight
                 ? GetNextCaretStop(resolvedText, resolvedCaretIndex)
                 : GetPreviousCaretStop(resolvedText, resolvedCaretIndex);
+        }
+
+        internal static bool ShouldMoveCaretToBoundary(bool controlHeld)
+        {
+            // `CCtrlEdit::OnKey` forwards Ctrl+Home/End to the parent callback.
+            return !controlHeld;
         }
 
         private static bool IsWithinClientWordSelectionGroup(char character, bool selectWordCharacters, bool selectWhitespace)

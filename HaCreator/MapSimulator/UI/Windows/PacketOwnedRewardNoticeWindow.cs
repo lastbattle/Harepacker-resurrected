@@ -64,6 +64,13 @@ namespace HaCreator.MapSimulator.UI
             return (int)CenteredBodyAreaLeftX + Math.Max(0, (availableWidth - textWidth) / 2);
         }
 
+        internal static Point CalculateCenteredPosition(int viewportWidth, int viewportHeight, int frameWidth, int frameHeight)
+        {
+            return new Point(
+                Math.Max(0, (Math.Max(0, viewportWidth) - Math.Max(0, frameWidth)) / 2),
+                Math.Max(0, (Math.Max(0, viewportHeight) - Math.Max(0, frameHeight)) / 2));
+        }
+
         internal static Point ResolveSeparatorPosition(
             int frameWidth,
             int frameHeight,
@@ -192,6 +199,13 @@ namespace HaCreator.MapSimulator.UI
         {
             _previousKeyboardState = Keyboard.GetState();
             base.Show();
+        }
+
+        internal void CenterOnViewport(Viewport viewport)
+        {
+            int frameWidth = CurrentFrame?.Width ?? DefaultFrameWidth;
+            int frameHeight = CurrentFrame?.Height ?? DefaultFrameHeight;
+            Position = CalculateCenteredPosition(viewport.Width, viewport.Height, frameWidth, frameHeight);
         }
 
         public override void Update(GameTime gameTime)

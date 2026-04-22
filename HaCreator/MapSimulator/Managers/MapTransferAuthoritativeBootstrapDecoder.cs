@@ -428,6 +428,14 @@ namespace HaCreator.MapSimulator.Managers
 
             Dictionary<int, KnownLeadingOffsetCandidate> candidateOffsets = new();
             AddKnownLeadingLayoutOffsets(payload, characterDataFlags, candidateOffsets);
+            int bestTailCandidateScore = int.MinValue;
+            int bestKnownLeadingScore = int.MinValue;
+            int bestMatchedOffset = -1;
+            int[] bestRegularFields = null;
+            int[] bestContinentFields = null;
+            ulong bestMatchedKnownLeadingSectionFlags = 0;
+            int bestMatchedOpaquePreMapTransferByteCount = -1;
+            bool bestMatchedKnownCharacterDataTail = false;
             foreach (KeyValuePair<int, KnownLeadingOffsetCandidate> candidate in candidateOffsets)
             {
                 int candidateOffset = candidate.Key;
@@ -449,16 +457,44 @@ namespace HaCreator.MapSimulator.Managers
                         out _,
                         out _,
                         out matchedKnownCharacterDataTail,
-                        out _))
+                        out int tailCandidateScore))
                 {
-                    matchedKnownLeadingCharacterDataTail = true;
-                    matchedKnownLeadingSectionFlags = candidate.Value.MatchedSectionFlags;
-                    matchedOpaquePreMapTransferByteCount = candidate.Value.OpaquePreMapTransferByteCount;
-                    return true;
+                    int knownLeadingScore = GetKnownLeadingCandidateScore(candidate.Value);
+                    bool shouldReplace = tailCandidateScore > bestTailCandidateScore ||
+                                         (tailCandidateScore == bestTailCandidateScore &&
+                                          knownLeadingScore > bestKnownLeadingScore) ||
+                                         (tailCandidateScore == bestTailCandidateScore &&
+                                          knownLeadingScore == bestKnownLeadingScore &&
+                                          matchedOffset > bestMatchedOffset);
+                    if (!shouldReplace)
+                    {
+                        continue;
+                    }
+
+                    bestTailCandidateScore = tailCandidateScore;
+                    bestKnownLeadingScore = knownLeadingScore;
+                    bestMatchedOffset = matchedOffset;
+                    bestRegularFields = regularFields;
+                    bestContinentFields = continentFields;
+                    bestMatchedKnownLeadingSectionFlags = candidate.Value.MatchedSectionFlags;
+                    bestMatchedOpaquePreMapTransferByteCount = candidate.Value.OpaquePreMapTransferByteCount;
+                    bestMatchedKnownCharacterDataTail = matchedKnownCharacterDataTail;
                 }
             }
 
-            return false;
+            if (bestMatchedOffset < 0 || bestRegularFields == null || bestContinentFields == null)
+            {
+                return false;
+            }
+
+            regularFields = bestRegularFields;
+            continentFields = bestContinentFields;
+            matchedOffset = bestMatchedOffset;
+            matchedKnownLeadingCharacterDataTail = true;
+            matchedKnownLeadingSectionFlags = bestMatchedKnownLeadingSectionFlags;
+            matchedOpaquePreMapTransferByteCount = bestMatchedOpaquePreMapTransferByteCount;
+            matchedKnownCharacterDataTail = bestMatchedKnownCharacterDataTail;
+            return true;
         }
 
         private static bool TryMatchKnownLeadingLayoutOffset(
@@ -661,6 +697,27 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return candidateOpaqueByteCount < existingOpaqueByteCount;
+        }
+
+        private static int GetKnownLeadingCandidateScore(KnownLeadingOffsetCandidate candidate)
+        {
+            int sectionScore = PopCount(candidate.MatchedSectionFlags) * 1024;
+            int opaqueScore = candidate.OpaquePreMapTransferByteCount < 0
+                ? 0
+                : -candidate.OpaquePreMapTransferByteCount;
+            return sectionScore + opaqueScore;
+        }
+
+        private static int PopCount(ulong value)
+        {
+            int count = 0;
+            while (value != 0)
+            {
+                value &= value - 1;
+                count++;
+            }
+
+            return count;
         }
 
         private static HashSet<KnownLeadingOffsetCandidate> ExtendKnownLeadingOffsets(

@@ -752,7 +752,11 @@ namespace HaCreator.MapSimulator.UI
             frameIndex = 0;
             remainingText = string.Empty;
             if (_skillManager == null ||
-                !_skillManager.TryGetCooldownUiState(skillId, currentTime, out SkillManager.CooldownUiState cooldownState))
+                !_skillManager.TryGetCooldownUiState(
+                    skillId,
+                    currentTime,
+                    SkillManager.CooldownMaskSurface.QuickSlot,
+                    out SkillManager.CooldownUiState cooldownState))
             {
                 return false;
             }
@@ -761,7 +765,7 @@ namespace HaCreator.MapSimulator.UI
                 cooldownState,
                 out frameIndex,
                 out remainingText,
-                includeCounterText: false,
+                includeCounterText: true,
                 maskSurface: SkillManager.CooldownMaskSurface.QuickSlot);
         }
 
@@ -942,12 +946,20 @@ namespace HaCreator.MapSimulator.UI
 
             SkillManager.CooldownUiState cooldownState = default;
             bool hasCooldownState = _skillManager != null
-                && _skillManager.TryGetCooldownUiState(skillId, currentTime, out cooldownState);
+                && _skillManager.TryGetCooldownUiState(
+                    skillId,
+                    currentTime,
+                    SkillManager.CooldownMaskSurface.QuickSlot,
+                    out cooldownState);
+            var tooltipCooldownState = SkillManager.ResolveTooltipCooldownStateForSurface(
+                hasCooldownState,
+                cooldownState,
+                SkillManager.CooldownMaskSurface.QuickSlot);
             return SkillCooldownTooltipText.BuildSkillTooltipMarkup(
                 levelData,
-                hasCooldownState,
-                hasCooldownState ? cooldownState.RemainingMs : 0,
-                hasCooldownState ? cooldownState.TooltipStateText : null);
+                tooltipCooldownState.HasCooldownState,
+                tooltipCooldownState.RemainingMs,
+                tooltipCooldownState.TooltipStateText);
         }
 
         private void DrawCooldownMask(SpriteBatch sprite, int slotX, int slotY, int frameIndex)

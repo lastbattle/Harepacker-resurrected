@@ -1263,7 +1263,8 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     PreInventoryHeaderValue1 = twoIntValueRecord.Value1,
                     PreInventoryHeaderValue2 = twoIntValueRecord.Value2,
-                    TwoIntValueRecord = twoIntValueRecord
+                    TwoIntValueRecord = twoIntValueRecord,
+                    TwoIntValueRecordByteCount = checked((int)(reader.BaseStream.Position - sectionStart))
                 };
                 decodedSectionFlags |= CharacterDataTwoIntValueRecordFlag;
                 decodedSectionByteCounts[CharacterDataTwoIntValueRecordFlag] = checked((int)(reader.BaseStream.Position - sectionStart));
@@ -2537,12 +2538,16 @@ namespace HaCreator.MapSimulator.Interaction
                     long sectionStart = reader.BaseStream.Position;
                     PacketCharacterDataWildHunterInfo wildHunterInfo = ReadCharacterDataWildHunterInfo(
                         reader,
-                        out int wildHunterInfoByteCount);
+                        out int wildHunterInfoByteCount,
+                        out int wildHunterInfoModeByteCount,
+                        out int wildHunterInfoCapturedMobRecordByteCount);
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         HasWildHunterInfo = true,
                         WildHunterInfo = wildHunterInfo,
-                        WildHunterInfoByteCount = wildHunterInfoByteCount
+                        WildHunterInfoByteCount = wildHunterInfoByteCount,
+                        WildHunterInfoModeByteCount = wildHunterInfoModeByteCount,
+                        WildHunterInfoCapturedMobRecordByteCount = wildHunterInfoCapturedMobRecordByteCount
                     };
                     decodedSectionFlags |= CharacterDataWildHunterInfoFlag;
                     decodedSectionByteCounts[CharacterDataWildHunterInfoFlag] =
@@ -3045,16 +3050,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static PacketCharacterDataWildHunterInfo ReadCharacterDataWildHunterInfo(
             BinaryReader reader,
-            out int byteCount)
+            out int byteCount,
+            out int modeByteCount,
+            out int capturedMobRecordByteCount)
         {
             long sectionStart = reader.BaseStream.Position;
             int[] capturedMobIds = new int[5];
             byte rawMode = reader.ReadByte();
+            modeByteCount = sizeof(byte);
             for (int i = 0; i < capturedMobIds.Length; i++)
             {
                 capturedMobIds[i] = reader.ReadInt32();
             }
 
+            capturedMobRecordByteCount = checked(capturedMobIds.Length * sizeof(int));
             byteCount = checked((int)(reader.BaseStream.Position - sectionStart));
             return new PacketCharacterDataWildHunterInfo(
                 rawMode,
@@ -3802,6 +3811,7 @@ namespace HaCreator.MapSimulator.Interaction
         int BackwardUpdateTotalUnmatchedSerialNumberByteCount = 0,
         int? Meso = null,
         PacketCharacterDataTwoIntValueRecord? TwoIntValueRecord = null,
+        int TwoIntValueRecordByteCount = 0,
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
         IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> InventoryItemsByType = null,
         IReadOnlyDictionary<InventoryType, int> InventorySectionByteCounts = null,
@@ -3924,6 +3934,8 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<int, string> QuestExRecordValues = null,
         bool HasWildHunterInfo = false,
         int WildHunterInfoByteCount = 0,
+        int WildHunterInfoModeByteCount = 0,
+        int WildHunterInfoCapturedMobRecordByteCount = 0,
         PacketCharacterDataWildHunterInfo? WildHunterInfo = null,
         int QuestCompleteRecordCount = 0,
         int QuestCompleteRecordCountByteCount = 0,

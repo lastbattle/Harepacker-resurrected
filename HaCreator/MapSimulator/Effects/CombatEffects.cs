@@ -185,8 +185,10 @@ namespace HaCreator.MapSimulator.Effects
                 Alpha = 1.0f - phase2Progress;
             }
 
+            bool usesCriticalPresentation = DamageNumberRenderer.UsesCriticalPresentation(ColorType, IsCritical);
+
             // Critical scale pulse (optional visual enhancement)
-            if (IsCritical && elapsed < 200)
+            if (usesCriticalPresentation && elapsed < 200)
             {
                 float pulseT = (float)elapsed / 200f;
                 Scale = 1.2f - (0.2f * pulseT); // Start big, shrink to normal
@@ -203,7 +205,9 @@ namespace HaCreator.MapSimulator.Effects
         public bool ShouldShowCriticalEffect(int currentTime)
         {
             int elapsed = currentTime - SpawnTime;
-            return IsCritical && elapsed >= CRITICAL_EFFECT_DELAY && elapsed < DISPLAY_DURATION;
+            return DamageNumberRenderer.UsesCriticalPresentation(ColorType, IsCritical)
+                && elapsed >= CRITICAL_EFFECT_DELAY
+                && elapsed < DISPLAY_DURATION;
         }
     }
 
@@ -637,7 +641,7 @@ namespace HaCreator.MapSimulator.Effects
                 ? DamageNumberRenderer.ResolveSpecialTextName(specialTextName)
                 : null;
             display.Alpha = 1.0f;
-            display.Scale = isCritical ? 1.2f : 1.0f;
+            display.Scale = DamageNumberRenderer.UsesCriticalPresentation(colorType, isCritical) ? 1.2f : 1.0f;
             display.ComboIndex = comboIndex;
             display.ColorType = colorType;
 
@@ -1606,11 +1610,12 @@ namespace HaCreator.MapSimulator.Effects
 
                 // Color based on damage type
                 Color color;
+                bool useCriticalPresentation = DamageNumberRenderer.UsesCriticalPresentation(dmg.ColorType, dmg.IsCritical);
                 if (dmg.IsMiss)
                 {
                     color = COLOR_MISS;
                 }
-                else if (dmg.IsCritical)
+                else if (useCriticalPresentation)
                 {
                     color = COLOR_CRITICAL;
                 }
@@ -1626,7 +1631,7 @@ namespace HaCreator.MapSimulator.Effects
                 }
                 color *= dmg.Alpha;
 
-                SpriteFont font = dmg.IsCritical ? _criticalFont : _damageFont;
+                SpriteFont font = useCriticalPresentation ? _criticalFont : _damageFont;
                 Vector2 textSize = font.MeasureString(text);
                 Vector2 position = new Vector2(screenX - textSize.X / 2, screenY - textSize.Y / 2);
 

@@ -881,7 +881,7 @@ namespace HaCreator.MapSimulator.Managers
                 && opcode != PacketTypeIncGauge
                 && opcode != PacketTypeResult)
             {
-                return TryDecodeNestedRelayMassacrePacket(payload, source, rawPacket, mappedInboundOpcodes, out message);
+                return TryDecodeNestedRelayMassacrePacket(payload, source, rawPacket, mappedInboundOpcodes, sessionValueInfoState, out message);
             }
 
             if (opcode != CurrentWrapperRelayOpcode)
@@ -989,6 +989,7 @@ namespace HaCreator.MapSimulator.Managers
             string source,
             byte[] rawPacket,
             IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
+            MassacreSessionValueInfoState sessionValueInfoState,
             out MassacrePacketInboxMessage message)
         {
             message = null;
@@ -1010,6 +1011,7 @@ namespace HaCreator.MapSimulator.Managers
                         source,
                         rawPacket,
                         mappedInboundOpcodes,
+                        sessionValueInfoState,
                         out message))
                 {
                     return true;
@@ -1032,6 +1034,7 @@ namespace HaCreator.MapSimulator.Managers
             string source,
             byte[] rawPacket,
             IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
+            MassacreSessionValueInfoState sessionValueInfoState,
             out MassacrePacketInboxMessage message)
         {
             message = null;
@@ -1040,6 +1043,12 @@ namespace HaCreator.MapSimulator.Managers
             if (mappedInboundOpcodes != null
                 && mappedInboundOpcodes.TryGetValue(nestedPacketType, out MassacrePacketInboxMessageKind mappedKind)
                 && TryBuildMappedInboundMessage(nestedPacketType, mappedKind, nestedPayload, source, rawPacket, out message))
+            {
+                return true;
+            }
+
+            if (nestedPacketType == DefaultInboundSessionValueOpcode
+                && TryBuildSessionValueInboundMessage(nestedPayload, source, rawPacket, sessionValueInfoState, out message))
             {
                 return true;
             }

@@ -108,7 +108,8 @@ namespace HaCreator.MapSimulator.Pools
             bool AttachToOwner = true,
             int? SecondaryInt32Value = null,
             int[] TrailingInt32Values = null,
-            byte[] StringBranchPrefixBytes = null);
+            byte[] StringBranchPrefixBytes = null,
+            Vector2? WorldOrigin = null);
         public readonly record struct RemoteChatLogMessagePresentation(
             int CharacterId,
             byte EffectType,
@@ -2995,6 +2996,13 @@ namespace HaCreator.MapSimulator.Pools
             int priorChargeSkillId = priorSnapshot.KnownState.ChargeSkillId.GetValueOrDefault();
             if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(priorChargeSkillId))
             {
+                priorChargeSkillId = AfterImageChargeSkillResolver.ResolvePreferredChargeSkillIdFromWeaponChargeValue(
+                    preferredSkillId: 0,
+                    priorSnapshot.KnownState.WeaponChargeValue);
+            }
+
+            if (!AfterImageChargeSkillResolver.IsKnownChargeSkillId(priorChargeSkillId))
+            {
                 return snapshot;
             }
 
@@ -3903,7 +3911,8 @@ namespace HaCreator.MapSimulator.Pools
                         ShouldAttachRemotePacketOwnedStringEffectForParity(packet.KnownSubtype),
                         packet.SecondaryInt32Value,
                         packet.TrailingInt32Values,
-                        packet.StringBranchPrefixBytes));
+                        packet.StringBranchPrefixBytes,
+                        ResolveRemotePacketOwnedStringEffectWorldOriginForParity(packet)));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered packet-owned string effect {packet.StringValue}.";
                     return true;
 
@@ -4056,6 +4065,34 @@ namespace HaCreator.MapSimulator.Pools
             return subtype != RemoteUserEffectSubtype.ReservedEffect
                 && subtype != RemoteUserEffectSubtype.StringEffect
                 && subtype != RemoteUserEffectSubtype.ItemSoundStringEffect;
+        }
+
+        internal static Vector2? ResolveRemotePacketOwnedStringEffectWorldOriginForParity(RemoteUserEffectPacket packet)
+        {
+            if (packet.KnownSubtype != RemoteUserEffectSubtype.ReservedEffect
+                && packet.KnownSubtype != RemoteUserEffectSubtype.StringEffect
+                && packet.KnownSubtype != RemoteUserEffectSubtype.ItemSoundStringEffect)
+            {
+                return null;
+            }
+
+            int[] trailing = packet.TrailingInt32Values;
+            if (trailing == null || trailing.Length <= 0)
+            {
+                return null;
+            }
+
+            if (trailing.Length >= 3)
+            {
+                return new Vector2(trailing[1], trailing[2]);
+            }
+
+            if (trailing.Length >= 2)
+            {
+                return new Vector2(trailing[0], trailing[1]);
+            }
+
+            return null;
         }
 
         private static bool IsAriantArenaRemoteActor(RemoteUserActor actor)
@@ -4434,19 +4471,27 @@ namespace HaCreator.MapSimulator.Pools
             return position;
         }
 
-        public static Vector2 ResolveRemoteGrenadeRenderOffsetForParity(RemoteGrenadePresentation presentation)
+        public static Vector2 ResolveRemoteGrenadeRenderOffsetForParity(
+            RemoteGrenadePresentation presentation,
+            bool includeRotateLayerCollisionCompensation = true)
         {
             if (!presentation.UsesMonsterBombGauge)
             {
                 return Vector2.Zero;
             }
 
-            // CGrenade::PrepareAnimationLayer offsets the loaded bullet layer for
-            // Monster Bomb after optional rotate-layer collision-offset correction.
-            int angle = ResolveRemoteGrenadeBallAngleDegreesForParity(presentation);
-            double radians = angle * (Math.PI / 180d);
-            int collisionOffsetX = (int)(Math.Cos(radians) * MonsterBombCollisionRadius);
-            int collisionOffsetY = (int)(Math.Sin(radians) * MonsterBombCollisionRadius);
+            // CGrenade::PrepareAnimationLayer always keeps the signed horizontal shift.
+            // Collision-offset compensation applies only on the rotate-layer path.
+            int collisionOffsetX = 0;
+            int collisionOffsetY = 0;
+            if (includeRotateLayerCollisionCompensation)
+            {
+                int angle = ResolveRemoteGrenadeBallAngleDegreesForParity(presentation);
+                double radians = angle * (Math.PI / 180d);
+                collisionOffsetX = (int)(Math.Cos(radians) * MonsterBombCollisionRadius);
+                collisionOffsetY = (int)(Math.Sin(radians) * MonsterBombCollisionRadius);
+            }
+
             int horizontalShift = presentation.FacingRight
                 ? -MonsterBombAnimationLayerOffsetX
                 : MonsterBombAnimationLayerOffsetX;
@@ -8530,6 +8575,55 @@ namespace HaCreator.MapSimulator.Pools
                     PairCharacterId = null,
                     Status = 0
                 });
+            Dictionary<int, int> participantIndexByCharacterId = resolvedParticipants
+                .Select((participant, index) => new { participant.CharacterId, Index = index })
+                .ToDictionary(static entry => entry.CharacterId, static entry => entry.Index);
+
+            // Preserve already-linked mutual pairs first when the authored pair is still viable.
+            for (int ownerIndex = 0; ownerIndex < resolvedParticipants.Count; ownerIndex++)
+            {
+                PortableChairPairParticipant owner = resolvedParticipants[ownerIndex];
+                if (!owner.ExistingPairCharacterId.HasValue
+                    || owner.ExistingPairCharacterId.Value <= 0
+                    || !participantIndexByCharacterId.TryGetValue(owner.ExistingPairCharacterId.Value, out int partnerIndex)
+                    || ownerIndex == partnerIndex)
+                {
+                    continue;
+                }
+
+                PortableChairPairParticipant partner = resolvedParticipants[partnerIndex];
+                if (partner.ExistingPairCharacterId != owner.CharacterId)
+                {
+                    continue;
+                }
+
+                if (!resolvedRecords.TryGetValue(owner.CharacterId, out PortableChairPairRecord ownerRecord)
+                    || ownerRecord.IsActive
+                    || !resolvedRecords.TryGetValue(partner.CharacterId, out PortableChairPairRecord partnerRecord)
+                    || partnerRecord.IsActive
+                    || !TryBuildPortableChairPairCandidate(owner, partner, preferVisibleOnly, out _))
+                {
+                    continue;
+                }
+
+                int status = ResolvePortableChairPairStatus(owner, partner);
+                if (status == 0)
+                {
+                    continue;
+                }
+
+                resolvedRecords[owner.CharacterId] = ownerRecord with
+                {
+                    PairCharacterId = partner.CharacterId,
+                    Status = status
+                };
+                resolvedRecords[partner.CharacterId] = partnerRecord with
+                {
+                    PairCharacterId = owner.CharacterId,
+                    Status = status
+                };
+            }
+
             for (int ownerIndex = 0; ownerIndex < resolvedParticipants.Count - 1; ownerIndex++)
             {
                 PortableChairPairParticipant owner = resolvedParticipants[ownerIndex];
@@ -10292,8 +10386,9 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            bool hasEnergyChargeStyleValue = knownState.WeaponChargeValue.HasValue
-                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(knownState.WeaponChargeValue.Value);
+            bool hasEnergyChargeStyleValue = ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
+                actor?.TemporaryStats.HasWeaponCharge == true,
+                knownState.WeaponChargeValue);
             if (hasEnergyChargeStyleValue)
             {
                 ResolveRemoteEnergyChargeSkill(actor, knownState, out skillId, out skill);
@@ -10400,6 +10495,16 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return weaponChargeValue >= ResolveRemoteEnergyChargeMinimumFullChargeValue(skillId, skill);
+        }
+
+        private static bool ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(
+            bool hasWeaponChargeMaskBit,
+            int? weaponChargeValue)
+        {
+            int decodedWeaponChargeValue = weaponChargeValue.GetValueOrDefault();
+            return hasWeaponChargeMaskBit
+                   && decodedWeaponChargeValue > 0
+                   && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(decodedWeaponChargeValue);
         }
 
         private static int ResolveRemoteEnergyChargeMinimumFullChargeValue(int skillId, SkillData skill)
@@ -11201,6 +11306,13 @@ namespace HaCreator.MapSimulator.Pools
             SkillData skill)
         {
             return CanUseRemoteEnergyChargeAvatarEffect(skillId, weaponChargeValue, skill);
+        }
+
+        internal static bool ShouldTreatRemoteWeaponChargeAsEnergyChargeStyleForTesting(
+            bool hasWeaponChargeMaskBit,
+            int? weaponChargeValue)
+        {
+            return ShouldTreatRemoteWeaponChargeAsEnergyChargeStyle(hasWeaponChargeMaskBit, weaponChargeValue);
         }
 
         internal static float ResolveRemoteTemporaryStatAvatarEffectTransitionAlphaForTesting(

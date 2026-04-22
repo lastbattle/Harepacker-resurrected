@@ -288,6 +288,7 @@ namespace HaCreator.MapSimulator
         private float _clientOwnedLimitedViewOriginX = ClientOwnedLimitedViewFallbackOriginX;
         private float _clientOwnedLimitedViewOriginY = ClientOwnedLimitedViewFallbackOriginY;
         private bool _clientOwnedLimitedViewShareView;
+        private int _clientOwnedLimitedViewShareViewMapId = int.MinValue;
         private TutorialWrapperKind _activeTutorialWrapperKind;
         private WeddingPhotoSceneContract? _activeWeddingPhotoSceneContract;
         private bool _wrapperOwnedAranTutorActorApplied;
@@ -824,11 +825,13 @@ namespace HaCreator.MapSimulator
             if (!IsLimitedViewWrapperMap(mapInfo))
             {
                 _clientOwnedLimitedViewShareView = false;
+                _clientOwnedLimitedViewShareViewMapId = int.MinValue;
                 _limitedViewField.ClearClientOwnedMask();
                 _limitedViewField.DisableImmediate();
                 return;
             }
 
+            RefreshClientOwnedLimitedViewShareView(mapInfo);
             EnsureLimitedViewFieldInitialized();
             EnsureClientOwnedLimitedViewMetadataLoaded();
             _limitedViewField.ConfigureClientOwnedDarkLayer(
@@ -851,6 +854,18 @@ namespace HaCreator.MapSimulator
                 (int)MathF.Round(_clientOwnedLimitedViewMaskHeight));
         }
 
+        private void RefreshClientOwnedLimitedViewShareView(MapInfo mapInfo)
+        {
+            int mapId = mapInfo?.id ?? int.MinValue;
+            if (_clientOwnedLimitedViewShareViewMapId == mapId)
+            {
+                return;
+            }
+
+            _clientOwnedLimitedViewShareViewMapId = mapId;
+            _clientOwnedLimitedViewShareView = ResolveClientOwnedLimitedViewShareViewDefault(mapInfo);
+        }
+
         private void SyncClientOwnedLimitedViewFocus(float playerX, float playerY)
         {
             if (!IsLimitedViewWrapperMap(_mapBoard?.MapInfo))
@@ -866,6 +881,137 @@ namespace HaCreator.MapSimulator
 
             _limitedViewField.SetClientOwnedFocusWorldPosition(playerX, playerY);
             _limitedViewField.SetClientOwnedRemoteFocusWorldPositions(EnumerateClientOwnedLimitedViewRemoteFocusWorldPositions());
+        }
+
+        internal static bool ResolveClientOwnedLimitedViewShareViewDefault(MapInfo mapInfo)
+        {
+            return ResolveClientOwnedLimitedViewShareViewDefault(mapInfo, linkedMapResolver: null);
+        }
+
+        internal static bool ResolveClientOwnedLimitedViewShareViewDefault(
+            MapInfo mapInfo,
+            Func<int, WzImage> linkedMapResolver)
+        {
+            if (TryResolveClientOwnedLimitedViewShareViewFromMapInfo(mapInfo, out bool shareViewFromMapInfo))
+            {
+                return shareViewFromMapInfo;
+            }
+
+            WzImage contractImage = ResolveClientOwnedContractMapImage(mapInfo, out _, linkedMapResolver);
+            return TryResolveClientOwnedLimitedViewShareViewFromMapImage(contractImage, out bool shareViewFromMapImage)
+                && shareViewFromMapImage;
+        }
+
+        private static bool TryResolveClientOwnedLimitedViewShareViewFromMapInfo(MapInfo mapInfo, out bool shareView)
+        {
+            shareView = false;
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            if (TryResolveClientOwnedLimitedViewShareViewFromProperties(mapInfo.additionalProps, out shareView))
+            {
+                return true;
+            }
+
+            return TryResolveClientOwnedLimitedViewShareViewFromProperties(mapInfo.unsupportedInfoProperties, out shareView);
+        }
+
+        private static bool TryResolveClientOwnedLimitedViewShareViewFromProperties(
+            IEnumerable<WzImageProperty> properties,
+            out bool shareView)
+        {
+            shareView = false;
+            if (properties == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (TryResolveClientOwnedLimitedViewShareViewFromProperty(property, out shareView))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveClientOwnedLimitedViewShareViewFromMapImage(WzImage mapImage, out bool shareView)
+        {
+            shareView = false;
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            if (!mapImage.Parsed)
+            {
+                mapImage.ParseImage();
+            }
+
+            WzImageProperty property =
+                ResolveProperty(mapImage, "limitedview/shareview")
+                ?? ResolveProperty(mapImage, "limitedView/shareview")
+                ?? ResolveProperty(mapImage, "info/shareview")
+                ?? ResolveProperty(mapImage, "info/limitedview/shareview");
+            return TryResolveClientOwnedLimitedViewShareViewFromProperty(property, out shareView);
+        }
+
+        private static bool TryResolveClientOwnedLimitedViewShareViewFromProperty(WzImageProperty property, out bool shareView)
+        {
+            shareView = false;
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (property is WzSubProperty subProperty)
+            {
+                WzImageProperty nestedProperty =
+                    subProperty["shareview"]
+                    ?? subProperty["shareView"]
+                    ?? subProperty["m_bShareView"];
+                return TryResolveClientOwnedLimitedViewShareViewFromProperty(nestedProperty, out shareView);
+            }
+
+            if (!string.Equals(property.Name, "shareview", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(property.Name, "shareView", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(property.Name, "m_bShareView", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return TryParseClientOwnedBooleanProperty(property, out shareView);
+        }
+
+        private static bool TryParseClientOwnedBooleanProperty(WzImageProperty property, out bool value)
+        {
+            value = false;
+            switch (property)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.GetInt() != 0;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value != 0;
+                    return true;
+                case WzLongProperty longProperty:
+                    value = longProperty.Value != 0L;
+                    return true;
+                case WzFloatProperty floatProperty:
+                    value = Math.Abs(floatProperty.Value) > float.Epsilon;
+                    return true;
+                case WzDoubleProperty doubleProperty:
+                    value = Math.Abs(doubleProperty.Value) > double.Epsilon;
+                    return true;
+                case WzStringProperty stringProperty:
+                    return TryParseClientOwnedBooleanToken(stringProperty.Value, out value);
+                default:
+                    return false;
+            }
         }
 
         private IEnumerable<Vector2> EnumerateClientOwnedLimitedViewRemoteFocusWorldPositions()

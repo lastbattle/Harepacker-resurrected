@@ -1333,6 +1333,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _variantDeathPacketCount;
         private int _variantLiveHudPacketCount;
         private int _variantMemberPacketCount;
+        private int _variantRawPacketCount;
+        private int _variantStructuredPacketCount;
         private int _reviveDirectPacketCount;
         private int _reviveForwardedPacketCount;
         private int _reviveRoundSequence;
@@ -2424,6 +2426,8 @@ namespace HaCreator.MapSimulator.Fields
             _variantDeathPacketCount = 0;
             _variantLiveHudPacketCount = 0;
             _variantMemberPacketCount = 0;
+            _variantRawPacketCount = 0;
+            _variantStructuredPacketCount = 0;
             _reviveDirectPacketCount = 0;
             _reviveForwardedPacketCount = 0;
             _reviveRoundSequence = 0;
@@ -2467,6 +2471,8 @@ namespace HaCreator.MapSimulator.Fields
             _variantDeathPacketCount = 0;
             _variantLiveHudPacketCount = 0;
             _variantMemberPacketCount = 0;
+            _variantRawPacketCount = 0;
+            _variantStructuredPacketCount = 0;
             _reviveDirectPacketCount = 0;
             _reviveForwardedPacketCount = 0;
             _reviveRoundSequence = 0;
@@ -4006,6 +4012,14 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             _variantTransportPacketCount++;
+            if (rawPacket)
+            {
+                _variantRawPacketCount++;
+            }
+            else
+            {
+                _variantStructuredPacketCount++;
+            }
             string packetBucket = "other";
             if (packetType is 1 or 346)
             {
@@ -4642,7 +4656,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string summary =
-                $"packets={_variantTransportPacketCount},enter={_variantEnterPacketCount},request={_variantRequestPacketCount},hud={_variantLiveHudPacketCount},member={_variantMemberPacketCount},death={_variantDeathPacketCount},result={_variantResultPacketCount},last={_variantTransportLastRoute ?? "none"},trail={BuildVariantTransportTrailSummary()}";
+                $"packets={_variantTransportPacketCount},raw={_variantRawPacketCount},packet={_variantStructuredPacketCount},enter={_variantEnterPacketCount},request={_variantRequestPacketCount},hud={_variantLiveHudPacketCount},member={_variantMemberPacketCount},death={_variantDeathPacketCount},result={_variantResultPacketCount},last={_variantTransportLastRoute ?? "none"},trail={BuildVariantTransportTrailSummary()}";
             if (_definition?.IsReviveMode == true)
             {
                 summary += $",reviveDirect={_reviveDirectPacketCount},reviveForwarded={_reviveForwardedPacketCount},reviveRounds={_reviveRoundSequence},reviveResults={_reviveResultSequence}";

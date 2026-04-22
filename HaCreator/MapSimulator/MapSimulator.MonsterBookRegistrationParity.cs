@@ -22,6 +22,33 @@ namespace HaCreator.MapSimulator
         // No recovered dedicated Monster Book save opcode is wired yet in this local utility seam,
         // so save requests currently ride the ownership-sync channel contract.
         private const int MonsterBookOwnershipSaveRequestOpcode = LocalUtilityPacketInboxManager.MonsterBookOwnershipSyncPacketType;
+        private enum MonsterBookOwnershipSaveDispatchLane
+        {
+            None = 0,
+            OfficialBridgeImmediate,
+            GenericOutboxImmediate,
+            OfficialBridgeDeferred,
+            GenericOutboxDeferred,
+            LocalOnly
+        }
+
+        private readonly struct MonsterBookOwnershipSaveDispatchResult
+        {
+            public MonsterBookOwnershipSaveDispatchResult(string status, MonsterBookOwnershipSaveDispatchLane lane)
+            {
+                Status = string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim();
+                Lane = lane;
+            }
+
+            public string Status { get; }
+            public MonsterBookOwnershipSaveDispatchLane Lane { get; }
+            public bool AllowSyntheticFallback =>
+                Lane == MonsterBookOwnershipSaveDispatchLane.GenericOutboxImmediate
+                || Lane == MonsterBookOwnershipSaveDispatchLane.GenericOutboxDeferred
+                || Lane == MonsterBookOwnershipSaveDispatchLane.LocalOnly
+                || Lane == MonsterBookOwnershipSaveDispatchLane.None;
+        }
+
         private PendingMonsterBookRegistrationRequest _pendingMonsterBookRegistrationRequest;
         private PendingMonsterBookOwnershipSaveRequest _pendingMonsterBookOwnershipSaveRequest;
         private int _nextMonsterBookRegistrationRequestId = 1;
@@ -119,6 +146,7 @@ namespace HaCreator.MapSimulator
             public string SourceSummary { get; init; } = string.Empty;
             public bool SyntheticResultQueued { get; set; }
             public long SyntheticResultQueuedTick { get; set; } = long.MinValue;
+            public bool AllowSyntheticFallback { get; init; } = true;
         }
 
         private string DispatchMonsterBookRegistrationRequest(
@@ -1337,7 +1365,7 @@ namespace HaCreator.MapSimulator
                 snapshot.RegisteredCardMobId,
                 cardCountsByMob,
                 source);
-            string dispatchStatus = DispatchMonsterBookOwnershipSaveRequest(savePayload, source);
+            MonsterBookOwnershipSaveDispatchResult dispatchResult = DispatchMonsterBookOwnershipSaveRequest(savePayload, source);
             _pendingMonsterBookOwnershipSaveRequest = new PendingMonsterBookOwnershipSaveRequest
             {
                 Build = build,
@@ -1350,13 +1378,14 @@ namespace HaCreator.MapSimulator
                 SentTick = Environment.TickCount64,
                 ResponseDelayMs = MonsterBookOwnershipSaveResponseDelayMs,
                 SourceSummary = source ?? string.Empty,
-                SyntheticResultQueuedTick = long.MinValue
+                SyntheticResultQueuedTick = long.MinValue,
+                AllowSyntheticFallback = dispatchResult.AllowSyntheticFallback
             };
 
             if (showFeedback)
             {
                 ShowUtilityFeedbackMessage(
-                    $"{dispatchStatus} Queued packet-owned ownership-save request #{requestId.ToString(CultureInfo.InvariantCulture)}.");
+                    $"{dispatchResult.Status} Queued packet-owned ownership-save request #{requestId.ToString(CultureInfo.InvariantCulture)}.");
             }
         }
 
@@ -1375,8 +1404,9 @@ namespace HaCreator.MapSimulator
             }
 
             bool hasLiveOfficialSession = _localUtilityOfficialSessionBridge?.HasConnectedSession == true;
-            bool fallbackFromNoLiveSession = !hasLiveOfficialSession;
+            bool fallbackFromNoLiveSession = request.AllowSyntheticFallback && !hasLiveOfficialSession;
             bool fallbackFromOfficialSessionTimeout = hasLiveOfficialSession
+                && request.AllowSyntheticFallback
                 && elapsedMs >= request.ResponseDelayMs + MonsterBookOwnershipSaveOfficialSessionTimeoutMs;
             if (!request.SyntheticResultQueued
                 && (fallbackFromNoLiveSession || fallbackFromOfficialSessionTimeout))
@@ -1462,7 +1492,7 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private string DispatchMonsterBookOwnershipSaveRequest(byte[] payload, string source)
+        private MonsterBookOwnershipSaveDispatchResult DispatchMonsterBookOwnershipSaveRequest(byte[] payload, string source)
         {
             string sourceLabel = string.IsNullOrWhiteSpace(source) ? "Monster Book ownership save" : source.Trim();
             byte[] safePayload = payload ?? Array.Empty<byte>();
@@ -1470,13 +1500,17 @@ namespace HaCreator.MapSimulator
             string bridgeStatus = "Unavailable.";
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(MonsterBookOwnershipSaveRequestOpcode, safePayload, out bridgeStatus))
             {
-                return $"{sourceLabel} emitted opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] through the live local-utility bridge. {bridgeStatus}";
+                return new MonsterBookOwnershipSaveDispatchResult(
+                    $"{sourceLabel} emitted opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] through the live local-utility bridge. {bridgeStatus}",
+                    MonsterBookOwnershipSaveDispatchLane.OfficialBridgeImmediate);
             }
 
             string outboxStatus = "Unavailable.";
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(MonsterBookOwnershipSaveRequestOpcode, safePayload, out outboxStatus))
             {
-                return $"{sourceLabel} emitted opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+                return new MonsterBookOwnershipSaveDispatchResult(
+                    $"{sourceLabel} emitted opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}",
+                    MonsterBookOwnershipSaveDispatchLane.GenericOutboxImmediate);
             }
 
             string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
@@ -1486,15 +1520,21 @@ namespace HaCreator.MapSimulator
                     safePayload,
                     out deferredBridgeStatus))
             {
-                return $"{sourceLabel} queued opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] for deferred official-session injection after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
+                return new MonsterBookOwnershipSaveDispatchResult(
+                    $"{sourceLabel} queued opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] for deferred official-session injection after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}",
+                    MonsterBookOwnershipSaveDispatchLane.OfficialBridgeDeferred);
             }
 
             if (_localUtilityPacketOutbox.TryQueueOutboundPacket(MonsterBookOwnershipSaveRequestOpcode, safePayload, out string queuedOutboxStatus))
             {
-                return $"{sourceLabel} queued opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
+                return new MonsterBookOwnershipSaveDispatchResult(
+                    $"{sourceLabel} queued opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}",
+                    MonsterBookOwnershipSaveDispatchLane.GenericOutboxDeferred);
             }
 
-            return $"{sourceLabel} kept opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
+            return new MonsterBookOwnershipSaveDispatchResult(
+                $"{sourceLabel} kept opcode {MonsterBookOwnershipSaveRequestOpcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}",
+                MonsterBookOwnershipSaveDispatchLane.LocalOnly);
         }
 
         private static byte[] BuildMonsterBookOwnershipSaveSyncPayload(

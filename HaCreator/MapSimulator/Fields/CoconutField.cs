@@ -435,6 +435,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             int now = currentTimeMs ?? Environment.TickCount;
             int durationMs = Math.Max(0, timeSeconds) * 1000;
+            bool wasRoundOwned = _gameActive || _awaitingFinalScore;
             _runtimeActive = true;
             _finishTick = durationMs > 0 ? now + durationMs : 1;
             _timeRemaining = Math.Max(0, timeSeconds);
@@ -444,13 +445,13 @@ namespace HaCreator.MapSimulator.Fields
                 _gameActive = true;
                 _awaitingFinalScore = false;
                 _lastUpdateTime = now;
-                _lastScorePacketTick = null;
-                _hitQueue.Clear();
-                _pendingAttackPacketRequests.Clear();
-                _localBasicActionOwnerUntilTick = int.MinValue;
-                ClearRoundResult();
+                if (!wasRoundOwned)
+                {
+                    _lastScorePacketTick = null;
+                    ClearRoundResult();
+                }
             }
-            else if (_gameActive || _awaitingFinalScore)
+            else if (wasRoundOwned)
             {
                 BeginFinalScoreWait(now);
             }

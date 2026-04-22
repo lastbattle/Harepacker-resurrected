@@ -229,6 +229,7 @@ namespace HaCreator.MapSimulator.Interaction
                 && !IsStructuralStageAliasName(property.Name))
             {
                 themes[property.Name.Trim()] = new ContextOwnedStageThemeCatalogEntry(property.Name.Trim(), periods);
+                return;
             }
 
             foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
@@ -304,16 +305,78 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IEnumerable<(byte Mode, WzImageProperty Property)> EnumerateIndexedPeriodNodes(WzImageProperty container)
         {
-            int count = container?.WzProperties?.Count ?? 0;
-            for (int ordinal = 0; ordinal < count && ordinal <= byte.MaxValue; ordinal++)
+            Dictionary<byte, WzImageProperty> discovered = new();
+            CollectIndexedPeriodNodes(container, discovered, new HashSet<WzImageProperty>());
+            foreach (byte mode in discovered.Keys.OrderBy(static value => value))
             {
-                // `CStageSystem::IterateStageSystemClient` walks `stage` / `stageList`
-                // by zero-based string index and uses that same index as the period mode.
-                if (container[ordinal.ToString(CultureInfo.InvariantCulture)] is WzImageProperty period)
+                yield return (mode, discovered[mode]);
+            }
+        }
+
+        private static void CollectIndexedPeriodNodes(
+            WzImageProperty container,
+            IDictionary<byte, WzImageProperty> discovered,
+            ISet<WzImageProperty> visited)
+        {
+            if (container == null
+                || discovered == null
+                || visited == null
+                || !visited.Add(container))
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in container.WzProperties.OfType<WzImageProperty>())
+            {
+                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out byte mode))
                 {
-                    yield return ((byte)ordinal, period);
+                    // `CStageSystem::IterateStageSystemClient` uses zero-based numeric names as mode keys.
+                    discovered.TryAdd(mode, child);
                 }
             }
+
+            foreach (WzImageProperty child in container.WzProperties.OfType<WzImageProperty>())
+            {
+                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                {
+                    continue;
+                }
+
+                if (!IsStructuralStageAliasName(child.Name) && ContainsConcretePeriodPayload(child))
+                {
+                    continue;
+                }
+
+                CollectIndexedPeriodNodes(child, discovered, visited);
+            }
+        }
+
+        private static bool ContainsConcretePeriodPayload(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return false;
+            }
+
+            return ResolveAliasBranches(
+                    property,
+                    "stageKeyword",
+                    "keyword",
+                    "aKeyword",
+                    "enabledQuest",
+                    "aEnabledQuest",
+                    "questID",
+                    "questId",
+                    "quest",
+                    "affectedMap",
+                    "fieldID",
+                    "fieldId",
+                    "aAffectedMap",
+                    "backColor",
+                    "aStageBackImg",
+                    "stageBackImg",
+                    "backImg")
+                .Length > 0;
         }
 
         private static uint? TryReadStageBackColor(WzImageProperty periodNode)

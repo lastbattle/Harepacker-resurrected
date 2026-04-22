@@ -590,10 +590,24 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                bool isTouchingNow = CanPollLocalUserTouchReactor(data)
+                bool isTouchingNow = false;
+                if (CanPollLocalUserTouchReactor(data)
                     && SupportsActivationType(data, ReactorActivationType.Touch)
-                    && MeetsQuestRequirement(data)
-                    && DoesClientTouchBoundsContainPosition(reactor.GetCurrentBounds(resolvedTick), playerX, playerY);
+                    && MeetsQuestRequirement(data))
+                {
+                    Rectangle bounds = reactor.GetCurrentBounds(resolvedTick);
+                    if (ShouldSkipClientTouchOwnershipBoundsUpdate(bounds))
+                    {
+                        // CReactorPool::FindTouchReactorAroundLocalUser skips ownership mutation
+                        // when the live layer bounds are empty/invalid.
+                        isTouchingNow = _reactorsOnLocalUser.ContainsKey(objectId);
+                    }
+                    else
+                    {
+                        isTouchingNow = DoesClientTouchBoundsContainPosition(bounds, playerX, playerY);
+                    }
+                }
+
                 pollResults.Add(new LocalTouchOwnershipPollResult(i, objectId, isTouchingNow));
             }
 
@@ -3358,6 +3372,11 @@ namespace HaCreator.MapSimulator.Pools
                 (int)playerY);
         }
 
+        internal static bool ShouldSkipClientTouchOwnershipBoundsUpdate(Rectangle bounds)
+        {
+            return bounds.Width <= 0 || bounds.Height <= 0;
+        }
+
         internal static int ResolveLocalTouchObjectId(ReactorRuntimeData data)
         {
             if (data == null)
@@ -3815,6 +3834,8 @@ namespace HaCreator.MapSimulator.Pools
                 fallbackAnimationOwnerState,
                 data,
                 sourceEventTypes,
+                data.HitOption,
+                data.ReactorType,
                 reactor.GetExactAuthoredEventTypes);
             if (sourceState != sourceStateBeforeFallback)
             {
@@ -3928,19 +3949,25 @@ namespace HaCreator.MapSimulator.Pools
             int fallbackAnimationOwnerState,
             ReactorRuntimeData data,
             IReadOnlyList<int> sourceEventTypes,
+            int hitOption,
+            ReactorType reactorType,
             Func<int, IReadOnlyList<int>> getExactAuthoredEventTypes)
         {
             if (data == null
                 || data.PacketProperEventIndex != -2
-                || sourceEventTypes is { Count: > 0 }
                 || data.PacketAnimationSourceState < 0
                 || getExactAuthoredEventTypes == null)
             {
                 return sourceState;
             }
 
+            if (HasResolvableAutoHitEventType(sourceEventTypes, hitOption, reactorType))
+            {
+                return sourceState;
+            }
+
             IReadOnlyList<int> animationSourceEventTypes = getExactAuthoredEventTypes(data.PacketAnimationSourceState);
-            if (animationSourceEventTypes is { Count: > 0 })
+            if (HasResolvableAutoHitEventType(animationSourceEventTypes, hitOption, reactorType))
             {
                 return data.PacketAnimationSourceState;
             }
@@ -3957,6 +3984,15 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return sourceState;
+        }
+
+        private static bool HasResolvableAutoHitEventType(
+            IReadOnlyList<int> eventTypes,
+            int hitOption,
+            ReactorType reactorType)
+        {
+            return eventTypes is { Count: > 0 }
+                && ReactorItem.TryResolveClientHitEventIndex(eventTypes, hitOption, reactorType, out _);
         }
 
         internal static int ResolvePacketMutationFallbackAnimationOwnerState(

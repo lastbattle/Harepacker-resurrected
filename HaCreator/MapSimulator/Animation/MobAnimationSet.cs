@@ -43,6 +43,10 @@ namespace HaCreator.MapSimulator.Animation
             public bool HasHeadAnchor { get; init; }
             public Point HeadAnchor { get; init; }
             public IReadOnlyList<Rectangle> MultiBodyBounds { get; init; }
+            public bool HasAlphaRange { get; init; }
+            public byte AlphaStart { get; init; } = byte.MaxValue;
+            public byte AlphaEnd { get; init; } = byte.MaxValue;
+            public int LayerZ { get; init; }
 
             public Rectangle EffectiveBodyBounds
             {

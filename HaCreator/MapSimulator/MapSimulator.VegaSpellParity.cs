@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator
         private bool _vegaResultLoopSoundActive;
         private string _vegaResultLoopSoundInstanceKey = string.Empty;
         private int _vegaExclusiveRequestSentTick = int.MinValue;
+        private readonly Dictionary<EquipSlot, int> _vegaObservedEquipItemTokensBySlot = new();
         private PendingVegaLaunchState _pendingVegaLaunchState;
         private PendingVegaLoopbackLaunchState _pendingVegaLoopbackLaunchState;
         private PendingVegaCastState _pendingVegaCastState;
@@ -492,6 +493,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            RememberObservedVegaEquipItemToken(request.Slot, requestContext.EquipItemToken);
             ReleaseActiveKeydownSkillForClientCancelIngress(currTickCount);
 
             _pendingVegaPromptState = null;
@@ -872,6 +874,7 @@ namespace HaCreator.MapSimulator
             _playerManager?.Player?.Build?.Equipment?.TryGetValue(request.Slot, out equippedPart);
             int equipItemToken = BuildVegaEquippedItemToken(
                 request.EquipItemToken,
+                ResolveObservedVegaEquipItemToken(request.Slot),
                 request.Slot,
                 request.EquipItemId,
                 encodedEquipPosition,
@@ -1167,6 +1170,7 @@ namespace HaCreator.MapSimulator
 
         private static int BuildVegaEquippedItemToken(
             int preferredItemToken,
+            int observedEquipItemToken,
             EquipSlot slot,
             int itemId,
             int encodedEquipPosition,
@@ -1177,12 +1181,34 @@ namespace HaCreator.MapSimulator
                 return preferredItemToken;
             }
 
+            if (observedEquipItemToken != 0)
+            {
+                return observedEquipItemToken;
+            }
+
             if (TryResolveClientAuthoredVegaEquippedItemToken(equippedPart, out int itemToken))
             {
                 return itemToken;
             }
 
             return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition, equippedPart);
+        }
+
+        private int ResolveObservedVegaEquipItemToken(EquipSlot slot)
+        {
+            return _vegaObservedEquipItemTokensBySlot.TryGetValue(slot, out int observedToken)
+                ? observedToken
+                : 0;
+        }
+
+        private void RememberObservedVegaEquipItemToken(EquipSlot slot, int equipItemToken)
+        {
+            if (slot == EquipSlot.None || equipItemToken == 0)
+            {
+                return;
+            }
+
+            _vegaObservedEquipItemTokensBySlot[slot] = equipItemToken;
         }
 
         private static int BuildSyntheticVegaInventoryItemToken(
@@ -1413,6 +1439,7 @@ namespace HaCreator.MapSimulator
 
         internal static int BuildVegaEquippedItemTokenForTests(
             int preferredItemToken,
+            int observedEquipItemToken,
             EquipSlot slot,
             int itemId,
             int encodedEquipPosition,
@@ -1420,6 +1447,7 @@ namespace HaCreator.MapSimulator
         {
             return BuildVegaEquippedItemToken(
                 preferredItemToken,
+                observedEquipItemToken,
                 slot,
                 itemId,
                 encodedEquipPosition,

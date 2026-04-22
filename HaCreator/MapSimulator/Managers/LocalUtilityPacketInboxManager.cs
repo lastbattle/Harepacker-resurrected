@@ -129,6 +129,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestRewardRaisePutItemConfirmResultPacketType = 1039;
         public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1040;
         public const int QuestRewardRaiseQuestRecordMessagePacketType = 1041;
+        public const int QuestRewardRaiseClientPutItemReleasePacketType = QuestRewardRaiseOutboundRequest.ClientPutItemReleaseOpcode;
+        public const int QuestRewardRaiseClientPutItemAddOrConfirmPacketType = QuestRewardRaiseOutboundRequest.ClientPutItemOpcode;
         public const int RandomMorphResultClientPacketType = 123;
         public const int RandomMorphRequestAckPacketType = 1042;
         public const int QuestAlarmTitleTooltipPacketType = 1043;
@@ -874,6 +876,8 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onpetitemuseresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petuseresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onpetuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseownersync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onraiseownersync", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("hpresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("hazardresult", StringComparison.OrdinalIgnoreCase))
             {
@@ -1049,11 +1053,27 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("raiseputitemrelease-client", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseputitem285", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseclient285", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseClientPutItemReleasePacketType;
+                return true;
+            }
+
             if (token.Equals("raiseputitemconfirm", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("raiseconfirmresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("raiseconfirm", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = QuestRewardRaisePutItemConfirmResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemadd-client", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseputitem286", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseclient286", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseClientPutItemAddOrConfirmPacketType;
                 return true;
             }
 
@@ -1285,6 +1305,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestRewardRaisePutItemConfirmResultPacketType
                 || packetType == QuestRewardRaiseOwnerDestroyResultPacketType
                 || packetType == QuestRewardRaiseQuestRecordMessagePacketType
+                || packetType == QuestRewardRaiseClientPutItemReleasePacketType
+                || packetType == QuestRewardRaiseClientPutItemAddOrConfirmPacketType
                 || packetType == RandomMorphResultClientPacketType
                 || packetType == RandomMorphRequestAckPacketType
                 || packetType == QuestAlarmTitleTooltipPacketType
@@ -1500,6 +1522,8 @@ namespace HaCreator.MapSimulator.Managers
                 QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1039)",
                 QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1040)",
                 QuestRewardRaiseQuestRecordMessagePacketType => "RaiseQuestRecordMessage(1041)",
+                QuestRewardRaiseClientPutItemReleasePacketType => "RaisePutItemReleaseResult(285)",
+                QuestRewardRaiseClientPutItemAddOrConfirmPacketType => "RaisePutItemAddOrConfirmResult(286)",
                 RandomMorphResultClientPacketType => "OnRandomMorphRes(123)",
                 RandomMorphRequestAckPacketType => "RandomMorphRequestAck(1042)",
                 QuestAlarmTitleTooltipPacketType => "QuestAlarmTitleTooltip(1043)",

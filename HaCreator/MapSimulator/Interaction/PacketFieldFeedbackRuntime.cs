@@ -834,6 +834,8 @@ namespace HaCreator.MapSimulator.Interaction
                         string body = ReadMapleString(reader);
                         if (!fromAdmin && ShouldSuppressIncomingWhisper(sender, callbacks))
                         {
+                            callbacks?.RememberWhisperTarget?.Invoke(sender);
+                            _lastWhisperTarget = sender;
                             _statusMessage = $"Suppressed packet-owned whisper from blocked sender {sender}.";
                             message = _statusMessage;
                             return true;
@@ -867,8 +869,7 @@ namespace HaCreator.MapSimulator.Interaction
                             return true;
                         }
 
-                        _lastWhisperTarget = target;
-                        _statusMessage = $"Applied packet-owned whisper target update for {target}.";
+                        _statusMessage = $"Applied packet-owned whisper send-result update for {target}.";
                         message = _statusMessage;
                         return true;
                     }
@@ -1392,10 +1393,7 @@ namespace HaCreator.MapSimulator.Interaction
                         if (!show)
                         {
                             ClearFieldClock(callbacks);
-                            bool restoredFieldPropertyClock = callbacks?.RestoreFieldPropertyClock?.Invoke() == true;
-                            _statusMessage = restoredFieldPropertyClock
-                                ? "Cleared packet-owned event countdown clock and restored the map-authored field clock."
-                                : "Cleared packet-owned event countdown clock.";
+                            _statusMessage = "Cleared packet-owned event countdown clock.";
                             message = _statusMessage;
                             return true;
                         }
@@ -1413,10 +1411,7 @@ namespace HaCreator.MapSimulator.Interaction
                         bool show = reader.ReadByte() != 0;
                         if (!show)
                         {
-                            bool restoredFieldPropertyClock = callbacks?.RestoreFieldPropertyClock?.Invoke() == true;
-                            _statusMessage = restoredFieldPropertyClock
-                                ? "Cleared packet-owned cake-pie timerboard and restored the map-authored field clock."
-                                : "Cleared packet-owned cake-pie timerboard.";
+                            _statusMessage = "Cleared packet-owned cake-pie timerboard.";
                             message = _statusMessage;
                             return true;
                         }

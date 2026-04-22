@@ -3115,6 +3115,11 @@ namespace HaCreator.MapSimulator.Character
                 47 => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
                 48 => new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f),
                 49 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                // WZ `Character/Weapon/0150xxxx` and `0151xxxx` are shovel/pickaxe tools.
+                // Keep them on the one-handed axe or blunt style STR/DEX lane so stat-window
+                // damage does not fall back to job-archetype weaponless formulas.
+                50 => new AttackFormulaProfile(false, 4.4f, TotalSTR, TotalDEX, 0.9f),
+                51 => new AttackFormulaProfile(false, 4.4f, TotalSTR, TotalDEX, 0.9f),
                 52 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
                 53 => new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f),
                 // WZ still carries later post-Big Bang weapon families beyond the original

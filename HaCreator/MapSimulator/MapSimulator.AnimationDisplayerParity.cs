@@ -37,6 +37,9 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerVioletCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoViolet0";
         private const string AnimationDisplayerCatchEffectBaseUol = "Effect/BasicEff.img/Catch";
         private const int AnimationDisplayerCatchMobHeadVerticalOffset = 15;
+        private const int AnimationDisplayerMobSwallowTargetVerticalOffset = 40;
+        private const int AnimationDisplayerMobSwallowTargetHorizontalOffset = 70;
+        private const string AnimationDisplayerMobSwallowPrimaryAction = "attack1";
         private const int AnimationDisplayerCoolEffectStringPoolId = 0x14E3;
         private const string AnimationDisplayerCoolEffectFallbackUol = "Effect/BasicEff.img/CoolHit/cool";
         private const string AnimationDisplayerSquibEffectUol = "Effect/BasicEff.img/Flame/SquibEffect";
@@ -167,7 +170,8 @@ namespace HaCreator.MapSimulator
             public Vector2 Origin { get; init; }
             public Vector2 FlightOrigin { get; init; }
             public Vector2 Impact { get; init; }
-            public Vector2 RenderOffset { get; init; }
+            public Vector2 FlightRenderOffset { get; init; }
+            public Vector2 ExplosionRenderOffset { get; init; }
             public int DragX { get; init; }
             public int DragY { get; init; }
             public bool GravityFree { get; init; }
@@ -1844,6 +1848,87 @@ namespace HaCreator.MapSimulator
                 out _);
         }
 
+        private void HandleAnimationDisplayerSwallowAbsorbRequested(
+            SkillManager.SwallowAbsorbRequest request)
+        {
+            if (_animationEffects == null || request.TargetMobId <= 0)
+            {
+                return;
+            }
+
+            MobItem target = _mobPool?.GetMob(request.TargetMobId);
+            if (target == null)
+            {
+                return;
+            }
+
+            _ = TryRegisterAnimationDisplayerMobSwallowAbsorbOwner(request, target, out _);
+        }
+
+        private bool TryRegisterAnimationDisplayerMobSwallowAbsorbOwner(
+            SkillManager.SwallowAbsorbRequest request,
+            MobItem target,
+            out string message)
+        {
+            message = null;
+            if (target == null || target.MobId <= 0)
+            {
+                message = "Mob swallow animation-displayer owner is missing.";
+                return false;
+            }
+
+            PlayerCharacter localPlayer = _playerManager?.Player;
+            if (localPlayer == null)
+            {
+                message = "Local user owner is missing for swallow animation-displayer parity.";
+                return false;
+            }
+
+            if (!TryResolveAnimationDisplayerMobSwallowFrames(
+                    target.MobId,
+                    out string resolvedEffectUol,
+                    out List<IDXObject> frames))
+            {
+                message = $"Mob swallow animation frames could not be loaded for {target.MobId:D7}.";
+                return false;
+            }
+
+            Vector2 startPosition = target.GetDamageNumberAnchor(verticalPadding: 0);
+            int registerTime = request.RequestedAt > 0 ? request.RequestedAt : currTickCount;
+            Vector2 fallbackTargetPosition = _playerManager?.Player?.Physics?.GetPosition() ?? localPlayer.Position;
+            bool fallbackFacingRight = _playerManager?.Player?.FacingRight ?? localPlayer.FacingRight;
+            Vector2 fallbackEndPosition = ResolveAnimationDisplayerMobSwallowTargetAnchor(
+                fallbackTargetPosition,
+                fallbackFacingRight);
+            int travelDurationMs = ResolveAnimationDisplayerMobSwallowTravelDurationMs(
+                startPosition,
+                fallbackEndPosition);
+            Func<Vector2> getPosition = () =>
+            {
+                Vector2 liveTargetPosition = _playerManager?.Player?.Physics?.GetPosition() ?? fallbackTargetPosition;
+                bool liveFacingRight = _playerManager?.Player?.FacingRight ?? fallbackFacingRight;
+                Vector2 liveEndPosition = ResolveAnimationDisplayerMobSwallowTargetAnchor(
+                    liveTargetPosition,
+                    liveFacingRight);
+                int elapsedMs = Math.Clamp(currTickCount - registerTime, 0, travelDurationMs);
+                float t = travelDurationMs <= 0 ? 1f : elapsedMs / (float)travelDurationMs;
+                return Vector2.Lerp(startPosition, liveEndPosition, t);
+            };
+
+            Vector2 fallbackPosition = getPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                getPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                registerTime);
+            message =
+                $"Registered mob-swallow animation-displayer owner frames from {resolvedEffectUol} (targetMob={request.TargetMobId}).";
+            return true;
+        }
+
         private bool TryApplyAnimationDisplayerSessionValueCoolOwner(
             string key,
             string value,
@@ -2056,11 +2141,70 @@ namespace HaCreator.MapSimulator
             candidates.Add(normalized);
         }
 
+        private bool TryResolveAnimationDisplayerMobSwallowFrames(
+            int mobId,
+            out string resolvedEffectUol,
+            out List<IDXObject> frames)
+        {
+            resolvedEffectUol = null;
+            frames = null;
+
+            IReadOnlyList<string> candidates = EnumerateAnimationDisplayerMobSwallowEffectUolCandidates(mobId);
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                string candidate = candidates[i];
+                if (TryGetAnimationDisplayerFrames(
+                        $"mobswallow:{mobId}:{i}",
+                        candidate,
+                        out List<IDXObject> candidateFrames))
+                {
+                    resolvedEffectUol = candidate;
+                    frames = candidateFrames;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         internal static int ResolveAnimationDisplayerMobProjectileRegistrationTime(
             int currentTime,
             int attackAfterMs)
         {
             return unchecked(currentTime + Math.Max(0, attackAfterMs));
+        }
+
+        internal static IReadOnlyList<string> EnumerateAnimationDisplayerMobSwallowEffectUolCandidates(int mobId)
+        {
+            if (mobId <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            string imageName = mobId.ToString("D7", CultureInfo.InvariantCulture);
+            return new[]
+            {
+                $"Mob/{imageName}.img/{AnimationDisplayerMobSwallowPrimaryAction}/0",
+                $"Mob/{imageName}.img/stand/0"
+            };
+        }
+
+        internal static Vector2 ResolveAnimationDisplayerMobSwallowTargetAnchor(
+            Vector2 userPosition,
+            bool facingRight)
+        {
+            return new Vector2(
+                userPosition.X + (facingRight ? AnimationDisplayerMobSwallowTargetHorizontalOffset : -AnimationDisplayerMobSwallowTargetHorizontalOffset),
+                userPosition.Y - AnimationDisplayerMobSwallowTargetVerticalOffset);
+        }
+
+        internal static int ResolveAnimationDisplayerMobSwallowTravelDurationMs(
+            Vector2 sourcePosition,
+            Vector2 targetPosition)
+        {
+            float distance = Vector2.Distance(sourcePosition, targetPosition);
+            int durationMs = (int)MathF.Round(distance * 1.5f, MidpointRounding.AwayFromZero);
+            return Math.Max(1, durationMs);
         }
 
         internal static bool TryResolveAnimationDisplayerCombatFeedbackColor(
@@ -2344,7 +2488,7 @@ namespace HaCreator.MapSimulator
         internal static IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> BuildAnimationDisplayerSpecificUserStateCandidates(
             RemoteUserActor actor)
         {
-            return BuildAnimationDisplayerSpecificUserStateCandidates(actor, currentTime: int.MinValue);
+            return BuildAnimationDisplayerSpecificUserStateCandidates(actor, Environment.TickCount);
         }
 
         internal static IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> BuildAnimationDisplayerSpecificUserStateCandidatesForTesting(
@@ -3249,7 +3393,7 @@ namespace HaCreator.MapSimulator
             }
 
             int initialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(ownerContext, frames);
-            Vector2 packetAnchorPosition = actor.Position;
+            Vector2 packetAnchorPosition = presentation.WorldOrigin ?? actor.Position;
             bool fallbackFacingRight = presentation.UseOwnerFacing && actor.FacingRight;
             _animationEffects.AddOneTimeAttached(
                 frames,
@@ -3296,7 +3440,7 @@ namespace HaCreator.MapSimulator
             string effectUol,
             AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext ownerContext)
         {
-            Vector2 packetAnchorPosition = actor.Position;
+            Vector2 packetAnchorPosition = presentation.WorldOrigin ?? actor.Position;
             Func<Vector2> getPosition = () =>
             {
                 if (!presentation.AttachToOwner)
@@ -3903,7 +4047,12 @@ namespace HaCreator.MapSimulator
                 Origin = new Vector2(presentation.Target.X, presentation.Target.Y),
                 FlightOrigin = RemoteUserActorPool.ResolveRemoteGrenadeFlightOriginForParity(presentation),
                 Impact = presentation.Impact,
-                RenderOffset = RemoteUserActorPool.ResolveRemoteGrenadeRenderOffsetForParity(presentation),
+                FlightRenderOffset = RemoteUserActorPool.ResolveRemoteGrenadeRenderOffsetForParity(
+                    presentation,
+                    includeRotateLayerCollisionCompensation: true),
+                ExplosionRenderOffset = RemoteUserActorPool.ResolveRemoteGrenadeRenderOffsetForParity(
+                    presentation,
+                    includeRotateLayerCollisionCompensation: false),
                 DragX = presentation.DragX,
                 DragY = presentation.DragY,
                 GravityFree = presentation.GravityFree,
@@ -4069,7 +4218,9 @@ namespace HaCreator.MapSimulator
                     actor.GravityFree);
             }
             bool shouldFlip = actor.FacingRight ^ frame.Flip;
-            position += actor.RenderOffset;
+            position += isExploding
+                ? actor.ExplosionRenderOffset
+                : actor.FlightRenderOffset;
             int screenX = (int)MathF.Round(position.X) - mapShiftX + centerX;
             int screenY = (int)MathF.Round(position.Y) - mapShiftY + centerY;
 
@@ -6590,9 +6741,13 @@ namespace HaCreator.MapSimulator
 
             string effectPath = NormalizeAnimationDisplayerPath(effectProperty["path"]?.GetString());
             string effectUol = BuildAnimationDisplayerFollowEquipmentEffectUol(effectPath);
-            IReadOnlyList<List<IDXObject>> effectFrameVariants = LoadAnimationDisplayerFollowEquipmentFrameVariants(effectPath);
+            IReadOnlyList<List<IDXObject>> effectFrameVariants = LoadAnimationDisplayerFollowEquipmentFrameVariants(
+                effectPath,
+                out bool hasIndexedNumericVariantBranches);
+            bool shouldAttemptRootEffectFallback = !hasIndexedNumericVariantBranches;
             if (!Animation.AnimationEffects.HasFrameVariants(effectFrameVariants)
-                && !Animation.AnimationEffects.HasFrames(LoadAnimationDisplayerFrames(effectUol)))
+                && (!shouldAttemptRootEffectFallback
+                    || !Animation.AnimationEffects.HasFrames(LoadAnimationDisplayerFrames(effectUol))))
             {
                 return null;
             }
@@ -6714,11 +6869,14 @@ namespace HaCreator.MapSimulator
             return effectPath;
         }
 
-        private IReadOnlyList<List<IDXObject>> LoadAnimationDisplayerFollowEquipmentFrameVariants(string effectPath)
+        private IReadOnlyList<List<IDXObject>> LoadAnimationDisplayerFollowEquipmentFrameVariants(
+            string effectPath,
+            out bool hasIndexedNumericVariantBranches)
         {
             string[] variantUols = EnumerateAnimationDisplayerFollowEquipmentEffectVariantUols(
                 effectPath,
-                ResolveAnimationDisplayerPropertyStatic(effectPath));
+                ResolveAnimationDisplayerPropertyStatic(effectPath),
+                out hasIndexedNumericVariantBranches);
             if (variantUols.Length == 0)
             {
                 return null;
@@ -6741,6 +6899,18 @@ namespace HaCreator.MapSimulator
             string effectPath,
             WzImageProperty effectRootProperty)
         {
+            return EnumerateAnimationDisplayerFollowEquipmentEffectVariantUols(
+                effectPath,
+                effectRootProperty,
+                out _);
+        }
+
+        internal static string[] EnumerateAnimationDisplayerFollowEquipmentEffectVariantUols(
+            string effectPath,
+            WzImageProperty effectRootProperty,
+            out bool hasIndexedNumericVariantBranches)
+        {
+            hasIndexedNumericVariantBranches = false;
             string normalizedEffectPath = NormalizeAnimationDisplayerPath(effectPath);
             WzImageProperty resolvedRoot = ResolveAnimationDisplayerLinkedRealProperty(effectRootProperty);
             if (string.IsNullOrWhiteSpace(normalizedEffectPath))
@@ -6767,6 +6937,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                hasIndexedNumericVariantBranches = true;
                 WzImageProperty variantProperty = ResolveAnimationDisplayerLinkedRealProperty(childProperty);
                 if (!IsAnimationDisplayerFollowEffectVariantPropertyLoadable(variantProperty))
                 {

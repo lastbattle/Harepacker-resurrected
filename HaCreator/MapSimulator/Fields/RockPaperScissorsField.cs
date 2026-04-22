@@ -423,6 +423,49 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
+        internal static bool TryValidateClientPacketShape(RockPaperScissorsClientPacket packet, out string error)
+        {
+            error = null;
+            if (packet == null)
+            {
+                error = "Rock-Paper-Scissors client packet is missing.";
+                return false;
+            }
+
+            byte[] payload = packet.Payload ?? Array.Empty<byte>();
+            if (packet.RequestType == RockPaperScissorsClientRequestType.Select)
+            {
+                if (payload.Length != sizeof(byte))
+                {
+                    error = $"Rock-Paper-Scissors opcode {ClientOpcode} subtype {(int)packet.RequestType} requires a single-byte choice payload.";
+                    return false;
+                }
+
+                RockPaperScissorsChoice decodedChoice = (RockPaperScissorsChoice)payload[0];
+                if (decodedChoice is < RockPaperScissorsChoice.Rock or > RockPaperScissorsChoice.Scissor)
+                {
+                    error = $"Rock-Paper-Scissors opcode {ClientOpcode} subtype {(int)packet.RequestType} payload choice {payload[0]} is out of range.";
+                    return false;
+                }
+
+                if (packet.Choice != decodedChoice)
+                {
+                    error = $"Rock-Paper-Scissors opcode {ClientOpcode} subtype {(int)packet.RequestType} choice mismatch: packet={packet.Choice}, payload={decodedChoice}.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (payload.Length != 0)
+            {
+                error = $"Rock-Paper-Scissors opcode {ClientOpcode} subtype {(int)packet.RequestType} requires an empty payload.";
+                return false;
+            }
+
+            return true;
+        }
+
         public bool TryApplyRawPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;

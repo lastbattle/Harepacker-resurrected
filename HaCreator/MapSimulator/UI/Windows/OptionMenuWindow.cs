@@ -2269,16 +2269,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             IReadOnlyList<Buttons> detectedButtons = GetDetectedClientJoypadComboButtons(session);
-            if (detectedButtons.Count == 0)
-            {
-                return false;
-            }
-
             bool changed = false;
             foreach (InputAction action in JoypadClientCoreBindingActions)
             {
                 if (!session.Bindings.TryGetValue(action, out Buttons configuredButton) || configuredButton == 0)
                 {
+                    continue;
+                }
+
+                if (detectedButtons.Count == 0)
+                {
+                    session.Bindings[action] = 0;
+                    clearedCount++;
+                    changed = true;
                     continue;
                 }
 
@@ -2296,6 +2299,64 @@ namespace HaCreator.MapSimulator.UI
                 if (!isAllowed)
                 {
                     session.Bindings[action] = 0;
+                    clearedCount++;
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        internal static bool NormalizeClientComboBindingsToDetectedButtonsForTests(
+            IReadOnlyDictionary<InputAction, Buttons> stagedBindings,
+            IReadOnlyDictionary<InputAction, IReadOnlyList<Buttons>> allowedButtonsByAction,
+            out Dictionary<InputAction, Buttons> normalizedBindings,
+            out int clearedCount)
+        {
+            normalizedBindings = new Dictionary<InputAction, Buttons>();
+            clearedCount = 0;
+            if (stagedBindings == null)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            foreach (KeyValuePair<InputAction, Buttons> entry in stagedBindings)
+            {
+                normalizedBindings[entry.Key] = entry.Value;
+            }
+
+            foreach (InputAction action in JoypadClientCoreBindingActions)
+            {
+                if (!normalizedBindings.TryGetValue(action, out Buttons configuredButton) || configuredButton == 0)
+                {
+                    continue;
+                }
+
+                if (allowedButtonsByAction == null
+                    || !allowedButtonsByAction.TryGetValue(action, out IReadOnlyList<Buttons> allowedButtons)
+                    || allowedButtons == null
+                    || allowedButtons.Count == 0)
+                {
+                    normalizedBindings[action] = 0;
+                    clearedCount++;
+                    changed = true;
+                    continue;
+                }
+
+                bool isAllowed = false;
+                for (int i = 0; i < allowedButtons.Count; i++)
+                {
+                    if (allowedButtons[i] == configuredButton)
+                    {
+                        isAllowed = true;
+                        break;
+                    }
+                }
+
+                if (!isAllowed)
+                {
+                    normalizedBindings[action] = 0;
                     clearedCount++;
                     changed = true;
                 }

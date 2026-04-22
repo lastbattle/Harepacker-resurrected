@@ -163,6 +163,12 @@ namespace HaCreator.MapSimulator.Interaction
                     SocialListTab.Guild,
                     BuildClientGuildQuestQueueNoticeSummary(packet)),
                 SocialListClientGuildResultKind.GuildBoardAuthKey => SetPacketGuildBoardAuthKey(packet.GuildBoardAuthKey),
+                SocialListClientGuildResultKind.GuildNameInput
+                    or SocialListClientGuildResultKind.CreateGuildAgreement
+                    or SocialListClientGuildResultKind.GuildInvite
+                    or SocialListClientGuildResultKind.GuildMarkInput => SetPacketSyncSummary(
+                    SocialListTab.Guild,
+                    BuildClientGuildExplicitBranchSummary(packet)),
                 SocialListClientGuildResultKind.SkillRecord when packet.GuildSkillRecord.HasValue =>
                     BuildClientGuildSkillRecordSummary(packet),
                 SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(
@@ -243,6 +249,13 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"Client OnGuildResult({packet.RawSubtype}) notice."
                 : packet.DirectNotice.Trim();
             return $"Client OnGuildResult({packet.RawSubtype}) reported explicit notice: {notice}";
+        }
+
+        private static string BuildClientGuildExplicitBranchSummary(SocialListClientGuildResultPacket packet)
+        {
+            return string.IsNullOrWhiteSpace(packet.ExplicitBranchSummary)
+                ? $"Client OnGuildResult({packet.RawSubtype}) followed an explicit client branch."
+                : packet.ExplicitBranchSummary.Trim();
         }
 
         internal string ApplyClientFriendResultDelta(SocialListClientFriendResultPacket packet)

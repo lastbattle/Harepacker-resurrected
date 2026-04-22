@@ -152,6 +152,8 @@ namespace HaCreator.MapSimulator.Companions
         private int _activeVerticalFollowState;
         private int _activeVerticalCheckCount;
         private int _vecCtrlWorkStepCarryMilliseconds;
+        private int _vecCtrlEndUpdateActiveFlushCarryMilliseconds;
+        private int _pendingVecCtrlEndUpdateActiveFlushPacketCount;
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
         private const float GroundSideOffset = 42f;
@@ -183,6 +185,8 @@ namespace HaCreator.MapSimulator.Companions
         private const float PassiveHoldDistance = ActiveFollowDistanceX;
         private const float PassiveVerticalHoldDistance = 5f;
         private const int ClientVecCtrlPassiveStepMilliseconds = 30;
+        private const int ClientVecCtrlDragonMovePacketOpcode = 214;
+        private const int ClientVecCtrlDragonFlushThresholdMilliseconds = 1000;
         private const float QuestInfoHorizontalOffset = 20f;
         private const float QuestInfoVerticalGap = 15f;
         private const int DragonBlinkEffectStringPoolId = 0x0B6B;
@@ -469,6 +473,8 @@ namespace HaCreator.MapSimulator.Companions
             _activeVerticalFollowState = 0;
             _activeVerticalCheckCount = 0;
             _vecCtrlWorkStepCarryMilliseconds = 0;
+            _vecCtrlEndUpdateActiveFlushCarryMilliseconds = 0;
+            _pendingVecCtrlEndUpdateActiveFlushPacketCount = 0;
         }
 
         internal bool ClearClientOwnedOneTimeActionOnSkillCancel(PlayerCharacter owner, int currentTime)
@@ -508,7 +514,7 @@ namespace HaCreator.MapSimulator.Companions
                 _ => "hidden"
             };
 
-            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, action alpha: {Math.Round(_ownerPhaseActionAlpha * 255f)}, quest info: {questInfoLabel}, owner: {ownerName ?? "Unknown"}";
+            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, action alpha: {Math.Round(_ownerPhaseActionAlpha * 255f)}, quest info: {questInfoLabel}, pending vecctrl flush: {_pendingVecCtrlEndUpdateActiveFlushPacketCount}, owner: {ownerName ?? "Unknown"}";
         }
 
         private DragonAnimationSet GetOrLoadAnimationSet(int dragonJob)
@@ -804,7 +810,26 @@ namespace HaCreator.MapSimulator.Companions
                 followUpdate |= UpdateVisualAnchor();
             }
 
+            QueueClientVecCtrlEndUpdateActiveFlushPackets(workStepCount);
             return followUpdate;
+        }
+
+        private void QueueClientVecCtrlEndUpdateActiveFlushPackets(int workStepCount)
+        {
+            int flushPacketCount = ResolveClientDragonEndUpdateActiveFlushPacketCount(
+                workStepCount,
+                ref _vecCtrlEndUpdateActiveFlushCarryMilliseconds,
+                ClientVecCtrlPassiveStepMilliseconds,
+                ClientVecCtrlDragonFlushThresholdMilliseconds);
+            if (flushPacketCount <= 0)
+            {
+                return;
+            }
+
+            _pendingVecCtrlEndUpdateActiveFlushPacketCount =
+                _pendingVecCtrlEndUpdateActiveFlushPacketCount > int.MaxValue - flushPacketCount
+                    ? int.MaxValue
+                    : _pendingVecCtrlEndUpdateActiveFlushPacketCount + flushPacketCount;
         }
 
         private void UpdateFollowState(PlayerCharacter owner)
@@ -900,11 +925,16 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static int ResolveClientVecCtrlWorkStepCount(float frameDeltaSeconds, ref int carriedMilliseconds)
         {
-            int elapsedMilliseconds = (int)Math.Round(Math.Max(0f, frameDeltaSeconds) * 1000f);
+            int elapsedMilliseconds = ResolveClientElapsedMillisecondsFromFrameDelta(frameDeltaSeconds);
             return ResolveClientVecCtrlWorkStepCountFromElapsedMilliseconds(
                 elapsedMilliseconds,
                 ref carriedMilliseconds,
                 ClientVecCtrlPassiveStepMilliseconds);
+        }
+
+        internal static int ResolveClientElapsedMillisecondsFromFrameDelta(float frameDeltaSeconds)
+        {
+            return (int)Math.Round(Math.Max(0f, frameDeltaSeconds) * 1000f);
         }
 
         internal static int ResolveClientVecCtrlWorkStepCountFromElapsedMilliseconds(
@@ -922,6 +952,52 @@ namespace HaCreator.MapSimulator.Companions
             int workStepCount = (int)(totalMilliseconds / stepMilliseconds);
             carriedMilliseconds = (int)(totalMilliseconds - (long)workStepCount * stepMilliseconds);
             return workStepCount;
+        }
+
+        internal static int ResolveClientDragonEndUpdateActiveFlushPacketCount(
+            int workStepCount,
+            ref int accumulatedFlushMilliseconds,
+            int workStepMilliseconds,
+            int flushThresholdMilliseconds)
+        {
+            if (workStepMilliseconds <= 0 || flushThresholdMilliseconds <= 0)
+            {
+                accumulatedFlushMilliseconds = 0;
+                return 0;
+            }
+
+            if (workStepCount <= 0)
+            {
+                return 0;
+            }
+
+            int carry = Math.Max(0, accumulatedFlushMilliseconds);
+            int flushPacketCount = 0;
+            for (int step = 0; step < workStepCount; step++)
+            {
+                carry += workStepMilliseconds;
+                if (carry >= flushThresholdMilliseconds)
+                {
+                    flushPacketCount++;
+                    carry = 0;
+                }
+            }
+
+            accumulatedFlushMilliseconds = carry;
+            return flushPacketCount;
+        }
+
+        internal bool TryConsumeClientVecCtrlEndUpdateActiveFlushPacket(out int packetOpcode)
+        {
+            if (_pendingVecCtrlEndUpdateActiveFlushPacketCount <= 0)
+            {
+                packetOpcode = 0;
+                return false;
+            }
+
+            _pendingVecCtrlEndUpdateActiveFlushPacketCount--;
+            packetOpcode = ClientVecCtrlDragonMovePacketOpcode;
+            return true;
         }
 
         internal static float ResolveClientPassiveFollowStepSeconds(float frameDeltaSeconds)

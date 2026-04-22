@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<SocialSearchTab, List<SocialSearchEntryState>> _searchEntriesByTab = new();
         private readonly Dictionary<SocialSearchTab, int> _searchSelectedIndexByTab = new();
         private readonly Dictionary<SocialSearchTab, string> _searchSortByTab = new();
+        private readonly Dictionary<int, SocialSearchEntryState> _characterInfoPartyEntryOverrides = new();
         private readonly List<GuildSearchEntryState> _guildSearchEntries = new();
         private readonly HashSet<string> _guildSearchWatchlist = new(StringComparer.OrdinalIgnoreCase);
         private CharacterInfoSearchLaunchState? _characterInfoSearchLaunch;
@@ -479,6 +480,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (TryFindCharacterInfoPartyLaunchEntryIndex(launch, out int partyIndex))
             {
                 List<SocialSearchEntryState> partyEntries = _searchEntriesByTab[SocialSearchTab.Party];
+                if (!_characterInfoPartyEntryOverrides.ContainsKey(partyIndex))
+                {
+                    _characterInfoPartyEntryOverrides[partyIndex] = partyEntries[partyIndex];
+                }
+
                 partyEntries[partyIndex] = MergeCharacterInfoPartyEntry(partyEntries[partyIndex], launch);
                 _searchSelectedIndexByTab[SocialSearchTab.Party] = partyIndex;
             }
@@ -491,6 +497,24 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 entries.RemoveAll(entry => entry.IsCharacterInfoOwned);
             }
+
+            if (_characterInfoPartyEntryOverrides.Count <= 0
+                || !_searchEntriesByTab.TryGetValue(SocialSearchTab.Party, out List<SocialSearchEntryState> partyEntries))
+            {
+                _characterInfoPartyEntryOverrides.Clear();
+                return;
+            }
+
+            foreach (KeyValuePair<int, SocialSearchEntryState> entry in _characterInfoPartyEntryOverrides)
+            {
+                int index = entry.Key;
+                if (index >= 0 && index < partyEntries.Count && entry.Value != null)
+                {
+                    partyEntries[index] = entry.Value;
+                }
+            }
+
+            _characterInfoPartyEntryOverrides.Clear();
         }
 
         private static SocialSearchEntryState MergeCharacterInfoSearchEntry(

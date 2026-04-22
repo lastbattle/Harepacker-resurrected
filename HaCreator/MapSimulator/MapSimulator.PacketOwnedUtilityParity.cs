@@ -2508,8 +2508,10 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, Encoding.Unicode, out text)
-                || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, Encoding.ASCII, out text))
+            if (TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(short), Encoding.Unicode, out text)
+                || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(short), Encoding.ASCII, out text)
+                || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(int), Encoding.Unicode, out text)
+                || TryDecodeLengthPrefixedClassCompetitionTextPayload(payload, sizeof(int), Encoding.ASCII, out text))
             {
                 return true;
             }
@@ -2533,22 +2535,28 @@ namespace HaCreator.MapSimulator
 
         private static bool TryDecodeLengthPrefixedClassCompetitionTextPayload(
             byte[] payload,
+            int prefixWidth,
             Encoding encoding,
             out string text)
         {
             text = null;
-            if (payload == null || payload.Length < sizeof(short))
+            if (payload == null || payload.Length < prefixWidth)
             {
                 return false;
             }
 
-            int byteLength = BitConverter.ToInt16(payload, 0);
-            if (byteLength <= 0 || byteLength > payload.Length - sizeof(short))
+            int byteLength = prefixWidth switch
+            {
+                sizeof(short) => BitConverter.ToInt16(payload, 0),
+                sizeof(int) => BitConverter.ToInt32(payload, 0),
+                _ => -1
+            };
+            if (byteLength <= 0 || byteLength > payload.Length - prefixWidth)
             {
                 return false;
             }
 
-            string decoded = encoding.GetString(payload, sizeof(short), byteLength).TrimEnd('\0', '\r', '\n', ' ');
+            string decoded = encoding.GetString(payload, prefixWidth, byteLength).TrimEnd('\0', '\r', '\n', ' ');
             if (string.IsNullOrWhiteSpace(decoded))
             {
                 return false;
@@ -2572,12 +2580,19 @@ namespace HaCreator.MapSimulator
             {
                 string line = lines[i];
                 if (line.StartsWith("auth=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("auth:", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("key=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("key:", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("url=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("url:", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("navigate=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("navigate:", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("line=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("line:", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("page=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("page:", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("source=", StringComparison.OrdinalIgnoreCase)
+                    || line.StartsWith("source:", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("ladder:", StringComparison.OrdinalIgnoreCase)
                     || line.StartsWith("ladder=", StringComparison.OrdinalIgnoreCase))
                 {
@@ -2607,18 +2622,28 @@ namespace HaCreator.MapSimulator
                 }
 
                 JsonElement root = document.RootElement;
-                string authKey = TryGetClassCompetitionRemoteStringProperty(root, "authKey");
+                string authKey = TryGetClassCompetitionRemoteStringProperty(root, "authKey")
+                    ?? TryGetClassCompetitionRemoteStringProperty(root, "auth")
+                    ?? TryGetClassCompetitionRemoteStringProperty(root, "key");
                 string navigateUrl = TryGetClassCompetitionRemoteStringProperty(root, "navigateUrl")
+                    ?? TryGetClassCompetitionRemoteStringProperty(root, "navigate")
                     ?? TryGetClassCompetitionRemoteStringProperty(root, "url");
                 string source = TryGetClassCompetitionRemoteStringProperty(root, "source");
                 IReadOnlyList<string> pageLines = NormalizeClassCompetitionRemoteLines(
-                    TryGetClassCompetitionRemoteStringListProperty(root, "pageLines")
-                        ?? TryGetClassCompetitionRemoteStringListProperty(root, "lines"),
+                    TryGetClassCompetitionRemoteStringValues(root, "pageLines")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "lines")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "page")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "line"),
                     PacketOwnedClassCompetitionMaxRemotePageLines);
                 IReadOnlyList<string> ladderLines = NormalizeClassCompetitionRemoteLines(
-                    TryGetClassCompetitionRemoteStringListProperty(root, "ladderLines")
-                        ?? TryGetClassCompetitionRemoteStringListProperty(root, "ladder"),
+                    TryGetClassCompetitionRemoteStringValues(root, "ladderLines")
+                        ?? TryGetClassCompetitionRemoteStringValues(root, "ladder"),
                     PacketOwnedClassCompetitionMaxRemoteLadderLines);
+                if (string.IsNullOrWhiteSpace(authKey)
+                    && TryExtractClassCompetitionAuthKeyFromNavigateUrl(navigateUrl, out string extractedAuthKey))
+                {
+                    authKey = extractedAuthKey;
+                }
                 if (string.IsNullOrWhiteSpace(authKey)
                     && string.IsNullOrWhiteSpace(navigateUrl)
                     && string.IsNullOrWhiteSpace(source)
@@ -2662,61 +2687,54 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i];
-                if (line.StartsWith("auth=", StringComparison.OrdinalIgnoreCase))
+                if (TryParseClassCompetitionPrefixedValue(line, "auth", out string authValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "key", out authValue))
                 {
-                    authKey = line["auth=".Length..].Trim();
+                    authKey = authValue;
                     continue;
                 }
 
-                if (line.StartsWith("key=", StringComparison.OrdinalIgnoreCase))
+                if (TryParseClassCompetitionPrefixedValue(line, "url", out string navigateValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "navigate", out navigateValue))
                 {
-                    authKey = line["key=".Length..].Trim();
+                    navigateUrl = navigateValue;
                     continue;
                 }
 
-                if (line.StartsWith("url=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("navigate=", StringComparison.OrdinalIgnoreCase))
+                if (TryParseClassCompetitionPrefixedValue(line, "source", out string sourceValue))
                 {
-                    int separator = line.IndexOf('=');
-                    if (separator >= 0 && separator < line.Length - 1)
+                    source = sourceValue;
+                    continue;
+                }
+
+                if (TryParseClassCompetitionPrefixedValue(line, "line", out string pageLineValue)
+                    || TryParseClassCompetitionPrefixedValue(line, "page", out pageLineValue))
+                {
+                    if (!string.IsNullOrWhiteSpace(pageLineValue))
                     {
-                        navigateUrl = line[(separator + 1)..].Trim();
+                        pageLines.Add(pageLineValue);
                     }
 
                     continue;
                 }
 
-                if (line.StartsWith("source=", StringComparison.OrdinalIgnoreCase))
+                if (TryParseClassCompetitionPrefixedValue(line, "ladder", out string ladderValue))
                 {
-                    source = line["source=".Length..].Trim();
-                    continue;
-                }
-
-                if (line.StartsWith("line=", StringComparison.OrdinalIgnoreCase)
-                    || line.StartsWith("page=", StringComparison.OrdinalIgnoreCase))
-                {
-                    int separator = line.IndexOf('=');
-                    if (separator >= 0 && separator < line.Length - 1)
+                    if (!string.IsNullOrWhiteSpace(ladderValue))
                     {
-                        pageLines.Add(line[(separator + 1)..].Trim());
+                        ladderLines.Add(ladderValue);
                     }
 
-                    continue;
-                }
-
-                if (line.StartsWith("ladder:", StringComparison.OrdinalIgnoreCase))
-                {
-                    ladderLines.Add(line["ladder:".Length..].Trim());
-                    continue;
-                }
-
-                if (line.StartsWith("ladder=", StringComparison.OrdinalIgnoreCase))
-                {
-                    ladderLines.Add(line["ladder=".Length..].Trim());
                     continue;
                 }
 
                 pageLines.Add(line);
+            }
+
+            if (string.IsNullOrWhiteSpace(authKey)
+                && TryExtractClassCompetitionAuthKeyFromNavigateUrl(navigateUrl, out string extractedAuthKey))
+            {
+                authKey = extractedAuthKey;
             }
 
             IReadOnlyList<string> normalizedPageLines = NormalizeClassCompetitionRemoteLines(pageLines, PacketOwnedClassCompetitionMaxRemotePageLines);
@@ -2751,16 +2769,36 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
-        private static IReadOnlyList<string> TryGetClassCompetitionRemoteStringListProperty(JsonElement root, string propertyName)
+        private static IReadOnlyList<string> TryGetClassCompetitionRemoteStringValues(JsonElement root, string propertyName)
         {
-            if (!root.TryGetProperty(propertyName, out JsonElement listElement)
-                || listElement.ValueKind != JsonValueKind.Array)
+            if (!root.TryGetProperty(propertyName, out JsonElement element))
+            {
+                return null;
+            }
+
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                string value = element.GetString();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return null;
+                }
+
+                string[] parts = value.Split(
+                    new[] { "\r\n", "\n" },
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                return parts.Length == 0
+                    ? null
+                    : parts.ToArray();
+            }
+
+            if (element.ValueKind != JsonValueKind.Array)
             {
                 return null;
             }
 
             var lines = new List<string>();
-            foreach (JsonElement item in listElement.EnumerateArray())
+            foreach (JsonElement item in element.EnumerateArray())
             {
                 if (item.ValueKind == JsonValueKind.String)
                 {
@@ -2773,6 +2811,76 @@ namespace HaCreator.MapSimulator
             }
 
             return lines;
+        }
+
+        private static bool TryParseClassCompetitionPrefixedValue(string line, string key, out string value)
+        {
+            value = string.Empty;
+            if (string.IsNullOrWhiteSpace(line) || string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            string equalsPrefix = $"{key}=";
+            if (line.StartsWith(equalsPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                value = line[equalsPrefix.Length..].Trim();
+                return true;
+            }
+
+            string colonPrefix = $"{key}:";
+            if (line.StartsWith(colonPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                value = line[colonPrefix.Length..].Trim();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryExtractClassCompetitionAuthKeyFromNavigateUrl(
+            string navigateUrl,
+            out string authKey)
+        {
+            authKey = string.Empty;
+            if (string.IsNullOrWhiteSpace(navigateUrl))
+            {
+                return false;
+            }
+
+            int queryIndex = navigateUrl.IndexOf('?', StringComparison.Ordinal);
+            if (queryIndex < 0 || queryIndex >= navigateUrl.Length - 1)
+            {
+                return false;
+            }
+
+            string query = navigateUrl[(queryIndex + 1)..];
+            string[] pairs = query.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < pairs.Length; i++)
+            {
+                string pair = pairs[i];
+                int separator = pair.IndexOf('=');
+                if (separator <= 0 || separator >= pair.Length - 1)
+                {
+                    continue;
+                }
+
+                string key = Uri.UnescapeDataString(pair[..separator]);
+                if (!key.Equals("key", StringComparison.OrdinalIgnoreCase)
+                    && !key.Equals("auth", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string candidate = Uri.UnescapeDataString(pair[(separator + 1)..]);
+                if (TryNormalizeClassCompetitionAuthKey(candidate, out string normalizedAuthKey))
+                {
+                    authKey = normalizedAuthKey;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static IReadOnlyList<string> NormalizeClassCompetitionRemoteLines(
@@ -4290,9 +4398,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _animationEffects?.TerminateMotionBlurAnimation(
-                _packetOwnedActiveEffectMotionBlurId,
-                Environment.TickCount);
+            _animationEffects?.RemoveMotionBlurAnimation(_packetOwnedActiveEffectMotionBlurId);
             _packetOwnedActiveEffectMotionBlurId = -1;
         }
 
@@ -8884,9 +8990,15 @@ namespace HaCreator.MapSimulator
             int currentTickCount,
             int expectedStopTick,
             bool clientHandleStopped,
+            bool useBackendStopSignal,
             bool backendStopped)
         {
-            if (clientHandleStopped || backendStopped)
+            if (clientHandleStopped)
+            {
+                return true;
+            }
+
+            if (useBackendStopSignal && backendStopped)
             {
                 return true;
             }
@@ -8917,11 +9029,13 @@ namespace HaCreator.MapSimulator
             bool clientHandleStopped = IsPacketOwnedRadioClientHandleStopped(
                 _lastPacketOwnedRadioClientPlaybackPositionMs,
                 _lastPacketOwnedRadioClientTrackDurationMs);
+            bool useBackendStopSignal = !HasPacketOwnedRadioClientTrackDuration(_lastPacketOwnedRadioClientTrackDurationMs);
             bool backendStopped = _packetOwnedRadioAudio?.State == Microsoft.Xna.Framework.Audio.SoundState.Stopped;
             if (ShouldCompletePacketOwnedRadioSchedule(
                     currentTickCount,
                     _lastPacketOwnedRadioExpectedStopTick,
                     clientHandleStopped,
+                    useBackendStopSignal,
                     backendStopped))
             {
                 StopPacketOwnedRadioSchedule(completed: true, emitChatNotice: true);
@@ -9282,7 +9396,10 @@ namespace HaCreator.MapSimulator
             string firstPoll = _lastPacketOwnedRadioExpectedStopTick == int.MinValue
                 ? "immediate fallback"
                 : $"{Math.Max(0, unchecked(ResolvePacketOwnedRadioFirstCompletionPollTick(_lastPacketOwnedRadioExpectedStopTick) - _lastPacketOwnedRadioStartTick)) / 1000f:0.000}s from session start";
-            return $"Update cadence: CRadioManager seeds m_tLastUpdate from get_update_time() - ms_position + ms_length, then checks status once tCur-m_tLastUpdate > {PacketOwnedRadioUpdatePollIntervalMs} ms; simulator now mirrors that remaining-runtime schedule ({expectedStop} stop, first poll at {firstPoll}) and treats the expected-stop cadence as the completion fallback if the MonoGame backend state lags.";
+            string backendStatusGate = HasPacketOwnedRadioClientTrackDuration(_lastPacketOwnedRadioClientTrackDurationMs)
+                ? "backend-stopped is observational only while client ms_length is known"
+                : "backend-stopped may terminate when client ms_length is unavailable";
+            return $"Update cadence: CRadioManager seeds m_tLastUpdate from get_update_time() - ms_position + ms_length, then checks status once tCur-m_tLastUpdate > {PacketOwnedRadioUpdatePollIntervalMs} ms; simulator now mirrors that remaining-runtime schedule ({expectedStop} stop, first poll at {firstPoll}), with {backendStatusGate}, and keeps expected-stop cadence as fallback.";
         }
 
         private string DescribePacketOwnedRadioMutationAuthorshipState()

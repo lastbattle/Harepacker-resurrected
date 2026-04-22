@@ -1419,6 +1419,7 @@ namespace HaCreator.MapSimulator
                                     _gameState.PendingPortalName = null;
                                     _gameState.PendingPortalNameCandidates = Array.Empty<string>();
                                     _gameState.PendingPortalIndex = -1;
+                                    ConsumePassiveTransferRequestFromTransferLifecycle();
                                     _portalFadeState = PortalFadeState.FadingIn;
                                     _screenEffects.FadeIn(PORTAL_FADE_DURATION_MS, currTickCount);
                                     return true;
@@ -1481,6 +1482,7 @@ namespace HaCreator.MapSimulator
                             _gameState.PendingPortalName = null;
                             _gameState.PendingPortalNameCandidates = Array.Empty<string>();
                             _gameState.PendingPortalIndex = -1;
+                            ConsumePassiveTransferRequestFromTransferLifecycle();
 
 
 

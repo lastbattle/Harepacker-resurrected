@@ -978,7 +978,25 @@ namespace HaCreator.MapSimulator.Character
 
         private static void MergeMissingAnimations(CharacterPart targetPart, CharacterPart sourcePart)
         {
-            if (targetPart?.Animations == null || sourcePart?.Animations == null)
+            if (targetPart == null || sourcePart == null)
+            {
+                return;
+            }
+
+            if (targetPart.AvailableAnimations == null)
+            {
+                targetPart.AvailableAnimations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            foreach (string availableAction in sourcePart.AvailableAnimations ?? Enumerable.Empty<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(availableAction))
+                {
+                    targetPart.AvailableAnimations.Add(availableAction);
+                }
+            }
+
+            if (targetPart.Animations == null || sourcePart.Animations == null)
             {
                 return;
             }
@@ -990,6 +1008,11 @@ namespace HaCreator.MapSimulator.Character
                     targetPart.Animations[sourceAnimation.Key] = sourceAnimation.Value;
                 }
             }
+        }
+
+        internal static void MergeMissingAnimationsForTesting(CharacterPart targetPart, CharacterPart sourcePart)
+        {
+            MergeMissingAnimations(targetPart, sourcePart);
         }
 
         public PortableChair LoadPortableChair(int itemId)
@@ -3759,6 +3782,8 @@ namespace HaCreator.MapSimulator.Character
                 47 => "claw",
                 48 => "knuckle",
                 49 => "gun",
+                50 => "shovel",
+                51 => "pickaxe",
                 52 => "double bowgun",
                 53 => "cannon",
                 56 => "shining rod",

@@ -41,6 +41,7 @@ using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -3337,7 +3338,7 @@ namespace HaCreator.MapSimulator
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
-                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.DescribeStatus()}");
+                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{DescribeGuildBossOfficialSessionBridgeStatus()}");
                         }
 
 
@@ -3384,9 +3385,15 @@ namespace HaCreator.MapSimulator
                             }
 
 
-                            return _guildBossOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startMessage)
-                                ? ChatCommandHandler.CommandResult.Ok(startMessage)
-                                : ChatCommandHandler.CommandResult.Error(startMessage);
+                            _guildBossOfficialSessionBridgeEnabled = true;
+                            _guildBossOfficialSessionBridgeUseDiscovery = false;
+                            _guildBossOfficialSessionBridgeConfiguredListenPort = listenPort;
+                            _guildBossOfficialSessionBridgeConfiguredRemoteHost = args[3];
+                            _guildBossOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                            _guildBossOfficialSessionBridgeConfiguredProcessSelector = null;
+                            _guildBossOfficialSessionBridgeConfiguredLocalPort = null;
+                            EnsureGuildBossOfficialSessionBridgeState(shouldRun: true);
+                            return ChatCommandHandler.CommandResult.Ok(DescribeGuildBossOfficialSessionBridgeStatus());
 
                         }
 
@@ -3417,13 +3424,23 @@ namespace HaCreator.MapSimulator
 
 
 
-                            return _guildBossOfficialSessionBridge.TryAttachEstablishedSession(
+                            bool attached = _guildBossOfficialSessionBridge.TryAttachEstablishedSession(
                                     attachRemotePort,
                                     attachProcessSelector,
                                     attachLocalPortFilter,
-                                    out string attachStatus)
-                                ? ChatCommandHandler.CommandResult.Ok(attachStatus)
-                                : ChatCommandHandler.CommandResult.Error(attachStatus);
+                                    out string attachStatus);
+                            if (!attached)
+                            {
+                                return ChatCommandHandler.CommandResult.Error(attachStatus);
+                            }
+
+                            _guildBossOfficialSessionBridgeEnabled = false;
+                            _guildBossOfficialSessionBridgeUseDiscovery = false;
+                            _guildBossOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                            _guildBossOfficialSessionBridgeConfiguredRemotePort = 0;
+                            _guildBossOfficialSessionBridgeConfiguredProcessSelector = null;
+                            _guildBossOfficialSessionBridgeConfiguredLocalPort = null;
+                            return ChatCommandHandler.CommandResult.Ok($"{attachStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}");
 
                         }
 
@@ -3455,14 +3472,26 @@ namespace HaCreator.MapSimulator
 
 
 
-                            return _guildBossOfficialSessionBridge.TryAttachEstablishedSessionAndStartProxy(
+                            bool proxyAttached = _guildBossOfficialSessionBridge.TryAttachEstablishedSessionAndStartProxy(
                                     attachProxyListenPort,
                                     attachProxyRemotePort,
                                     attachProxyProcessSelector,
                                     attachProxyLocalPortFilter,
-                                    out string attachProxyStatus)
-                                ? ChatCommandHandler.CommandResult.Ok(attachProxyStatus)
-                                : ChatCommandHandler.CommandResult.Error(attachProxyStatus);
+                                    out string attachProxyStatus);
+                            if (!proxyAttached)
+                            {
+                                return ChatCommandHandler.CommandResult.Error(attachProxyStatus);
+                            }
+
+                            _guildBossOfficialSessionBridgeEnabled = true;
+                            _guildBossOfficialSessionBridgeUseDiscovery = true;
+                            _guildBossOfficialSessionBridgeConfiguredListenPort = attachProxyListenPort;
+                            _guildBossOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                            _guildBossOfficialSessionBridgeConfiguredRemotePort = attachProxyRemotePort;
+                            _guildBossOfficialSessionBridgeConfiguredProcessSelector = attachProxyProcessSelector;
+                            _guildBossOfficialSessionBridgeConfiguredLocalPort = attachProxyLocalPortFilter;
+                            _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt = 0;
+                            return ChatCommandHandler.CommandResult.Ok($"{attachProxyStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}");
                         }
 
 
@@ -3493,16 +3522,31 @@ namespace HaCreator.MapSimulator
 
 
 
+                            _guildBossOfficialSessionBridgeEnabled = true;
+                            _guildBossOfficialSessionBridgeUseDiscovery = true;
+                            _guildBossOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                            _guildBossOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                            _guildBossOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                            _guildBossOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                            _guildBossOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
+                            _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt = 0;
+
                             return _guildBossOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
-                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                ? ChatCommandHandler.CommandResult.Ok($"{startStatus} {DescribeGuildBossOfficialSessionBridgeStatus()}")
                                 : ChatCommandHandler.CommandResult.Error(startStatus);
                         }
 
 
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
                         {
+                            _guildBossOfficialSessionBridgeEnabled = false;
+                            _guildBossOfficialSessionBridgeUseDiscovery = false;
+                            _guildBossOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                            _guildBossOfficialSessionBridgeConfiguredRemotePort = 0;
+                            _guildBossOfficialSessionBridgeConfiguredProcessSelector = null;
+                            _guildBossOfficialSessionBridgeConfiguredLocalPort = null;
                             _guildBossOfficialSessionBridge.Stop();
-                            return ChatCommandHandler.CommandResult.Ok(_guildBossOfficialSessionBridge.LastStatus);
+                            return ChatCommandHandler.CommandResult.Ok(DescribeGuildBossOfficialSessionBridgeStatus());
                         }
 
 
