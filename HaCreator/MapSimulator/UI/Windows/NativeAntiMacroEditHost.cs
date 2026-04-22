@@ -575,7 +575,7 @@ namespace HaCreator.MapSimulator.UI
         {
             int caretIndex = GetCaretIndex();
             IntPtr packedPosition = SendMessage(_editHandle, EmPosFromChar, IntPtr.Zero, new IntPtr(caretIndex));
-            int packed = packedPosition.ToInt32();
+            int packed = ExtractLowInt32(packedPosition);
             int x = (short)(packed & 0xFFFF);
             int y = (short)((packed >> 16) & 0xFFFF);
             return ResolveClientOwnedCaretPoint(x, y, width, height);
@@ -627,14 +627,14 @@ namespace HaCreator.MapSimulator.UI
 
         private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
-            int virtualKey = wParam.ToInt32();
+            int virtualKey = ExtractLowInt32(wParam);
             if (msg == WmGetDlgCode)
             {
                 IntPtr originalResult = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
-                return new IntPtr(originalResult.ToInt32() | GetClientOwnedAntiMacroDialogCode());
+                return new IntPtr(ExtractLowInt32(originalResult) | GetClientOwnedAntiMacroDialogCode());
             }
 
-            int clientLParam = lParam.ToInt32();
+            int clientLParam = ExtractLowInt32(lParam);
             (bool controlHeld, bool shiftHeld) = ResolveClientOwnedModifierState(
                 clientLParam,
                 IsControlKeyDown(),
@@ -1268,7 +1268,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int packed = lParam.ToInt32();
+            int packed = ExtractLowInt32(lParam);
             int localX = (short)(packed & 0xFFFF);
             int localY = (short)((packed >> 16) & 0xFFFF);
             int caretIndex = ResolveCaretIndexFromClientPoint(localX, localY);
@@ -1332,9 +1332,14 @@ namespace HaCreator.MapSimulator.UI
 
         private static void DecodeClientMousePoint(IntPtr lParam, out int localX, out int localY)
         {
-            int packed = lParam.ToInt32();
+            int packed = ExtractLowInt32(lParam);
             localX = (short)(packed & 0xFFFF);
             localY = (short)((packed >> 16) & 0xFFFF);
+        }
+
+        private static int ExtractLowInt32(IntPtr value)
+        {
+            return unchecked((int)value.ToInt64());
         }
 
         private int ResolveCaretIndexFromClientPoint(int localX, int localY)
