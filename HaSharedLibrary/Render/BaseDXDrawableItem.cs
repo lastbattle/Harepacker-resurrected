@@ -1,6 +1,7 @@
-﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
@@ -35,6 +36,10 @@ namespace HaSharedLibrary.Render.DX
         // Visibility culling (calculated once per frame in Update, used in Draw)
         private bool _isVisible = true;
         private int _lastVisibilityCheckFrame = -1;
+        private int _boundsLeft;
+        private int _boundsTop;
+        private int _boundsRight;
+        private int _boundsBottom;
 
         /// <summary>
         /// Whether this object is currently visible (within view frustum).
@@ -107,6 +112,7 @@ namespace HaSharedLibrary.Render.DX
             }
             this.flip = flip;
             this._Position = Point.Zero; // Use static Point.Zero instead of new
+            InitializeFrameBounds();
         }
 
         /// <summary>
@@ -121,6 +127,76 @@ namespace HaSharedLibrary.Render.DX
             this.flip = flip;
 
            this._Position = new Point(0, 0);
+            InitializeFrameBounds();
+        }
+
+        private void InitializeFrameBounds()
+        {
+            bool hasBounds = false;
+            int minX = 0;
+            int minY = 0;
+            int maxX = 0;
+            int maxY = 0;
+
+            if (notAnimated)
+            {
+                UpdateBoundsWithFrame(frame0, ref hasBounds, ref minX, ref minY, ref maxX, ref maxY);
+            }
+            else if (frames != null)
+            {
+                for (int i = 0; i < frames.Length; i++)
+                {
+                    UpdateBoundsWithFrame(frames[i], ref hasBounds, ref minX, ref minY, ref maxX, ref maxY);
+                }
+            }
+
+            if (!hasBounds)
+            {
+                minX = 0;
+                minY = 0;
+                maxX = 1;
+                maxY = 1;
+            }
+
+            _boundsLeft = minX;
+            _boundsTop = minY;
+            _boundsRight = maxX;
+            _boundsBottom = maxY;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void UpdateBoundsWithFrame(
+            IDXObject frame,
+            ref bool hasBounds,
+            ref int minX,
+            ref int minY,
+            ref int maxX,
+            ref int maxY)
+        {
+            if (frame == null)
+                return;
+
+            int frameWidth = frame.Width > 0 ? frame.Width : 1;
+            int frameHeight = frame.Height > 0 ? frame.Height : 1;
+            int frameLeft = frame.X;
+            int frameTop = frame.Y;
+            int frameRight = frameLeft + frameWidth;
+            int frameBottom = frameTop + frameHeight;
+
+            if (!hasBounds)
+            {
+                hasBounds = true;
+                minX = frameLeft;
+                minY = frameTop;
+                maxX = frameRight;
+                maxY = frameBottom;
+                return;
+            }
+
+            if (frameLeft < minX) minX = frameLeft;
+            if (frameTop < minY) minY = frameTop;
+            if (frameRight > maxX) maxX = frameRight;
+            if (frameBottom > maxY) maxY = frameBottom;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -166,7 +242,7 @@ namespace HaSharedLibrary.Render.DX
             else
                 drawFrame = GetCurrentFrame(TickCount);
 
-            if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, renderParameters.RenderWidth, renderParameters.RenderHeight))
+            if (IsFrameWithinView(drawFrame, shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y, renderParameters.RenderWidth, renderParameters.RenderHeight))
             {
                 drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
@@ -220,17 +296,17 @@ namespace HaSharedLibrary.Render.DX
 
             _lastVisibilityCheckFrame = frameNumber;
 
-            IDXObject frame = notAnimated ? frame0 : (frames != null && frames.Length > 0 ? frames[0] : null);
-            if (frame == null)
-            {
-                _isVisible = false;
-                return;
-            }
-
             int shiftCenteredX = mapShiftX - centerX;
             int shiftCenteredY = mapShiftY - centerY;
+            int adjustedLeft = _boundsLeft - shiftCenteredX + _Position.X;
+            int adjustedTop = _boundsTop - shiftCenteredY + _Position.Y;
+            int adjustedRight = _boundsRight - shiftCenteredX + _Position.X;
+            int adjustedBottom = _boundsBottom - shiftCenteredY + _Position.Y;
 
-            _isVisible = IsFrameWithinView(frame, shiftCenteredX, shiftCenteredY, viewWidth, viewHeight);
+            _isVisible = adjustedRight >= 0 &&
+                         adjustedBottom >= 0 &&
+                         adjustedLeft <= viewWidth &&
+                         adjustedTop <= viewHeight;
         }
 
         /// <summary>
@@ -238,6 +314,19 @@ namespace HaSharedLibrary.Render.DX
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetVisible(bool visible) => _isVisible = visible;
+
+        /// <summary>
+        /// Gets the world-space bounds that cover all frames for this drawable.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Rectangle GetWorldBounds()
+        {
+            int left = _boundsLeft + _Position.X;
+            int top = _boundsTop + _Position.Y;
+            int width = Math.Max(1, _boundsRight - _boundsLeft);
+            int height = Math.Max(1, _boundsBottom - _boundsTop);
+            return new Rectangle(left, top, width, height);
+        }
 
         /// <summary>
         /// Copies the X and Y position from copySrc

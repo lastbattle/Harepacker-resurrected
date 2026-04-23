@@ -56,10 +56,26 @@ namespace HaCreator.MapSimulator.Pools
         /// Gets the cell index for a world position
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int FloorDiv(int value, int divisor)
+        {
+            int quotient = value / divisor;
+            int remainder = value % divisor;
+            if (remainder != 0 && value < 0)
+            {
+                quotient--;
+            }
+
+            return quotient;
+        }
+
+        /// <summary>
+        /// Gets the cell index for a world position
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int GetCellIndex(int worldX, int worldY)
         {
-            int cellX = (worldX - _offsetX) / _cellSize;
-            int cellY = (worldY - _offsetY) / _cellSize;
+            int cellX = FloorDiv(worldX - _offsetX, _cellSize);
+            int cellY = FloorDiv(worldY - _offsetY, _cellSize);
 
             // Clamp to valid range
             cellX = Math.Clamp(cellX, 0, _gridWidth - 1);
@@ -74,8 +90,8 @@ namespace HaCreator.MapSimulator.Pools
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private (int cellX, int cellY) GetCellCoords(int worldX, int worldY)
         {
-            int cellX = (worldX - _offsetX) / _cellSize;
-            int cellY = (worldY - _offsetY) / _cellSize;
+            int cellX = FloorDiv(worldX - _offsetX, _cellSize);
+            int cellY = FloorDiv(worldY - _offsetY, _cellSize);
             return (Math.Clamp(cellX, 0, _gridWidth - 1), Math.Clamp(cellY, 0, _gridHeight - 1));
         }
 
