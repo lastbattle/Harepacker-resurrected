@@ -380,6 +380,8 @@ namespace HaCreator.MapSimulator
         private readonly NpcFeedbackBalloonQueue _npcQuestFeedback = new();
         private string _activeNpcQuestFeedbackActionName;
         private int _lastNpcClientActionSelectionContextStamp = int.MinValue;
+        private int _npcQuestAlertKindCacheStamp = int.MinValue;
+        private readonly Dictionary<int, NpcInteractionEntryKind?> _npcQuestAlertKindCache = new();
         private const int NpcQuestAlertVerticalGap = 4;
         private readonly Random _npcIdleSpeechRandom = new();
         private readonly Random _setupConsumeItemRandom = new();
@@ -21572,9 +21574,11 @@ namespace HaCreator.MapSimulator
 
 
 
-            for (int i = 0; i < _npcsArray.Length; i++)
+            NpcItem[] npcsToCheck = _visibleNpcs ?? _npcsArray;
+            int npcCount = _visibleNpcs != null ? _visibleNpcsCount : _npcsArray.Length;
+            for (int i = 0; i < npcCount; i++)
             {
-                NpcItem npc = _npcsArray[i];
+                NpcItem npc = npcsToCheck[i];
                 if (npc.ContainsMapPoint(mouseMapX, mouseMapY))
                 {
                     mouseCursor.SetMouseCursorMovedToNpc();
@@ -26227,16 +26231,18 @@ namespace HaCreator.MapSimulator
 
 
 
-            for (int i = 0; i < _npcsArray.Length; i++)
+            NpcItem[] npcsToCheck = _visibleNpcs ?? _npcsArray;
+            int npcCount = _visibleNpcs != null ? _visibleNpcsCount : _npcsArray.Length;
+            for (int i = 0; i < npcCount; i++)
             {
-                NpcItem npc = _npcsArray[i];
+                NpcItem npc = npcsToCheck[i];
                 if (npc == null)
                 {
                     continue;
                 }
 
 
-                NpcInteractionEntryKind? alertKind = _questRuntime.GetNpcQuestAlertKind(npc, _playerManager.Player.Build);
+                NpcInteractionEntryKind? alertKind = ResolveCachedNpcQuestAlertKind(npc);
                 Texture2D alertTexture = GetNpcQuestAlertTexture(alertKind);
                 if (alertTexture == null)
                 {
@@ -26582,6 +26588,39 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private NpcInteractionEntryKind? ResolveCachedNpcQuestAlertKind(NpcItem npc)
+        {
+            CharacterBuild build = _playerManager?.Player?.Build;
+            if (npc == null || _questRuntime == null || build == null)
+            {
+                return null;
+            }
+
+
+            if (_npcQuestAlertKindCacheStamp != _lastNpcClientActionSelectionContextStamp)
+            {
+                _npcQuestAlertKindCacheStamp = _lastNpcClientActionSelectionContextStamp;
+                _npcQuestAlertKindCache.Clear();
+            }
+
+
+            if (!int.TryParse(npc.NpcInstance?.NpcInfo?.ID, out int npcId) || npcId <= 0)
+            {
+                return _questRuntime.GetNpcQuestAlertKind(npc, build);
+            }
+
+
+            if (_npcQuestAlertKindCache.TryGetValue(npcId, out NpcInteractionEntryKind? cachedKind))
+            {
+                return cachedKind;
+            }
+
+
+            NpcInteractionEntryKind? resolvedKind = _questRuntime.GetNpcQuestAlertKind(npc, build);
+            _npcQuestAlertKindCache[npcId] = resolvedKind;
+            return resolvedKind;
+        }
+
 
         private MinimapUI.NpcMarkerType ResolveMinimapNpcMarkerType(NpcItem npc)
         {
@@ -26591,7 +26630,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            NpcInteractionEntryKind? alertKind = _questRuntime.GetNpcQuestAlertKind(npc, _playerManager.Player.Build);
+            NpcInteractionEntryKind? alertKind = ResolveCachedNpcQuestAlertKind(npc);
             return alertKind switch
             {
                 NpcInteractionEntryKind.AvailableQuest => MinimapUI.NpcMarkerType.QuestStart,
@@ -26853,7 +26892,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            NpcInteractionEntryKind? alertKind = _questRuntime.GetNpcQuestAlertKind(npc, _playerManager.Player.Build);
+            NpcInteractionEntryKind? alertKind = ResolveCachedNpcQuestAlertKind(npc);
             return alertKind switch
             {
                 NpcInteractionEntryKind.AvailableQuest => "Quest available",
@@ -28143,9 +28182,11 @@ namespace HaCreator.MapSimulator
                 return null;
 
 
-            for (int i = 0; i < _npcsArray.Length; i++)
+            NpcItem[] npcsToCheck = _visibleNpcs ?? _npcsArray;
+            int npcCount = _visibleNpcs != null ? _visibleNpcsCount : _npcsArray.Length;
+            for (int i = 0; i < npcCount; i++)
             {
-                NpcItem npc = _npcsArray[i];
+                NpcItem npc = npcsToCheck[i];
                 if (npc != null && npc.ContainsMapPoint(mapX, mapY))
                     return npc;
             }
