@@ -2171,11 +2171,55 @@ namespace HaCreator.MapSimulator.Loaders
                 questStateProvider,
                 questRecordValueProvider,
                 requestedClientActionSetIndex);
-            if (animationSet.IsHiddenToLocalUser)
-                return null;
+            if (animationSet.IsHiddenToLocalUser || animationSet.ActionCount == 0)
+            {
+                // Fallback for maps where automatic NPC action-set selection resolves
+                // to a hidden/empty conditional branch.
+                NpcAnimationSet rootAnimationSet = NpcClientActionSetLoader.LoadAnimationSet(
+                    texturePool,
+                    npcInstance,
+                    device,
+                    usedProps,
+                    localPlayerGender,
+                    hasQuestCheckContext,
+                    questStateProvider,
+                    questRecordValueProvider,
+                    NpcClientActionSetLoader.RootClientActionSetIndex);
 
-            if (animationSet.ActionCount == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(
-                return null;
+                if (!rootAnimationSet.IsHiddenToLocalUser && rootAnimationSet.ActionCount > 0)
+                {
+                    animationSet = rootAnimationSet;
+                }
+                else
+                {
+                    WzCanvasProperty fallbackCanvas = WzInfoTools.GetNpcImage(source);
+                    List<IDXObject> fallbackFrames = fallbackCanvas != null
+                        ? MapSimulatorLoader.LoadFrames(
+                            texturePool,
+                            fallbackCanvas,
+                            npcInstance.X,
+                            npcInstance.Y,
+                            device,
+                            usedProps,
+                            fallbackDelay: NpcClientActionSetLoader.DefaultNpcFrameDelay)
+                        : new List<IDXObject>();
+
+                    if (fallbackFrames.Count > 0)
+                    {
+                        var fallbackAnimationSet = new NpcAnimationSet
+                        {
+                            ClientActionSetIndex = NpcClientActionSetLoader.RootClientActionSetIndex,
+                            IsHiddenToLocalUser = false
+                        };
+                        fallbackAnimationSet.AddAnimation(AnimationKeys.Stand, fallbackFrames);
+                        animationSet = fallbackAnimationSet;
+                    }
+                    else
+                    {
+                        return null;
+                    }
+                }
+            }
 
             NameTooltipItem nameTooltip = null;
             NameTooltipItem npcDescTooltip = null;
