@@ -2019,16 +2019,20 @@ namespace HaCreator.MapSimulator.Character
                 : int.MaxValue;
         }
 
-        private static bool IsClientConfirmedMorphActionName(string actionName)
+        internal static bool IsClientConfirmedMorphActionName(string actionName)
         {
             if (!CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
             {
                 return false;
             }
 
+            if (rawActionCode == ClientMorphActionTableSkippedRawActionCode)
+            {
+                return false;
+            }
+
             if (rawActionCode >= 0
-                && rawActionCode < ClientMorphActionTableExclusiveUpperBound
-                && rawActionCode != ClientMorphActionTableSkippedRawActionCode)
+                && rawActionCode < ClientMorphActionTableExclusiveUpperBound)
             {
                 return true;
             }

@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Animation
             public bool HasAlphaRange { get; init; }
             public byte AlphaStart { get; init; } = byte.MaxValue;
             public byte AlphaEnd { get; init; } = byte.MaxValue;
+            public bool HasLayerZ { get; init; }
             public int LayerZ { get; init; }
 
             public Rectangle EffectiveBodyBounds

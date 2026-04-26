@@ -140,7 +140,9 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, AnimationDisplayerRemoteMobAttackHitOwnerState> _animationDisplayerRemoteMobAttackHitOwnerStates = new();
         private readonly Dictionary<int, AnimationDisplayerReservedRemoteUtilityActionOwnerState> _animationDisplayerReservedRemoteUtilityActionOwnerStates = new();
         private readonly Dictionary<int, Dictionary<string, AnimationDisplayerRemoteHookingChainOwnerState>> _animationDisplayerRemoteHookingChainOwnerStates = new();
+        private readonly Dictionary<int, Dictionary<string, AnimationDisplayerRemoteSkillUseOwnerState>> _animationDisplayerRemoteSkillUseOwnerStates = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
+        private readonly List<AnimationDisplayerPendingReservedOwnerEffect> _animationDisplayerPendingReservedOwnerEffects = new();
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
         private int _animationDisplayerSessionValueCoolRank;
@@ -260,6 +262,27 @@ namespace HaCreator.MapSimulator
             public bool OwnerFacingRight { get; init; }
             public int AnimationStartTime { get; init; }
             public int DurationMs { get; init; }
+        }
+
+        private sealed class AnimationDisplayerRemoteSkillUseOwnerState
+        {
+            public int SkillId { get; init; }
+            public string BranchName { get; init; }
+            public int VariantIndex { get; init; }
+            public string OwnerActionName { get; init; }
+            public bool OwnerFacingRight { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
+
+        private sealed class AnimationDisplayerPendingReservedOwnerEffect
+        {
+            public RemoteUserActorPool.RemoteStringEffectPresentation Presentation { get; init; }
+            public Func<Vector2> GetPosition { get; init; }
+            public string SourceEffectUol { get; init; }
+            public AnimationDisplayerReservedEffectMetadata Metadata { get; init; }
+            public int RegisterTime { get; init; }
+            public AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext OwnerContext { get; init; }
         }
 
         private readonly record struct AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext(
@@ -747,7 +770,9 @@ namespace HaCreator.MapSimulator
             _animationDisplayerRemoteMobAttackHitOwnerStates.Clear();
             _animationDisplayerReservedRemoteUtilityActionOwnerStates.Clear();
             _animationDisplayerRemoteHookingChainOwnerStates.Clear();
+            _animationDisplayerRemoteSkillUseOwnerStates.Clear();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
+            _animationDisplayerPendingReservedOwnerEffects.Clear();
             _animationDisplayerRemoteGrenadeActors.Clear();
             _animationDisplayerLocalQuestDeliveryItemId = 0;
             _animationDisplayerSessionValueCoolRank = 0;
@@ -3002,6 +3027,7 @@ namespace HaCreator.MapSimulator
                 followDefinition);
             Point spawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission, followDefinition);
             Point spawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission, followDefinition);
+            bool usesEquipmentEmission = followDefinition?.UsesRelativeEmission ?? false;
             followId = _animationEffects.AddFollow(
                 frames,
                 getFollowTargetPosition,
@@ -3030,7 +3056,10 @@ namespace HaCreator.MapSimulator
                     IsTargetMoveAction = spawnOnlyOnOwnerMove ? getOwnerMoveAction : null,
                     SpawnArea = followDefinition?.EmissionArea ?? BuildAnimationDisplayerFollowEmissionArea(),
                     SpawnUsesEmissionBox = !relativeEmission,
-                    SpawnAppliesEmissionBias = relativeEmission && (followDefinition?.UsesRelativeEmission ?? true),
+                    SpawnAppliesEmissionBias = followDefinition == null
+                        ? relativeEmission
+                        : usesEquipmentEmission,
+                    SpawnUsesEmissionTravelDistance = usesEquipmentEmission,
                     SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
                     SpawnDurationMs = followDefinition?.SpawnDurationMs ?? 0,
                     SpawnOffsetMin = spawnOffsetMin,
@@ -3594,6 +3623,22 @@ namespace HaCreator.MapSimulator
                     presentation.CurrentTime,
                     reservedMetadata.StartDelayMs);
 
+                if (ShouldDeferAnimationDisplayerReservedOwnerEffect(
+                        presentation.CurrentTime,
+                        registerTime,
+                        reservedMetadata.StartDelayMs))
+                {
+                    QueueAnimationDisplayerPendingReservedOwnerEffect(
+                        presentation,
+                        getPosition,
+                        effectUol,
+                        reservedMetadata,
+                        registerTime,
+                        ownerContext);
+                    consumedReservedEntry = true;
+                    continue;
+                }
+
                 if (TryApplyAnimationDisplayerReservedRemoteUtilityOwnerEffect(
                         presentation,
                         getPosition,
@@ -3648,6 +3693,59 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private void QueueAnimationDisplayerPendingReservedOwnerEffect(
+            RemoteUserActorPool.RemoteStringEffectPresentation presentation,
+            Func<Vector2> getPosition,
+            string sourceEffectUol,
+            AnimationDisplayerReservedEffectMetadata metadata,
+            int registerTime,
+            AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext ownerContext)
+        {
+            if (getPosition == null)
+            {
+                return;
+            }
+
+            _animationDisplayerPendingReservedOwnerEffects.Add(
+                new AnimationDisplayerPendingReservedOwnerEffect
+                {
+                    Presentation = presentation,
+                    GetPosition = getPosition,
+                    SourceEffectUol = sourceEffectUol,
+                    Metadata = metadata,
+                    RegisterTime = registerTime,
+                    OwnerContext = ownerContext
+                });
+        }
+
+        internal static bool ShouldDeferAnimationDisplayerReservedOwnerEffect(
+            int currentTime,
+            int registerTime,
+            int startDelayMs)
+        {
+            return startDelayMs > 0 && currentTime <= registerTime;
+        }
+
+        internal static bool ShouldApplyAnimationDisplayerPendingReservedOwnerEffect(
+            int currentTime,
+            int registerTime)
+        {
+            return currentTime > registerTime;
+        }
+
+        private static AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext ResolveAnimationDisplayerDelayedReservedOwnerContext(
+            AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext ownerContext,
+            int registerTime)
+        {
+            return new AnimationDisplayerRemotePacketOwnedStringEffectOwnerContext(
+                ownerContext.CharacterId,
+                ownerContext.EffectType,
+                ownerContext.EffectUol,
+                ownerContext.OwnerActionName,
+                ownerContext.OwnerFacingRight,
+                registerTime);
         }
 
         private bool TryApplyAnimationDisplayerReservedRemoteUtilityOwnerEffect(
@@ -4288,6 +4386,7 @@ namespace HaCreator.MapSimulator
 
         private void UpdateAnimationDisplayerRemoteGrenades(int currentTime)
         {
+            UpdateAnimationDisplayerPendingReservedOwnerEffects(currentTime);
             UpdateAnimationDisplayerReservedRemoteUtilityActionOwners(currentTime);
             if (_animationDisplayerRemoteGrenadeActors.Count == 0)
             {
@@ -4299,6 +4398,38 @@ namespace HaCreator.MapSimulator
             _animationDisplayerRemoteGrenadeActors.RemoveAll(actor =>
                 actor == null
                 || actor.IsExpired(currentTime));
+        }
+
+        private void UpdateAnimationDisplayerPendingReservedOwnerEffects(int currentTime)
+        {
+            if (_animationDisplayerPendingReservedOwnerEffects.Count <= 0)
+            {
+                return;
+            }
+
+            for (int i = _animationDisplayerPendingReservedOwnerEffects.Count - 1; i >= 0; i--)
+            {
+                AnimationDisplayerPendingReservedOwnerEffect pending = _animationDisplayerPendingReservedOwnerEffects[i];
+                if (pending == null)
+                {
+                    _animationDisplayerPendingReservedOwnerEffects.RemoveAt(i);
+                    continue;
+                }
+
+                if (!ShouldApplyAnimationDisplayerPendingReservedOwnerEffect(currentTime, pending.RegisterTime))
+                {
+                    continue;
+                }
+
+                TryApplyAnimationDisplayerReservedRemoteUtilityOwnerEffect(
+                    pending.Presentation,
+                    pending.GetPosition,
+                    pending.SourceEffectUol,
+                    pending.Metadata,
+                    currentTime,
+                    ResolveAnimationDisplayerDelayedReservedOwnerContext(pending.OwnerContext, currentTime));
+                _animationDisplayerPendingReservedOwnerEffects.RemoveAt(i);
+            }
         }
 
         private void UpdateAnimationDisplayerReservedRemoteUtilityActionOwners(int currentTime)
@@ -4529,6 +4660,7 @@ namespace HaCreator.MapSimulator
             _animationDisplayerRemotePacketOwnedStringEffectOwnerStates.Remove(characterId);
             _animationDisplayerRemoteMobAttackHitOwnerStates.Remove(characterId);
             _animationDisplayerRemoteHookingChainOwnerStates.Remove(characterId);
+            _animationDisplayerRemoteSkillUseOwnerStates.Remove(characterId);
             _animationEffects.RemoveUserState(characterId, currTickCount);
             ClearAnimationDisplayerRemoteQuestDeliveryOwner(characterId);
         }
@@ -4868,6 +5000,80 @@ namespace HaCreator.MapSimulator
             return initialElapsedMs;
         }
 
+        private int ResolveAnimationDisplayerRemoteSkillUseInitialElapsed(
+            int characterId,
+            int skillId,
+            string branchName,
+            int variantIndex,
+            string ownerActionName,
+            bool ownerFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (characterId <= 0
+                || skillId <= 0
+                || string.IsNullOrWhiteSpace(branchName)
+                || variantIndex < 0
+                || durationMs <= 0)
+            {
+                return 0;
+            }
+
+            string ownerSlotKey = BuildAnimationDisplayerRemoteSkillUseOwnerSlotKey(
+                skillId,
+                branchName,
+                variantIndex);
+            if (string.IsNullOrWhiteSpace(ownerSlotKey))
+            {
+                return 0;
+            }
+
+            if (!_animationDisplayerRemoteSkillUseOwnerStates.TryGetValue(
+                    characterId,
+                    out Dictionary<string, AnimationDisplayerRemoteSkillUseOwnerState> ownerStates)
+                || ownerStates == null)
+            {
+                ownerStates = new Dictionary<string, AnimationDisplayerRemoteSkillUseOwnerState>(
+                    StringComparer.OrdinalIgnoreCase);
+                _animationDisplayerRemoteSkillUseOwnerStates[characterId] = ownerStates;
+            }
+
+            int initialElapsedMs = 0;
+            if (ownerStates.TryGetValue(
+                    ownerSlotKey,
+                    out AnimationDisplayerRemoteSkillUseOwnerState existingState)
+                && existingState != null)
+            {
+                initialElapsedMs = ResolveAnimationDisplayerRemoteSkillUseRestoreElapsedCore(
+                    existingState.SkillId,
+                    existingState.BranchName,
+                    existingState.VariantIndex,
+                    existingState.OwnerActionName,
+                    existingState.OwnerFacingRight,
+                    existingState.AnimationStartTime,
+                    skillId,
+                    branchName,
+                    variantIndex,
+                    ownerActionName,
+                    ownerFacingRight,
+                    currentTime,
+                    durationMs);
+            }
+
+            ownerStates[ownerSlotKey] =
+                new AnimationDisplayerRemoteSkillUseOwnerState
+                {
+                    SkillId = skillId,
+                    BranchName = branchName,
+                    VariantIndex = variantIndex,
+                    OwnerActionName = ownerActionName,
+                    OwnerFacingRight = ownerFacingRight,
+                    AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                    DurationMs = durationMs
+                };
+            return initialElapsedMs;
+        }
+
         private int ResolveAnimationDisplayerRemotePacketOwnedStringEffectRestoreElapsed(
             int characterId,
             byte effectType,
@@ -4951,6 +5157,16 @@ namespace HaCreator.MapSimulator
             return skillId <= 0 || mobObjectId <= 0
                 ? string.Empty
                 : $"{skillId}:{mobObjectId}";
+        }
+
+        private static string BuildAnimationDisplayerRemoteSkillUseOwnerSlotKey(
+            int skillId,
+            string branchName,
+            int variantIndex)
+        {
+            return skillId <= 0 || string.IsNullOrWhiteSpace(branchName) || variantIndex < 0
+                ? string.Empty
+                : $"{skillId}:{branchName.Trim()}:{variantIndex}";
         }
 
         internal static int ResolveAnimationDisplayerRemoteHookingChainDurationMsForTesting(int attackWindowMs)
@@ -5162,6 +5378,36 @@ namespace HaCreator.MapSimulator
             return elapsedMs < durationMs ? elapsedMs : 0;
         }
 
+        private static int ResolveAnimationDisplayerRemoteSkillUseRestoreElapsedCore(
+            int previousSkillId,
+            string previousBranchName,
+            int previousVariantIndex,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            int currentSkillId,
+            string currentBranchName,
+            int currentVariantIndex,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            if (durationMs <= 0
+                || previousAnimationStartTime == int.MinValue
+                || previousSkillId != currentSkillId
+                || previousVariantIndex != currentVariantIndex
+                || !string.Equals(previousBranchName, currentBranchName, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(previousActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
+                || previousFacingRight != currentFacingRight)
+            {
+                return 0;
+            }
+
+            int elapsedMs = Math.Max(0, unchecked(currentTime - previousAnimationStartTime));
+            return elapsedMs < durationMs ? elapsedMs : 0;
+        }
+
         internal static int ResolveAnimationDisplayerOneTimeFrameDurationMsForTesting(IReadOnlyList<IDXObject> frames)
         {
             return ResolveAnimationDisplayerOneTimeFrameDurationMs(frames);
@@ -5360,6 +5606,45 @@ namespace HaCreator.MapSimulator
             int mobObjectId)
         {
             return BuildAnimationDisplayerRemoteHookingChainOwnerSlotKey(skillId, mobObjectId);
+        }
+
+        internal static int ResolveAnimationDisplayerRemoteSkillUseRestoreElapsedForTesting(
+            int previousSkillId,
+            string previousBranchName,
+            int previousVariantIndex,
+            string previousActionName,
+            bool previousFacingRight,
+            int previousAnimationStartTime,
+            int currentSkillId,
+            string currentBranchName,
+            int currentVariantIndex,
+            string currentActionName,
+            bool currentFacingRight,
+            int currentTime,
+            int durationMs)
+        {
+            return ResolveAnimationDisplayerRemoteSkillUseRestoreElapsedCore(
+                previousSkillId,
+                previousBranchName,
+                previousVariantIndex,
+                previousActionName,
+                previousFacingRight,
+                previousAnimationStartTime,
+                currentSkillId,
+                currentBranchName,
+                currentVariantIndex,
+                currentActionName,
+                currentFacingRight,
+                currentTime,
+                durationMs);
+        }
+
+        internal static string BuildAnimationDisplayerRemoteSkillUseOwnerSlotKeyForTesting(
+            int skillId,
+            string branchName,
+            int variantIndex)
+        {
+            return BuildAnimationDisplayerRemoteSkillUseOwnerSlotKey(skillId, branchName, variantIndex);
         }
 
         private bool TryGetAnimationDisplayerFrames(string cacheKey, string effectUol, out List<IDXObject> frames)
@@ -5960,6 +6245,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            RemoteUserActor remoteOwner = null;
+            bool hasRemoteOwnerContext =
+                _remoteUserPool?.TryGetActor(ownerCharacterId, out remoteOwner) == true
+                && remoteOwner != null;
+            string remoteOwnerActionName = hasRemoteOwnerContext
+                ? ResolveAnimationDisplayerRemotePacketOwnedActionName(remoteOwner)
+                : null;
+            bool remoteOwnerFacingRight = hasRemoteOwnerContext
+                ? remoteOwner.FacingRight
+                : branchFacingRight;
             bool registered = false;
             for (int i = 0; i < variants.Count; i++)
             {
@@ -5968,6 +6263,18 @@ namespace HaCreator.MapSimulator
                 {
                     continue;
                 }
+
+                int initialElapsedMs = hasRemoteOwnerContext
+                    ? ResolveAnimationDisplayerRemoteSkillUseInitialElapsed(
+                        ownerCharacterId,
+                        skillId,
+                        branchName,
+                        i,
+                        remoteOwnerActionName,
+                        remoteOwnerFacingRight,
+                        currentTime,
+                        ResolveAnimationDisplayerOneTimeFrameDurationMs(adjustedFrames))
+                    : 0;
 
                 if (branchOwnerPosition != null || branchOwnerFacingRight != null)
                 {
@@ -5978,11 +6285,20 @@ namespace HaCreator.MapSimulator
                         branchX,
                         branchY,
                         branchFacingRight,
-                        currentTime);
+                        currentTime,
+                        initialElapsedMs: initialElapsedMs);
                 }
                 else
                 {
-                    _animationEffects.AddOneTime(adjustedFrames, branchX, branchY, branchFacingRight, currentTime);
+                    _animationEffects.AddOneTimeAttached(
+                        adjustedFrames,
+                        null,
+                        null,
+                        branchX,
+                        branchY,
+                        branchFacingRight,
+                        currentTime,
+                        initialElapsedMs: initialElapsedMs);
                 }
 
                 registered = true;

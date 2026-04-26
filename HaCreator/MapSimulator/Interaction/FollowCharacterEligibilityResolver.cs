@@ -165,6 +165,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (ClientOwnedVehicleSkillClassifier.IsWildHunterJaguarTamingMobItemId(mountItemId)
+                && ClientOwnedVehicleSkillClassifier.IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(actionName))
+            {
+                return false;
+            }
+
             // Unknown action names must only keep ownership on truly authored exact roots.
             return HasPublishedExactTamingMobAction(tamingMobPart, actionName);
         }

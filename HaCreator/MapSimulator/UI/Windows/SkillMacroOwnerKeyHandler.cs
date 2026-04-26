@@ -139,8 +139,9 @@ namespace HaCreator.MapSimulator.UI
                 Keys.C or Keys.V or Keys.X => !controlHeld,
                 Keys.Home or Keys.End => controlHeld,
                 Keys.Down => true,
-                // `CCtrlEdit::OnKey` keeps Insert in the owner edit command path.
-                Keys.Insert => false,
+                // `CCtrlEdit::OnKey` forwards plain Insert to the owner callback;
+                // Shift+Insert stays in the local paste command path.
+                Keys.Insert => !shiftHeld,
                 Keys.Enter or Keys.Left or Keys.Right or Keys.Up => true,
                 _ => true
             };

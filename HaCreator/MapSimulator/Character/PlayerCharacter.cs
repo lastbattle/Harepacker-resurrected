@@ -3054,7 +3054,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            actionStartTime = currentTime - animationElapsedMs;
+            actionStartTime = ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+                currentTime,
+                animationElapsedMs);
             return true;
         }
 
@@ -3067,7 +3069,9 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            int animationElapsedMs = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
+            int animationElapsedMs = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeShadowPartner.CurrentActionStartTime);
             StoreAuxiliaryLayerOwnerCounter(
                 ResolveShadowPartnerActionOwnerName(_activeShadowPartner.CurrentActionName),
                 _activeShadowPartner.SkillId,
@@ -3096,7 +3100,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            startTime = currentTime - animationElapsedMs;
+            startTime = ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+                currentTime,
+                animationElapsedMs);
             return true;
         }
 
@@ -3107,7 +3113,9 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            int animationElapsedMs = Math.Max(0, currentTime - _activeMirrorImage.StartTime);
+            int animationElapsedMs = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeMirrorImage.StartTime);
             StoreAuxiliaryLayerOwnerCounter(
                 MirrorImagePersistentActionOwnerName,
                 _activeMirrorImage.SkillId,
@@ -3136,7 +3144,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            animationStartTime = currentTime - animationElapsedMs;
+            animationStartTime = ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+                currentTime,
+                animationElapsedMs);
             return true;
         }
 
@@ -3152,7 +3162,9 @@ namespace HaCreator.MapSimulator.Character
                 _activeMeleeAfterImage.SkillId,
                 ResolveMeleeAfterImageActionName(_activeMeleeAfterImage.SkillId, _activeMeleeAfterImage.ActionName),
                 _activeMeleeAfterImage.FacingRight,
-                Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime),
+                ResolveClientOwnedAvatarEffectTickElapsedMs(
+                    currentTime,
+                    _activeMeleeAfterImage.AnimationStartTime),
                 currentTime);
         }
 
@@ -4229,7 +4241,9 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
+            int animationTime = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeMeleeAfterImage.AnimationStartTime);
             int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
             int lastFrameElapsedMs = _activeMeleeAfterImage.LastFrameElapsedMs;
             IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = _activeMeleeAfterImage.LastResolvedLayers;
@@ -5917,7 +5931,9 @@ namespace HaCreator.MapSimulator.Character
             IReadOnlyList<AfterimageRenderableLayer> layers = _activeMeleeAfterImage.LastResolvedLayers;
             if (activeAction)
             {
-                int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
+                int animationTime = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                    currentTime,
+                    _activeMeleeAfterImage.AnimationStartTime);
                 int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
                 int lastFrameElapsedMs = _activeMeleeAfterImage.LastFrameElapsedMs;
                 IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = _activeMeleeAfterImage.LastResolvedLayers;
@@ -5937,7 +5953,9 @@ namespace HaCreator.MapSimulator.Character
             }
             else if (_activeMeleeAfterImage.FadeStartTime >= 0)
             {
-                int fadeElapsed = Math.Max(0, currentTime - _activeMeleeAfterImage.FadeStartTime);
+                int fadeElapsed = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                    currentTime,
+                    _activeMeleeAfterImage.FadeStartTime);
                 layers = MeleeAfterimagePlaybackResolver.ResolveFadingRenderableLayers(
                     _activeMeleeAfterImage.AfterImageAction,
                     frameIndex,
@@ -6140,7 +6158,9 @@ namespace HaCreator.MapSimulator.Character
             int horizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(animation);
             int anchorX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
             int anchorY = screenY + clientOffset.Y;
-            int actionElapsedMs = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
+            int actionElapsedMs = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeShadowPartner.CurrentActionStartTime);
             Color frameTint = ShadowPartnerTint * ResolveShadowPartnerFrameAlpha(
                 animation,
                 frame,
@@ -7672,7 +7692,14 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            signature.Add(RuntimeHelpers.GetHashCode(texture.Texture));
+            Texture2D backingTexture = texture.Texture;
+            signature.Add(RuntimeHelpers.GetHashCode(backingTexture));
+            if (backingTexture != null)
+            {
+                signature.Add(backingTexture.Width);
+                signature.Add(backingTexture.Height);
+            }
+
             signature.Add(texture.X);
             signature.Add(texture.Y);
             signature.Add(texture.Width);
@@ -7684,6 +7711,10 @@ namespace HaCreator.MapSimulator.Character
             if (tag is string tagText)
             {
                 signature.Add(tagText, StringComparer.Ordinal);
+            }
+            else if (tag != null)
+            {
+                signature.Add(tag.ToString(), StringComparer.Ordinal);
             }
         }
 
@@ -7702,11 +7733,17 @@ namespace HaCreator.MapSimulator.Character
             }
 
             signature.Add(sourcePart.ItemId);
+            signature.Add(sourcePart.Name, StringComparer.Ordinal);
             signature.Add((int)sourcePart.Type);
             signature.Add((int)sourcePart.Slot);
+            signature.Add(sourcePart.VSlot, StringComparer.Ordinal);
+            signature.Add(sourcePart.ISlot, StringComparer.Ordinal);
+            signature.Add(sourcePart.Sfx, StringComparer.Ordinal);
             signature.Add(sourcePart.IsCash);
+            signature.Add(sourcePart.HasWeeklyVariant);
             signature.Add(sourcePart.UsesWeeklyVariantOverride);
             signature.Add(sourcePart.ResolvedWeeklyVariantIndex);
+            signature.Add(sourcePart.ClientItemToken);
         }
 
         internal static Point ResolveMirrorImageSourceLayerOrigin(Rectangle bounds)
@@ -8112,7 +8149,9 @@ namespace HaCreator.MapSimulator.Character
             }
 
             animation = _activeShadowPartner.CurrentPlaybackAnimation ?? animation;
-            int animationTime = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
+            int animationTime = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeShadowPartner.CurrentActionStartTime);
             if (!ShadowPartnerClientActionResolver.TryGetPlaybackFrameAtTime(animation, animationTime, out frame, out frameElapsedMs))
             {
                 return false;
@@ -8521,7 +8560,9 @@ namespace HaCreator.MapSimulator.Character
                 bool preserveTimingForFacingChange = preserveTimingWhenOnlyFacingChanges
                     || ShadowPartnerClientActionResolver.ShouldPreserveOneShotAlphaLifetimeOnFacingChange(
                         _activeShadowPartner.CurrentPlaybackAnimation,
-                        Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime));
+                        ResolveClientOwnedAvatarEffectTickElapsedMs(
+                            currentTime,
+                            _activeShadowPartner.CurrentActionStartTime));
                 if (preserveTimingForFacingChange)
                 {
                     StoreShadowPartnerActionOwnerCounter(currentTime);
@@ -9119,7 +9160,7 @@ namespace HaCreator.MapSimulator.Character
             int currentTime,
             int transitionStartTime)
         {
-            int elapsedTime = Math.Max(0, currentTime - transitionStartTime);
+            int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, transitionStartTime);
             float progress = MathHelper.Clamp(elapsedTime / (float)MirrorImageTransitionDurationMs, 0f, 1f);
             return new Point(
                 (int)Math.Round(targetOffset.X * progress),
@@ -9162,7 +9203,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static float ResolveMirrorImageAlpha(int currentTime, int transitionStartTime)
         {
-            int elapsedTime = Math.Max(0, currentTime - transitionStartTime);
+            int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, transitionStartTime);
             float progress = MathHelper.Clamp(elapsedTime / (float)MirrorImageTransitionDurationMs, 0f, 1f);
             return MathHelper.Lerp(0.35f, 1f, progress);
         }
@@ -9250,7 +9291,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            int elapsedTime = Math.Max(0, currentTime - _activeShadowPartner.CurrentActionStartTime);
+            int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(
+                currentTime,
+                _activeShadowPartner.CurrentActionStartTime);
             return ShadowPartnerClientActionResolver.ShouldHoldBlockingAction(
                 _activeShadowPartner.CurrentActionName,
                 _activeShadowPartner.CurrentPlaybackAnimation,

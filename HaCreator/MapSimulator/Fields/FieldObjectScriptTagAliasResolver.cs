@@ -68,6 +68,10 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*(?:(?:\.\s*(?<member>[A-Za-z_][A-Za-z0-9_]*))|(?:\[\s*(?<expr>[^\]]+)\s*\]))\s*=\s*(?<rhs>[^;,\r\n]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ArrayMutatorAliasCallPattern = new(
+            @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<method>push|unshift)\s*\(",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         internal readonly record struct PublishedTagMutation(
             IReadOnlyList<string> TagsToEnable,
             IReadOnlyList<string> TagsToDisable);
@@ -431,6 +435,54 @@ namespace HaCreator.MapSimulator.Fields
                 memberAliasMap[memberKey] = resolvedAlias;
             }
 
+            foreach ((string ObjectName, string MethodName, IReadOnlyList<string> Arguments) mutation in EnumerateArrayMutatorAliasCalls(scriptName))
+            {
+                if (!IsPotentialFunctionAliasName(mutation.ObjectName) || mutation.Arguments.Count == 0)
+                {
+                    continue;
+                }
+
+                if (!objectMemberAliasMap.TryGetValue(mutation.ObjectName, out IReadOnlyDictionary<string, string> existingMemberAliasMap)
+                    || existingMemberAliasMap is not Dictionary<string, string> memberAliasMap)
+                {
+                    memberAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    if (existingMemberAliasMap != null)
+                    {
+                        foreach (KeyValuePair<string, string> existingMemberAlias in existingMemberAliasMap)
+                        {
+                            memberAliasMap[existingMemberAlias.Key] = existingMemberAlias.Value;
+                        }
+                    }
+
+                    objectMemberAliasMap[mutation.ObjectName] = memberAliasMap;
+                }
+
+                int insertionIndex = mutation.MethodName.Equals("unshift", StringComparison.OrdinalIgnoreCase)
+                    ? 0
+                    : GetNextArrayMemberIndex(memberAliasMap);
+                if (mutation.MethodName.Equals("unshift", StringComparison.OrdinalIgnoreCase))
+                {
+                    ShiftArrayMemberIndexes(memberAliasMap, mutation.Arguments.Count);
+                }
+
+                for (int argumentIndex = 0; argumentIndex < mutation.Arguments.Count; argumentIndex++)
+                {
+                    string resolvedAlias = ResolveAssignmentAliasCandidate(
+                        mutation.Arguments[argumentIndex],
+                        localAliasMap,
+                        objectMemberAliasMap);
+                    if (!IsPotentialFunctionAliasName(resolvedAlias))
+                    {
+                        continue;
+                    }
+
+                    string memberKey = mutation.MethodName.Equals("unshift", StringComparison.OrdinalIgnoreCase)
+                        ? (insertionIndex + argumentIndex).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        : GetNextArrayMemberIndex(memberAliasMap).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    memberAliasMap[memberKey] = resolvedAlias;
+                }
+            }
+
             return objectMemberAliasMap;
         }
 
@@ -488,6 +540,11 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
+            if (TryResolveBracketIndexKeyLiteral(normalizedValue, out string indexKey))
+            {
+                return indexKey;
+            }
+
             if (!IsPotentialAliasArgument(normalizedValue, argumentIndex: 0))
             {
                 return string.Empty;
@@ -509,6 +566,82 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Empty;
+        }
+
+        private static IEnumerable<(string ObjectName, string MethodName, IReadOnlyList<string> Arguments)> EnumerateArrayMutatorAliasCalls(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            foreach (Match match in ArrayMutatorAliasCallPattern.Matches(value))
+            {
+                string objectName = NormalizeFunctionAliasArgument(match.Groups["object"]?.Value);
+                string methodName = NormalizeFunctionAliasArgument(match.Groups["method"]?.Value);
+                int openIndex = value.IndexOf('(', match.Index);
+                if (openIndex < 0)
+                {
+                    continue;
+                }
+
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    continue;
+                }
+
+                string argumentText = value[(openIndex + 1)..closeIndex];
+                yield return (objectName, methodName, new List<string>(SplitFunctionArguments(argumentText)));
+            }
+        }
+
+        private static int GetNextArrayMemberIndex(IReadOnlyDictionary<string, string> memberAliasMap)
+        {
+            if (memberAliasMap == null || memberAliasMap.Count == 0)
+            {
+                return 0;
+            }
+
+            int nextIndex = 0;
+            foreach (string key in memberAliasMap.Keys)
+            {
+                if (int.TryParse(key, out int parsedIndex) && parsedIndex >= nextIndex)
+                {
+                    nextIndex = parsedIndex + 1;
+                }
+            }
+
+            return nextIndex;
+        }
+
+        private static void ShiftArrayMemberIndexes(IDictionary<string, string> memberAliasMap, int offset)
+        {
+            if (memberAliasMap == null || memberAliasMap.Count == 0 || offset <= 0)
+            {
+                return;
+            }
+
+            var shiftedMembers = new List<(string OldKey, string NewKey, string AliasName)>();
+            foreach (KeyValuePair<string, string> memberAlias in memberAliasMap)
+            {
+                if (!int.TryParse(memberAlias.Key, out int parsedIndex) || parsedIndex < 0)
+                {
+                    continue;
+                }
+
+                shiftedMembers.Add((
+                    memberAlias.Key,
+                    (parsedIndex + offset).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    memberAlias.Value));
+            }
+
+            shiftedMembers.Sort((left, right) => string.CompareOrdinal(right.OldKey, left.OldKey));
+            for (int i = 0; i < shiftedMembers.Count; i++)
+            {
+                memberAliasMap.Remove(shiftedMembers[i].OldKey);
+                memberAliasMap[shiftedMembers[i].NewKey] = shiftedMembers[i].AliasName;
+            }
         }
 
         private static bool TryResolveBracketVariableAliasCandidate(
@@ -1062,17 +1195,21 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             var builder = new StringBuilder();
+            bool allNumericTokens = true;
+            int numericSum = 0;
             for (int i = 0; i < tokens.Count; i++)
             {
                 string token = StripOuterBalancedParentheses(tokens[i]).Trim();
                 if (TryReadQuotedLiteral(token, out string quotedToken))
                 {
+                    allNumericTokens = false;
                     builder.Append(quotedToken);
                     continue;
                 }
 
                 if (int.TryParse(token, out int numericToken))
                 {
+                    numericSum += numericToken;
                     builder.Append(numericToken);
                     continue;
                 }
@@ -1087,6 +1224,63 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             aliasName = resolvedAliasName;
+            return true;
+        }
+
+        private static bool TryResolveBracketIndexKeyLiteral(string expression, out string key)
+        {
+            key = string.Empty;
+            if (string.IsNullOrWhiteSpace(expression))
+            {
+                return false;
+            }
+
+            string normalizedExpression = StripOuterBalancedParentheses(expression.Trim());
+            if (TryReadQuotedLiteral(normalizedExpression, out string quotedKey)
+                && !string.IsNullOrWhiteSpace(quotedKey))
+            {
+                key = NormalizeFunctionAliasArgument(quotedKey).TrimEnd(';');
+                return !string.IsNullOrWhiteSpace(key);
+            }
+
+            IReadOnlyList<string> tokens = SplitTopLevelByPlus(normalizedExpression);
+            if (tokens.Count == 0)
+            {
+                return false;
+            }
+
+            var builder = new StringBuilder();
+            bool allNumericTokens = true;
+            int numericSum = 0;
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                string token = StripOuterBalancedParentheses(tokens[i]).Trim();
+                if (TryReadQuotedLiteral(token, out string quotedToken))
+                {
+                    allNumericTokens = false;
+                    builder.Append(quotedToken);
+                    continue;
+                }
+
+                if (int.TryParse(token, out int numericToken))
+                {
+                    numericSum += numericToken;
+                    builder.Append(numericToken);
+                    continue;
+                }
+
+                return false;
+            }
+
+            string resolvedKey = allNumericTokens
+                ? numericSum.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : NormalizeFunctionAliasArgument(builder.ToString()).TrimEnd(';');
+            if (string.IsNullOrWhiteSpace(resolvedKey))
+            {
+                return false;
+            }
+
+            key = resolvedKey;
             return true;
         }
 
@@ -2123,6 +2317,12 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string normalizedIndexExpression = StripOuterBalancedParentheses(indexExpression.Trim());
+            if (TryResolveBracketIndexKeyLiteral(normalizedIndexExpression, out string staticIndexKey))
+            {
+                key = staticIndexKey;
+                return true;
+            }
+
             if (TryResolveStaticBracketExpressionAlias(normalizedIndexExpression, out string staticKey))
             {
                 key = staticKey;

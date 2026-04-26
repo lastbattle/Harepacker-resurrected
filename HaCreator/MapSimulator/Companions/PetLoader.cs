@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Companions
         internal const int ClientPetActionDefaultDelay = 180;
 
         private readonly record struct PetActionFrame(string Name, IDXObject Frame);
+        private readonly record struct FrameCanvasCandidate(WzCanvasProperty Canvas, int SourceIndex);
         private readonly record struct PetAnimationCacheKey(int PetItemId, int PetWearItemId);
         private readonly record struct PetActionCacheKey(int PetItemId, int PetWearItemId, string ActionName);
         private sealed class PetImageEntry
@@ -848,6 +849,14 @@ namespace HaCreator.MapSimulator.Companions
             return HasRenderableFrames(property);
         }
 
+        internal static IReadOnlyList<string> EnumerateFrameCanvasNamesForTesting(WzImageProperty frameProperty)
+        {
+            return CollectFrameCanvasCandidates(frameProperty)
+                .Select(static candidate => candidate.Canvas?.Name)
+                .Where(static name => !string.IsNullOrWhiteSpace(name))
+                .ToArray();
+        }
+
         private static bool HasRenderableFrames(WzImageProperty property)
         {
             return HasRenderableFrames(property, new HashSet<WzImageProperty>());
@@ -1177,10 +1186,11 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
+            IReadOnlyList<FrameCanvasCandidate> layeredCanvases = CollectFrameCanvasCandidates(resolvedFrameProperty);
             var layeredFrames = new List<IDXObject>();
-            foreach (WzImageProperty layerProperty in resolvedFrameProperty.WzProperties.OrderBy(GetFrameOrder))
+            foreach (FrameCanvasCandidate layerCandidate in layeredCanvases)
             {
-                WzCanvasProperty layerCanvas = ResolveCanvasProperty(layerProperty);
+                WzCanvasProperty layerCanvas = layerCandidate.Canvas;
                 if (layerCanvas == null)
                 {
                     continue;
@@ -1201,6 +1211,44 @@ namespace HaCreator.MapSimulator.Companions
             return layeredFrames.Count == 1
                 ? layeredFrames[0]
                 : ComposeLayeredFrame(layeredFrames);
+        }
+
+        private static IReadOnlyList<FrameCanvasCandidate> CollectFrameCanvasCandidates(WzImageProperty frameProperty)
+        {
+            var canvases = new List<FrameCanvasCandidate>();
+            var visited = new HashSet<WzImageProperty>();
+            int sourceIndex = 0;
+            CollectFrameCanvasCandidates(frameProperty, canvases, visited, ref sourceIndex);
+            return canvases;
+        }
+
+        private static void CollectFrameCanvasCandidates(
+            WzImageProperty property,
+            List<FrameCanvasCandidate> canvases,
+            HashSet<WzImageProperty> visited,
+            ref int sourceIndex)
+        {
+            WzImageProperty resolvedProperty = ResolveActionProperty(property);
+            if (resolvedProperty == null)
+            {
+                return;
+            }
+
+            if (resolvedProperty is WzCanvasProperty canvasProperty)
+            {
+                canvases.Add(new FrameCanvasCandidate(canvasProperty, sourceIndex++));
+                return;
+            }
+
+            if (resolvedProperty.WzProperties == null || !visited.Add(resolvedProperty))
+            {
+                return;
+            }
+
+            foreach (WzImageProperty childProperty in resolvedProperty.WzProperties.OrderBy(GetFrameOrder))
+            {
+                CollectFrameCanvasCandidates(childProperty, canvases, visited, ref sourceIndex);
+            }
         }
 
         private List<IDXObject> LoadClientMultiPetHangFrames()

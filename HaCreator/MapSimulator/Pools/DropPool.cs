@@ -157,6 +157,7 @@ namespace HaCreator.MapSimulator.Pools
         public float Rotation { get; set; }             // For item icons
         public int LastPickupFailureTime { get; set; } = int.MinValue;
         public DropPickupFailureReason LastPickupFailureReason { get; set; } = DropPickupFailureReason.None;
+        public int LastPickupAttemptTime { get; set; } = int.MinValue;
         public int LastStateChangeTime { get; set; }
 
         // Visual
@@ -708,6 +709,7 @@ namespace HaCreator.MapSimulator.Pools
         private const float PET_CHASE_SPEED = 150f;             // Pet movement speed when chasing drops
         private const int PET_PICKUP_COOLDOWN = 200;            // Cooldown between pet pickups (ms)
         private const int PICKUP_FAILURE_REPORT_COOLDOWN = 1500;
+        internal const int ClientDropPickupRetryDelayMs = 3000;
         internal const int ClientPlayerPickupHalfWidth = 25;
         internal const int ClientPlayerPickupTopOffset = 50;
         internal const int ClientPlayerPickupBottomOffset = 10;
@@ -1094,6 +1096,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.MesoAmount = 0;
             drop.LastPickupFailureTime = int.MinValue;
             drop.LastPickupFailureReason = DropPickupFailureReason.None;
+            drop.LastPickupAttemptTime = currentTime - ClientDropPickupRetryDelayMs;
         }
 
         public static int GetMoneyIconTypeForAmount(int amount)
@@ -1181,9 +1184,13 @@ namespace HaCreator.MapSimulator.Pools
             if (IsClientPickupBlocked(drop))
                 return false;
 
+            if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                return false;
+
             if (!CanPlayerPickup(drop, playerId, currentTime))
                 return false;
 
+            MarkClientDropPickupAttempt(drop, currentTime);
             return CompletePickup(drop, playerId, pickedByPet: false, currentTime, DropPickupActorKind.Player, notifyLocalPickup: true);
         }
 
@@ -1307,6 +1314,11 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                {
+                    continue;
+                }
+
                 if (!CanPlayerPickup(drop, playerId, currentTime))
                 {
                     continue;
@@ -1337,6 +1349,7 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
+            MarkClientDropPickupAttempt(selectedDrop, currentTime);
             return ResolveRemotePickup(
                 selectedDrop,
                 playerId,
@@ -1377,6 +1390,11 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
+                {
+                    continue;
+                }
+
                 float dx = drop.X - petX;
                 float dy = drop.Y - petY;
                 float distSq = dx * dx + dy * dy;
@@ -1407,6 +1425,7 @@ namespace HaCreator.MapSimulator.Pools
                 break;
             }
 
+            MarkClientDropPickupAttempt(selectedDrop, currentTime);
             return ResolveRemotePickup(
                 selectedDrop,
                 petId,
@@ -1448,6 +1467,11 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 if (IsClientPickupBlocked(drop))
+                {
+                    continue;
+                }
+
+                if (!CanRetryClientDropPickupAttempt(drop, currentTime))
                 {
                     continue;
                 }
@@ -1816,6 +1840,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 _petLastPickupTime[petId] = currentTime;
+                MarkClientDropPickupAttempt(selectedDrop, currentTime);
                 bool pickupSucceeded = CompletePickup(
                     selectedDrop,
                     petId,
@@ -2581,7 +2606,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.IsPacketControlled = true;
             drop.PacketEnterType = packet.EnterType;
             drop.CreateDelayMs = packet.DelayMs;
-            drop.OwnerExpireTime = packet.OwnerId > 0 ? currentTime + OWNER_PRIORITY_DURATION : 0;
+            drop.OwnerExpireTime = ResolveClientOwnershipExpireTime(currentTime, packet.DelayMs, packet.OwnerId);
             drop.ExpireTime = ResolvePacketExpireTime(
                 currentTime,
                 packet.IsMoney,
@@ -2657,7 +2682,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.SourceId = packet.SourceId;
             drop.AllowPetPickup = packet.AllowPetPickup;
             drop.DrawOnElevatedLayer = ShouldDrawPacketDropOnElevatedLayer(packet);
-            drop.OwnerExpireTime = packet.OwnerId > 0 ? currentTime + OWNER_PRIORITY_DURATION : 0;
+            drop.OwnerExpireTime = ResolveClientOwnershipExpireTime(currentTime, packet.DelayMs, packet.OwnerId);
             drop.ExpireTime = ResolvePacketExpireTime(
                 currentTime,
                 packet.IsMoney,
@@ -2928,6 +2953,30 @@ namespace HaCreator.MapSimulator.Pools
             // CDropPool pickup gates bypass owner-restricted pickup windows when dwSourceID == 0.
             // Keep ownership-window admission on the same source-id seam for local and packet drops.
             return drop.SourceId != 0;
+        }
+
+        internal static int ResolveClientOwnershipExpireTime(int currentTime, int createDelayMs, int ownerId)
+        {
+            if (ownerId <= 0)
+            {
+                return 0;
+            }
+
+            return currentTime + Math.Max(0, createDelayMs) + OWNER_PRIORITY_DURATION;
+        }
+
+        internal static bool CanRetryClientDropPickupAttempt(DropItem drop, int currentTime)
+        {
+            return drop != null
+                && currentTime - drop.LastPickupAttemptTime >= ClientDropPickupRetryDelayMs;
+        }
+
+        private static void MarkClientDropPickupAttempt(DropItem drop, int currentTime)
+        {
+            if (drop != null)
+            {
+                drop.LastPickupAttemptTime = currentTime;
+            }
         }
 
         internal static int ResolvePacketExpireTime(int currentTime, bool isMoney, long expireRaw)

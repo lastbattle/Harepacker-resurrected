@@ -665,11 +665,11 @@ namespace HaCreator.MapSimulator.Effects
         }
 
         /// <summary>
-        /// Add party/summon damage (Red damage numbers, same as player damage).
+        /// Add party/summon damage (Violet damage numbers).
         /// </summary>
         public void AddPartyDamage(int damage, float x, float y, bool isCritical, int currentTime, int comboIndex = 0)
         {
-            AddDamageNumber(damage, x, y, isCritical, false, currentTime, comboIndex, DamageColorType.Red);
+            AddDamageNumber(damage, x, y, isCritical, false, currentTime, comboIndex, DamageColorType.Violet);
         }
 
         /// <summary>

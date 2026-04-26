@@ -19,9 +19,9 @@ namespace HaCreator.MapSimulator.Loaders
     {
         /// <summary>Player damage to monster (Red)</summary>
         Red = 0,
-        /// <summary>Healing numbers (Blue)</summary>
+        /// <summary>HP increase / heal numbers (Blue)</summary>
         Blue = 1,
-        /// <summary>Damage received by player from monsters (Violet)</summary>
+        /// <summary>Damage received by player and summoned actor HP feedback (Violet)</summary>
         Violet = 2
     }
 
@@ -145,10 +145,10 @@ namespace HaCreator.MapSimulator.Loaders
         {
             "NoRed0",    // Red small (player damage, normal)
             "NoRed1",    // Red large (player damage, large)
-            "NoBlue0",   // Blue small (damage received, normal)
-            "NoBlue1",   // Blue large (damage received, large)
-            "NoViolet0", // Violet small (party damage, normal)
-            "NoViolet1", // Violet large (party damage, large)
+            "NoBlue0",   // Blue small (HP increase, normal)
+            "NoBlue1",   // Blue large (HP increase, large)
+            "NoViolet0", // Violet small (received/summoned feedback, normal)
+            "NoViolet1", // Violet large (received/summoned feedback, large)
             "NoCri0",    // Critical small
             "NoCri1"     // Critical large (with effect)
         };

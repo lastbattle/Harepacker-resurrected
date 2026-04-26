@@ -47,6 +47,22 @@ namespace HaCreator.MapSimulator.UI
         public override bool CapturesKeyboardInput => IsVisible;
         public override bool IsModalDialogOwner => IsVisible;
 
+        internal static Point CalculateCenteredPosition(int viewportWidth, int viewportHeight, int frameWidth, int frameHeight)
+        {
+            return new Point(
+                Math.Max(0, (Math.Max(0, viewportWidth) - Math.Max(0, frameWidth)) / 2),
+                Math.Max(0, (Math.Max(0, viewportHeight) - Math.Max(0, frameHeight)) / 2));
+        }
+
+        internal void CenterOnViewport(int viewportWidth, int viewportHeight)
+        {
+            Position = CalculateCenteredPosition(
+                viewportWidth,
+                viewportHeight,
+                CurrentFrame?.Width ?? 312,
+                CurrentFrame?.Height ?? 132);
+        }
+
         public void Configure(PacketOwnedRandomMesoBagPresentation presentation)
         {
             _rank = Math.Clamp(presentation?.Rank ?? 1, 1, 4);

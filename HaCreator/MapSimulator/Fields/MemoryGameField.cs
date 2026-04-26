@@ -380,6 +380,16 @@ namespace HaCreator.MapSimulator.Fields
         public bool HasPendingPrompt => _pendingPrompt.IsActive;
         public string PendingPromptText => _pendingPrompt.Text;
         public int LastClientDialogUpdateArgument => _lastClientDialogUpdateArgument;
+        public bool ClientReadyLayerVisible => HasClientOpponentSeat();
+        public bool ClientScoreLayerVisible => HasClientOpponentSeat();
+        public bool ClientReadyButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex != 0;
+        public bool ClientStartButtonEnabled => _stage != RoomStage.Playing
+            && _localPlayerIndex == 0
+            && HasClientOpponentSeat()
+            && IsClientOpponentReady();
+        public bool ClientBanButtonEnabled => _stage != RoomStage.Playing && _localPlayerIndex == 0;
+        public bool ClientTieButtonEnabled => _stage == RoomStage.Playing;
+        public bool ClientGiveUpButtonEnabled => _stage == RoomStage.Playing;
 
         public void SetOfficialClientRelayEnabled(bool enabled)
         {
@@ -1436,8 +1446,8 @@ namespace HaCreator.MapSimulator.Fields
 
 
             DrawOutlinedText(spriteBatch, font, _title, new Vector2(dialogX + 407, dialogY + 19), Color.Black, Color.Black);
-            DrawClientNamePanel(spriteBatch, pixelTexture, font, _playerNames[0], _scores[0], dialogX + ClientNameBarLeftX, dialogY + ClientNameBarY, _readyStates[0], _currentTurnIndex == 0, isLeftPanel: true);
-            DrawClientNamePanel(spriteBatch, pixelTexture, font, _playerNames[1], _scores[1], dialogX + ClientNameBarRightX, dialogY + ClientNameBarY, _readyStates[1], _currentTurnIndex == 1, isLeftPanel: false);
+            DrawClientNamePanel(spriteBatch, pixelTexture, font, _playerNames[0], _scores[0], dialogX + ClientNameBarLeftX, dialogY + ClientNameBarY, _readyStates[0], _currentTurnIndex == 0, isLeftPanel: true, showReadyLayer: true, showScoreLayer: true);
+            DrawClientNamePanel(spriteBatch, pixelTexture, font, _playerNames[1], _scores[1], dialogX + ClientNameBarRightX, dialogY + ClientNameBarY, _readyStates[1], _currentTurnIndex == 1, isLeftPanel: false, showReadyLayer: ClientReadyLayerVisible, showScoreLayer: ClientScoreLayerVisible);
             DrawBoard(spriteBatch, pixelTexture, font, boardArea);
             DrawClientTurnIndicator(spriteBatch, dialogX, dialogY);
             DrawClientButtons(spriteBatch, pixelTexture, font, dialogX, dialogY);
@@ -2775,6 +2785,11 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool HasClientStartTarget()
         {
+            return HasClientOpponentSeat();
+        }
+
+        private bool HasClientOpponentSeat()
+        {
             if (_miniRoomParticipants.ContainsKey(1))
             {
                 return true;
@@ -2787,6 +2802,12 @@ namespace HaCreator.MapSimulator.Fields
 
             return !string.IsNullOrWhiteSpace(_playerNames[1])
                 && !string.Equals(_playerNames[1], "Opponent", StringComparison.Ordinal);
+        }
+
+        private bool IsClientOpponentReady()
+        {
+            int opponentIndex = _localPlayerIndex == 0 ? 1 : 0;
+            return IsValidPlayerIndex(opponentIndex) && _readyStates[opponentIndex];
         }
 
 
@@ -2930,12 +2951,24 @@ namespace HaCreator.MapSimulator.Fields
 
             if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
             {
+                if (!ClientReadyButtonEnabled)
+                {
+                    message = "Ready is disabled while Match Cards is in play.";
+                    return false;
+                }
+
                 return true;
             }
 
-            if (_miniRoomRuntime?.Occupants.Count <= 1 && !_miniRoomParticipants.ContainsKey(1))
+            if (!HasClientOpponentSeat())
             {
                 message = "Start is unavailable until an opponent joins the Match Cards room.";
+                return false;
+            }
+
+            if (!IsClientOpponentReady())
+            {
+                message = "Start is disabled until the seated opponent is ready.";
                 return false;
             }
 
@@ -2944,7 +2977,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool CanUseTieButton(out string message)
         {
-            if (_stage == RoomStage.Playing)
+            if (ClientTieButtonEnabled)
             {
                 message = null;
                 return true;
@@ -2956,7 +2989,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool CanUseGiveUpButton(out string message)
         {
-            if (_stage == RoomStage.Playing)
+            if (ClientGiveUpButtonEnabled)
             {
                 message = null;
                 return true;
@@ -2968,13 +3001,13 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool CanUseBanButton(out string message)
         {
-            if (_stage != RoomStage.Lobby)
+            if (_stage == RoomStage.Playing)
             {
-                message = "Ban is only available while the Match Cards room is in the lobby.";
+                message = "Ban is disabled while Match Cards is in play.";
                 return false;
             }
 
-            if (_localPlayerIndex != 0)
+            if (!ClientBanButtonEnabled)
             {
                 message = "Only the Match Cards room owner can ban a participant.";
                 return false;
@@ -3617,25 +3650,28 @@ namespace HaCreator.MapSimulator.Fields
 
 
 
-        private void DrawNameBar(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isActiveTurn)
+        private void DrawNameBar(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isActiveTurn, bool showScore = true)
         {
             Rectangle rect = new Rectangle(x, y, 174, 28);
             spriteBatch.Draw(pixel, rect, isActiveTurn ? new Color(223, 196, 120) : new Color(132, 103, 73));
             DrawOutlinedText(spriteBatch, font, name, new Vector2(x + 8, y + 5), Color.Black, Color.White);
-            DrawOutlinedText(spriteBatch, font, score.ToString(), new Vector2(x + 146, y + 5), Color.Black, Color.White);
+            if (showScore)
+            {
+                DrawOutlinedText(spriteBatch, font, score.ToString(), new Vector2(x + 146, y + 5), Color.Black, Color.White);
+            }
         }
 
 
-        private void DrawClientNamePanel(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isReady, bool isActiveTurn, bool isLeftPanel)
+        private void DrawClientNamePanel(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, string name, int score, int x, int y, bool isReady, bool isActiveTurn, bool isLeftPanel, bool showReadyLayer, bool showScoreLayer)
 
         {
 
-            DrawNameBar(spriteBatch, pixel, font, name, score, x, y, isActiveTurn);
+            DrawNameBar(spriteBatch, pixel, font, name, showScoreLayer ? score : 0, x, y, isActiveTurn, showScoreLayer);
 
 
 
             Texture2D readyTexture = isReady ? _readyOnTexture : _readyOffTexture;
-            if (readyTexture != null)
+            if (showReadyLayer && readyTexture != null)
             {
                 int readyX = isLeftPanel ? ClientReadyIndicatorLeftX : ClientReadyIndicatorRightX;
                 spriteBatch.Draw(readyTexture, new Vector2(x - ClientNameBarLeftX + readyX, y - ClientNameBarY + ClientReadyIndicatorY), Color.White);
@@ -3676,7 +3712,10 @@ namespace HaCreator.MapSimulator.Fields
         {
             int localIndex = Math.Clamp(_localPlayerIndex, 0, _wins.Length - 1);
             DrawBitmapNumber(spriteBatch, _scores[0], dialogX + ClientScoreLeftX, dialogY + ClientScoreY);
-            DrawBitmapNumber(spriteBatch, _scores[1], dialogX + ClientScoreRightX, dialogY + ClientScoreY);
+            if (ClientScoreLayerVisible)
+            {
+                DrawBitmapNumber(spriteBatch, _scores[1], dialogX + ClientScoreRightX, dialogY + ClientScoreY);
+            }
             DrawOutlinedText(spriteBatch, font, $"W {_wins[localIndex]}  L {_losses[localIndex]}  D {_draws[localIndex]}", new Vector2(dialogX + 409, dialogY + 210), Color.Black, new Color(48, 48, 48));
             DrawOutlinedText(spriteBatch, font, $"Packet: {_lastPacketType?.ToString() ?? "None"}", new Vector2(dialogX + 409, dialogY + 228), Color.Black, new Color(48, 48, 48));
             DrawOutlinedText(spriteBatch, font, $"Room: {_stage}", new Vector2(dialogX + 409, dialogY + 246), Color.Black, new Color(48, 48, 48));

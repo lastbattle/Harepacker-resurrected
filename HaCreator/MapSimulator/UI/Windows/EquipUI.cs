@@ -1404,7 +1404,7 @@ namespace HaCreator.MapSimulator.UI
             return slot is CharacterEquipSlot.Ring1 or CharacterEquipSlot.Ring2 or CharacterEquipSlot.Ring3 or CharacterEquipSlot.Ring4;
         }
 
-        private static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)
+        internal static CharacterEquipSlot? MapToCharacterEquipSlot(EquipSlot uiSlot)
         {
             return uiSlot switch
             {
@@ -1412,10 +1412,12 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.Ring2 => CharacterEquipSlot.Ring2,
                 EquipSlot.Ring3 => CharacterEquipSlot.Ring3,
                 EquipSlot.Ring4 => CharacterEquipSlot.Ring4,
+                EquipSlot.Pocket => CharacterEquipSlot.Pocket,
                 EquipSlot.Pendant1 => CharacterEquipSlot.Pendant,
                 EquipSlot.Pendant2 => CharacterEquipSlot.Pendant2,
                 EquipSlot.Weapon => CharacterEquipSlot.Weapon,
                 EquipSlot.Belt => CharacterEquipSlot.Belt,
+                EquipSlot.Badge => CharacterEquipSlot.Badge,
                 EquipSlot.Cap => CharacterEquipSlot.Cap,
                 EquipSlot.FaceAccessory => CharacterEquipSlot.FaceAccessory,
                 EquipSlot.EyeAccessory => CharacterEquipSlot.EyeAccessory,
@@ -1423,10 +1425,16 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.Bottom => CharacterEquipSlot.Pants,
                 EquipSlot.Shoes => CharacterEquipSlot.Shoes,
                 EquipSlot.Earring => CharacterEquipSlot.Earrings,
+                EquipSlot.Shoulder => CharacterEquipSlot.Shoulder,
                 EquipSlot.Glove => CharacterEquipSlot.Glove,
                 EquipSlot.Shield => CharacterEquipSlot.Shield,
                 EquipSlot.Cape => CharacterEquipSlot.Cape,
+                EquipSlot.Heart => CharacterEquipSlot.AndroidHeart,
                 EquipSlot.Medal => CharacterEquipSlot.Medal,
+                EquipSlot.Android => CharacterEquipSlot.Android,
+                EquipSlot.AndroidHeart => CharacterEquipSlot.AndroidHeart,
+                EquipSlot.Totem1 => CharacterEquipSlot.TamingMob,
+                EquipSlot.Totem2 => CharacterEquipSlot.Saddle,
                 _ => null
             };
         }

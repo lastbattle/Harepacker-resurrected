@@ -1276,6 +1276,9 @@ namespace HaCreator.MapSimulator.Fields
         private const int ReviveRouteTrailCapacity = 6;
         private const int Season2TimerTrailCapacity = 6;
         private const int Season2ChatRouteTrailCapacity = 6;
+        private const int Season2SubDialogRouteTrailCapacity = 6;
+        internal const int Season2SubDialogOkButtonWidth = 45;
+        internal const int Season2SubDialogOkButtonHeight = 16;
 
         private readonly Dictionary<int, int> _mobSpellCounts = new();
         private readonly Dictionary<int, int> _skillUseCounts = new();
@@ -1314,6 +1317,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Queue<string> _reviveForwardedRouteTrail = new();
         private readonly Queue<string> _season2SubDialogTimerTrail = new();
         private readonly Queue<string> _season2ChatRouteTrail = new();
+        private readonly Queue<string> _season2SubDialogRouteTrail = new();
         private readonly MonsterCarnivalUiWindowState _uiWindowState = new();
         private MonsterCarnivalVariantSessionPhase _variantSessionPhase;
         private string _variantSessionSummary;
@@ -1328,6 +1332,11 @@ namespace HaCreator.MapSimulator.Fields
         private MonsterCarnivalSeason2SubDialogPhase _season2SubDialogPhase;
         private int? _season2SubDialogDeadlineTick;
         private string _season2SubDialogTimerSummary;
+        private int _season2SubDialogSelectionChangeCount;
+        private int _season2SubDialogOkClickCount;
+        private MonsterCarnivalTab? _season2SubDialogSelectedTab;
+        private int _season2SubDialogSelectedIndex = -1;
+        private string _season2SubDialogLastButtonRoute;
         private MonsterCarnivalOwnedClockPhase _ownedClockPhase;
         private string _ownedClockSummary;
         private int? _roundDeadlineTick;
@@ -1374,6 +1383,11 @@ namespace HaCreator.MapSimulator.Fields
         public bool Season2SubDialogSelectionLocked => _season2SubDialogSelectionLocked;
         public string Season2SubDialogSummary => _season2SubDialogSummary;
         public MonsterCarnivalSeason2SubDialogPhase Season2SubDialogPhase => _season2SubDialogPhase;
+        public int Season2SubDialogSelectionChangeCount => _season2SubDialogSelectionChangeCount;
+        public int Season2SubDialogOkClickCount => _season2SubDialogOkClickCount;
+        public MonsterCarnivalTab? Season2SubDialogSelectedTab => _season2SubDialogSelectedTab;
+        public int Season2SubDialogSelectedIndex => _season2SubDialogSelectedIndex;
+        public string Season2SubDialogRouteTrailSummary => BuildSeason2SubDialogRouteTrailSummary();
         public int ReviveDirectPacketCount => _reviveDirectPacketCount;
         public int ReviveForwardedPacketCount => _reviveForwardedPacketCount;
         public int ReviveRoundSequence => _reviveRoundSequence;
@@ -1692,6 +1706,28 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalEntry entry = GetEntry(tab, entryIndex);
             if (entry == null)
             {
+                if (consumedPendingLocalRequest
+                    && TryResolveEntryFromPendingLocalRequest(consumedPendingToken, out MonsterCarnivalEntry pendingEntry))
+                {
+                    ApplySuccessfulRequest(pendingEntry, _localTeam, spendLocalCp: true, ownerTeamKnown: true);
+                    ShowStatus(BuildRequestSuccessMessage(pendingEntry, characterName), tickCount);
+                    _uiWindowState.MarkRequestCooldownReset(
+                        tickCount,
+                        _definition?.ClientOwnerLabel,
+                        "success",
+                        resolvedRequestTab,
+                        resolvedRequestIndex);
+                    SetVariantSessionPhase(
+                        MonsterCarnivalVariantSessionPhase.Request,
+                        $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} recovered malformed local-owner success result through pending tab {resolvedRequestTab}, index {resolvedRequestIndex}.");
+                    MonsterCarnivalStringPoolMessage? pendingSuccessDefinition = GetRequestSuccessMessage(pendingEntry.Tab);
+                    RecordRecoveredClientOwnerAction(
+                        $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult recovered a local-owner success result with unresolved packet tab {(int)tab}, index {entryIndex} from pending tab {resolvedRequestTab}, index {resolvedRequestIndex}.",
+                        pendingSuccessDefinition.HasValue ? new[] { pendingSuccessDefinition.Value.StringPoolId } : Array.Empty<int>());
+                    UpdateSeason2SubDialogOnRequest(pendingEntry, success: true, reasonCode: null, tickCount);
+                    return;
+                }
+
                 string fallbackMessage = string.IsNullOrWhiteSpace(characterName)
                     ? $"Monster Carnival request result received for tab {(int)tab}, index {entryIndex}."
                     : characterName.Trim();
@@ -2452,6 +2488,7 @@ namespace HaCreator.MapSimulator.Fields
             _reviveForwardedRouteTrail.Clear();
             _season2SubDialogTimerTrail.Clear();
             _season2ChatRouteTrail.Clear();
+            _season2SubDialogRouteTrail.Clear();
             _uiWindowState.Reset();
             _variantSessionPhase = MonsterCarnivalVariantSessionPhase.None;
             _variantSessionSummary = null;
@@ -2481,6 +2518,11 @@ namespace HaCreator.MapSimulator.Fields
             _exitGraceDeadlineTick = null;
             _season2SubDialogDeadlineTick = null;
             _season2SubDialogTimerSummary = null;
+            _season2SubDialogSelectionChangeCount = 0;
+            _season2SubDialogOkClickCount = 0;
+            _season2SubDialogSelectedTab = null;
+            _season2SubDialogSelectedIndex = -1;
+            _season2SubDialogLastButtonRoute = null;
             ResetSeason2SubDialogState(null, MonsterCarnivalSeason2SubDialogPhase.None);
         }
 
@@ -2508,6 +2550,7 @@ namespace HaCreator.MapSimulator.Fields
             _reviveForwardedRouteTrail.Clear();
             _season2SubDialogTimerTrail.Clear();
             _season2ChatRouteTrail.Clear();
+            _season2SubDialogRouteTrail.Clear();
             _variantTransportPacketCount = 0;
             _variantEnterPacketCount = 0;
             _variantRequestPacketCount = 0;
@@ -2530,6 +2573,11 @@ namespace HaCreator.MapSimulator.Fields
             _exitGraceDeadlineTick = null;
             _season2SubDialogDeadlineTick = null;
             _season2SubDialogTimerSummary = null;
+            _season2SubDialogSelectionChangeCount = 0;
+            _season2SubDialogOkClickCount = 0;
+            _season2SubDialogSelectedTab = null;
+            _season2SubDialogSelectedIndex = -1;
+            _season2SubDialogLastButtonRoute = null;
             ResetSeason2SubDialogState(null, MonsterCarnivalSeason2SubDialogPhase.None);
         }
 
@@ -3307,6 +3355,20 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return TryConsumeNextPendingLocalRequest(out consumedToken);
+        }
+
+        private bool TryResolveEntryFromPendingLocalRequest(
+            PendingLocalRequestToken token,
+            out MonsterCarnivalEntry entry)
+        {
+            entry = null;
+            if (token.EntryIndex < 0)
+            {
+                return false;
+            }
+
+            entry = GetEntry(token.Tab, token.EntryIndex);
+            return entry != null;
         }
 
         private bool TryConsumeNextPendingLocalRequest(out PendingLocalRequestToken token)
@@ -4871,6 +4933,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Join(" => ", _season2SubDialogTimerTrail.Select(entry => TrimVariantActionText(entry, 40)));
+        }
+
+        private string BuildSeason2SubDialogRouteTrailSummary()
+        {
+            if (_definition?.IsSeason2Mode != true || _season2SubDialogRouteTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _season2SubDialogRouteTrail.Select(entry => TrimVariantActionText(entry, 40)));
         }
 
         private string BuildSeason2ChatRouteTrailSummary()

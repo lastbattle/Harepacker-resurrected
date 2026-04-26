@@ -1191,18 +1191,20 @@ namespace HaCreator.MapSimulator.Pools
         {
             packet = default;
             error = null;
-            if (!TryParseOptionalItemPacket(
-                    payload,
-                    "official portable-chair",
-                    out int characterId,
-                    out int? itemId,
-                    out error,
-                    out int? pairCharacterId))
+            if (payload.Length != sizeof(int) * 2)
             {
-                return false;
+                error = $"Remote user official portable-chair packet expects 8 bytes but received {payload.Length}.";
+                {
+                    return false;
+                }
             }
 
-            packet = new RemoteUserPortableChairPacket(characterId, itemId, pairCharacterId);
+            int characterId = BinaryPrimitives.ReadInt32LittleEndian(payload);
+            int itemIdValue = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(sizeof(int)));
+            packet = new RemoteUserPortableChairPacket(
+                characterId,
+                itemIdValue <= 0 ? null : itemIdValue,
+                PairCharacterId: null);
             return true;
         }
 
@@ -3178,8 +3180,13 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!TryResolveHelperMarkerName(markerName, out MinimapUI.HelperMarkerType? markerType))
             {
-                error = "Helper marker must be user, another, friend, guild, guildmaster, match, party, partymaster, usertrader, anothertrader, or clear.";
-                return false;
+                if (!TryResolveDefaultHelperAncillaryMarkerFallback(markerName))
+                {
+                    error = "Helper marker must be user, another, friend, guild, guildmaster, match, party, partymaster, usertrader, anothertrader, clear, or a WZ DefaultHelper/iconNpc/iconDirection payload path.";
+                    return false;
+                }
+
+                return TryBuildNamedHelperPayload(characterId, markerName.Trim(), showDirectionOverlay, out payload, out error);
             }
 
             string normalizedName = ResolveHelperMarkerWzName(markerType);
@@ -3195,7 +3202,15 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            byte[] nameBytes = Encoding.UTF8.GetBytes(normalizedName);
+            return TryBuildNamedHelperPayload(characterId, normalizedName, showDirectionOverlay, out payload, out error);
+        }
+
+        private static bool TryBuildNamedHelperPayload(int characterId, string markerName, bool showDirectionOverlay, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = null;
+
+            byte[] nameBytes = Encoding.UTF8.GetBytes(markerName ?? string.Empty);
             if (nameBytes.Length <= byte.MaxValue)
             {
                 payload = new byte[sizeof(int) + sizeof(byte) + nameBytes.Length + sizeof(byte)];
@@ -4335,6 +4350,15 @@ namespace HaCreator.MapSimulator.Pools
                 weaponChargeValue);
             bool hasValidMetadataOffset = weaponChargeMetadataOffset >= 0
                 && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int);
+
+            if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromWeaponChargeValue(
+                    effectivePreferredSkillId,
+                    weaponChargeValue,
+                    out chargeSkillId))
+            {
+                return true;
+            }
 
             if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatMetadata(

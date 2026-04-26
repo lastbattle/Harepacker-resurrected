@@ -1,5 +1,7 @@
 using System;
 using System.Globalization;
+using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -79,6 +81,42 @@ namespace HaCreator.MapSimulator.Interaction
                 SendPutSharableOnceBlockedStringPoolId,
                 "This sharable-once item can no longer be moved.",
                 appendFallbackSuffix: true);
+        }
+
+        internal static bool RequiresOwnershipPreConfirm(InventorySlotData slotData)
+        {
+            if (slotData == null)
+            {
+                return false;
+            }
+
+            return slotData.CashItemSerialNumber.GetValueOrDefault() > 0
+                || slotData.OwnerAccountId.GetValueOrDefault() > 0
+                || slotData.OwnerCharacterId.GetValueOrDefault() > 0
+                || slotData.IsCashOwnershipLocked;
+        }
+
+        internal static string BuildSendGetConfirmationBody(InventorySlotData slotData, int mesoCost)
+        {
+            string costConfirm = ResolveSendGetCostConfirm(mesoCost);
+            if (!RequiresOwnershipPreConfirm(slotData))
+            {
+                return costConfirm;
+            }
+
+            return $"{ResolveSendGetPreConfirm()}\r\n\r\n{costConfirm}";
+        }
+
+        internal static string BuildSendPutConfirmationBody(InventorySlotData slotData, bool treatSingly, int availableQuantity, int mesoCost)
+        {
+            string preConfirm = RequiresOwnershipPreConfirm(slotData)
+                ? $"{ResolveSendPutPreConfirm(slotData?.CashItemSerialNumber.GetValueOrDefault() > 0)}\r\n\r\n"
+                : string.Empty;
+            string askCount = !treatSingly && availableQuantity > 1
+                ? $"{ResolveSendPutAskItemCountPrompt()}\r\n\r\n"
+                : string.Empty;
+
+            return $"{preConfirm}{askCount}{ResolveSendPutCostConfirm(mesoCost)}";
         }
 
         internal static string ToInlineText(string text)

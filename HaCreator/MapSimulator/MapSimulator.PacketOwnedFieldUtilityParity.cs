@@ -1057,17 +1057,27 @@ namespace HaCreator.MapSimulator
                         : null,
                     platform.IsActive),
                 ResolvePacketOwnedSnapshotSerialNumbers(platformId),
-                new PacketFieldUtilityMovingFootholdState(
-                    (int)platform.Speed,
-                    (int)platform.LeftBound,
-                    (int)platform.RightBound,
-                    (int)platform.TopBound,
-                    (int)platform.BottomBound,
-                    (int)platform.X,
-                    (int)platform.Y,
-                    !platform.MovingDown,
-                    !platform.MovingRight));
+                ResolvePacketOwnedLiveFootholdMovingStateForPacketParity(platform));
             return true;
+        }
+
+        internal static PacketFieldUtilityMovingFootholdState ResolvePacketOwnedLiveFootholdMovingStateForPacketParity(DynamicPlatform platform)
+        {
+            if (platform == null || platform.MovementType == PlatformMovementType.Static)
+            {
+                return null;
+            }
+
+            return new PacketFieldUtilityMovingFootholdState(
+                (int)platform.Speed,
+                (int)platform.LeftBound,
+                (int)platform.RightBound,
+                (int)platform.TopBound,
+                (int)platform.BottomBound,
+                (int)platform.X,
+                (int)platform.Y,
+                !platform.MovingDown,
+                !platform.MovingRight);
         }
 
         private bool TryBuildPacketOwnedCachedFootholdSnapshotEntry(

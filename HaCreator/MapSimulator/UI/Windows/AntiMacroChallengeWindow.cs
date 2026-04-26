@@ -596,19 +596,13 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_challengeTexture != null)
             {
-                Rectangle sourceBounds = new(
-                    0,
-                    0,
-                    Math.Min(bounds.Width, _challengeTexture.Width),
-                    Math.Min(bounds.Height, _challengeTexture.Height));
-                if (sourceBounds.Width > 0 && sourceBounds.Height > 0)
-                {
-                    sprite.Draw(
-                        _challengeTexture,
-                        new Vector2(bounds.X, bounds.Y),
-                        sourceBounds,
-                        Color.White);
-                }
+                // `CUIAntiMacro::Draw` uses IWzCanvas::Copy at the recovered owner
+                // origin; keep the source canvas at its authored size and let the
+                // owner surface clip naturally instead of fit-clipping to the seam box.
+                sprite.Draw(
+                    _challengeTexture,
+                    new Vector2(bounds.X, bounds.Y),
+                    Color.White);
 
                 return;
             }

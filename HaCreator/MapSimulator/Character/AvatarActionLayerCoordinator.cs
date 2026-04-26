@@ -449,14 +449,19 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (rawActionCode < (isMorphAvatar ? 49 : 273))
+            if (isMorphAvatar)
+            {
+                return CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                       && MorphClientActionResolver.IsClientConfirmedMorphActionName(actionName);
+            }
+
+            if (rawActionCode < 273)
             {
                 return true;
             }
 
-            return !isMorphAvatar
-                   && CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
-                   && CharacterPart.IsClientWzBackedPostV95PhysicalWeaponActionName(actionName);
+            return CharacterPart.TryGetActionStringFromCode(rawActionCode, out string resolvedActionName)
+                   && CharacterPart.IsClientWzBackedPostV95PhysicalWeaponActionName(resolvedActionName);
         }
 
         internal static bool HasActiveOneTimeActionOwner(string oneTimeActionName)

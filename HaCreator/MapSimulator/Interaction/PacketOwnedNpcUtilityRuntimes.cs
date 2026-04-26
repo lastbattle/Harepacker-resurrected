@@ -119,6 +119,28 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = "CShopDlg owner closed locally.";
         }
 
+        internal bool TryBuildCloseOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            if (!IsOpen)
+            {
+                StatusMessage = "CShopDlg ignored close because the packet-owned owner is already closed.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return false;
+            }
+
+            IsOpen = false;
+            StatusMessage = "CShopDlg::SetRet closed the owner and mirrored the return packet.";
+            AppendNote(StatusMessage);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                66,
+                BuildShopClosePayload(),
+                "Mirrored CShopDlg::SetRet close/return request (opcode 66, mode 3).");
+            message = StatusMessage;
+            return true;
+        }
+
         internal bool TryApplyPacket(int packetType, byte[] payload, out string message)
         {
             payload ??= Array.Empty<byte>();
@@ -835,6 +857,16 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write((byte)2);
             writer.Write((short)Math.Clamp(slotIndex, 1, ushort.MaxValue));
             return stream.ToArray();
+        }
+
+        private static byte[] BuildShopClosePayload()
+        {
+            return new[] { (byte)3 };
+        }
+
+        internal static byte[] BuildShopClosePayloadForTesting()
+        {
+            return BuildShopClosePayload();
         }
 
         private static bool TryResolveInventorySlotIndex(IInventoryRuntime inventory, InventoryType inventoryType, int itemId, int minimumQuantity, out int slotIndex)

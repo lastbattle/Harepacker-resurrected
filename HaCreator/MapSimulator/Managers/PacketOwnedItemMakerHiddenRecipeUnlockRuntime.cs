@@ -17,6 +17,13 @@ namespace HaCreator.MapSimulator.Managers
     internal static class PacketOwnedItemMakerHiddenRecipeUnlockRuntime
     {
         public const int PacketType = 1019;
+        private enum CountEncoding
+        {
+            Int32,
+            UInt16,
+            Byte
+        }
+
         private enum EntryEncoding
         {
             BucketAndOutputItemId,
@@ -70,10 +77,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string firstDecodeError = null;
-            if (TryDecodeWithCountWidth(payload, useCompactCount: false, EntryEncoding.BucketAndOutputItemId, out result, out error)
-                || TryDecodeWithCountWidth(payload, useCompactCount: false, EntryEncoding.OutputItemIdOnly, out result, out error)
-                || TryDecodeWithCountWidth(payload, useCompactCount: true, EntryEncoding.BucketAndOutputItemId, out result, out error)
-                || TryDecodeWithCountWidth(payload, useCompactCount: true, EntryEncoding.OutputItemIdOnly, out result, out error))
+            if (TryDecodeWithCountWidth(payload, CountEncoding.Int32, EntryEncoding.BucketAndOutputItemId, out result, out error)
+                || TryDecodeWithCountWidth(payload, CountEncoding.Int32, EntryEncoding.OutputItemIdOnly, out result, out error)
+                || TryDecodeWithCountWidth(payload, CountEncoding.UInt16, EntryEncoding.BucketAndOutputItemId, out result, out error)
+                || TryDecodeWithCountWidth(payload, CountEncoding.UInt16, EntryEncoding.OutputItemIdOnly, out result, out error)
+                || TryDecodeWithCountWidth(payload, CountEncoding.Byte, EntryEncoding.BucketAndOutputItemId, out result, out error)
+                || TryDecodeWithCountWidth(payload, CountEncoding.Byte, EntryEncoding.OutputItemIdOnly, out result, out error))
             {
                 return true;
             }
@@ -85,7 +94,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private static bool TryDecodeWithCountWidth(
             byte[] payload,
-            bool useCompactCount,
+            CountEncoding countEncoding,
             EntryEncoding entryEncoding,
             out PacketOwnedItemMakerHiddenRecipeUnlock result,
             out string error)
@@ -93,7 +102,12 @@ namespace HaCreator.MapSimulator.Managers
             result = null;
             error = null;
 
-            int minimumLength = useCompactCount ? sizeof(ushort) : sizeof(int);
+            int minimumLength = countEncoding switch
+            {
+                CountEncoding.Byte => sizeof(byte),
+                CountEncoding.UInt16 => sizeof(ushort),
+                _ => sizeof(int)
+            };
             if (payload == null || payload.Length < minimumLength)
             {
                 return false;
@@ -104,7 +118,12 @@ namespace HaCreator.MapSimulator.Managers
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
 
-                int count = useCompactCount ? reader.ReadUInt16() : reader.ReadInt32();
+                int count = countEncoding switch
+                {
+                    CountEncoding.Byte => reader.ReadByte(),
+                    CountEncoding.UInt16 => reader.ReadUInt16(),
+                    _ => reader.ReadInt32()
+                };
                 if (count < 0)
                 {
                     error = "Maker-hidden-unlock entry count cannot be negative.";

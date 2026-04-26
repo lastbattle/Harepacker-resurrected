@@ -184,14 +184,19 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is not ItemUpgradeUI itemUpgradeWindow)
+            TryCompletePendingItemUpgradeOwnerRequest();
+        }
+
+        private bool TryCompletePendingItemUpgradeOwnerRequest()
+        {
+            if (_pendingItemUpgradeOwnerRequest == null ||
+                uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is not ItemUpgradeUI itemUpgradeWindow)
             {
-                return;
+                return false;
             }
 
             PendingItemUpgradeOwnerRequestState pendingRequest = _pendingItemUpgradeOwnerRequest;
             _pendingItemUpgradeOwnerRequest = null;
-
             itemUpgradeWindow.PrepareEquipmentSelection(pendingRequest.Request.Slot);
             itemUpgradeWindow.PrepareConsumableSelection(pendingRequest.Request.ConsumableItemId);
 
@@ -229,6 +234,8 @@ namespace HaCreator.MapSimulator
             {
                 ClearItemUpgradeOwnerRequestState(currTickCount);
             }
+
+            return true;
         }
 
         private bool TryApplyPacketOwnedItemUpgradeResultPayload(byte[] payload, out string message)
@@ -321,6 +328,7 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(
                     decodeState.ResultCode,
                     decodeState.OutcomeResultValue);
+                TryCompletePendingItemUpgradeOwnerRequest();
                 message = $"Queued packet-owned item-upgrade recovery apply result code {decodeState.ResultCode}.";
                 if (consumedQuestStartLatch)
                 {
@@ -345,6 +353,7 @@ namespace HaCreator.MapSimulator
                 _pendingItemUpgradeOwnerRequest.ResultReadyAtTick = currTickCount + ResolveItemUpgradeResultReadyDelayMs(
                     decodeState.ResultCode,
                     outcomeResultValue: null);
+                TryCompletePendingItemUpgradeOwnerRequest();
                 message = $"Queued packet-owned item-upgrade notice result code {decodeState.ResultCode}.";
                 if (consumedQuestStartLatch)
                 {

@@ -490,15 +490,6 @@ namespace HaCreator.MapSimulator.Effects
                 errorMessage = "Wedding runtime inactive.";
                 return false;
             }
-            if (IsWeddingPhotoSceneOwnerActive
-                && !_isActive
-                && packetType != PacketTypeWeddingProgress
-                && packetType != PacketTypeWeddingCeremonyEnd)
-            {
-                RecordWeddingPhotoSceneUnhandledPacket(packetType, payload?.Length ?? 0, currentTimeMs);
-                errorMessage = $"CField_WeddingPhoto delegated packet {packetType} to base CField owner surface; simulator keeps packet trail only.";
-                return true;
-            }
 
             if (photoScenePresentationPacket)
             {

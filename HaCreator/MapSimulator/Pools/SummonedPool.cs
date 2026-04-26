@@ -105,7 +105,16 @@ namespace HaCreator.MapSimulator.Pools
     internal readonly record struct PacketOwnedExpiryTargetCandidate(
         int MobObjectId,
         Rectangle Hitbox,
-        int SourceOrder = int.MaxValue);
+        int SourceOrder = int.MaxValue,
+        IReadOnlyList<Rectangle> BodyHitboxes = null,
+        bool InView = true,
+        bool IsSuspended = false,
+        int WishMobId = 0,
+        int TemplateId = 0,
+        bool IsDamagedByMob = false,
+        bool IsOurTeam = false,
+        bool IsSamePhase = true,
+        bool IsDazzled = false);
 
     internal readonly record struct PacketOwnedMobAttackFeedbackPresentation(
         MobAnimationSet.AttackInfoMetadata AttackInfo,
@@ -2072,7 +2081,8 @@ namespace HaCreator.MapSimulator.Pools
                     new Vector2(summon.PositionX, summon.PositionY));
                 if (movedDistanceSq >= 36f)
                 {
-                    SkillAnimation passiveEffect = summon.SkillData?.Effect ?? summon.SkillData?.AffectedEffect;
+                    SkillAnimation passiveEffect =
+                        SummonClientPostEffectRules.ResolvePassiveEffectAnimation(summon.SkillData);
                     if (passiveEffect?.Frames.Count > 0)
                     {
                         SpawnHitEffect(
@@ -5227,7 +5237,11 @@ namespace HaCreator.MapSimulator.Pools
                 attackAction,
                 currentMobAttackFrameIndex);
             string fallbackTemplateId = ResolvePacketMobAttackFallbackTemplateId(mobTemplateId, mob);
-            bool hasLiveAttackInfoHitPath = !string.IsNullOrWhiteSpace(liveAttackData?.HitEffectPath);
+            string liveAttackInfoHitPath = ResolvePacketMobAttackGeneralEffectDataPath(
+                liveAttackData,
+                fallbackTemplateId,
+                attackAction);
+            bool hasLiveAttackInfoHitPath = !string.IsNullOrWhiteSpace(liveAttackInfoHitPath);
             MobAnimationSet.AttackHitEffectEntry liveAttackInfoHitEffectEntry = hasLiveAttackInfoHitPath
                 ? ResolvePacketMobAttackGeneralEffectEntry(
                     liveAttackData,
@@ -5262,7 +5276,11 @@ namespace HaCreator.MapSimulator.Pools
             MobAttackData templateAttackData = ResolvePacketMobAttackData(resolvedMobTemplateId, attackAction);
             MobAnimationSet templateAnimationSet = null;
             MobAnimationSet.AttackInfoMetadata templateAttackInfo = null;
-            bool hasTemplateAttackInfoHitPath = !string.IsNullOrWhiteSpace(templateAttackData?.HitEffectPath);
+            string templateAttackInfoHitPath = ResolvePacketMobAttackGeneralEffectDataPath(
+                templateAttackData,
+                resolvedMobTemplateId.ToString(CultureInfo.InvariantCulture),
+                attackAction);
+            bool hasTemplateAttackInfoHitPath = !string.IsNullOrWhiteSpace(templateAttackInfoHitPath);
             bool hasTemplateAttackDataOverrides = templateAttackData?.HasHitAttach == true
                                                  || templateAttackData?.HasFacingAttach == true
                                                  || templateAttackData?.HasHitAfter == true;
@@ -5980,15 +5998,19 @@ namespace HaCreator.MapSimulator.Pools
             TexturePool texturePool,
             GraphicsDevice graphicsDevice)
         {
+            string hitEffectPath = ResolvePacketMobAttackGeneralEffectDataPath(
+                attackData,
+                mobTemplateId,
+                attackAction);
             if (texturePool == null
                 || graphicsDevice == null
-                || string.IsNullOrWhiteSpace(attackData?.HitEffectPath))
+                || string.IsNullOrWhiteSpace(hitEffectPath))
             {
                 return null;
             }
 
             string[] candidates = EnumeratePacketMobAttackGeneralEffectCandidateUols(
-                attackData.HitEffectPath,
+                hitEffectPath,
                 mobTemplateId,
                 attackAction);
             for (int i = 0; i < candidates.Length; i++)
@@ -6019,6 +6041,70 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return null;
+        }
+
+        private static string ResolvePacketMobAttackGeneralEffectDataPath(
+            MobAttackData attackData,
+            string mobTemplateId,
+            string attackAction)
+        {
+            if (!string.IsNullOrWhiteSpace(attackData?.HitEffectPath))
+            {
+                return attackData.HitEffectPath;
+            }
+
+            return TryBuildPacketMobAttackClientInfoHitPath(
+                       mobTemplateId,
+                       attackAction,
+                       out string clientInfoHitPath)
+                   && ResolvePacketMobAttackGeneralEffectProperty(clientInfoHitPath) != null
+                ? clientInfoHitPath
+                : null;
+        }
+
+        internal static bool TryBuildPacketMobAttackClientInfoHitPath(
+            string mobTemplateId,
+            string attackAction,
+            out string hitEffectPath)
+        {
+            hitEffectPath = null;
+            string normalizedTemplateId = mobTemplateId?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedTemplateId)
+                || string.IsNullOrWhiteSpace(attackAction))
+            {
+                return false;
+            }
+
+            normalizedTemplateId = normalizedTemplateId.PadLeft(7, '0');
+            string normalizedAttackAction = attackAction.Trim();
+            if (!normalizedAttackAction.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                && !normalizedAttackAction.StartsWith("skill", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            hitEffectPath = $"Mob/{normalizedTemplateId}.img/{normalizedAttackAction}/info/hit";
+            return true;
+        }
+
+        internal static string ResolvePacketMobAttackGeneralEffectDataPathForTest(
+            MobAttackData attackData,
+            string mobTemplateId,
+            string attackAction,
+            bool hasAuthoredInfoHitNode)
+        {
+            if (!string.IsNullOrWhiteSpace(attackData?.HitEffectPath))
+            {
+                return attackData.HitEffectPath;
+            }
+
+            return hasAuthoredInfoHitNode
+                   && TryBuildPacketMobAttackClientInfoHitPath(
+                       mobTemplateId,
+                       attackAction,
+                       out string hitEffectPath)
+                ? hitEffectPath
+                : null;
         }
 
         private static WzImageProperty ResolvePacketMobAttackGeneralEffectRenderableProperty(
@@ -7063,12 +7149,14 @@ namespace HaCreator.MapSimulator.Pools
             var indexedFrameProperties = new List<KeyValuePair<int, WzImageProperty>>();
             foreach (WzImageProperty rawChildProperty in sourceProperty.WzProperties)
             {
-                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(rawChildProperty);
-                if (frameProperty == null || !int.TryParse(frameProperty.Name, out int frameIndex))
+                if (rawChildProperty == null || !int.TryParse(rawChildProperty.Name, out int frameIndex))
                 {
                     continue;
                 }
 
+                WzImageProperty frameProperty = rawChildProperty is WzUOLProperty
+                    ? rawChildProperty
+                    : WzInfoTools.GetRealProperty(rawChildProperty) ?? rawChildProperty;
                 indexedFrameProperties.Add(new KeyValuePair<int, WzImageProperty>(frameIndex, frameProperty));
             }
 

@@ -4477,6 +4477,12 @@ namespace HaCreator.MapSimulator
                 return "Follow request could not be issued because the local player is not fully initialized.";
             }
 
+            string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetFollowCharacterRestrictionMessage(_mapBoard?.MapInfo);
+            if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
+            {
+                return fieldRestrictionMessage;
+            }
+
             bool foundActor = (context.CharacterId > 0 && _remoteUserPool.TryGetActor(context.CharacterId, out RemoteUserActor actor))
                 || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
             if (!foundActor
@@ -4836,7 +4842,11 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyCharacterInfoPopularityResultPayload(byte[] payload, out string message)
         {
-            return _userInfoPopularityPreviewService.TryApplyClientResultPayload(payload, _remoteUserPool, out message);
+            return _userInfoPopularityPreviewService.TryApplyClientResultPayload(
+                payload,
+                _remoteUserPool,
+                out message,
+                _playerManager?.Player?.Build?.Name);
         }
 
         private bool TryResolveRemoteCharacterInfoTargetPresence(
@@ -8703,7 +8713,9 @@ namespace HaCreator.MapSimulator
                 return initialQuizRestrictionMessage;
             }
 
-            string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetChannelShiftRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetChannelShiftRestrictionMessage(
+                _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                _mapBoard?.MapInfo);
             if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
             {
                 return fieldRestrictionMessage.Replace("field", "map");
@@ -19165,33 +19177,35 @@ namespace HaCreator.MapSimulator
             ConcurrentBag<WzObject> usedPropsTemp = new ConcurrentBag<WzObject>();
             System.Diagnostics.Debug.WriteLine("[TransportField] Loading textures...");
 
-
             // Priority 1: Try contimove.img first (main ship sprites)
             // This is the primary location for ship sprites in MapleStory
-            try
+            if (!_transportField.HasShipTextures)
             {
-                WzImage contiMoveImg = Program.InfoManager?.GetObjectSet("contimove");
-                if (contiMoveImg != null)
+                try
                 {
-                    if (!contiMoveImg.Parsed)
-                        contiMoveImg.ParseImage();
-
-
-                    // Look for ship category - structure is contimove.img/ship/0, ship/1, etc.
-                    var shipCategory = contiMoveImg["ship"];
-                    if (shipCategory != null)
+                    WzImage contiMoveImg = Program.InfoManager?.GetObjectSet("contimove");
+                    if (contiMoveImg != null)
                     {
-                        System.Diagnostics.Debug.WriteLine("[TransportField] Found ship category in contimove.img");
-                        LoadShipFromCategory(shipCategory, "contimove", usedPropsTemp);
+                        if (!contiMoveImg.Parsed)
+                            contiMoveImg.ParseImage();
+
+
+                        // Look for ship category - structure is contimove.img/ship/0, ship/1, etc.
+                        var shipCategory = contiMoveImg["ship"];
+                        if (shipCategory != null)
+                        {
+                            System.Diagnostics.Debug.WriteLine("[TransportField] Found ship category in contimove.img");
+                            LoadShipFromCategory(shipCategory, "contimove", usedPropsTemp);
+                        }
+
+
+                        // Note: Balrog textures are loaded from mob data via LoadMobFrames below
                     }
-
-
-                    // Note: Balrog textures are loaded from mob data via LoadMobFrames below
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[TransportField] Error loading from contimove.img: {ex.Message}");
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[TransportField] Error loading from contimove.img: {ex.Message}");
+                }
             }
 
 
@@ -19317,9 +19331,6 @@ namespace HaCreator.MapSimulator
         }
 
 
-        /// <summary>
-        /// Load ship frames from a WZ category node
-        /// </summary>
         private void LoadShipFromCategory(WzObject shipCategory, string source, ConcurrentBag<WzObject> usedProps)
         {
             if (shipCategory == null) return;
@@ -19575,8 +19586,8 @@ namespace HaCreator.MapSimulator
         /// </summary>
         private void DetectAndInitializeTransportField()
         {
-            // Reset transport field for new map
-            _transportField.Reset();
+            // Reset transport field and route-owned visuals for new map.
+            _transportField.ClearRouteConfiguration(clearVisuals: true);
             ShipObject shipObject = _mapBoard?.BoardItems?.MiscItems
                 ?.OfType<ShipObject>()
                 .FirstOrDefault();
@@ -21614,9 +21625,6 @@ namespace HaCreator.MapSimulator
                 ? new Point(bombRbVector.X.Value, bombRbVector.Y.Value)
                 : null;
             int bombDelayMs = Math.Max(0, MapleLib.WzLib.WzStructure.InfoTool.GetInt(bombInfoNode?["time"], 0)) * 1000;
-            Point? effectiveLt = bombLt ?? lt;
-            Point? effectiveRb = bombRb ?? rb;
-
             int durationSeconds = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "time");
 
 
@@ -21636,8 +21644,10 @@ namespace HaCreator.MapSimulator
                 PropPercent = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "prop"),
                 Count = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "count"),
                 TargetMobType = (MobSkillTargetMobType)MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "targetMobType"),
-                Lt = effectiveLt,
-                Rb = effectiveRb
+                Lt = lt,
+                Rb = rb,
+                BombLt = bombLt,
+                BombRb = bombRb
             };
 
 
@@ -24183,12 +24193,16 @@ namespace HaCreator.MapSimulator
             }
 
             int currentTime = Environment.TickCount;
-            if (!TryReserveRemotePickupNotice(drop.PoolId, mobId, currentTime))
+            if (!TryReserveRemotePickupNotice(
+                    drop.PoolId,
+                    mobId,
+                    currentTime,
+                    ResolveMobPickupNoticeActorAlias(mobId)))
             {
                 return;
             }
 
-            string mobName = ResolveMobPickupSourceName(mobId);
+            string mobName = ResolveMobPickupActorName(mobId);
             string itemName = ResolvePickupResultItemName(drop);
             PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatMobPickup(
                 drop.Type,
@@ -24345,6 +24359,16 @@ namespace HaCreator.MapSimulator
                 : $"Monster {mobId}";
         }
 
+        private static string ResolveMobPickupActorName(int mobId)
+        {
+            return ResolveMobPickupSourceName(mobId);
+        }
+
+        private static int ResolveMobPickupNoticeActorAlias(int mobId)
+        {
+            return mobId;
+        }
+
 
         private static string ResolvePickupResultItemName(DropItem drop)
         {
@@ -24385,7 +24409,7 @@ namespace HaCreator.MapSimulator
                 Pools.DropPickupActorKind.Pet => ResolvePickupSourceName(recentPickup.PickerId, pickedByPet: true)
                     ?? ResolveRemotePickupActorName(Pools.DropPickupActorKind.Pet, recentPickup.PickerId, null),
 
-                Pools.DropPickupActorKind.Mob => ResolveMobPickupSourceName(recentPickup.PickerId),
+                Pools.DropPickupActorKind.Mob => ResolveMobPickupActorName(recentPickup.PickerId),
 
 
 
@@ -24609,7 +24633,7 @@ namespace HaCreator.MapSimulator
             {
                 Pools.DropPickupActorKind.Mob => !string.IsNullOrWhiteSpace(actorName)
                     ? actorName
-                    : ResolveMobPickupSourceName(actorId),
+                    : ResolveMobPickupActorName(actorId),
                 _ => ResolveRemotePickupActorName(actorKind, actorId, actorName, fallbackOwnerId)
             };
         }
@@ -29164,7 +29188,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick))
+            if (ShouldQueueReactorTouchThroughOfficialSessionBridge(
+                    _reactorPoolOfficialSessionBridge?.IsRunning == true,
+                    _reactorPoolOfficialSessionBridge?.HasAttachedClient == true,
+                    _reactorPoolOfficialSessionBridge?.HasConnectedSession == true)
+                && _reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick))
             {
                 return;
             }
@@ -29175,6 +29203,14 @@ namespace HaCreator.MapSimulator
             }
 
             _reactorTouchPacketOutbox.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick);
+        }
+
+        internal static bool ShouldQueueReactorTouchThroughOfficialSessionBridge(
+            bool isRunning,
+            bool hasAttachedClient,
+            bool hasConnectedSession)
+        {
+            return !hasConnectedSession && (isRunning || hasAttachedClient);
         }
 
 
@@ -29451,7 +29487,7 @@ namespace HaCreator.MapSimulator
         {
             int type = ResolveLocalOwnedAffectedAreaType(skill, ownerLane);
             int phase = ResolveLocalOwnedAffectedAreaPhase(skill, ownerLane);
-            int elementAttribute = ResolveLocalOwnedAffectedAreaElementAttribute(skill);
+            int elementAttribute = ResolveLocalOwnedAffectedAreaElementAttribute(skill, ownerLane);
             short startDelayUnits = ResolveLocalOwnedAffectedAreaStartDelayUnits(skill, levelData, ownerLane);
             int durationOverrideMs = ResolveLocalOwnedAffectedAreaDurationOverrideMs(skill, levelData, ownerLane);
             return new LocalOwnedAffectedAreaCreateMetadata(
@@ -29529,7 +29565,9 @@ namespace HaCreator.MapSimulator
             return (short)Math.Clamp(units, 0, short.MaxValue);
         }
 
-        internal static int ResolveLocalOwnedAffectedAreaElementAttribute(SkillData skill)
+        internal static int ResolveLocalOwnedAffectedAreaElementAttribute(
+            SkillData skill,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane = SkillManager.LocalAttackAreaOwnerLane.None)
         {
             if (skill == null)
             {
@@ -29569,7 +29607,9 @@ namespace HaCreator.MapSimulator
 
             if (resolvedMask <= 0)
             {
-                return 0;
+                return ResolveClientExplicitLocalOwnedAffectedAreaElementAttributeFallback(
+                    skill.SkillId,
+                    ownerLane);
             }
 
             return NormalizeLocalOwnedElementMask(resolvedMask);
@@ -29882,6 +29922,27 @@ namespace HaCreator.MapSimulator
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack when skillId == 32121003 => 11,
                 SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack when IsClientTeleportMasterySkillId(skillId) => 16,
                 SkillManager.LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion when skillId == 4211006 => 1,
+                _ => 0
+            };
+        }
+
+        internal static int ResolveClientExplicitLocalOwnedAffectedAreaElementAttributeFallback(
+            int skillId,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
+        {
+            // WZ-first fallback for explicit owner-branch skills when runtime skill metadata is incomplete.
+            // Values mirror root `elemAttr` on the recovered local owner family: f=1, i=2, h=16, d=32.
+            return ownerLane switch
+            {
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack when skillId == 3111003 => 1,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 12111003 => 1,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 12111005 => 1,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2121007 => 1,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2221001 => 2,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2221007 => 2,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 2321008 => 16,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 22161001 => 1,
+                SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack when skillId == 22181002 => 32,
                 _ => 0
             };
         }
@@ -31414,6 +31475,11 @@ namespace HaCreator.MapSimulator
         {
             if (ShouldCancelPassiveTransferFieldRequestFromHorizontalKeyDown())
             {
+                if (PassiveTransferFieldReadinessEvaluator.ShouldStopSkillMacroForHorizontalQueuedCancel(true))
+                {
+                    StopSkillMacroForHandleUpKeyDown();
+                }
+
                 ClearPassiveTransferRequest();
             }
 
@@ -33232,7 +33298,7 @@ namespace HaCreator.MapSimulator
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
             _packetOwnedTeleportRequestActive = _pendingCrossMapTeleportTarget != null;
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromTransferLifecycle();
         }
 
 
@@ -41117,9 +41183,14 @@ namespace HaCreator.MapSimulator
             renderData.TemporaryStatLabels = buffEntry.TemporaryStatLabels;
             renderData.TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames;
             renderData.IsAlerting = buffEntry.IsAlerting;
+            renderData.UseTemporaryStatViewArtworkOnly = buffEntry.UseTemporaryStatViewArtworkOnly;
             renderData.LayerUpdateSequence = buffEntry.LayerUpdateSequence;
             renderData.LowDurabilityAlertSequence = buffEntry.LowDurabilityAlertSequence;
             renderData.LowDurabilityAlertStartTime = buffEntry.LowDurabilityAlertStartTime;
+            renderData.ShadowIndex = buffEntry.ShadowIndex;
+            renderData.ShadowIndexUpdateSequence = buffEntry.ShadowIndexUpdateSequence;
+            renderData.MainLayerAnimationSequence = buffEntry.MainLayerAnimationSequence;
+            renderData.ShadowLayerAnimationSequence = buffEntry.ShadowLayerAnimationSequence;
         }
 
 

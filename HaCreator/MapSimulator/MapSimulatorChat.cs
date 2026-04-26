@@ -413,6 +413,8 @@ namespace HaCreator.MapSimulator
             if (!_isActive)
                 return false;
 
+            bool controlHeld = newKeyboardState.IsKeyDown(Keys.LeftControl) || newKeyboardState.IsKeyDown(Keys.RightControl);
+
             // Handle Escape to cancel chat
             if (newKeyboardState.IsKeyDown(Keys.Escape))
             {
@@ -743,6 +745,11 @@ namespace HaCreator.MapSimulator
             // Handle Home key - move cursor to start
             if (newKeyboardState.IsKeyDown(Keys.Home) && oldKeyboardState.IsKeyUp(Keys.Home))
             {
+                if (controlHeld)
+                {
+                    return true;
+                }
+
                 if (_isWhisperTargetPickerActive)
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
@@ -779,6 +786,11 @@ namespace HaCreator.MapSimulator
             // Handle End key - move cursor to end
             if (newKeyboardState.IsKeyDown(Keys.End) && oldKeyboardState.IsKeyUp(Keys.End))
             {
+                if (controlHeld)
+                {
+                    return true;
+                }
+
                 if (_isWhisperTargetPickerActive)
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
@@ -862,6 +874,11 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            if (TryHandleClientEditControlChord(newKeyboardState, oldKeyboardState, controlHeld))
+            {
+                return true;
+            }
+
             // Handle character input
             bool shift = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
             Keys[] pressedKeys = newKeyboardState.GetPressedKeys();
@@ -876,6 +893,11 @@ namespace HaCreator.MapSimulator
                     key == Keys.Up || key == Keys.Down || key == Keys.Left || key == Keys.Right ||
                     key == Keys.Home || key == Keys.End || key == Keys.Delete)
                     continue;
+
+                if (controlHeld)
+                {
+                    continue;
+                }
 
                 // Process only newly pressed keys
                 if (oldKeyboardState.IsKeyUp(key))
@@ -907,7 +929,7 @@ namespace HaCreator.MapSimulator
                 newKeyboardState.IsKeyDown(_lastHeldKey) && ShouldRepeatKey(_lastHeldKey, tickCount))
             {
                 char? c = KeyToChar(_lastHeldKey, shift);
-                if (c.HasValue && CanInsertInputCharacter())
+                if (!controlHeld && c.HasValue && CanInsertInputCharacter())
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
                     {
@@ -928,6 +950,60 @@ namespace HaCreator.MapSimulator
             }
 
             return true; // Consume input when chat is active
+        }
+
+        private bool TryHandleClientEditControlChord(
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            bool controlHeld)
+        {
+            if (!controlHeld)
+            {
+                return false;
+            }
+
+            if (IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.C))
+            {
+                if (TryGetInputSelectionText(out string selectedText))
+                {
+                    TrySetClipboardText(selectedText);
+                }
+
+                return true;
+            }
+
+            if (IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.X))
+            {
+                if (TryGetInputSelectionText(out string selectedText))
+                {
+                    TrySetClipboardText(selectedText);
+                    TryDeleteInputSelection();
+                    SyncWhisperTargetPickerSelectionFromInput();
+                }
+
+                return true;
+            }
+
+            if (IsNewKeyPress(newKeyboardState, oldKeyboardState, Keys.V))
+            {
+                if (IsWhisperTargetPickerModalFooterFocused())
+                {
+                    return true;
+                }
+
+                string clipboardText = TryGetClipboardText();
+                if (!string.IsNullOrEmpty(clipboardText) && CanInsertInputText(clipboardText))
+                {
+                    ActivateWhisperTargetPickerModalComboFocus();
+                    TryDeleteInputSelection();
+                    InsertInputText(clipboardText);
+                    SyncWhisperTargetPickerSelectionFromInput();
+                }
+
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -2969,10 +3045,98 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryGetInputSelectionText(out string selectedText)
+        {
+            selectedText = string.Empty;
+            if (_selectionAnchor < 0)
+            {
+                return false;
+            }
+
+            int selectionStart = Math.Clamp(Math.Min(_cursorPosition, _selectionAnchor), 0, _inputText.Length);
+            int selectionEnd = Math.Clamp(Math.Max(_cursorPosition, _selectionAnchor), 0, _inputText.Length);
+            if (selectionEnd <= selectionStart)
+            {
+                return false;
+            }
+
+            selectedText = _inputText.ToString(selectionStart, selectionEnd - selectionStart);
+            return true;
+        }
+
         private bool CanInsertInputCharacter()
         {
             return _inputText.Length < CHAT_MAX_INPUT_LENGTH
                 || (_selectionAnchor >= 0 && Math.Abs(_cursorPosition - _selectionAnchor) > 0);
+        }
+
+        private bool CanInsertInputText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            if (_inputText.Length < CHAT_MAX_INPUT_LENGTH)
+            {
+                return true;
+            }
+
+            return _selectionAnchor >= 0 && Math.Abs(_cursorPosition - _selectionAnchor) > 0;
+        }
+
+        private void InsertInputText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            int availableLength = CHAT_MAX_INPUT_LENGTH - _inputText.Length;
+            if (availableLength <= 0)
+            {
+                return;
+            }
+
+            string textToInsert = text.Length <= availableLength ? text : text.Substring(0, availableLength);
+            _inputText.Insert(_cursorPosition, textToInsert);
+            _cursorPosition += textToInsert.Length;
+            ClearInputSelection();
+        }
+
+        private static bool IsNewKeyPress(KeyboardState newKeyboardState, KeyboardState oldKeyboardState, Keys key)
+        {
+            return newKeyboardState.IsKeyDown(key) && oldKeyboardState.IsKeyUp(key);
+        }
+
+        private static string TryGetClipboardText()
+        {
+            try
+            {
+                return System.Windows.Forms.Clipboard.ContainsText()
+                    ? System.Windows.Forms.Clipboard.GetText()
+                    : string.Empty;
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
+
+        private static void TrySetClipboardText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(text);
+            }
+            catch (Exception)
+            {
+            }
         }
 
         private static bool TryParseTargetModeCommand(

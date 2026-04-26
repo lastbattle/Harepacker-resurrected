@@ -257,6 +257,55 @@ namespace HaCreator.MapSimulator.UI
             public string PacketStateSignature { get; set; } = string.Empty;
         }
 
+        private sealed class ScrollBarRuntimeState
+        {
+            public int ControlId { get; set; }
+            public int UpButtonId { get; set; }
+            public int DownButtonId { get; set; }
+            public Point Position { get; set; }
+            public int Height { get; set; }
+            public int WheelRange { get; set; }
+            public int Offset { get; set; }
+            public int MaxOffset { get; set; }
+            public bool IsDragging { get; set; }
+            public int Revision { get; set; }
+        }
+
+        private sealed class SelectorRuntimeState
+        {
+            public int ActiveIndex { get; set; }
+            public int VisibleOffset { get; set; }
+            public int VisibleCount { get; set; }
+            public int TotalCount { get; set; }
+            public string FocusLabel { get; set; } = string.Empty;
+            public bool HasNumberFont { get; set; }
+            public int Revision { get; set; }
+        }
+
+        private sealed class InventoryTabRuntimeState
+        {
+            public int ControlId { get; set; }
+            public int ItemCount { get; set; }
+            public Point Position { get; set; }
+            public int Width { get; set; }
+            public bool SameWidth { get; set; }
+            public int NormalStringPoolId { get; set; }
+            public int SelectedStringPoolId { get; set; }
+            public string ActiveTabName { get; set; } = string.Empty;
+            public int Revision { get; set; }
+        }
+
+        private sealed class ListPlateRuntimeState
+        {
+            public int ActiveIndex { get; set; } = -1;
+            public int ScrollOffset { get; set; }
+            public int TotalCount { get; set; }
+            public bool HasKeyFocusCanvas { get; set; }
+            public int ButtonFocusIndex { get; set; } = -1;
+            public string PaneLabel { get; set; } = string.Empty;
+            public int Revision { get; set; }
+        }
+
         private readonly string _windowName;
         private readonly string _title;
         private readonly List<LayerInfo> _layers = new();
@@ -319,6 +368,13 @@ namespace HaCreator.MapSimulator.UI
         private readonly OneADaySelectorRuntimeState _oneADaySelectorObject = new();
         private readonly OneADayCounterRuntimeState _oneADayCounterObject = new();
         private readonly OneADayRewardSessionRuntimeState _oneADayRewardSessionObject = new();
+        private readonly SelectorRuntimeState _lockerSelectorObject = new();
+        private readonly ScrollBarRuntimeState _lockerScrollBarObject = new();
+        private readonly SelectorRuntimeState _inventorySelectorObject = new();
+        private readonly InventoryTabRuntimeState _inventoryTabObject = new();
+        private readonly ScrollBarRuntimeState _inventoryScrollBarObject = new();
+        private readonly ListPlateRuntimeState _listPlateObject = new();
+        private readonly ScrollBarRuntimeState _listScrollBarObject = new();
 
         public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
             : base(frame)
@@ -579,6 +635,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            UpdateLockerRuntimeObjects(state);
+
             float lineY = titleOrigin.Y + _font.LineSpacing + 4f;
             Color detailColor = new(225, 225, 225);
             Color accentColor = new(255, 223, 149);
@@ -594,6 +652,12 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(
                 _font,
                 $"Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Runtime selector rev {_lockerSelectorObject.Revision.ToString(CultureInfo.InvariantCulture)} focus {_lockerSelectorObject.ActiveIndex.ToString(CultureInfo.InvariantCulture)}/{_lockerSelectorObject.TotalCount.ToString(CultureInfo.InvariantCulture)}  CCtrlScrollBar#{_lockerScrollBarObject.ControlId.ToString(CultureInfo.InvariantCulture)} rev {_lockerScrollBarObject.Revision.ToString(CultureInfo.InvariantCulture)} max {_lockerScrollBarObject.MaxOffset.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
@@ -631,6 +695,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             SyncInventoryOwnerState(state);
+            UpdateInventoryRuntimeObjects(state);
 
             float lineY = titleOrigin.Y + _font.LineSpacing + 4f;
             Color detailColor = new(225, 225, 225);
@@ -665,6 +730,12 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(
                 _font,
                 $"Tab UOL 0x{state.TabNormalStringPoolId:X}/0x{state.TabSelectedStringPoolId:X}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Runtime tab#{_inventoryTabObject.ControlId.ToString(CultureInfo.InvariantCulture)} rev {_inventoryTabObject.Revision.ToString(CultureInfo.InvariantCulture)} active {_inventoryTabObject.ActiveTabName}  selector rev {_inventorySelectorObject.Revision.ToString(CultureInfo.InvariantCulture)} focus {_inventorySelectorObject.ActiveIndex.ToString(CultureInfo.InvariantCulture)}  scrollbar rev {_inventoryScrollBarObject.Revision.ToString(CultureInfo.InvariantCulture)} max {_inventoryScrollBarObject.MaxOffset.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
@@ -704,6 +775,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            UpdateListRuntimeObjects(state);
+
             float lineY = titleOrigin.Y + _font.LineSpacing + 2f;
             Color detailColor = new(225, 225, 225);
             Color accentColor = new(255, 223, 149);
@@ -723,6 +796,12 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(
                 _font,
                 $"Plate {state.PlateFocusIndex.ToString(CultureInfo.InvariantCulture)}  Button {Math.Max(-1, _listButtonFocusIndex).ToString(CultureInfo.InvariantCulture)}  KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                mutedColor);
+            lineY += _font.LineSpacing + 2f;
+            sprite.DrawString(
+                _font,
+                $"Runtime plate rev {_listPlateObject.Revision.ToString(CultureInfo.InvariantCulture)} focus {_listPlateObject.ActiveIndex.ToString(CultureInfo.InvariantCulture)}  CCtrlScrollBar#{_listScrollBarObject.ControlId.ToString(CultureInfo.InvariantCulture)} rev {_listScrollBarObject.Revision.ToString(CultureInfo.InvariantCulture)} max {_listScrollBarObject.MaxOffset.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 mutedColor);
             lineY += _font.LineSpacing + 2f;
@@ -2101,6 +2180,189 @@ namespace HaCreator.MapSimulator.UI
             {
                 _inventoryActionState = state.PacketFocusMessage.Trim();
                 _statusMessage = _inventoryActionState;
+            }
+        }
+
+        private void UpdateLockerRuntimeObjects(LockerOwnerState state)
+        {
+            int sharedCount = Math.Max(0, state?.SharedCharacterNames?.Count ?? 0);
+            int visibleOffset = Math.Clamp(_lockerScrollOffset, 0, Math.Max(0, sharedCount - 3));
+            int activeIndex = Math.Clamp(_lockerCharacterIndex, 0, Math.Max(0, sharedCount - 1));
+            string focusLabel = sharedCount > 0 && activeIndex < state.SharedCharacterNames.Count
+                ? state.SharedCharacterNames[activeIndex] ?? string.Empty
+                : string.Empty;
+            bool selectorChanged =
+                _lockerSelectorObject.ActiveIndex != activeIndex
+                || _lockerSelectorObject.VisibleOffset != visibleOffset
+                || _lockerSelectorObject.TotalCount != sharedCount
+                || _lockerSelectorObject.VisibleCount != Math.Min(3, sharedCount)
+                || _lockerSelectorObject.HasNumberFont != (state?.HasNumberFont ?? false)
+                || !string.Equals(_lockerSelectorObject.FocusLabel, focusLabel, StringComparison.Ordinal);
+
+            _lockerSelectorObject.ActiveIndex = activeIndex;
+            _lockerSelectorObject.VisibleOffset = visibleOffset;
+            _lockerSelectorObject.VisibleCount = Math.Min(3, sharedCount);
+            _lockerSelectorObject.TotalCount = sharedCount;
+            _lockerSelectorObject.FocusLabel = focusLabel;
+            _lockerSelectorObject.HasNumberFont = state?.HasNumberFont ?? false;
+            if (selectorChanged)
+            {
+                _lockerSelectorObject.Revision++;
+            }
+
+            UpdateScrollBarRuntimeObject(
+                _lockerScrollBarObject,
+                state?.ScrollBarControlId ?? 1001,
+                state?.ScrollBarUpButtonId ?? 1,
+                state?.ScrollBarDownButtonId ?? 0,
+                new Point(state?.ScrollBarX ?? -1, state?.ScrollBarY ?? -1),
+                state?.ScrollBarHeight ?? -1,
+                state?.WheelRange ?? 0,
+                visibleOffset,
+                Math.Max(0, sharedCount - 3),
+                _draggingLockerScrollThumb);
+        }
+
+        private void UpdateInventoryRuntimeObjects(InventoryOwnerState state)
+        {
+            int activeCount = Math.Max(0, ResolveInventoryActiveCount(state));
+            int maxScroll = Math.Max(0, activeCount - 4);
+            int scrollOffset = Math.Clamp(_inventoryScrollOffset, 0, maxScroll);
+            int activeIndex = activeCount == 0
+                ? -1
+                : Math.Clamp(scrollOffset + _inventoryRowFocusIndex, 0, activeCount - 1);
+            bool selectorChanged =
+                _inventorySelectorObject.ActiveIndex != activeIndex
+                || _inventorySelectorObject.VisibleOffset != scrollOffset
+                || _inventorySelectorObject.VisibleCount != Math.Min(4, activeCount)
+                || _inventorySelectorObject.TotalCount != activeCount
+                || _inventorySelectorObject.HasNumberFont != state.HasNumberFont
+                || !string.Equals(_inventorySelectorObject.FocusLabel, state.SelectedEntryTitle ?? string.Empty, StringComparison.Ordinal);
+
+            _inventorySelectorObject.ActiveIndex = activeIndex;
+            _inventorySelectorObject.VisibleOffset = scrollOffset;
+            _inventorySelectorObject.VisibleCount = Math.Min(4, activeCount);
+            _inventorySelectorObject.TotalCount = activeCount;
+            _inventorySelectorObject.FocusLabel = state.SelectedEntryTitle ?? string.Empty;
+            _inventorySelectorObject.HasNumberFont = state.HasNumberFont;
+            if (selectorChanged)
+            {
+                _inventorySelectorObject.Revision++;
+            }
+
+            bool tabChanged =
+                _inventoryTabObject.ControlId != state.TabControlId
+                || _inventoryTabObject.ItemCount != state.TabItemCount
+                || _inventoryTabObject.Position != new Point(state.TabX, state.TabY)
+                || _inventoryTabObject.Width != state.TabWidth
+                || _inventoryTabObject.SameWidth != state.TabSameWidth
+                || _inventoryTabObject.NormalStringPoolId != state.TabNormalStringPoolId
+                || _inventoryTabObject.SelectedStringPoolId != state.TabSelectedStringPoolId
+                || !string.Equals(_inventoryTabObject.ActiveTabName, _inventoryTabName, StringComparison.Ordinal);
+
+            _inventoryTabObject.ControlId = state.TabControlId;
+            _inventoryTabObject.ItemCount = state.TabItemCount;
+            _inventoryTabObject.Position = new Point(state.TabX, state.TabY);
+            _inventoryTabObject.Width = state.TabWidth;
+            _inventoryTabObject.SameWidth = state.TabSameWidth;
+            _inventoryTabObject.NormalStringPoolId = state.TabNormalStringPoolId;
+            _inventoryTabObject.SelectedStringPoolId = state.TabSelectedStringPoolId;
+            _inventoryTabObject.ActiveTabName = _inventoryTabName;
+            if (tabChanged)
+            {
+                _inventoryTabObject.Revision++;
+            }
+
+            UpdateScrollBarRuntimeObject(
+                _inventoryScrollBarObject,
+                state.ScrollBarControlId,
+                state.ScrollBarUpButtonId,
+                state.ScrollBarDownButtonId,
+                new Point(state.ScrollBarX, state.ScrollBarY),
+                state.ScrollBarHeight,
+                state.WheelRange,
+                scrollOffset,
+                maxScroll,
+                _draggingInventoryScrollThumb);
+        }
+
+        private void UpdateListRuntimeObjects(ListOwnerState state)
+        {
+            int totalCount = Math.Max(0, state?.TotalCount ?? 0);
+            int scrollOffset = Math.Clamp(state?.ScrollOffset ?? 0, 0, Math.Max(0, totalCount - 5));
+            int activeIndex = Math.Clamp(state?.SelectedIndex ?? -1, -1, Math.Max(-1, totalCount - 1));
+            bool plateChanged =
+                _listPlateObject.ActiveIndex != activeIndex
+                || _listPlateObject.ScrollOffset != scrollOffset
+                || _listPlateObject.TotalCount != totalCount
+                || _listPlateObject.HasKeyFocusCanvas != (state?.HasKeyFocusCanvas ?? false)
+                || _listPlateObject.ButtonFocusIndex != _listButtonFocusIndex
+                || !string.Equals(_listPlateObject.PaneLabel, state?.PaneLabel ?? string.Empty, StringComparison.Ordinal);
+
+            _listPlateObject.ActiveIndex = activeIndex;
+            _listPlateObject.ScrollOffset = scrollOffset;
+            _listPlateObject.TotalCount = totalCount;
+            _listPlateObject.HasKeyFocusCanvas = state?.HasKeyFocusCanvas ?? false;
+            _listPlateObject.ButtonFocusIndex = _listButtonFocusIndex;
+            _listPlateObject.PaneLabel = state?.PaneLabel ?? string.Empty;
+            if (plateChanged)
+            {
+                _listPlateObject.Revision++;
+            }
+
+            UpdateScrollBarRuntimeObject(
+                _listScrollBarObject,
+                1001,
+                1,
+                0,
+                new Point(381, 44),
+                339,
+                412,
+                scrollOffset,
+                Math.Max(0, totalCount - 5),
+                _draggingListScrollThumb);
+        }
+
+        private static void UpdateScrollBarRuntimeObject(
+            ScrollBarRuntimeState runtime,
+            int controlId,
+            int upButtonId,
+            int downButtonId,
+            Point position,
+            int height,
+            int wheelRange,
+            int offset,
+            int maxOffset,
+            bool isDragging)
+        {
+            if (runtime == null)
+            {
+                return;
+            }
+
+            bool changed =
+                runtime.ControlId != controlId
+                || runtime.UpButtonId != upButtonId
+                || runtime.DownButtonId != downButtonId
+                || runtime.Position != position
+                || runtime.Height != height
+                || runtime.WheelRange != wheelRange
+                || runtime.Offset != offset
+                || runtime.MaxOffset != maxOffset
+                || runtime.IsDragging != isDragging;
+
+            runtime.ControlId = controlId;
+            runtime.UpButtonId = upButtonId;
+            runtime.DownButtonId = downButtonId;
+            runtime.Position = position;
+            runtime.Height = height;
+            runtime.WheelRange = wheelRange;
+            runtime.Offset = offset;
+            runtime.MaxOffset = maxOffset;
+            runtime.IsDragging = isDragging;
+            if (changed)
+            {
+                runtime.Revision++;
             }
         }
 

@@ -509,24 +509,18 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (!IsRunning && !HasAttachedClient)
             {
-                if (HasPassiveEstablishedSocketPair)
+                if (!HasPassiveEstablishedSocketPair)
                 {
-                    status =
-                        $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. " +
-                        $"It cannot queue opcode {OutboundPulleyRequestOpcode} while only passively observing an already-established socket pair; arm `/guildboss session attachproxy ...` or `/guildboss session startauto ...` and reconnect through localhost first.";
+                    status = "Guild boss official-session bridge is not armed for deferred live-session injection.";
                     LastStatus = status;
                     return false;
                 }
-
-                status = "Guild boss official-session bridge is not armed for deferred live-session injection.";
-                LastStatus = status;
-                return false;
             }
 
             _pendingOutboundRequests.Enqueue(new PendingPulleyRequest(request, BuildPulleyRequestPacket()));
             QueuedCount++;
             status = HasPassiveEstablishedSocketPair
-                ? $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for the proxied reconnect handshake."
+                ? $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} while observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Arm `/guildboss session attachproxy ...` or `/guildboss session startauto ...` and reconnect through localhost to flush it after the proxied handshake initializes."
                 : $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for deferred live-session injection.";
             LastStatus = status;
             return true;

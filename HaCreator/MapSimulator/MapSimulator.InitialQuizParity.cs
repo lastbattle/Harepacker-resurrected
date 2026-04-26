@@ -1331,24 +1331,12 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            int totalDuration = _initialQuizOwnerAnimationFrames.Sum(static frame => Math.Max(1, frame.DelayMs));
-            if (totalDuration <= 0)
-            {
-                return _initialQuizOwnerAnimationFrames[0];
-            }
-
-            int frameTime = Math.Abs(currentTickCount) % totalDuration;
-            int accumulated = 0;
-            for (int i = 0; i < _initialQuizOwnerAnimationFrames.Length; i++)
-            {
-                accumulated += Math.Max(1, _initialQuizOwnerAnimationFrames[i].DelayMs);
-                if (frameTime < accumulated)
-                {
-                    return _initialQuizOwnerAnimationFrames[i];
-                }
-            }
-
-            return _initialQuizOwnerAnimationFrames[^1];
+            int frameIndex = ResolveInitialQuizOwnerAnimationFrameIndex(
+                currentTickCount,
+                _initialQuizOwnerAnimationFrames.Select(static frame => frame.DelayMs).ToArray());
+            return frameIndex >= 0 && frameIndex < _initialQuizOwnerAnimationFrames.Length
+                ? _initialQuizOwnerAnimationFrames[frameIndex]
+                : _initialQuizOwnerAnimationFrames[0];
         }
 
         private Rectangle ResolveInitialQuizOwnerBounds()
@@ -1949,6 +1937,38 @@ namespace HaCreator.MapSimulator
             }
 
             return total;
+        }
+
+        internal static int ResolveInitialQuizOwnerAnimationFrameIndex(int currentTickCount, IReadOnlyList<int> frameDelaysMs)
+        {
+            if (frameDelaysMs == null || frameDelaysMs.Count == 0)
+            {
+                return -1;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < frameDelaysMs.Count; i++)
+            {
+                totalDuration += Math.Max(1, frameDelaysMs[i]);
+            }
+
+            if (totalDuration <= 0)
+            {
+                return 0;
+            }
+
+            uint frameTime = unchecked((uint)currentTickCount) % (uint)totalDuration;
+            int accumulated = 0;
+            for (int i = 0; i < frameDelaysMs.Count; i++)
+            {
+                accumulated += Math.Max(1, frameDelaysMs[i]);
+                if (frameTime < accumulated)
+                {
+                    return i;
+                }
+            }
+
+            return frameDelaysMs.Count - 1;
         }
 
         internal static InitialQuizOwnerSubmissionValidation ValidateInitialQuizOwnerSubmission(

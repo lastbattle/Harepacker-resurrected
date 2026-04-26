@@ -722,13 +722,14 @@ namespace HaCreator.MapSimulator.Managers
 
             if (mappedOpcodes != null && mappedOpcodes.TryGetValue(opcode, out MassacrePacketInboxMessageKind mappedKind))
             {
-                message = new MassacrePacketInboxMessage(
+                return TryDecodeMappedInboundPacket(
                     mappedKind,
+                    opcode,
+                    payload,
                     source,
-                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
-                    packetType: opcode,
-                    payload: payload);
-                return true;
+                    sessionValueInfoState,
+                    rawPacket,
+                    out message);
             }
 
             if (opcode == CurrentWrapperRelayOpcode
@@ -768,6 +769,116 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        private static bool TryDecodeMappedInboundPacket(
+            MassacrePacketInboxMessageKind mappedKind,
+            int opcode,
+            byte[] payload,
+            string source,
+            MassacreSessionValueInfoState sessionValueInfoState,
+            byte[] rawPacket,
+            out MassacrePacketInboxMessage message)
+        {
+            message = null;
+            string rawText = $"packetclientraw {Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}";
+
+            if (IsSessionValueMappedKind(mappedKind)
+                && TryDecodeSessionValueMessage(payload, source, sessionValueInfoState, rawPacket, out MassacrePacketInboxMessage sessionMessage)
+                && IsMappedSessionValueKindMatch(mappedKind, sessionMessage.Kind))
+            {
+                message = new MassacrePacketInboxMessage(
+                    sessionMessage.Kind,
+                    source,
+                    rawText,
+                    sessionMessage.Value1,
+                    sessionMessage.Value2,
+                    sessionMessage.Value3,
+                    sessionMessage.Value4,
+                    packetType: opcode,
+                    payload: payload,
+                    clearResult: sessionMessage.ClearResult,
+                    hasScoreOverride: sessionMessage.HasScoreOverride,
+                    hasRankOverride: sessionMessage.HasRankOverride,
+                    rank: sessionMessage.Rank);
+                return true;
+            }
+
+            if (mappedKind == MassacrePacketInboxMessageKind.Stage
+                && TryDecodeMappedInt32Payload(payload, out int stage)
+                && stage > 0)
+            {
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Stage,
+                    source,
+                    rawText,
+                    value1: stage,
+                    packetType: opcode,
+                    payload: payload);
+                return true;
+            }
+
+            if (mappedKind == MassacrePacketInboxMessageKind.Bonus
+                && TryDecodeMappedInt32Payload(payload, out int bonusValue)
+                && bonusValue >= 0)
+            {
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Bonus,
+                    source,
+                    rawText,
+                    value1: bonusValue,
+                    packetType: opcode,
+                    payload: payload);
+                return true;
+            }
+
+            if (mappedKind == MassacrePacketInboxMessageKind.IncGauge
+                && TryDecodeMappedInt32Payload(payload, out int incGauge)
+                && incGauge >= 0)
+            {
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.IncGauge,
+                    source,
+                    rawText,
+                    value1: incGauge,
+                    packetType: opcode,
+                    payload: payload);
+                return true;
+            }
+
+            message = new MassacrePacketInboxMessage(
+                mappedKind,
+                source,
+                rawText,
+                packetType: opcode,
+                payload: payload);
+            return true;
+        }
+
+        private static bool IsSessionValueMappedKind(MassacrePacketInboxMessageKind kind)
+        {
+            return kind == MassacrePacketInboxMessageKind.Stage
+                || kind == MassacrePacketInboxMessageKind.Bonus
+                || kind == MassacrePacketInboxMessageKind.Info
+                || kind == MassacrePacketInboxMessageKind.InfoPayload;
+        }
+
+        private static bool IsMappedSessionValueKindMatch(MassacrePacketInboxMessageKind mappedKind, MassacrePacketInboxMessageKind decodedKind)
+        {
+            return mappedKind == decodedKind
+                || (mappedKind == MassacrePacketInboxMessageKind.InfoPayload && decodedKind == MassacrePacketInboxMessageKind.Info);
+        }
+
+        private static bool TryDecodeMappedInt32Payload(byte[] payload, out int value)
+        {
+            value = 0;
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            value = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            return true;
         }
 
         private static bool TryDecodeSessionValueMessage(

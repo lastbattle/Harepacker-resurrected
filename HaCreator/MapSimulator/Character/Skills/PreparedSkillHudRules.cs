@@ -450,6 +450,22 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool IsDragonOverlaySkill(int skillId) => skillId is 22121000 or 22151001;
 
+        public static bool TryResolveClientDragonKeyDownBarAnchor(
+            int skillId,
+            bool hasDragonAnchor,
+            Vector2 dragonAnchor,
+            out Vector2 anchor)
+        {
+            anchor = Vector2.Zero;
+            if (!IsDragonOverlaySkill(skillId) || !hasDragonAnchor)
+            {
+                return false;
+            }
+
+            anchor = dragonAnchor;
+            return true;
+        }
+
         internal static Vector2 ResolveClientLocalKeyDownBarAnchor(Vector2 vectorControlPosition)
         {
             return vectorControlPosition

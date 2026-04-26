@@ -102,7 +102,12 @@ namespace HaCreator.MapSimulator.Interaction
                                 return false;
                             }
 
-                            _ = reader.ReadInt32();
+                            int consumedItemId = reader.ReadInt32();
+                            if (consumedItemId > 0 && isConsumeOnPickupCardItem(consumedItemId))
+                            {
+                                collected.Add(new MonsterBookInventoryCardPickup(consumedItemId, 1));
+                            }
+
                             break;
                         default:
                             errorMessage = $"Inventory-operation mode {mode} is unsupported for Monster Book pickup matching.";

@@ -427,20 +427,32 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser helper <characterId> <marker|clear|none|DefaultHelper/path> [dir=true|false]");
             }
 
-            if (!TryParseRemoteUserHelperMarker(args[2], out MinimapUI.HelperMarkerType? markerType))
-            {
-                return ChatCommandHandler.CommandResult.Error("Helper marker must be user, party, partymaster, guild, guildmaster, friend, another, match, usertrader, anothertrader, clear/none, or a DefaultHelper path.");
-            }
-
             bool showDirectionOverlay = true;
             if (args.Length >= 4 && args[3].StartsWith("dir=", StringComparison.OrdinalIgnoreCase))
             {
                 showDirectionOverlay = !string.Equals(args[3][4..], "false", StringComparison.OrdinalIgnoreCase);
             }
 
-            return _remoteUserPool.TrySetHelperMarker(characterId, markerType, showDirectionOverlay, out string message)
-                ? ChatCommandHandler.CommandResult.Ok(markerType.HasValue
-                    ? $"Remote user {characterId} helper marker set to {markerType.Value}."
+            if (!RemoteUserPacketCodec.TryBuildHelperPayload(characterId, args[2], showDirectionOverlay, out byte[] payload, out string buildError))
+            {
+                return ChatCommandHandler.CommandResult.Error(buildError);
+            }
+
+            if (!RemoteUserPacketCodec.TryParseHelper(payload, out RemoteUserHelperPacket helperPacket, out string parseError))
+            {
+                return ChatCommandHandler.CommandResult.Error(parseError);
+            }
+
+            if (!ShouldApplyTrackedUserStateForRemoteHelperPacket(helperPacket))
+            {
+                return _remoteUserPool.TryGetActor(helperPacket.CharacterId, out _)
+                    ? ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} helper payload accepted without changing tracked-user marker state.")
+                    : ChatCommandHandler.CommandResult.Error($"Remote character {characterId} does not exist.");
+            }
+
+            return _remoteUserPool.TrySetHelperMarker(helperPacket.CharacterId, helperPacket.MarkerType, helperPacket.ShowDirectionOverlay, out string message)
+                ? ChatCommandHandler.CommandResult.Ok(helperPacket.MarkerType.HasValue
+                    ? $"Remote user {characterId} helper marker set to {helperPacket.MarkerType.Value}."
                     : $"Remote user {characterId} helper marker cleared.")
                 : ChatCommandHandler.CommandResult.Error(message);
         }

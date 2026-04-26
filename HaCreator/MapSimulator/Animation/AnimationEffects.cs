@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Animation
 {
@@ -70,6 +71,7 @@ namespace HaCreator.MapSimulator.Animation
             public bool SpawnRelativeToTarget { get; init; } = true;
             public bool SpawnUsesEmissionBox { get; init; }
             public bool SpawnAppliesEmissionBias { get; init; }
+            public bool SpawnUsesEmissionTravelDistance { get; init; }
             public int SpawnDurationMs { get; init; }
             public float SpawnTravelDistanceMin { get; init; }
             public float SpawnTravelDistanceMax { get; init; }
@@ -85,8 +87,44 @@ namespace HaCreator.MapSimulator.Animation
             public bool TerminateRequested { get; set; }
             public bool IsTerminated { get; internal set; }
             public int SimulatedAnimationStateId { get; internal set; }
+            public int SimulatedOverlayLayerHandleId { get; internal set; }
+            public int SimulatedOverlayLayerHandleRefCount { get; internal set; }
             public IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode { get; internal set; }
                 = new Dictionary<int, int>();
+            public IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode { get; internal set; }
+                = new Dictionary<int, int>();
+
+            internal void CaptureRegisteredLayerReferences(
+                int overlayLayerHandleId,
+                IReadOnlyDictionary<int, int> layerHandleIdsByLayerCode)
+            {
+                SimulatedOverlayLayerHandleId = Math.Max(0, overlayLayerHandleId);
+                SimulatedOverlayLayerHandleRefCount = SimulatedOverlayLayerHandleId > 0 ? 1 : 0;
+
+                if (layerHandleIdsByLayerCode == null || layerHandleIdsByLayerCode.Count == 0)
+                {
+                    SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
+                    return;
+                }
+
+                SimulatedLayerHandleRefCountsByLayerCode = layerHandleIdsByLayerCode
+                    .Where(static entry => entry.Value > 0)
+                    .ToDictionary(static entry => entry.Key, static _ => 1);
+            }
+
+            internal void ReleaseRegisteredLayerReferences()
+            {
+                SimulatedOverlayLayerHandleRefCount = 0;
+                if (SimulatedLayerHandleRefCountsByLayerCode == null
+                    || SimulatedLayerHandleRefCountsByLayerCode.Count == 0)
+                {
+                    SimulatedLayerHandleRefCountsByLayerCode = new Dictionary<int, int>();
+                    return;
+                }
+
+                SimulatedLayerHandleRefCountsByLayerCode = SimulatedLayerHandleRefCountsByLayerCode
+                    .ToDictionary(static entry => entry.Key, static _ => 0);
+            }
 
             internal SecondaryMotionBlurAnimationStateTrace CaptureTrace()
             {
@@ -94,7 +132,12 @@ namespace HaCreator.MapSimulator.Animation
                     SimulatedAnimationStateId,
                     TerminateRequested,
                     IsTerminated,
-                    SimulatedLayerHandleIdsByLayerCode);
+                    SimulatedOverlayLayerHandleId,
+                    SimulatedOverlayLayerHandleRefCount,
+                    SimulatedLayerHandleIdsByLayerCode?.ToDictionary(static entry => entry.Key, static entry => entry.Value)
+                    ?? new Dictionary<int, int>(),
+                    SimulatedLayerHandleRefCountsByLayerCode?.ToDictionary(static entry => entry.Key, static entry => entry.Value)
+                    ?? new Dictionary<int, int>());
             }
         }
 
@@ -102,7 +145,10 @@ namespace HaCreator.MapSimulator.Animation
             int SimulatedAnimationStateId,
             bool TerminateRequested,
             bool IsTerminated,
-            IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode);
+            int SimulatedOverlayLayerHandleId,
+            int SimulatedOverlayLayerHandleRefCount,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleRefCountsByLayerCode);
 
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
         private readonly List<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayers = new();
@@ -1442,9 +1488,15 @@ namespace HaCreator.MapSimulator.Animation
             int angleDegrees,
             Vector2 randomOffset,
             bool useEmissionBox,
-            bool mirrorHorizontal)
+            bool mirrorHorizontal,
+            bool useEmissionTravelDistance = false)
         {
-            Vector2 travelOffset = ResolveFollowParticleTravelOffset(randomOffset, angleDegrees, useEmissionBox, mirrorHorizontal);
+            Vector2 travelOffset = ResolveFollowParticleTravelOffset(
+                randomOffset,
+                angleDegrees,
+                useEmissionBox,
+                mirrorHorizontal,
+                useEmissionTravelDistance);
             if (travelOffset.LengthSquared() <= float.Epsilon)
             {
                 return emissionOffset;
@@ -1498,13 +1550,22 @@ namespace HaCreator.MapSimulator.Animation
             Vector2 randomOffset,
             int angleDegrees,
             bool useEmissionBox,
-            bool mirrorHorizontal)
+            bool mirrorHorizontal,
+            bool useEmissionTravelDistance = false)
         {
             if (useEmissionBox)
             {
                 return new Vector2(
                     mirrorHorizontal ? -randomOffset.X : randomOffset.X,
                     randomOffset.Y);
+            }
+
+            if (useEmissionTravelDistance)
+            {
+                float emissionTravelDistance = Math.Abs(randomOffset.Y);
+                return emissionTravelDistance <= float.Epsilon
+                    ? Vector2.Zero
+                    : ResolvePolarFollowOffset(emissionTravelDistance, angleDegrees);
             }
 
             float travelDistance = ResolveFollowParticleTravelDistance(randomOffset, useEmissionBox: false);
@@ -1909,6 +1970,9 @@ namespace HaCreator.MapSimulator.Animation
             _state = state ?? new AnimationEffects.SecondaryMotionBlurAnimationState();
             _state.TerminateRequested = false;
             _state.IsTerminated = false;
+            _state.CaptureRegisteredLayerReferences(
+                _state.SimulatedOverlayLayerHandleId,
+                _state.SimulatedLayerHandleIdsByLayerCode);
         }
 
         public bool Update(int currentTimeMs)
@@ -1968,6 +2032,7 @@ namespace HaCreator.MapSimulator.Animation
             if (!isActive && _state != null)
             {
                 _state.IsTerminated = true;
+                _state.ReleaseRegisteredLayerReferences();
             }
 
             return isActive;
@@ -1996,6 +2061,7 @@ namespace HaCreator.MapSimulator.Animation
             {
                 _state.IsTerminated = true;
                 _state.TerminateRequested = true;
+                _state.ReleaseRegisteredLayerReferences();
             }
         }
 
@@ -2154,6 +2220,11 @@ namespace HaCreator.MapSimulator.Animation
 
         public void Dispose()
         {
+            if (_state != null)
+            {
+                _state.ReleaseRegisteredLayerReferences();
+            }
+
             if (!_ownsFrameTextures)
             {
                 return;
@@ -2405,7 +2476,11 @@ namespace HaCreator.MapSimulator.Animation
         ReleaseLoadedLayer = 6,
         ReleaseOriginVector = 7,
         ReleaseOverlayParent = 8,
-        ReleaseSourceUol = 9
+        ReleaseSourceUol = 9,
+        CreateMissingStartTimeVariant = 10,
+        CreateMissingRepeatCountVariant = 11,
+        ClearMissingRepeatCountVariant = 12,
+        ClearMissingStartTimeVariant = 13
     }
 
     internal readonly record struct OneTimeAnimationRecoveredNativeOperation(
@@ -2536,7 +2611,8 @@ namespace HaCreator.MapSimulator.Animation
         SetLayerPosition,
         RetainLayerForOneTimeRegistration,
         RegisterOneTimeAnimation,
-        ReleaseLayerAfterOneTimeRegistration
+        ReleaseLayerAfterOneTimeRegistration,
+        ReleaseTemporaryCanvasAfterLayerRegistration
     }
 
     /// <summary>
@@ -2853,8 +2929,10 @@ namespace HaCreator.MapSimulator.Animation
             CanvasLayerRecoveredInsertCommand[] insertCommands =
                 registrationTrace.InsertCommands ?? Array.Empty<CanvasLayerRecoveredInsertCommand>();
             bool hasOverlayPositionWrite = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
+            bool hasTemporaryCanvas = ownerTemporaryCanvasOperations.Length > 0;
             int capacity = ownerTemporaryCanvasOperations.Length + 3 + insertCommands.Length + 1 + (hasOverlayPositionWrite ? 1 : 0)
-                + (registrationTrace.RegistersOneTimeAnimation ? 3 : 0);
+                + (registrationTrace.RegistersOneTimeAnimation ? 3 : 0)
+                + (hasTemporaryCanvas ? 1 : 0);
             var operations = new List<CanvasLayerRecoveredNativeOperation>(capacity);
 
             for (int i = 0; i < ownerTemporaryCanvasOperations.Length; i++)
@@ -3005,6 +3083,20 @@ namespace HaCreator.MapSimulator.Animation
                     registrationTrace.CanvasSettings));
                 operations.Add(new CanvasLayerRecoveredNativeOperation(
                     CanvasLayerRecoveredNativeOperationKind.ReleaseLayerAfterOneTimeRegistration,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    -1,
+                    registrationTrace.CanvasSettings));
+            }
+
+            if (hasTemporaryCanvas)
+            {
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.ReleaseTemporaryCanvasAfterLayerRegistration,
                     null,
                     Point.Zero,
                     0,
@@ -3459,6 +3551,37 @@ namespace HaCreator.MapSimulator.Animation
                 trace.LoadLayerAlphaValue,
                 trace.LoadLayerFlip,
                 trace.LoadLayerReservedValue));
+
+            if (trace.AnimateUsesMissingStartTime)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.CreateMissingStartTimeVariant,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1,
+                    AnimateUsesMissingStartTime: true));
+            }
+
+            if (trace.AnimateUsesMissingRepeatCount)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.CreateMissingRepeatCountVariant,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1,
+                    AnimateUsesMissingRepeatCount: true));
+            }
+
             operations.Add(new OneTimeAnimationRecoveredNativeOperation(
                 OneTimeAnimationRecoveredNativeOperationKind.Animate,
                 trace.SourceUol,
@@ -3471,6 +3594,36 @@ namespace HaCreator.MapSimulator.Animation
                 (int)trace.AnimatePlaybackMode,
                 AnimateUsesMissingStartTime: trace.AnimateUsesMissingStartTime,
                 AnimateUsesMissingRepeatCount: trace.AnimateUsesMissingRepeatCount));
+
+            if (trace.AnimateUsesMissingRepeatCount)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ClearMissingRepeatCountVariant,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1,
+                    AnimateUsesMissingRepeatCount: true));
+            }
+
+            if (trace.AnimateUsesMissingStartTime)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.ClearMissingStartTimeVariant,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    false,
+                    0,
+                    0,
+                    false,
+                    AnimationOneTimeOverlayParentKind.None,
+                    Value: 1,
+                    AnimateUsesMissingStartTime: true));
+            }
 
             if (trace.RegistersOneTimeAnimation)
             {
@@ -3863,6 +4016,7 @@ namespace HaCreator.MapSimulator.Animation
         private float _spawnTravelDistanceMax;
         private bool _spawnUsesEmissionBox;
         private bool _spawnAppliesEmissionBias;
+        private bool _spawnUsesEmissionTravelDistance;
         private float _spawnVerticalEmissionBias;
         private Point _spawnOffsetMin;
         private Point _spawnOffsetMax;
@@ -3902,6 +4056,7 @@ namespace HaCreator.MapSimulator.Animation
             _spawnTravelDistanceMax = Math.Max(_spawnTravelDistanceMin, options?.SpawnTravelDistanceMax ?? _spawnTravelDistanceMin);
             _spawnUsesEmissionBox = options?.SpawnUsesEmissionBox ?? false;
             _spawnAppliesEmissionBias = options?.SpawnAppliesEmissionBias ?? false;
+            _spawnUsesEmissionTravelDistance = options?.SpawnUsesEmissionTravelDistance ?? false;
             _spawnVerticalEmissionBias = options?.SpawnVerticalEmissionBias ?? 0f;
             _spawnOffsetMin = options?.SpawnOffsetMin ?? Point.Zero;
             _spawnOffsetMax = options?.SpawnOffsetMax ?? Point.Zero;
@@ -4005,7 +4160,8 @@ namespace HaCreator.MapSimulator.Animation
                                     particleAngleDegrees,
                                     randomOffset,
                                     _spawnUsesEmissionBox,
-                                    mirrorHorizontalTravel);
+                                    mirrorHorizontalTravel,
+                                    _spawnUsesEmissionTravelDistance);
                             }
                             else
                             {

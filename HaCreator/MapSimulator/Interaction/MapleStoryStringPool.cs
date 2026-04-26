@@ -32,6 +32,18 @@ namespace HaCreator.MapSimulator.Interaction
             [0x012F] = "You have gained mesos (+%d)",
             [0x0130] = "Internet Cafe Meso Bonus (+%d)",
             [0x0134] = "You can't get anymore items.",
+            // Recovered from MapleStory.exe v95 `CWvsContext::OnGivePopularityResult`
+            // at 0x9fea60. The generated table is shifted around this small block,
+            // so keep the exact result-code notice ids pinned for CUIUserInfo fame.
+            [0x0137] = "You have raised '%s''s level of fame.",
+            [0x0138] = "You have dropped '%s''s level of fame.",
+            [0x0139] = "The user name is incorrectly entered.",
+            [0x013A] = "Users under level 15 are unable to toggle with fame.",
+            [0x013B] = "You can't raise or drop a level of fame anymore for today.",
+            [0x013C] = "You can't raise or drop a level of fame of that character anymore for this month.",
+            [0x013D] = "'%s' have raised '%s''s level of fame.",
+            [0x013E] = "'%s' have dropped '%s''s level of fame.",
+            [0x013F] = "The level of fame has neither been raised or dropped due to an unexpected error.",
             // Recovered from MapleStory.exe v95 `format_string`, which
             // `CWvsContext::OnDropPickUpMessage` uses before formatting
             // long item names into StringPool[0x1542]/[0x1543].
@@ -266,10 +278,13 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0F7A] = "You must enter less than %d letters. (Korean)",
             [0x0F7C] = "Time is over.",
             // Recovered from MapleStory.exe v95 `CField::OnFieldEffect` /
-            // `CField::ShowScreenEffect`. Keep these packet-owned field-feedback
-            // effect templates explicit so summon and screen-effect resolution
-            // does not silently fall back to simulator-owned defaults.
+            // `CField::ShowScreenEffect`, `play_summon_sound`, and
+            // `play_field_sound`. Keep these packet-owned field-feedback
+            // effect and sound templates explicit so summon, screen-effect, and
+            // field-sound resolution does not silently fall back to simulator-owned defaults.
             [0x0663] = "Effect/Summon.img/%d",
+            [0x08BE] = "Sound/Summon.img/%d",
+            [0x0A23] = "Sound/Field.img/%s",
             // Recovered from MapleStory.exe v95 `CAnimationDisplayer::Effect_RewardRullet`.
             // The generated table in this workspace drifts for the reward-roulette
             // owner strings, so pin the client-owned map-effect templates here.

@@ -856,9 +856,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            int currentTickMs = GetClientTickCountMs();
             int removeCount = Math.Max(1, _cashEmployeeImgEntryCache.Count - MaxEmployeeImageCacheEntries);
             KeyValuePair<int, EmployeeImageEntry>[] toRemove = _cashEmployeeImgEntryCache
-                .OrderBy(pair => pair.Value?.LastAccessTickMs ?? int.MinValue)
+                .OrderByDescending(pair => pair.Value == null ? uint.MaxValue : GetElapsedCacheTimeMs(currentTickMs, pair.Value.LastAccessTickMs))
                 .ThenBy(pair => pair.Key)
                 .Take(removeCount)
                 .ToArray();
@@ -898,9 +899,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            int currentTickMs = GetClientTickCountMs();
             int removeCount = Math.Max(1, _cashActionCache.Count - MaxEmployeeActionCacheEntries);
             KeyValuePair<uint, EmployeeActionCacheEntry>[] toRemove = _cashActionCache
-                .OrderBy(pair => pair.Value?.LastAccessTickMs ?? int.MinValue)
+                .OrderByDescending(pair => pair.Value == null ? uint.MaxValue : GetElapsedCacheTimeMs(currentTickMs, pair.Value.LastAccessTickMs))
                 .ThenBy(pair => pair.Key)
                 .Take(removeCount)
                 .ToArray();
@@ -982,6 +984,22 @@ namespace HaCreator.MapSimulator.Interaction
         private static uint GetElapsedCacheTimeMs(int currentTickMs, int previousTickMs)
         {
             return unchecked((uint)(currentTickMs - previousTickMs));
+        }
+
+        internal static IReadOnlyList<int> OrderEmployeeCacheKeysForEvictionTesting(
+            IEnumerable<(int Key, int LastAccessTickMs)> entries,
+            int currentTickMs)
+        {
+            if (entries == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            return entries
+                .OrderByDescending(entry => GetElapsedCacheTimeMs(currentTickMs, entry.LastAccessTickMs))
+                .ThenBy(entry => entry.Key)
+                .Select(entry => entry.Key)
+                .ToArray();
         }
 
         private static int GetClientTickCountMs()

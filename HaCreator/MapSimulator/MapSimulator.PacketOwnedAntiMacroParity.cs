@@ -503,10 +503,10 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal = -1;
                 _lastPacketOwnedAntiMacroSubmitBridgeReceivedOrdinal = -1;
                 _lastPacketOwnedAntiMacroSubmitExpectedSource = string.Empty;
+                _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
             }
 
             _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
-            _lastPacketOwnedAntiMacroSubmittedTick = int.MinValue;
             _lastPacketOwnedAntiMacroResultTick = int.MinValue;
             _lastPacketOwnedAntiMacroRoundTripLatencyMs = -1;
             _lastPacketOwnedAntiMacroResultPayloadHex = string.Empty;
@@ -514,6 +514,15 @@ namespace HaCreator.MapSimulator
                 ? "Closed packet-owned anti-macro owner while keeping pending official-session submit tracking."
                 : "Closed packet-owned anti-macro owner.";
             return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroSubmittedTickAfterClearForTests(
+            int submittedTick,
+            bool preserveAuthoritativeSubmitAwaitingState)
+        {
+            return preserveAuthoritativeSubmitAwaitingState
+                ? submittedTick
+                : int.MinValue;
         }
 
         private int ResolvePacketOwnedAntiMacroCurrentRemainingMs(int currentTickCount)

@@ -16,6 +16,9 @@ namespace HaCreator.MapSimulator.Interaction
         public Func<int, string> ResolveQuestRecordText { get; init; }
         public Func<string, string> ResolveQuestDetailRecordText { get; init; }
         public Func<string> ResolveJobNameText { get; init; }
+        public Func<string> ResolveCurrentLevelText { get; init; }
+        public Func<string> ResolveCurrentFameText { get; init; }
+        public Func<string> ResolveCurrentMesoText { get; init; }
         public Func<string, string> ResolvePlaceholderText { get; init; }
     }
 
@@ -80,6 +83,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex LiteralPhraseHashRegex = new(@"#(?<text>[A-Z][^#\r\n]*\s[^#\r\n]*)#", RegexOptions.Compiled);
         private static readonly Regex PlaceholderRegex = new(@"#(?<token>[A-Za-z][A-Za-z0-9_]*)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static string Format(string text, PacketOwnedBalloonTextFormattingContext context = null)
@@ -144,6 +148,7 @@ namespace HaCreator.MapSimulator.Interaction
                 static match => "#" + match.Groups["tag"].Value.ToLowerInvariant());
             formatted = InlineStyleBlockRegex.Replace(formatted, static match => ExpandInlineStyleBlock(match));
             formatted = MalformedPunctuationTagRegex.Replace(formatted, "${punct}");
+            formatted = LiteralPhraseHashRegex.Replace(formatted, static match => match.Groups["text"].Value);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
             formatted = PlaceholderRegex.Replace(formatted, match => ResolvePlaceholderText(match.Groups["token"].Value, context, match.Value));
             return formatted;
@@ -370,7 +375,43 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            string statText = ResolveQuestDetailBuildStatText(normalizedToken, context);
+            if (!string.IsNullOrWhiteSpace(statText))
+            {
+                return statText;
+            }
+
             return fallbackText ?? string.Empty;
+        }
+
+        private static string ResolveQuestDetailBuildStatText(string token, PacketOwnedBalloonTextFormattingContext context)
+        {
+            string normalizedToken = token?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return null;
+            }
+
+            return normalizedToken switch
+            {
+                "level" or "lv" => ResolveContextText(context?.ResolveCurrentLevelText),
+                "pop" or "fame" => ResolveContextText(context?.ResolveCurrentFameText),
+                "money" or "meso" or "mesos" => ResolveContextText(context?.ResolveCurrentMesoText),
+                _ => null
+            };
+        }
+
+        private static string ResolveContextText(Func<string> resolver)
+        {
+            if (resolver == null)
+            {
+                return null;
+            }
+
+            string resolvedText = resolver();
+            return string.IsNullOrWhiteSpace(resolvedText)
+                ? null
+                : resolvedText;
         }
 
         private static string ResolveNpcName(string npcIdText)

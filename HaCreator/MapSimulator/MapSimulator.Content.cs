@@ -1422,7 +1422,7 @@ namespace HaCreator.MapSimulator
                 _pendingMapSpawnTarget = null;
             }
             ClearPendingPortalSessionValueImpacts();
-            ClearPassiveTransferRequest();
+            ConsumePassiveTransferRequestFromTransferLifecycle();
 
 
             // Deactivate chat input (but preserve message history)

@@ -502,7 +502,25 @@ namespace HaCreator.MapSimulator.Loaders
             if (stateProperty is not WzSubProperty subProperty)
                 return false;
 
-            return subProperty.WzProperties.Any(prop => int.TryParse(prop.Name, out _));
+            return subProperty.WzProperties
+                .Any(prop => int.TryParse(prop.Name, out _) && IsReactorFrameLikeProperty(prop));
+        }
+
+        private static bool IsReactorFrameLikeProperty(WzImageProperty property)
+        {
+            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            if (resolvedProperty is WzCanvasProperty)
+            {
+                return true;
+            }
+
+            if (resolvedProperty is not WzSubProperty subProperty)
+            {
+                return false;
+            }
+
+            return subProperty.WzProperties
+                .Any(child => int.TryParse(child.Name, out _) && WzInfoTools.GetRealProperty(child) is WzCanvasProperty);
         }
         #endregion
 

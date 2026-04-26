@@ -165,6 +165,17 @@ namespace HaCreator.MapSimulator
             Unloaded
         }
 
+        internal readonly record struct PacketOwnedRadioMmsPlayPlan(
+            bool TrackPropertyLoaded,
+            bool SoundObjectLoaded,
+            bool RawBufferLoaded,
+            bool Started,
+            int MsLength,
+            int MsPosition,
+            int LastUpdateTick,
+            PacketOwnedRadioClientHandleStatus HandleStatus,
+            string FailureReason);
+
         private readonly record struct PacketOwnedSkillLearnItemResult(
             bool OnExclusiveRequest,
             int CharacterId,
@@ -257,6 +268,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedActiveEffectMotionBlurId = -1;
         private Animation.AnimationEffects.SecondaryMotionBlurAnimationState _packetOwnedActiveEffectMotionBlurState;
         private IReadOnlyDictionary<AvatarRenderLayer, int> _packetOwnedActiveEffectMotionBlurLayerHandleIds;
+        private int _packetOwnedActiveEffectMotionBlurOverlayLayerHandleId;
         private int _packetOwnedActiveEffectMotionBlurOwnerCharacterId;
         private int _lastDeliveryQuestId;
         private int _lastDeliveryItemId;
@@ -359,6 +371,11 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedRadioClientPlaybackSeedMs;
         private int _lastPacketOwnedRadioClientPlaybackPositionMs;
         private PacketOwnedRadioClientHandleStatus _lastPacketOwnedRadioClientHandleStatus;
+        private bool _lastPacketOwnedRadioClientTrackPropertyLoaded;
+        private bool _lastPacketOwnedRadioClientSoundObjectLoaded;
+        private bool _lastPacketOwnedRadioClientRawBufferLoaded;
+        private bool _lastPacketOwnedRadioClientMmsPlaySucceeded;
+        private string _lastPacketOwnedRadioClientMmsPlayFailureReason = "idle";
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
         private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
@@ -4809,6 +4826,7 @@ namespace HaCreator.MapSimulator
             var state = new Animation.AnimationEffects.SecondaryMotionBlurAnimationState
             {
                 SimulatedAnimationStateId = NextPacketOwnedActiveEffectMotionBlurStateId(),
+                SimulatedOverlayLayerHandleId = ResolvePacketOwnedActiveEffectMotionBlurOverlayLayerHandleId(),
                 SimulatedLayerHandleIdsByLayerCode = simulatedLayerHandleIds
                     .ToDictionary(static entry => (int)entry.Key, static entry => entry.Value)
             };
@@ -5331,6 +5349,17 @@ namespace HaCreator.MapSimulator
             return HaCreator.MapSimulator.Animation.SimulatedMotionBlurIdentitySource.NextAnimationStateId();
         }
 
+        private int ResolvePacketOwnedActiveEffectMotionBlurOverlayLayerHandleId()
+        {
+            if (_packetOwnedActiveEffectMotionBlurOverlayLayerHandleId > 0)
+            {
+                return _packetOwnedActiveEffectMotionBlurOverlayLayerHandleId;
+            }
+
+            _packetOwnedActiveEffectMotionBlurOverlayLayerHandleId = NextPacketOwnedActiveEffectMotionBlurLayerHandleId();
+            return _packetOwnedActiveEffectMotionBlurOverlayLayerHandleId;
+        }
+
         private static int NextPacketOwnedActiveEffectMotionBlurLayerHandleId()
         {
             return HaCreator.MapSimulator.Animation.SimulatedMotionBlurIdentitySource.NextLayerHandleId();
@@ -5388,6 +5417,11 @@ namespace HaCreator.MapSimulator
         internal static int NextPacketOwnedActiveEffectMotionBlurStateIdForTesting()
         {
             return NextPacketOwnedActiveEffectMotionBlurStateId();
+        }
+
+        internal static int NextPacketOwnedActiveEffectMotionBlurLayerHandleIdForTesting()
+        {
+            return NextPacketOwnedActiveEffectMotionBlurLayerHandleId();
         }
 
         internal static (Vector2 Position, bool FacingRight) ResolvePacketOwnedActiveEffectMotionBlurSnapshotOwnerStateForTesting(
@@ -9132,9 +9166,19 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (payload.Length == sizeof(int))
+            {
+                // CUIRevive::OnCreate reads CWvsContext slot 2073 as a DWORD gate.
+                int contextSlotValue = BitConverter.ToInt32(payload, 0);
+                hasOverride = true;
+                armed = contextSlotValue != 0;
+                message = $"Decoded packet-authored CWvsContext[{ReviveOwnerPremiumSafetyCharmContextSlot}] DWORD armed={(armed ? 1 : 0)}.";
+                return true;
+            }
+
             if (payload.Length > 2)
             {
-                message = "Revive premium safety charm context payload must be [0] to clear or [1,<armed>] to set.";
+                message = "Revive premium safety charm context payload must be [0] to clear, [1,<armed>] to set, or a 4-byte CWvsContext[2073] DWORD value.";
                 return false;
             }
 
@@ -13424,6 +13468,14 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetFollowCharacterRestrictionMessage(_mapBoard?.MapInfo);
+            if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
+            {
+                ShowUtilityFeedbackMessage(fieldRestrictionMessage);
+                HidePacketOwnedFollowCharacterPrompt();
+                return;
+            }
+
             if (!TryResolvePacketOwnedRemoteCharacterSnapshot(_localFollowRuntime.IncomingRequesterId, out LocalFollowUserSnapshot requester))
             {
                 ShowUtilityFeedbackMessage("Incoming follow request could not be accepted because the requester is no longer available.");
@@ -13492,6 +13544,13 @@ namespace HaCreator.MapSimulator
             if (!IsFollowRequestOptionEnabled())
             {
                 message = "Incoming follow request could not be opened because follow requests are disabled in the client option owner.";
+                return false;
+            }
+
+            string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetFollowCharacterRestrictionMessage(_mapBoard?.MapInfo);
+            if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
+            {
+                message = fieldRestrictionMessage;
                 return false;
             }
 
@@ -18437,6 +18496,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryDecodePacketOwnedRankingCompactRowWithByteStrings(rowPayload, out rowEntry))
+            {
+                return true;
+            }
+
             try
             {
                 using MemoryStream rowStream = new(rowPayload, writable: false);
@@ -18449,6 +18513,37 @@ namespace HaCreator.MapSimulator
 
                 if (!TryReadPacketOwnedOptionalMapleString(rowReader, out string value)
                     || !TryReadPacketOwnedOptionalMapleString(rowReader, out string detail)
+                    || rowReader.BaseStream.Position != rowReader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                rowEntry = CreatePacketOwnedRankingEntry(label.Trim(), value?.Trim() ?? string.Empty, detail?.Trim() ?? string.Empty);
+                return true;
+            }
+            catch
+            {
+                rowEntry = default;
+                return false;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedRankingCompactRowWithByteStrings(byte[] rowPayload, out RankingEntrySnapshot rowEntry)
+        {
+            rowEntry = default;
+            if (rowPayload == null || rowPayload.Length == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream rowStream = new(rowPayload, writable: false);
+                using BinaryReader rowReader = new(rowStream);
+                if (!TryReadPacketOwnedCompactString(rowReader, sizeof(byte), out string label)
+                    || string.IsNullOrWhiteSpace(label)
+                    || !TryReadPacketOwnedCompactString(rowReader, sizeof(byte), out string value)
+                    || !TryReadPacketOwnedCompactString(rowReader, sizeof(byte), out string detail)
                     || rowReader.BaseStream.Position != rowReader.BaseStream.Length)
                 {
                     return false;
@@ -19422,6 +19517,28 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private static bool TryReadPacketOwnedCompactString(BinaryReader reader, int byteCountWidth, out string value)
+        {
+            value = string.Empty;
+            if (reader == null
+                || !TryReadPacketOwnedCompactRowCount(reader, byteCountWidth, out int byteCount)
+                || byteCount < 0
+                || byteCount > 4096
+                || reader.BaseStream.Length - reader.BaseStream.Position < byteCount)
+            {
+                return false;
+            }
+
+            byte[] bytes = reader.ReadBytes(byteCount);
+            if (bytes.Length != byteCount)
+            {
+                return false;
+            }
+
+            value = Encoding.Default.GetString(bytes);
+            return true;
+        }
+
         private static bool TryDecodePacketOwnedEventCalendarCompactBinaryTrailingFlagVariants(
             byte[] payload,
             out bool clearRequested,
@@ -19853,7 +19970,9 @@ namespace HaCreator.MapSimulator
                 if (!TryDecodePacketOwnedEventCalendarCompactRow(rowReader, usePackedDate, out entry)
                     || rowReader.BaseStream.Position != rowReader.BaseStream.Length)
                 {
-                    if (!TryDecodePacketOwnedEventCalendarCompactRowWithTrailingStatus(rowPayload, usePackedDate, out entry))
+                    if (!TryDecodePacketOwnedEventCalendarCompactRowWithTrailingStatus(rowPayload, usePackedDate, out entry)
+                        && !TryDecodePacketOwnedEventCalendarCompactRowWithByteStrings(rowPayload, usePackedDate, statusBeforeText: true, out entry)
+                        && !TryDecodePacketOwnedEventCalendarCompactRowWithByteStrings(rowPayload, usePackedDate, statusBeforeText: false, out entry))
                     {
                         return false;
                     }
@@ -19863,7 +19982,96 @@ namespace HaCreator.MapSimulator
             }
             catch
             {
-                return TryDecodePacketOwnedEventCalendarCompactRowWithTrailingStatus(rowPayload, usePackedDate, out entry);
+                return TryDecodePacketOwnedEventCalendarCompactRowWithTrailingStatus(rowPayload, usePackedDate, out entry)
+                       || TryDecodePacketOwnedEventCalendarCompactRowWithByteStrings(rowPayload, usePackedDate, statusBeforeText: true, out entry)
+                       || TryDecodePacketOwnedEventCalendarCompactRowWithByteStrings(rowPayload, usePackedDate, statusBeforeText: false, out entry);
+            }
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactRowWithByteStrings(
+            byte[] rowPayload,
+            bool usePackedDate,
+            bool statusBeforeText,
+            out EventEntrySnapshot entry)
+        {
+            entry = default;
+            if (rowPayload == null || rowPayload.Length == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream rowStream = new(rowPayload, writable: false);
+                using BinaryReader rowReader = new(rowStream);
+
+                int year;
+                int month;
+                int day;
+                if (usePackedDate)
+                {
+                    int yyyymmdd = rowReader.ReadInt32();
+                    year = yyyymmdd / 10000;
+                    month = Math.Abs((yyyymmdd / 100) % 100);
+                    day = Math.Abs(yyyymmdd % 100);
+                }
+                else
+                {
+                    year = rowReader.ReadUInt16();
+                    month = rowReader.ReadByte();
+                    day = rowReader.ReadByte();
+                }
+
+                EventEntryStatus status = EventEntryStatus.Upcoming;
+                if (statusBeforeText)
+                {
+                    status = DecodePacketOwnedEventCalendarBinaryStatus(rowReader.ReadByte());
+                }
+
+                if (!TryReadPacketOwnedCompactString(rowReader, sizeof(byte), out string title)
+                    || string.IsNullOrWhiteSpace(title)
+                    || !TryReadPacketOwnedCompactString(rowReader, sizeof(byte), out string detail))
+                {
+                    return false;
+                }
+
+                if (!statusBeforeText)
+                {
+                    status = DecodePacketOwnedEventCalendarBinaryStatus(rowReader.ReadByte());
+                }
+
+                if (!TryReadPacketOwnedCompactString(rowReader, sizeof(byte), out string statusText)
+                    || !TryReadPacketOwnedCompactString(rowReader, sizeof(byte), out string alarmText)
+                    || rowReader.BaseStream.Position != rowReader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                title = title.Trim();
+                detail = detail?.Trim() ?? string.Empty;
+                statusText = statusText?.Trim() ?? string.Empty;
+                alarmText = alarmText?.Trim() ?? string.Empty;
+                if (!TryCreatePacketOwnedEventCalendarBinaryDate(year, month, day, out DateTime scheduledAt))
+                {
+                    return false;
+                }
+
+                entry = CreatePacketOwnedEventCalendarEntry(
+                    scheduledAt,
+                    title,
+                    detail,
+                    status,
+                    string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText,
+                    int.MinValue,
+                    ResolvePacketOwnedEventEntrySortPriority(status),
+                    sortOrder: 0,
+                    alarmText: alarmText);
+                return true;
+            }
+            catch
+            {
+                entry = default;
+                return false;
             }
         }
 
@@ -22620,6 +22828,12 @@ namespace HaCreator.MapSimulator
                         || !TryResolvePacketOwnedRemoteCharacterSnapshot(requestedDriverId, out LocalFollowUserSnapshot requestedDriver))
                     {
                         return ChatCommandHandler.CommandResult.Error("Follow request could not be issued because the local player or target driver is unavailable.");
+                    }
+
+                    string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetFollowCharacterRestrictionMessage(_mapBoard?.MapInfo);
+                    if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(fieldRestrictionMessage);
                     }
 
                     StampPacketOwnedUtilityRequestState();

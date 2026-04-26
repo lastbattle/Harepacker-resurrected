@@ -550,7 +550,9 @@ namespace HaCreator.MapSimulator.Managers
 
         private static int GetDefaultBirthYear()
         {
-            return DateTime.Now.Year - 15;
+            // CUIAccountMoreInfo::SetBrithDayComboBox selects m_uCount - 15
+            // from the inclusive currentYear-100..currentYear year list.
+            return DateTime.Now.Year - 14;
         }
 
         private static int ClampBirthYear(int year)

@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using System;
+using System.Globalization;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -146,7 +147,11 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Popularity {directionLabel} result applied for {pending.TargetName}. Fame is now {updatedFame}.";
         }
 
-        internal bool TryApplyClientResultPayload(byte[] payload, RemoteUserActorPool remoteUserPool, out string message)
+        internal bool TryApplyClientResultPayload(
+            byte[] payload,
+            RemoteUserActorPool remoteUserPool,
+            out string message,
+            string localCharacterName = null)
         {
             message = null;
             if (payload == null || payload.Length == 0)
@@ -176,27 +181,39 @@ namespace HaCreator.MapSimulator.Interaction
                     ApplyPopularityResult(targetName, updatedFame, remoteUserPool);
                     _pendingRequest = null;
                     string directionLabel = increased ? "up" : "down";
-                    message = $"CUIUserInfo::NotifyGivePopResult applied popularity {directionLabel} result for {targetName}. Fame is now {updatedFame}.";
+                    string clientNotice = FormatPopularityNotice(
+                        increased ? PopularityNoticeStringPoolId.RaiseTarget : PopularityNoticeStringPoolId.DropTarget,
+                        increased ? "You have raised '{0}'s level of fame." : "You have dropped '{0}'s level of fame.",
+                        targetName);
+                    message = $"{clientNotice} CUIUserInfo::NotifyGivePopResult applied popularity {directionLabel} result for {targetName}. Fame is now {updatedFame}.";
                     return true;
 
                 case 1:
                     _pendingRequest = null;
-                    message = "CUIUserInfo popularity result rejected: the target cannot receive Fame right now.";
+                    message = FormatPopularityNotice(
+                        PopularityNoticeStringPoolId.InvalidTargetName,
+                        "The user name is incorrectly entered.");
                     return true;
 
                 case 2:
                     _pendingRequest = null;
-                    message = "CUIUserInfo popularity result rejected: the local character cannot give Fame right now.";
+                    message = FormatPopularityNotice(
+                        PopularityNoticeStringPoolId.LocalUnderLevel,
+                        "Users under level 15 are unable to toggle with fame.");
                     return true;
 
                 case 3:
                     _pendingRequest = null;
-                    message = "CUIUserInfo popularity result rejected: this target was already processed recently.";
+                    message = FormatPopularityNotice(
+                        PopularityNoticeStringPoolId.DailyLimit,
+                        "You can't raise or drop a level of fame anymore for today.");
                     return true;
 
                 case 4:
                     _pendingRequest = null;
-                    message = "CUIUserInfo popularity result rejected by the server.";
+                    message = FormatPopularityNotice(
+                        PopularityNoticeStringPoolId.MonthlyTargetLimit,
+                        "You can't raise or drop a level of fame of that character anymore for this month.");
                     return true;
 
                 case 5:
@@ -211,15 +228,47 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    string receivedDirectionLabel = payload[offset] != 0 ? "up" : "down";
-                    message = $"CUIUserInfo popularity received-result notice from {requesterName} ({receivedDirectionLabel}).";
+                    bool receivedIncrease = payload[offset] != 0;
+                    string localName = string.IsNullOrWhiteSpace(localCharacterName)
+                        ? ResolvePendingTargetNameFallback()
+                        : localCharacterName.Trim();
+                    message = FormatPopularityNotice(
+                        receivedIncrease ? PopularityNoticeStringPoolId.ReceivedRaise : PopularityNoticeStringPoolId.ReceivedDrop,
+                        receivedIncrease ? "'{0}' have raised '{1}'s level of fame." : "'{0}' have dropped '{1}'s level of fame.",
+                        requesterName,
+                        localName);
                     return true;
 
                 default:
                     _pendingRequest = null;
-                    message = $"CUIUserInfo popularity result used an unknown client result code {resultCode}.";
+                    message = FormatPopularityNotice(
+                        PopularityNoticeStringPoolId.UnexpectedError,
+                        "The level of fame has neither been raised or dropped due to an unexpected error.");
                     return true;
             }
+        }
+
+        private static string FormatPopularityNotice(int stringPoolId, string fallbackFormat, params object[] args)
+        {
+            string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                args?.Length ?? 0,
+                out _);
+
+            if (args == null || args.Length == 0)
+            {
+                return compositeFormat;
+            }
+
+            return string.Format(CultureInfo.InvariantCulture, compositeFormat, args);
+        }
+
+        private string ResolvePendingTargetNameFallback()
+        {
+            return _pendingRequest.HasValue && !string.IsNullOrWhiteSpace(_pendingRequest.Value.TargetName)
+                ? _pendingRequest.Value.TargetName
+                : "the local character";
         }
 
         private void ApplyPopularityResult(string targetName, int updatedFame, RemoteUserActorPool remoteUserPool)
@@ -320,5 +369,18 @@ namespace HaCreator.MapSimulator.Interaction
             CharacterBuild TargetBuild,
             UserInfoUI.PopularityChangeDirection Direction,
             int ResolveAtTick);
+
+        private static class PopularityNoticeStringPoolId
+        {
+            internal const int RaiseTarget = 0x0137;
+            internal const int DropTarget = 0x0138;
+            internal const int InvalidTargetName = 0x0139;
+            internal const int LocalUnderLevel = 0x013A;
+            internal const int DailyLimit = 0x013B;
+            internal const int MonthlyTargetLimit = 0x013C;
+            internal const int ReceivedRaise = 0x013D;
+            internal const int ReceivedDrop = 0x013E;
+            internal const int UnexpectedError = 0x013F;
+        }
     }
 }

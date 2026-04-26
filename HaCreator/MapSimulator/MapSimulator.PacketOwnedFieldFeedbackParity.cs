@@ -302,7 +302,12 @@ namespace HaCreator.MapSimulator
 
         private bool TryPlayPacketOwnedFieldFeedbackSound(string descriptor)
         {
-            if (!TryPlayPacketOwnedWzSound(descriptor, "FieldSound", out string resolvedDescriptor, out string error))
+            if (!TryPlayPacketOwnedWzSound(
+                    descriptor,
+                    "Field.img",
+                    out string resolvedDescriptor,
+                    out string error,
+                    strictClientSoundFamily: true))
             {
                 if (!string.IsNullOrWhiteSpace(error))
                 {
@@ -2036,6 +2041,14 @@ namespace HaCreator.MapSimulator
         internal static string ResolvePacketOwnedFieldBgmOverrideNameForTest(string descriptor)
         {
             return ResolvePacketOwnedFieldBgmOverrideName(descriptor);
+        }
+
+        internal static IReadOnlyList<string> GetPacketOwnedFieldSoundDescriptorCandidatesForTest(string descriptor)
+        {
+            return BuildPacketOwnedWzSoundDescriptorCandidatesForTests(
+                descriptor,
+                "Field.img",
+                strictClientSoundFamily: true);
         }
 
         internal static string GetPacketOwnedScreenEffectUolForTest(string descriptor)

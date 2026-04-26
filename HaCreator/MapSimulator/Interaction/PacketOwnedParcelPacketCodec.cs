@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsAttachmentClaimed { get; init; }
         public byte StateFlags { get; init; }
         public byte PostBodyItemPresenceFlag { get; init; }
+        public bool UsesSimulatorStateBitfield { get; init; }
+        public bool UsesOfficialItemPresenceByte { get; init; }
         public bool HasItemAttachment { get; init; }
         public bool HasMesoAttachment { get; init; }
         public int AttachmentItemId { get; init; }
@@ -169,6 +171,8 @@ namespace HaCreator.MapSimulator.Interaction
                 IsAttachmentClaimed = source.IsAttachmentClaimed,
                 StateFlags = source.StateFlags,
                 PostBodyItemPresenceFlag = source.PostBodyItemPresenceFlag,
+                UsesSimulatorStateBitfield = source.UsesSimulatorStateBitfield,
+                UsesOfficialItemPresenceByte = source.UsesOfficialItemPresenceByte,
                 HasItemAttachment = source.HasItemAttachment,
                 HasMesoAttachment = source.HasMesoAttachment,
                 AttachmentItemId = source.AttachmentItemId,
@@ -221,7 +225,9 @@ namespace HaCreator.MapSimulator.Interaction
                         IsKept: false,
                         IsAttachmentClaimed: false,
                         HasItemAttachment: true,
-                        HasMesoAttachment: false);
+                        HasMesoAttachment: false,
+                        UsesSimulatorStateBitfield: false,
+                        UsesOfficialItemPresenceByte: true);
                     hasUndecodedItemAttachment = itemId <= 0;
                 }
                 else
@@ -232,7 +238,9 @@ namespace HaCreator.MapSimulator.Interaction
                         IsKept: false,
                         IsAttachmentClaimed: false,
                         HasItemAttachment: false,
-                        HasMesoAttachment: false);
+                        HasMesoAttachment: false,
+                        UsesSimulatorStateBitfield: true,
+                        UsesOfficialItemPresenceByte: false);
                 }
             }
 
@@ -271,6 +279,8 @@ namespace HaCreator.MapSimulator.Interaction
                 IsAttachmentClaimed = postBodyState.IsAttachmentClaimed,
                 StateFlags = postBodyByte,
                 PostBodyItemPresenceFlag = postBodyByte,
+                UsesSimulatorStateBitfield = postBodyState.UsesSimulatorStateBitfield,
+                UsesOfficialItemPresenceByte = postBodyState.UsesOfficialItemPresenceByte,
                 HasItemAttachment = postBodyState.HasItemAttachment,
                 HasMesoAttachment = hasMesoAttachment,
                 AttachmentItemId = Math.Max(0, itemId),
@@ -291,7 +301,9 @@ namespace HaCreator.MapSimulator.Interaction
                     IsKept: HasStateFlag(postBodyByte, ParcelStateKeepFlag),
                     IsAttachmentClaimed: HasStateFlag(postBodyByte, ParcelStateClaimedFlag),
                     HasItemAttachment: HasStateFlag(postBodyByte, ParcelStateHasItemFlag),
-                    HasMesoAttachment: HasStateFlag(postBodyByte, ParcelStateHasMesoFlag));
+                    HasMesoAttachment: HasStateFlag(postBodyByte, ParcelStateHasMesoFlag),
+                    UsesSimulatorStateBitfield: true,
+                    UsesOfficialItemPresenceByte: false);
             }
 
             // MapleStory v95 PARCEL::Decode reads this byte as the GW_ItemSlotBase presence flag.
@@ -300,7 +312,9 @@ namespace HaCreator.MapSimulator.Interaction
                 IsKept: false,
                 IsAttachmentClaimed: false,
                 HasItemAttachment: postBodyByte != 0,
-                HasMesoAttachment: false);
+                HasMesoAttachment: false,
+                UsesSimulatorStateBitfield: false,
+                UsesOfficialItemPresenceByte: true);
         }
 
         private static bool ShouldTreatAmbiguousPostBodyByteAsLegacyItemPresence(byte postBodyByte, Stream stream, long attachmentStartPosition)
@@ -785,6 +799,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool IsKept,
             bool IsAttachmentClaimed,
             bool HasItemAttachment,
-            bool HasMesoAttachment);
+            bool HasMesoAttachment,
+            bool UsesSimulatorStateBitfield,
+            bool UsesOfficialItemPresenceByte);
     }
 }

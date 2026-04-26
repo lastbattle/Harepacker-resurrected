@@ -2097,6 +2097,24 @@ namespace HaCreator.MapSimulator.Fields
                 out townY);
         }
 
+        internal static bool TrySelectRemoteTownPortalTownDestinationFallbackPosition(
+            WzSubProperty portalParent,
+            out float townX,
+            out float townY)
+        {
+            townX = 0f;
+            townY = 0f;
+            if (portalParent == null)
+            {
+                return false;
+            }
+
+            return TrySelectRemoteTownPortalTownDestinationFallbackPosition(
+                EnumerateRemoteTownPortalPortalCandidates(portalParent),
+                out townX,
+                out townY);
+        }
+
         private static bool TryResolveRemoteTownPortalSourceFallbackPortalPosition(
             WzImage mapImage,
             out float sourceX,

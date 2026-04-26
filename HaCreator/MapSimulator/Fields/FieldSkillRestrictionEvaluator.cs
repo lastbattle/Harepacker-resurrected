@@ -455,7 +455,20 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool MatchesListedSkill(WzImageProperty property, int skillId)
         {
-            return skillId > 0 && ContainsIntValue(property, skillId);
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            foreach (int listedSkillId in EnumerateClientIndexedIntValues(property, defaultValue: 0))
+            {
+                if (listedSkillId == skillId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool MatchesListedSkillClass(WzImageProperty property, SkillData skill)
@@ -465,7 +478,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            foreach (int listedClass in EnumerateIntValues(property))
+            foreach (int listedClass in EnumerateClientIndexedIntValues(property, defaultValue: -1))
             {
                 if (MatchesClientSkillClass(listedClass, skill))
                 {
@@ -476,70 +489,45 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
-        private static IEnumerable<int> EnumerateIntValues(WzImageProperty property)
+        private static IEnumerable<int> EnumerateClientIndexedIntValues(WzImageProperty property, int defaultValue)
         {
-            if (property == null)
+            WzPropertyCollection children = property?.WzProperties;
+            if (children == null)
             {
                 yield break;
             }
 
-            Stack<WzImageProperty> pending = new Stack<WzImageProperty>();
-            pending.Push(property);
-            while (pending.Count > 0)
+            for (int i = 0; i < children.Count; i++)
             {
-                WzImageProperty current = pending.Pop();
+                WzImageProperty current = FindDirectChildByName(children, i.ToString());
                 if (TryReadInt(current, out int value))
                 {
                     yield return value;
                 }
-
-                if (current.WzProperties == null)
+                else if (defaultValue != 0)
                 {
-                    continue;
-                }
-
-                for (int i = 0; i < current.WzProperties.Count; i++)
-                {
-                    if (current.WzProperties[i] != null)
-                    {
-                        pending.Push(current.WzProperties[i]);
-                    }
+                    yield return defaultValue;
                 }
             }
         }
 
-        private static bool ContainsIntValue(WzImageProperty property, int expectedValue)
+        private static WzImageProperty FindDirectChildByName(WzPropertyCollection children, string name)
         {
-            if (property == null)
+            if (children == null)
             {
-                return false;
+                return null;
             }
 
-            Stack<WzImageProperty> pending = new Stack<WzImageProperty>();
-            pending.Push(property);
-            while (pending.Count > 0)
+            for (int i = 0; i < children.Count; i++)
             {
-                WzImageProperty current = pending.Pop();
-                if (TryReadInt(current, out int value) && value == expectedValue)
+                WzImageProperty child = children[i];
+                if (string.Equals(child?.Name, name, StringComparison.OrdinalIgnoreCase))
                 {
-                    return true;
-                }
-
-                if (current.WzProperties == null)
-                {
-                    continue;
-                }
-
-                for (int i = 0; i < current.WzProperties.Count; i++)
-                {
-                    if (current.WzProperties[i] != null)
-                    {
-                        pending.Push(current.WzProperties[i]);
-                    }
+                    return child;
                 }
             }
 
-            return false;
+            return null;
         }
 
         private static IEnumerable<WzImageProperty> EnumerateNamedChildren(WzImageProperty root, string propertyName)

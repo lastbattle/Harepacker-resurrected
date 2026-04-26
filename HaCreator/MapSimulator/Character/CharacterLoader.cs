@@ -546,18 +546,6 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            if (frameNode is WzSubProperty frameSubProperty)
-            {
-                foreach (WzImageProperty child in frameSubProperty.WzProperties)
-                {
-                    CharacterFrame nestedFrame = LoadMorphFrameEntry(child, frameName);
-                    if (nestedFrame != null)
-                    {
-                        return nestedFrame;
-                    }
-                }
-            }
-
             return null;
         }
 
@@ -3058,6 +3046,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return false;
+        }
+
+        internal static bool LooksLikePublishedMorphActionForTesting(WzImageProperty actionNode)
+        {
+            return LooksLikePublishedMorphAction(actionNode);
         }
 
         [Conditional("DEBUG")]

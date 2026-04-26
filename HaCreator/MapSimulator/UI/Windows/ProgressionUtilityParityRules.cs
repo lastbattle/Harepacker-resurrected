@@ -184,6 +184,19 @@ namespace HaCreator.MapSimulator.UI
             int templateId = ownerState.TemplateId > 0 ? ownerState.TemplateId : 0xAA2;
             int? worldId = ownerState.WorldId;
             int? characterId = ownerState.CharacterId;
+            string ownerNavigateUrl = ownerState.NavigateUrl?.Trim() ?? string.Empty;
+            if ((!worldId.HasValue || !characterId.HasValue || string.IsNullOrWhiteSpace(serverHost))
+                && TryParseRankingLandingRequest(ownerNavigateUrl, out string parsedServerHost, out int parsedWorldId, out int parsedCharacterId))
+            {
+                if (string.IsNullOrWhiteSpace(serverHost))
+                {
+                    serverHost = parsedServerHost;
+                }
+
+                worldId ??= parsedWorldId;
+                characterId ??= parsedCharacterId;
+            }
+
             string composedNavigateUrl = !string.IsNullOrWhiteSpace(ownerState.NavigateUrl)
                 ? ownerState.NavigateUrl.Trim()
                 : !string.IsNullOrWhiteSpace(serverHost) && worldId.HasValue && characterId.HasValue
@@ -226,6 +239,64 @@ namespace HaCreator.MapSimulator.UI
                     : fallback.LoadingStartTick,
                 Entries = fallback.Entries
             };
+        }
+
+        internal static bool TryParseRankingLandingRequest(string navigateUrl, out string serverHost, out int worldId, out int characterId)
+        {
+            serverHost = string.Empty;
+            worldId = 0;
+            characterId = 0;
+            if (string.IsNullOrWhiteSpace(navigateUrl)
+                || !Uri.TryCreate(navigateUrl.Trim(), UriKind.Absolute, out Uri uri))
+            {
+                return false;
+            }
+
+            serverHost = NormalizeRankingServerHostSeed(uri.Host);
+            string query = uri.Query;
+            if (query.StartsWith("?", StringComparison.Ordinal))
+            {
+                query = query[1..];
+            }
+
+            bool hasRankingPage = false;
+            bool hasWorldId = false;
+            bool hasCharacterId = false;
+            string[] segments = query.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                string segment = segments[i];
+                int separatorIndex = segment.IndexOf('=');
+                if (separatorIndex <= 0)
+                {
+                    continue;
+                }
+
+                string key = Uri.UnescapeDataString(segment[..separatorIndex]).Trim();
+                string value = Uri.UnescapeDataString(segment[(separatorIndex + 1)..]).Trim();
+                if (string.Equals(key, "URL", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(value, "webclient/totpersonrank", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasRankingPage = true;
+                }
+                else if (string.Equals(key, "worldid", StringComparison.OrdinalIgnoreCase)
+                         && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedWorldId))
+                {
+                    worldId = Math.Max(0, parsedWorldId);
+                    hasWorldId = true;
+                }
+                else if (string.Equals(key, "characterid", StringComparison.OrdinalIgnoreCase)
+                         && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedCharacterId))
+                {
+                    characterId = Math.Max(0, parsedCharacterId);
+                    hasCharacterId = true;
+                }
+            }
+
+            return hasRankingPage
+                && hasWorldId
+                && hasCharacterId
+                && !string.IsNullOrWhiteSpace(serverHost);
         }
 
         private static string ChooseOwnerText(string ownerText, string fallbackText)

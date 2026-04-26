@@ -245,6 +245,7 @@ namespace HaCreator.MapSimulator.Companions
                                     inventoryType,
                                     fromPosition,
                                     reader,
+                                    isLastOperation: i == operationCount - 1,
                                     out int addedItemId,
                                     out bool matchedByHeader,
                                     out rejectReason))
@@ -361,6 +362,7 @@ namespace HaCreator.MapSimulator.Companions
                                     inventoryType,
                                     fromPosition,
                                     reader,
+                                    isLastOperation: i == operationCount - 1,
                                     out MechanicInventoryOperationMutation? passiveAddMutation,
                                     out bool terminateAfterHeader,
                                     out rejectReason))
@@ -1514,6 +1516,7 @@ namespace HaCreator.MapSimulator.Companions
             byte inventoryType,
             short targetPosition,
             BinaryReader reader,
+            bool isLastOperation,
             out int itemId,
             out bool matchedByHeader,
             out string rejectReason)
@@ -1578,10 +1581,16 @@ namespace HaCreator.MapSimulator.Companions
 
             if (matchedByHeader)
             {
+                if (!isLastOperation)
+                {
+                    rejectReason = "Inventory-operation add entry body could not be decoded before later mechanic operations.";
+                    return false;
+                }
+
                 // CWvsContext::OnInventoryOperation first commits the shared mode-0
                 // header mutation and then descends into GW_ItemSlotBase::Decode.
                 // Preserve completion ownership when the header already proves this
-                // request even if deep body decode is truncated or unsupported.
+                // request and the unrecovered body is the terminal payload.
                 rejectReason = null;
                 return true;
             }
@@ -1593,6 +1602,7 @@ namespace HaCreator.MapSimulator.Companions
             byte inventoryType,
             short targetPosition,
             BinaryReader reader,
+            bool isLastOperation,
             out MechanicInventoryOperationMutation? mutation,
             out bool terminateAfterHeader,
             out string rejectReason)
@@ -1646,8 +1656,14 @@ namespace HaCreator.MapSimulator.Companions
 
             if (mutation.HasValue)
             {
+                if (!isLastOperation)
+                {
+                    rejectReason = "Inventory-operation add entry body could not be decoded before later passive mechanic operations.";
+                    return false;
+                }
+
                 // Keep passive non-proxy ownership recoverable from the mode-0 header
-                // when the follow-up GW_ItemSlotBase body is unavailable.
+                // when the terminal follow-up GW_ItemSlotBase body is unavailable.
                 terminateAfterHeader = true;
                 rejectReason = null;
                 return true;

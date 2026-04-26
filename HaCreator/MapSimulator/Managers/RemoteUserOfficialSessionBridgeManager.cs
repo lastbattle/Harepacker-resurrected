@@ -598,6 +598,52 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool TryConfigureBuildScopedTutorPacketMapping(string buildTag, ushort opcode, int packetType, out string status)
+        {
+            if (packetType != (int)Pools.RemoteUserPacketType.UserTutorHire
+                && packetType != (int)Pools.RemoteUserPacketType.UserTutorMessage)
+            {
+                status = $"Build-scoped tutor mapping only supports {RemoteUserPacketInboxManager.DescribePacketType((int)Pools.RemoteUserPacketType.UserTutorHire)} and {RemoteUserPacketInboxManager.DescribePacketType((int)Pools.RemoteUserPacketType.UserTutorMessage)}.";
+                LastStatus = status;
+                return false;
+            }
+
+            string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+            if (string.Equals(normalizedBuildTag, NormalizeOfficialSessionBuildTag(null), StringComparison.OrdinalIgnoreCase))
+            {
+                status = "Build-scoped tutor mapping requires a versioned build tag such as v95, v999, or build123.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (!_learnedTutorPacketMapByBuild.TryGetValue(normalizedBuildTag, out Dictionary<ushort, LearnedOpcodeEntry> learnedMap))
+                {
+                    learnedMap = new Dictionary<ushort, LearnedOpcodeEntry>();
+                    _learnedTutorPacketMapByBuild[normalizedBuildTag] = learnedMap;
+                }
+
+                string source = $"{OfficialSessionSourcePrefix}{normalizedBuildTag}:manual";
+                string evidence = $"manual-build-scoped:{normalizedBuildTag}; exact remote tutor wrapper is still validated before dispatch; {OfficialRemoteOwnerEvidence}";
+                if (learnedMap.TryGetValue(opcode, out LearnedOpcodeEntry existing))
+                {
+                    existing.Update(packetType, evidence, source, payload: null);
+                }
+                else
+                {
+                    learnedMap[opcode] = new LearnedOpcodeEntry(packetType, evidence, isManual: true, source, payload: null);
+                }
+
+                _pendingTutorInferenceMap.Remove(opcode);
+                _tutorInferenceConflictMap.Remove(opcode);
+            }
+
+            status = $"Mapped build {normalizedBuildTag} remote-user tutor opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} with decode-time wrapper validation.";
+            LastStatus = status;
+            return true;
+        }
+
         public bool RemovePacketMapping(ushort opcode, out string status)
         {
             bool removed;
@@ -697,7 +743,20 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
-                    if (_tutorInferenceConflictMap.TryGetValue(opcode, out string conflictReason))
+                    byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                    if (TryResolveBuildScopedLearnedTutorPacketTypeNoLock(
+                            opcode,
+                            source,
+                            inferencePayload,
+                            out packetType,
+                            out string buildScopedReason))
+                    {
+                        _packetMap[opcode] = packetType;
+                        string learnedEvidence = $"auto:{buildScopedReason}; {OfficialRemoteOwnerEvidence}";
+                        RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        LastStatus = $"Restored remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from build-scoped tutor evidence ({buildScopedReason}); {OfficialRemoteOwnerEvidence}";
+                    }
+                    else if (_tutorInferenceConflictMap.TryGetValue(opcode, out string conflictReason))
                     {
                         LastStatus = $"Ignored CUserPool local-user opcode {opcode}: tutor payload inference is suspended due to conflicting tutor wrapper observations ({conflictReason}). Remove or manually remap this opcode to continue.";
                         return false;
@@ -715,20 +774,6 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
-                    byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
-                    if (TryResolveBuildScopedLearnedTutorPacketTypeNoLock(
-                            opcode,
-                            source,
-                            inferencePayload,
-                            out packetType,
-                            out string buildScopedReason))
-                    {
-                        _packetMap[opcode] = packetType;
-                        string learnedEvidence = $"auto:{buildScopedReason}; {OfficialRemoteOwnerEvidence}";
-                        RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
-                        LastStatus = $"Restored remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from build-scoped tutor evidence ({buildScopedReason}); {OfficialRemoteOwnerEvidence}";
-                    }
-                    else
                     if (trustV95LocalOwnerTable
                         && TryResolveKnownTutorPacketTypeFromV95LocalOwnerTableNoLock(opcode, out packetType, out string knownOwnerReason))
                     {

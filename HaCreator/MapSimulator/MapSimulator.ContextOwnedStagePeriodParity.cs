@@ -184,23 +184,25 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                ContextOwnedStageBackImageEntry resolvedEntry =
+                    ContextOwnedStageSystemCatalog.ResolveClientMakeBackPieceFields(entry, sourceProperty);
                 BackgroundInstance backgroundInstance = (BackgroundInstance)backgroundInfo.CreateInstance(
                     _mapBoard,
-                    entry.X,
-                    entry.Y,
-                    entry.Z != 0 ? entry.Z : zOrder++,
-                    entry.Rx,
-                    entry.Ry,
-                    entry.Cx,
-                    entry.Cy,
-                    entry.Type,
-                    entry.Alpha,
-                    entry.Front,
-                    entry.Flip,
-                    entry.Page,
-                    entry.ScreenMode,
-                    entry.SpineAnimation,
-                    entry.SpineRandomStart);
+                    resolvedEntry.X,
+                    resolvedEntry.Y,
+                    resolvedEntry.Z != 0 ? resolvedEntry.Z : zOrder++,
+                    resolvedEntry.Rx,
+                    resolvedEntry.Ry,
+                    resolvedEntry.Cx,
+                    resolvedEntry.Cy,
+                    resolvedEntry.Type,
+                    resolvedEntry.Alpha,
+                    resolvedEntry.Front,
+                    resolvedEntry.Flip,
+                    resolvedEntry.Page,
+                    resolvedEntry.ScreenMode,
+                    resolvedEntry.SpineAnimation,
+                    resolvedEntry.SpineRandomStart);
                 TryAppendContextOwnedStageBackground(backgroundInstance, sourceProperty);
             }
 

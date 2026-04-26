@@ -62,6 +62,14 @@ namespace HaCreator.MapSimulator.UI
         private const int TooltipFallbackWidth = 214;
         private const int TooltipBitmapGap = 1;
 
+        private sealed class TooltipSampleUiFrame
+        {
+            public Texture2D Top { get; init; }
+            public Texture2D Center { get; init; }
+            public Texture2D Bottom { get; init; }
+            public bool IsDrawable => Top != null && Center != null && Bottom != null;
+        }
+
         private readonly IDXObject _foreground;
         private readonly Point _foregroundOffset;
         private readonly IDXObject _contentOverlay;
@@ -108,6 +116,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
         private readonly Texture2D _debugTooltipTexture;
         private readonly Dictionary<int, Texture2D> _infoSampleTextureCache = new();
+        private readonly Dictionary<int, TooltipSampleUiFrame> _sampleUiFrameCache = new();
 
         private InventoryUI _inventory;
         private IStorageRuntime _storageRuntime;

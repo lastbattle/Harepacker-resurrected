@@ -1016,7 +1016,7 @@ namespace HaCreator.MapSimulator.Companions
             return (byte)(keyPadState & 0x0F);
         }
 
-        private void ApplyClientVecCtrlPostFlushRetainedElements(IReadOnlyList<MovePathElement> sourcePath)
+        private int ApplyClientVecCtrlPostFlushRetainedElements(IReadOnlyList<MovePathElement> sourcePath)
         {
             List<MovePathElement> sourceElements = sourcePath?.ToList() ?? new List<MovePathElement>();
             int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(sourceElements);
@@ -1024,7 +1024,7 @@ namespace HaCreator.MapSimulator.Companions
             _clientVecCtrlMovePathKeyPadStates.Clear();
             if (retainedStartIndex < 0)
             {
-                return;
+                return 0;
             }
 
             for (int i = retainedStartIndex; i < sourceElements.Count; i++)
@@ -1032,6 +1032,8 @@ namespace HaCreator.MapSimulator.Companions
                 MovePathElement element = sourceElements[i];
                 _clientVecCtrlMovePathBuffer.Add(element);
             }
+
+            return ResolveClientDragonFlushRetainedGatherDuration(sourceElements);
         }
 
         private byte[] BuildClientVecCtrlEndUpdateActiveFlushPacketPayload()
@@ -1047,7 +1049,7 @@ namespace HaCreator.MapSimulator.Companions
                 payload = Array.Empty<byte>();
             }
 
-            ApplyClientVecCtrlPostFlushRetainedElements(movePath);
+            _vecCtrlEndUpdateActiveFlushCarryMilliseconds = ApplyClientVecCtrlPostFlushRetainedElements(movePath);
 
             return payload ?? Array.Empty<byte>();
         }
@@ -1240,6 +1242,23 @@ namespace HaCreator.MapSimulator.Companions
             return retainedStartIndex < movePath.Count
                 ? retainedStartIndex
                 : -1;
+        }
+
+        internal static int ResolveClientDragonFlushRetainedGatherDuration(IReadOnlyList<MovePathElement> movePath)
+        {
+            int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(movePath);
+            if (retainedStartIndex < 0)
+            {
+                return 0;
+            }
+
+            int gatherDuration = 0;
+            for (int i = retainedStartIndex; i < movePath.Count; i++)
+            {
+                gatherDuration += Math.Max((short) 0, movePath[i].Duration);
+            }
+
+            return gatherDuration;
         }
 
         internal static bool CanClientDragonEndUpdateActiveFlushNonShortNonFlyPath(IReadOnlyList<MovePathElement> movePath)

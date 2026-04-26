@@ -621,8 +621,8 @@ namespace HaCreator.MapSimulator.Interaction
             LastSubtype = 24;
             _deliveryCount++;
             _arrivalNoticeCount++;
-            _lastArrivalNotices.Add(PacketOwnedSocialUtilityStringPoolText.ResolveParcelDeliveryNotice());
-            StatusMessage = $"CParcelDlg packet 24 decoded PARCEL::Decode payload serial {entry.ParcelSerial.ToString(CultureInfo.InvariantCulture)} from {entry.Sender}.";
+            _lastArrivalNotices.Add(BuildArrivalNotice(entry));
+            StatusMessage = $"CParcelDlg packet 24 decoded PARCEL::Decode payload serial {entry.ParcelSerial.ToString(CultureInfo.InvariantCulture)} from {entry.Sender} and dispatched the client-shaped sender/attachment arrival notice.";
             message = StatusMessage;
             return true;
         }

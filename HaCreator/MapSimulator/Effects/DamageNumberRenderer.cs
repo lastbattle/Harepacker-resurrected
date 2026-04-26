@@ -76,7 +76,7 @@ namespace HaCreator.MapSimulator.Effects
         /// <summary>Optional BasicEff special text sprite name, such as Miss or guard.</summary>
         public string SpecialTextName { get; set; }
 
-        /// <summary>Color type (Red for player damage, Blue for received, Violet for party)</summary>
+        /// <summary>Color type (Red for player damage, Blue for HP increase, Violet for received/summoned feedback)</summary>
         public DamageColorType ColorType { get; set; }
 
         /// <summary>Size variant (Small or Large)</summary>
@@ -359,15 +359,15 @@ namespace HaCreator.MapSimulator.Effects
         }
 
         /// <summary>
-        /// Spawn damage received by player (Blue).
+        /// Spawn damage received by player (Violet).
         /// </summary>
         public void SpawnReceivedDamage(int damage, float x, float y, bool isCritical, int currentTime)
         {
-            SpawnDamageNumber(damage, x, y, DamageColorType.Blue, isCritical, false, currentTime, 0);
+            SpawnDamageNumber(damage, x, y, DamageColorType.Violet, isCritical, false, currentTime, 0);
         }
 
         /// <summary>
-        /// Spawn party/summon damage (Violet).
+        /// Spawn party/summon HP feedback (Violet).
         /// </summary>
         public void SpawnPartyDamage(int damage, float x, float y, bool isCritical, int currentTime, int comboIndex = 0)
         {

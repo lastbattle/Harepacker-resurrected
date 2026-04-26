@@ -241,6 +241,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SpeedPercent { get; set; }        // speedRate percentage speed boost
         public int SpeedMax { get; set; }            // speedMax max-speed cap boost
         public int AllStat { get; set; }             // Big Bang indie all-stat boost
+        public int StrengthToDexterityPercent { get; set; } // WZ str2dex stat conversion
+        public int DexterityToStrengthPercent { get; set; } // WZ dex2str stat conversion
+        public int IntelligenceToLuckPercent { get; set; }  // WZ int2luk stat conversion
+        public int LuckToDexterityPercent { get; set; }     // WZ luk2dex stat conversion
         public int Craft { get; set; }               // incCraft / hands boost
         public int AbnormalStatusResistance { get; set; } // asrR / indieAsrR
         public int ElementalResistance { get; set; } // terR / indieTerR
@@ -2144,6 +2148,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ProjectileId { get; set; }
         public bool IsDetachedFromProjectile { get; set; }
         public int MainLayerObjectId { get; set; }
+        public bool MainLayerAvailable { get; set; } = true;
         public bool MainLayerHasAlphaVector { get; set; } = true;
         public BulletAnimationPresentation Presentation { get; init; }
         public Vector2 CurrentPosition { get; set; }

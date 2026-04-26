@@ -1687,7 +1687,7 @@ namespace HaCreator.MapSimulator.Interaction
                         break;
                     }
 
-                    if (!TryDecodeCharacterDataItemSlot(reader, InventoryType.EQUIP, position, out PacketCharacterDataItemSlot itemSlot))
+                    if (!TryDecodeCharacterDataItemSlot(reader, InventoryType.EQUIP, position, sizeof(short), out PacketCharacterDataItemSlot itemSlot))
                     {
                         return false;
                     }
@@ -1805,7 +1805,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
-                    if (!TryDecodeCharacterDataItemSlot(reader, inventoryType, position, out PacketCharacterDataItemSlot itemSlot))
+                    if (!TryDecodeCharacterDataItemSlot(reader, inventoryType, position, sizeof(short), out PacketCharacterDataItemSlot itemSlot))
                     {
                         return false;
                     }
@@ -1830,22 +1830,32 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             InventoryType inventoryType,
             short inventoryPosition,
+            int inventoryPositionByteCount,
             out PacketCharacterDataItemSlot itemSlot)
         {
             itemSlot = default;
             long startPosition = reader.BaseStream.Position;
             try
             {
-                byte itemType = reader.ReadByte();
-                int itemId = reader.ReadInt32();
-                bool hasCashItemSerialNumber = reader.ReadByte() != 0;
+                Dictionary<string, int> itemSlotFieldByteCounts = new(StringComparer.Ordinal)
+                {
+                    [nameof(PacketCharacterDataItemSlot.InventoryPosition)] = Math.Max(0, inventoryPositionByteCount)
+                };
+                byte itemType = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, nameof(PacketCharacterDataItemSlot.ItemType), static fieldReader => fieldReader.ReadByte());
+                int itemId = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, nameof(PacketCharacterDataItemSlot.ItemId), static fieldReader => fieldReader.ReadInt32());
+                bool hasCashItemSerialNumber = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "CashItemSerialNumberFlag", static fieldReader => fieldReader.ReadByte()) != 0;
                 long cashItemSerialNumber = 0;
                 if (hasCashItemSerialNumber)
                 {
-                    cashItemSerialNumber = reader.ReadInt64();
+                    cashItemSerialNumber = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, nameof(PacketCharacterDataItemSlot.CashItemSerialNumber), static fieldReader => fieldReader.ReadInt64());
+                }
+                else
+                {
+                    itemSlotFieldByteCounts[nameof(PacketCharacterDataItemSlot.CashItemSerialNumber)] = 0;
                 }
 
-                _ = reader.ReadInt64(); // dateExpire
+                _ = ReadTrackedCharacterDataField(reader, itemSlotFieldByteCounts, "ExpirationFileTime", static fieldReader => fieldReader.ReadInt64());
+                long itemTypeBodyStart = reader.BaseStream.Position;
                 switch (itemType)
                 {
                     case 1:
@@ -1899,6 +1909,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                 }
 
+                itemSlotFieldByteCounts["ItemTypeSpecificBody"] = checked((int)(reader.BaseStream.Position - itemTypeBodyStart));
                 itemSlot = new PacketCharacterDataItemSlot(
                     inventoryType,
                     inventoryPosition,
@@ -1906,7 +1917,8 @@ namespace HaCreator.MapSimulator.Interaction
                     itemId,
                     hasCashItemSerialNumber,
                     cashItemSerialNumber,
-                    checked((int)(reader.BaseStream.Position - startPosition)));
+                    checked((int)(reader.BaseStream.Position - startPosition)),
+                    itemSlotFieldByteCounts);
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -4321,7 +4333,8 @@ namespace HaCreator.MapSimulator.Interaction
         int ItemId,
         bool HasCashItemSerialNumber,
         long CashItemSerialNumber,
-        int DecodedByteCount = 0);
+        int DecodedByteCount = 0,
+        IReadOnlyDictionary<string, int> FieldByteCounts = null);
 
     internal readonly record struct PacketSetFieldPacket(
         IReadOnlyDictionary<uint, int> ClientOptions,

@@ -90,6 +90,11 @@ namespace HaCreator.MapSimulator.UI
             Texture2D itemTexture = ResolveSlotItemTexture(sprite.GraphicsDevice, slot);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
             Texture2D sampleTexture = ResolveInfoSampleTexture(sprite.GraphicsDevice, slot.ItemId);
+            TooltipSampleUiFrame sampleUiFrame = sampleTexture == null
+                ? ResolveSampleUiFrame(sprite.GraphicsDevice, slot.ItemId)
+                : null;
+            bool drawAuthoredSampleInFrame = sampleUiFrame?.IsDrawable == true
+                                             && metadata.AuthoredSampleLines.Count > 0;
 
             int tooltipWidth = ResolveTooltipWidth();
             int textLeftOffset = TooltipPadding + TooltipIconSize + TooltipIconGap;
@@ -129,9 +134,12 @@ namespace HaCreator.MapSimulator.UI
                 sections.Add(new TooltipSection(description, new Color(255, 238, 196)));
             }
 
-            for (int i = 0; i < metadata.AuthoredSampleLines.Count; i++)
+            if (!drawAuthoredSampleInFrame)
             {
-                sections.Add(new TooltipSection(metadata.AuthoredSampleLines[i], new Color(210, 220, 255)));
+                for (int i = 0; i < metadata.AuthoredSampleLines.Count; i++)
+                {
+                    sections.Add(new TooltipSection(metadata.AuthoredSampleLines[i], new Color(210, 220, 255)));
+                }
             }
 
             List<(string[] Lines, Color Color, float Height)> wrappedSections = BuildWrappedTooltipSections(sections);
@@ -144,7 +152,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float iconBlockHeight = Math.Max(TooltipIconSize, contentHeight);
-            float sampleHeight = sampleTexture?.Height ?? 0f;
+            float sampleHeight = sampleTexture?.Height ?? MeasureSampleUiFrameHeight(sampleUiFrame, metadata.AuthoredSampleLines);
             float sampleGap = sampleHeight > 0f ? TooltipSectionGap : 0f;
             int tooltipHeight = (int)Math.Ceiling((TooltipPadding * 2) + titleHeight + TooltipSectionGap + iconBlockHeight + sampleGap + sampleHeight);
             Rectangle anchorRect = ResolveHoveredTooltipAnchorRect();
@@ -192,6 +200,13 @@ namespace HaCreator.MapSimulator.UI
                 int sampleX = backgroundRect.X + Math.Max(TooltipPadding, (backgroundRect.Width - sampleTexture.Width) / 2);
                 int sampleY = contentY + (int)Math.Ceiling(iconBlockHeight) + TooltipSectionGap;
                 sprite.Draw(sampleTexture, new Vector2(sampleX, sampleY), Color.White);
+            }
+            else if (drawAuthoredSampleInFrame)
+            {
+                int sampleWidth = ResolveSampleUiFrameWidth(sampleUiFrame);
+                int sampleX = backgroundRect.X + Math.Max(TooltipPadding, (backgroundRect.Width - sampleWidth) / 2);
+                int sampleY = contentY + (int)Math.Ceiling(iconBlockHeight) + TooltipSectionGap;
+                DrawSampleUiFrame(sprite, sampleUiFrame, metadata.AuthoredSampleLines, sampleX, sampleY);
             }
         }
 
@@ -426,6 +441,87 @@ namespace HaCreator.MapSimulator.UI
 
             _infoSampleTextureCache[itemId] = texture;
             return texture;
+        }
+
+        private TooltipSampleUiFrame ResolveSampleUiFrame(GraphicsDevice device, int itemId)
+        {
+            if (itemId <= 0 || device == null)
+            {
+                return null;
+            }
+
+            if (_sampleUiFrameCache.TryGetValue(itemId, out TooltipSampleUiFrame cachedFrame))
+            {
+                return cachedFrame;
+            }
+
+            TooltipSampleUiFrame frame = null;
+            if (InventoryItemMetadataResolver.TryResolveSampleUiFrame(
+                    itemId,
+                    out WzCanvasProperty topCanvas,
+                    out WzCanvasProperty centerCanvas,
+                    out WzCanvasProperty bottomCanvas))
+            {
+                frame = new TooltipSampleUiFrame
+                {
+                    Top = topCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                    Center = centerCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                    Bottom = bottomCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+                };
+            }
+
+            _sampleUiFrameCache[itemId] = frame;
+            return frame;
+        }
+
+        private float MeasureSampleUiFrameHeight(TooltipSampleUiFrame frame, IReadOnlyList<string> sampleLines)
+        {
+            if (frame?.IsDrawable != true || sampleLines == null || sampleLines.Count == 0)
+            {
+                return 0f;
+            }
+
+            return frame.Top.Height + (frame.Center.Height * sampleLines.Count) + frame.Bottom.Height;
+        }
+
+        private static int ResolveSampleUiFrameWidth(TooltipSampleUiFrame frame)
+        {
+            if (frame?.IsDrawable != true)
+            {
+                return 0;
+            }
+
+            return Math.Max(frame.Top.Width, Math.Max(frame.Center.Width, frame.Bottom.Width));
+        }
+
+        private void DrawSampleUiFrame(SpriteBatch sprite, TooltipSampleUiFrame frame, IReadOnlyList<string> sampleLines, int x, int y)
+        {
+            if (sprite == null || frame?.IsDrawable != true || sampleLines == null || sampleLines.Count == 0)
+            {
+                return;
+            }
+
+            int frameWidth = ResolveSampleUiFrameWidth(frame);
+            DrawCenteredTooltipBitmap(sprite, frame.Top, x, y, frameWidth);
+            int rowY = y + frame.Top.Height;
+            for (int i = 0; i < sampleLines.Count; i++)
+            {
+                DrawCenteredTooltipBitmap(sprite, frame.Center, x, rowY, frameWidth);
+                DrawTooltipText(sprite, sampleLines[i], new Vector2(x + 5, rowY + 1), new Color(48, 48, 48));
+                rowY += frame.Center.Height;
+            }
+
+            DrawCenteredTooltipBitmap(sprite, frame.Bottom, x, rowY, frameWidth);
+        }
+
+        private static void DrawCenteredTooltipBitmap(SpriteBatch sprite, Texture2D texture, int x, int y, int frameWidth)
+        {
+            if (sprite == null || texture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(texture, new Vector2(x + ((frameWidth - texture.Width) / 2), y), Color.White);
         }
 
         private int ResolveTooltipWidth()

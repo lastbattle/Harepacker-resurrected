@@ -200,6 +200,7 @@ namespace HaCreator.MapSimulator.Fields
             _voyageBalrogAutoDurationMs = ResolveDefaultVoyageBalrogDurationMs();
             _voyageBalrogDepartureStartTime = 0;
             _voyageBalrogAutoTriggered = false;
+            _lastVoyageBalrogEventOwner = "none";
 
             System.Diagnostics.Debug.WriteLine($"[TransportField] Initialized: kind={shipKind}, x={x}, y={y}, x0={x0}, f={f}, tMove={tMove}s");
         }

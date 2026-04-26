@@ -860,12 +860,28 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialEntryState updatedEntry = IsPacketOwned(tab)
                     ? MergePacketOwnedLocalEntry(existingEntry, localEntry)
                     : localEntry;
-                entries[existingIndex] = EnsureEntryHasMemberId(tab, updatedEntry, existingEntry.MemberId);
+                entries[existingIndex] = EnsureEntryHasMemberId(
+                    tab,
+                    updatedEntry,
+                    ResolvePreferredLocalMemberId(tab, existingEntry.MemberId));
             }
             else
             {
-                entries.Insert(0, EnsureEntryHasMemberId(tab, localEntry));
+                entries.Insert(0, EnsureEntryHasMemberId(
+                    tab,
+                    localEntry,
+                    ResolvePreferredLocalMemberId(tab, null)));
             }
+        }
+
+        private int? ResolvePreferredLocalMemberId(SocialListTab tab, int? existingMemberId)
+        {
+            if (tab == SocialListTab.Guild && _playerCharacterId > 0)
+            {
+                return _playerCharacterId;
+            }
+
+            return existingMemberId;
         }
 
         private bool ShouldSuppressPacketOwnedLocalGuildEntry(SocialListTab tab)

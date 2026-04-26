@@ -19,7 +19,8 @@ namespace HaCreator.MapSimulator.Character
             Point? Move = null,
             int RotationDegrees = 0,
             bool IsSyntheticMirroredTailPiece = false,
-            bool IsClientActionManInitPiece = false);
+            bool IsClientActionManInitPiece = false,
+            int? EventDelayOverrideMs = null);
 
         private static readonly string[] SwingHeuristicFragments =
         {
@@ -2896,6 +2897,14 @@ namespace HaCreator.MapSimulator.Character
 
             bool hasClientActionManInitPieces = false;
             bool hasSyntheticMirroredTail = false;
+            foreach (ShadowPartnerActionPiece piece in orderedPieces)
+            {
+                if (!piece.IsSyntheticMirroredTailPiece && piece.EventDelayOverrideMs.HasValue)
+                {
+                    return Math.Max(0, piece.EventDelayOverrideMs.Value);
+                }
+            }
+
             int eventDelayMs = 0;
             foreach (ShadowPartnerActionPiece piece in orderedPieces)
             {
@@ -3206,7 +3215,10 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            return rawActionCode != 47;
+            // CUser::PrepareShadowPartnerActionLayer keeps raw action 47 on the
+            // helper path and loads it through CActionMan::LoadShadowPartnerAction;
+            // in v95 this is Character/00002000.img/arrowEruption.
+            return true;
         }
 
         public static int ResolveAttackDelayMs(

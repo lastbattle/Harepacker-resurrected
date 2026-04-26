@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator
         private const int VegaOwnerResultDelayMs = 50;
         private const int VegaOwnerExclusiveRequestCooldownMs = 500;
         private const int VegaOwnerExternalResultFallbackDelayMs = 3000;
+        private const int VegaResultPreludeLoopSoundPrefixStringPoolId = 0x8B9;
         private const int VegaResultPreludeLoopSoundStringPoolId = 0x1534;
         private const string VegaResultPreludeLoopSoundOwnerImage = "UI.img";
         private const string VegaResultPreludeLoopSoundFallback = "Sound/UI.img/EnchantDelay";
@@ -1909,7 +1910,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string descriptor = ResolveVegaResultLoopSoundDescriptor();
+            string descriptor = ResolveVegaResultLoopSoundClientPlaybackDescriptor();
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                descriptor = ResolveVegaResultLoopSoundDescriptor();
+            }
+
             if (!TryResolvePacketOwnedWzSound(
                     descriptor,
                     VegaResultPreludeLoopSoundOwnerImage,
@@ -1962,6 +1968,38 @@ namespace HaCreator.MapSimulator
                 MapleStoryStringPool.GetOrFallback(
                     VegaResultPreludeLoopSoundStringPoolId,
                     VegaResultPreludeLoopSoundFallback));
+        }
+
+        private static string ResolveVegaResultLoopSoundClientPlaybackDescriptor()
+        {
+            return BuildVegaPlayUiSoundLoopDescriptor(
+                VegaOwnerStringPoolText.GetResultLoopSoundAliasDescriptor());
+        }
+
+        internal static string BuildVegaPlayUiSoundLoopDescriptorForTests(string soundName)
+        {
+            return BuildVegaPlayUiSoundLoopDescriptor(soundName);
+        }
+
+        private static string BuildVegaPlayUiSoundLoopDescriptor(string soundName)
+        {
+            string normalizedSoundName = NormalizePacketOwnedClientSoundDescriptor(soundName);
+            if (string.IsNullOrWhiteSpace(normalizedSoundName))
+            {
+                return string.Empty;
+            }
+
+            string prefix = MapleStoryStringPool.GetOrFallback(
+                VegaResultPreludeLoopSoundPrefixStringPoolId,
+                "Sound/UI.img/");
+            string normalizedPrefix = NormalizePacketOwnedClientSoundDescriptor(prefix);
+            if (string.IsNullOrWhiteSpace(normalizedPrefix))
+            {
+                return normalizedSoundName;
+            }
+
+            return NormalizePacketOwnedClientSoundDescriptor(
+                $"{normalizedPrefix.TrimEnd('/')}/{normalizedSoundName.TrimStart('/')}");
         }
 
         internal static string BuildVegaResultLoopSoundKeyForTests(string resolvedDescriptor)

@@ -318,6 +318,7 @@ namespace HaCreator.MapSimulator.UI
         private const int WhisperPickerModalHeaderGap = 10;
         private const int WhisperPickerDropdownScrollRepeatInitialDelayMs = 400;
         private const int WhisperPickerDropdownScrollRepeatIntervalMs = 60;
+        private const int WhisperPickerDropdownScrollWheelRangeRows = 15;
         private Point _pointNotificationAnchor = new Point(512, 60);
         private Vector2 _chatTargetLabelPos = new Vector2(17, 7);
         private Vector2 _chatEnterPos = new Vector2(4, 2);
@@ -622,6 +623,17 @@ namespace HaCreator.MapSimulator.UI
             int thumbBottom)
         {
             return repeatBackward ? mouseY < thumbTop : mouseY >= thumbBottom;
+        }
+
+        internal static int ResolveWhisperPickerDropdownScrollWheelDeltaRows(int scrollDelta, int wheelSteps)
+        {
+            if (scrollDelta == 0 || wheelSteps <= 0)
+            {
+                return 0;
+            }
+
+            int direction = scrollDelta > 0 ? -1 : 1;
+            return direction * wheelSteps * WhisperPickerDropdownScrollWheelRangeRows;
         }
 
         private void ResetWhisperPickerPointerCaptureState()
@@ -3406,7 +3418,8 @@ namespace HaCreator.MapSimulator.UI
                     int candidateCount = _chatStateProvider?.Invoke()?.WhisperCandidates?.Count ?? 0;
                     if (candidateCount > WhisperPickerVisibleRows)
                     {
-                        WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(scrollDelta > 0 ? -steps : steps);
+                        WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(
+                            ResolveWhisperPickerDropdownScrollWheelDeltaRows(scrollDelta, steps));
                     }
                     else
                     {

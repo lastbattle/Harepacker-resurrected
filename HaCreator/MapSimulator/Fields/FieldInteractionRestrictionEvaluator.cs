@@ -74,6 +74,26 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetChannelShiftRestrictionMessage(long fieldLimit, MapInfo mapInfo)
+        {
+            string fieldLimitRestrictionMessage = GetChannelShiftRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(fieldLimitRestrictionMessage))
+            {
+                return fieldLimitRestrictionMessage;
+            }
+
+            return IsInfoFlagSet(mapInfo, "shiftChannelForbidden")
+                ? "This map forbids channel changes."
+                : null;
+        }
+
+        public static string GetFollowCharacterRestrictionMessage(MapInfo mapInfo)
+        {
+            return mapInfo?.nofollowCharacter == true
+                ? "Follow-character requests are disabled in this map."
+                : null;
+        }
+
         public static string GetMiniGameRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Open_Mini_Game.Check(fieldLimit)
@@ -589,6 +609,7 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetShopOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
             AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetFollowCharacterRestrictionMessage(mapInfo));
             return messages;
         }
 

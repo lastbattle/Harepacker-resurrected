@@ -469,6 +469,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int WildHunterSwallowAttackSkillId = 33101007;
         private const int ClientPrepareHalfHpRequirementSkillId = 4211001;
         private const int ClientPrepareSwallowTargetAdmissionSkillId = 33101005;
+        private const string ClientPrepareSwallowAvatarActionName = "crossRoad";
         private const int WildHunterSwallowMaxQueuedFollowUpRequests = 8;
         private const int WindWalkSkillId = 11101005;
         private const int NightLordFlashJumpSkillId = 4111006;
@@ -1029,6 +1030,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, int> _skillHotkeys = new(); // slotIndex -> skillId
         private readonly Dictionary<int, int> _macroHotkeys = new(); // slotIndex -> macro index
         private readonly Dictionary<int, ItemHotkeyBinding> _itemHotkeys = new(); // slotIndex -> item binding
+        private readonly Dictionary<int, int> _packetOwnedOwnerSkillHotkeys = new(); // hidden CFuncKeyMappedMan owner slot -> skillId
+        private readonly Dictionary<int, int> _packetOwnedOwnerMacroHotkeys = new(); // hidden CFuncKeyMappedMan owner slot -> macro index
+        private readonly Dictionary<int, ItemHotkeyBinding> _packetOwnedOwnerItemHotkeys = new(); // hidden CFuncKeyMappedMan owner slot -> item binding
         private IInventoryRuntime _inventoryRuntime;
 
         // Counters
@@ -1696,6 +1700,70 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
+        public bool TrySetPacketOwnedOwnerSkillHotkey(int ownerSlotIndex, int skillId)
+        {
+            if (!IsPacketOwnedOwnerHotkeySlot(ownerSlotIndex))
+                return false;
+
+            if (skillId <= 0)
+            {
+                ClearPacketOwnedOwnerHotkeySlot(ownerSlotIndex);
+                return true;
+            }
+
+            if (!CanAssignHotkeySkill(skillId))
+                return false;
+
+            _packetOwnedOwnerMacroHotkeys.Remove(ownerSlotIndex);
+            _packetOwnedOwnerItemHotkeys.Remove(ownerSlotIndex);
+            _packetOwnedOwnerSkillHotkeys[ownerSlotIndex] = skillId;
+            return true;
+        }
+
+        public bool TrySetPacketOwnedOwnerItemHotkey(int ownerSlotIndex, int itemId, InventoryType inventoryType = InventoryType.NONE)
+        {
+            if (!IsPacketOwnedOwnerHotkeySlot(ownerSlotIndex))
+                return false;
+
+            if (itemId <= 0)
+            {
+                ClearPacketOwnedOwnerHotkeySlot(ownerSlotIndex);
+                return true;
+            }
+
+            if (!TryResolveAssignableHotkeyItem(itemId, inventoryType, out InventoryType resolvedInventoryType))
+                return false;
+
+            _packetOwnedOwnerSkillHotkeys.Remove(ownerSlotIndex);
+            _packetOwnedOwnerMacroHotkeys.Remove(ownerSlotIndex);
+            _packetOwnedOwnerItemHotkeys[ownerSlotIndex] = new ItemHotkeyBinding
+            {
+                ItemId = itemId,
+                InventoryType = resolvedInventoryType
+            };
+            return true;
+        }
+
+        public bool TrySetPacketOwnedOwnerMacroHotkey(int ownerSlotIndex, int macroIndex)
+        {
+            if (!IsPacketOwnedOwnerHotkeySlot(ownerSlotIndex))
+                return false;
+
+            if (macroIndex < 0)
+            {
+                ClearPacketOwnedOwnerHotkeySlot(ownerSlotIndex);
+                return true;
+            }
+
+            if (!IsValidMacroHotkeyBinding(macroIndex))
+                return false;
+
+            _packetOwnedOwnerSkillHotkeys.Remove(ownerSlotIndex);
+            _packetOwnedOwnerItemHotkeys.Remove(ownerSlotIndex);
+            _packetOwnedOwnerMacroHotkeys[ownerSlotIndex] = macroIndex;
+            return true;
+        }
+
         /// <summary>
         /// Get skill on hotkey by absolute slot index (0-27)
         /// </summary>
@@ -1811,6 +1879,41 @@ namespace HaCreator.MapSimulator.Character.Skills
             changed |= _macroHotkeys.Remove(slotIndex);
             changed |= _itemHotkeys.Remove(slotIndex);
             NotifyHotkeysChanged(changed);
+        }
+
+        public void ClearPacketOwnedOwnerHotkeySlot(int ownerSlotIndex)
+        {
+            if (!IsPacketOwnedOwnerHotkeySlot(ownerSlotIndex))
+                return;
+
+            _packetOwnedOwnerSkillHotkeys.Remove(ownerSlotIndex);
+            _packetOwnedOwnerMacroHotkeys.Remove(ownerSlotIndex);
+            _packetOwnedOwnerItemHotkeys.Remove(ownerSlotIndex);
+        }
+
+        public void ClearPacketOwnedOwnerHotkeySlots(int startOwnerSlotIndex, int ownerSlotCount)
+        {
+            if (ownerSlotCount <= 0)
+                return;
+
+            int endExclusive = startOwnerSlotIndex + ownerSlotCount;
+            foreach (int slotIndex in _packetOwnedOwnerSkillHotkeys.Keys.ToList())
+            {
+                if (slotIndex >= startOwnerSlotIndex && slotIndex < endExclusive)
+                    _packetOwnedOwnerSkillHotkeys.Remove(slotIndex);
+            }
+
+            foreach (int slotIndex in _packetOwnedOwnerMacroHotkeys.Keys.ToList())
+            {
+                if (slotIndex >= startOwnerSlotIndex && slotIndex < endExclusive)
+                    _packetOwnedOwnerMacroHotkeys.Remove(slotIndex);
+            }
+
+            foreach (int slotIndex in _packetOwnedOwnerItemHotkeys.Keys.ToList())
+            {
+                if (slotIndex >= startOwnerSlotIndex && slotIndex < endExclusive)
+                    _packetOwnedOwnerItemHotkeys.Remove(slotIndex);
+            }
         }
 
         /// <summary>
@@ -2069,6 +2172,42 @@ namespace HaCreator.MapSimulator.Character.Skills
             _itemHotkeys.Remove(slotIndex);
             NotifyHotkeysChanged();
             return null;
+        }
+
+        private ItemHotkeyBinding GetPacketOwnedOwnerHotkeyItemBinding(int ownerSlotIndex)
+        {
+            if (!_packetOwnedOwnerItemHotkeys.TryGetValue(ownerSlotIndex, out ItemHotkeyBinding binding))
+                return null;
+
+            if (IsValidHotkeyItemBinding(binding))
+                return binding;
+
+            _packetOwnedOwnerItemHotkeys.Remove(ownerSlotIndex);
+            return null;
+        }
+
+        private int GetPacketOwnedOwnerHotkeySkill(int ownerSlotIndex)
+        {
+            if (!_packetOwnedOwnerSkillHotkeys.TryGetValue(ownerSlotIndex, out int skillId))
+                return 0;
+
+            if (CanAssignHotkeySkill(skillId))
+                return skillId;
+
+            _packetOwnedOwnerSkillHotkeys.Remove(ownerSlotIndex);
+            return 0;
+        }
+
+        private int GetPacketOwnedOwnerHotkeyMacroIndex(int ownerSlotIndex)
+        {
+            if (!_packetOwnedOwnerMacroHotkeys.TryGetValue(ownerSlotIndex, out int macroIndex))
+                return -1;
+
+            if (IsValidMacroHotkeyBinding(macroIndex))
+                return macroIndex;
+
+            _packetOwnedOwnerMacroHotkeys.Remove(ownerSlotIndex);
+            return -1;
         }
 
         private void SetItemHotkeyBinding(int slotIndex, int itemId, InventoryType inventoryType)
@@ -2642,6 +2781,33 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             using var _ = BeginClientCancelBatchScope();
             return TryCastSkill(skillId, currentTime, ownerHotkeySlot, ownerInputToken);
+        }
+
+        public bool TryCastPacketOwnedOwnerHotkey(int ownerSlotIndex, int currentTime, int ownerInputToken)
+        {
+            if (!IsPacketOwnedOwnerHotkeySlot(ownerSlotIndex))
+                return false;
+
+            using var _ = BeginClientCancelBatchScope();
+
+            int macroIndex = GetPacketOwnedOwnerHotkeyMacroIndex(ownerSlotIndex);
+            if (macroIndex >= 0)
+                return TryExecuteMacro(macroIndex, currentTime);
+
+            ItemHotkeyBinding itemBinding = GetPacketOwnedOwnerHotkeyItemBinding(ownerSlotIndex);
+            if (itemBinding != null)
+                return OnItemHotkeyUseRequested?.Invoke(itemBinding.ItemId, itemBinding.InventoryType, currentTime) == true;
+
+            int skillId = GetPacketOwnedOwnerHotkeySkill(ownerSlotIndex);
+            if (skillId <= 0)
+                return false;
+
+            return TryCastSkill(skillId, currentTime, ownerSlotIndex, ownerInputToken);
+        }
+
+        internal static bool IsPacketOwnedOwnerHotkeySlot(int ownerSlotIndex)
+        {
+            return ownerSlotIndex >= TOTAL_SLOT_COUNT;
         }
 
         public void ArmPacketOwnedExJablin()
@@ -4159,7 +4325,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Description = string.IsNullOrWhiteSpace(skill?.Description)
                     ? durabilityText
                     : $"{skill.Description}\n{durabilityText}",
-                IconTexture = skill?.IconTexture ?? skill?.Icon?.Texture,
+                IconTexture = null,
+                UseTemporaryStatViewArtworkOnly = true,
                 StartTime = startTime,
                 DurationMs = cooldownState.DurationMs,
                 RemainingMs = cooldownState.RemainingMs,
@@ -4172,7 +4339,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 IsAlerting = isAlerting,
                 LayerUpdateSequence = Math.Max(0, passiveState?.LayerUpdateSequence ?? 0),
                 LowDurabilityAlertSequence = Math.Max(0, passiveState?.LowDurabilityAlertSequence ?? 0),
-                LowDurabilityAlertStartTime = passiveState?.LowDurabilityAlertStartTime ?? int.MinValue
+                LowDurabilityAlertStartTime = passiveState?.LowDurabilityAlertStartTime ?? int.MinValue,
+                ShadowIndex = Math.Clamp(passiveState?.ShadowIndex
+                    ?? ResolvePassiveVehicleDurabilityShadowIndexForParity(currentValue, maxValue), 0, 15),
+                ShadowIndexUpdateSequence = Math.Max(0, passiveState?.ShadowIndexUpdateSequence ?? 0),
+                MainLayerAnimationSequence = Math.Max(0, passiveState?.MainLayerAnimationSequence ?? 0),
+                ShadowLayerAnimationSequence = Math.Max(0, passiveState?.ShadowLayerAnimationSequence ?? 0)
             };
         }
 
@@ -9073,6 +9245,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     casterPosition,
                     facingRightForPlacement,
                     placementDistanceX,
+                    _player?.Physics?.IsSwimming() == true || _player?.Physics?.IsUserFlying() == true,
                     ResolveCurrentMapLeftBoundary(),
                     ResolveCurrentMapRightBoundary(),
                     (x, y, range) => ResolveFootholdY(_footholdUnderneathLookup(x, y, range), x),
@@ -9113,6 +9286,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2 casterPosition,
             bool facingRightForPlacement,
             int placementDistanceX,
+            bool isSwimOrFly,
             int? mapLeftBoundary,
             int? mapRightBoundary,
             Func<float, float, float, float?> resolveFootholdUnderneathY,
@@ -9129,6 +9303,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (mapRightBoundary.HasValue)
             {
                 targetX = Math.Min(mapRightBoundary.Value - 1, targetX);
+            }
+
+            if (isSwimOrFly)
+            {
+                return new Vector2(targetX, casterPosition.Y);
             }
 
             const float footholdSearchRange = 80f;
@@ -10971,6 +11150,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (skill?.SkillId == 33101005)
             {
+                // `CUserLocal::DoActiveSkill_Prepare@0x941710` hardcodes
+                // `m_nOneTimeAction = 251` for Swallow, which maps to `crossRoad`,
+                // instead of using WZ `prepare/action = swallow_loop`.
+                yield return ClientPrepareSwallowAvatarActionName;
                 yield return "swallow_pre";
 
                 if (string.Equals(prepareActionName, "swallow", StringComparison.OrdinalIgnoreCase))
@@ -12461,18 +12644,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
-        private void ApplyClientMovementImpact(float impactX, float impactY)
+        internal static void ApplyClientMovementImpactForParity(HaCreator.MapSimulator.Physics.CVecCtrl physics, float impactX, float impactY)
         {
-            if (_player?.Physics == null)
+            if (physics == null)
             {
                 return;
             }
 
-            _player.Physics.Impact(impactX, impactY);
+            // `CUserLocal::DoActiveSkill_BoundJump` queues the impulse through
+            // `CVecCtrl::SetImpactNext`; physics applies it at the next client tick.
+            physics.SetImpactNext(impactX, impactY);
             if (impactY < 0f)
             {
-                _player.Physics.CurrentAction = HaCreator.MapSimulator.Physics.MoveAction.Jump;
+                physics.CurrentAction = HaCreator.MapSimulator.Physics.MoveAction.Jump;
             }
+        }
+
+        private void ApplyClientMovementImpact(float impactX, float impactY)
+        {
+            ApplyClientMovementImpactForParity(_player?.Physics, impactX, impactY);
         }
 
         private void ProcessDeferredSkillPayloads(int currentTime)
@@ -14597,7 +14787,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int? shuffledHitBranchOrdinal = TryResolveClientShuffledTargetHitAnimationOrdinal(skill);
             for (int i = 0; i < attackCount; i++)
             {
-                int damage = CalculateSkillDamage(skill, level, damagePercentOverride);
+                int damage = CalculateSkillDamage(skill, level, damagePercentOverride, mob, currentTime);
                 bool isCritical = forceCritical || IsSkillCritical(levelData);
                 if (isCritical)
                 {
@@ -15459,7 +15649,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return GetMobHitbox(mob, Environment.TickCount);
         }
 
-        private int CalculateSkillDamage(SkillData skill, int level, int? damagePercentOverride = null)
+        private int CalculateSkillDamage(
+            SkillData skill,
+            int level,
+            int? damagePercentOverride = null,
+            MobItem targetMob = null,
+            int currentTime = 0)
         {
             if (skill == null)
                 return 1;
@@ -15488,6 +15683,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (outgoingDamagePercent > 0)
             {
                 multiplier *= 1f + outgoingDamagePercent / 100f;
+            }
+
+            int bossDamagePercent = targetMob?.AI?.IsBoss == true
+                ? GetActiveBossDamageRatePercent(currentTime != 0 ? currentTime : Environment.TickCount)
+                : 0;
+            if (bossDamagePercent > 0)
+            {
+                multiplier *= 1f + bossDamagePercent / 100f;
             }
 
             if (_activeSkillDamageScaleOverride.HasValue && _activeSkillDamageScaleOverride.Value > 0f)
@@ -15917,6 +16120,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ProjectileId = projectile.Id,
                 IsDetachedFromProjectile = false,
                 MainLayerObjectId = 0,
+                MainLayerAvailable = true,
                 MainLayerHasAlphaVector = true,
                 Presentation = projectile.BulletAnimation,
                 CurrentPosition = ResolveBulletAnimationOwnerInitialPosition(
@@ -18101,7 +18305,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
-            if (owner?.Presentation?.HasAfterimage != true || !owner.CanDrawMainAnimation(currentTime))
+            if (!ShouldRegisterBulletAfterimageRepeatLayer(owner, currentTime))
             {
                 return;
             }
@@ -18179,6 +18383,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 HasAlphaVectorEnd = true,
                 FrameAlphaMultiplier = ResolveBulletAfterimageFrameAlphaMultiplier(frame, frameElapsedMs)
             });
+        }
+
+        internal static bool ShouldRegisterBulletAfterimageRepeatLayer(
+            ActiveBulletAnimationOwner owner,
+            int currentTime)
+        {
+            return owner?.Presentation?.HasAfterimage == true
+                   && owner.MainLayerAvailable
+                   && owner.CanDrawMainAnimation(currentTime);
         }
 
         internal static int ResolveBulletAnimationOwnerMainLayerObjectId(int ownerId)
@@ -19388,9 +19601,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool UsesClientTargetIndexedHitAnimation(int skillId)
         {
             // `CSkill_HitAni::operator()` is invoked with the live target loop index before
-            // `CMob::AddDamageInfo`, and these checked Wild Hunter skills publish authored
-            // multi-branch `hit/*` data in WZ instead of a single shared hit animation.
-            return skillId == 33121009
+            // `CMob::AddDamageInfo`. `CSkill_HitAni::CreateDefault` also routes
+            // `3221001` through `SKILLENTRY::GetHitUOLByIndex(..., i)`, whose raw
+            // array lookup has no negative or far-order clamp.
+            return skillId == 3221001
+                   || skillId == 33121009
                    || skillId == 33111006;
         }
 
@@ -20337,7 +20552,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            return string.Equals(currentActionName, "swallow_pre", StringComparison.OrdinalIgnoreCase)
+            return string.Equals(currentActionName, ClientPrepareSwallowAvatarActionName, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(currentActionName, "swallow_pre", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(currentActionName, "swallow_loop", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(currentActionName, "swallow", StringComparison.OrdinalIgnoreCase);
         }
@@ -20969,7 +21185,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             attackApplied = true;
             for (int i = 0; i < attackCount; i++)
             {
-                int damage = CalculateSkillDamage(skill, level, damagePercentOverride);
+                int damage = CalculateSkillDamage(skill, level, damagePercentOverride, mob, currentTime);
                 bool isCritical = IsSkillCritical(levelData);
                 if (isCritical)
                 {
@@ -23790,7 +24006,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     new Vector2(summon.PositionX, summon.PositionY));
                 if (movedDistanceSq >= 36f)
                 {
-                    SkillAnimation passiveEffect = summon.SkillData?.Effect ?? summon.SkillData?.AffectedEffect;
+                    SkillAnimation passiveEffect =
+                        SummonClientPostEffectRules.ResolvePassiveEffectAnimation(summon.SkillData);
                     if (passiveEffect?.Frames.Count > 0)
                     {
                         SpawnHitEffect(
@@ -27246,6 +27463,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
             }
 
+            if (string.Equals(label, StanceBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
+            }
+
             if (string.Equals(label, DebuffResistanceBuffLabel, StringComparison.OrdinalIgnoreCase))
             {
                 return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
@@ -28795,6 +29017,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             return SumActiveBuffBonusRate(_buffs, currentTime, static levelData => levelData?.MesoRate ?? 0);
         }
 
+        internal int GetActiveBossDamageRatePercent(int currentTime)
+        {
+            return SumActiveBuffBonusRate(_buffs, currentTime, static levelData => levelData?.BossDamageRate ?? 0);
+        }
+
+        internal int GetActiveIgnoreDefenseRatePercent(int currentTime)
+        {
+            return SumActiveBuffBonusRate(_buffs, currentTime, static levelData => levelData?.IgnoreDefenseRate ?? 0);
+        }
+
         private static bool TryGetExternalAreaObjectId(int syntheticBuffId, out int areaObjectId)
         {
             areaObjectId = 0;
@@ -29225,7 +29457,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Math.Max(0, total);
         }
 
-        private static bool ProjectedSupportBuffStatsMatch(SkillLevelData left, SkillLevelData right)
+        internal static bool ProjectedSupportBuffStatsMatch(SkillLevelData left, SkillLevelData right)
         {
             if (left == null || right == null)
             {
@@ -29251,7 +29483,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && left.DEX == right.DEX
                    && left.INT == right.INT
                    && left.LUK == right.LUK
+                   && left.Mastery == right.Mastery
                    && left.CriticalRate == right.CriticalRate
+                   && left.CriticalDamageMin == right.CriticalDamageMin
+                   && left.CriticalDamageMax == right.CriticalDamageMax
                    && left.EnhancedPAD == right.EnhancedPAD
                    && left.EnhancedMAD == right.EnhancedMAD
                    && left.EnhancedPDD == right.EnhancedPDD
@@ -29698,7 +29933,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasPendingSwallowAbsorb,
             bool swallowFamilyOutcome)
         {
-            return swallowFamilyOutcome && !hasSwallowState && !hasPendingSwallowAbsorb;
+            return swallowFamilyOutcome
+                   && (!hasPendingSwallowAbsorb || hasSwallowState);
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)
@@ -31444,7 +31680,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 centerY,
                 currentTime);
 
-            if (!owner.CanDrawMainAnimation(currentTime))
+            if (!owner.MainLayerAvailable || !owner.CanDrawMainAnimation(currentTime))
             {
                 return;
             }

@@ -146,11 +146,6 @@ namespace HaCreator.MapSimulator.Character
                 "finishBlow",
                 "cyclone_pre",
                 "tank_siegepre",
-                "doubleJump",
-                "knockback",
-                "swallow_pre",
-                "swallow_loop",
-                "swallow",
                 "swallow_attack",
                 "drillrush",
                 "giant",
@@ -158,15 +153,7 @@ namespace HaCreator.MapSimulator.Character
                 "crossRoad",
                 "wildbeast",
                 "earthslug",
-                "rpunch",
-                "sonicBoom",
-                "clawCut",
-                "mine",
-                "ride",
-                "getoff",
-                "proneStab_jaguar",
-                "herbalism_jaguar",
-                "mining_jaguar"
+                "rpunch"
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ActionAliases =
@@ -523,6 +510,12 @@ namespace HaCreator.MapSimulator.Character
 
             if (VehicleItemId == MechanicTamingMobItemId
                 && ClientOwnedVehicleSkillClassifier.IsClientAdmittedMechanicVehicleOwnerOnlyOneTimeActionName(actionName))
+            {
+                return false;
+            }
+
+            if (WildHunterJaguarTamingMobItemIds.Contains(VehicleItemId)
+                && ClientOwnedVehicleSkillClassifier.IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(actionName))
             {
                 return false;
             }

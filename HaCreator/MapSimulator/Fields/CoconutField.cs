@@ -16,6 +16,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -486,6 +487,25 @@ namespace HaCreator.MapSimulator.Fields
                 errorMessage = ex.Message;
                 return false;
             }
+        }
+        public bool TryApplyClockPayload(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!_runtimeActive)
+            {
+                errorMessage = "Coconut runtime inactive.";
+                return false;
+            }
+
+            if (payload == null || payload.Length < 5)
+            {
+                errorMessage = "Coconut clock payload requires 1 byte of type and 4 bytes of duration.";
+                return false;
+            }
+
+            int timeSeconds = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, sizeof(int)));
+            OnClock(timeSeconds, currentTimeMs);
+            return true;
         }
         public string DescribeStatus()
         {
@@ -1687,14 +1707,24 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return false;
             }
-            if (!string.Equals(objectInfo.oS, "etc", StringComparison.OrdinalIgnoreCase))
+
+            return IsCoconutObjectInfoForParity(objectInfo.oS, objectInfo.l0, objectInfo.l1);
+        }
+
+        internal static bool IsCoconutObjectInfoForParity(string objectSet, string layer0, string layer1)
+        {
+            bool isCoconutBranch = string.Equals(layer0, "coconut", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(layer0, "coconut2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(layer1, "coconut", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(layer1, "coconut2", StringComparison.OrdinalIgnoreCase);
+
+            if (!isCoconutBranch)
             {
                 return false;
             }
-            return string.Equals(objectInfo.l0, "coconut", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(objectInfo.l0, "coconut2", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(objectInfo.l1, "coconut", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(objectInfo.l1, "coconut2", StringComparison.OrdinalIgnoreCase);
+
+            return string.Equals(objectSet, "etc", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(objectSet, "event", StringComparison.OrdinalIgnoreCase);
         }
         private void LoadAuthoredConfig(WzImage mapImage)
         {

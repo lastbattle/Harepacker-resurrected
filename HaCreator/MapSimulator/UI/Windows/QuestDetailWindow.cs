@@ -1076,6 +1076,52 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        internal static IReadOnlyList<float> ResolveCtEntryRelativeYPositionsForTesting(IReadOnlyList<QuestDetailCtEntry> entries)
+        {
+            List<float> positions = new();
+            float y = 0f;
+            foreach (CtEntryRow row in EnumerateCtEntryRows(entries))
+            {
+                float rowBaseY = y;
+                foreach (QuestDetailCtEntry entry in row.Entries)
+                {
+                    positions.Add(rowBaseY + (entry?.YOffset ?? 0));
+                }
+
+                y = rowBaseY + ResolveCtRowAdvanceForTesting(row);
+            }
+
+            return positions;
+        }
+
+        private static float ResolveCtRowAdvanceForTesting(CtEntryRow row)
+        {
+            if (row.Entries.Count == 0)
+            {
+                return 0f;
+            }
+
+            int authoredRowHeight = row.Entries.Max(entry => Math.Max(0, entry?.RowHeight ?? 0));
+            if (authoredRowHeight > 0)
+            {
+                return authoredRowHeight;
+            }
+
+            float bottom = 0f;
+            foreach (QuestDetailCtEntry entry in row.Entries)
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                float entryBottom = Math.Max(0, entry.YOffset) + Math.Max(0, entry.Height) + Math.Max(0, entry.VerticalGapAfter);
+                bottom = Math.Max(bottom, entryBottom);
+            }
+
+            return bottom;
+        }
+
         private readonly struct CtEntryRow
         {
             public CtEntryRow(IReadOnlyList<QuestDetailCtEntry> entries, bool isGrouped)
@@ -2194,89 +2240,48 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle logClipRect = GetLogClipRectangle();
             float y = Position.Y + GetLogTextArrayBaseY() - _logScrollOffset;
-            foreach (QuestDetailCtEntry entry in GetLogCtEntries())
+            foreach (CtEntryRow row in EnumerateCtEntryRows(GetLogCtEntries()))
             {
-                float entryY = y + entry.YOffset;
-                if (entry.Kind == QuestDetailCtEntryKind.RichText)
+                float rowBaseY = y;
+                foreach (QuestDetailCtEntry entry in row.Entries)
                 {
-                    HoveredQuestItemInfo hoveredInlineItem = TryResolveHoveredRichTextItem(
+                    HoveredQuestItemInfo hovered = TryResolveHoveredQuestItemInCtEntry(
                         mouseX,
                         mouseY,
                         logClipRect,
-                        entry.Text,
-                        new Vector2(ResolveCtEntryX(entry), entryY),
-                        ResolveCtEntryWidth(entry),
-                        ResolveCtEntryScale(entry),
-                        ResolveCtEntryLane(entry),
-                        entry.Source,
-                        entry.Bold,
-                        NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
-                        ResolveCtEntryFontPixelSize(entry));
-                    if (hoveredInlineItem != null)
-                    {
-                        return hoveredInlineItem;
-                    }
-
-                    y = entryY + AdvanceCtEntryText(entry) + entry.VerticalGapAfter;
-                }
-                else if (entry.Kind == QuestDetailCtEntryKind.ConditionLines)
-                {
-                    float nextY = entryY;
-                    HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(
-                        mouseX,
-                        mouseY,
-                        logClipRect,
-                        entry.Lines,
-                        ResolveCtEntryX(entry),
-                        ref nextY,
-                        ResolveCtEntryWidth(entry),
-                        entry.RewardSection);
+                        entry,
+                        rowBaseY + (entry?.YOffset ?? 0));
                     if (hovered != null)
                     {
                         return hovered;
                     }
+                }
 
-                    y = nextY + entry.VerticalGapAfter;
-                }
-                else
-                {
-                    y = AdvanceCtEntry(entry, y);
-                }
+                y = rowBaseY + ResolveCtRowAdvance(row);
             }
 
             Rectangle summaryClipRect = GetSummaryClipRectangle();
             if (summaryClipRect.Contains(mouseX, mouseY))
             {
                 float summaryY = Position.Y + ClientSummaryY - _summaryScrollOffset;
-                foreach (QuestDetailCtEntry entry in GetSummaryCtEntries())
+                foreach (CtEntryRow row in EnumerateCtEntryRows(GetSummaryCtEntries()))
                 {
-                    float entryY = summaryY + entry.YOffset;
-                    if (entry.Kind == QuestDetailCtEntryKind.RichText)
+                    float rowBaseY = summaryY;
+                    foreach (QuestDetailCtEntry entry in row.Entries)
                     {
-                        HoveredQuestItemInfo hoveredSummaryItem = TryResolveHoveredRichTextItem(
+                        HoveredQuestItemInfo hovered = TryResolveHoveredQuestItemInCtEntry(
                             mouseX,
                             mouseY,
                             summaryClipRect,
-                            entry.Text,
-                            new Vector2(ResolveCtEntryX(entry), entryY),
-                            ResolveCtEntryWidth(entry),
-                            ResolveCtEntryScale(entry),
-                            ResolveCtEntryLane(entry),
-                            entry.Source,
-                            entry.Bold,
-                            NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
-                            ResolveCtEntryFontPixelSize(entry));
-                        if (hoveredSummaryItem != null)
+                            entry,
+                            rowBaseY + (entry?.YOffset ?? 0));
+                        if (hovered != null)
                         {
-                            return hoveredSummaryItem;
+                            return hovered;
                         }
+                    }
 
-                        summaryY = entryY + AdvanceCtEntryText(entry) + entry.VerticalGapAfter;
-                    }
-                    else
-                    {
-                        summaryY = AdvanceCtEntry(entry, summaryY);
-                    }
+                    summaryY = rowBaseY + ResolveCtRowAdvance(row);
                 }
             }
 
@@ -2292,90 +2297,141 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle logClipRect = GetLogClipRectangle();
             float y = Position.Y + GetLogTextArrayBaseY() - _logScrollOffset;
-            foreach (QuestDetailCtEntry entry in GetLogCtEntries())
+            foreach (CtEntryRow row in EnumerateCtEntryRows(GetLogCtEntries()))
             {
-                float entryY = y + entry.YOffset;
-                if (entry.Kind == QuestDetailCtEntryKind.RichText)
+                float rowBaseY = y;
+                foreach (QuestDetailCtEntry entry in row.Entries)
                 {
-                    QuestDetailInlineReference? reference = TryResolveHoveredRichTextReference(
+                    QuestDetailInlineReference? reference = TryResolveHoveredInlineReferenceInCtEntry(
                         mouseX,
                         mouseY,
                         logClipRect,
-                        entry.Text,
-                        new Vector2(ResolveCtEntryX(entry), entryY),
-                        ResolveCtEntryWidth(entry),
-                        ResolveCtEntryScale(entry),
-                        ResolveCtEntryLane(entry),
-                        entry.Source,
-                        entry.Bold,
-                        NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
-                        ResolveCtEntryFontPixelSize(entry));
+                        entry,
+                        rowBaseY + (entry?.YOffset ?? 0));
                     if (reference.HasValue)
                     {
                         return reference;
                     }
+                }
 
-                    y = entryY + AdvanceCtEntryText(entry) + entry.VerticalGapAfter;
-                }
-                else if (entry.Kind == QuestDetailCtEntryKind.ConditionLines)
-                {
-                    float nextY = entryY;
-                    QuestDetailInlineReference? reference = TryResolveHoveredConditionReference(
-                        mouseX,
-                        mouseY,
-                        logClipRect,
-                        entry.Lines,
-                        ResolveCtEntryX(entry),
-                        ref nextY,
-                        ResolveCtEntryWidth(entry),
-                        entry.RewardSection);
-                    if (reference.HasValue)
-                    {
-                        return reference;
-                    }
-
-                    y = nextY + entry.VerticalGapAfter;
-                }
-                else
-                {
-                    y = AdvanceCtEntry(entry, y);
-                }
+                y = rowBaseY + ResolveCtRowAdvance(row);
             }
 
             Rectangle summaryClipRect = GetSummaryClipRectangle();
             if (summaryClipRect.Contains(mouseX, mouseY))
             {
                 float summaryY = Position.Y + ClientSummaryY - _summaryScrollOffset;
-                foreach (QuestDetailCtEntry entry in GetSummaryCtEntries())
+                foreach (CtEntryRow row in EnumerateCtEntryRows(GetSummaryCtEntries()))
                 {
-                    float entryY = summaryY + entry.YOffset;
-                    if (entry.Kind == QuestDetailCtEntryKind.RichText)
+                    float rowBaseY = summaryY;
+                    foreach (QuestDetailCtEntry entry in row.Entries)
                     {
-                        QuestDetailInlineReference? reference = TryResolveHoveredRichTextReference(
+                        QuestDetailInlineReference? reference = TryResolveHoveredInlineReferenceInCtEntry(
                             mouseX,
                             mouseY,
                             summaryClipRect,
-                            entry.Text,
-                            new Vector2(ResolveCtEntryX(entry), entryY),
-                            ResolveCtEntryWidth(entry),
-                            ResolveCtEntryScale(entry),
-                            ResolveCtEntryLane(entry),
-                            entry.Source,
-                            entry.Bold,
-                            NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
-                            ResolveCtEntryFontPixelSize(entry));
+                            entry,
+                            rowBaseY + (entry?.YOffset ?? 0));
                         if (reference.HasValue)
                         {
                             return reference;
                         }
+                    }
 
-                        summaryY = entryY + AdvanceCtEntryText(entry) + entry.VerticalGapAfter;
-                    }
-                    else
-                    {
-                        summaryY = AdvanceCtEntry(entry, summaryY);
-                    }
+                    summaryY = rowBaseY + ResolveCtRowAdvance(row);
                 }
+            }
+
+            return null;
+        }
+
+        private HoveredQuestItemInfo TryResolveHoveredQuestItemInCtEntry(
+            int mouseX,
+            int mouseY,
+            Rectangle clipRect,
+            QuestDetailCtEntry entry,
+            float entryY)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            if (entry.Kind == QuestDetailCtEntryKind.RichText)
+            {
+                return TryResolveHoveredRichTextItem(
+                    mouseX,
+                    mouseY,
+                    clipRect,
+                    entry.Text,
+                    new Vector2(ResolveCtEntryX(entry), entryY),
+                    ResolveCtEntryWidth(entry),
+                    ResolveCtEntryScale(entry),
+                    ResolveCtEntryLane(entry),
+                    entry.Source,
+                    entry.Bold,
+                    NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
+                    ResolveCtEntryFontPixelSize(entry));
+            }
+
+            if (entry.Kind == QuestDetailCtEntryKind.ConditionLines)
+            {
+                float nextY = entryY;
+                return TryResolveHoveredConditionItem(
+                    mouseX,
+                    mouseY,
+                    clipRect,
+                    entry.Lines,
+                    ResolveCtEntryX(entry),
+                    ref nextY,
+                    ResolveCtEntryWidth(entry),
+                    entry.RewardSection);
+            }
+
+            return null;
+        }
+
+        private QuestDetailInlineReference? TryResolveHoveredInlineReferenceInCtEntry(
+            int mouseX,
+            int mouseY,
+            Rectangle clipRect,
+            QuestDetailCtEntry entry,
+            float entryY)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            if (entry.Kind == QuestDetailCtEntryKind.RichText)
+            {
+                return TryResolveHoveredRichTextReference(
+                    mouseX,
+                    mouseY,
+                    clipRect,
+                    entry.Text,
+                    new Vector2(ResolveCtEntryX(entry), entryY),
+                    ResolveCtEntryWidth(entry),
+                    ResolveCtEntryScale(entry),
+                    ResolveCtEntryLane(entry),
+                    entry.Source,
+                    entry.Bold,
+                    NormalizeQuestDetailFontFamilyOverride(entry.FontFamily, null),
+                    ResolveCtEntryFontPixelSize(entry));
+            }
+
+            if (entry.Kind == QuestDetailCtEntryKind.ConditionLines)
+            {
+                float nextY = entryY;
+                return TryResolveHoveredConditionReference(
+                    mouseX,
+                    mouseY,
+                    clipRect,
+                    entry.Lines,
+                    ResolveCtEntryX(entry),
+                    ref nextY,
+                    ResolveCtEntryWidth(entry),
+                    entry.RewardSection);
             }
 
             return null;

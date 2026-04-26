@@ -59,9 +59,14 @@ namespace HaCreator.MapSimulator.UI {
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
         public bool IsAlerting { get; set; }
+        public bool UseTemporaryStatViewArtworkOnly { get; set; }
         public int LayerUpdateSequence { get; set; }
         public int LowDurabilityAlertSequence { get; set; }
         public int LowDurabilityAlertStartTime { get; set; } = int.MinValue;
+        public int ShadowIndex { get; set; }
+        public int ShadowIndexUpdateSequence { get; set; }
+        public int MainLayerAnimationSequence { get; set; }
+        public int ShadowLayerAnimationSequence { get; set; }
     }
 
     public class StatusBarPreparedSkillRenderData
@@ -994,7 +999,10 @@ namespace HaCreator.MapSimulator.UI {
                 _buffTooltipEntries[buffEntry.SkillId] = buffEntry;
                 DrawBuffIconFrame(sprite, iconRect);
 
-                Texture2D iconTexture = ResolveBuffIconTexture(buffEntry.IconTexture, buffEntry.IconKey);
+                Texture2D iconTexture = ResolveBuffIconTexture(
+                    buffEntry.IconTexture,
+                    buffEntry.IconKey,
+                    buffEntry.UseTemporaryStatViewArtworkOnly);
 
                 if (iconTexture != null)
                 {
@@ -1099,7 +1107,10 @@ namespace HaCreator.MapSimulator.UI {
                 : string.IsNullOrWhiteSpace(temporaryStatText)
                     ? familyText
                     : $"{familyText} | {temporaryStatText}";
-            Texture2D iconTexture = ResolveBuffIconTexture(buffEntry.IconTexture, buffEntry.IconKey);
+            Texture2D iconTexture = ResolveBuffIconTexture(
+                buffEntry.IconTexture,
+                buffEntry.IconKey,
+                buffEntry.UseTemporaryStatViewArtworkOnly);
 
             DrawStatusBarSkillTooltip(
                 sprite,
@@ -1196,11 +1207,19 @@ namespace HaCreator.MapSimulator.UI {
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.Right - 1, iconRect.Y, 1, iconRect.Height), new Color(42, 42, 54));
         }
 
-        private Texture2D ResolveBuffIconTexture(Texture2D preferredTexture, string iconKey)
+        private Texture2D ResolveBuffIconTexture(
+            Texture2D preferredTexture,
+            string iconKey,
+            bool useTemporaryStatViewArtworkOnly = false)
         {
             if (preferredTexture != null)
             {
                 return preferredTexture;
+            }
+
+            if (useTemporaryStatViewArtworkOnly)
+            {
+                return null;
             }
 
             if (!string.IsNullOrWhiteSpace(iconKey))

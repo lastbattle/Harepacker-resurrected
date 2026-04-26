@@ -105,6 +105,11 @@ namespace HaCreator.MapSimulator.Interaction
             return resultCode == 10;
         }
 
+        internal static bool IsModeledResultCode(byte resultCode)
+        {
+            return resultCode <= 11;
+        }
+
         internal static bool TryGetResultNotice(byte resultCode, out string notice, out bool reopensDialog)
         {
             reopensDialog = false;

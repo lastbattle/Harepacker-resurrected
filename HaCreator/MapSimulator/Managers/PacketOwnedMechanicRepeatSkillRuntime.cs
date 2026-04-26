@@ -46,6 +46,9 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly Regex Sg88MismatchPairRegex = new(
             @"byte[\s_\-]*(?<index>\d+)\s*(?::|=|\-)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex Sg88MismatchFieldPairRegex = new(
+            @"(?<field>(?:raw[\s_\-]*)?move[\s_\-]*action(?:[\s_\-]*(?:byte|flag|low[\s_\-]*bit))?|vec(?:tor)?[\s_\-]*(?:ctrl|control)(?:[\s_\-]*(?:owner|state|byte|flag))?|vec[\s_\-]*owner)\s*(?::|=)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private static readonly Regex Sg88MismatchByteListAssignmentRegex = new(
             @"[""']?(?<label>mismatch[\s_\-]*bytes|mismatch[\s_\-]*byte[\s_\-]*indices|byte[\s_\-]*indices)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^\s;\)]+)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -1874,6 +1877,9 @@ namespace HaCreator.MapSimulator.Managers
                 case "vecctrlstate":
                 case "vectorctrl":
                 case "vectorcontrol":
+                case "vectorcontrolowner":
+                case "vectorcontrolstate":
+                case "vectorcontrolbyte":
                 case "vec":
                 case "vecowner":
                 case "vecctrlflag":
@@ -2103,9 +2109,30 @@ namespace HaCreator.MapSimulator.Managers
                 rawPairSegment = decodeDetail;
             }
 
-            MatchCollection matches = Sg88MismatchPairRegex.Matches(rawPairSegment);
             Dictionary<int, string> normalizedByByte = new();
-            if (matches.Count == 0)
+            MatchCollection byteMatches = Sg88MismatchPairRegex.Matches(rawPairSegment);
+            foreach (Match match in byteMatches.Cast<Match>())
+            {
+                if (!TryParseSg88ReplayParityMismatchPair(match.Value, out int byteIndex, out string normalizedPair))
+                {
+                    continue;
+                }
+
+                normalizedByByte[byteIndex] = normalizedPair;
+            }
+
+            MatchCollection fieldMatches = Sg88MismatchFieldPairRegex.Matches(rawPairSegment);
+            foreach (Match match in fieldMatches.Cast<Match>())
+            {
+                if (!TryParseSg88ReplayParityMismatchFieldPair(match, out int byteIndex, out string normalizedPair))
+                {
+                    continue;
+                }
+
+                normalizedByByte[byteIndex] = normalizedPair;
+            }
+
+            if (normalizedByByte.Count == 0)
             {
                 TryExtractSg88ReplayParityMismatchPairsJsonLike(rawPairSegment, normalizedByByte);
                 if (normalizedByByte.Count == 0
@@ -2117,18 +2144,6 @@ namespace HaCreator.MapSimulator.Managers
                 if (normalizedByByte.Count == 0)
                 {
                     return false;
-                }
-            }
-            else
-            {
-                foreach (Match match in matches.Cast<Match>())
-                {
-                    if (!TryParseSg88ReplayParityMismatchPair(match.Value, out int byteIndex, out string normalizedPair))
-                    {
-                        continue;
-                    }
-
-                    normalizedByByte[byteIndex] = normalizedPair;
                 }
             }
 
@@ -2214,6 +2229,15 @@ namespace HaCreator.MapSimulator.Managers
                         {
                             normalizedByByte[propertyByteIndex] = propertyPair;
                         }
+                        else if (TryResolveSg88MismatchPairPropertyFieldByteIndex(property.Name, out int propertyFieldByteIndex)
+                                 && property.Value.ValueKind == JsonValueKind.Object
+                                 && TryResolveSg88ReplayParityMismatchPairJsonObjectWithByteIndex(
+                                     property.Value,
+                                     propertyFieldByteIndex,
+                                     out string propertyFieldPair))
+                        {
+                            normalizedByByte[propertyFieldByteIndex] = propertyFieldPair;
+                        }
 
                         bool childPairContainer = insidePairContainer
                             || IsSg88MismatchPairJsonLabel(property.Name);
@@ -2237,11 +2261,24 @@ namespace HaCreator.MapSimulator.Managers
                 case JsonValueKind.String:
                     if (insidePairContainer)
                     {
-                        MatchCollection matches = Sg88MismatchPairRegex.Matches(element.GetString() ?? string.Empty);
-                        foreach (Match match in matches.Cast<Match>())
+                        string rawString = element.GetString() ?? string.Empty;
+                        MatchCollection byteMatches = Sg88MismatchPairRegex.Matches(rawString);
+                        foreach (Match match in byteMatches.Cast<Match>())
                         {
                             if (TryParseSg88ReplayParityMismatchPair(
                                 match.Value,
+                                out int parsedByteIndex,
+                                out string parsedPair))
+                            {
+                                normalizedByByte[parsedByteIndex] = parsedPair;
+                            }
+                        }
+
+                        MatchCollection fieldMatches = Sg88MismatchFieldPairRegex.Matches(rawString);
+                        foreach (Match match in fieldMatches.Cast<Match>())
+                        {
+                            if (TryParseSg88ReplayParityMismatchFieldPair(
+                                match,
                                 out int parsedByteIndex,
                                 out string parsedPair))
                             {
@@ -2274,6 +2311,15 @@ namespace HaCreator.MapSimulator.Managers
                             if (TryParseSg88MismatchPairJsonByteIndex(property.Value, out int parsedByteIndex))
                             {
                                 byteIndex = parsedByteIndex;
+                            }
+                            break;
+                        case "field":
+                            if (property.Value.ValueKind == JsonValueKind.String
+                                && TryResolveSg88MismatchPairPropertyFieldByteIndex(
+                                    property.Value.GetString(),
+                                    out int parsedFieldByteIndex))
+                            {
+                                byteIndex = parsedFieldByteIndex;
                             }
                             break;
                         case "observed":
@@ -2376,21 +2422,33 @@ namespace HaCreator.MapSimulator.Managers
                 case "index":
                     normalizedName = "byte";
                     return true;
+                case "field":
+                case "fieldname":
+                case "fieldpath":
+                    normalizedName = "field";
+                    return true;
                 case "observed":
+                case "observedbyte":
                 case "actual":
                 case "raw":
                 case "captured":
                 case "official":
+                case "client":
                 case "from":
+                case "before":
                 case "left":
                     normalizedName = "observed";
                     return true;
                 case "rebuilt":
+                case "rebuiltbyte":
                 case "expected":
                 case "replay":
                 case "replayed":
                 case "simulator":
+                case "simulated":
+                case "generated":
                 case "to":
+                case "after":
                 case "right":
                     normalizedName = "rebuilt";
                     return true;
@@ -2433,6 +2491,20 @@ namespace HaCreator.MapSimulator.Managers
             return match.Success
                    && int.TryParse(match.Groups["index"].Value, out byteIndex)
                    && byteIndex >= 0;
+        }
+
+        private static bool TryResolveSg88MismatchPairPropertyFieldByteIndex(string propertyName, out int byteIndex)
+        {
+            byteIndex = -1;
+            if (string.IsNullOrWhiteSpace(propertyName)
+                || !TryMapSg88MismatchFieldTokenToByteIndices(propertyName, out int[] mappedByteIndices)
+                || mappedByteIndices.Length != 1)
+            {
+                return false;
+            }
+
+            byteIndex = mappedByteIndices[0];
+            return byteIndex >= 0;
         }
 
         private static bool TryParseSg88MismatchPairJsonByteIndex(JsonElement value, out int byteIndex)
@@ -2482,6 +2554,24 @@ namespace HaCreator.MapSimulator.Managers
             if (!match.Success
                 || !int.TryParse(match.Groups["index"].Value, out int parsedByteIndex)
                 || parsedByteIndex < 0
+                || !TryParseSg88MismatchPairByteValue(match.Groups["observed"].Value, out byte observedByte)
+                || !TryParseSg88MismatchPairByteValue(match.Groups["rebuilt"].Value, out byte rebuiltByte))
+            {
+                return false;
+            }
+
+            byteIndex = parsedByteIndex;
+            normalizedPair = $"byte{parsedByteIndex}:0x{observedByte:X2}->0x{rebuiltByte:X2}";
+            return true;
+        }
+
+        private static bool TryParseSg88ReplayParityMismatchFieldPair(Match match, out int byteIndex, out string normalizedPair)
+        {
+            byteIndex = -1;
+            normalizedPair = null;
+            if (match == null
+                || !match.Success
+                || !TryResolveSg88MismatchPairPropertyFieldByteIndex(match.Groups["field"].Value, out int parsedByteIndex)
                 || !TryParseSg88MismatchPairByteValue(match.Groups["observed"].Value, out byte observedByte)
                 || !TryParseSg88MismatchPairByteValue(match.Groups["rebuilt"].Value, out byte rebuiltByte))
             {

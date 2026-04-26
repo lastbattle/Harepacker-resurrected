@@ -76,13 +76,15 @@ namespace HaCreator.MapSimulator.Effects
         private const int TimerColonY = 4;
         private const int BarGaugeWidth = 305;
         private const int BarGaugeHeight = 13;
-        private const int PlayerGaugeOffsetX = 7;
-        private const int MonsterGaugeOffsetX = 7;
-        private const int BarGaugeOffsetY = 6;
+        private const int PlayerGaugeOffsetX = 308;
+        private const int MonsterGaugeOffsetX = 11;
+        private const int BarGaugeOffsetY = 4;
         private const int EnergyGaugeWidth = 9;
         private const int EnergyGaugeHeight = 77;
-        private const int EnergyGaugeOffsetX = 7;
-        private const int EnergyGaugeOffsetY = 7;
+        private static readonly Point EnergyOrigin = new(11, 50);
+        private const int EnergyGaugeOffsetX = 4;
+        private const int EnergyGaugeOffsetY = 6;
+        private static readonly Point EnergyFullTopLeft = new(9, 80);
         private const int EnergyMax = 10000;
         private bool _isActive;
         private int _mapId;
@@ -152,6 +154,14 @@ namespace HaCreator.MapSimulator.Effects
         public string LastDecodedPacketTrailingPayloadHex => _lastDecodedPacketTrailingPayloadHex;
         public bool IsClearResultActive => _resultEffect == DojoResultEffect.Clear;
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
+        internal static DojoHudGeometry ClientHudGeometry => new(
+            PlayerGaugeOffsetX,
+            MonsterGaugeOffsetX,
+            BarGaugeOffsetY,
+            EnergyOrigin,
+            EnergyGaugeOffsetX,
+            EnergyGaugeOffsetY,
+            EnergyFullTopLeft);
         public int NextFloorMapId => ResolveNextFloorMapId();
         public string NextFloorPortalName => ResolveNextFloorPortalName() ?? string.Empty;
         public int ClearTransferMapId => ResolveClearTransferMapId();
@@ -1774,11 +1784,11 @@ namespace HaCreator.MapSimulator.Effects
             Vector2 energyAnchor = new(EnergyOffsetX, EnergyOffsetY);
             if (IsEnergyFullPresentationActive)
             {
-                DrawAnimation(spriteBatch, _energyFullFrames, Environment.TickCount, int.MaxValue, new Vector2(9f, 80f), repeat: true);
+                DrawAnimation(spriteBatch, _energyFullFrames, Environment.TickCount, int.MaxValue, new Vector2(EnergyFullTopLeft.X, EnergyFullTopLeft.Y), repeat: true);
                 return;
             }
 
-            Rectangle energyBounds = DrawTextureAtTopLeft(spriteBatch, _energyTexture, energyAnchor);
+            Rectangle energyBounds = DrawTextureAtOrigin(spriteBatch, _energyTexture, energyAnchor, EnergyOrigin);
             Rectangle energyGaugeBounds = new(
                 energyBounds.X + EnergyGaugeOffsetX,
                 energyBounds.Y + EnergyGaugeOffsetY,
@@ -1941,6 +1951,14 @@ namespace HaCreator.MapSimulator.Effects
             return int.TryParse(property?.Name, out int order) ? order : int.MaxValue;
         }
         private readonly record struct DojoFrame(Texture2D Texture, Point Origin, int Delay);
+        internal readonly record struct DojoHudGeometry(
+            int PlayerGaugeOffsetX,
+            int MonsterGaugeOffsetX,
+            int BarGaugeOffsetY,
+            Point EnergyOrigin,
+            int EnergyGaugeOffsetX,
+            int EnergyGaugeOffsetY,
+            Point EnergyFullTopLeft);
         private enum DojoResultEffect
         {
             None,

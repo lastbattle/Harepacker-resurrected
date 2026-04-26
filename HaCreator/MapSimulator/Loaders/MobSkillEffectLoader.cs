@@ -65,11 +65,17 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>Tile animation for field-owned mist / affected-area visuals</summary>
         public SkillAnimation TileAnimation { get; set; }
 
+        /// <summary>Animation frames for delayed bomb detonation visuals from bombInfo/effect</summary>
+        public List<IDXObject> BombEffectFrames { get; set; } = new List<IDXObject>();
+
         /// <summary>Whether this effect has valid affected frames</summary>
         public bool HasAffectedEffect => AffectedFrames != null && AffectedFrames.Count > 0;
 
         /// <summary>Whether this effect has valid skill effect frames</summary>
         public bool HasEffect => EffectFrames != null && EffectFrames.Count > 0;
+
+        /// <summary>Whether this effect has valid delayed bomb detonation frames</summary>
+        public bool HasBombEffect => BombEffectFrames != null && BombEffectFrames.Count > 0;
 
         /// <summary>Whether this effect has valid tile frames for field-area rendering</summary>
         public bool HasTileAnimation => TileAnimation?.Frames.Count > 0;
@@ -233,6 +239,14 @@ namespace HaCreator.MapSimulator.Loaders
             if (tileNode != null)
             {
                 effectData.TileAnimation = LoadTileAnimation(tileNode);
+            }
+
+            var bombInfoNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "bombInfo") as WzSubProperty;
+            var bombEffectNode = bombInfoNode?["effect"];
+            if (bombEffectNode != null)
+            {
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.BombEffectFrames = MapSimulatorLoader.LoadFrames(_texturePool, bombEffectNode, 0, 0, _device, usedProps);
             }
 
             // Load mob icon effect

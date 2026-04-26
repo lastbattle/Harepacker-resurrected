@@ -601,7 +601,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            ProcessPendingEquipmentChange(EquipWindow, InventoryWindow as InventoryUI);
+            ProcessPendingEquipmentChanges(windows, EquipWindow, InventoryWindow as InventoryUI);
 
             ISoftKeyboardHost activeSoftKeyboardHost = GetActiveSoftKeyboardHost();
             HandleSoftKeyboardOwnerTransition(activeSoftKeyboardHost);
@@ -620,6 +620,29 @@ namespace HaCreator.MapSimulator.UI
                 && pendingChangeWindow.HasPendingEquipmentChange)
             {
                 pendingChangeWindow.ProcessPendingEquipmentChange(inventoryWindow);
+            }
+        }
+
+        internal static void ProcessPendingEquipmentChanges(
+            IReadOnlyList<UIWindowBase> registeredWindows,
+            UIWindowBase primaryEquipWindow,
+            InventoryUI inventoryWindow)
+        {
+            ProcessPendingEquipmentChange(primaryEquipWindow, inventoryWindow);
+            if (registeredWindows == null || registeredWindows.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < registeredWindows.Count; i++)
+            {
+                UIWindowBase window = registeredWindows[i];
+                if (window == null || ReferenceEquals(window, primaryEquipWindow))
+                {
+                    continue;
+                }
+
+                ProcessPendingEquipmentChange(window, inventoryWindow);
             }
         }
         #endregion

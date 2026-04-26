@@ -538,9 +538,9 @@ namespace HaCreator.MapSimulator.UI
 
         public bool ShouldAcceptResultPacketAtOwnerGate(bool ownerSurfaceCurrentlyVisible)
         {
-            if (ownerSurfaceCurrentlyVisible)
+            if (!ownerSurfaceCurrentlyVisible)
             {
-                return true;
+                return false;
             }
 
             return OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible;

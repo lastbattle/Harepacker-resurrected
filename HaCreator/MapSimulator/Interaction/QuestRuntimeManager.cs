@@ -1590,6 +1590,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _recentlyViewedQuestId = questId;
                 AcknowledgeQuestAlarmUpdate(questId);
+                ClearPacketOwnedQuestAlarmTitleTooltip(questId);
             }
         }
 
@@ -5032,6 +5033,52 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetActionAvailabilityRequirement(actionBundle);
             bool hasUnmetEquipRequirement = state == QuestStateType.Not_Started &&
                 HasUnmetEquipRequirement(definition, build);
+            bool hasUnmetQuestCompleteCountRequirement = state == QuestStateType.Started &&
+                HasUnmetCompletionQuestCompleteCountDemand(
+                    definition.EndQuestCompleteCount,
+                    CountCompletedQuestsForCompletionDemand());
+            int? currentPartyQuestRankS = state == QuestStateType.Started
+                ? ResolvePartyQuestRankCountForCompletionDemand(
+                    definition.QuestId,
+                    "S",
+                    _resolvePartyQuestRankCountProvider)
+                : null;
+            bool hasUnmetPartyQuestRankRequirement = state == QuestStateType.Started &&
+                HasUnmetCompletionPartyQuestRankDemand(definition.EndPartyQuestRankS, currentPartyQuestRankS);
+            bool hasUnmetDailyPlayRequirement = state == QuestStateType.Started &&
+                HasUnmetCompletionDailyPlayDemand(
+                    definition.DailyPlayTimeSeconds,
+                    definition.QuestId,
+                    _isSuccessDailyPlayQuestProvider);
+            bool hasUnmetMorphRequirement = state == QuestStateType.Started &&
+                HasUnmetCompletionMorphDemand(
+                    definition.EndMorphTemplateId,
+                    ResolveCurrentMorphTemplateIdForCompletionDemand(_currentMorphTemplateIdProvider));
+            bool hasUnmetRequiredBuffRequirement = state == QuestStateType.Started &&
+                HasUnmetRequiredCompletionBuffDemand(
+                    definition.EndRequiredBuffIds,
+                    _hasActiveQuestDemandBuffProvider);
+            bool hasUnmetExcludedBuffRequirement = state == QuestStateType.Started &&
+                HasUnmetExcludedCompletionBuffDemand(
+                    definition.EndExcludedBuffIds,
+                    _hasActiveQuestDemandBuffProvider);
+            int currentMonsterBookCardTypes = state == QuestStateType.Started
+                ? ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(_monsterBookOwnedCardTypeCountProvider)
+                : 0;
+            bool hasUnmetMonsterBookRequirement = state == QuestStateType.Started &&
+                (HasUnmetMonsterBookCardTypeMinimumDemand(
+                     definition.EndMonsterBookMinCardTypes,
+                     currentMonsterBookCardTypes) ||
+                 HasUnmetMonsterBookCardTypeMaximumDemand(
+                     definition.EndMonsterBookMaxCardTypes,
+                     currentMonsterBookCardTypes) ||
+                 HasUnmetMonsterBookCardDemand(
+                     definition.EndMonsterBookCardRequirements,
+                     _monsterBookCardCountByMobIdProvider));
+            bool hasUnmetTimeKeepFieldSetRequirement = state == QuestStateType.Started &&
+                HasUnmetCompletionTimeKeepFieldSetDemand(
+                    definition.EndTimeKeepFieldSet,
+                    TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId));
 
             return SelectIssueConversationPagesCore(
                 state,
@@ -5050,6 +5097,14 @@ namespace HaCreator.MapSimulator.Interaction
                 hasUnmetMesoRequirement,
                 hasUnmetAvailabilityRequirement,
                 hasUnmetEquipRequirement,
+                hasUnmetQuestCompleteCountRequirement,
+                hasUnmetPartyQuestRankRequirement,
+                hasUnmetDailyPlayRequirement,
+                hasUnmetMorphRequirement,
+                hasUnmetRequiredBuffRequirement,
+                hasUnmetExcludedBuffRequirement,
+                hasUnmetMonsterBookRequirement,
+                hasUnmetTimeKeepFieldSetRequirement,
                 GetMissingItemRequirementIds(itemRequirements),
                 GetMissingMobRequirementIds(definition),
                 GetUnmetQuestRequirementIds(questRequirements),
@@ -5074,6 +5129,14 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetMesoRequirement,
             bool hasUnmetAvailabilityRequirement,
             bool hasUnmetEquipRequirement,
+            bool hasUnmetQuestCompleteCountRequirement,
+            bool hasUnmetPartyQuestRankRequirement,
+            bool hasUnmetDailyPlayRequirement,
+            bool hasUnmetMorphRequirement,
+            bool hasUnmetRequiredBuffRequirement,
+            bool hasUnmetExcludedBuffRequirement,
+            bool hasUnmetMonsterBookRequirement,
+            bool hasUnmetTimeKeepFieldSetRequirement,
             IReadOnlyList<int> missingItemStopBranchIds,
             IReadOnlyList<int> missingMobStopBranchIds,
             IReadOnlyList<int> unmetQuestStopBranchIds,
@@ -5253,6 +5316,107 @@ namespace HaCreator.MapSimulator.Interaction
                 TryGetStopPagesByAliases(stopPages, out IReadOnlyList<NpcInteractionPage> equipPages, "equip", "equipment"))
             {
                 return equipPages;
+            }
+
+            if (hasUnmetQuestCompleteCountRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> questCompleteCountPages,
+                    "questComplete",
+                    "questCompleteCount",
+                    "completeCount",
+                    "questCount"))
+            {
+                return questCompleteCountPages;
+            }
+
+            if (hasUnmetPartyQuestRankRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> partyQuestRankPages,
+                    "partyQuest",
+                    "partyQuestS",
+                    "partyQuest_S",
+                    "partyQuestRank",
+                    "pq"))
+            {
+                return partyQuestRankPages;
+            }
+
+            if (hasUnmetDailyPlayRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> dailyPlayPages,
+                    "daily",
+                    "dailyPlay",
+                    "dailyPlayTime",
+                    "playTime"))
+            {
+                return dailyPlayPages;
+            }
+
+            if (hasUnmetMorphRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> morphPages,
+                    "morph",
+                    "morphId",
+                    "morphTemplate",
+                    "morphTemplateId"))
+            {
+                return morphPages;
+            }
+
+            if (hasUnmetRequiredBuffRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> requiredBuffPages,
+                    "buff",
+                    "buffId",
+                    "requiredBuff",
+                    "needBuff"))
+            {
+                return requiredBuffPages;
+            }
+
+            if (hasUnmetExcludedBuffRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> excludedBuffPages,
+                    "noBuff",
+                    "blockedBuff",
+                    "excludedBuff",
+                    "buffBlock"))
+            {
+                return excludedBuffPages;
+            }
+
+            if (hasUnmetMonsterBookRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> monsterBookPages,
+                    "monsterBook",
+                    "monsterBookCard",
+                    "book",
+                    "mb",
+                    "mbmin",
+                    "mbmax",
+                    "card",
+                    "cards"))
+            {
+                return monsterBookPages;
+            }
+
+            if (hasUnmetTimeKeepFieldSetRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> timeKeepPages,
+                    "fieldSet",
+                    "timeKeep",
+                    "timeKeepFieldSet",
+                    "kept"))
+            {
+                return timeKeepPages;
             }
 
             if (TryGetStopPages(stopPages, "default", out IReadOnlyList<NpcInteractionPage> defaultPages))
@@ -6313,11 +6477,116 @@ namespace HaCreator.MapSimulator.Interaction
                 "complete");
             AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+            if (HasUnmetCompletionQuestCompleteCountDemand(
+                    definition.EndQuestCompleteCount,
+                    CountCompletedQuestsForCompletionDemand()))
+            {
+                issues.Add($"Complete at least {definition.EndQuestCompleteCount.Value} quest(s) before completing this quest.");
+            }
+
+            int? currentPartyQuestRankS = ResolvePartyQuestRankCountForCompletionDemand(
+                definition.QuestId,
+                "S",
+                _resolvePartyQuestRankCountProvider);
+            if (HasUnmetCompletionPartyQuestRankDemand(
+                    definition.EndPartyQuestRankS,
+                    currentPartyQuestRankS))
+            {
+                issues.Add($"Party quest rank S demand requires at least {definition.EndPartyQuestRankS.Value} count(s).");
+            }
+
+            if (build != null && HasUnmetCompletionFameDemand(definition.EndFameRequirement, GetCurrentFame(build)))
+            {
+                issues.Add($"Reach fame {definition.EndFameRequirement.Value}.");
+            }
+
+            if (HasUnmetCompletionDailyPlayDemand(
+                    definition.DailyPlayTimeSeconds,
+                    definition.QuestId,
+                    _isSuccessDailyPlayQuestProvider))
+            {
+                issues.Add("Daily-play quest demand is unresolved or unmet.");
+            }
+
             if (HasUnmetCompletionMorphDemand(
                     definition.EndMorphTemplateId,
                     ResolveCurrentMorphTemplateIdForCompletionDemand(_currentMorphTemplateIdProvider)))
             {
                 issues.Add($"Morph demand requires template {definition.EndMorphTemplateId}.");
+            }
+
+            if (HasUnmetRequiredCompletionBuffDemand(
+                    definition.EndRequiredBuffIds,
+                    _hasActiveQuestDemandBuffProvider))
+            {
+                issues.Add("Completion demand requires an active buff owner.");
+            }
+
+            if (HasUnmetExcludedCompletionBuffDemand(
+                    definition.EndExcludedBuffIds,
+                    _hasActiveQuestDemandBuffProvider))
+            {
+                issues.Add("Completion demand blocks while one of the excluded buffs is active.");
+            }
+
+            int currentMonsterBookCardTypes =
+                ResolveMonsterBookOwnedCardTypeCountForCompletionDemand(_monsterBookOwnedCardTypeCountProvider);
+            if (HasUnmetMonsterBookCardTypeMinimumDemand(
+                    definition.EndMonsterBookMinCardTypes,
+                    currentMonsterBookCardTypes))
+            {
+                issues.Add($"Monster Book demand requires at least {definition.EndMonsterBookMinCardTypes.Value} owned card type(s).");
+            }
+
+            if (HasUnmetMonsterBookCardTypeMaximumDemand(
+                    definition.EndMonsterBookMaxCardTypes,
+                    currentMonsterBookCardTypes))
+            {
+                issues.Add($"Monster Book demand requires at most {definition.EndMonsterBookMaxCardTypes.Value} owned card type(s).");
+            }
+
+            if (HasUnmetMonsterBookCardDemand(
+                    definition.EndMonsterBookCardRequirements,
+                    _monsterBookCardCountByMobIdProvider))
+            {
+                issues.Add("Monster Book card-count demand is still unmet.");
+            }
+
+            if (HasUnmetCompletionTimeKeepFieldSetDemand(
+                    definition.EndTimeKeepFieldSet,
+                    TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId)))
+            {
+                issues.Add("Time-keep field-set demand is still unmet.");
+            }
+
+            if (build == null &&
+                HasUnresolvedCompletionBuildContextDemand(
+                    definition.MinLevel,
+                    definition.MaxLevel,
+                    definition.EndLevelRequirement,
+                    definition.EndActions?.ActionMinLevel,
+                    definition.EndActions?.ActionMaxLevel,
+                    definition.EndActions?.AllowedJobs,
+                    definition.EndFameRequirement))
+            {
+                issues.Add("Completion demand includes build-scoped level/job/fame gates, but character build context is unavailable.");
+            }
+
+            if (build != null &&
+                HasUnmetCompletionActionJobDemand(definition.EndActions?.AllowedJobs, build.Job))
+            {
+                string requiredJobText = BuildAllowedJobDisplayText(definition.EndActions?.AllowedJobs ?? Array.Empty<int>());
+                issues.Add($"Required action job: {requiredJobText}.");
+            }
+
+            if (build != null && HasUnmetCompletionLevelFloor(definition.MinLevel, build.Level))
+            {
+                issues.Add($"Reach level {definition.MinLevel.Value}.");
+            }
+
+            if (build != null && HasUnmetCompletionLevelDemand(definition.EndLevelRequirement, build.Level))
+            {
+                issues.Add($"Reach completion level {definition.EndLevelRequirement.Value}.");
             }
 
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(

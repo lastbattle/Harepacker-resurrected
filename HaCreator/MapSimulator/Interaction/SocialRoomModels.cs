@@ -2160,7 +2160,7 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeRemoteVerificationReady = false;
             _tradeRemoteVerificationEntries.Clear();
             _tradeLocalVerificationEntries.Clear();
-            _tradeLocalVerificationEntries.AddRange(BuildTradeRequestVerificationEntries());
+            _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: false));
             _tradeLocalVerificationReady = true;
             _tradeAutoCrcReplyPending = true;
             _tradeVerificationPending = true;

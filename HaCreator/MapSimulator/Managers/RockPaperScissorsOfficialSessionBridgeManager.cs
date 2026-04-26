@@ -34,6 +34,8 @@ namespace HaCreator.MapSimulator.Managers
         private readonly MapleRoleSessionProxy _roleSessionProxy;
         private bool _hasObservedLiveOutboundOpcode160;
         private bool _hasObservedLiveInboundOpcode371;
+        private OutboundPacketTrace? _liveOutboundOpcode160Evidence;
+        private InboundPacketTrace? _liveInboundOpcode371Evidence;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
@@ -144,7 +146,8 @@ namespace HaCreator.MapSimulator.Managers
                 IsRunning,
                 _hasObservedLiveOutboundOpcode160,
                 _hasObservedLiveInboundOpcode371);
-            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}. {verification} {LastStatus} {guidance}";
+            string verificationEvidence = DescribeLiveOwnershipVerificationEvidence();
+            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}; {inboundHistory}. {verification} {verificationEvidence} {LastStatus} {guidance}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -490,6 +493,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _recentOutboundPackets.Clear();
                 _hasObservedLiveOutboundOpcode160 = false;
+                _liveOutboundOpcode160Evidence = null;
             }
 
             LastStatus = "Rock-Paper-Scissors official-session bridge outbound history cleared.";
@@ -525,6 +529,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _recentInboundPackets.Clear();
                 _hasObservedLiveInboundOpcode371 = false;
+                _liveInboundOpcode371Evidence = null;
             }
 
             LastStatus = "Rock-Paper-Scissors official-session bridge inbound history cleared.";
@@ -756,6 +761,8 @@ namespace HaCreator.MapSimulator.Managers
                 _recentInboundPackets.Clear();
                 _hasObservedLiveOutboundOpcode160 = false;
                 _hasObservedLiveInboundOpcode371 = false;
+                _liveOutboundOpcode160Evidence = null;
+                _liveInboundOpcode371Evidence = null;
             }
         }
 
@@ -814,6 +821,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 RecordInboundTrace(inboundTrace);
                 _hasObservedLiveInboundOpcode371 = true;
+                _liveInboundOpcode371Evidence = inboundTrace;
             }
 
             _pendingMessages.Enqueue(message);
@@ -833,6 +841,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 RecordOutboundTrace(trace);
                 _hasObservedLiveOutboundOpcode160 = true;
+                _liveOutboundOpcode160Evidence = trace;
                 ForwardedOutboundCount++;
                 LastStatus = $"Forwarded live Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)trace.RequestType} from {e.SourceEndpoint}.";
                 return;
@@ -886,6 +895,38 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return $"Live ownership verification idle: start an RPS session bridge and capture opcode {RockPaperScissorsField.ClientOpcode}/{RockPaperScissorsField.OwnerOpcode} traffic.";
+        }
+
+        internal string DescribeLiveOwnershipVerificationEvidence()
+        {
+            OutboundPacketTrace? outboundEvidence;
+            InboundPacketTrace? inboundEvidence;
+            lock (_sync)
+            {
+                outboundEvidence = _liveOutboundOpcode160Evidence;
+                inboundEvidence = _liveInboundOpcode371Evidence;
+            }
+
+            if (outboundEvidence.HasValue && inboundEvidence.HasValue)
+            {
+                OutboundPacketTrace outbound = outboundEvidence.Value;
+                InboundPacketTrace inbound = inboundEvidence.Value;
+                return $"Live ownership verification evidence: paired proxied capture outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}] inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}].";
+            }
+
+            if (outboundEvidence.HasValue)
+            {
+                OutboundPacketTrace outbound = outboundEvidence.Value;
+                return $"Live ownership verification evidence: outbound[{outbound.Summary} source={outbound.Source} raw={outbound.RawPacketHex}], waiting for inbound opcode {RockPaperScissorsField.OwnerOpcode}.";
+            }
+
+            if (inboundEvidence.HasValue)
+            {
+                InboundPacketTrace inbound = inboundEvidence.Value;
+                return $"Live ownership verification evidence: inbound[{inbound.Summary} source={inbound.Source} raw={inbound.RawPacketHex}], waiting for outbound opcode {RockPaperScissorsField.ClientOpcode}.";
+            }
+
+            return "Live ownership verification evidence: none.";
         }
 
         internal static LiveOwnershipVerificationState ResolveLiveOwnershipVerificationState(

@@ -278,6 +278,7 @@ namespace HaCreator.MapSimulator.Pools
             public ActiveEffectItemMotionBlurDefinition Definition { get; init; }
             public int ActiveItemId { get; init; }
             public int SimulatedAnimationStateId { get; init; }
+            public int SimulatedOverlayLayerHandleId { get; init; }
             public int AnimationStartTime { get; init; }
             public string OwnerActionName { get; init; }
             public bool OwnerFacingRight { get; init; }
@@ -294,6 +295,8 @@ namespace HaCreator.MapSimulator.Pools
             public Vector2 Position { get; init; }
             public bool FacingRight { get; init; }
             public int SampleTime { get; init; }
+            public int SimulatedOverlayLayerHandleId { get; init; }
+            public int SimulatedOverlayLayerHandleRefCount { get; init; }
         }
 
         public sealed class RemoteActiveEffectMotionBlurLayerSnapshot
@@ -302,6 +305,7 @@ namespace HaCreator.MapSimulator.Pools
             public AvatarRenderLayer SourceLayer { get; init; } = AvatarRenderLayer.OverCharacter;
             public int SourceLayerCaptureOrder { get; init; }
             public int SimulatedLayerHandleId { get; init; }
+            public int SimulatedLayerHandleRefCount { get; init; }
             public IReadOnlyList<AssembledPart> Parts { get; init; } = Array.Empty<AssembledPart>();
         }
 
@@ -3923,7 +3927,7 @@ namespace HaCreator.MapSimulator.Pools
                         packet.SecondaryInt32Value,
                         packet.TrailingInt32Values,
                         packet.StringBranchPrefixBytes,
-                        ResolveRemotePacketOwnedStringEffectWorldOriginForParity(packet)));
+                        ResolveRemotePacketOwnedStringEffectWorldOriginForParity(packet, actor.Position)));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered packet-owned string effect {packet.StringValue}.";
                     return true;
 
@@ -4080,6 +4084,13 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static Vector2? ResolveRemotePacketOwnedStringEffectWorldOriginForParity(RemoteUserEffectPacket packet)
         {
+            return ResolveRemotePacketOwnedStringEffectWorldOriginForParity(packet, null);
+        }
+
+        internal static Vector2? ResolveRemotePacketOwnedStringEffectWorldOriginForParity(
+            RemoteUserEffectPacket packet,
+            Vector2? ownerPosition)
+        {
             if (packet.KnownSubtype != RemoteUserEffectSubtype.ReservedEffect
                 && packet.KnownSubtype != RemoteUserEffectSubtype.StringEffect
                 && packet.KnownSubtype != RemoteUserEffectSubtype.ItemSoundStringEffect)
@@ -4090,7 +4101,7 @@ namespace HaCreator.MapSimulator.Pools
             int[] trailing = packet.TrailingInt32Values;
             if (trailing == null || trailing.Length <= 0)
             {
-                return null;
+                return ownerPosition;
             }
 
             if (trailing.Length >= 3)
@@ -4103,7 +4114,7 @@ namespace HaCreator.MapSimulator.Pools
                 return new Vector2(trailing[0], trailing[1]);
             }
 
-            return null;
+            return ownerPosition;
         }
 
         private static bool IsAriantArenaRemoteActor(RemoteUserActor actor)
@@ -4514,10 +4525,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             // CGrenade::PrepareAnimationLayer always keeps the signed horizontal shift.
-            // Collision-offset compensation applies only on the rotate-layer path.
+            // The rotate-layer collision Offset(...) is additionally gated by the
+            // client layer flip flag, which corresponds to the left-facing grenade.
             int collisionOffsetX = 0;
             int collisionOffsetY = 0;
-            if (includeRotateLayerCollisionCompensation)
+            if (includeRotateLayerCollisionCompensation
+                && !presentation.FacingRight)
             {
                 int angle = ResolveRemoteGrenadeBallAngleDegreesForParity(presentation);
                 double radians = angle * (Math.PI / 180d);
@@ -7298,11 +7311,13 @@ namespace HaCreator.MapSimulator.Pools
                 actor.ActiveEffectMotionBlur?.SimulatedLayerHandleIds
                 ?? actor.ActiveEffectMotionBlurLayerHandleIds);
             actor.ActiveEffectMotionBlurLayerHandleIds = layerHandleIds;
+            int overlayLayerHandleId = ResolveRemoteActiveEffectMotionBlurOverlayLayerHandleId(actor);
             actor.ActiveEffectMotionBlur = new RemoteActiveEffectMotionBlurState
             {
                 Definition = definition,
                 ActiveItemId = definition.ItemId,
                 SimulatedAnimationStateId = NextRemoteActiveEffectMotionBlurStateId(),
+                SimulatedOverlayLayerHandleId = overlayLayerHandleId,
                 AnimationStartTime = hasRestoredAnimationElapsed
                     ? unchecked(currentTime - restoredAnimationElapsedMs)
                     : currentTime,
@@ -7375,7 +7390,9 @@ namespace HaCreator.MapSimulator.Pools
                         FeetOffset = frame.FeetOffset,
                         Position = ownerSample.Position,
                         FacingRight = ownerSample.FacingRight,
-                        SampleTime = state.NextSampleTime
+                        SampleTime = state.NextSampleTime,
+                        SimulatedOverlayLayerHandleId = state.SimulatedOverlayLayerHandleId,
+                        SimulatedOverlayLayerHandleRefCount = state.SimulatedOverlayLayerHandleId > 0 ? 1 : 0
                     });
                 }
 
@@ -7540,6 +7557,7 @@ namespace HaCreator.MapSimulator.Pools
                     SourceLayer = layer,
                     SourceLayerCaptureOrder = i,
                     SimulatedLayerHandleId = ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds),
+                    SimulatedLayerHandleRefCount = ResolveRemoteActiveEffectMotionBlurLayerHandleId(layer, layerHandleIds) > 0 ? 1 : 0,
                     Parts = capturedParts
                 });
             }
@@ -7613,6 +7631,21 @@ namespace HaCreator.MapSimulator.Pools
             return SimulatedMotionBlurIdentitySource.NextAnimationStateId();
         }
 
+        private static int ResolveRemoteActiveEffectMotionBlurOverlayLayerHandleId(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return 0;
+            }
+
+            if (actor.ActiveEffectMotionBlurOverlayLayerHandleId <= 0)
+            {
+                actor.ActiveEffectMotionBlurOverlayLayerHandleId = NextRemoteActiveEffectMotionBlurLayerHandleId();
+            }
+
+            return actor.ActiveEffectMotionBlurOverlayLayerHandleId;
+        }
+
         private static int NextRemoteActiveEffectMotionBlurLayerHandleId()
         {
             return SimulatedMotionBlurIdentitySource.NextLayerHandleId();
@@ -7626,6 +7659,11 @@ namespace HaCreator.MapSimulator.Pools
         internal static int NextRemoteActiveEffectMotionBlurStateIdForTesting()
         {
             return NextRemoteActiveEffectMotionBlurStateId();
+        }
+
+        internal static int NextRemoteActiveEffectMotionBlurLayerHandleIdForTesting()
+        {
+            return NextRemoteActiveEffectMotionBlurLayerHandleId();
         }
 
         internal static bool IsCompleteRemoteActiveEffectMotionBlurLayerHandleIdMapForTesting(
@@ -7949,26 +7987,33 @@ namespace HaCreator.MapSimulator.Pools
 
             EnsureRelationshipRecordTablesInitialized();
             Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
-            RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, actor.CharacterId);
             if (relationshipRecord.IsActive)
             {
+                bool canUseExplicitRecordOwner = relationshipType is
+                    RemoteRelationshipOverlayType.Couple or
+                    RemoteRelationshipOverlayType.Friendship;
+                int ownerCharacterId = canUseExplicitRecordOwner && relationshipRecord.CharacterId.GetValueOrDefault() > 0
+                    ? relationshipRecord.CharacterId.Value
+                    : actor.CharacterId;
                 int? pairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
-                    ? ResolveMarriagePairCharacterId(actor.CharacterId, relationshipRecord)
+                    ? ResolveMarriagePairCharacterId(ownerCharacterId, relationshipRecord)
                     : relationshipRecord.PairCharacterId;
                 RemoteUserRelationshipRecord normalizedRecord = relationshipRecord with
                 {
-                    CharacterId = actor.CharacterId,
+                    CharacterId = ownerCharacterId,
                     PairCharacterId = pairCharacterId
                 };
-                recordTable[actor.CharacterId] = normalizedRecord;
+                RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
+                recordTable[ownerCharacterId] = normalizedRecord;
                 RegisterRelationshipRecordDispatchKeys(
                     relationshipType,
                     default,
                     normalizedRecord,
-                    actor.CharacterId);
+                    ownerCharacterId);
             }
             else
             {
+                RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, actor.CharacterId);
                 recordTable.Remove(actor.CharacterId);
             }
 
@@ -13691,6 +13736,15 @@ namespace HaCreator.MapSimulator.Pools
             bool hasValidMetadataOffset = snapshot.WeaponChargePayloadOffset >= 0
                 && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int);
 
+            if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromWeaponChargeValue(
+                    effectivePreferredSkillId,
+                    snapshot.KnownState.WeaponChargeValue,
+                    out int knownWeaponChargeSkillId))
+            {
+                return knownWeaponChargeSkillId;
+            }
+
             if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatMetadata(
                     snapshot.RawPayload,
@@ -13899,6 +13953,16 @@ namespace HaCreator.MapSimulator.Pools
             }
             bool hasValidMetadataOffset = snapshot.WeaponChargePayloadOffset >= 0
                 && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int);
+
+            if (!hasValidMetadataOffset
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromWeaponChargeValue(
+                    effectivePreferredSkillId,
+                    snapshot.KnownState.WeaponChargeValue,
+                    out int knownWeaponChargeSkillId)
+                && AfterImageChargeSkillResolver.TryGetChargeElement(knownWeaponChargeSkillId, out chargeElement))
+            {
+                return true;
+            }
 
             if (hasValidMetadataOffset
                 && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatMetadata(
@@ -14521,6 +14585,7 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
         public RemoteUserActorPool.RemoteActiveEffectMotionBlurState ActiveEffectMotionBlur { get; set; }
         public IReadOnlyDictionary<AvatarRenderLayer, int> ActiveEffectMotionBlurLayerHandleIds { get; set; }
+        public int ActiveEffectMotionBlurOverlayLayerHandleId { get; set; }
         public List<RemoteUserActorPool.RemoteTransientItemEffectState> TransientItemEffects { get; } = new();
         public List<RemoteUserActorPool.RemoteTransientSkillUseAvatarEffectState> TransientSkillUseAvatarEffects { get; } = new();
         public int MovingShootPreparedSkillId { get; set; }

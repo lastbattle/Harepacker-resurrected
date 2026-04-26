@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.UI
             public bool HasLiveCatalogBinding { get; init; } = true;
             public int PacketServiceSessionId { get; init; } = -1;
             public int PacketSearchSessionId { get; init; } = -1;
+            public int PacketCommoditySerialNumber { get; init; }
         }
 
         public sealed class WishlistCategoryNode
@@ -2117,10 +2118,20 @@ namespace HaCreator.MapSimulator.UI
                 .FirstOrDefault(entry => string.Equals(GetEntryKey(entry), entryKey, StringComparison.Ordinal));
             if (matchedEntry == null)
             {
-                if (packetResult?.IsPacketAuthored == true
-                    && !packetResult.HasLiveCatalogBinding)
+                if (packetResult?.IsPacketAuthored == true)
                 {
-                    message = "The selected packet-authored wish-list row has no live NPC catalog binding yet; BtRegist stays disabled until the next packet 367 catalog refresh resolves it.";
+                    if (packetResult.CanRegister
+                        && BeginPacketOwnedWishlistRegister(packetResult, categoryKey, out string packetRegisterSummary))
+                    {
+                        message = $"Wish-list search submitted packet-authored result {packetResult.Title} through CUIAdminShopWishList::SendRegisterPacket without a live NPC catalog binding. {packetRegisterSummary} Waiting for packet 366 subtype 4.";
+                        _footerMessage = message;
+                        UpdateActionButtonStates();
+                        return true;
+                    }
+
+                    message = packetResult.HasLiveCatalogBinding
+                        ? "The selected packet-authored wish-list row no longer maps to an NPC catalog row."
+                        : "The selected packet-authored wish-list row has no live NPC catalog binding and no registerable item id.";
                 }
                 else
                 {
@@ -2176,7 +2187,8 @@ namespace HaCreator.MapSimulator.UI
                 IsPacketAuthored = true,
                 HasLiveCatalogBinding = hasLiveCatalogBinding,
                 PacketServiceSessionId = packetResult.PacketServiceSessionId,
-                PacketSearchSessionId = packetResult.PacketSearchSessionId
+                PacketSearchSessionId = packetResult.PacketSearchSessionId,
+                PacketCommoditySerialNumber = packetResult.PacketCommoditySerialNumber
             };
         }
 
@@ -4805,6 +4817,41 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool BeginPacketOwnedWishlistRegister(WishlistSearchResult result, string categoryKey, out string registerSummary)
+        {
+            registerSummary = string.Empty;
+            if (result == null || !result.IsPacketAuthored)
+            {
+                return false;
+            }
+
+            if (!TryValidatePacketOwnedWishlistResultSession(result, out registerSummary))
+            {
+                return false;
+            }
+
+            int registerItemId = result.RewardItemId;
+            if (registerItemId <= 0)
+            {
+                registerSummary = "CUIAdminShopWishList::SendRegisterPacket could not mirror opcode 74 mode 3 because the packet-authored row has no item id.";
+                return false;
+            }
+
+            _pendingPacketOwnedWishlistRegisterEntry = null;
+            _pendingPacketOwnedWishlistRegisterCategory = ResolveWishlistCategory(categoryKey);
+            _pendingPacketOwnedWishlistRegisterSerialNumber = Math.Max(0, result.PacketCommoditySerialNumber);
+            _pendingPacketOwnedWishlistRegisterItemId = registerItemId;
+            _pendingPacketOwnedWishlistRegisterTitle = result.Title?.Trim() ?? string.Empty;
+            _packetOwnedAdminShopSession.RecordPendingWishlistRegister(
+                _pendingPacketOwnedWishlistRegisterItemId,
+                _pendingPacketOwnedWishlistRegisterTitle,
+                GetWishlistCategoryLabel(categoryKey));
+            registerSummary = DispatchPacketOwnedAdminShopOutbound(PacketOwnedAdminShopWishlistRegisterMode, _pendingPacketOwnedWishlistRegisterItemId);
+            _packetOwnedAdminShopSession.SetWaitingForResult(true);
+            _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishListSearchResult::BtRegist confirmed a packet-authored result, sent CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3 by item id, and closed the wishlist owner while waiting for packet 366 subtype 4.");
+            return true;
+        }
+
         private bool TryApplyPacketOwnedWishlistRegisterResult(byte subtype, byte resultCode, out string message, out string noticeText, out bool reopenRequested)
         {
             message = "Packet-owned wish-list register result could not be applied.";
@@ -4830,6 +4877,43 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (!TryResolvePendingPacketOwnedWishlistRegisterEntry(pendingSerialNumber, pendingItemId, pendingTitle, out entry))
                 {
+                    if (pendingItemId > 0)
+                    {
+                        string pendingTitleLabel = string.IsNullOrWhiteSpace(pendingTitle)
+                            ? $"item {pendingItemId.ToString(CultureInfo.InvariantCulture)}"
+                            : pendingTitle;
+                        if (resultCode == 0)
+                        {
+                            ClearPendingPacketOwnedWishlistRegister();
+                            _packetOwnedAdminShopSession.ClearLastNotice();
+                            _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 accepted the packet-authored wish-list register request by item id; no live NPC catalog row was available to focus.");
+                            message = $"Packet 366 accepted the wish-list register request for packet-authored {pendingTitleLabel}; no live NPC catalog row was available to focus.";
+                            _footerMessage = message;
+                            UpdateActionButtonStates();
+                            return true;
+                        }
+
+                        if (AdminShopDialogClientParityText.TryGetResultNotice(resultCode, out string unresolvedNotice, out reopenRequested))
+                        {
+                            noticeText = unresolvedNotice;
+                            _packetOwnedAdminShopSession.SetLastNotice(unresolvedNotice);
+                        }
+                        else
+                        {
+                            _packetOwnedAdminShopSession.ClearLastNotice();
+                        }
+
+                        ClearPendingPacketOwnedWishlistRegister();
+                        string stateLabel = AdminShopDialogClientParityText.BuildResultStateLabel(resultCode);
+                        _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 rejected the packet-authored wish-list register request by item id; no live NPC catalog row was available to focus.");
+                        message = string.IsNullOrWhiteSpace(noticeText)
+                            ? $"CUIAdminShopWishList register result {resultCode} ({stateLabel}) rejected the packet-authored request for {pendingTitleLabel}."
+                            : $"CUIAdminShopWishList register result {resultCode} ({stateLabel}) rejected the packet-authored request for {pendingTitleLabel}. {noticeText}";
+                        _footerMessage = message;
+                        UpdateActionButtonStates();
+                        return true;
+                    }
+
                     ClearPendingPacketOwnedWishlistRegister();
                     _packetOwnedAdminShopSession.MarkDisconnectHazard();
                     _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived after the pending wish-list register row was no longer present in the admin-shop catalog.");
@@ -5332,7 +5416,8 @@ namespace HaCreator.MapSimulator.UI
                 PacketServiceSessionId = snapshot?.ServiceSessionId ?? -1,
                 PacketSearchSessionId = snapshot?.SearchSessionId >= 0
                     ? snapshot.SearchSessionId
-                    : snapshot?.LocalSearchRequestId ?? -1
+                    : snapshot?.LocalSearchRequestId ?? -1,
+                PacketCommoditySerialNumber = Math.Max(0, row?.CommoditySerialNumber ?? 0)
             };
             return true;
         }
@@ -5369,7 +5454,8 @@ namespace HaCreator.MapSimulator.UI
                     IsPacketAuthored = true,
                     HasLiveCatalogBinding = hasLiveCatalogBinding,
                     PacketServiceSessionId = serviceSessionId,
-                    PacketSearchSessionId = searchSessionId
+                    PacketSearchSessionId = searchSessionId,
+                    PacketCommoditySerialNumber = Math.Max(0, row?.CommoditySerialNumber ?? 0)
                 };
             }
 
@@ -5407,7 +5493,8 @@ namespace HaCreator.MapSimulator.UI
                 IsPacketAuthored = true,
                 HasLiveCatalogBinding = hasLiveCatalogBinding,
                 PacketServiceSessionId = serviceSessionId,
-                PacketSearchSessionId = searchSessionId
+                PacketSearchSessionId = searchSessionId,
+                PacketCommoditySerialNumber = Math.Max(0, row.CommoditySerialNumber)
             };
         }
 

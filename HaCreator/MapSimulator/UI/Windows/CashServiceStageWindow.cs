@@ -3193,6 +3193,42 @@ namespace HaCreator.MapSimulator.UI
             return _cashGiftLastSummary;
         }
 
+        public bool TryCompletePendingReceiveGiftAcceptFromDialogReturn(
+            out string summary,
+            out string ownerNotice,
+            out int nextGiftIndex)
+        {
+            summary = string.Empty;
+            ownerNotice = string.Empty;
+            nextGiftIndex = -1;
+            if (_cashReceiveGiftPendingAcceptEntry == null)
+            {
+                return false;
+            }
+
+            PacketCatalogEntry pendingEntry = _cashReceiveGiftPendingAcceptEntry;
+            int stagedIndex = Math.Max(0, _cashReceiveGiftPendingAcceptIndex);
+            RemovePendingReceiveGiftEntryFromQueue(pendingEntry, stagedIndex);
+            int remaining = Math.Max(0, _cashGiftPacketEntries.Count);
+            nextGiftIndex = remaining > 0 ? Math.Clamp(stagedIndex, 0, remaining - 1) : -1;
+            int row = pendingEntry.PacketRowIndex > 0 ? pendingEntry.PacketRowIndex : stagedIndex + 1;
+            summary =
+                $"CUIReceiveGift accept branch consumed GW_GiftList row {row.ToString(CultureInfo.InvariantCulture)} immediately after CDialog::DoModal returned 1.";
+            if (!string.IsNullOrWhiteSpace(_cashReceiveGiftPendingAcceptDispatchSummary))
+            {
+                summary = $"{summary} {_cashReceiveGiftPendingAcceptDispatchSummary}";
+            }
+
+            ownerNotice = BuildReceiveGiftAcceptOwnerNotice(pendingEntry, _cashReceiveGiftPendingAcceptReplyText);
+            _cashGiftLastSummary = summary;
+            _noticeState = _cashGiftLastSummary;
+            _cashReceiveGiftPendingAcceptEntry = null;
+            _cashReceiveGiftPendingAcceptIndex = -1;
+            _cashReceiveGiftPendingAcceptReplyText = string.Empty;
+            _cashReceiveGiftPendingAcceptDispatchSummary = string.Empty;
+            return true;
+        }
+
         public bool TryFinalizeReceiveGiftAcceptResult(
             int cashItemResultSubtype,
             out string summary,

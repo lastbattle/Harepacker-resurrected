@@ -1861,7 +1861,9 @@ namespace HaCreator.MapSimulator.Physics
                 return;
             }
 
-            List<MovePathElement> snapshot = BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
+            List<MovePathElement> snapshot = new(
+                CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(
+                    BuildMovePathSnapshot(currentTimeMs, appendLatestState: false)));
             bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
             if (shortUpdate || isFlying)
             {
@@ -1894,7 +1896,15 @@ namespace HaCreator.MapSimulator.Physics
             for (int i = lastGroundedIndex + 1; i < snapshot.Count; i++)
             {
                 MovePathElement retained = snapshot[i];
-                _pathGatherDurationMs += Math.Max(0, (int)retained.Duration);
+                if (i < snapshot.Count - 1)
+                {
+                    _pathGatherDurationMs += Math.Max(0, (int)retained.Duration);
+                }
+                else
+                {
+                    retained.TimeStamp = unchecked(currentTimeMs - Math.Max(0, (int)retained.Duration));
+                }
+
                 _movePath.Add(retained);
             }
 

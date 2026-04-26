@@ -561,9 +561,46 @@ namespace HaCreator.MapSimulator.Interaction
                 ReadIntWithFallback(property, "screenMode", defaultValue: 0, backImgInfo),
                 ReadIntWithFallback(property, "z", defaultValue: 0, backImgInfo),
                 spineAnimation,
-                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo));
+                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo),
+                UseSourceBackPieceFields: true);
             UpsertNativeStageBackImageEntry(entries, entry);
             return true;
+        }
+
+        internal static ContextOwnedStageBackImageEntry ResolveClientMakeBackPieceFields(
+            ContextOwnedStageBackImageEntry entry,
+            WzImageProperty sourceProperty)
+        {
+            if (entry == null || sourceProperty == null || !entry.UseSourceBackPieceFields)
+            {
+                return entry;
+            }
+
+            string spineAnimation = ReadStringWithFallback(sourceProperty, "spineAni");
+            bool animated = ReadBoolWithFallback(sourceProperty, "ani", defaultValue: false);
+            BackgroundInfoType infoType = !string.IsNullOrWhiteSpace(spineAnimation)
+                ? BackgroundInfoType.Spine
+                : animated
+                    ? BackgroundInfoType.Animation
+                    : entry.InfoType;
+            MapleBool flipValue = InfoTool.GetOptionalBool(GetChildProperty(sourceProperty, "f"));
+            WzImageProperty frontProperty = GetChildProperty(sourceProperty, "front");
+
+            return entry with
+            {
+                InfoType = infoType,
+                Cx = ReadClientInt(sourceProperty, MapBackCxStringPoolId, "cx", entry.Cx),
+                Cy = ReadClientInt(sourceProperty, MapBackCyStringPoolId, "cy", entry.Cy),
+                Alpha = Math.Clamp(ReadClientInt(sourceProperty, MapBackAlphaStringPoolId, "a", entry.Alpha), 0, 255),
+                Type = (BackgroundType)ReadClientInt(sourceProperty, MapBackTypeStringPoolId, "type", (int)entry.Type),
+                Front = frontProperty == null ? entry.Front : InfoTool.GetBool(frontProperty),
+                Flip = flipValue.HasValue ? flipValue.Value : entry.Flip,
+                Page = ReadIntWithFallback(sourceProperty, "page", entry.Page),
+                ScreenMode = ReadIntWithFallback(sourceProperty, "screenMode", entry.ScreenMode),
+                Z = ReadIntWithFallback(sourceProperty, "z", entry.Z),
+                SpineAnimation = string.IsNullOrWhiteSpace(spineAnimation) ? entry.SpineAnimation : spineAnimation,
+                SpineRandomStart = ReadBoolWithFallback(sourceProperty, "spineRandomStart", entry.SpineRandomStart)
+            };
         }
 
         private static void UpsertNativeStageBackImageEntry(
@@ -1564,7 +1601,8 @@ namespace HaCreator.MapSimulator.Interaction
         int ScreenMode,
         int Z,
         string SpineAnimation,
-        bool SpineRandomStart);
+        bool SpineRandomStart,
+        bool UseSourceBackPieceFields = false);
 
     internal sealed class ContextOwnedStageUnitEnableState
     {

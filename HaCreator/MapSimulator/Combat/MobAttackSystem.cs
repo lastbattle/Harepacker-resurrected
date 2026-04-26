@@ -2571,13 +2571,19 @@ namespace HaCreator.MapSimulator.Combat
                 return null;
             }
 
-            if (packetOverrides.AttackId != attack.AttackId)
+            if (!ShouldApplyPacketOverrideToCurrentAttack(packetOverrides.AttackId, attack.AttackId))
             {
+                _pendingAttackPacketOverrides.Remove(mobItem.PoolId);
                 return null;
             }
 
             _pendingAttackPacketOverrides.Remove(mobItem.PoolId);
             return packetOverrides;
+        }
+
+        internal static bool ShouldApplyPacketOverrideToCurrentAttack(int packetAttackId, int currentAttackId)
+        {
+            return packetAttackId > 0 && packetAttackId == currentAttackId;
         }
 
         private static float ScoreLaneTarget(Vector2 lanePosition, Vector2 candidatePoint)
@@ -3084,18 +3090,25 @@ namespace HaCreator.MapSimulator.Combat
                 TryApplyPuppetHit(sourceMob, attack, targetInfo, hitbox, currentTime, requireGroundedForJumpAttack: false) ||
                 TryApplyTargetMobHit(sourceMob, attack, targetInfo, hitbox, currentTime);
 
-            if (!targetedSummoned &&
-                !targetedMob &&
-                playerManager?.Combat != null &&
-                playerManager.IsPlayerActive &&
-                CanHitPlayerTarget(attack, requireGroundedForJumpAttack: false))
+            if (ShouldSweepProjectileImpactCollateralTargets(targetedSummoned, targetedMob))
             {
-                hitAny |= playerManager.Combat.TryApplyMobHit(sourceMob, hitbox, currentTime, attack);
+                if (playerManager?.Combat != null &&
+                    playerManager.IsPlayerActive &&
+                    CanHitPlayerTarget(attack, requireGroundedForJumpAttack: false))
+                {
+                    hitAny |= playerManager.Combat.TryApplyMobHit(sourceMob, hitbox, currentTime, attack);
+                }
+
                 hitAny |= ApplyAreaPuppetHits(sourceMob, attack, hitbox, targetInfo, currentTime, requireGroundedForJumpAttack: false);
                 hitAny |= ApplyAreaMobHits(sourceMob, attack, hitbox, targetInfo, currentTime);
             }
 
             return hitAny;
+        }
+
+        internal static bool ShouldSweepProjectileImpactCollateralTargets(bool targetedSummoned, bool targetedMob)
+        {
+            return !targetedSummoned && !targetedMob;
         }
 
         internal static bool IsEncounterParticipant(bool usesMobCombatLane, bool isTargetingMob)

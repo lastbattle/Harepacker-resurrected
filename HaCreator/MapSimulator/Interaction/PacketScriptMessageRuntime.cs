@@ -15,15 +15,18 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class PacketScriptMessageRuntime
     {
         private const short OutboundScriptAnswerOpcode = 65;
+        private const int AskNumberInputDigitLimit = 10;
         private static readonly object NpcStringImageLock = new();
         private static readonly Dictionary<int, string> NpcNameByIdWzFallbackCache = new();
         private static WzImage _npcStringImage;
         private string _statusMessage = "Packet-owned script-message idle.";
         private PacketScriptPromptContext _activePromptContext;
+        private bool _isProcessingMessage;
 
         internal void Clear()
         {
             _activePromptContext = null;
+            _isProcessingMessage = false;
             _statusMessage = "Packet-owned script-message cleared.";
         }
 
@@ -43,12 +46,19 @@ namespace HaCreator.MapSimulator.Interaction
         {
             request = null;
             payload ??= Array.Empty<byte>();
+            if (_isProcessingMessage)
+            {
+                message = "Rejected nested packet-authored script message: client CScriptMan::OnScriptMessage disconnects when m_bProcMessage is already set.";
+                return false;
+            }
+
             if (payload.Length == 0)
             {
                 message = "Script-message payload is empty.";
                 return false;
             }
 
+            _isProcessingMessage = true;
             try
             {
                 using var stream = new MemoryStream(payload, writable: false);
@@ -150,6 +160,10 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 message = $"Script-message payload could not be decoded: {ex.Message}";
                 return false;
+            }
+            finally
+            {
+                _isProcessingMessage = false;
             }
         }
 
@@ -269,14 +283,16 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     $"Default value: {defaultValue}",
-                    $"Accepted range: {minValue} to {maxValue}."),
+                    $"Accepted range: {minValue} to {maxValue}.",
+                    $"Client input digit limit: {AskNumberInputDigitLimit}."),
                 null,
                 new NpcInteractionInputRequest
                 {
                     Kind = NpcInteractionInputKind.Number,
                     DefaultValue = defaultValue.ToString(),
                     MinValue = minValue,
-                    MaxValue = maxValue
+                    MaxValue = maxValue,
+                    MaxLength = AskNumberInputDigitLimit
                 },
                 flipSpeaker: ResolveFlipSpeakerFromParam(param));
         }

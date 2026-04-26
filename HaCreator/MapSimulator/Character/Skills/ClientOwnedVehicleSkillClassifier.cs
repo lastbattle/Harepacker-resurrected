@@ -197,6 +197,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 255, // earthslug
                 256  // rpunch
             );
+        private static readonly string[] WzOnlyWildHunterJaguarVehicleOneTimeActionNames =
+            ResolveClientRawActionNames(
+                // WZ publishes these roots on checked jaguar vehicles such as
+                // Character/TamingMob/01932015, but v95 `IsAbleTamingMobOneTimeAction`
+                // does not admit them for the wild-hunter jaguar vehicle family.
+                242, // doubleJump
+                243, // knockback
+                244, // swallow_pre
+                245, // swallow_loop
+                246, // swallow
+                254, // sonicBoom
+                260, // clawCut
+                261, // mine
+                262, // ride
+                263, // getoff
+                265, // proneStab_jaguar
+                266, // herbalism_jaguar
+                267  // mining_jaguar
+            );
 
         private static readonly string[] MechanicClientOwnedVehicleMountedMoveActions =
         {
@@ -499,6 +518,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsClientAdmittedMechanicVehicleOwnerOnlyOneTimeActionName(string actionName)
         {
             return ContainsActionName(ClientConfirmedMechanicVehicleOwnerOnlyOneTimeActionNames, actionName);
+        }
+
+        internal static bool IsWzOnlyWildHunterJaguarVehicleOneTimeActionName(string actionName)
+        {
+            return ContainsActionName(WzOnlyWildHunterJaguarVehicleOneTimeActionNames, actionName);
         }
 
         internal static bool IsOverlappingMechanicVehicleOneTimeActionName(string actionName)

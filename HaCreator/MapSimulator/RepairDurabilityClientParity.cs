@@ -30,19 +30,27 @@ namespace HaCreator.MapSimulator
 
         internal readonly struct ResultPayload
         {
-            public ResultPayload(bool success, int? reasonCode, short? operationCode, int? encodedSlotPosition, string statusText)
+            public ResultPayload(
+                bool success,
+                int? reasonCode,
+                short? operationCode,
+                int? encodedSlotPosition,
+                string statusText,
+                IReadOnlyList<int> encodedSlotPositions = null)
             {
                 Success = success;
                 ReasonCode = reasonCode;
                 OperationCode = operationCode;
                 EncodedSlotPosition = encodedSlotPosition;
                 StatusText = statusText ?? string.Empty;
+                EncodedSlotPositions = NormalizeEncodedSlotPositions(encodedSlotPosition, encodedSlotPositions);
             }
 
             public bool Success { get; }
             public int? ReasonCode { get; }
             public short? OperationCode { get; }
             public int? EncodedSlotPosition { get; }
+            public IReadOnlyList<int> EncodedSlotPositions { get; }
             public string StatusText { get; }
         }
 
@@ -674,11 +682,49 @@ namespace HaCreator.MapSimulator
             return !resultOperationCode.HasValue || resultOperationCode.Value == pendingOperationCode;
         }
 
-        internal static bool MatchesPendingResultTarget(bool repairAllRequest, int pendingEncodedSlotPosition, int? resultEncodedSlotPosition)
+        internal static bool MatchesPendingResultTarget(
+            bool repairAllRequest,
+            int pendingEncodedSlotPosition,
+            int? resultEncodedSlotPosition)
         {
-            return repairAllRequest
-                || !resultEncodedSlotPosition.HasValue
-                || resultEncodedSlotPosition.Value == pendingEncodedSlotPosition;
+            return MatchesPendingResultTarget(
+                repairAllRequest,
+                pendingEncodedSlotPosition,
+                pendingRepairAllEncodedSlotPositions: null,
+                resultEncodedSlotPosition,
+                resultEncodedSlotPositions: null);
+        }
+
+        internal static bool MatchesPendingResultTarget(
+            bool repairAllRequest,
+            int pendingEncodedSlotPosition,
+            IEnumerable<int> pendingRepairAllEncodedSlotPositions,
+            int? resultEncodedSlotPosition,
+            IReadOnlyList<int> resultEncodedSlotPositions)
+        {
+            if (!repairAllRequest)
+            {
+                return !resultEncodedSlotPosition.HasValue
+                       || resultEncodedSlotPosition.Value == pendingEncodedSlotPosition;
+            }
+
+            IReadOnlyList<int> echoedPositions = NormalizeEncodedSlotPositions(resultEncodedSlotPosition, resultEncodedSlotPositions);
+            if (echoedPositions.Count <= 0)
+            {
+                return true;
+            }
+
+            HashSet<int> pendingPositions = pendingRepairAllEncodedSlotPositions == null
+                ? new HashSet<int>()
+                : pendingRepairAllEncodedSlotPositions
+                    .Where(static position => LooksLikeEncodedSlotPosition(position))
+                    .ToHashSet();
+            if (pendingPositions.Count <= 0)
+            {
+                return true;
+            }
+
+            return echoedPositions.All(pendingPositions.Contains);
         }
 
         internal static IReadOnlyList<int> BuildClientEquippedPositionOrder(IEnumerable<int> encodedPositions)
@@ -1193,9 +1239,24 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
+                IReadOnlyList<int> encodedSlotPositions = ReadIntArrayWithFallback(
+                    body,
+                    root,
+                    "encodedSlotPositions",
+                    "encodedPositions",
+                    "nPOSList",
+                    "slotPositions",
+                    "positions",
+                    "slots");
+                if (encodedSlotPositions.Any(static position => !LooksLikeEncodedSlotPosition(position)))
+                {
+                    error = "Repair-result JSON encoded slot position list contains a value outside the client slot range.";
+                    return false;
+                }
+
                 int? reasonCode = ReadIntWithFallback(body, root, "reasonCode", "reason", "errorCode", "rejectReason");
                 string statusText = ReadStringWithFallback(body, root, "statusText", "message", "text", "localizedText", "notice");
-                result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
+                result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText, encodedSlotPositions);
                 return true;
             }
             catch (JsonException ex)
@@ -1254,6 +1315,71 @@ namespace HaCreator.MapSimulator
             }
 
             return ReadInt(fallbackRoot, names);
+        }
+
+        private static IReadOnlyList<int> ReadIntArray(JsonElement root, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (!root.TryGetProperty(name, out JsonElement value))
+                {
+                    continue;
+                }
+
+                if (value.ValueKind == JsonValueKind.Array)
+                {
+                    List<int> values = new();
+                    foreach (JsonElement child in value.EnumerateArray())
+                    {
+                        if (child.ValueKind == JsonValueKind.Number && child.TryGetInt32(out int number))
+                        {
+                            values.Add(number);
+                        }
+                        else if (child.ValueKind == JsonValueKind.String
+                                 && int.TryParse(child.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
+                        {
+                            values.Add(number);
+                        }
+                    }
+
+                    return values;
+                }
+
+                if (value.ValueKind == JsonValueKind.String)
+                {
+                    string text = value.GetString();
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        return Array.Empty<int>();
+                    }
+
+                    string[] tokens = text.Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    List<int> values = new(tokens.Length);
+                    for (int i = 0; i < tokens.Length; i++)
+                    {
+                        if (int.TryParse(tokens[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+                        {
+                            values.Add(number);
+                        }
+                    }
+
+                    return values;
+                }
+            }
+
+            return Array.Empty<int>();
+        }
+
+        private static IReadOnlyList<int> ReadIntArrayWithFallback(JsonElement primaryRoot, JsonElement fallbackRoot, params string[] names)
+        {
+            IReadOnlyList<int> values = ReadIntArray(primaryRoot, names);
+            if (values.Count > 0
+                || primaryRoot.ValueKind == fallbackRoot.ValueKind && primaryRoot.GetRawText() == fallbackRoot.GetRawText())
+            {
+                return values;
+            }
+
+            return ReadIntArray(fallbackRoot, names);
         }
 
         private static bool ReadBoolean(JsonElement root, bool defaultValue, params string[] names)
@@ -1345,6 +1471,29 @@ namespace HaCreator.MapSimulator
         {
             return encodedSlotPosition is >= 0 and <= 255
                 || encodedSlotPosition is <= -1 and >= -255;
+        }
+
+        private static IReadOnlyList<int> NormalizeEncodedSlotPositions(int? encodedSlotPosition, IReadOnlyList<int> encodedSlotPositions)
+        {
+            List<int> normalized = new();
+            if (encodedSlotPositions != null)
+            {
+                for (int i = 0; i < encodedSlotPositions.Count; i++)
+                {
+                    int position = encodedSlotPositions[i];
+                    if (!normalized.Contains(position))
+                    {
+                        normalized.Add(position);
+                    }
+                }
+            }
+
+            if (encodedSlotPosition.HasValue && !normalized.Contains(encodedSlotPosition.Value))
+            {
+                normalized.Add(encodedSlotPosition.Value);
+            }
+
+            return normalized;
         }
 
         private static bool IsClientEncodableBodyPart(int bodyPart)

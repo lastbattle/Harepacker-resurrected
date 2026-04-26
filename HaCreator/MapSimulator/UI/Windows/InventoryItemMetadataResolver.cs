@@ -945,6 +945,73 @@ namespace HaCreator.MapSimulator.UI
             return canvas != null;
         }
 
+        public static bool TryResolveRootCanvas(int itemId, string canvasPath, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (itemId <= 0 || string.IsNullOrWhiteSpace(canvasPath))
+            {
+                return false;
+            }
+
+            return TryResolveCanvasAtPath(LoadItemProperty(itemId), canvasPath, out canvas);
+        }
+
+        public static bool TryResolveSampleUiFrame(
+            int itemId,
+            out WzCanvasProperty topCanvas,
+            out WzCanvasProperty centerCanvas,
+            out WzCanvasProperty bottomCanvas)
+        {
+            return TryResolveSampleUiFrame(
+                LoadItemProperty(itemId),
+                out topCanvas,
+                out centerCanvas,
+                out bottomCanvas);
+        }
+
+        private static bool TryResolveSampleUiFrame(
+            WzSubProperty itemProperty,
+            out WzCanvasProperty topCanvas,
+            out WzCanvasProperty centerCanvas,
+            out WzCanvasProperty bottomCanvas)
+        {
+            topCanvas = null;
+            centerCanvas = null;
+            bottomCanvas = null;
+
+            return TryResolveCanvasAtPath(itemProperty, "ui/t", out topCanvas)
+                   && TryResolveCanvasAtPath(itemProperty, "ui/c", out centerCanvas)
+                   && TryResolveCanvasAtPath(itemProperty, "ui/s", out bottomCanvas);
+        }
+
+        private static bool TryResolveCanvasAtPath(WzSubProperty rootProperty, string canvasPath, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (rootProperty == null || string.IsNullOrWhiteSpace(canvasPath))
+            {
+                return false;
+            }
+
+            WzImageProperty current = rootProperty;
+            string[] parts = canvasPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (current is not WzSubProperty subProperty)
+                {
+                    return false;
+                }
+
+                current = subProperty[parts[i]];
+                if (current == null)
+                {
+                    return false;
+                }
+            }
+
+            canvas = current as WzCanvasProperty;
+            return canvas != null;
+        }
+
         private static string ResolveEquipmentFolder(int itemId)
         {
             int category = itemId / 10000;
@@ -4515,6 +4582,15 @@ namespace HaCreator.MapSimulator.UI
         public static IReadOnlyList<string> BuildAuthoredSampleTextLinesForTests(WzSubProperty sampleProperty)
         {
             return BuildAuthoredSampleTextLines(sampleProperty);
+        }
+
+        public static bool TryResolveSampleUiFrameForTests(
+            WzSubProperty itemProperty,
+            out WzCanvasProperty topCanvas,
+            out WzCanvasProperty centerCanvas,
+            out WzCanvasProperty bottomCanvas)
+        {
+            return TryResolveSampleUiFrame(itemProperty, out topCanvas, out centerCanvas, out bottomCanvas);
         }
 
         public static bool TrySelectConsumeItemRequirementForTests(

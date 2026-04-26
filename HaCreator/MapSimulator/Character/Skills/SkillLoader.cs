@@ -3061,7 +3061,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetVector(pieceNode, "move"),
                     GetInt(pieceNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
-                    IsClientActionManInitPiece: true));
+                    IsClientActionManInitPiece: true,
+                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceNode)));
             }
 
             if (pieces.Count == 0 && ShadowPartnerClientActionResolver.IsClientActionPieceNode(pieceOwnerNode))
@@ -3075,7 +3076,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetVector(pieceOwnerNode, "move"),
                     GetInt(pieceOwnerNode, "rotate"),
                     IsSyntheticMirroredTailPiece: false,
-                    IsClientActionManInitPiece: true));
+                    IsClientActionManInitPiece: true,
+                    EventDelayOverrideMs: ResolveShadowPartnerClientActionPieceEventDelayMs(pieceOwnerNode)));
             }
 
             if (pieces.Count == 0)
@@ -3115,8 +3117,29 @@ namespace HaCreator.MapSimulator.Character.Skills
                     sourcePiece.Move,
                     sourcePiece.RotationDegrees,
                     IsSyntheticMirroredTailPiece: true,
-                    IsClientActionManInitPiece: sourcePiece.IsClientActionManInitPiece));
+                    IsClientActionManInitPiece: sourcePiece.IsClientActionManInitPiece,
+                    EventDelayOverrideMs: sourcePiece.EventDelayOverrideMs));
             }
+        }
+
+        private static int? ResolveShadowPartnerClientActionPieceEventDelayMs(WzImageProperty pieceNode)
+        {
+            if (pieceNode == null)
+            {
+                return null;
+            }
+
+            if (pieceNode["event-delay"] != null)
+            {
+                return GetInt(pieceNode, "event-delay");
+            }
+
+            if (pieceNode["eventDelay"] != null)
+            {
+                return GetInt(pieceNode, "eventDelay");
+            }
+
+            return null;
         }
 
         private static int ResolveShadowPartnerClientActionPieceSlotIndex(string pieceName, int fallbackSlotIndex)

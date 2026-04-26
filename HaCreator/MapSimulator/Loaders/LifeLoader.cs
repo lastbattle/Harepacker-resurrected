@@ -1522,7 +1522,7 @@ namespace HaCreator.MapSimulator.Loaders
             bool hasAlphaRange = alphaStart.HasValue || alphaEnd.HasValue;
             byte resolvedAlphaStart = (byte)Math.Clamp(alphaStart ?? byte.MaxValue, byte.MinValue, byte.MaxValue);
             byte resolvedAlphaEnd = (byte)Math.Clamp(alphaEnd ?? resolvedAlphaStart, byte.MinValue, byte.MaxValue);
-            int layerZ = TryGetOptionalInt(canvasProperty?["z"]) ?? 0;
+            int? layerZ = TryGetOptionalInt(canvasProperty?["z"]);
 
             return new MobAnimationSet.FrameMetadata
             {
@@ -1536,7 +1536,8 @@ namespace HaCreator.MapSimulator.Loaders
                 HasAlphaRange = hasAlphaRange,
                 AlphaStart = resolvedAlphaStart,
                 AlphaEnd = resolvedAlphaEnd,
-                LayerZ = layerZ
+                HasLayerZ = layerZ.HasValue,
+                LayerZ = layerZ ?? -1
             };
         }
 
@@ -1582,7 +1583,8 @@ namespace HaCreator.MapSimulator.Loaders
                 HasAlphaRange = false,
                 AlphaStart = byte.MaxValue,
                 AlphaEnd = byte.MaxValue,
-                LayerZ = 0
+                HasLayerZ = false,
+                LayerZ = -1
             };
         }
 
