@@ -841,6 +841,23 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(12, "swingPF", 3, 150, move: new Point(23, 2)),
                     CreateIndexedPiece(13, "alert", 2, 120)
                 },
+                ["float"] = CreateIndexedPieces(
+                    ("alert", 0, 1320)),
+                ["pyramid"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 1, -120),
+                    CreateIndexedPiece(1, "swingPF", 1, -120),
+                    CreateIndexedPiece(2, "swingOF", 1, -120, move: new Point(3, -34)),
+                    CreateIndexedPiece(3, "swingP2", 0, -120, move: new Point(6, -68)),
+                    CreateIndexedPiece(4, "swingOF", 1, -120, move: new Point(9, -102)),
+                    CreateIndexedPiece(5, "swingTF", 1, -120, move: new Point(14, -127)),
+                    CreateIndexedPiece(6, "swingTF", 1, -120, move: new Point(14, -132)),
+                    CreateIndexedPiece(7, "swingTF", 1, -120, move: new Point(14, -137)),
+                    CreateIndexedPiece(8, "swingOF", 3, 120, move: new Point(35, -96)),
+                    CreateIndexedPiece(9, "swingOF", 3, 120, move: new Point(35, -47)),
+                    CreateIndexedPiece(10, "swingOF", 3, 120, move: new Point(35, 0)),
+                    CreateIndexedPiece(11, "alert", 1, 120)
+                },
                 ["magicmissile"] = new[]
                 {
                     CreateIndexedPiece(0, "walk1", 1, -90, move: new Point(1, 0)),
@@ -882,6 +899,10 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(6, "stabO1", 0, 90, move: new Point(-10, 0)),
                     CreateIndexedPiece(7, "alert", 0, 90)
                 },
+                ["breathe_prepare"] = CreateIndexedPieces(
+                    ("walk1", 0, 1)),
+                ["icebreathe_prepare"] = CreateIndexedPieces(
+                    ("walk1", 0, 1)),
                 ["blaze"] = new[]
                 {
                     CreateIndexedPiece(0, "alert", 1, -90),
@@ -927,6 +948,50 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(4, "swingO2", 0, -200),
                     CreateIndexedPiece(5, "alert", 0, 270)
                 },
+                ["elementalReset"] = new[]
+                {
+                    CreateIndexedPiece(0, "stand1", 0, 90),
+                    CreateIndexedPiece(1, "alert", 2, 60),
+                    CreateIndexedPiece(2, "alert", 1, 60),
+                    CreateIndexedPiece(3, "alert", 0, 600),
+                    CreateIndexedPiece(4, "swingO2", 1, 90, move: new Point(-4, 0)),
+                    CreateIndexedPiece(5, "swingO2", 0, 120, move: new Point(-9, 0)),
+                    CreateIndexedPiece(6, "swingO2", 1, 90, move: new Point(-4, 0)),
+                    CreateIndexedPiece(7, "alert", 2, 90),
+                    CreateIndexedPiece(8, "stand1", 0, 240)
+                },
+                ["magicRegistance"] = new[]
+                {
+                    CreateIndexedPiece(0, "stand1", 0, 90),
+                    CreateIndexedPiece(1, "alert", 2, 60, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 1, 60, move: new Point(1, 0)),
+                    CreateIndexedPiece(3, "alert", 0, 600, move: new Point(1, 0)),
+                    CreateIndexedPiece(4, "swingO2", 1, 90, move: new Point(3, 0)),
+                    CreateIndexedPiece(5, "swingO1", 2, 120, move: new Point(7, 0)),
+                    CreateIndexedPiece(6, "swingO1", 2, 90, move: new Point(4, 0)),
+                    CreateIndexedPiece(7, "swingO1", 2, 90, move: new Point(3, 0)),
+                    CreateIndexedPiece(8, "alert", 2, 240)
+                },
+                ["magicBooster"] = new[]
+                {
+                    CreateIndexedPiece(0, "stand1", 0, 90),
+                    CreateIndexedPiece(1, "alert", 2, 60),
+                    CreateIndexedPiece(2, "alert", 1, 60),
+                    CreateIndexedPiece(3, "alert", 0, 600),
+                    CreateIndexedPiece(4, "swingO2", 1, 90, move: new Point(-4, 0)),
+                    CreateIndexedPiece(5, "swingO2", 0, 120, move: new Point(-9, 0)),
+                    CreateIndexedPiece(6, "swingO2", 1, 90, move: new Point(-4, 0)),
+                    CreateIndexedPiece(7, "alert", 2, 90),
+                    CreateIndexedPiece(8, "stand1", 0, 240)
+                },
+                ["magicShield"] = new[]
+                {
+                    CreateIndexedPiece(0, "stand1", 0, 120),
+                    CreateIndexedPiece(1, "alert", 2, 330, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 1, 120),
+                    CreateIndexedPiece(3, "alert", 0, 120),
+                    CreateIndexedPiece(4, "stand1", 0, 930)
+                },
                 ["killingWing"] = new[]
                 {
                     CreateIndexedPiece(0, "stand1", 0, -90),
@@ -952,6 +1017,35 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(7, "swingO2", 2, 90, move: new Point(-12, 0)),
                     CreateIndexedPiece(8, "alert", 0, 330, move: new Point(-7, 0))
                 },
+                ["recoveryAura"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(1, "alert", 1, -90, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 0, -270, move: new Point(1, 0)),
+                    CreateIndexedPiece(3, "jump", 0, -90, move: new Point(1, -42)),
+                    CreateIndexedPiece(4, "jump", 0, -90, move: new Point(1, -44)),
+                    CreateIndexedPiece(5, "swingO3", 1, -90, move: new Point(22, -38)),
+                    CreateIndexedPiece(6, "swingO2", 2, -90, move: new Point(8, 0)),
+                    CreateIndexedPiece(7, "alert", 2, 540, move: new Point(1, 0))
+                },
+                ["OnixBlessing"] = new[]
+                {
+                    CreateIndexedPiece(0, "stand1", 0, 120),
+                    CreateIndexedPiece(1, "alert", 2, 420, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 1, 120),
+                    CreateIndexedPiece(3, "alert", 0, 240),
+                    CreateIndexedPiece(4, "stand1", 0, 720)
+                },
+                ["soulStone"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(1, "alert", 1, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 1, 450, move: new Point(1, 0)),
+                    CreateIndexedPiece(3, "swingO1", 2, 120, move: new Point(1, 0)),
+                    CreateIndexedPiece(4, "swingO1", 2, 120, move: new Point(-2, 0)),
+                    CreateIndexedPiece(5, "swingO1", 2, 150, move: new Point(-3, 0)),
+                    CreateIndexedPiece(6, "alert", 2, 240)
+                },
                 ["dragonThrust"] = new[]
                 {
                     CreateIndexedPiece(0, "alert", 2, -60),
@@ -973,6 +1067,60 @@ namespace HaCreator.MapSimulator.Character
                     CreateIndexedPiece(3, "swingO2", 0, -1800, move: new Point(11, 0)),
                     CreateIndexedPiece(4, "swingO2", 1, 90, move: new Point(9, 0)),
                     CreateIndexedPiece(5, "swingO2", 2, 630, move: new Point(10, 0))
+                },
+                ["ghostLettering"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 0, -240, move: new Point(1, 0)),
+                    CreateIndexedPiece(1, "swingO1", 2, 120, move: new Point(4, 0)),
+                    CreateIndexedPiece(2, "swingO1", 2, 120, move: new Point(-2, 0)),
+                    CreateIndexedPiece(3, "swingO1", 2, 120, move: new Point(-3, 0)),
+                    CreateIndexedPiece(4, "swingO1", 2, 120, move: new Point(-4, 0)),
+                    CreateIndexedPiece(5, "alert", 2, 120, move: new Point(1, 0))
+                },
+                ["slow"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, 120, move: new Point(1, 0)),
+                    CreateIndexedPiece(1, "alert", 1, 120, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 0, 480, move: new Point(1, 0)),
+                    CreateIndexedPiece(3, "swingO2", 1, 120, move: new Point(3, 0)),
+                    CreateIndexedPiece(4, "swingO1", 2, 120, move: new Point(6, 0)),
+                    CreateIndexedPiece(5, "swingO1", 2, 120, move: new Point(3, 0)),
+                    CreateIndexedPiece(6, "swingO1", 2, 120, move: new Point(2, 0)),
+                    CreateIndexedPiece(7, "alert", 2, 150, move: new Point(1, 0))
+                },
+                ["mapleHero"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(1, "alert", 1, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 0, 990, move: new Point(1, 0)),
+                    CreateIndexedPiece(3, "alert", 2, 1080, move: new Point(1, 0))
+                },
+                ["OnixProtection"] = new[]
+                {
+                    CreateIndexedPiece(0, "stand1", 1, 60),
+                    CreateIndexedPiece(1, "alert", 2, 120, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 1, 120),
+                    CreateIndexedPiece(3, "alert", 0, 510),
+                    CreateIndexedPiece(4, "swingO2", 1, 90),
+                    CreateIndexedPiece(5, "swingO1", 2, 90),
+                    CreateIndexedPiece(6, "swingO1", 2, 90),
+                    CreateIndexedPiece(7, "swingO1", 2, 360)
+                },
+                ["OnixWill"] = new[]
+                {
+                    CreateIndexedPiece(0, "stand1", 0, 120),
+                    CreateIndexedPiece(1, "alert", 2, 120, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 1, 120),
+                    CreateIndexedPiece(3, "alert", 0, 540),
+                    CreateIndexedPiece(4, "swingO1", 1, 90),
+                    CreateIndexedPiece(5, "swingO2", 2, 540)
+                },
+                ["Awakening"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(1, "alert", 1, 90, move: new Point(1, 0)),
+                    CreateIndexedPiece(2, "alert", 0, 120, move: new Point(1, 0)),
+                    CreateIndexedPiece(3, "alert", 2, 480, move: new Point(1, 0))
                 },
                 ["flameWheel"] = new[]
                 {
@@ -1850,7 +1998,28 @@ namespace HaCreator.MapSimulator.Character
             "ghostladder",
             "ghostrope",
             "ghostfly",
-            "ghostsit"
+            "ghostsit",
+            // Mounted raw rows 145..174 also publish concrete helper-piece tables
+            // that are not runtime attack identities. Admit them only through the
+            // loader fallback surface so missing mounted rows can still use the
+            // recovered client-init timing and transform metadata.
+            "float",
+            "pyramid",
+            "breathe_prepare",
+            "icebreathe_prepare",
+            "elementalReset",
+            "magicRegistance",
+            "magicBooster",
+            "magicShield",
+            "recoveryAura",
+            "OnixBlessing",
+            "soulStone",
+            "ghostLettering",
+            "slow",
+            "mapleHero",
+            "OnixProtection",
+            "OnixWill",
+            "Awakening"
         };
 
         private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)

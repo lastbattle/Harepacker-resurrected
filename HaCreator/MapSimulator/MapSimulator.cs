@@ -272,7 +272,6 @@ namespace HaCreator.MapSimulator
         private int _statusBarBuffRenderCacheTime = int.MinValue;
         private readonly List<(StatusBarCooldownRenderData RenderData, int CooldownStartTime, int SortKey)> _statusBarCooldownSortBuffer = new();
         private readonly List<StatusBarCooldownRenderData> _statusBarCooldownRenderCache = new();
-        private readonly HashSet<int> _statusBarProcessedCooldownSkills = new();
         private int _statusBarCooldownRenderCacheTime = int.MinValue;
         private readonly List<(StatusBarCooldownRenderData RenderData, int CooldownStartTime, int SortKey)> _statusBarOffBarCooldownSortBuffer = new();
         private readonly List<StatusBarCooldownRenderData> _statusBarOffBarCooldownRenderCache = new();
@@ -4309,7 +4308,7 @@ namespace HaCreator.MapSimulator
             userInfoWindow.FamilyRequested = HandleCharacterInfoFamilyRequest;
             userInfoWindow.PopularityRequested = HandleCharacterInfoPopularityRequest;
             userInfoWindow.PopularityActionAvailable = (context, direction) =>
-                _userInfoPopularityPreviewService.CanRequest(context, direction);
+                _userInfoPopularityPreviewService.CanRequest(context, direction, Environment.TickCount, out _);
             userInfoWindow.BookCollectionRequested = HandleCharacterInfoBookCollectionRequest;
             userInfoWindow.CollectionClaimRequested = HandleCharacterInfoCollectionClaimRequest;
             userInfoWindow.CollectionClaimAvailable = IsCharacterInfoCollectionClaimAvailable;
@@ -4760,6 +4759,7 @@ namespace HaCreator.MapSimulator
             UserInfoUI.UserInfoActionContext context,
             UserInfoUI.PopularityChangeDirection direction)
         {
+            context = NormalizeCharacterInfoActionContext(context);
             if (!TryResolveRemoteCharacterInfoTargetPresence(
                     context,
                     out _,
@@ -4769,7 +4769,74 @@ namespace HaCreator.MapSimulator
                 return unavailableMessage;
             }
 
-            return _userInfoPopularityPreviewService.HandleRequest(context, direction, Environment.TickCount);
+            int currentTick = Environment.TickCount;
+            if (!_userInfoPopularityPreviewService.CanRequest(context, direction, currentTick, out string gateMessage))
+            {
+                return gateMessage;
+            }
+
+            string dispatchStatus = DispatchCharacterInfoPopularityRequest(context, direction);
+            return _userInfoPopularityPreviewService.HandleRequest(context, direction, currentTick, dispatchStatus);
+        }
+
+        private const int CharacterInfoPopularityRequestOpcode = 107;
+
+        internal static byte[] BuildCharacterInfoPopularityRequestPayload(
+            int characterId,
+            UserInfoUI.PopularityChangeDirection direction)
+        {
+            byte[] payload = new byte[5];
+            payload[0] = (byte)(characterId & 0xFF);
+            payload[1] = (byte)((characterId >> 8) & 0xFF);
+            payload[2] = (byte)((characterId >> 16) & 0xFF);
+            payload[3] = (byte)((characterId >> 24) & 0xFF);
+            payload[4] = direction == UserInfoUI.PopularityChangeDirection.Up ? (byte)1 : (byte)0;
+            return payload;
+        }
+
+        private string DispatchCharacterInfoPopularityRequest(
+            UserInfoUI.UserInfoActionContext context,
+            UserInfoUI.PopularityChangeDirection direction)
+        {
+            int targetCharacterId = context.CharacterId > 0 ? context.CharacterId : context.Build?.Id ?? 0;
+            if (targetCharacterId <= 0)
+            {
+                return "CUIUserInfo popularity request stayed simulator-local because the inspected target character id is unavailable.";
+            }
+
+            byte[] payload = BuildCharacterInfoPopularityRequestPayload(targetCharacterId, direction);
+            string payloadHex = Convert.ToHexString(payload);
+            string source = "CUIUserInfo::OnButtonClicked -> CWvsContext::SendGivePopularityRequest";
+            string bridgeStatus = "official-session bridge unavailable";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(CharacterInfoPopularityRequestOpcode, payload, out bridgeStatus))
+            {
+                return $"{source} emitted opcode {CharacterInfoPopularityRequestOpcode} [{payloadHex}] through the live local-utility bridge. {bridgeStatus}";
+            }
+
+            string outboxStatus = "packet outbox unavailable";
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(CharacterInfoPopularityRequestOpcode, payload, out outboxStatus))
+            {
+                return $"{source} emitted opcode {CharacterInfoPopularityRequestOpcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            string bridgeDeferredStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(CharacterInfoPopularityRequestOpcode, payload, out bridgeDeferredStatus))
+            {
+                return $"{source} queued opcode {CharacterInfoPopularityRequestOpcode} [{payloadHex}] for deferred official-session injection after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(CharacterInfoPopularityRequestOpcode, payload, out string queuedStatus))
+            {
+                return $"{source} queued opcode {CharacterInfoPopularityRequestOpcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
+            }
+
+            return $"{source} kept opcode {CharacterInfoPopularityRequestOpcode} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
+        }
+
+        private bool TryApplyCharacterInfoPopularityResultPayload(byte[] payload, out string message)
+        {
+            return _userInfoPopularityPreviewService.TryApplyClientResultPayload(payload, _remoteUserPool, out message);
         }
 
         private bool TryResolveRemoteCharacterInfoTargetPresence(
@@ -21745,6 +21812,13 @@ namespace HaCreator.MapSimulator
 
             if (entry.PrimaryActionKind == NpcInteractionActionKind.OpenTrunk)
             {
+                string trunkRestrictionMessage = GetFieldWindowRestrictionMessage(MapSimulatorWindowNames.Trunk);
+                if (!string.IsNullOrWhiteSpace(trunkRestrictionMessage))
+                {
+                    ShowFieldRestrictionMessage(trunkRestrictionMessage);
+                    return;
+                }
+
                 _npcInteractionOverlay?.Close();
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Trunk);
                 return;
@@ -32188,6 +32262,11 @@ namespace HaCreator.MapSimulator
                 {
                     _portalOwnedMovePathPostFlushCarry.Add(carryPath[i]);
                 }
+
+                physics.ApplyClientFlushRetentionAfterPacketSnapshot(
+                    currentTime,
+                    isFlying: physics.IsFlying,
+                    hasDynamicFoothold: hasDynamicFoothold);
             }
 
             encoded = true;
@@ -38247,6 +38326,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            string chairRestrictionMessage = FieldInteractionRestrictionEvaluator.GetPortableChairRestrictionMessage(_mapBoard?.MapInfo);
+            if (!string.IsNullOrWhiteSpace(chairRestrictionMessage))
+            {
+                message = chairRestrictionMessage;
+                ShowFieldRestrictionMessage(message);
+                return false;
+            }
 
             string fieldItemRestrictionMessage = GetFieldItemUseRestrictionMessage(InventoryType.SETUP, itemId, 1);
             if (!string.IsNullOrWhiteSpace(fieldItemRestrictionMessage))
@@ -38636,8 +38722,17 @@ namespace HaCreator.MapSimulator
             }
 
 
-            Dictionary<int, int> hotkeys = _playerManager.Skills.GetAllHotkeys();
-            if (hotkeys.Count == 0)
+            bool hasShortcutSkill = false;
+            for (int slotIndex = 0; slotIndex < SkillManager.PRIMARY_SLOT_COUNT; slotIndex++)
+            {
+                if (_playerManager.Skills.GetPrimaryHotkey(slotIndex) > 0)
+                {
+                    hasShortcutSkill = true;
+                    break;
+                }
+            }
+
+            if (!hasShortcutSkill)
             {
                 _statusBarCooldownSortBuffer.Clear();
                 _statusBarCooldownRenderCache.Clear();
@@ -38646,12 +38741,11 @@ namespace HaCreator.MapSimulator
 
 
             _statusBarCooldownSortBuffer.Clear();
-            _statusBarProcessedCooldownSkills.Clear();
             int renderIndex = 0;
-            foreach (KeyValuePair<int, int> hotkey in hotkeys)
+            for (int slotIndex = 0; slotIndex < SkillManager.PRIMARY_SLOT_COUNT; slotIndex++)
             {
-                int skillId = hotkey.Value;
-                if (skillId <= 0 || !_statusBarProcessedCooldownSkills.Add(skillId))
+                int skillId = _playerManager.Skills.GetPrimaryHotkey(slotIndex);
+                if (skillId <= 0)
                 {
                     continue;
                 }
@@ -38704,16 +38798,10 @@ namespace HaCreator.MapSimulator
                     cooldownState.TooltipStateText).SecondaryLineMarkup;
                 renderData.SuppressProgressOverlay = cooldownState.SuppressProgressOverlay;
                 renderData.SuppressCounterText = cooldownState.SuppressCounterText;
-                _statusBarCooldownSortBuffer.Add((renderData, cooldownStartTime, hotkey.Key));
+                renderData.ShortcutSlotIndex = slotIndex;
+                _statusBarCooldownSortBuffer.Add((renderData, cooldownStartTime, slotIndex));
                 renderIndex++;
             }
-
-
-            _statusBarCooldownSortBuffer.Sort(static (left, right) =>
-            {
-                int cooldownComparison = right.CooldownStartTime.CompareTo(left.CooldownStartTime);
-                return cooldownComparison != 0 ? cooldownComparison : left.SortKey.CompareTo(right.SortKey);
-            });
 
 
             for (int i = 0; i < _statusBarCooldownSortBuffer.Count; i++)

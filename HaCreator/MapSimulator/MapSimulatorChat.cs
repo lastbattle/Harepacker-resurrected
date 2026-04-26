@@ -2648,7 +2648,7 @@ namespace HaCreator.MapSimulator
 
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             _isWhisperTargetPickerComboDropdownOpen = false;
-            SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
+            SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex], selectAll: true);
             return true;
         }
 

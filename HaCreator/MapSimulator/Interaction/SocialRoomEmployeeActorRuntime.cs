@@ -48,6 +48,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MiniRoomLayoutLegacyTitleCenterX = 78;
         private const int MiniRoomLayoutLegacyHeadlineY = 42;
         private const int MiniRoomLayoutLegacyOwnerY = 61;
+        private const int MiniRoomTitleClientLineWidth = 100;
+        private const int MiniRoomTitleSecondLineOffsetY = 14;
         private const int NameTagVerticalOffset = 8;
         private const int NameTagMinimumWidth = 58;
         private const int NameTagHorizontalPadding = 18;
@@ -1978,17 +1980,32 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!string.IsNullOrWhiteSpace(headline))
             {
-                Vector2 headlineSize = font.MeasureString(headline) * HeadlineScale;
-                spriteBatch.DrawString(
-                    font,
+                IReadOnlyList<string> headlineLines = ResolveMiniRoomBalloonTitleLines(
                     headline,
-                    new Vector2(boardX + layout.TitleCenterX - (headlineSize.X / 2f), boardY + layout.HeadlineY),
-                    Color.Black,
-                    0f,
-                    Vector2.Zero,
-                    HeadlineScale,
-                    SpriteEffects.None,
-                    0f);
+                    text => font.MeasureString(text).X * HeadlineScale,
+                    MiniRoomTitleClientLineWidth);
+                for (int i = 0; i < headlineLines.Count; i++)
+                {
+                    string line = headlineLines[i];
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        continue;
+                    }
+
+                    Vector2 headlineSize = font.MeasureString(line) * HeadlineScale;
+                    spriteBatch.DrawString(
+                        font,
+                        line,
+                        new Vector2(
+                            boardX + layout.TitleCenterX - (headlineSize.X / 2f),
+                            boardY + layout.HeadlineY + (i * MiniRoomTitleSecondLineOffsetY)),
+                        Color.Black,
+                        0f,
+                        Vector2.Zero,
+                        HeadlineScale,
+                        SpriteEffects.None,
+                        0f);
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(ownerName))
@@ -2005,6 +2022,75 @@ namespace HaCreator.MapSimulator.Interaction
                     SpriteEffects.None,
                     0f);
             }
+        }
+
+        private static IReadOnlyList<string> ResolveMiniRoomBalloonTitleLines(
+            string title,
+            Func<string, float> measureWidth,
+            float maxLineWidth)
+        {
+            string normalizedTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedTitle))
+            {
+                return Array.Empty<string>();
+            }
+
+            if (measureWidth == null || maxLineWidth <= 0f || measureWidth(normalizedTitle) <= maxLineWidth)
+            {
+                return new[] { normalizedTitle };
+            }
+
+            int firstLineLength = ResolveLongestMiniRoomTitlePrefixLength(normalizedTitle, measureWidth, maxLineWidth);
+            if (firstLineLength <= 0 || firstLineLength >= normalizedTitle.Length)
+            {
+                return new[] { normalizedTitle };
+            }
+
+            string firstLine = normalizedTitle[..firstLineLength].TrimEnd();
+            string remainingTitle = normalizedTitle[firstLineLength..].TrimStart();
+            if (string.IsNullOrWhiteSpace(remainingTitle))
+            {
+                return new[] { firstLine };
+            }
+
+            int secondLineLength = ResolveLongestMiniRoomTitlePrefixLength(remainingTitle, measureWidth, maxLineWidth);
+            string secondLine = secondLineLength > 0 && secondLineLength < remainingTitle.Length
+                ? remainingTitle[..secondLineLength].TrimEnd()
+                : remainingTitle;
+            return string.IsNullOrWhiteSpace(secondLine)
+                ? new[] { firstLine }
+                : new[] { firstLine, secondLine };
+        }
+
+        private static int ResolveLongestMiniRoomTitlePrefixLength(
+            string text,
+            Func<string, float> measureWidth,
+            float maxLineWidth)
+        {
+            int bestLength = 0;
+            for (int length = 1; length <= text.Length; length++)
+            {
+                string candidate = text[..length];
+                if (measureWidth(candidate) > maxLineWidth)
+                {
+                    break;
+                }
+
+                bestLength = length;
+            }
+
+            return bestLength;
+        }
+
+        internal static IReadOnlyList<string> ResolveMiniRoomBalloonTitleLinesForTesting(
+            string title,
+            int maxCharacters)
+        {
+            int normalizedMaxCharacters = Math.Max(1, maxCharacters);
+            return ResolveMiniRoomBalloonTitleLines(
+                title,
+                text => text?.Length ?? 0,
+                normalizedMaxCharacters);
         }
 
         private static string ExtractOwnerName(string detail)

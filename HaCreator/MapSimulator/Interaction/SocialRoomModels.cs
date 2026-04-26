@@ -8733,9 +8733,32 @@ namespace HaCreator.MapSimulator.Interaction
 
         private List<TradeVerificationEntry> BuildTradeRequestVerificationEntries()
         {
-            // IDA: CTradingRoomDlg::OnTrade (0x763F20) scans m_aaItem[1] only before emitting subtype 20.
-            // The request-side checksum list should therefore mirror the peer-side rows only.
-            return BuildTradeVerificationEntries(isLocalParty: false);
+            // IDA: CTradingRoomDlg::Trade (0x7646B0) walks both m_aaItem arrays for each of the 9 slots
+            // before sending opcode 144 subtype 17. CTradingRoomDlg::OnTrade (0x763F20) later answers
+            // subtype 20 from m_aaItem[1] only, so keep that narrower follow-up path separate.
+            List<TradeVerificationEntry> entries = new();
+            string localOwner = OwnerName;
+            string remoteOwner = ResolveRemoteTraderName();
+            for (int slotIndex = 1; slotIndex <= TradingRoomClientItemSlotCount; slotIndex++)
+            {
+                AddTradeRequestVerificationEntryForSlot(entries, localOwner, slotIndex);
+                AddTradeRequestVerificationEntryForSlot(entries, remoteOwner, slotIndex);
+            }
+
+            return entries;
+        }
+
+        private void AddTradeRequestVerificationEntryForSlot(List<TradeVerificationEntry> entries, string ownerName, int slotIndex)
+        {
+            SocialRoomItemEntry item = _items.FirstOrDefault(entry =>
+                entry.PacketSlotIndex == slotIndex
+                && string.Equals(entry.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase));
+            if (item == null || !TryBuildTradeVerificationEntry(item, out TradeVerificationEntry tradeEntry))
+            {
+                return;
+            }
+
+            entries.Add(tradeEntry);
         }
 
         private bool TryValidateTradeRequestVerificationEntries(

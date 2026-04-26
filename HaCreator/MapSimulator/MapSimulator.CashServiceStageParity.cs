@@ -2258,6 +2258,16 @@ namespace HaCreator.MapSimulator
 
         private void OpenCashServiceOwnerFamily(CashServiceOwnerStageKind stageKind, bool resetStageSession)
         {
+            if (stageKind == CashServiceOwnerStageKind.CashShop)
+            {
+                string shopRestrictionMessage = GetFieldWindowRestrictionMessage(MapSimulatorWindowNames.CashShop);
+                if (!string.IsNullOrWhiteSpace(shopRestrictionMessage))
+                {
+                    ShowFieldRestrictionMessage(shopRestrictionMessage);
+                    return;
+                }
+            }
+
             SyncCashShopAccountCredit();
             WireCashServiceOwnerWindows();
             if (stageKind == CashServiceOwnerStageKind.CashShop)
@@ -3361,7 +3371,8 @@ namespace HaCreator.MapSimulator
                 inputClientWidth: 210,
                 inputClientHeight: 13,
                 giftRows: BuildCashReceiveGiftQueueLabels(stageWindow.CashGiftPacketEntries),
-                selectedGiftIndex: giftIndex);
+                selectedGiftIndex: giftIndex,
+                giftRowsSelectable: true);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
         }
 

@@ -630,12 +630,15 @@ namespace HaCreator.MapSimulator
                 new Rectangle(ownerBounds.X + 30, ownerBounds.Y + 84, 190, 18),
                 Color.White,
                 InitialQuizOwnerTextScale);
-            DrawInitialQuizOwnerQuestionLabel(ownerBounds);
-            DrawInitialQuizOwnerSingleLineText(
-                snapshot.ProblemText,
-                new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 110, 146, 18),
-                Color.White,
-                InitialQuizOwnerTextScale);
+            if (ShouldShowInitialQuizOwnerQuestion(snapshot.ProblemText))
+            {
+                DrawInitialQuizOwnerQuestionLabel(ownerBounds);
+                DrawInitialQuizOwnerSingleLineText(
+                    snapshot.ProblemText,
+                    new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 110, 146, 18),
+                    Color.White,
+                    InitialQuizOwnerTextScale);
+            }
 
             if (ShouldShowInitialQuizOwnerHint(snapshot.HintText))
             {
@@ -1680,7 +1683,12 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldShowInitialQuizOwnerHint(string hintText)
         {
-            return !string.IsNullOrWhiteSpace(hintText);
+            return !string.IsNullOrEmpty(hintText);
+        }
+
+        internal static bool ShouldShowInitialQuizOwnerQuestion(string problemText)
+        {
+            return !string.IsNullOrEmpty(problemText);
         }
 
         internal static bool ShouldShowInitialQuizOwnerInput(int remainingSeconds)

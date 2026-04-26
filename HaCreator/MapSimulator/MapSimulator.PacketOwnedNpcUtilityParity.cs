@@ -110,6 +110,13 @@ namespace HaCreator.MapSimulator
                 return defaultMessage ?? $"{displayName} owner is not available because the UI window manager is missing.";
             }
 
+            string fieldRestrictionMessage = GetFieldWindowRestrictionMessage(windowName);
+            if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(fieldRestrictionMessage);
+                return $"{defaultMessage} {displayName} stayed in status-only mode because current field metadata blocks that owner.";
+            }
+
             string blockingOwner = GetVisibleUniqueModelessOwner(windowName);
             if (!string.IsNullOrWhiteSpace(blockingOwner))
             {
@@ -464,6 +471,16 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager == null)
             {
                 return defaultMessage ?? "Admin Shop owner is unavailable because the UI window manager is missing.";
+            }
+
+            string fieldRestrictionMessage = GetFieldWindowRestrictionMessage(MapSimulatorWindowNames.CashShop);
+            if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(fieldRestrictionMessage);
+                adminShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
+                    "CAdminShopDlg owner surface stayed hidden because current field metadata blocks shop owners.",
+                    AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden);
+                return $"{defaultMessage} Admin Shop stayed in status-only mode because current field metadata blocks shop owners.";
             }
 
             string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);

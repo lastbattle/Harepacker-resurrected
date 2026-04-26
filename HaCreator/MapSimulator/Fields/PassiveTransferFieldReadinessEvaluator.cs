@@ -167,6 +167,11 @@ namespace HaCreator.MapSimulator.Fields
             return hasPendingRequest && (leftKeyPressed || rightKeyPressed);
         }
 
+        public static bool ShouldStopSkillMacroForHorizontalQueuedCancel(bool shouldCancelQueuedRetry)
+        {
+            return shouldCancelQueuedRetry;
+        }
+
         public static bool IsExclusiveTransferRequestInFlight(
             bool requestSent,
             int requestSentTick,

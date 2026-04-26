@@ -145,7 +145,7 @@ namespace HaCreator.MapSimulator.Pools
 
         public static bool ShouldEmitPassiveEffectFromMotion(ActiveSummon summon)
         {
-            return ShouldUseAnchorBoundPassiveFallback(summon);
+            return ResolveEffectiveMovementStyle(summon) != SummonMovementStyle.Stationary;
         }
 
         public static SummonActorState ResolveIdleActorState(ActiveSummon summon, int currentTime, int teslaCoilSkillId)

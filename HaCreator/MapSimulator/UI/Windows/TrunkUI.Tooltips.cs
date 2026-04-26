@@ -129,6 +129,11 @@ namespace HaCreator.MapSimulator.UI
                 sections.Add(new TooltipSection(description, new Color(255, 238, 196)));
             }
 
+            for (int i = 0; i < metadata.AuthoredSampleLines.Count; i++)
+            {
+                sections.Add(new TooltipSection(metadata.AuthoredSampleLines[i], new Color(210, 220, 255)));
+            }
+
             List<(string[] Lines, Color Color, float Height)> wrappedSections = BuildWrappedTooltipSections(sections);
             float wrappedSectionHeight = MeasureWrappedSectionHeight(wrappedSections);
             float cashLabelHeight = cashLabelTexture?.Height ?? 0f;

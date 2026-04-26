@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         public const int FieldSpecificDataRelayOpcode = 149;
         public const int CurrentWrapperRelayOpcode = 163;
+        internal const int RelayPrefixChainMaxDepth = 8;
         private const int KillCountPacketType = 178;
         private const int ChaosZakumPortalSessionFallbackFieldId = 180000002;
         private const int EscortFailOverlayDurationMs = 2500;
@@ -411,11 +412,10 @@ namespace HaCreator.MapSimulator.Fields
             evidence = string.Empty;
             firstPayload ??= Array.Empty<byte>();
 
-            const int maxNestedRelayDepth = 8;
             List<int> relayPrefixChain = new();
             int relayPacketType = firstPacketType;
             byte[] relayPayload = firstPayload;
-            for (int depth = 0; depth < maxNestedRelayDepth; depth++)
+            for (int depth = 0; depth < RelayPrefixChainMaxDepth; depth++)
             {
                 relayPrefixChain.Add(relayPacketType);
                 if (relayPacketType == FieldSpecificDataRelayOpcode

@@ -22,5 +22,7 @@ namespace HaCreator.MapSimulator
         public MobSkillTargetMobType TargetMobType { get; init; }
         public Point? Lt { get; init; }
         public Point? Rb { get; init; }
+        public Point? BombLt { get; init; }
+        public Point? BombRb { get; init; }
     }
 }

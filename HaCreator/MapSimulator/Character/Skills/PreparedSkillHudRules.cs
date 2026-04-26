@@ -133,6 +133,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal const int SG88SkillId = 35121003;
         internal static readonly Vector2 ClientKeyDownBarCanvasOrigin = new(40f, 83f);
+        internal static readonly Vector2 ClientSg88KeyDownBarCanvasOrigin = new(40f, 171f);
         internal static readonly Vector2 ClientLocalKeyDownBarLayerOffset = new(-36f, -100f);
         internal static readonly Vector2 ClientSg88KeyDownBarLayerOffset = new(-26f, -52f);
         private const int MonkeyWaveFallbackGaugeDurationMs = 1080;
@@ -460,7 +461,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return vectorControlPosition
                 + ClientSg88KeyDownBarLayerOffset
-                + ClientKeyDownBarCanvasOrigin;
+                + ClientSg88KeyDownBarCanvasOrigin;
         }
 
         private static bool HasAuthoredKeydownNode(int skillId)

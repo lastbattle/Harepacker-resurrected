@@ -33,6 +33,14 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class InventoryOwnerState
         {
+            public sealed class ButtonControlState
+            {
+                public string ActionKey { get; init; } = string.Empty;
+                public int ControlId { get; init; }
+                public int StringPoolUolId { get; init; }
+                public Point Position { get; init; }
+            }
+
             public int EquipCount { get; init; }
             public int UseCount { get; init; }
             public int SetupCount { get; init; }
@@ -44,6 +52,13 @@ namespace HaCreator.MapSimulator.UI
             public int WheelRange { get; init; }
             public bool HasNumberFont { get; init; }
             public int TabControlId { get; init; } = 1000;
+            public int TabItemCount { get; init; } = 5;
+            public int TabX { get; init; } = 17;
+            public int TabY { get; init; } = 28;
+            public int TabWidth { get; init; } = 156;
+            public bool TabSameWidth { get; init; } = true;
+            public int TabNormalStringPoolId { get; init; } = 0xC94;
+            public int TabSelectedStringPoolId { get; init; } = 0xC95;
             public int ScrollBarControlId { get; init; } = 1001;
             public int ScrollBarUpButtonId { get; init; } = 1;
             public int ScrollBarDownButtonId { get; init; }
@@ -54,6 +69,7 @@ namespace HaCreator.MapSimulator.UI
             public string SelectedEntryTitle { get; init; } = string.Empty;
             public string PacketFocusSignature { get; init; } = string.Empty;
             public string PacketFocusMessage { get; init; } = string.Empty;
+            public IReadOnlyList<ButtonControlState> ButtonControls { get; init; } = Array.Empty<ButtonControlState>();
         }
 
         public sealed class ListOwnerEntryState
@@ -642,10 +658,26 @@ namespace HaCreator.MapSimulator.UI
             lineY += _font.LineSpacing;
             sprite.DrawString(
                 _font,
-                $"Tab#{state.TabControlId.ToString(CultureInfo.InvariantCulture)}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
+                $"Tab#{state.TabControlId.ToString(CultureInfo.InvariantCulture)} items {state.TabItemCount.ToString(CultureInfo.InvariantCulture)} @{state.TabX.ToString(CultureInfo.InvariantCulture)},{state.TabY.ToString(CultureInfo.InvariantCulture)} w{state.TabWidth.ToString(CultureInfo.InvariantCulture)} same {(state.TabSameWidth ? "on" : "off")}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Tab UOL 0x{state.TabNormalStringPoolId:X}/0x{state.TabSelectedStringPoolId:X}  Scroll#{state.ScrollBarControlId.ToString(CultureInfo.InvariantCulture)} up {state.ScrollBarUpButtonId.ToString(CultureInfo.InvariantCulture)} down {state.ScrollBarDownButtonId.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            if (state.ButtonControls.Count > 0)
+            {
+                string buttonSummary = string.Join(
+                    " ",
+                    state.ButtonControls.Select(button =>
+                        $"{button.ActionKey}:{button.ControlId.ToString(CultureInfo.InvariantCulture)}/0x{button.StringPoolUolId:X}"));
+                sprite.DrawString(_font, TrimToLength(buttonSummary, 58), new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
+                lineY += _font.LineSpacing;
+            }
+
             sprite.DrawString(_font, $"Focus row {_inventoryRowFocusIndex.ToString(CultureInfo.InvariantCulture)}  Trunk route armed  Cash rows {state.CashCount.ToString(CultureInfo.InvariantCulture)}", new Vector2(Position.X + contentBounds.X + 12, lineY), accentColor);
             lineY += _font.LineSpacing;
             string selectedEntry = string.IsNullOrWhiteSpace(state.SelectedEntryTitle) ? "none" : state.SelectedEntryTitle;

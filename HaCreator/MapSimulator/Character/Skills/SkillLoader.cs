@@ -5901,12 +5901,87 @@ namespace HaCreator.MapSimulator.Character.Skills
                         value,
                         BuildClientSummonedUolCandidateContextPathParts(node, propertyName, skillNode));
                 }
+
+                foreach (ClientSummonedUolCandidateValue tableCandidate in EnumerateClientSummonedUolTableCandidateValues(
+                             node,
+                             skillNode,
+                             propertyName))
+                {
+                    yield return tableCandidate;
+                }
             }
 
             foreach (ClientSummonedUolCandidateValue heuristicCandidate in EnumerateClientSummonedUolHeuristicCandidateValues(node, skillNode))
             {
                 yield return heuristicCandidate;
             }
+        }
+
+        private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolTableCandidateValues(
+            WzImageProperty node,
+            WzImageProperty skillNode,
+            string propertyName)
+        {
+            if (node == null
+                || string.IsNullOrWhiteSpace(propertyName)
+                || !TryParseRequiredSkillId(skillNode?.Name, out int skillId))
+            {
+                yield break;
+            }
+
+            WzImageProperty tableNode = node[propertyName];
+            WzImageProperty tableEntry = tableNode?[skillId.ToString(CultureInfo.InvariantCulture)];
+            if (tableEntry == null)
+            {
+                yield break;
+            }
+
+            string[] entryPathParts = BuildClientSummonedUolCandidateContextPathParts(
+                node,
+                $"{propertyName}/{skillId.ToString(CultureInfo.InvariantCulture)}",
+                skillNode);
+            string value = GetClientSummonedUolCandidateValue(tableEntry);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                yield return new ClientSummonedUolCandidateValue(value, entryPathParts);
+            }
+
+            if (tableEntry.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in tableEntry.WzProperties)
+            {
+                if (child == null || !IsClientSummonedUolTableEntryValueName(child.Name))
+                {
+                    continue;
+                }
+
+                value = GetClientSummonedUolCandidateValue(child);
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                yield return new ClientSummonedUolCandidateValue(
+                    value,
+                    BuildResolvedClientSummonedUolChildPathParts(entryPathParts, child.Name));
+            }
+        }
+
+        private static bool IsClientSummonedUolTableEntryValueName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            return name.Equals("0", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("path", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("uol", StringComparison.OrdinalIgnoreCase)
+                   || name.Equals("value", StringComparison.OrdinalIgnoreCase)
+                   || ClientSummonedUolPropertyNames.Contains(name, StringComparer.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<ClientSummonedUolCandidateValue> EnumerateClientSummonedUolHeuristicCandidateValues(
@@ -6890,9 +6965,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            string normalizedPath = summonedUolPath
+            string normalizedPath = NormalizeClientSummonedUolEncodedPathSyntax(summonedUolPath)
                 .Replace('\\', '/')
                 .Trim()
+                .Trim('"', '\'')
                 .TrimStart('/');
 
             if (IsPlainNumericClientSummonedUolToken(normalizedPath))
@@ -6965,9 +7041,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            string normalizedPath = summonedUolFullPath
+            string normalizedPath = NormalizeClientSummonedUolEncodedPathSyntax(summonedUolFullPath)
                 .Replace('\\', '/')
                 .Trim()
+                .Trim('"', '\'')
                 .TrimStart('/');
 
             string[] parts = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
@@ -6988,6 +7065,102 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private static string NormalizeClientSummonedUolEncodedPathSyntax(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return string.Empty;
+            }
+
+            var builder = new System.Text.StringBuilder(token.Length);
+            for (int i = 0; i < token.Length; i++)
+            {
+                char current = token[i];
+                if (current == '\\' && i < token.Length - 1)
+                {
+                    char escaped = token[i + 1];
+                    if (IsClientSummonedUolEscapedPathSyntaxCharacter(escaped))
+                    {
+                        builder.Append(escaped == '\\' ? '/' : escaped);
+                        i++;
+                        continue;
+                    }
+                }
+
+                if (current == '%'
+                    && i < token.Length - 2
+                    && TryParseClientSummonedUolPercentEncodedChar(token[i + 1], token[i + 2], out char decoded)
+                    && IsClientSummonedUolDecodedPathCharacter(decoded))
+                {
+                    builder.Append(decoded == '\\' ? '/' : decoded);
+                    i += 2;
+                    continue;
+                }
+
+                builder.Append(current);
+            }
+
+            return builder.ToString();
+        }
+
+        private static bool IsClientSummonedUolEscapedPathSyntaxCharacter(char character)
+        {
+            return character == '/'
+                   || character == '\\'
+                   || character == ':'
+                   || character == '"'
+                   || character == '\''
+                   || character == '('
+                   || character == ')'
+                   || character == '['
+                   || character == ']'
+                   || character == '{'
+                   || character == '}'
+                   || character == '<'
+                   || character == '>';
+        }
+
+        private static bool IsClientSummonedUolDecodedPathCharacter(char character)
+        {
+            return (character >= 0x20 && character <= 0x7E)
+                   || char.IsWhiteSpace(character);
+        }
+
+        private static bool TryParseClientSummonedUolPercentEncodedChar(
+            char firstHexChar,
+            char secondHexChar,
+            out char decoded)
+        {
+            decoded = '\0';
+            if (!TryParseClientSummonedUolHexDigit(firstHexChar, out int high)
+                || !TryParseClientSummonedUolHexDigit(secondHexChar, out int low))
+            {
+                return false;
+            }
+
+            decoded = (char)((high << 4) | low);
+            return true;
+        }
+
+        private static bool TryParseClientSummonedUolHexDigit(char character, out int value)
+        {
+            value = 0;
+            if (character >= '0' && character <= '9')
+            {
+                value = character - '0';
+                return true;
+            }
+
+            char normalized = char.ToUpperInvariant(character);
+            if (normalized >= 'A' && normalized <= 'F')
+            {
+                value = normalized - 'A' + 10;
+                return true;
+            }
+
+            return false;
         }
 
         private static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPath(

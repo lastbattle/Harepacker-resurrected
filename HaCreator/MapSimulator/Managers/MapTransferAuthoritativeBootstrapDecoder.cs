@@ -1148,6 +1148,52 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (TrySkipKnownPostMapTransferCharacterDataTail(
+                    payload,
+                    characterDataFlags,
+                    characterJobId,
+                    out int knownTailOffset))
+            {
+                ReadOnlySpan<byte> trailingTail = payload[knownTailOffset..];
+                if (trailingTail.Length == 0)
+                {
+                    matchedKnownTail = true;
+                    tailCandidateScore = GetKnownCharacterDataTailCandidateScore(0);
+                    return true;
+                }
+
+                if (TryValidateExactKnownTrailingTail(trailingTail, out bool matchedExactTail, out int exactTailCandidateScore))
+                {
+                    matchedKnownTail = matchedExactTail;
+                    tailCandidateScore = exactTailCandidateScore;
+                    return true;
+                }
+
+                if (TryValidateKnownTrailingLogoutGiftTail(trailingTail, out bool matchedKnownLogoutGiftTail))
+                {
+                    matchedKnownTail = matchedKnownLogoutGiftTail;
+                    tailCandidateScore = matchedKnownLogoutGiftTail
+                        ? GetKnownCharacterDataTailCandidateScore(trailingTail.Length)
+                        : GetRecognizedLogoutGiftTailCandidateScore(trailingTail.Length);
+                    return true;
+                }
+
+                if (TryValidateKnownTrailingServerFileTimeTail(trailingTail, out bool matchedKnownServerFileTimeTail))
+                {
+                    matchedKnownTail = matchedKnownServerFileTimeTail;
+                    tailCandidateScore = matchedKnownServerFileTimeTail
+                        ? GetKnownCharacterDataTailCandidateScore(trailingTail.Length)
+                        : GetBoundedOpaqueTailCandidateScore(trailingTail.Length);
+                    return true;
+                }
+
+                if (trailingTail.Length <= MaximumOpaquePostMapTransferTailByteLength)
+                {
+                    tailCandidateScore = GetBoundedOpaqueTailCandidateScore(trailingTail.Length);
+                    return true;
+                }
+            }
+
             try
             {
                 using MemoryStream stream = new(payload.ToArray(), writable: false);
@@ -1266,6 +1312,158 @@ namespace HaCreator.MapSimulator.Managers
 
                 return false;
             }
+        }
+
+        private static bool TrySkipKnownPostMapTransferCharacterDataTail(
+            ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
+            short characterJobId,
+            out int offset)
+        {
+            offset = 0;
+
+            if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0 &&
+                !TrySkipInt16ValueRecordGroup(payload, offset, out offset))
+            {
+                return false;
+            }
+
+            if ((characterDataFlags & CharacterDataInt16ValueRecordFlag) != 0 &&
+                !TrySkipInt16ValueRecordGroup(payload, offset, out offset))
+            {
+                return false;
+            }
+
+            if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0 &&
+                !TrySkipQuestRecordGroup(payload, offset, out offset))
+            {
+                return false;
+            }
+
+            if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0 &&
+                !TrySkipShortFileTimeRecordGroup(payload, offset, out offset))
+            {
+                return false;
+            }
+
+            if ((characterDataFlags & 0x40000UL) != 0 &&
+                !TrySkipNewYearCardRecordGroup(payload, offset, out offset))
+            {
+                return false;
+            }
+
+            if ((characterDataFlags & 0x80000UL) != 0 &&
+                !TrySkipQuestExRecordGroup(payload, offset, out offset))
+            {
+                return false;
+            }
+
+            if ((characterDataFlags & CharacterDataTwoIntValueRecordFlag) != 0 &&
+                !TrySkipTwoIntValueRecord(payload, offset, out offset))
+            {
+                return false;
+            }
+
+            if ((characterDataFlags & 0x200000UL) != 0 &&
+                characterJobId / 100 == 33)
+            {
+                if ((uint)offset > payload.Length || payload.Length - offset < sizeof(byte) + (5 * sizeof(int)))
+                {
+                    return false;
+                }
+
+                offset += sizeof(byte) + (5 * sizeof(int));
+            }
+
+            if ((characterDataFlags & 0x400000UL) != 0 &&
+                !TrySkipFixedRecordGroup(payload, offset, sizeof(ushort) + sizeof(long), out offset))
+            {
+                return false;
+            }
+
+            if ((characterDataFlags & 0x800000UL) != 0 &&
+                !TrySkipFixedRecordGroup(payload, offset, sizeof(ushort) + sizeof(ushort), out offset))
+            {
+                return false;
+            }
+
+            return offset > 0;
+        }
+
+        private static bool TrySkipNewYearCardRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort count = BitConverter.ToUInt16(payload.Slice(offset, sizeof(ushort)));
+            nextOffset += sizeof(ushort);
+            for (int i = 0; i < count; i++)
+            {
+                if ((uint)nextOffset > payload.Length || payload.Length - nextOffset < 2 * sizeof(int))
+                {
+                    return false;
+                }
+
+                nextOffset += 2 * sizeof(int);
+                if (!TrySkipMapleString(payload, nextOffset, out nextOffset))
+                {
+                    return false;
+                }
+
+                if ((uint)nextOffset > payload.Length || payload.Length - nextOffset < sizeof(byte) + sizeof(long) + sizeof(int))
+                {
+                    return false;
+                }
+
+                nextOffset += sizeof(byte) + sizeof(long) + sizeof(int);
+                if (!TrySkipMapleString(payload, nextOffset, out nextOffset))
+                {
+                    return false;
+                }
+
+                if ((uint)nextOffset > payload.Length || payload.Length - nextOffset < (2 * sizeof(byte)) + sizeof(long))
+                {
+                    return false;
+                }
+
+                nextOffset += (2 * sizeof(byte)) + sizeof(long);
+                if (!TrySkipMapleString(payload, nextOffset, out nextOffset))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TrySkipQuestExRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort count = BitConverter.ToUInt16(payload.Slice(offset, sizeof(ushort)));
+            nextOffset += sizeof(ushort);
+            for (int i = 0; i < count; i++)
+            {
+                if ((uint)nextOffset > payload.Length || payload.Length - nextOffset < sizeof(ushort))
+                {
+                    return false;
+                }
+
+                nextOffset += sizeof(ushort);
+                if (!TrySkipMapleString(payload, nextOffset, out nextOffset))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool TryValidateExactKnownTrailingTail(

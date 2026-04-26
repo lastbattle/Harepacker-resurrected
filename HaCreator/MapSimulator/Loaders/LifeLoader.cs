@@ -1791,7 +1791,11 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
-        private static List<int> BuildMobActionFrameDelays(IReadOnlyList<WzCanvasProperty> frameCanvases, int fallbackDelay = 100)
+        private const int MobClientActionFrameFallbackDelayMs = 120;
+
+        private static List<int> BuildMobActionFrameDelays(
+            IReadOnlyList<WzCanvasProperty> frameCanvases,
+            int fallbackDelay = MobClientActionFrameFallbackDelayMs)
         {
             var frameDelays = new List<int>(frameCanvases?.Count ?? 0);
             if (frameCanvases == null)
@@ -1805,6 +1809,12 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return frameDelays;
+        }
+
+        internal static IReadOnlyList<int> BuildMobActionFrameDelaysForTests(
+            IReadOnlyList<WzCanvasProperty> frameCanvases)
+        {
+            return BuildMobActionFrameDelays(frameCanvases);
         }
 
         private static List<IDXObject> InstantiateMobActionFrames(

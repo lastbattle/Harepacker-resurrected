@@ -543,7 +543,7 @@ namespace HaCreator.MapSimulator.Interaction
                 flipValue = InfoTool.GetOptionalBool(GetChildProperty(backImgInfo, "f"));
             }
             WzImageProperty frontProperty = GetChildProperty(property, "front") ?? GetChildProperty(backImgInfo, "front");
-            entries.Add(new ContextOwnedStageBackImageEntry(
+            ContextOwnedStageBackImageEntry entry = new(
                 backgroundSet.Trim(),
                 number.ToString(CultureInfo.InvariantCulture),
                 infoType,
@@ -561,8 +561,33 @@ namespace HaCreator.MapSimulator.Interaction
                 ReadIntWithFallback(property, "screenMode", defaultValue: 0, backImgInfo),
                 ReadIntWithFallback(property, "z", defaultValue: 0, backImgInfo),
                 spineAnimation,
-                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo)));
+                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo));
+            UpsertNativeStageBackImageEntry(entries, entry);
             return true;
+        }
+
+        private static void UpsertNativeStageBackImageEntry(
+            List<ContextOwnedStageBackImageEntry> entries,
+            ContextOwnedStageBackImageEntry entry)
+        {
+            if (entries == null || entry == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                ContextOwnedStageBackImageEntry existing = entries[i];
+                if (existing.Front == entry.Front
+                    && string.Equals(existing.BackgroundSet, entry.BackgroundSet, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(existing.Number, entry.Number, StringComparison.OrdinalIgnoreCase))
+                {
+                    entries[i] = entry;
+                    return;
+                }
+            }
+
+            entries.Add(entry);
         }
 
         private static bool TryParseClientStageBackObjectKey(string name, out int number)

@@ -2188,19 +2188,13 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                if (currentHp < 0)
-                {
-                    error = $"Remote user receive-HP packet current HP {currentHp} is invalid.";
-                    return false;
-                }
-
                 if (maxHp <= 0)
                 {
                     error = $"Remote user receive-HP packet max HP {maxHp} is invalid.";
                     return false;
                 }
 
-                packet = new RemoteUserReceiveHpPacket(characterId, Math.Min(currentHp, maxHp), maxHp);
+                packet = new RemoteUserReceiveHpPacket(characterId, currentHp, maxHp);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -4463,6 +4457,22 @@ namespace HaCreator.MapSimulator.Pools
                     rawPayload,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out int combinedConsensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    combinedConsensusChargeElement,
                     out chargeSkillId))
             {
                 return true;

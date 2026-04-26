@@ -137,14 +137,28 @@ namespace HaCreator.MapSimulator.Character
         private static readonly IReadOnlySet<string> WildHunterJaguarExclusiveActionNames =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
+                // IDA `IsAbleTamingMobOneTimeAction` admits these raw actions for
+                // wild-hunter jaguar vehicles before the 1932016-only branch.
+                "burster2",
+                "rollingSpin",
+                "finishAttack_link2",
+                "swingRes",
+                "finishBlow",
+                "cyclone_pre",
+                "tank_siegepre",
                 "doubleJump",
                 "knockback",
                 "swallow_pre",
                 "swallow_loop",
                 "swallow",
                 "swallow_attack",
+                "drillrush",
+                "giant",
+                "mbooster",
                 "crossRoad",
                 "wildbeast",
+                "earthslug",
+                "rpunch",
                 "sonicBoom",
                 "clawCut",
                 "mine",
@@ -513,11 +527,6 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (MechanicExclusiveActionNames.Contains(actionName))
-            {
-                return VehicleItemId == MechanicTamingMobItemId;
-            }
-
             if (BattleshipExclusiveActionNames.Contains(actionName))
             {
                 return VehicleItemId == BattleshipTamingMobItemId;
@@ -543,6 +552,11 @@ namespace HaCreator.MapSimulator.Character
             if (WildHunterJaguarExclusiveActionNames.Contains(actionName))
             {
                 return WildHunterJaguarTamingMobItemIds.Contains(VehicleItemId);
+            }
+
+            if (MechanicExclusiveActionNames.Contains(actionName))
+            {
+                return VehicleItemId == MechanicTamingMobItemId;
             }
 
             return true;

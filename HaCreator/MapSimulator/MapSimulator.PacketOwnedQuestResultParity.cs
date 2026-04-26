@@ -1093,7 +1093,7 @@ namespace HaCreator.MapSimulator
         private bool TryResolvePendingQuestDeliveryQuestResult(int questId, out string outcome)
         {
             outcome = string.Empty;
-            QuestDetailDeliveryType deliveryTypeHint = ConsumePendingQuestDeliveryResultPhaseHint(questId);
+            QuestDetailDeliveryType deliveryTypeHint = ResolvePendingQuestDeliveryResultPhaseHint(questId);
             bool? preferredCompletionPhase = deliveryTypeHint switch
             {
                 QuestDetailDeliveryType.Accept => false,
@@ -1154,6 +1154,17 @@ namespace HaCreator.MapSimulator
             return ConsumePendingQuestDeliveryResultPhaseHint(
                 _pendingQuestDeliveryResultPhaseHints,
                 questId);
+        }
+
+        private QuestDetailDeliveryType ResolvePendingQuestDeliveryResultPhaseHint(int questId)
+        {
+            QuestDetailDeliveryType deliveryType = ConsumePendingQuestDeliveryResultPhaseHint(questId);
+            if (deliveryType != QuestDetailDeliveryType.None)
+            {
+                return deliveryType;
+            }
+
+            return ResolvePacketOwnedQuestDeliveryTypeHint(questId);
         }
 
         private static void RegisterPendingQuestDeliveryResultPhaseHint(
@@ -1469,6 +1480,32 @@ namespace HaCreator.MapSimulator
 
             return FindPendingQuestDeliveryResultOwnershipIndex(
                 pending,
+                questId,
+                preferredCompletionPhase,
+                enforcePreferredPhaseMatch);
+        }
+
+        internal static int FindPendingQuestDeliveryQuestResultIndexWithDeliveryTypeHintForTesting(
+            IReadOnlyList<int> queuedQuestIds,
+            IReadOnlyList<bool> queuedCompletionPhases,
+            int questId,
+            QuestDetailDeliveryType queuedDeliveryTypeHint,
+            QuestDetailDeliveryType storedDeliveryTypeHint)
+        {
+            QuestDetailDeliveryType deliveryTypeHint = queuedDeliveryTypeHint != QuestDetailDeliveryType.None
+                ? queuedDeliveryTypeHint
+                : storedDeliveryTypeHint;
+            bool? preferredCompletionPhase = deliveryTypeHint switch
+            {
+                QuestDetailDeliveryType.Accept => false,
+                QuestDetailDeliveryType.Complete => true,
+                _ => null
+            };
+            bool enforcePreferredPhaseMatch = deliveryTypeHint is QuestDetailDeliveryType.Accept or QuestDetailDeliveryType.Complete;
+
+            return FindPendingQuestDeliveryQuestResultIndexWithPreferredPhaseForTesting(
+                queuedQuestIds,
+                queuedCompletionPhases,
                 questId,
                 preferredCompletionPhase,
                 enforcePreferredPhaseMatch);

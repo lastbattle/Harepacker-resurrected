@@ -451,15 +451,15 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendPulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
         {
-            if (HasPassiveEstablishedSocketPair)
-            {
-                status = $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject opcode {OutboundPulleyRequestOpcode} into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
-                LastStatus = status;
-                return false;
-            }
-
             if (!_roleSessionProxy.HasConnectedSession)
             {
+                if (HasPassiveEstablishedSocketPair)
+                {
+                    status = $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject opcode {OutboundPulleyRequestOpcode} into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
+                    LastStatus = status;
+                    return false;
+                }
+
                 status = "Guild boss official-session bridge has no active Maple session.";
                 LastStatus = status;
                 return false;

@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
         public DateTime? ExpirationDateUtc { get; init; }
         public IReadOnlyList<string> EffectLines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> MetadataLines { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> AuthoredSampleLines { get; init; } = Array.Empty<string>();
     }
 
     public readonly struct SkillBookUseMetadata
@@ -846,6 +847,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<string> effectLines = BuildEffectLines(itemId, itemProperty, infoProperty, specProperty, specExProperty);
+            IReadOnlyList<string> authoredSampleLines = BuildAuthoredSampleTextLines(itemProperty?["sample"] as WzSubProperty);
             List<string> metadataLines = BuildMetadataLines(
                 itemId,
                 infoProperty,
@@ -874,7 +876,8 @@ namespace HaCreator.MapSimulator.UI
                 UnitPrice = TryGetPositiveDouble(infoProperty?["unitPrice"]),
                 ExpirationDateUtc = expirationDateUtc,
                 EffectLines = effectLines,
-                MetadataLines = metadataLines
+                MetadataLines = metadataLines,
+                AuthoredSampleLines = authoredSampleLines
             };
         }
 
@@ -3609,6 +3612,70 @@ namespace HaCreator.MapSimulator.UI
             return rows;
         }
 
+        private static IReadOnlyList<string> BuildAuthoredSampleTextLines(WzSubProperty sampleProperty)
+        {
+            if (sampleProperty?.WzProperties == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<WzSubProperty> sampleVariants = GetNumericNamedChildren(sampleProperty);
+            if (sampleVariants.Count == 0)
+            {
+                List<(int Index, string Text)> directRows = GetNumericNamedStringRows(sampleProperty);
+                return BuildAuthoredSampleTextPreview(directRows, remainingVariantCount: 0);
+            }
+
+            for (int variantIndex = 0; variantIndex < sampleVariants.Count; variantIndex++)
+            {
+                List<(int Index, string Text)> rows = GetNumericNamedStringRows(sampleVariants[variantIndex]);
+                if (rows.Count == 0)
+                {
+                    continue;
+                }
+
+                return BuildAuthoredSampleTextPreview(
+                    rows,
+                    Math.Max(0, sampleVariants.Count - variantIndex - 1));
+            }
+
+            return Array.Empty<string>();
+        }
+
+        private static IReadOnlyList<string> BuildAuthoredSampleTextPreview(
+            IReadOnlyList<(int Index, string Text)> rows,
+            int remainingVariantCount)
+        {
+            if (rows == null || rows.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            const int previewLineLimit = 3;
+            List<string> lines = new(Math.Min(previewLineLimit, rows.Count) + 1);
+            int previewCount = Math.Min(previewLineLimit, rows.Count);
+            for (int i = 0; i < previewCount; i++)
+            {
+                string text = NormalizeTooltipText(rows[i].Text);
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    lines.Add(text);
+                }
+            }
+
+            int remainingRows = rows.Count - previewCount;
+            if (remainingRows > 0)
+            {
+                lines.Add($"... and {remainingRows.ToString(CultureInfo.InvariantCulture)} more sample line{(remainingRows == 1 ? string.Empty : "s")}");
+            }
+            else if (remainingVariantCount > 0)
+            {
+                lines.Add($"... and {remainingVariantCount.ToString(CultureInfo.InvariantCulture)} more sample variant{(remainingVariantCount == 1 ? string.Empty : "s")}");
+            }
+
+            return lines;
+        }
+
         private static IReadOnlyList<int> GetNumericNamedIntRows(WzSubProperty property)
         {
             List<(int Index, int Value)> rows = new();
@@ -4443,6 +4510,11 @@ namespace HaCreator.MapSimulator.UI
         public static IReadOnlyList<string> BuildConsumeItemRequirementLinesForTests(WzSubProperty consumeItemProperty, int previewLineLimit = ConsumeItemRequirementLineLimit)
         {
             return BuildConsumeItemRequirementLines(consumeItemProperty, previewLineLimit);
+        }
+
+        public static IReadOnlyList<string> BuildAuthoredSampleTextLinesForTests(WzSubProperty sampleProperty)
+        {
+            return BuildAuthoredSampleTextLines(sampleProperty);
         }
 
         public static bool TrySelectConsumeItemRequirementForTests(

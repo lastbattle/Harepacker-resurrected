@@ -537,7 +537,8 @@ namespace HaCreator.MapSimulator.Animation
             bool left,
             int attackTimeMs,
             int currentTimeMs,
-            int zOrder)
+            int zOrder,
+            int initialElapsedMs = 0)
         {
             if (!HasFrames(hookFrames) && !HasFrames(chainFrames))
             {
@@ -545,7 +546,7 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             var animation = new SecondaryHookChainAnimation();
-            animation.Initialize(hookFrames, chainFrames, ownerId, getOwnerPosition, fallbackOwnerPosition, targetPosition, left, attackTimeMs, currentTimeMs, zOrder);
+            animation.Initialize(hookFrames, chainFrames, ownerId, getOwnerPosition, fallbackOwnerPosition, targetPosition, left, attackTimeMs, currentTimeMs, zOrder, initialElapsedMs);
             _secondaryHookChainAnimations.Add(animation);
             return animation.Id;
         }
@@ -1157,6 +1158,7 @@ namespace HaCreator.MapSimulator.Animation
             _chainLightnings.Clear();
             _fallingAnimations.Clear();
             _followAnimations.Clear();
+            _followParticleAnimations.Clear();
             _areaAnimations.Clear();
             _userStateAnimations.Clear();
             _secondaryPrepareAnimations.Clear();
@@ -1177,7 +1179,7 @@ namespace HaCreator.MapSimulator.Animation
         public int ActiveCount =>
             _oneTimeAnimations.Count + _oneTimeCanvasLayers.Count + _repeatAnimations.Count +
             _chainLightnings.Count + _fallingAnimations.Count +
-            _followAnimations.Count + _areaAnimations.Count +
+            _followAnimations.Count + _followParticleAnimations.Count + _areaAnimations.Count +
             _userStateAnimations.Count + SecondarySkillAnimationOwnerCount;
 
         internal static bool HasFrames(List<IDXObject> frames)
@@ -1769,14 +1771,15 @@ namespace HaCreator.MapSimulator.Animation
 
         public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
 
-        public void Initialize(List<IDXObject> hookFrames, List<IDXObject> chainFrames, int ownerId, Func<Vector2> getOwnerPosition, Vector2 fallbackOwnerPosition, Vector2? targetPosition, bool left, int attackTimeMs, int currentTimeMs, int zOrder)
+        public void Initialize(List<IDXObject> hookFrames, List<IDXObject> chainFrames, int ownerId, Func<Vector2> getOwnerPosition, Vector2 fallbackOwnerPosition, Vector2? targetPosition, bool left, int attackTimeMs, int currentTimeMs, int zOrder, int initialElapsedMs = 0)
         {
             _hookFrames = hookFrames;
             _chainFrames = chainFrames;
             _ownerPositionResolver = getOwnerPosition;
             _fallbackOwnerPosition = fallbackOwnerPosition;
             _left = left;
-            _startTime = currentTimeMs;
+            int elapsedMs = Math.Max(0, initialElapsedMs);
+            _startTime = unchecked(currentTimeMs - elapsedMs);
             _lastUpdateTime = currentTimeMs;
             _stretchEndTime = attackTimeMs - 100;
             _endTime = _stretchEndTime + 1000;

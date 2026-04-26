@@ -64,6 +64,10 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\[(?<body>[^\[\]]*)\]",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex ObjectMemberAliasAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?<object>[A-Za-z_][A-Za-z0-9_]*)\s*(?:(?:\.\s*(?<member>[A-Za-z_][A-Za-z0-9_]*))|(?:\[\s*(?<expr>[^\]]+)\s*\]))\s*=\s*(?<rhs>[^;,\r\n]+)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         internal readonly record struct PublishedTagMutation(
             IReadOnlyList<string> TagsToEnable,
             IReadOnlyList<string> TagsToDisable);
@@ -372,6 +376,59 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     objectMemberAliasMap[arrayName] = memberAliasMap;
                 }
+            }
+
+            foreach (Match match in ObjectMemberAliasAssignmentPattern.Matches(scriptName))
+            {
+                string objectName = NormalizeFunctionAliasArgument(match.Groups["object"]?.Value).TrimEnd(';');
+                string rightValue = match.Groups["rhs"]?.Value;
+                if (!IsPotentialFunctionAliasName(objectName) || string.IsNullOrWhiteSpace(rightValue))
+                {
+                    continue;
+                }
+
+                string memberKey = NormalizeFunctionAliasArgument(match.Groups["member"]?.Value).TrimEnd(';');
+                if (string.IsNullOrWhiteSpace(memberKey))
+                {
+                    string indexExpression = match.Groups["expr"]?.Value;
+                    if (!TryResolveBracketIndexKey(indexExpression, localAliasMap, out memberKey))
+                    {
+                        continue;
+                    }
+
+                    memberKey = NormalizeFunctionAliasArgument(memberKey).TrimEnd(';');
+                }
+
+                if (string.IsNullOrWhiteSpace(memberKey))
+                {
+                    continue;
+                }
+
+                string resolvedAlias = ResolveAssignmentAliasCandidate(
+                    rightValue,
+                    localAliasMap,
+                    objectMemberAliasMap);
+                if (!IsPotentialFunctionAliasName(resolvedAlias))
+                {
+                    continue;
+                }
+
+                if (!objectMemberAliasMap.TryGetValue(objectName, out IReadOnlyDictionary<string, string> existingMemberAliasMap)
+                    || existingMemberAliasMap is not Dictionary<string, string> memberAliasMap)
+                {
+                    memberAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    if (existingMemberAliasMap != null)
+                    {
+                        foreach (KeyValuePair<string, string> existingMemberAlias in existingMemberAliasMap)
+                        {
+                            memberAliasMap[existingMemberAlias.Key] = existingMemberAlias.Value;
+                        }
+                    }
+
+                    objectMemberAliasMap[objectName] = memberAliasMap;
+                }
+
+                memberAliasMap[memberKey] = resolvedAlias;
             }
 
             return objectMemberAliasMap;
@@ -726,6 +783,15 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
+            if (TryResolveDottedObjectAliasCandidate(
+                    normalizedCandidate,
+                    objectMemberAliasMap,
+                    out string dottedObjectAlias))
+            {
+                yield return dottedObjectAlias;
+                yield break;
+            }
+
             yield return normalizedCandidate;
 
             if (localAliasMap == null || localAliasMap.Count == 0)
@@ -885,6 +951,12 @@ namespace HaCreator.MapSimulator.Fields
             if (TryResolveIndexedObjectAliasCandidate(value, localAliasMap, objectMemberAliasMap, out string indexedAlias))
             {
                 aliasName = indexedAlias;
+                return true;
+            }
+
+            if (TryResolveDottedObjectAliasCandidate(value, objectMemberAliasMap, out string dottedAlias))
+            {
+                aliasName = dottedAlias;
                 return true;
             }
 
@@ -1996,6 +2068,20 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        private static bool TryResolveDottedObjectAliasCandidate(
+            string value,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> objectMemberAliasMap,
+            out string aliasName)
+        {
+            aliasName = string.Empty;
+            if (!TryParseDottedObjectAccess(value, out string objectName, out string memberKey))
+            {
+                return false;
+            }
+
+            return TryResolveObjectMemberAlias(objectName, memberKey, objectMemberAliasMap, out aliasName);
+        }
+
         private static bool TryResolveObjectMemberAlias(
             string objectName,
             string memberKey,
@@ -2106,6 +2192,37 @@ namespace HaCreator.MapSimulator.Fields
             indexExpression = normalizedValue[(openIndex + 1)..closeIndex];
             return IsPotentialFunctionAliasName(objectName)
                    && !string.IsNullOrWhiteSpace(indexExpression);
+        }
+
+        private static bool TryParseDottedObjectAccess(
+            string value,
+            out string objectName,
+            out string memberKey)
+        {
+            objectName = string.Empty;
+            memberKey = string.Empty;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalizedValue = NormalizeFunctionAliasArgument(value).TrimEnd(';');
+            int separatorIndex = normalizedValue.IndexOf('.');
+            if (separatorIndex <= 0 || separatorIndex >= normalizedValue.Length - 1)
+            {
+                return false;
+            }
+
+            string suffix = normalizedValue[(separatorIndex + 1)..].Trim();
+            if (suffix.IndexOf('.') >= 0 || suffix.IndexOfAny(new[] { '(', '[', ']', ' ', '\t' }) >= 0)
+            {
+                return false;
+            }
+
+            objectName = NormalizeFunctionAliasArgument(normalizedValue[..separatorIndex]).TrimEnd(';');
+            memberKey = NormalizeFunctionAliasArgument(suffix).TrimEnd(';');
+            return IsPotentialFunctionAliasName(objectName)
+                   && IsPotentialFunctionAliasName(memberKey);
         }
 
         private static bool IsDelayedCallbackFunctionName(string functionName)

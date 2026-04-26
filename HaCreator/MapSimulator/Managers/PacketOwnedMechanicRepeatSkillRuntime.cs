@@ -2104,20 +2104,32 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             MatchCollection matches = Sg88MismatchPairRegex.Matches(rawPairSegment);
+            Dictionary<int, string> normalizedByByte = new();
             if (matches.Count == 0)
             {
-                return false;
-            }
-
-            Dictionary<int, string> normalizedByByte = new();
-            foreach (Match match in matches.Cast<Match>())
-            {
-                if (!TryParseSg88ReplayParityMismatchPair(match.Value, out int byteIndex, out string normalizedPair))
+                TryExtractSg88ReplayParityMismatchPairsJsonLike(rawPairSegment, normalizedByByte);
+                if (normalizedByByte.Count == 0
+                    && !ReferenceEquals(rawPairSegment, decodeDetail))
                 {
-                    continue;
+                    TryExtractSg88ReplayParityMismatchPairsJsonLike(decodeDetail, normalizedByByte);
                 }
 
-                normalizedByByte[byteIndex] = normalizedPair;
+                if (normalizedByByte.Count == 0)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                foreach (Match match in matches.Cast<Match>())
+                {
+                    if (!TryParseSg88ReplayParityMismatchPair(match.Value, out int byteIndex, out string normalizedPair))
+                    {
+                        continue;
+                    }
+
+                    normalizedByByte[byteIndex] = normalizedPair;
+                }
             }
 
             if (normalizedByByte.Count == 0)
@@ -2130,6 +2142,331 @@ namespace HaCreator.MapSimulator.Managers
                 .Select(entry => entry.Value)
                 .ToArray();
             return true;
+        }
+
+        private static bool TryExtractSg88ReplayParityMismatchPairsJsonLike(
+            string rawSegment,
+            IDictionary<int, string> normalizedByByte)
+        {
+            if (string.IsNullOrWhiteSpace(rawSegment)
+                || normalizedByByte == null)
+            {
+                return false;
+            }
+
+            string normalizedSegment = rawSegment.Trim();
+            if (normalizedSegment.Length == 0)
+            {
+                return false;
+            }
+
+            int jsonStart = normalizedSegment.IndexOfAny(new[] { '{', '[' });
+            if (jsonStart < 0)
+            {
+                return false;
+            }
+
+            normalizedSegment = normalizedSegment.Substring(jsonStart);
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(normalizedSegment);
+                int before = normalizedByByte.Count;
+                CollectSg88ReplayParityMismatchPairsFromJsonElement(
+                    document.RootElement,
+                    normalizedByByte,
+                    insidePairContainer: false);
+                return normalizedByByte.Count > before;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
+        private static void CollectSg88ReplayParityMismatchPairsFromJsonElement(
+            JsonElement element,
+            IDictionary<int, string> normalizedByByte,
+            bool insidePairContainer)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    if (TryResolveSg88ReplayParityMismatchPairJsonObject(
+                        element,
+                        out int byteIndex,
+                        out string normalizedPair))
+                    {
+                        normalizedByByte[byteIndex] = normalizedPair;
+                    }
+
+                    foreach (JsonProperty property in element.EnumerateObject())
+                    {
+                        if (TryParseSg88MismatchPairPropertyByteIndex(property.Name, out int propertyByteIndex)
+                            && property.Value.ValueKind == JsonValueKind.Object
+                            && TryResolveSg88ReplayParityMismatchPairJsonObjectWithByteIndex(
+                                property.Value,
+                                propertyByteIndex,
+                                out string propertyPair))
+                        {
+                            normalizedByByte[propertyByteIndex] = propertyPair;
+                        }
+
+                        bool childPairContainer = insidePairContainer
+                            || IsSg88MismatchPairJsonLabel(property.Name);
+                        CollectSg88ReplayParityMismatchPairsFromJsonElement(
+                            property.Value,
+                            normalizedByByte,
+                            childPairContainer);
+                    }
+
+                    break;
+                case JsonValueKind.Array:
+                    foreach (JsonElement item in element.EnumerateArray())
+                    {
+                        CollectSg88ReplayParityMismatchPairsFromJsonElement(
+                            item,
+                            normalizedByByte,
+                            insidePairContainer);
+                    }
+
+                    break;
+                case JsonValueKind.String:
+                    if (insidePairContainer)
+                    {
+                        MatchCollection matches = Sg88MismatchPairRegex.Matches(element.GetString() ?? string.Empty);
+                        foreach (Match match in matches.Cast<Match>())
+                        {
+                            if (TryParseSg88ReplayParityMismatchPair(
+                                match.Value,
+                                out int parsedByteIndex,
+                                out string parsedPair))
+                            {
+                                normalizedByByte[parsedByteIndex] = parsedPair;
+                            }
+                        }
+                    }
+
+                    break;
+            }
+        }
+
+        private static bool TryResolveSg88ReplayParityMismatchPairJsonObject(
+            JsonElement element,
+            out int byteIndex,
+            out string normalizedPair)
+        {
+            byteIndex = -1;
+            normalizedPair = null;
+            byte? observed = null;
+            byte? rebuilt = null;
+
+            foreach (JsonProperty property in element.EnumerateObject())
+            {
+                if (TryNormalizeSg88MismatchPairJsonPropertyName(property.Name, out string normalizedName))
+                {
+                    switch (normalizedName)
+                    {
+                        case "byte":
+                            if (TryParseSg88MismatchPairJsonByteIndex(property.Value, out int parsedByteIndex))
+                            {
+                                byteIndex = parsedByteIndex;
+                            }
+                            break;
+                        case "observed":
+                            if (TryParseSg88MismatchPairJsonByteValue(property.Value, out byte observedByte))
+                            {
+                                observed = observedByte;
+                            }
+                            break;
+                        case "rebuilt":
+                            if (TryParseSg88MismatchPairJsonByteValue(property.Value, out byte rebuiltByte))
+                            {
+                                rebuilt = rebuiltByte;
+                            }
+                            break;
+                    }
+                }
+
+                if (byteIndex < 0
+                    && TryParseSg88MismatchPairPropertyByteIndex(property.Name, out int byteIndexFromName)
+                    && property.Value.ValueKind == JsonValueKind.Object)
+                {
+                    byteIndex = byteIndexFromName;
+                }
+            }
+
+            if (byteIndex < 0 || !observed.HasValue || !rebuilt.HasValue)
+            {
+                return false;
+            }
+
+            normalizedPair = $"byte{byteIndex}:0x{observed.Value:X2}->0x{rebuilt.Value:X2}";
+            return true;
+        }
+
+        private static bool TryResolveSg88ReplayParityMismatchPairJsonObjectWithByteIndex(
+            JsonElement element,
+            int byteIndex,
+            out string normalizedPair)
+        {
+            normalizedPair = null;
+            if (byteIndex < 0)
+            {
+                return false;
+            }
+
+            byte? observed = null;
+            byte? rebuilt = null;
+            foreach (JsonProperty property in element.EnumerateObject())
+            {
+                if (!TryNormalizeSg88MismatchPairJsonPropertyName(property.Name, out string normalizedName))
+                {
+                    continue;
+                }
+
+                switch (normalizedName)
+                {
+                    case "observed":
+                        if (TryParseSg88MismatchPairJsonByteValue(property.Value, out byte observedByte))
+                        {
+                            observed = observedByte;
+                        }
+                        break;
+                    case "rebuilt":
+                        if (TryParseSg88MismatchPairJsonByteValue(property.Value, out byte rebuiltByte))
+                        {
+                            rebuilt = rebuiltByte;
+                        }
+                        break;
+                }
+            }
+
+            if (!observed.HasValue || !rebuilt.HasValue)
+            {
+                return false;
+            }
+
+            normalizedPair = $"byte{byteIndex}:0x{observed.Value:X2}->0x{rebuilt.Value:X2}";
+            return true;
+        }
+
+        private static bool TryNormalizeSg88MismatchPairJsonPropertyName(string propertyName, out string normalizedName)
+        {
+            normalizedName = null;
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            switch (normalized)
+            {
+                case "byte":
+                case "byteindex":
+                case "byteoffset":
+                case "offset":
+                case "index":
+                    normalizedName = "byte";
+                    return true;
+                case "observed":
+                case "actual":
+                case "raw":
+                case "captured":
+                case "official":
+                case "from":
+                case "left":
+                    normalizedName = "observed";
+                    return true;
+                case "rebuilt":
+                case "expected":
+                case "replay":
+                case "replayed":
+                case "simulator":
+                case "to":
+                case "right":
+                    normalizedName = "rebuilt";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsSg88MismatchPairJsonLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            string normalized = propertyName.Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            return normalized is "mismatchpairs"
+                or "replaymismatchpairs"
+                or "replayparitymismatchpairs"
+                or "pairs"
+                or "bytepairs";
+        }
+
+        private static bool TryParseSg88MismatchPairPropertyByteIndex(string propertyName, out int byteIndex)
+        {
+            byteIndex = -1;
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            Match match = Regex.Match(
+                propertyName,
+                @"^byte[\s_\-]*(?<index>\d+)$",
+                RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+            return match.Success
+                   && int.TryParse(match.Groups["index"].Value, out byteIndex)
+                   && byteIndex >= 0;
+        }
+
+        private static bool TryParseSg88MismatchPairJsonByteIndex(JsonElement value, out int byteIndex)
+        {
+            byteIndex = -1;
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.Number:
+                    return value.TryGetInt32(out byteIndex) && byteIndex >= 0;
+                case JsonValueKind.String:
+                    return TryParseSg88MismatchByteIndexToken(value.GetString(), out byteIndex);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseSg88MismatchPairJsonByteValue(JsonElement value, out byte byteValue)
+        {
+            byteValue = 0;
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.Number:
+                    if (!value.TryGetInt32(out int intValue) || intValue < byte.MinValue || intValue > byte.MaxValue)
+                    {
+                        return false;
+                    }
+
+                    byteValue = (byte)intValue;
+                    return true;
+                case JsonValueKind.String:
+                    return TryParseSg88MismatchPairByteValue(value.GetString(), out byteValue);
+                default:
+                    return false;
+            }
         }
 
         internal static bool TryParseSg88ReplayParityMismatchPair(string token, out int byteIndex, out string normalizedPair)

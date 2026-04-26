@@ -699,37 +699,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (isMiss)
             {
-                DamageNumberDigitSet specialTextDigitSet = ResolveSpecialTextDigitSet();
-                PreparedSpriteDrawInfo? missSprite = null;
-                int canvasWidth = 0;
-                int canvasHeight = ResolveCompositeCanvasHeight();
-
-                if (specialTextDigitSet?.SpecialOrigins.TryGetValue(damageString, out Point missOrigin) == true)
-                {
-                    canvasWidth = ResolveSpecialTextWidth(specialTextDigitSet, damageString);
-                    int canvasOffsetX = canvasWidth > 0
-                        ? (canvasWidth / 2) - missOrigin.X
-                        : -missOrigin.X;
-                    missSprite = new PreparedSpriteDrawInfo(
-                        damageString,
-                        canvasOffsetX,
-                        DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y - missOrigin.Y);
-                }
-
-                return new PreparedDamageNumberVisual(
-                    damageString,
-                    canvasWidth,
-                    canvasHeight,
-                    DamageNumberFormatStringPoolId,
-                    Array.Empty<PreparedDigitDrawInfo>(),
-                    missSprite,
-                    null,
-                    BuildRecoveredSpecialTextCompositionTrace(
-                        damageString,
-                        canvasWidth,
-                        canvasHeight,
-                        missSprite,
-                        specialTextDigitSet));
+                return PrepareSpecialTextVisual(damageString, ResolveSpecialTextDigitSet());
             }
 
             (DigitLayoutEntry[] layoutEntries, int leftOffset, int totalWidth) = BuildDigitLayout(
@@ -784,6 +754,44 @@ namespace HaCreator.MapSimulator.Effects
                     largeDigitSet,
                     smallDigitSet,
                     criticalBanner));
+        }
+
+        internal static PreparedDamageNumberVisual PrepareSpecialTextVisual(
+            string specialTextName,
+            DamageNumberDigitSet authoredSpecialTextDigitSet)
+        {
+            string damageString = ResolveSpecialTextName(specialTextName);
+            PreparedSpriteDrawInfo? missSprite = null;
+            int canvasWidth = 0;
+            int canvasHeight = ResolveCompositeCanvasHeight();
+
+            if (authoredSpecialTextDigitSet?.IsLoaded == true
+                && authoredSpecialTextDigitSet.SpecialOrigins.TryGetValue(damageString, out Point missOrigin))
+            {
+                canvasWidth = ResolveSpecialTextWidth(authoredSpecialTextDigitSet, damageString);
+                int canvasOffsetX = canvasWidth > 0
+                    ? (canvasWidth / 2) - missOrigin.X
+                    : -missOrigin.X;
+                missSprite = new PreparedSpriteDrawInfo(
+                    damageString,
+                    canvasOffsetX,
+                    DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y - missOrigin.Y);
+            }
+
+            return new PreparedDamageNumberVisual(
+                damageString,
+                canvasWidth,
+                canvasHeight,
+                DamageNumberFormatStringPoolId,
+                Array.Empty<PreparedDigitDrawInfo>(),
+                missSprite,
+                null,
+                BuildRecoveredSpecialTextCompositionTrace(
+                    damageString,
+                    canvasWidth,
+                    canvasHeight,
+                    missSprite,
+                    authoredSpecialTextDigitSet));
         }
 
         private static PreparedDamageNumberCompositionTrace CreateEmptyCompositionTrace()

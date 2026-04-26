@@ -230,14 +230,6 @@ namespace HaCreator.MapSimulator
             out int encodedPosition)
         {
             encodedPosition = int.MinValue;
-            if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out byte bodyPart)
-                && bodyPart > 0
-                && bodyPart <= 59)
-            {
-                encodedPosition = -bodyPart;
-                return true;
-            }
-
             if (TryResolveEncodedPositionFromSlotHint(
                     slot,
                     itemId,
@@ -256,6 +248,13 @@ namespace HaCreator.MapSimulator
                     hiddenEquipmentByBodyPart,
                     out encodedPosition))
             {
+                return true;
+            }
+
+            if (LoginAvatarLookCodec.TryGetBodyPart(slot, itemId, out byte bodyPart)
+                && IsClientEncodableBodyPart(bodyPart))
+            {
+                encodedPosition = -bodyPart;
                 return true;
             }
 

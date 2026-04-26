@@ -306,6 +306,11 @@ namespace HaCreator.MapSimulator
             DrainRemoteUserPacketInbox(currTickCount);
             _remoteUserPool.Update(currTickCount, _playerManager?.Player);
             _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);
+            string popularityPreviewMessage = _userInfoPopularityPreviewService.Update(currTickCount, _remoteUserPool);
+            if (!string.IsNullOrWhiteSpace(popularityPreviewMessage))
+            {
+                ShowUtilityFeedbackMessage(popularityPreviewMessage);
+            }
             EnsureSummonedPacketInboxState(shouldRun: true);
             EnsureSummonedOfficialSessionBridgeState(shouldRun: true);
             RefreshSummonedOfficialSessionBridgeDiscovery(currTickCount);
@@ -340,6 +345,7 @@ namespace HaCreator.MapSimulator
             EnsureReactorPoolOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
             EnsureReactorTouchPacketOutboxState(shouldRun: _mapBoard?.MapInfo != null);
             EnsurePacketFieldOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
+            RefreshReactorPoolOfficialSessionBridgeDiscovery(currTickCount);
             RefreshPacketFieldOfficialSessionBridgeDiscovery(currTickCount);
             FlushDeferredReactorTouchOwnership(currTickCount);
             DrainReactorPoolPacketInbox();

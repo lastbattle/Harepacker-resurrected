@@ -117,6 +117,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int EventAlarmTextPacketType = 1031;
         public const int EventCalendarEntriesPacketType = 1032;
         public const int RankingPagePacketType = 1033;
+        public const int UserInfoPopularityResultPacketType = 1050;
         public const int QuestRewardRaiseOwnerSyncPacketType = 1036;
         public const int QuestRewardRaisePutItemAddResultPacketType = 1037;
         public const int QuestRewardRaisePutItemReleaseResultPacketType = 1038;
@@ -329,6 +330,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("cuiranking", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = RankingPagePacketType;
+                return true;
+            }
+
+            if (token.Equals("userinfofame", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("userinfopopularity", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("givepopularityresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuigivepopularityresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = UserInfoPopularityResultPacketType;
                 return true;
             }
 
@@ -1123,6 +1133,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == EventAlarmTextPacketType
                 || packetType == EventCalendarEntriesPacketType
                 || packetType == RankingPagePacketType
+                || packetType == UserInfoPopularityResultPacketType
                 || packetType == PlayEventSoundPacketType
                 || packetType == PlayEventSoundClientPacketType
                 || packetType == PlayMinigameSoundPacketType
@@ -1348,6 +1359,7 @@ namespace HaCreator.MapSimulator.Managers
                 AntiMacroResultPacketType => "AntiMacroResult(1011)",
                 RadioCreateLayerContextPacketType => "RadioCreateLayerContext(1035)",
                 RankingPagePacketType => "RankingPage(1033)",
+                UserInfoPopularityResultPacketType => "CUIUserInfo::OnGivePopularityResult(1050)",
                 InitialQuizTimerRuntime.PacketType => "InitialQuizStart(43)",
                 FollowCharacterPacketType => "FollowCharacter(1012)",
                 SetDirectionModePacketType => "SetDirectionMode(1013)",

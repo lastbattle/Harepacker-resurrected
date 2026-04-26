@@ -730,7 +730,10 @@ namespace HaCreator.MapSimulator.Entities
             if (_stateIndexedHitProperties.TryGetValue((state, properEventIndex), out sourceProperty) && sourceProperty != null)
             {
                 sourceKind = HitAnimationSourceKind.IndexedHit;
-                return true;
+                if (HasRenderableHitLayerSource(sourceKind, sourceProperty))
+                {
+                    return true;
+                }
             }
 
             if (TryResolveStateHitSource(state, out sourceKind, out sourceProperty))
@@ -739,6 +742,12 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return TryResolveRootHitSource(out sourceKind, out sourceProperty);
+        }
+
+        private static bool HasRenderableHitLayerSource(HitAnimationSourceKind sourceKind, WzImageProperty sourceProperty)
+        {
+            return sourceProperty != null
+                && ResolveApproximateLoadLayerDuration(sourceKind, sourceProperty) > 0;
         }
 
         private bool TryResolveStateHitSource(int state, out HitAnimationSourceKind sourceKind, out WzImageProperty sourceProperty)

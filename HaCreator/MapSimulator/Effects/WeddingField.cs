@@ -2656,18 +2656,24 @@ namespace HaCreator.MapSimulator.Effects
                 build?.GuildMarkBackgroundColor,
                 build?.GuildMarkId,
                 build?.GuildMarkColor,
-                ResolveRelationshipNameTagItemId(coupleRecord),
-                ResolveRelationshipNameTagItemId(friendshipRecord),
-                ResolveRelationshipNameTagItemId(marriageRecord),
-                ResolveRelationshipNameTagItemId(newYearCardRecord),
+                CreateRelationshipNameTagSignature(coupleRecord),
+                CreateRelationshipNameTagSignature(friendshipRecord),
+                CreateRelationshipNameTagSignature(marriageRecord),
+                CreateRelationshipNameTagSignature(newYearCardRecord),
                 ShouldDrawParticipantLikeClient(participant));
         }
 
-        private static int? ResolveRelationshipNameTagItemId(RemoteUserRelationshipRecord relationshipRecord)
+        private static WeddingRelationshipNameTagSignature CreateRelationshipNameTagSignature(
+            RemoteUserRelationshipRecord relationshipRecord)
         {
             return relationshipRecord.IsActive && relationshipRecord.ItemId > 0
-                ? relationshipRecord.ItemId
-                : null;
+                ? new WeddingRelationshipNameTagSignature(
+                    relationshipRecord.ItemId,
+                    relationshipRecord.ItemSerial,
+                    relationshipRecord.PairItemSerial,
+                    relationshipRecord.CharacterId,
+                    relationshipRecord.PairCharacterId)
+                : default;
         }
 
         private static string NormalizeNameTagText(string value)
@@ -2682,11 +2688,18 @@ namespace HaCreator.MapSimulator.Effects
             int? GuildMarkBackgroundColor,
             int? GuildMarkId,
             int? GuildMarkColor,
-            int? CoupleItemId,
-            int? FriendshipItemId,
-            int? MarriageItemId,
-            int? NewYearCardItemId,
+            WeddingRelationshipNameTagSignature CoupleRecord,
+            WeddingRelationshipNameTagSignature FriendshipRecord,
+            WeddingRelationshipNameTagSignature MarriageRecord,
+            WeddingRelationshipNameTagSignature NewYearCardRecord,
             bool IsVisibleLikeClient);
+
+        private readonly record struct WeddingRelationshipNameTagSignature(
+            int ItemId,
+            long? ItemSerial,
+            long? PairItemSerial,
+            int? CharacterId,
+            int? PairCharacterId);
 
         private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
         {

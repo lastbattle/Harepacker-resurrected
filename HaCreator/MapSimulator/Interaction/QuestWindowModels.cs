@@ -95,6 +95,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int Width { get; init; }
         public int Height { get; init; }
         public int VerticalGapAfter { get; init; }
+        public int? RowIndex { get; init; }
+        public int RowHeight { get; init; }
         public bool RewardSection { get; init; }
         public bool Bold { get; init; }
         public string FontFamily { get; init; } = string.Empty;

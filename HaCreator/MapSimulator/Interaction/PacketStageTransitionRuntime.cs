@@ -1177,9 +1177,10 @@ namespace HaCreator.MapSimulator.Interaction
             long startPosition = reader.BaseStream.Position;
             try
             {
-                characterDataFlags = reader.ReadUInt64();
-                byte combatOrders = reader.ReadByte();
-                bool hasBackwardUpdate = reader.ReadByte() != 0;
+                Dictionary<string, int> decodePreludeFieldByteCounts = new(StringComparer.Ordinal);
+                characterDataFlags = ReadTrackedCharacterDataField(reader, decodePreludeFieldByteCounts, "DbCharFlag", static fieldReader => fieldReader.ReadUInt64());
+                byte combatOrders = ReadTrackedCharacterDataField(reader, decodePreludeFieldByteCounts, nameof(PacketCharacterDataSnapshot.CombatOrders), static fieldReader => fieldReader.ReadByte());
+                bool hasBackwardUpdate = ReadTrackedCharacterDataField(reader, decodePreludeFieldByteCounts, "BackwardUpdateEnabled", static fieldReader => fieldReader.ReadByte()) != 0;
                 byte backwardUpdateSubtype = 0;
                 IReadOnlyList<long> backwardUpdatePrimaryRemovedSerialNumbers = Array.Empty<long>();
                 IReadOnlyList<long> backwardUpdateSecondaryRemovedSerialNumbers = Array.Empty<long>();
@@ -1194,8 +1195,10 @@ namespace HaCreator.MapSimulator.Interaction
                     long backwardUpdateSectionStart = reader.BaseStream.Position;
                     backwardUpdateSubtype = reader.ReadByte();
                     backwardUpdateSubtypeByteCount = sizeof(byte);
+                    decodePreludeFieldByteCounts[nameof(PacketCharacterDataSnapshot.BackwardUpdateSubtype)] = backwardUpdateSubtypeByteCount;
                     int removedSnCount = reader.ReadInt32();
                     backwardUpdatePrimaryRemovedSerialNumberCountByteCount = sizeof(int);
+                    decodePreludeFieldByteCounts["BackwardUpdatePrimaryRemovedSerialNumberCount"] = backwardUpdatePrimaryRemovedSerialNumberCountByteCount;
                     if (removedSnCount < 0)
                     {
                         return false;
@@ -1203,9 +1206,11 @@ namespace HaCreator.MapSimulator.Interaction
 
                     backwardUpdatePrimaryRemovedSerialNumbers = ReadCharacterDataInt64Array(reader, removedSnCount);
                     backwardUpdatePrimaryRemovedSerialNumberByteCount = checked(removedSnCount * sizeof(long));
+                    decodePreludeFieldByteCounts[nameof(PacketCharacterDataSnapshot.BackwardUpdatePrimaryRemovedSerialNumbers)] = backwardUpdatePrimaryRemovedSerialNumberByteCount;
 
                     int removedCashCount = reader.ReadInt32();
                     backwardUpdateSecondaryRemovedSerialNumberCountByteCount = sizeof(int);
+                    decodePreludeFieldByteCounts["BackwardUpdateSecondaryRemovedSerialNumberCount"] = backwardUpdateSecondaryRemovedSerialNumberCountByteCount;
                     if (removedCashCount < 0)
                     {
                         return false;
@@ -1213,7 +1218,16 @@ namespace HaCreator.MapSimulator.Interaction
 
                     backwardUpdateSecondaryRemovedSerialNumbers = ReadCharacterDataInt64Array(reader, removedCashCount);
                     backwardUpdateSecondaryRemovedSerialNumberByteCount = checked(removedCashCount * sizeof(long));
+                    decodePreludeFieldByteCounts[nameof(PacketCharacterDataSnapshot.BackwardUpdateSecondaryRemovedSerialNumbers)] = backwardUpdateSecondaryRemovedSerialNumberByteCount;
                     backwardUpdatePreludeByteCount = checked((int)(reader.BaseStream.Position - backwardUpdateSectionStart));
+                }
+                else
+                {
+                    decodePreludeFieldByteCounts[nameof(PacketCharacterDataSnapshot.BackwardUpdateSubtype)] = 0;
+                    decodePreludeFieldByteCounts["BackwardUpdatePrimaryRemovedSerialNumberCount"] = 0;
+                    decodePreludeFieldByteCounts[nameof(PacketCharacterDataSnapshot.BackwardUpdatePrimaryRemovedSerialNumbers)] = 0;
+                    decodePreludeFieldByteCounts["BackwardUpdateSecondaryRemovedSerialNumberCount"] = 0;
+                    decodePreludeFieldByteCounts[nameof(PacketCharacterDataSnapshot.BackwardUpdateSecondaryRemovedSerialNumbers)] = 0;
                 }
 
                 if ((characterDataFlags & 0x1UL) == 0)
@@ -1256,6 +1270,7 @@ namespace HaCreator.MapSimulator.Interaction
                     BackwardUpdateSecondaryRemovedSerialNumberByteCount = backwardUpdateSecondaryRemovedSerialNumberByteCount,
                     BackwardUpdateSecondaryRemovedSerialNumberCount = backwardUpdateSecondaryRemovedSerialNumbers.Count,
                     BackwardUpdateSecondaryRemovedSerialNumbers = backwardUpdateSecondaryRemovedSerialNumbers,
+                    CharacterDataDecodePreludeFieldByteCounts = decodePreludeFieldByteCounts,
                     CharacterDataDecodePreludeByteCount = decodePreludeByteCount,
                     CharacterDataDamageSeedByteCount = 0,
                     CharacterDataStatByteCount = statByteCount,
@@ -3727,31 +3742,32 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static PacketCharacterDataSnapshot ReadCharacterDataStatSnapshot(BinaryReader reader)
         {
-            int characterId = reader.ReadInt32();
-            string characterName = ReadMapleString(reader);
-            byte gender = reader.ReadByte();
-            byte skin = reader.ReadByte();
-            int faceId = reader.ReadInt32();
-            int hairId = reader.ReadInt32();
-            byte level = reader.ReadByte();
-            short jobId = reader.ReadInt16();
-            short strength = reader.ReadInt16();
-            short dexterity = reader.ReadInt16();
-            short intelligence = reader.ReadInt16();
-            short luck = reader.ReadInt16();
-            int hp = reader.ReadInt32();
-            int maxHp = reader.ReadInt32();
-            int mp = reader.ReadInt32();
-            int maxMp = reader.ReadInt32();
-            short abilityPoints = reader.ReadInt16();
-            short skillPoints = reader.ReadInt16();
-            int experience = reader.ReadInt32();
-            short fame = reader.ReadInt16();
-            int tempExperience = reader.ReadInt32();
-            int fieldId = reader.ReadInt32();
-            byte portalIndex = reader.ReadByte();
-            int playTime = reader.ReadInt32();
-            short subJob = reader.ReadInt16();
+            Dictionary<string, int> statFieldByteCounts = new(StringComparer.Ordinal);
+            int characterId = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.CharacterId), static fieldReader => fieldReader.ReadInt32());
+            string characterName = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.CharacterName), ReadMapleString);
+            byte gender = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Gender), static fieldReader => fieldReader.ReadByte());
+            byte skin = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Skin), static fieldReader => fieldReader.ReadByte());
+            int faceId = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.FaceId), static fieldReader => fieldReader.ReadInt32());
+            int hairId = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.HairId), static fieldReader => fieldReader.ReadInt32());
+            byte level = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Level), static fieldReader => fieldReader.ReadByte());
+            short jobId = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.JobId), static fieldReader => fieldReader.ReadInt16());
+            short strength = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Strength), static fieldReader => fieldReader.ReadInt16());
+            short dexterity = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Dexterity), static fieldReader => fieldReader.ReadInt16());
+            short intelligence = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Intelligence), static fieldReader => fieldReader.ReadInt16());
+            short luck = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Luck), static fieldReader => fieldReader.ReadInt16());
+            int hp = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Hp), static fieldReader => fieldReader.ReadInt32());
+            int maxHp = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.MaxHp), static fieldReader => fieldReader.ReadInt32());
+            int mp = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Mp), static fieldReader => fieldReader.ReadInt32());
+            int maxMp = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.MaxMp), static fieldReader => fieldReader.ReadInt32());
+            short abilityPoints = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.AbilityPoints), static fieldReader => fieldReader.ReadInt16());
+            short skillPoints = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.SkillPoints), static fieldReader => fieldReader.ReadInt16());
+            int experience = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Experience), static fieldReader => fieldReader.ReadInt32());
+            short fame = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.Fame), static fieldReader => fieldReader.ReadInt16());
+            int tempExperience = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.TempExperience), static fieldReader => fieldReader.ReadInt32());
+            int fieldId = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.FieldId), static fieldReader => fieldReader.ReadInt32());
+            byte portalIndex = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.PortalIndex), static fieldReader => fieldReader.ReadByte());
+            int playTime = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.PlayTime), static fieldReader => fieldReader.ReadInt32());
+            short subJob = ReadTrackedCharacterDataField(reader, statFieldByteCounts, nameof(PacketCharacterDataSnapshot.SubJob), static fieldReader => fieldReader.ReadInt16());
 
             return new PacketCharacterDataSnapshot(
                 characterId,
@@ -3780,7 +3796,10 @@ namespace HaCreator.MapSimulator.Interaction
                 playTime,
                 subJob,
                 0,
-                string.Empty);
+                string.Empty)
+            {
+                CharacterStatFieldByteCounts = statFieldByteCounts
+            };
         }
 
         private static bool TryDecodeCharacterDataStatTrailer(
@@ -3792,15 +3811,22 @@ namespace HaCreator.MapSimulator.Interaction
             long startPosition = reader.BaseStream.Position;
             try
             {
-                byte friendMax = reader.ReadByte();
-                bool hasLinkedCharacter = reader.ReadByte() != 0;
+                Dictionary<string, int> statTrailerFieldByteCounts = new(StringComparer.Ordinal);
+                byte friendMax = ReadTrackedCharacterDataField(reader, statTrailerFieldByteCounts, nameof(PacketCharacterDataSnapshot.FriendMax), static fieldReader => fieldReader.ReadByte());
+                bool hasLinkedCharacter = ReadTrackedCharacterDataField(reader, statTrailerFieldByteCounts, "LinkedCharacterFlag", static fieldReader => fieldReader.ReadByte()) != 0;
                 string linkedCharacterName = hasLinkedCharacter
-                    ? ReadMapleString(reader)
+                    ? ReadTrackedCharacterDataField(reader, statTrailerFieldByteCounts, nameof(PacketCharacterDataSnapshot.LinkedCharacterName), ReadMapleString)
                     : string.Empty;
+                if (!hasLinkedCharacter)
+                {
+                    statTrailerFieldByteCounts[nameof(PacketCharacterDataSnapshot.LinkedCharacterName)] = 0;
+                }
+
                 decoratedSnapshot = snapshot with
                 {
                     FriendMax = friendMax,
-                    LinkedCharacterName = linkedCharacterName
+                    LinkedCharacterName = linkedCharacterName,
+                    CharacterStatTrailerFieldByteCounts = statTrailerFieldByteCounts
                 };
                 return true;
             }
@@ -3810,6 +3836,18 @@ namespace HaCreator.MapSimulator.Interaction
                 decoratedSnapshot = snapshot;
                 return false;
             }
+        }
+
+        private static T ReadTrackedCharacterDataField<T>(
+            BinaryReader reader,
+            IDictionary<string, int> byteCounts,
+            string fieldName,
+            Func<BinaryReader, T> read)
+        {
+            long fieldStart = reader.BaseStream.Position;
+            T value = read(reader);
+            byteCounts[fieldName] = checked((int)(reader.BaseStream.Position - fieldStart));
+            return value;
         }
 
         internal static bool TryDecodeBackEffectPayload(byte[] payload, out PacketBackEffectPacket packet, out string error)
@@ -4247,6 +4285,12 @@ namespace HaCreator.MapSimulator.Interaction
         int CharacterDataStatTrailerByteCount = 0,
         int CharacterDataDecodeByteCount = 0)
     {
+        internal IReadOnlyDictionary<string, int> CharacterDataDecodePreludeFieldByteCounts { get; init; } = null;
+
+        internal IReadOnlyDictionary<string, int> CharacterStatFieldByteCounts { get; init; } = null;
+
+        internal IReadOnlyDictionary<string, int> CharacterStatTrailerFieldByteCounts { get; init; } = null;
+
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRecordCountsByFlag { get; init; } = null;
 
         internal IReadOnlyDictionary<ulong, int> CharacterDataSectionCountByteCountsByFlag { get; init; } = null;

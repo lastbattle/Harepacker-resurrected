@@ -1731,6 +1731,10 @@ namespace HaCreator.MapSimulator.UI
             if (entry.OutputItemId > 0)
             {
                 _packetOwnedAuthoritativeHiddenRecipeEntries.Add((entry.BucketKey, entry.OutputItemId));
+                if (entry.BucketKey < 0)
+                {
+                    _packetOwnedAuthoritativeHiddenRecipeIds.Add(entry.OutputItemId);
+                }
             }
 
             ItemMakerRecipe recipe = ResolveHiddenRecipeForPacketUnlock(entry.BucketKey, entry.OutputItemId);

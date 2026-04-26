@@ -81,6 +81,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int LayerUpdateSequence { get; init; }
             public int LowDurabilityAlertSequence { get; init; }
             public int LowDurabilityAlertStartTime { get; init; } = int.MinValue;
+            public int PreviousValue { get; init; }
+            public int ShadowIndex { get; init; }
+            public int ShadowIndexUpdateSequence { get; init; }
+            public int MainLayerAnimationSequence { get; init; }
+            public int ShadowLayerAnimationSequence { get; init; }
         }
 
         private sealed class SkillMountState
@@ -357,6 +362,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int Level);
 
         public readonly record struct SwallowAbsorbRequest(int VisibleSkillId, int TargetMobId, int SkillLevel, int RequestedAt);
+        public readonly record struct SummonSkillRequest(int SummonedObjectId, int SkillId, int PacketAction, int RequestedAt);
         public readonly record struct AnimationDisplayerCatchRegistrationRequest(
             int TargetMobId,
             bool Success,
@@ -966,6 +972,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly SkillLoader _loader;
         private readonly PlayerCharacter _player;
         private Func<float, float, float, FootholdLine> _footholdLookup;
+        private Func<float, float, float, FootholdLine> _footholdUnderneathLookup;
+        private Func<float, float, float, FootholdLine> _footholdAboveLookup;
         private Func<SkillData, bool> _fieldSkillRestrictionEvaluator;
         private Func<SkillData, string> _fieldSkillRestrictionMessageProvider;
         private Func<int, CharacterPart> _tamingMobLoader;
@@ -1051,6 +1059,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<int, int, PacketOwnedSkillEffectRequest> OnRepeatSkillImmediateEffectRequestReady;
         public Action<PacketOwnedSg88FirstUseRequest> OnSg88FirstUseRequestReady;
         public Action<SwallowAbsorbRequest> OnSwallowAbsorbRequested;
+        public Action<SummonSkillRequest> OnSummonSkillRequested;
         public Action<AnimationDisplayerCatchRegistrationRequest> OnAnimationDisplayerCatchRegistrationRequested;
         public Action<Sg88ManualAttackRequest> OnSg88ManualAttackRequested;
         public Action<TeslaCoilAttackRequest> OnTeslaCoilAttackRequested;
@@ -1110,6 +1119,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void SetAnimationEffects(AnimationEffects effects) => _animationEffects = effects;
         public void SetSoundManager(SoundManager soundManager) => _soundManager = soundManager;
         public void SetFootholdLookup(Func<float, float, float, FootholdLine> footholdLookup) => _footholdLookup = footholdLookup;
+        public void SetClientSummonMonsterFootholdLookups(
+            Func<float, float, float, FootholdLine> footholdUnderneathLookup,
+            Func<float, float, float, FootholdLine> footholdAboveLookup)
+        {
+            _footholdUnderneathLookup = footholdUnderneathLookup;
+            _footholdAboveLookup = footholdAboveLookup;
+        }
         public void SetFieldSkillRestrictionEvaluator(Func<SkillData, bool> evaluator) => _fieldSkillRestrictionEvaluator = evaluator;
         public void SetFieldSkillRestrictionMessageProvider(Func<SkillData, string> provider) => _fieldSkillRestrictionMessageProvider = provider;
         public void SetSkillCancelRestrictionMessageProvider(Func<SkillData, string> provider) => _skillCancelRestrictionMessageProvider = provider;
@@ -3284,7 +3300,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            return ClientDoActiveSkillPrepareWeaponValidationSkillIds.Contains(skillId);
+            // `CUserLocal::DoActiveSkill_Prepare@0x941710` only routes the
+            // no-weapon StringPool entry (`0x0B4C`) through the Swallow
+            // prepare row. The other recovered prepare weapon predicates use
+            // the incorrect-weapon message (`0x1127`) when the weapon type is
+            // absent or incompatible.
+            return skillId == ClientPrepareSwallowTargetAdmissionSkillId;
         }
 
         /// <summary>
@@ -4023,16 +4044,36 @@ namespace HaCreator.MapSimulator.Character.Skills
                     Math.Max(previousState.MaxValue, Math.Max(0, maxValue)))
                 : Math.Max(normalizedCurrentValue, maxValue);
             int alertThresholdValue = ResolvePassiveVehicleDurabilityAlertThresholdForParity(resolvedMaxValue);
+            int shadowIndex = ResolvePassiveVehicleDurabilityShadowIndexForParity(
+                normalizedCurrentValue,
+                resolvedMaxValue);
+            int previousValue = continuesSameObject
+                ? Math.Max(0, previousState.CurrentValue)
+                : normalizedCurrentValue;
+            bool shadowIndexChanged = !continuesSameObject
+                || previousState.ShadowIndex != shadowIndex;
             bool isAlerting = IsPassiveVehicleDurabilityAlertActiveForParity(
                 normalizedCurrentValue,
                 resolvedMaxValue);
             bool wasAlerting = continuesSameObject && previousState.IsAlerting;
+            bool crossedIntoAlertBucket = previousValue > alertThresholdValue
+                && normalizedCurrentValue <= alertThresholdValue
+                && alertThresholdValue > 0;
             int lowDurabilityAlertSequence = continuesSameObject
                 ? Math.Max(0, previousState.LowDurabilityAlertSequence)
                 : 0;
             int lowDurabilityAlertStartTime = continuesSameObject
                 ? previousState.LowDurabilityAlertStartTime
                 : int.MinValue;
+            int shadowIndexUpdateSequence = continuesSameObject
+                ? Math.Max(0, previousState.ShadowIndexUpdateSequence)
+                : 0;
+            int mainLayerAnimationSequence = continuesSameObject
+                ? Math.Max(0, previousState.MainLayerAnimationSequence)
+                : 0;
+            int shadowLayerAnimationSequence = continuesSameObject
+                ? Math.Max(0, previousState.ShadowLayerAnimationSequence)
+                : 0;
 
             if (isAlerting)
             {
@@ -4053,6 +4094,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 lowDurabilityAlertStartTime = int.MinValue;
             }
 
+            if (shadowIndexChanged)
+            {
+                shadowIndexUpdateSequence++;
+            }
+
+            if (crossedIntoAlertBucket)
+            {
+                mainLayerAnimationSequence++;
+                shadowLayerAnimationSequence++;
+            }
+
             return new PassiveVehicleTemporaryStatState
             {
                 SkillId = skillId,
@@ -4066,8 +4118,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 IsAlerting = isAlerting,
                 LayerUpdateSequence = Math.Max(1, updateSequence),
                 LowDurabilityAlertSequence = lowDurabilityAlertSequence,
-                LowDurabilityAlertStartTime = lowDurabilityAlertStartTime
+                LowDurabilityAlertStartTime = lowDurabilityAlertStartTime,
+                PreviousValue = previousValue,
+                ShadowIndex = shadowIndex,
+                ShadowIndexUpdateSequence = shadowIndexUpdateSequence,
+                MainLayerAnimationSequence = mainLayerAnimationSequence,
+                ShadowLayerAnimationSequence = shadowLayerAnimationSequence
             };
+        }
+
+        internal static int ResolvePassiveVehicleDurabilityShadowIndexForParity(int currentValue, int maxValue)
+        {
+            int alertUnit = ResolvePassiveVehicleDurabilityAlertThresholdForParity(maxValue);
+            if (alertUnit <= 0)
+            {
+                return 0;
+            }
+
+            int tempIndex = Math.Max(0, currentValue) / alertUnit;
+            return Math.Clamp(tempIndex, 0, 15);
         }
 
         internal static StatusBarBuffEntry ResolveVehicleDurabilityPassiveStatusBarEntryForParity(
@@ -4207,9 +4276,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 HasTemporaryObject = true,
                 AlertThresholdValue = ResolvePassiveVehicleDurabilityAlertThresholdForParity(normalizedMaxValue),
                 IsAlerting = isAlerting,
+                ShadowIndex = ResolvePassiveVehicleDurabilityShadowIndexForParity(
+                    normalizedCurrentValue,
+                    normalizedMaxValue),
                 LayerUpdateSequence = 0,
                 LowDurabilityAlertSequence = 0,
-                LowDurabilityAlertStartTime = int.MinValue
+                LowDurabilityAlertStartTime = int.MinValue,
+                PreviousValue = normalizedCurrentValue
             };
             return true;
         }
@@ -8991,15 +9064,100 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
+            int placementDistanceX = ResolveClientLocalShowSkillEffectPlacementDistanceX(skill);
+            if (IsClientLocalShowSkillEffectSummonMonsterFamilySkill(skill)
+                && _footholdUnderneathLookup != null
+                && _footholdAboveLookup != null)
+            {
+                return ResolveClientLocalShowSkillEffectSummonMonsterPlacementPositionForTesting(
+                    casterPosition,
+                    facingRightForPlacement,
+                    placementDistanceX,
+                    ResolveCurrentMapLeftBoundary(),
+                    ResolveCurrentMapRightBoundary(),
+                    (x, y, range) => ResolveFootholdY(_footholdUnderneathLookup(x, y, range), x),
+                    (x, y, range) => ResolveFootholdY(_footholdAboveLookup(x, y, range), x));
+            }
+
             Vector2 resolvedPlacement = SummonMovementResolver.ResolveSpawnPositionForInstance(
                 skill.SkillId,
                 skill.SummonMovementStyle,
-                ResolveClientLocalShowSkillEffectPlacementDistanceX(skill),
+                placementDistanceX,
                 casterPosition,
                 facingRightForPlacement,
                 instanceIndex: 0,
                 instanceCount: 1);
             return SettleSummonOnFoothold(skill.SummonMovementStyle, resolvedPlacement);
+        }
+
+        private int? ResolveCurrentMapLeftBoundary()
+        {
+            MapInfo mapInfo = _currentMapInfoProvider?.Invoke();
+            return mapInfo?.VRLeft;
+        }
+
+        private int? ResolveCurrentMapRightBoundary()
+        {
+            MapInfo mapInfo = _currentMapInfoProvider?.Invoke();
+            return mapInfo?.VRRight;
+        }
+
+        private static float? ResolveFootholdY(FootholdLine foothold, float x)
+        {
+            return foothold != null
+                ? Board.CalculateYOnFoothold(foothold, x)
+                : null;
+        }
+
+        internal static Vector2? ResolveClientLocalShowSkillEffectSummonMonsterPlacementPositionForTesting(
+            Vector2 casterPosition,
+            bool facingRightForPlacement,
+            int placementDistanceX,
+            int? mapLeftBoundary,
+            int? mapRightBoundary,
+            Func<float, float, float, float?> resolveFootholdUnderneathY,
+            Func<float, float, float, float?> resolveFootholdAboveY)
+        {
+            int direction = facingRightForPlacement ? 1 : -1;
+            float casterX = casterPosition.X;
+            float targetX = casterX + Math.Max(0, placementDistanceX) * direction;
+            if (mapLeftBoundary.HasValue)
+            {
+                targetX = Math.Max(mapLeftBoundary.Value + 1, targetX);
+            }
+
+            if (mapRightBoundary.HasValue)
+            {
+                targetX = Math.Min(mapRightBoundary.Value - 1, targetX);
+            }
+
+            const float footholdSearchRange = 80f;
+            const float searchBackStep = 15f;
+            while (direction * targetX > direction * casterX)
+            {
+                float? underneathY = resolveFootholdUnderneathY?.Invoke(targetX, casterPosition.Y, footholdSearchRange);
+                float? aboveY = resolveFootholdAboveY?.Invoke(targetX, casterPosition.Y, footholdSearchRange);
+                if (underneathY.HasValue || aboveY.HasValue)
+                {
+                    float resolvedY;
+                    if (underneathY.HasValue && aboveY.HasValue)
+                    {
+                        resolvedY = underneathY.Value - casterPosition.Y <= casterPosition.Y - aboveY.Value
+                            ? underneathY.Value
+                            : aboveY.Value;
+                    }
+                    else
+                    {
+                        resolvedY = underneathY ?? aboveY.Value;
+                    }
+
+                    return new Vector2(targetX, resolvedY - 1f);
+                }
+
+                targetX -= searchBackStep * direction;
+            }
+
+            return null;
         }
 
         internal static int ResolveClientLocalShowSkillEffectPlacementDistanceX(SkillData skill)
@@ -12679,21 +12837,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : queuedAttackOrigin;
         }
 
-        private static bool MatchesDeferredMovingShootExecutionMetadata(int? queuedValue, int? previousValue)
-        {
-            if (queuedValue.HasValue != previousValue.HasValue)
-            {
-                return false;
-            }
-
-            if (!queuedValue.HasValue)
-            {
-                return true;
-            }
-
-            return queuedValue.Value == previousValue.Value;
-        }
-
         internal static bool ShouldCarryDeferredMovingShootAntiRepeatState(
             int queuedSkillId,
             string queuedActionName,
@@ -12706,44 +12849,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             int? previousAttackActionType,
             int? previousActionSpeed)
         {
-            if (queuedSkillId <= 0 || previousSkillId <= 0 || queuedSkillId != previousSkillId)
-            {
-                return false;
-            }
-
-            if (!MatchesDeferredMovingShootActionOwner(
-                    queuedActionName,
-                    queuedRawActionCode,
-                    previousActionName,
-                    previousRawActionCode))
-            {
-                return false;
-            }
-
-            if (!MatchesDeferredMovingShootExecutionMetadata(queuedAttackActionType, previousAttackActionType))
-            {
-                return false;
-            }
-
-            return MatchesDeferredMovingShootExecutionMetadata(queuedActionSpeed, previousActionSpeed);
-        }
-
-        internal static bool MatchesDeferredMovingShootActionOwner(
-            string queuedActionName,
-            int? queuedRawActionCode,
-            string previousActionName,
-            int? previousRawActionCode)
-        {
-            string normalizedQueuedOwner = NormalizeDeferredMovingShootActionOwnerName(queuedActionName, queuedRawActionCode);
-            string normalizedPreviousOwner = NormalizeDeferredMovingShootActionOwnerName(previousActionName, previousRawActionCode);
-            bool queuedOwnerMissing = string.IsNullOrWhiteSpace(normalizedQueuedOwner);
-            bool previousOwnerMissing = string.IsNullOrWhiteSpace(normalizedPreviousOwner);
-            if (queuedOwnerMissing || previousOwnerMissing)
-            {
-                return queuedOwnerMissing && previousOwnerMissing;
-            }
-
-            return string.Equals(normalizedQueuedOwner, normalizedPreviousOwner, StringComparison.OrdinalIgnoreCase);
+            // `CUserLocal::TryDoingSmoothingMovingShootAttack` calls the single
+            // local-user `m_antiRepeat` object. `CAntiRepeat::TryRepeat` only owns
+            // X/Y/repeat-count/count-limit fields, so switching non-bypass moving-shot
+            // skills or action metadata must not reset the carried state.
+            return queuedSkillId > 0
+                   && previousSkillId > 0
+                   && queuedSkillId != ClientMovingShootAntiRepeatBypassSkillId
+                   && previousSkillId != ClientMovingShootAntiRepeatBypassSkillId;
         }
 
         private static string NormalizeDeferredMovingShootActionOwnerName(string actionName, int? rawActionCode)
@@ -14488,7 +14601,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 bool isCritical = forceCritical || IsSkillCritical(levelData);
                 if (isCritical)
                 {
-                    damage = (int)MathF.Round(damage * 1.5f);
+                    damage = (int)MathF.Round(damage * ResolveCriticalDamageMultiplier(_buffs, currentTime));
                 }
 
                 MobDamageType damageType = ResolveMobDamageType(skill);
@@ -15751,6 +15864,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     projectile,
                     sourcePoint,
                     destinationPoint,
+                    targetPoint,
                     animation,
                     effectAnimation),
                 SourcePoint = sourcePoint,
@@ -15994,12 +16108,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             ActiveProjectile projectile,
             Vector2 sourcePoint,
             Vector2 destinationPoint,
+            Vector2? targetPoint = null,
             SkillAnimation animation = null,
             SkillAnimation effectAnimation = null)
         {
             int authoredDurationMs = ResolveBulletAnimationPresentationAuthoredDurationMs(animation, effectAnimation);
             bool hasAuthoredDuration = authoredDurationMs > 0;
-            int distanceDurationMs = ResolveBulletAnimationDistanceDurationMs(sourcePoint, destinationPoint);
+            Vector2 distanceDestinationPoint = TryResolveFiniteBulletAnimationPosition(destinationPoint, out Vector2 finiteDestinationPoint)
+                ? finiteDestinationPoint
+                : (targetPoint.HasValue && TryResolveFiniteBulletAnimationPosition(targetPoint.Value, out Vector2 finiteTargetPoint)
+                    ? finiteTargetPoint
+                    : destinationPoint);
+            int distanceDurationMs = ResolveBulletAnimationDistanceDurationMs(sourcePoint, distanceDestinationPoint);
             if (projectile == null)
             {
                 int projectileNullFallbackDurationMs = distanceDurationMs > 0
@@ -16421,8 +16541,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             bool hasFiniteSource = float.IsFinite(presentation.SourcePoint.X)
                                    && float.IsFinite(presentation.SourcePoint.Y);
-            bool hasFiniteDestination = float.IsFinite(presentation.DestinationPoint.X)
-                                        && float.IsFinite(presentation.DestinationPoint.Y);
+            bool hasFiniteDestination = TryResolveBulletAnimationTimelineDestinationPoint(
+                presentation,
+                out Vector2 destinationPoint);
             if (!hasFiniteSource && !hasFiniteDestination)
             {
                 return Vector2.Zero;
@@ -16430,7 +16551,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (!hasFiniteSource)
             {
-                return presentation.DestinationPoint;
+                return destinationPoint;
             }
 
             if (!hasFiniteDestination)
@@ -16445,7 +16566,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 1f);
             return Vector2.Lerp(
                 presentation.SourcePoint,
-                presentation.DestinationPoint,
+                destinationPoint,
                 progress);
         }
 
@@ -16469,15 +16590,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 resolvedStopPosition = interpolated;
             }
 
-            bool hasFiniteDestination = float.IsFinite(presentation.DestinationPoint.X)
-                                        && float.IsFinite(presentation.DestinationPoint.Y);
+            bool hasFiniteDestination = TryResolveBulletAnimationTimelineDestinationPoint(
+                presentation,
+                out Vector2 destinationPoint);
             int registeredStart = presentation.StartTime;
             int registeredEnd = presentation.EndTime;
             int stop = Math.Clamp(stopTime.Value, registeredStart, registeredEnd);
             if (currentTime <= stop || stop >= registeredEnd)
             {
                 return currentTime >= registeredEnd
-                    ? (hasFiniteDestination ? presentation.DestinationPoint : resolvedStopPosition)
+                    ? (hasFiniteDestination ? destinationPoint : resolvedStopPosition)
                     : resolvedStopPosition;
             }
 
@@ -16492,8 +16614,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 1f);
             return Vector2.Lerp(
                 resolvedStopPosition,
-                presentation.DestinationPoint,
+                destinationPoint,
                 postStopProgress);
+        }
+
+        internal static bool TryResolveBulletAnimationTimelineDestinationPoint(
+            BulletAnimationPresentation presentation,
+            out Vector2 destinationPoint)
+        {
+            destinationPoint = Vector2.Zero;
+            if (presentation == null)
+            {
+                return false;
+            }
+
+            if (TryResolveFiniteBulletAnimationPosition(presentation.DestinationPoint, out destinationPoint))
+            {
+                return true;
+            }
+
+            return TryResolveFiniteBulletAnimationPosition(presentation.TargetPoint, out destinationPoint);
         }
 
         internal static bool ShouldUseQueuedFollowUpBulletPresentationPath(ActiveProjectile projectile)
@@ -17766,7 +17906,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool ShouldRemoveBulletAnimationOwner(ActiveBulletAnimationOwner owner, int currentTime)
         {
-            bool hasAfterimages = owner?.AfterimageLayers?.Count > 0;
+            bool hasAfterimages = owner?.AfterimageLayers?.Any(layer => layer?.IsExpired(currentTime) == false) == true;
             bool beforeStart = owner?.Presentation != null && currentTime < owner.Presentation.StartTime;
             bool finished = owner?.Presentation == null
                 || currentTime >= owner.Presentation.EndTime;
@@ -17945,8 +18085,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return presentation != null
                    && float.IsFinite(presentation.SourcePoint.X)
                    && float.IsFinite(presentation.SourcePoint.Y)
-                   && float.IsFinite(presentation.DestinationPoint.X)
-                   && float.IsFinite(presentation.DestinationPoint.Y);
+                   && TryResolveBulletAnimationTimelineDestinationPoint(presentation, out _);
         }
 
         private void UpdateBulletAnimationOwnerAfterimages(ActiveBulletAnimationOwner owner, int currentTime)
@@ -19311,15 +19450,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             IReadOnlyList<SkillAnimation> targetHitEffects,
             int? shuffledHitBranchOrdinalOverride = null)
         {
-            int authoredBranchCount = CountAuthoredClientTargetHitAnimationBranches(targetHitEffects);
-            if (authoredBranchCount <= 0)
+            int clientHitUolCount = targetHitEffects?.Count ?? 0;
+            if (clientHitUolCount <= 0)
             {
                 return null;
             }
 
+            // `CSkill_HitAni::CreateShuffle` chooses `Random() % asHitUOL.Count`
+            // and assigns the raw array slot. Preserve sparse indexed WZ layouts
+            // instead of compacting non-null branches into a different ordinal.
             return shuffledHitBranchOrdinalOverride.HasValue
-                ? Math.Clamp(shuffledHitBranchOrdinalOverride.Value, 0, authoredBranchCount - 1)
-                : Random.Next(authoredBranchCount);
+                ? Math.Clamp(shuffledHitBranchOrdinalOverride.Value, 0, clientHitUolCount - 1)
+                : Random.Next(clientHitUolCount);
         }
 
         internal static SkillAnimation ResolveClientShuffledTargetHitAnimation(
@@ -19334,23 +19476,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            int remaining = resolvedOrdinal.Value;
-            foreach (SkillAnimation animation in targetHitEffects)
-            {
-                if (animation == null)
-                {
-                    continue;
-                }
-
-                if (remaining == 0)
-                {
-                    return animation;
-                }
-
-                remaining--;
-            }
-
-            return null;
+            int resolvedIndex = resolvedOrdinal.Value;
+            return resolvedIndex >= 0 && resolvedIndex < targetHitEffects.Count
+                ? targetHitEffects[resolvedIndex]
+                : null;
         }
 
         private static int CountAuthoredClientTargetHitAnimationBranches(
@@ -20844,7 +20973,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 bool isCritical = IsSkillCritical(levelData);
                 if (isCritical)
                 {
-                    damage = (int)MathF.Round(damage * 1.5f);
+                    damage = (int)MathF.Round(damage * ResolveCriticalDamageMultiplier(_buffs, currentTime));
                 }
 
                 bool died = mob.ApplyDamage(damage, currentTime, isCritical, _player.X, _player.Y, damageType: ResolveMobDamageType(skill));
@@ -21097,6 +21226,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveLocalSupportBranch(
                 summon.SkillData,
                 preferHealFirst: true);
+            TryRequestHealingRobotSummonSkill(summon, currentTime);
             ArmSupportSummonSuspend(summon, currentTime);
             if (summon.SkillData.HitEffect != null)
             {
@@ -21112,6 +21242,59 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.LastAttackAnimationStartTime = currentTime;
             ArmLocalSummonOneTimeActionFallback(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
+            return true;
+        }
+
+        private void TryRequestHealingRobotSummonSkill(ActiveSummon summon, int currentTime)
+        {
+            if (OnSummonSkillRequested == null)
+            {
+                return;
+            }
+
+            if (TryBuildHealingRobotSummonSkillRequest(summon, currentTime, out SummonSkillRequest request))
+            {
+                OnSummonSkillRequested.Invoke(request);
+            }
+        }
+
+        internal static bool TryBuildHealingRobotSummonSkillRequest(
+            ActiveSummon summon,
+            int currentTime,
+            out SummonSkillRequest request)
+        {
+            request = default;
+            if (summon?.SkillData == null
+                || summon.SkillId != HEALING_ROBOT_SKILL_ID
+                || summon.AssistType != SummonAssistType.Support
+                || !SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData))
+            {
+                return false;
+            }
+
+            string branchName = summon.CurrentAnimationBranchName;
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                branchName = SummonRuntimeRules.ResolveLocalSupportBranch(
+                    summon.SkillData,
+                    preferHealFirst: true);
+            }
+
+            int packetAction = SummonRuntimeRules.ResolveLocalAttackPacketActionCode(
+                summon.SkillData,
+                summon.AssistType,
+                branchName,
+                summon.FacingRight);
+            if (packetAction <= 0)
+            {
+                return false;
+            }
+
+            request = new SummonSkillRequest(
+                summon.ObjectId,
+                summon.SkillId,
+                packetAction,
+                currentTime);
             return true;
         }
 
@@ -23599,8 +23782,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 summon.FacingRight = _player.FacingRight;
             }
 
-            if ((summon.MovementStyle == SummonMovementStyle.Stationary
-                 || summon.MovementStyle == SummonMovementStyle.HoverAroundAnchor)
+            if (summon.MovementStyle != SummonMovementStyle.Stationary
                 && currentTime - summon.LastPassiveEffectTime >= SUMMON_PASSIVE_EFFECT_COOLDOWN_MS)
             {
                 float movedDistanceSq = Vector2.DistanceSquared(
@@ -27049,6 +27231,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
             }
 
+            if (string.Equals(label, AllStatsBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
+            }
+
             if (string.Equals(label, BoosterBuffLabel, StringComparison.OrdinalIgnoreCase))
             {
                 return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
@@ -28960,6 +29147,34 @@ namespace HaCreator.MapSimulator.Character.Skills
                 buffs,
                 currentTime,
                 static levelData => levelData?.ElementalResistance ?? 0);
+        }
+
+        internal static int ResolveActiveBuffCriticalDamageBonusPercent(IEnumerable<ActiveBuff> buffs, int currentTime)
+        {
+            if (buffs == null)
+            {
+                return 0;
+            }
+
+            int bestBonusPercent = 0;
+            foreach (ActiveBuff buff in buffs)
+            {
+                if (buff == null || buff.IsExpired(currentTime) || buff.LevelData == null)
+                {
+                    continue;
+                }
+
+                int minBonus = Math.Max(0, buff.LevelData.CriticalDamageMin);
+                int maxBonus = Math.Max(0, buff.LevelData.CriticalDamageMax);
+                bestBonusPercent = Math.Max(bestBonusPercent, Math.Max(minBonus, maxBonus));
+            }
+
+            return bestBonusPercent;
+        }
+
+        internal static float ResolveCriticalDamageMultiplier(IEnumerable<ActiveBuff> buffs, int currentTime)
+        {
+            return 1.5f + ResolveActiveBuffCriticalDamageBonusPercent(buffs, currentTime) / 100f;
         }
 
         private static int SumActiveBuffResistance(

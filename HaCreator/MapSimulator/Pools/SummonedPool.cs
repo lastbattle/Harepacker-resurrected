@@ -4017,11 +4017,12 @@ namespace HaCreator.MapSimulator.Pools
                     Candidate = candidate,
                     SortKey = BuildPacketOwnedExpiryFallbackSortKey(summon, candidate, facingRight)
                 })
-                .OrderBy(entry => entry.SortKey.PreferredSideRank)
+                .OrderBy(entry => entry.Candidate.SourceOrder == int.MaxValue ? 1 : 0)
+                .ThenBy(entry => entry.Candidate.SourceOrder)
+                .ThenBy(entry => entry.SortKey.PreferredSideRank)
                 .ThenBy(entry => entry.SortKey.ForwardPenaltyDistance)
                 .ThenBy(entry => entry.SortKey.AreaDistance)
                 .ThenBy(entry => entry.SortKey.VerticalDistance)
-                .ThenBy(entry => entry.Candidate.SourceOrder)
                 .ThenBy(entry => entry.Candidate.MobObjectId)
                 .Select(static entry => entry.Candidate)
                 .ToArray();
@@ -7306,7 +7307,8 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<string>();
             }
 
-            string normalizedEffectPath = NormalizePacketMobAttackGeneralEffectArrowDelimiterSpacing(effectPath);
+            string normalizedEffectPath = NormalizePacketMobAttackGeneralEffectArrowDelimiterSpacing(
+                NormalizePacketMobAttackGeneralEffectEncodedPathSeparators(effectPath));
             string[] rawTokens = normalizedEffectPath
                 .Split(new[] { '|', ';', ',', '&', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (rawTokens.Length == 0)

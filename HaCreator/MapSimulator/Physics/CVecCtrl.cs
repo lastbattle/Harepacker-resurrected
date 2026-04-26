@@ -1846,6 +1846,62 @@ namespace HaCreator.MapSimulator.Physics
         }
 
         /// <summary>
+        /// Apply the ownership side effects of CMovePath::Flush after a packet-owned
+        /// snapshot has already been encoded by the caller.
+        /// </summary>
+        internal void ApplyClientFlushRetentionAfterPacketSnapshot(
+            int currentTimeMs,
+            bool isFlying = false,
+            bool hasDynamicFoothold = false)
+        {
+            if (_movePath.Count == 0)
+            {
+                _pathGatherDurationMs = 0;
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            List<MovePathElement> snapshot = BuildMovePathSnapshot(currentTimeMs, appendLatestState: false);
+            bool shortUpdate = IsShortMovePathUpdate(isFlying, hasDynamicFoothold);
+            if (shortUpdate || isFlying)
+            {
+                _movePath.Clear();
+                _pathGatherDurationMs = 0;
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            int lastGroundedIndex = -1;
+            for (int i = snapshot.Count - 1; i >= 0; i--)
+            {
+                if (snapshot[i].FootholdId > 0)
+                {
+                    lastGroundedIndex = i;
+                    break;
+                }
+            }
+
+            if (lastGroundedIndex < 0 || lastGroundedIndex >= snapshot.Count - 1)
+            {
+                _movePath.Clear();
+                _pathGatherDurationMs = 0;
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            _movePath.Clear();
+            _pathGatherDurationMs = 0;
+            for (int i = lastGroundedIndex + 1; i < snapshot.Count; i++)
+            {
+                MovePathElement retained = snapshot[i];
+                _pathGatherDurationMs += Math.Max(0, (int)retained.Duration);
+                _movePath.Add(retained);
+            }
+
+            _lastPathFlushTime = currentTimeMs;
+        }
+
+        /// <summary>
         /// Check if it's time to flush the movement path.
         /// Client: CMovePath::IsTimeForFlush
         /// </summary>

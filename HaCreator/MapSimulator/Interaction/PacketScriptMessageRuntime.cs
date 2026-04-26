@@ -336,7 +336,7 @@ namespace HaCreator.MapSimulator.Interaction
                     $"Client `CUtilDlgEx::SetUtilDlgEx_AVATAR` opened {optionItemIds.Count} indexed avatar option(s).",
                     "WZ data exposes the packet-owned avatar utility surface under `UIWindow(.img|2.img)/UtilDlgEx_Avatar`."),
                 choices,
-                flipSpeaker: ResolveFlipSpeakerFromParam(param));
+                flipSpeaker: false);
             return CreateDecodedResult(
                 entry,
                 dedicatedOwner: CreateDedicatedOwner(
@@ -476,7 +476,7 @@ namespace HaCreator.MapSimulator.Interaction
                         $"Client payload: minInput={minInputLength}, maxInput={maxInputLength}, remaining={remainingSeconds} sec.",
                         "Client `CWvsContext::OnInitialQuiz` opens the dedicated `CUIInitialQuiz` owner instead of mutating the NPC overlay."),
                     null,
-                    flipSpeaker: ResolveFlipSpeakerFromParam(param)),
+                    flipSpeaker: false),
                     suppressDialogMutation: true,
                     statusMessage: $"Opened packet-authored initial quiz owner for {speaker.DisplayName}: client mode 0 creates `CUIInitialQuiz`.",
                     clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateInitialQuiz(
@@ -518,7 +518,7 @@ namespace HaCreator.MapSimulator.Interaction
                     MinValue = minValue,
                     MaxValue = maxValue
                 },
-                flipSpeaker: ResolveFlipSpeakerFromParam(param));
+                flipSpeaker: false);
         }
 
         private static bool TryDecodeAskSpeedQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out PacketScriptDecodeResult result)
@@ -574,7 +574,7 @@ namespace HaCreator.MapSimulator.Interaction
                         CreateNumericResponseChoice("Next", "Next", 2),
                         CreateNumericResponseChoice("Give Up", "Give Up", 0)
                     },
-                    flipSpeaker: ResolveFlipSpeakerFromParam(param)),
+                    flipSpeaker: false),
                     suppressDialogMutation: true,
                     statusMessage: $"Opened packet-authored speed-quiz owner for {speaker.DisplayName}: client mode 0 creates `CUISpeedQuiz`.",
                     clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateSpeedQuiz(
@@ -619,7 +619,7 @@ namespace HaCreator.MapSimulator.Interaction
                         : $"Compact helper payload exposed {choices.Count} answer option(s).",
                     "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls."),
                 choices,
-                flipSpeaker: ResolveFlipSpeakerFromParam(param));
+                flipSpeaker: false);
         }
 
         private static bool TryDecodeAskPetClientPacket(
@@ -821,7 +821,7 @@ namespace HaCreator.MapSimulator.Interaction
                 rawText,
                 BuildPetSelectionEntryText(rawText, optionDetails, resolutionDetails, isPetAll, exceptionExists),
                 choices,
-                flipSpeaker: ResolveFlipSpeakerFromParam(param));
+                flipSpeaker: false);
         }
 
         private static List<PacketScriptPetSelectionCandidate> FilterSelectablePets(
@@ -1011,7 +1011,7 @@ namespace HaCreator.MapSimulator.Interaction
                     },
                     "WZ data exposes authored slide-menu variants under `UIWindow(.img|2.img)/SlideMenu`."),
                 choices,
-                flipSpeaker: ResolveFlipSpeakerFromParam(param));
+                flipSpeaker: false);
         }
 
         private static IReadOnlyList<NpcInteractionChoice> BuildSayNavigationChoices(bool hasPrev, bool hasNext)
@@ -1123,13 +1123,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool ResolveFlipSpeakerFromParam(byte param)
         {
-            // Client CUtilDlgEx ownership uses `m_bSpeakerOnRight = (bParam & 6) != 0`.
+            // Native handlers that receive bParam write `m_bSpeakerOnRight = (bParam & 6) != 0`.
+            // CScriptMan::OnScriptMessage does not pass bParam into AskQuiz, AskSpeedQuiz,
+            // AskAvatar, AskMembershopAvatar, AskPet, AskPetAll, or AskSlideMenu.
             return (param & 0x06) != 0;
         }
 
         private static bool ResolveFlipSpeakerFromSubtitle(string subtitle)
         {
-            // Client CUtilDlgEx ownership uses `m_bSpeakerOnRight = (bParam & 6) != 0`.
+            // Legacy fallback for entry builders that do not pass an explicit speaker side.
             if (string.IsNullOrWhiteSpace(subtitle))
             {
                 return false;

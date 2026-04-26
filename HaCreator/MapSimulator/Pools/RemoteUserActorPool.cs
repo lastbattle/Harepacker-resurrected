@@ -388,8 +388,13 @@ namespace HaCreator.MapSimulator.Pools
         private const int RemoteShadowPartnerAttackDelayMs = 90;
         private const int RemoteMoreWildDamageUpSkillId = 35121010;
         private const int RemoteMovingShootNoPrepareAnimationSkillId = 33121009;
-        private const int RemoteReceiveHpGaugeWidth = 46;
-        private const int RemoteReceiveHpGaugeHeight = 5;
+        private const int RemoteReceiveHpGaugeCanvasWidth = 52;
+        private const int RemoteReceiveHpGaugeCanvasHeight = 10;
+        private const int RemoteReceiveHpGaugeFillWidth = 46;
+        private const int RemoteReceiveHpGaugeFillHeight = 4;
+        private const int RemoteReceiveHpGaugeFillLeft = 3;
+        private const int RemoteReceiveHpGaugeFillTop = 3;
+        private const int RemoteReceiveHpGaugeFillAccentTop = 6;
         private const int RemoteReceiveHpGaugeVerticalPadding = 4;
         private static readonly AvatarRenderLayer[] RemoteActiveEffectMotionBlurLayerCaptureOrder =
         {
@@ -4262,13 +4267,35 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int currentHp = Math.Clamp(packet.CurrentHp, 0, packet.MaxHp);
-            actor.PartyCurrentHp = currentHp;
+            (int partyHpPercent, int gaugePos) = ResolveRemoteReceiveHpGaugeForParity(
+                packet.CurrentHp,
+                packet.MaxHp);
+            actor.PartyCurrentHp = packet.CurrentHp;
             actor.PartyMaxHp = packet.MaxHp;
-            actor.PartyHpPercent = Math.Clamp((currentHp * 100) / packet.MaxHp, 0, 100);
-            actor.PartyHpGaugePos = Math.Clamp((RemoteReceiveHpGaugeWidth * currentHp) / packet.MaxHp, 0, RemoteReceiveHpGaugeWidth);
-            message = $"Remote user {packet.CharacterId} receive-HP gauge updated to {currentHp}/{packet.MaxHp}.";
+            actor.PartyHpPercent = partyHpPercent;
+            actor.PartyHpGaugePos = gaugePos;
+            message = $"Remote user {packet.CharacterId} receive-HP gauge updated to {packet.CurrentHp}/{packet.MaxHp}.";
             return true;
+        }
+
+        internal static (int PartyHpPercent, int GaugePos) ResolveRemoteReceiveHpGaugeForParity(
+            int currentHp,
+            int maxHp)
+        {
+            if (maxHp <= 0)
+            {
+                return (0, 0);
+            }
+
+            // Client `CUserRemote::OnReceiveHP` stores the raw integer ratios.
+            int partyHpPercent = (int)((long)currentHp * 100L / maxHp);
+            int gaugePos = (int)((long)RemoteReceiveHpGaugeFillWidth * currentHp / maxHp);
+            return (partyHpPercent, gaugePos);
+        }
+
+        internal static int ClampRemoteReceiveHpGaugeFillWidthForParity(int gaugePos)
+        {
+            return Math.Clamp(gaugePos, 0, RemoteReceiveHpGaugeFillWidth);
         }
 
         public bool TryApplyThrowGrenade(RemoteUserThrowGrenadePacket packet, int currentTime, out string message)
@@ -6053,7 +6080,7 @@ namespace HaCreator.MapSimulator.Pools
                 float labelTopY = topY - ((labelLines.Count * font.LineSpacing) + ((labelLines.Count - 1) * 2f)) - 10f;
                 if (actor.PartyHpGaugePos.HasValue)
                 {
-                    labelTopY -= RemoteReceiveHpGaugeHeight + RemoteReceiveHpGaugeVerticalPadding;
+                    labelTopY -= RemoteReceiveHpGaugeCanvasHeight + RemoteReceiveHpGaugeVerticalPadding;
                 }
                 for (int lineIndex = 0; lineIndex < labelLines.Count; lineIndex++)
                 {
@@ -6108,23 +6135,40 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int left = screenX - (RemoteReceiveHpGaugeWidth / 2);
-            int top = (int)Math.Round(topY) - RemoteReceiveHpGaugeHeight - RemoteReceiveHpGaugeVerticalPadding;
+            int left = screenX - (RemoteReceiveHpGaugeCanvasWidth / 2);
+            int top = (int)Math.Round(topY) - RemoteReceiveHpGaugeCanvasHeight - RemoteReceiveHpGaugeVerticalPadding;
             spriteBatch.Draw(
                 pixelTexture,
-                new Rectangle(left - 1, top - 1, RemoteReceiveHpGaugeWidth + 2, RemoteReceiveHpGaugeHeight + 2),
-                new Color(20, 20, 20, 210));
+                new Rectangle(left, top, RemoteReceiveHpGaugeCanvasWidth, RemoteReceiveHpGaugeCanvasHeight),
+                Color.Black);
             spriteBatch.Draw(
                 pixelTexture,
-                new Rectangle(left, top, RemoteReceiveHpGaugeWidth, RemoteReceiveHpGaugeHeight),
-                new Color(72, 32, 36, 220));
+                new Rectangle(left + 1, top + 1, RemoteReceiveHpGaugeCanvasWidth - 2, RemoteReceiveHpGaugeCanvasHeight - 2),
+                Color.White);
+            spriteBatch.Draw(
+                pixelTexture,
+                new Rectangle(left + 2, top + 2, RemoteReceiveHpGaugeCanvasWidth - 4, RemoteReceiveHpGaugeCanvasHeight - 4),
+                Color.Black);
 
-            if (gaugePos > 0)
+            int fillWidth = ClampRemoteReceiveHpGaugeFillWidthForParity(gaugePos);
+            if (fillWidth > 0)
             {
                 spriteBatch.Draw(
                     pixelTexture,
-                    new Rectangle(left, top, gaugePos, RemoteReceiveHpGaugeHeight),
-                    new Color(208, 60, 70, 235));
+                    new Rectangle(
+                        left + RemoteReceiveHpGaugeFillLeft,
+                        top + RemoteReceiveHpGaugeFillTop,
+                        fillWidth,
+                        RemoteReceiveHpGaugeFillHeight),
+                    Color.Red);
+                spriteBatch.Draw(
+                    pixelTexture,
+                    new Rectangle(
+                        left + RemoteReceiveHpGaugeFillLeft,
+                        top + RemoteReceiveHpGaugeFillAccentTop,
+                        fillWidth,
+                        1),
+                    new Color(160, 0, 0));
             }
         }
 
@@ -13775,6 +13819,22 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!hasValidMetadataOffset
                 && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out int combinedConsensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    combinedConsensusChargeElement,
+                    out int combinedConsensusChargeSkillId))
+            {
+                return combinedConsensusChargeSkillId;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 && AfterImageChargeSkillResolver.TryResolveChargeElementByKnownSkillConsensusFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
@@ -13947,6 +14007,18 @@ namespace HaCreator.MapSimulator.Pools
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
                     out chargeElement))
             {
                 return true;

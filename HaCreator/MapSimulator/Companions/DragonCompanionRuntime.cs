@@ -841,6 +841,12 @@ namespace HaCreator.MapSimulator.Companions
                 return;
             }
 
+            if (!CanClientDragonEndUpdateActiveFlushNonShortNonFlyPath(_clientVecCtrlMovePathBuffer))
+            {
+                _vecCtrlEndUpdateActiveFlushCarryMilliseconds = ClientVecCtrlDragonFlushThresholdMilliseconds;
+                return;
+            }
+
             for (int i = 0; i < flushPacketCount; i++)
             {
                 EnqueueClientVecCtrlEndUpdateActiveFlushPacketPayload(
@@ -1013,7 +1019,6 @@ namespace HaCreator.MapSimulator.Companions
         private void ApplyClientVecCtrlPostFlushRetainedElements(IReadOnlyList<MovePathElement> sourcePath)
         {
             List<MovePathElement> sourceElements = sourcePath?.ToList() ?? new List<MovePathElement>();
-            List<byte> sourceKeyPadStates = new(_clientVecCtrlMovePathKeyPadStates);
             int retainedStartIndex = ResolveClientDragonFlushRetainedStartIndex(sourceElements);
             _clientVecCtrlMovePathBuffer.Clear();
             _clientVecCtrlMovePathKeyPadStates.Clear();
@@ -1026,10 +1031,6 @@ namespace HaCreator.MapSimulator.Companions
             {
                 MovePathElement element = sourceElements[i];
                 _clientVecCtrlMovePathBuffer.Add(element);
-                byte keyPadState = (i >= 0 && i < sourceKeyPadStates.Count)
-                    ? sourceKeyPadStates[i]
-                    : CreateClientVecCtrlPassiveKeyPadState(owner: null, element);
-                _clientVecCtrlMovePathKeyPadStates.Add(keyPadState);
             }
         }
 
@@ -1239,6 +1240,24 @@ namespace HaCreator.MapSimulator.Companions
             return retainedStartIndex < movePath.Count
                 ? retainedStartIndex
                 : -1;
+        }
+
+        internal static bool CanClientDragonEndUpdateActiveFlushNonShortNonFlyPath(IReadOnlyList<MovePathElement> movePath)
+        {
+            if (movePath == null || movePath.Count <= 0)
+            {
+                return false;
+            }
+
+            for (int i = movePath.Count - 1; i >= 0; i--)
+            {
+                if (movePath[i].FootholdId > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool TryEncodeClientDragonEndUpdateActiveFlushMovePathPayload(

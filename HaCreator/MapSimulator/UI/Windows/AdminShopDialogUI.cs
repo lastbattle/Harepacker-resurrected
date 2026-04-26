@@ -5809,15 +5809,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string clientItemNameText = BuildClientWishlistItemNameText(entry);
-            return !string.IsNullOrWhiteSpace(clientItemNameText)
-                && clientItemNameText.Contains(normalizedQuery, StringComparison.Ordinal);
+            return ClientWishlistItemNameTermsContainQuery(BuildClientWishlistItemNameTerms(entry), normalizedQuery);
         }
 
         private static string BuildClientWishlistItemNameText(AdminShopEntry entry)
         {
+            return BuildClientWishlistItemNameMatchText(BuildClientWishlistItemNameTerms(entry).ToArray());
+        }
+
+        internal static bool ClientWishlistItemNameTermsContainQuery(IEnumerable<string> itemNameTerms, string clientSearchQuery)
+        {
+            string normalizedQuery = BuildClientWishlistItemNameMatchText(clientSearchQuery);
+            if (string.IsNullOrWhiteSpace(normalizedQuery) || itemNameTerms == null)
+            {
+                return false;
+            }
+
+            foreach (string itemNameTerm in itemNameTerms)
+            {
+                string normalizedItemName = BuildClientWishlistItemNameMatchText(itemNameTerm);
+                if (!string.IsNullOrWhiteSpace(normalizedItemName)
+                    && normalizedItemName.Contains(normalizedQuery, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static List<string> BuildClientWishlistItemNameTerms(AdminShopEntry entry)
+        {
             if (entry == null)
             {
-                return string.Empty;
+                return new List<string>();
             }
 
             List<string> itemNameTerms = new() { entry.Title };
@@ -5833,7 +5858,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            return BuildClientWishlistItemNameMatchText(itemNameTerms.ToArray());
+            return itemNameTerms;
         }
 
         private static int ScoreWishlistField(string fieldValue, string rawQuery, string normalizedQuery, int exactScore, int startsWithScore, int containsScore)

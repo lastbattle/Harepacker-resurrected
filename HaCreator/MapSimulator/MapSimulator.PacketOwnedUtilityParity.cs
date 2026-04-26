@@ -3978,6 +3978,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.RankingPagePacketType:
                     return TryApplyPacketOwnedRankingPagePayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.UserInfoPopularityResultPacketType:
+                    return TryApplyCharacterInfoPopularityResultPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.BuffzoneEffectPacketType:
                 case LocalUtilityPacketInboxManager.BuffzoneEffectClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedBuffzoneEffect, "Buff-zone payload is missing.", out message);
@@ -4300,6 +4303,15 @@ namespace HaCreator.MapSimulator
             {
                 player.ApplyPacketOwnedChairStandCorrection();
                 message = "Packet-owned sit result rejected the chair request and forced a stand-up correction.";
+                return true;
+            }
+
+            string chairRestrictionMessage = FieldInteractionRestrictionEvaluator.GetPortableChairRestrictionMessage(_mapBoard?.MapInfo);
+            if (!string.IsNullOrWhiteSpace(chairRestrictionMessage))
+            {
+                player.ApplyPacketOwnedChairStandCorrection();
+                ShowFieldRestrictionMessage(chairRestrictionMessage);
+                message = $"Packet-owned sit result stayed in stand-up correction because current field metadata blocks chair owners.";
                 return true;
             }
 
@@ -8169,6 +8181,14 @@ namespace HaCreator.MapSimulator
             bool applied = GetPacketOwnedSocialUtilityDialogDispatcher().TryApplyTrunkPacket(payload, out message);
             if (applied)
             {
+                string trunkRestrictionMessage = GetFieldWindowRestrictionMessage(MapSimulatorWindowNames.Trunk);
+                if (!string.IsNullOrWhiteSpace(trunkRestrictionMessage))
+                {
+                    ShowFieldRestrictionMessage(trunkRestrictionMessage);
+                    message = $"{message} Trunk owner stayed in status-only mode because current field metadata blocks storage owners.";
+                    return true;
+                }
+
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Trunk);
             }
 
@@ -18412,6 +18432,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodePacketOwnedRankingCompactRowWithLeadingRank(rowPayload, out rowEntry))
+            {
+                return true;
+            }
+
             try
             {
                 using MemoryStream rowStream = new(rowPayload, writable: false);
@@ -18430,6 +18455,73 @@ namespace HaCreator.MapSimulator
                 }
 
                 rowEntry = CreatePacketOwnedRankingEntry(label.Trim(), value?.Trim() ?? string.Empty, detail?.Trim() ?? string.Empty);
+                return true;
+            }
+            catch
+            {
+                rowEntry = default;
+                return false;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedRankingCompactRowWithLeadingRank(byte[] rowPayload, out RankingEntrySnapshot rowEntry)
+        {
+            rowEntry = default;
+            int[] rankWidths = { sizeof(int), sizeof(ushort), sizeof(byte) };
+            for (int i = 0; i < rankWidths.Length; i++)
+            {
+                if (TryDecodePacketOwnedRankingCompactRowWithLeadingRank(rowPayload, rankWidths[i], out rowEntry))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodePacketOwnedRankingCompactRowWithLeadingRank(byte[] rowPayload, int rankByteWidth, out RankingEntrySnapshot rowEntry)
+        {
+            rowEntry = default;
+            if (rowPayload == null || rowPayload.Length <= rankByteWidth)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream rowStream = new(rowPayload, writable: false);
+                using BinaryReader rowReader = new(rowStream);
+                if (!TryReadPacketOwnedCompactRowCount(rowReader, rankByteWidth, out int rank)
+                    || rank <= 0
+                    || rank > 1000000
+                    || !TryReadPacketOwnedOptionalMapleString(rowReader, out string label)
+                    || string.IsNullOrWhiteSpace(label)
+                    || !TryReadPacketOwnedOptionalMapleString(rowReader, out string detail))
+                {
+                    return false;
+                }
+
+                string value = rank.ToString(CultureInfo.InvariantCulture);
+                if (rowReader.BaseStream.Position < rowReader.BaseStream.Length)
+                {
+                    if (!TryReadPacketOwnedOptionalMapleString(rowReader, out string explicitValue))
+                    {
+                        return false;
+                    }
+
+                    explicitValue = explicitValue?.Trim();
+                    if (!string.IsNullOrWhiteSpace(explicitValue))
+                    {
+                        value = explicitValue;
+                    }
+                }
+
+                if (rowReader.BaseStream.Position != rowReader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                rowEntry = CreatePacketOwnedRankingEntry(label.Trim(), value, detail?.Trim() ?? string.Empty);
                 return true;
             }
             catch
@@ -19761,9 +19853,90 @@ namespace HaCreator.MapSimulator
                 if (!TryDecodePacketOwnedEventCalendarCompactRow(rowReader, usePackedDate, out entry)
                     || rowReader.BaseStream.Position != rowReader.BaseStream.Length)
                 {
+                    if (!TryDecodePacketOwnedEventCalendarCompactRowWithTrailingStatus(rowPayload, usePackedDate, out entry))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            catch
+            {
+                return TryDecodePacketOwnedEventCalendarCompactRowWithTrailingStatus(rowPayload, usePackedDate, out entry);
+            }
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarCompactRowWithTrailingStatus(
+            byte[] rowPayload,
+            bool usePackedDate,
+            out EventEntrySnapshot entry)
+        {
+            entry = default;
+            if (rowPayload == null || rowPayload.Length == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream rowStream = new(rowPayload, writable: false);
+                using BinaryReader rowReader = new(rowStream);
+
+                int year;
+                int month;
+                int day;
+                if (usePackedDate)
+                {
+                    int yyyymmdd = rowReader.ReadInt32();
+                    year = yyyymmdd / 10000;
+                    month = Math.Abs((yyyymmdd / 100) % 100);
+                    day = Math.Abs(yyyymmdd % 100);
+                }
+                else
+                {
+                    year = rowReader.ReadUInt16();
+                    month = rowReader.ReadByte();
+                    day = rowReader.ReadByte();
+                }
+
+                if (!TryReadPacketOwnedOptionalMapleString(rowReader, out string title)
+                    || string.IsNullOrWhiteSpace(title)
+                    || !TryReadPacketOwnedOptionalMapleString(rowReader, out string detail)
+                    || rowReader.BaseStream.Length - rowReader.BaseStream.Position < sizeof(byte))
+                {
                     return false;
                 }
 
+                EventEntryStatus status = DecodePacketOwnedEventCalendarBinaryStatus(rowReader.ReadByte());
+                string statusText = string.Empty;
+                string alarmText = string.Empty;
+                if (!TryReadPacketOwnedOptionalMapleString(rowReader, out statusText)
+                    || !TryReadPacketOwnedOptionalMapleString(rowReader, out alarmText)
+                    || rowReader.BaseStream.Position != rowReader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                title = title.Trim();
+                detail = detail?.Trim() ?? string.Empty;
+                statusText = statusText?.Trim() ?? string.Empty;
+                alarmText = alarmText?.Trim() ?? string.Empty;
+                if (!TryCreatePacketOwnedEventCalendarBinaryDate(year, month, day, out DateTime scheduledAt))
+                {
+                    return false;
+                }
+
+                entry = CreatePacketOwnedEventCalendarEntry(
+                    scheduledAt,
+                    title,
+                    detail,
+                    status,
+                    string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText,
+                    int.MinValue,
+                    ResolvePacketOwnedEventEntrySortPriority(status),
+                    sortOrder: 0,
+                    alarmText: alarmText);
                 return true;
             }
             catch

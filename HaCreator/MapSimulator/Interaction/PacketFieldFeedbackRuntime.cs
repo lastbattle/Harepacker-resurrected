@@ -845,7 +845,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                         body = NormalizeFieldChatText(body);
                         string text = ResolveIncomingWhisperLogText(sender, channelId, body, callbacks);
-                        callbacks?.AddClientChatMessage?.Invoke(text, 16, sender);
+                        callbacks?.AddClientChatMessage?.Invoke(text, 1, sender);
                         TryAddSwindleWarning(body, allowGroupFamilyWarning: true, currentTick, callbacks);
                         callbacks?.RememberWhisperTarget?.Invoke(sender);
                         _lastWhisperTarget = sender;
@@ -864,7 +864,7 @@ namespace HaCreator.MapSimulator.Interaction
                             string warning = FormatFieldFeedbackStringPoolText(
                                 WhisperLocationUnavailableStringPoolId,
                                 WhisperDisabledFallback,
-                                target.Trim().ToLowerInvariant());
+                                MakeWhisperNoticeTargetLower(target));
                             callbacks?.AddClientChatMessage?.Invoke(warning, 12, null);
                             _statusMessage = $"Applied packet-owned whisper failure for {target}.";
                             message = _statusMessage;
@@ -940,7 +940,7 @@ namespace HaCreator.MapSimulator.Interaction
                             ? FormatFieldFeedbackStringPoolText(
                                 WhisperLocationUnavailableStringPoolId,
                                 WhisperDisabledFallback,
-                                target.Trim().ToLowerInvariant())
+                                MakeWhisperNoticeTargetLower(target))
                             : FormatFieldFeedbackStringPoolText(
                                 WhisperSentStringPoolId,
                                 WhisperSentFallback,
@@ -1684,6 +1684,41 @@ namespace HaCreator.MapSimulator.Interaction
                     outgoingText.Trim()),
                 1,
                 null);
+        }
+
+        private static string MakeWhisperNoticeTargetLower(string target)
+        {
+            if (string.IsNullOrEmpty(target))
+            {
+                return string.Empty;
+            }
+
+            byte[] sourceBytes = Encoding.Default.GetBytes(target);
+            byte[] loweredBytes = ArrayPool<byte>.Shared.Rent(sourceBytes.Length);
+            try
+            {
+                int writeIndex = 0;
+                for (int readIndex = 0; readIndex < sourceBytes.Length;)
+                {
+                    byte value = sourceBytes[readIndex];
+                    if (IsDbcsLeadByte(value) && readIndex + 1 < sourceBytes.Length)
+                    {
+                        loweredBytes[writeIndex++] = value;
+                        loweredBytes[writeIndex++] = sourceBytes[readIndex + 1];
+                        readIndex += 2;
+                        continue;
+                    }
+
+                    loweredBytes[writeIndex++] = ToSwindleLower(value);
+                    readIndex++;
+                }
+
+                return Encoding.Default.GetString(loweredBytes, 0, writeIndex);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(loweredBytes);
+            }
         }
 
         private static bool HasWhisperTransferTarget(int mapId, PacketFieldFeedbackCallbacks callbacks)

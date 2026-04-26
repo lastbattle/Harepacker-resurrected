@@ -2091,35 +2091,10 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            WzSubProperty startPortal = null;
-            WzSubProperty fallbackPortal = null;
-            foreach (WzSubProperty portal in portalParent.WzProperties.OfType<WzSubProperty>())
-            {
-                fallbackPortal ??= portal;
-                int? portalTypeId = InfoTool.GetOptionalInt(portal["pt"]);
-                string portalName = InfoTool.GetOptionalString(portal["pn"]);
-                if (IsRemoteTownPortalTownPointPortal(portalTypeId, portalName))
-                {
-                    townX = InfoTool.GetInt(portal["x"]);
-                    townY = InfoTool.GetInt(portal["y"]);
-                    return true;
-                }
-
-                if (startPortal == null && IsRemoteTownPortalSourceFallbackStartPortal(portalTypeId, portalName))
-                {
-                    startPortal = portal;
-                }
-            }
-
-            WzSubProperty selectedFallbackPortal = startPortal ?? fallbackPortal;
-            if (selectedFallbackPortal == null)
-            {
-                return false;
-            }
-
-            townX = InfoTool.GetInt(selectedFallbackPortal["x"]);
-            townY = InfoTool.GetInt(selectedFallbackPortal["y"]);
-            return true;
+            return TrySelectRemoteTownPortalTownDestinationFallbackPosition(
+                EnumerateRemoteTownPortalPortalCandidates(portalParent),
+                out townX,
+                out townY);
         }
 
         private static bool TryResolveRemoteTownPortalSourceFallbackPortalPosition(
@@ -2134,30 +2109,88 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            WzSubProperty fallbackPortal = null;
+            return TrySelectRemoteTownPortalSourceFallbackPosition(
+                EnumerateRemoteTownPortalPortalCandidates(portalParent),
+                out sourceX,
+                out sourceY);
+        }
+
+        private static IEnumerable<RemoteTownPortalPortalCandidate> EnumerateRemoteTownPortalPortalCandidates(WzSubProperty portalParent)
+        {
             foreach (WzSubProperty portal in portalParent.WzProperties.OfType<WzSubProperty>())
             {
-                fallbackPortal ??= portal;
-                int? portalTypeId = InfoTool.GetOptionalInt(portal["pt"]);
-                string portalName = InfoTool.GetOptionalString(portal["pn"]);
+                yield return new RemoteTownPortalPortalCandidate(
+                    InfoTool.GetOptionalInt(portal["pt"]),
+                    InfoTool.GetOptionalString(portal["pn"]),
+                    InfoTool.GetInt(portal["x"]),
+                    InfoTool.GetInt(portal["y"]));
+            }
+        }
 
-                if (!IsRemoteTownPortalSourceFallbackStartPortal(portalTypeId, portalName))
+        private static bool TrySelectRemoteTownPortalTownDestinationFallbackPosition(
+            IEnumerable<RemoteTownPortalPortalCandidate> candidates,
+            out float townX,
+            out float townY)
+        {
+            townX = 0f;
+            townY = 0f;
+            RemoteTownPortalPortalCandidate? startPortal = null;
+            RemoteTownPortalPortalCandidate? fallbackPortal = null;
+
+            foreach (RemoteTownPortalPortalCandidate candidate in candidates ?? Enumerable.Empty<RemoteTownPortalPortalCandidate>())
+            {
+                fallbackPortal ??= candidate;
+                if (IsRemoteTownPortalTownPointPortal(candidate.PortalTypeId, candidate.PortalName))
                 {
-                    continue;
+                    townX = candidate.X;
+                    townY = candidate.Y;
+                    return true;
                 }
 
-                sourceX = InfoTool.GetInt(portal["x"]);
-                sourceY = InfoTool.GetInt(portal["y"]);
-                return true;
+                if (!startPortal.HasValue && IsRemoteTownPortalSourceFallbackStartPortal(candidate.PortalTypeId, candidate.PortalName))
+                {
+                    startPortal = candidate;
+                }
             }
 
-            if (fallbackPortal == null)
+            RemoteTownPortalPortalCandidate? selectedFallbackPortal = startPortal ?? fallbackPortal;
+            if (!selectedFallbackPortal.HasValue)
             {
                 return false;
             }
 
-            sourceX = InfoTool.GetInt(fallbackPortal["x"]);
-            sourceY = InfoTool.GetInt(fallbackPortal["y"]);
+            townX = selectedFallbackPortal.Value.X;
+            townY = selectedFallbackPortal.Value.Y;
+            return true;
+        }
+
+        private static bool TrySelectRemoteTownPortalSourceFallbackPosition(
+            IEnumerable<RemoteTownPortalPortalCandidate> candidates,
+            out float sourceX,
+            out float sourceY)
+        {
+            sourceX = 0f;
+            sourceY = 0f;
+            RemoteTownPortalPortalCandidate? fallbackPortal = null;
+
+            foreach (RemoteTownPortalPortalCandidate candidate in candidates ?? Enumerable.Empty<RemoteTownPortalPortalCandidate>())
+            {
+                fallbackPortal ??= candidate;
+                if (IsRemoteTownPortalSourceFallbackStartPortal(candidate.PortalTypeId, candidate.PortalName))
+                {
+                    sourceX = candidate.X;
+                    sourceY = candidate.Y;
+                    return true;
+                }
+            }
+
+            if (!fallbackPortal.HasValue)
+            {
+                return false;
+            }
+
+            sourceX = fallbackPortal.Value.X;
+            sourceY = fallbackPortal.Value.Y;
             return true;
         }
 
@@ -3099,6 +3132,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private readonly record struct RemoteOpenGateKey(uint OwnerCharacterId, bool IsFirstSlot);
         private readonly record struct RemoteTownPortalOwnerTownKey(uint OwnerCharacterId, int TownMapId);
+        private readonly record struct RemoteTownPortalPortalCandidate(int? PortalTypeId, string PortalName, float X, float Y);
 
         private readonly record struct RemoteTownPortalState(
             uint OwnerCharacterId,
@@ -4088,6 +4122,36 @@ namespace HaCreator.MapSimulator.Fields
         internal static bool IsRemoteTownPortalSourceFallbackStartPortalForTesting(int? portalTypeId, string portalName)
         {
             return IsRemoteTownPortalSourceFallbackStartPortal(portalTypeId, portalName);
+        }
+
+        internal static bool TrySelectRemoteTownPortalTownDestinationFallbackPositionForTesting(
+            out float townX,
+            out float townY,
+            params (int? PortalTypeId, string PortalName, float X, float Y)[] portals)
+        {
+            return TrySelectRemoteTownPortalTownDestinationFallbackPosition(
+                portals?.Select(portal => new RemoteTownPortalPortalCandidate(
+                    portal.PortalTypeId,
+                    portal.PortalName,
+                    portal.X,
+                    portal.Y)),
+                out townX,
+                out townY);
+        }
+
+        internal static bool TrySelectRemoteTownPortalSourceFallbackPositionForTesting(
+            out float sourceX,
+            out float sourceY,
+            params (int? PortalTypeId, string PortalName, float X, float Y)[] portals)
+        {
+            return TrySelectRemoteTownPortalSourceFallbackPosition(
+                portals?.Select(portal => new RemoteTownPortalPortalCandidate(
+                    portal.PortalTypeId,
+                    portal.PortalName,
+                    portal.X,
+                    portal.Y)),
+                out sourceX,
+                out sourceY);
         }
 
         internal static bool ShouldReplaceRemoteTownPortalOwnerObservationForTesting(

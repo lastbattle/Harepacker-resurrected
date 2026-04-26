@@ -580,8 +580,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 if (_shipKind != 0)
                 {
-                    message = "Ignored OnStartShipMoveField value 2; client LeaveShipMove branch only applies to regular ships.";
-                    return false;
+                    message = "Handled OnStartShipMoveField value 2 -> LeaveShipMove no-op; CShip gates movement to regular ships.";
+                    return true;
                 }
 
                 LeaveShipMove();
@@ -599,8 +599,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 if (_shipKind != 0)
                 {
-                    message = "Ignored OnEndShipMoveField value 6; client EnterShipMove branch only applies to regular ships.";
-                    return false;
+                    message = "Handled OnEndShipMoveField value 6 -> EnterShipMove no-op; CShip gates movement to regular ships.";
+                    return true;
                 }
 
                 EnterShipMove();
@@ -619,8 +619,8 @@ namespace HaCreator.MapSimulator.Fields
                 case 4:
                     if (_shipKind != 1)
                     {
-                        message = "Ignored OnMoveField value 4; client AppearShip branch only applies to Balrog-type ships.";
-                        return false;
+                        message = "Handled OnMoveField value 4 -> AppearShip no-op; CShip gates appearance to Balrog-type ships.";
+                        return true;
                     }
 
                     AppearShip();
@@ -629,14 +629,14 @@ namespace HaCreator.MapSimulator.Fields
                 case 5:
                     if (_shipKind != 1)
                     {
-                        message = "Ignored OnMoveField value 5; client DisappearShip branch only applies to Balrog-type ships.";
-                        return false;
+                        message = "Handled OnMoveField value 5 -> DisappearShip no-op; CShip gates disappearance to Balrog-type ships.";
+                        return true;
                     }
 
                     if (!HasVisibleBalrogShipLayer())
                     {
-                        message = "Ignored OnMoveField value 5; client DisappearShip is a no-op while the Balrog ship layer alpha is already 0.";
-                        return false;
+                        message = "Handled OnMoveField value 5 -> DisappearShip no-op; client alpha gate leaves an already-hidden Balrog ship unchanged.";
+                        return true;
                     }
 
                     DisappearShip();
@@ -662,8 +662,8 @@ namespace HaCreator.MapSimulator.Fields
                         return true;
                     }
 
-                    message = $"Ignored OnContiState ({state}, {stateValue}); client EnterShipMove branch only applies to regular ships.";
-                    return false;
+                    message = $"Handled OnContiState ({state}, {stateValue}) -> EnterShipMove no-op; CShip gates movement to regular ships.";
+                    return true;
 
                 case 2:
                 case 5:
@@ -674,8 +674,8 @@ namespace HaCreator.MapSimulator.Fields
                         return true;
                     }
 
-                    message = $"Ignored OnContiState ({state}, {stateValue}); client LeaveShipMove branch only applies to regular ships.";
-                    return false;
+                    message = $"Handled OnContiState ({state}, {stateValue}) -> LeaveShipMove no-op; CShip gates movement to regular ships.";
+                    return true;
 
                 case 3:
                 case 4:
@@ -693,8 +693,8 @@ namespace HaCreator.MapSimulator.Fields
                         return true;
                     }
 
-                    message = $"Ignored OnContiState ({state}, {stateValue}); Balrog-type maps only react when the second byte is 1.";
-                    return false;
+                    message = $"Handled OnContiState ({state}, {stateValue}) with no visible ship change; Balrog-type maps only appear when the second byte is 1.";
+                    return true;
 
                 default:
                     message = $"Ignored OnContiState ({state}, {stateValue}); client switch has no handler for this state.";

@@ -451,12 +451,40 @@ namespace HaCreator.MapSimulator
             platform.RightBound = Math.Max(movingState.X1, movingState.X2);
             platform.TopBound = Math.Min(movingState.Y1, movingState.Y2);
             platform.BottomBound = Math.Max(movingState.Y1, movingState.Y2);
+            platform.MovementType = ResolvePacketOwnedMovingFootholdMovementTypeForPacketParity(
+                movingState.X1,
+                movingState.X2,
+                movingState.Y1,
+                movingState.Y2,
+                platform.MovementType);
             platform.X = movingState.CurrentX;
             platform.Y = movingState.CurrentY;
             platform.MovingDown = !movingState.ReverseVertical;
             platform.MovingRight = !movingState.ReverseHorizontal;
             platform.DeltaX = platform.X - previousX;
             platform.DeltaY = platform.Y - previousY;
+        }
+
+        internal static PlatformMovementType ResolvePacketOwnedMovingFootholdMovementTypeForPacketParity(
+            int x1,
+            int x2,
+            int y1,
+            int y2,
+            PlatformMovementType currentMovementType)
+        {
+            bool hasHorizontalSpan = x1 != x2;
+            bool hasVerticalSpan = y1 != y2;
+            if (hasHorizontalSpan && !hasVerticalSpan)
+            {
+                return PlatformMovementType.Horizontal;
+            }
+
+            if (hasVerticalSpan && !hasHorizontalSpan)
+            {
+                return PlatformMovementType.Vertical;
+            }
+
+            return currentMovementType;
         }
 
         private void CachePacketOwnedFootholdNames(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)

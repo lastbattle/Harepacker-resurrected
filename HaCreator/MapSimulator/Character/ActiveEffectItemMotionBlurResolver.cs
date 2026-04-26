@@ -73,7 +73,7 @@ namespace HaCreator.MapSimulator.Character
                 follow,
                 Math.Max(1, delayMs),
                 Math.Max(1, intervalMs),
-                (byte)Math.Clamp(alpha, 0, byte.MaxValue));
+                unchecked((byte)alpha));
         }
 
         internal static bool ShouldRetainSnapshot(

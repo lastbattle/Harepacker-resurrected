@@ -481,15 +481,9 @@ namespace HaCreator.MapSimulator.Character
             }
             else if (node is WzSubProperty subProperty)
             {
-                for (int i = 0; i < 100; i++)
+                foreach (KeyValuePair<string, WzImageProperty> frameEntry in EnumerateMorphFrameNodes(subProperty))
                 {
-                    WzImageProperty frameNode = subProperty[i.ToString()];
-                    if (frameNode == null)
-                    {
-                        break;
-                    }
-
-                    CharacterFrame frame = LoadMorphFrameEntry(frameNode, i.ToString());
+                    CharacterFrame frame = LoadMorphFrameEntry(frameEntry.Value, frameEntry.Key);
                     if (frame != null)
                     {
                         animation.Frames.Add(frame);
@@ -504,6 +498,31 @@ namespace HaCreator.MapSimulator.Character
 
             animation.CalculateTotalDuration();
             return animation.Frames.Count > 0 ? animation : null;
+        }
+
+        private static IEnumerable<KeyValuePair<string, WzImageProperty>> EnumerateMorphFrameNodes(WzSubProperty actionNode)
+        {
+            if (actionNode == null)
+            {
+                yield break;
+            }
+
+            // CActionMan::LoadMorphAction enumerates the morph action property instead of
+            // assuming dense 0..N frame keys, so sparse authored rows still publish frames.
+            foreach (WzImageProperty frameNode in actionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (frameNode != null && int.TryParse(frameNode.Name, out _))
+                {
+                    yield return new KeyValuePair<string, WzImageProperty>(frameNode.Name, frameNode);
+                }
+            }
+        }
+
+        internal static string[] EnumerateMorphFrameNamesForTesting(WzSubProperty actionNode)
+        {
+            return EnumerateMorphFrameNodes(actionNode)
+                .Select(static frameEntry => frameEntry.Key)
+                .ToArray();
         }
 
         private CharacterFrame LoadMorphFrameEntry(WzImageProperty frameNode, string frameName)
@@ -3028,13 +3047,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            foreach (WzImageProperty frameNode in actionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            foreach (KeyValuePair<string, WzImageProperty> frameEntry in EnumerateMorphFrameNodes(actionNode as WzSubProperty))
             {
-                if (frameNode == null || !int.TryParse(frameNode.Name, out _))
-                {
-                    continue;
-                }
-
+                WzImageProperty frameNode = frameEntry.Value;
                 if (frameNode is WzCanvasProperty
                     || (frameNode as WzUOLProperty)?.LinkValue is WzCanvasProperty)
                 {

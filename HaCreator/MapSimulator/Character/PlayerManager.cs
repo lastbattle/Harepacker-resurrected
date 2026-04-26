@@ -66,6 +66,8 @@ namespace HaCreator.MapSimulator.Character
 
         // Foothold system callback
         private Func<float, float, float, FootholdLine> _findFoothold;
+        private Func<float, float, float, FootholdLine> _findFootholdUnderneath;
+        private Func<float, float, float, FootholdLine> _findFootholdAbove;
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
         private Func<DragonCompanionRuntime.OwnerPhaseContext> _dragonOwnerPhaseContextProvider;
@@ -175,6 +177,15 @@ namespace HaCreator.MapSimulator.Character
 
             Skills?.SetFootholdLookup(findFoothold);
             ConfigureDragonActionLayerOwnerZProvider();
+        }
+
+        public void SetClientSummonMonsterFootholdLookups(
+            Func<float, float, float, FootholdLine> findFootholdUnderneath,
+            Func<float, float, float, FootholdLine> findFootholdAbove)
+        {
+            _findFootholdUnderneath = findFootholdUnderneath;
+            _findFootholdAbove = findFootholdAbove;
+            Skills?.SetClientSummonMonsterFootholdLookups(findFootholdUnderneath, findFootholdAbove);
         }
 
         /// <summary>
@@ -502,6 +513,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetAnimationEffects(_animationEffects);
                 Skills.SetSoundManager(_soundManager);
                 Skills.SetFootholdLookup(_findFoothold);
+                Skills.SetClientSummonMonsterFootholdLookups(_findFootholdUnderneath, _findFootholdAbove);
                 Skills.SetTamingMobLoader(Loader.LoadTamingMob);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
                 Skills.OnLocalAttackAreaResolved = _localAttackAreaHandler;

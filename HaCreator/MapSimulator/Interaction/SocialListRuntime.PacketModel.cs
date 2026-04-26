@@ -1012,7 +1012,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool ShouldIgnoreGuildScopedResult(int guildId, out int activeGuildId)
         {
             activeGuildId = _packetGuildId;
-            return guildId > 0 && activeGuildId > 0 && guildId != activeGuildId;
+            return activeGuildId > 0 && guildId != activeGuildId;
         }
 
         private void RememberPacketGuildId(int guildId)

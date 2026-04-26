@@ -1860,7 +1860,10 @@ namespace HaCreator.MapSimulator.Entities
             string effectPath = MobAngerGaugeBurstParity.ResolveOwnerEffectPath(
                 _mobInstance?.MobInfo?.ID,
                 _animationSet.GetAngerGaugeEffectPath());
-            if (!MobAngerGaugeBurstParity.CanRegisterOwnerBurst(effectFrames, effectPath) || _animationEffects == null)
+            if (!MobAngerGaugeBurstParity.CanRegisterOwnerBurst(
+                    effectFrames,
+                    effectPath,
+                    hasActiveAnimationDisplayer: _animationEffects != null))
             {
                 return;
             }

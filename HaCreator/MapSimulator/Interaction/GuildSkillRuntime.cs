@@ -440,7 +440,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Ignored client guild-skill record because no guild is currently active.";
             }
 
-            if (_guildId > 0 && guildId > 0 && guildId != _guildId)
+            if (_guildId > 0 && guildId != _guildId)
             {
                 return $"Ignored client guild-skill record for guild {guildId} because the active guild context is {_guildId}.";
             }
@@ -506,7 +506,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Ignored client guild-skill snapshot because no guild is currently active.";
             }
 
-            if (_guildId > 0 && guildId > 0 && guildId != _guildId)
+            if (_guildId > 0 && guildId != _guildId)
             {
                 return $"Ignored client guild-skill snapshot for guild {guildId} because the active guild context is {_guildId}.";
             }

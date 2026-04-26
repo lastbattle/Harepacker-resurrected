@@ -642,11 +642,23 @@ namespace HaCreator.MapSimulator
 
             if (packet.Reason == PacketDropLeaveReason.PetPickup && resolvedOwnerCharacterId > 0)
             {
-                // Keep packet leave-party linking aligned with the packet-owned synthetic owner-slot anchor seam.
-                linkedActorIds.Add(BuildRemotePetPickupActorId(resolvedOwnerCharacterId, slotIndex: 0));
+                AddRemotePetPickupActorAliasesForOwner(linkedActorIds, resolvedOwnerCharacterId);
             }
 
             return linkedActorIds.ToArray();
+        }
+
+        internal static void AddRemotePetPickupActorAliasesForOwner(ISet<int> actorIds, int ownerCharacterId)
+        {
+            if (actorIds == null || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            for (int slotIndex = 0; slotIndex < RemotePetPickupPredictedSlotCount; slotIndex++)
+            {
+                actorIds.Add(BuildRemotePetPickupActorId(ownerCharacterId, slotIndex));
+            }
         }
 
         internal static bool TryResolveRemotePetPickupOwnerAndSlotForPacketParity(
@@ -1364,6 +1376,27 @@ namespace HaCreator.MapSimulator
             }
 
             int[] linkedActorIds = actorParents.Keys.ToArray();
+
+            if (TryDecodeRemotePetPickupActorId(actorId, out int requestedOwnerCharacterId, out int requestedSlotIndex))
+            {
+                foreach (int linkedActorId in linkedActorIds)
+                {
+                    if (linkedActorId != actorId)
+                    {
+                        continue;
+                    }
+
+                    int linkedActorRoot = FindObservedDropPartyActorRoot(actorParents, linkedActorId);
+                    if (!targetRoots.Contains(linkedActorRoot))
+                    {
+                        continue;
+                    }
+
+                    ownerCharacterId = requestedOwnerCharacterId;
+                    slotIndex = requestedSlotIndex;
+                    return true;
+                }
+            }
 
             bool foundOwnerAlias = false;
             int bestOwnerAliasSlot = int.MaxValue;

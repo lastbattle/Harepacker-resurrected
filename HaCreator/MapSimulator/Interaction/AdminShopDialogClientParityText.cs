@@ -145,6 +145,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return resultCode switch
             {
+                0 => "Success",
                 1 or 2 or 3 or 6 or 8 => "Retry",
                 4 => "Rejected",
                 5 => "Unavailable",

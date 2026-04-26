@@ -604,10 +604,6 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int skillRoot = skillId / 10000;
-            if (skillRoot <= 0)
-            {
-                return false;
-            }
 
             if (IsEvanSkillClassRoot(skillRoot))
             {

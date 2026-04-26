@@ -2800,7 +2800,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            animationStartTime = currentTime - animationElapsedMs;
+            animationStartTime = ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+                currentTime,
+                animationElapsedMs);
             return true;
         }
 
@@ -2819,7 +2821,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            int animationElapsedMs = Math.Max(0, currentTime - animationStartTime);
+            int animationElapsedMs = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, animationStartTime);
             StoreAuxiliaryLayerOwnerCounter(
                 ResolveAuxiliaryAvatarEffectActionOwnerName(plane, IsAuxiliaryAvatarEffectOneTime(animation)),
                 skillId,
@@ -2827,6 +2829,38 @@ namespace HaCreator.MapSimulator.Character
                 facingRight,
                 animationElapsedMs,
                 currentTime);
+        }
+
+        private static int ResolveClientOwnedAvatarEffectTickElapsedMs(int currentTime, int startTime)
+        {
+            if (currentTime == int.MinValue || startTime == int.MinValue)
+            {
+                return 0;
+            }
+
+            long elapsed = unchecked((uint)(currentTime - startTime));
+            return elapsed >= int.MaxValue
+                ? int.MaxValue
+                : (int)elapsed;
+        }
+
+        private static int ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(
+            int currentTime,
+            int elapsedMs)
+        {
+            return unchecked(currentTime - Math.Max(0, elapsedMs));
+        }
+
+        internal static int ResolveClientOwnedAvatarEffectTickElapsedMsForTesting(int currentTime, int startTime)
+        {
+            return ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, startTime);
+        }
+
+        internal static int ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsedForTesting(
+            int currentTime,
+            int elapsedMs)
+        {
+            return ResolveClientOwnedAvatarEffectAnimationStartTimeFromElapsed(currentTime, elapsedMs);
         }
 
         private static bool TryResolveTransientAuxiliaryAvatarEffectOwnerCounterContext(
@@ -4380,15 +4414,25 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
+            int? initialRawActionCode = TryGetCurrentClientRawActionCode(out int initialObservedRawActionCode)
+                ? initialObservedRawActionCode
+                : null;
+            Point initialClientOffset = ResolveShadowPartnerClientOffset(
+                CurrentActionName,
+                State,
+                FacingRight,
+                initialRawActionCode,
+                HasActiveMorphTransform);
+
             _activeShadowPartner = new ShadowPartnerState
             {
                 SkillId = skillId,
                 ActionAnimations = skill.ShadowPartnerActionAnimations,
                 SupportedRawActionNames = skill.ShadowPartnerSupportedRawActionNames,
                 HorizontalOffsetPx = skill.ShadowPartnerHorizontalOffsetPx,
-                CurrentClientOffsetPx = ResolveShadowPartnerClientOffset(CurrentActionName, State, FacingRight),
-                ClientOffsetStartPx = ResolveShadowPartnerClientOffset(CurrentActionName, State, FacingRight),
-                ClientOffsetTargetPx = ResolveShadowPartnerClientOffset(CurrentActionName, State, FacingRight),
+                CurrentClientOffsetPx = initialClientOffset,
+                ClientOffsetStartPx = initialClientOffset,
+                ClientOffsetTargetPx = initialClientOffset,
                 ClientOffsetTransitionStartTime = currentTime,
                 CurrentActionName = useSpawnAction ? spawnActionName : resolvedActionName,
                 CurrentPlaybackAnimation = useSpawnAction
@@ -4404,9 +4448,7 @@ namespace HaCreator.MapSimulator.Character
                 ObservedPlayerFacingRight = FacingRight,
                 ObservedPlayerFloatingState = State is PlayerState.Swimming or PlayerState.Flying,
                 ObservedPlayerActionTriggerTime = observedAttackTriggerTime,
-                ObservedPlayerRawActionCode = TryGetCurrentClientRawActionCode(out int observedRawActionCode)
-                    ? observedRawActionCode
-                    : null,
+                ObservedPlayerRawActionCode = initialRawActionCode,
                 LastForcedReplayActionTriggerTime = initialForceReplayTriggerTime
             };
 
@@ -4633,7 +4675,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                int elapsedTime = Math.Max(0, currentTime - transientEffect.AnimationStartTime);
+                int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, transientEffect.AnimationStartTime);
                 SkillAnimation primaryAnimation = transientEffect.IsFinishing
                     ? transientEffect.FinishAnimation
                     : transientEffect.Animation;
@@ -4830,7 +4872,7 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            int elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
+            int elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, effectState.AnimationStartTime);
             bool anyAnimation = false;
 
             foreach (SkillAnimation animation in GetSkillAvatarEffectAnimations(effectState))
@@ -7588,7 +7630,7 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 signature.Add(RuntimeHelpers.GetHashCode(part));
-                signature.Add(RuntimeHelpers.GetHashCode(part.Texture));
+                AddMirrorImageSourceTextureIdentity(ref signature, part.Texture);
                 signature.Add(part.OffsetX);
                 signature.Add(part.OffsetY);
                 signature.Add(part.ZIndex);
@@ -7599,7 +7641,7 @@ namespace HaCreator.MapSimulator.Character
                 signature.Add((int)part.RenderLayer);
                 signature.Add(part.ZLayer, StringComparer.Ordinal);
                 signature.Add(RuntimeHelpers.GetHashCode(part.SourcePortableChairLayer));
-                signature.Add(RuntimeHelpers.GetHashCode(part.SourcePart));
+                AddMirrorImageSourcePartIdentity(ref signature, part.SourcePart);
                 IReadOnlyList<string> visibilityTokens = part.VisibilityTokens;
                 signature.Add(RuntimeHelpers.GetHashCode(visibilityTokens));
                 signature.Add(visibilityTokens?.Count ?? 0);
@@ -7613,6 +7655,58 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return signature.ToHashCode();
+        }
+
+        private static void AddMirrorImageSourceTextureIdentity(ref HashCode signature, IDXObject texture)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(texture));
+            if (texture == null)
+            {
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add(RuntimeHelpers.GetHashCode(texture.Texture));
+            signature.Add(texture.X);
+            signature.Add(texture.Y);
+            signature.Add(texture.Width);
+            signature.Add(texture.Height);
+            signature.Add(texture.Delay);
+
+            object tag = texture.Tag;
+            signature.Add(RuntimeHelpers.GetHashCode(tag));
+            if (tag is string tagText)
+            {
+                signature.Add(tagText, StringComparer.Ordinal);
+            }
+        }
+
+        private static void AddMirrorImageSourcePartIdentity(ref HashCode signature, CharacterPart sourcePart)
+        {
+            signature.Add(RuntimeHelpers.GetHashCode(sourcePart));
+            if (sourcePart == null)
+            {
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                signature.Add(0);
+                return;
+            }
+
+            signature.Add(sourcePart.ItemId);
+            signature.Add((int)sourcePart.Type);
+            signature.Add((int)sourcePart.Slot);
+            signature.Add(sourcePart.IsCash);
+            signature.Add(sourcePart.UsesWeeklyVariantOverride);
+            signature.Add(sourcePart.ResolvedWeeklyVariantIndex);
         }
 
         internal static Point ResolveMirrorImageSourceLayerOrigin(Rectangle bounds)
@@ -8105,8 +8199,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
-
+                elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, effectState.AnimationStartTime);
                 PersistentSkillAvatarEffectRenderSelection selection =
                     ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
                         effectState.IsFinishing,
@@ -8146,7 +8239,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
+                elapsedTime = ResolveClientOwnedAvatarEffectTickElapsedMs(currentTime, effectState.AnimationStartTime);
                 SkillAnimation primaryAnimation = effectState.IsFinishing
                     ? effectState.FinishAnimation
                     : effectState.Animation;

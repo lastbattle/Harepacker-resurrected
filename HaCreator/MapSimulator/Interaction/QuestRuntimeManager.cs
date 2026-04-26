@@ -338,6 +338,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndFameRequirement { get; init; }
             public int? EndQuestCompleteCount { get; init; }
             public int? EndPartyQuestRankS { get; init; }
+            public int? EndLevelRequirement { get; init; }
             public int EndMorphTemplateId { get; init; }
             public IReadOnlyList<int> EndRequiredBuffIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> EndExcludedBuffIds { get; init; } = Array.Empty<int>();
@@ -1066,6 +1067,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnresolvedCompletionBuildContextDemand(
                     definition.MinLevel,
                     definition.MaxLevel,
+                    definition.EndLevelRequirement,
                     definition.EndActions?.ActionMinLevel,
                     definition.EndActions?.ActionMaxLevel,
                     definition.EndActions?.AllowedJobs,
@@ -1084,6 +1086,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (build != null && HasUnmetCompletionLevelFloor(definition.MinLevel, build.Level))
             {
                 issues.Add($"Reach level {definition.MinLevel.Value}.");
+            }
+
+            if (build != null && HasUnmetCompletionLevelDemand(definition.EndLevelRequirement, build.Level))
+            {
+                issues.Add($"Reach completion level {definition.EndLevelRequirement.Value}.");
             }
 
             if (build != null && HasUnmetCompletionLevelCap(definition.MaxLevel, build.Level))
@@ -1342,6 +1349,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool HasUnresolvedCompletionBuildContextDemand(
             int? minLevel,
             int? maxLevel,
+            int? completionLevel,
             int? actionMinLevel,
             int? actionMaxLevel,
             IReadOnlyList<int> actionAllowedJobs,
@@ -1349,6 +1357,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return minLevel.HasValue
                    || maxLevel.HasValue
+                   || completionLevel.HasValue
                    || actionMinLevel.HasValue
                    || actionMaxLevel.HasValue
                    || (actionAllowedJobs?.Count ?? 0) > 0
@@ -1364,6 +1373,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool HasUnmetCompletionLevelFloor(int? minLevel, int currentLevel)
         {
             return minLevel.HasValue && currentLevel < minLevel.Value;
+        }
+
+        internal static bool HasUnmetCompletionLevelDemand(int? completionLevel, int currentLevel)
+        {
+            return completionLevel.HasValue && currentLevel < completionLevel.Value;
         }
 
         internal static bool HasUnmetCompletionLevelCap(int? maxLevel, int currentLevel)
@@ -8692,6 +8706,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndFameRequirement = ParsePositiveInt(endCheck?["pop"]),
                 EndQuestCompleteCount = ParseInt(endCheck?["questComplete"]),
                 EndPartyQuestRankS = ParseInt(endCheck?["partyQuest_S"]),
+                EndLevelRequirement = ParseInt(endCheck?["level"]),
                 EndMorphTemplateId = ParsePositiveInt(endCheck?["morph"]).GetValueOrDefault(),
                 EndRequiredBuffIds = ParseQuestDemandIntegerList(endCheck?["buff"]),
                 EndExcludedBuffIds = ParseQuestDemandIntegerList(endCheck?["exceptbuff"]),

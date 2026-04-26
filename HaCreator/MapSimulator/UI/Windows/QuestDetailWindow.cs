@@ -723,10 +723,7 @@ namespace HaCreator.MapSimulator.UI
         {
             Rectangle clipRect = GetLogClipRectangle();
             float y = Position.Y + GetLogTextArrayBaseY() - _logScrollOffset;
-            foreach (QuestDetailCtEntry entry in GetLogCtEntries())
-            {
-                y = DrawCtEntry(sprite, clipRect, entry, y);
-            }
+            DrawCtEntries(sprite, clipRect, GetLogCtEntries(), y);
         }
 
         private void DrawSummaryPane(SpriteBatch sprite)
@@ -739,10 +736,29 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle clipRect = GetSummaryClipRectangle();
             float y = Position.Y + ClientSummaryY - _summaryScrollOffset;
-            foreach (QuestDetailCtEntry entry in summaryEntries)
+            DrawCtEntries(sprite, clipRect, summaryEntries, y);
+        }
+
+        private float DrawCtEntries(SpriteBatch sprite, Rectangle clipRect, IReadOnlyList<QuestDetailCtEntry> entries, float y)
+        {
+            foreach (CtEntryRow row in EnumerateCtEntryRows(entries))
             {
-                y = DrawCtEntry(sprite, clipRect, entry, y);
+                if (!row.IsGrouped)
+                {
+                    y = DrawCtEntry(sprite, clipRect, row.Entries[0], y);
+                    continue;
+                }
+
+                float rowBaseY = y;
+                foreach (QuestDetailCtEntry entry in row.Entries)
+                {
+                    DrawCtEntryBody(sprite, clipRect, entry, rowBaseY + entry.YOffset);
+                }
+
+                y = rowBaseY + ResolveCtRowAdvance(row);
             }
+
+            return y;
         }
 
         private void DrawDetailInset(SpriteBatch sprite, int tickCount)
@@ -867,6 +883,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             y += entry.YOffset;
+            float bottom = DrawCtEntryBody(sprite, clipRect, entry, y);
+            return bottom + entry.VerticalGapAfter;
+        }
+
+        private float DrawCtEntryBody(SpriteBatch sprite, Rectangle clipRect, QuestDetailCtEntry entry, float y)
+        {
             float x = ResolveCtEntryX(entry);
             switch (entry.Kind)
             {
@@ -922,7 +944,7 @@ namespace HaCreator.MapSimulator.UI
                     break;
             }
 
-            return y + entry.VerticalGapAfter;
+            return y;
         }
 
         private float AdvanceCtEntry(QuestDetailCtEntry entry, float y)
@@ -933,6 +955,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             y += entry.YOffset;
+            y = AdvanceCtEntryBody(entry, y);
+            return y + entry.VerticalGapAfter;
+        }
+
+        private float AdvanceCtEntryBody(QuestDetailCtEntry entry, float y)
+        {
             float x = ResolveCtEntryX(entry);
             switch (entry.Kind)
             {
@@ -977,7 +1005,87 @@ namespace HaCreator.MapSimulator.UI
                     break;
             }
 
-            return y + entry.VerticalGapAfter;
+            return y;
+        }
+
+        private float AdvanceCtEntries(IReadOnlyList<QuestDetailCtEntry> entries, float y)
+        {
+            foreach (CtEntryRow row in EnumerateCtEntryRows(entries))
+            {
+                if (!row.IsGrouped)
+                {
+                    y = AdvanceCtEntry(row.Entries[0], y);
+                    continue;
+                }
+
+                y += ResolveCtRowAdvance(row);
+            }
+
+            return y;
+        }
+
+        private float ResolveCtRowAdvance(CtEntryRow row)
+        {
+            if (row.Entries.Count == 0)
+            {
+                return 0f;
+            }
+
+            int authoredRowHeight = row.Entries.Max(entry => Math.Max(0, entry.RowHeight));
+            if (authoredRowHeight > 0)
+            {
+                return authoredRowHeight;
+            }
+
+            float bottom = 0f;
+            foreach (QuestDetailCtEntry entry in row.Entries)
+            {
+                float entryBottom = AdvanceCtEntryBody(entry, entry.YOffset) + entry.VerticalGapAfter;
+                bottom = Math.Max(bottom, entryBottom);
+            }
+
+            return bottom;
+        }
+
+        private static IEnumerable<CtEntryRow> EnumerateCtEntryRows(IReadOnlyList<QuestDetailCtEntry> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                yield break;
+            }
+
+            for (int i = 0; i < entries.Count;)
+            {
+                QuestDetailCtEntry entry = entries[i];
+                if (entry?.RowIndex is not int rowIndex)
+                {
+                    yield return new CtEntryRow(new[] { entry }, false);
+                    i++;
+                    continue;
+                }
+
+                List<QuestDetailCtEntry> rowEntries = new();
+                do
+                {
+                    rowEntries.Add(entries[i]);
+                    i++;
+                }
+                while (i < entries.Count && entries[i]?.RowIndex == rowIndex);
+
+                yield return new CtEntryRow(rowEntries, rowEntries.Count > 1 || rowEntries[0].RowHeight > 0);
+            }
+        }
+
+        private readonly struct CtEntryRow
+        {
+            public CtEntryRow(IReadOnlyList<QuestDetailCtEntry> entries, bool isGrouped)
+            {
+                Entries = entries ?? Array.Empty<QuestDetailCtEntry>();
+                IsGrouped = isGrouped;
+            }
+
+            public IReadOnlyList<QuestDetailCtEntry> Entries { get; }
+            public bool IsGrouped { get; }
         }
 
         private Texture2D ResolveCtEntryHeaderTexture(QuestDetailCtEntry entry)

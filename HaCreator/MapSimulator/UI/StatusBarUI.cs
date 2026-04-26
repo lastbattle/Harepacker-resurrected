@@ -101,6 +101,7 @@ namespace HaCreator.MapSimulator.UI {
         public bool SuppressProgressOverlay { get; set; }
         public bool SuppressCounterText { get; set; }
         public bool UseQuickSlotMaskSurface { get; set; } = true;
+        public int ShortcutSlotIndex { get; set; } = -1;
     }
 
     public class StatusBarKeyDownBarTextures
@@ -1267,12 +1268,19 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             Point trayTopLeft = ResolveClientShortcutTrayTopLeft(renderParameters.RenderWidth);
-            int visibleCount = Math.Min(cooldownEntries.Count, CLIENT_SHORTCUT_SLOT_COUNT);
             int maxBottom = trayTopLeft.Y;
-            for (int entryIndex = 0; entryIndex < visibleCount; entryIndex++)
+            for (int entryIndex = 0; entryIndex < cooldownEntries.Count; entryIndex++)
             {
                 StatusBarCooldownRenderData cooldownEntry = cooldownEntries[entryIndex];
-                Rectangle iconRect = ResolveClientShortcutSlotRect(trayTopLeft.X, trayTopLeft.Y, entryIndex);
+                if (!ShouldDrawStatusBarShortcutCooldownSlotForClientParity(cooldownEntry))
+                {
+                    continue;
+                }
+
+                Rectangle iconRect = ResolveClientShortcutSlotRect(
+                    trayTopLeft.X,
+                    trayTopLeft.Y,
+                    cooldownEntry.ShortcutSlotIndex);
                 maxBottom = Math.Max(maxBottom, iconRect.Bottom);
 
                 RegisterCooldownTooltipHitTarget(
@@ -1312,6 +1320,14 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             return maxBottom;
+        }
+
+        internal static bool ShouldDrawStatusBarShortcutCooldownSlotForClientParity(
+            StatusBarCooldownRenderData cooldownEntry)
+        {
+            return cooldownEntry != null
+                   && cooldownEntry.ShortcutSlotIndex >= 0
+                   && cooldownEntry.ShortcutSlotIndex < CLIENT_SHORTCUT_SLOT_COUNT;
         }
 
         internal static Point ResolveClientShortcutTrayTopLeft(int renderWidth)

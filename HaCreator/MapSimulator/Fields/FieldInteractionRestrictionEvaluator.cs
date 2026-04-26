@@ -1,6 +1,8 @@
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure;
@@ -154,6 +156,27 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetShopOpenRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "limitUseShop")
+                ? "Shop windows cannot be opened in this map."
+                : null;
+        }
+
+        public static string GetTrunkOpenRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "limitUseTrunk")
+                ? "Storage windows cannot be opened in this map."
+                : null;
+        }
+
+        public static string GetPortableChairRestrictionMessage(MapInfo mapInfo)
+        {
+            return IsInfoFlagSet(mapInfo, "noChair")
+                ? "Portable chairs cannot be used in this map."
+                : null;
+        }
+
         internal static string GetExpeditionPartyBossChangeRestrictionMessage(
             long fieldLimit,
             ExpeditionIntermediaryOutboundRequestKind requestKind)
@@ -284,6 +307,21 @@ namespace HaCreator.MapSimulator.Fields
             if (!string.IsNullOrWhiteSpace(socialRoomRestrictionMessage))
             {
                 return socialRoomRestrictionMessage;
+            }
+
+            string fieldMetadataWindowRestrictionMessage = windowName switch
+            {
+                MapSimulatorWindowNames.NpcShop or
+                MapSimulatorWindowNames.CashShop =>
+                    GetShopOpenRestrictionMessage(mapInfo),
+                MapSimulatorWindowNames.StoreBank or
+                MapSimulatorWindowNames.Trunk =>
+                    GetTrunkOpenRestrictionMessage(mapInfo),
+                _ => null
+            };
+            if (!string.IsNullOrWhiteSpace(fieldMetadataWindowRestrictionMessage))
+            {
+                return fieldMetadataWindowRestrictionMessage;
             }
 
             return windowName == MapSimulatorWindowNames.MapTransfer
@@ -548,6 +586,9 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetItemOptionLimitMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetJumpDownRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetFallingDamageRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetShopOpenRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetTrunkOpenRestrictionMessage(mapInfo));
+            AddFieldEntryMessage(messages, GetPortableChairRestrictionMessage(mapInfo));
             return messages;
         }
 
@@ -849,6 +890,57 @@ namespace HaCreator.MapSimulator.Fields
 
                 startIndex = index + word.Length;
             }
+        }
+
+        private static bool IsInfoFlagSet(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            WzImageProperty property = FindInfoProperty(mapInfo, propertyName);
+            if (property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                return property.GetInt() != 0;
+            }
+            catch
+            {
+                return property is WzStringProperty stringProperty
+                       && int.TryParse(stringProperty.Value, out int value)
+                       && value != 0;
+            }
+        }
+
+        private static WzImageProperty FindInfoProperty(MapInfo mapInfo, string propertyName)
+        {
+            WzImageProperty property = FindNamedProperty(mapInfo.additionalProps, propertyName)
+                ?? FindNamedProperty(mapInfo.unsupportedInfoProperties, propertyName);
+
+            return property ?? mapInfo.Image?["info"]?[propertyName] as WzImageProperty;
+        }
+
+        private static WzImageProperty FindNamedProperty(IEnumerable<WzImageProperty> properties, string propertyName)
+        {
+            if (properties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return property;
+                }
+            }
+
+            return null;
         }
     }
 }

@@ -371,6 +371,11 @@ namespace HaCreator.MapSimulator.Loaders
 
                 foreach ((int properEventIndex, WzImageProperty eventProperty) in EnumerateReactorIndexedHitProperties(stateProperty))
                 {
+                    if (!IsReactorIndexedHitPropertyCandidate(eventProperty))
+                    {
+                        continue;
+                    }
+
                     WzImageProperty hitProperty = ResolveExactReactorSourceProperty(eventProperty);
                     if (hitProperty == null)
                     {

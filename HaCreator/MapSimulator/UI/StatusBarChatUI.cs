@@ -514,12 +514,7 @@ namespace HaCreator.MapSimulator.UI
 
             int visibleRowIndex = relativeY / rowHeight;
             int clientRowIndex = firstVisibleIndex + visibleRowIndex;
-            if (clientRowIndex < 0 || clientRowIndex >= candidateCount)
-            {
-                return -1;
-            }
-
-            return clientRowIndex;
+            return Math.Clamp(clientRowIndex, 0, candidateCount - 1);
         }
 
         internal static int ResolveWhisperPickerClientComboRowIndexFromReleasePoint(
@@ -565,9 +560,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int visibleRowIndex = relativeY / rowHeight;
-            return visibleRowIndex >= 0 && visibleRowIndex < candidateCount
-                ? visibleRowIndex
-                : -1;
+            return Math.Clamp(visibleRowIndex, 0, candidateCount - 1);
         }
 
         internal static int ResolveWhisperPickerClientComboDeleteIndexFromReleasePoint(

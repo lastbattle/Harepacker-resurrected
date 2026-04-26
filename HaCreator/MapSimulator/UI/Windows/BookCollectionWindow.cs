@@ -1484,7 +1484,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawCollectionPageIndex(
                     sprite,
                     BuildPageIndexText(collectionSpreadStart, collectionTotalPages),
-                    OffsetBounds(ClientLeftCollectionPageIndexBounds, Point.Zero),
+                    ResolveCollectionPageIndexBounds(Position, rightPage: false),
                     GetBookStyle(0));
 
                 if (collectionSpreadStart + 1 < collectionTotalPages)
@@ -1492,7 +1492,7 @@ namespace HaCreator.MapSimulator.UI
                     DrawCollectionPageIndex(
                         sprite,
                         BuildPageIndexText(collectionSpreadStart + 1, collectionTotalPages),
-                        OffsetBounds(ClientRightCollectionPageIndexBounds, Point.Zero),
+                        ResolveCollectionPageIndexBounds(Position, rightPage: true),
                         GetBookStyle(0));
                 }
 
@@ -2304,13 +2304,25 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             Vector2 size = MeasureRenderedText(trimmed, style);
-            Vector2 position = new(bounds.X + ((bounds.Width - size.X) / 2f), bounds.Y);
+            Vector2 position = ResolveCollectionPageIndexTextAnchor(bounds, (int)Math.Floor(size.X));
             if (style.Shadow)
             {
                 DrawRenderedString(sprite, trimmed, position + Vector2.One, style.ShadowColor, style);
             }
 
             DrawRenderedString(sprite, trimmed, position, style.Color, style);
+        }
+
+        internal static Rectangle ResolveCollectionPageIndexBounds(Point windowPosition, bool rightPage)
+        {
+            Rectangle lane = rightPage ? ClientRightCollectionPageIndexBounds : ClientLeftCollectionPageIndexBounds;
+            return new Rectangle(windowPosition.X + lane.X, windowPosition.Y + lane.Y, lane.Width, lane.Height);
+        }
+
+        internal static Vector2 ResolveCollectionPageIndexTextAnchor(Rectangle bounds, int textWidth)
+        {
+            int centeredLeft = Math.Max(0, (bounds.Width - Math.Max(0, textWidth)) / 2);
+            return new Vector2(bounds.X + centeredLeft, bounds.Y);
         }
 
         private Vector2 MeasureRenderedText(string text, float scale, bool preferClientText = false)

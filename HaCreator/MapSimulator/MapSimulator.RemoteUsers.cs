@@ -2274,9 +2274,9 @@ namespace HaCreator.MapSimulator
 
             if (resolvedOwnerCharacterId > 0)
             {
-                // Keep a bounded owner-slot synthetic anchor so later packet leave/source lookups
+                // Keep bounded owner-slot synthetic anchors so later packet leave/source lookups
                 // can still recover pet-space motion when only owner identity is known.
-                observedActorIds.Add(BuildRemotePetPickupActorId(resolvedOwnerCharacterId, slotIndex: 0));
+                AddRemotePetPickupActorAliasesForOwner(observedActorIds, resolvedOwnerCharacterId);
             }
 
             return observedActorIds.ToArray();
@@ -2305,7 +2305,7 @@ namespace HaCreator.MapSimulator
 
             if (packet.ActorKind == DropPickupActorKind.Pet && resolvedOwnerCharacterId > 0)
             {
-                linkedActorIds.Add(BuildRemotePetPickupActorId(resolvedOwnerCharacterId, slotIndex: 0));
+                AddRemotePetPickupActorAliasesForOwner(linkedActorIds, resolvedOwnerCharacterId);
             }
 
             return linkedActorIds.ToArray();

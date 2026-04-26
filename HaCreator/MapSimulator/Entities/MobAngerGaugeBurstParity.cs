@@ -92,9 +92,21 @@ namespace HaCreator.MapSimulator.Entities
             IReadOnlyList<IDXObject> frames,
             string effectPath)
         {
+            return CanRegisterOwnerBurst(
+                frames,
+                effectPath,
+                hasActiveAnimationDisplayer: true);
+        }
+
+        public static bool CanRegisterOwnerBurst(
+            IReadOnlyList<IDXObject> frames,
+            string effectPath,
+            bool hasActiveAnimationDisplayer)
+        {
             return frames != null
                 && frames.Count > 0
-                && !string.IsNullOrWhiteSpace(effectPath);
+                && !string.IsNullOrWhiteSpace(effectPath)
+                && hasActiveAnimationDisplayer;
         }
 
         public static bool HasReplayGateElapsed(int currentTick, int startTick, int intervalMs)

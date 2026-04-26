@@ -825,6 +825,80 @@ namespace HaCreator.MapSimulator.Character.Skills
                 out chargeElement);
         }
 
+        internal static bool TryResolveChargeElementCombinedConsensusFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int minimumMatches,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int)
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int)
+                || minimumMatches <= 1)
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            if (alignedStartOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int iceMatches = 0;
+            int fireMatches = 0;
+            int lightningMatches = 0;
+            int holyMatches = 0;
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            {
+                int candidateValue = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                int candidateElement = 0;
+                if (IsKnownChargeSkillId(candidateValue))
+                {
+                    TryGetChargeElement(candidateValue, out candidateElement);
+                }
+                else if (IsKnownChargeElement(candidateValue))
+                {
+                    candidateElement = candidateValue;
+                }
+
+                switch (candidateElement)
+                {
+                    case 1:
+                        iceMatches++;
+                        break;
+                    case 2:
+                        fireMatches++;
+                        break;
+                    case 3:
+                        lightningMatches++;
+                        break;
+                    case 5:
+                        holyMatches++;
+                        break;
+                }
+            }
+
+            return TryResolveChargeElementFromConsensusCounts(
+                iceMatches,
+                fireMatches,
+                lightningMatches,
+                holyMatches,
+                preferredSkillId,
+                minimumMatches,
+                out chargeElement);
+        }
+
         private static bool TryResolveChargeElementFromConsensusCounts(
             int iceMatches,
             int fireMatches,
