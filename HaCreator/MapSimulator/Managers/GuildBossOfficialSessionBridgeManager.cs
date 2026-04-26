@@ -143,7 +143,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 bool autoSelectListenPort = listenPort <= 0;
-                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+                int requestedListenPort = autoSelectListenPort ? 0 : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
@@ -183,6 +183,7 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
+                    ListenPort = _roleSessionProxy.ListenPort;
                     _passiveEstablishedSession = null;
                     LastStatus = proxyStatus;
                     status = LastStatus;

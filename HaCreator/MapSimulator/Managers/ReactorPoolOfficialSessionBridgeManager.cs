@@ -426,11 +426,6 @@ namespace HaCreator.MapSimulator.Managers
 
             if (e.IsInit)
             {
-                lock (_sync)
-                {
-                    FlushQueuedTouchRequestsViaProxyUnsafe(int.MinValue);
-                }
-
                 LastStatus = _roleSessionProxy.LastStatus;
                 return;
             }

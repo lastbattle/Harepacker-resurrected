@@ -68,6 +68,13 @@ namespace HaCreator.MapSimulator.Animation
             }
         }
 
+        public sealed class FrameOverlay
+        {
+            public string Name { get; init; }
+            public string LayerZ { get; init; }
+            public IReadOnlyList<IDXObject> Frames { get; init; }
+        }
+
         public sealed class AttackInfoMetadata
         {
             public int AttackType { get; set; } = -1;
@@ -284,6 +291,7 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Dictionary<string, List<AttackEffectNode>> _attackExtraEffects = new();
         private readonly Dictionary<string, AttackInfoMetadata> _attackMetadata = new();
         private readonly Dictionary<string, List<FrameMetadata>> _frameMetadata = new();
+        private readonly Dictionary<string, List<FrameOverlay>> _frameOverlays = new();
         private readonly Dictionary<int, List<IDXObject>> _angerGaugeAnimations = new();
         private List<IDXObject> _angerGaugeEffect;
         private string _angerGaugeEffectPath;
@@ -319,6 +327,33 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return frameMetadata[frameIndex];
+        }
+
+        public void AddFrameOverlay(string action, FrameOverlay overlay)
+        {
+            if (string.IsNullOrWhiteSpace(action) ||
+                overlay?.Frames == null ||
+                overlay.Frames.Count == 0)
+            {
+                return;
+            }
+
+            string key = action.ToLowerInvariant();
+            if (!_frameOverlays.TryGetValue(key, out List<FrameOverlay> overlays))
+            {
+                overlays = new List<FrameOverlay>();
+                _frameOverlays[key] = overlays;
+            }
+
+            overlays.Add(overlay);
+        }
+
+        public IReadOnlyList<FrameOverlay> GetFrameOverlays(string action)
+        {
+            string key = action?.ToLowerInvariant() ?? string.Empty;
+            return _frameOverlays.TryGetValue(key, out List<FrameOverlay> overlays)
+                ? overlays
+                : null;
         }
 
         /// <summary>

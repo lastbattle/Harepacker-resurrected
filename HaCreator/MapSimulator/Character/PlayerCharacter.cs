@@ -7502,13 +7502,6 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            bool insertTimelineAdvanced = currentTime != int.MinValue
-                && lastInsertCanvasTime != int.MinValue
-                && currentTime > lastInsertCanvasTime;
-            if (insertTimelineAdvanced)
-            {
-                return true;
-            }
 
             bool sourceLayerTimeMissing = sourceLayerCurrentTime == int.MinValue
                 || lastInsertCanvasSourceLayerCurrentTime == int.MinValue;
@@ -10246,7 +10239,7 @@ namespace HaCreator.MapSimulator.Character
             for (int i = 0; i < parts.Count; i++)
             {
                 AssembledPart part = parts[i];
-                if (part?.Texture == null || !part.IsVisible)
+                if (part == null)
                 {
                     continue;
                 }

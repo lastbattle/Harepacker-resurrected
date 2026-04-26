@@ -291,7 +291,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            if (ShouldRequireExactMechanicVehicleAction(actionName))
+            if (ShouldRequireExactClientGatedVehicleAction(actionName))
             {
                 yield break;
             }
@@ -321,12 +321,38 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private bool ShouldRequireExactMechanicVehicleAction(string actionName)
+        private bool ShouldRequireExactClientGatedVehicleAction(string actionName)
         {
-            return VehicleItemId == MechanicTamingMobItemId
-                   && ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
-                       VehicleItemId,
-                       actionName);
+            if (!ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                    VehicleItemId,
+                    actionName))
+            {
+                return false;
+            }
+
+            if (VehicleItemId == MechanicTamingMobItemId
+                && !IsSharedMountedMoveActionName(actionName))
+            {
+                return true;
+            }
+
+            return EventVehicleType1ExclusiveActionNames.Contains(actionName)
+                   || EventVehicleType2ExclusiveActionNames.Contains(actionName)
+                   || Additional193VehicleOneTimeActionNames.Contains(actionName)
+                   || WildHunterJaguarExclusiveActionNames.Contains(actionName);
+        }
+
+        private static bool IsSharedMountedMoveActionName(string actionName)
+        {
+            return string.Equals(actionName, "walk1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "walk2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "stand1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "stand2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "prone", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "fly", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "swim", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tired", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumeratePortableChairRideCandidates()

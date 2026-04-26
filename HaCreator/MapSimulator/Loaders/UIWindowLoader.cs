@@ -8893,6 +8893,7 @@ namespace HaCreator.MapSimulator.Loaders
                 slotTexture,
                 statusIcons,
                 statusIconOffsets,
+                LoadEventStatusButtonTextures(eventListProperty, device),
                 LoadCanvasTexture(calendarProperty, "today", device),
                 new[]
                 {
@@ -8989,6 +8990,25 @@ namespace HaCreator.MapSimulator.Loaders
                 authoredWidth,
                 fallbackAnchor,
                 fallbackWidth);
+        }
+
+        private static Texture2D[] LoadEventStatusButtonTextures(WzSubProperty eventListProperty, GraphicsDevice device)
+        {
+            if (eventListProperty == null)
+            {
+                return Array.Empty<Texture2D>();
+            }
+
+            // WZ evidence: EventList/main/event keeps row status as authored button
+            // canvases, not plain simulator text.
+            string[] buttonNames = { "BtStart", "BtIng", "BtClear", "BtWill" };
+            Texture2D[] textures = new Texture2D[buttonNames.Length];
+            for (int i = 0; i < buttonNames.Length; i++)
+            {
+                textures[i] = LoadCanvasTexture(eventListProperty?[buttonNames[i]]?["normal"] as WzSubProperty, "0", device);
+            }
+
+            return textures;
         }
 
         private static WzCanvasProperty ResolveEventStatusButtonCanvas(WzSubProperty eventListProperty)

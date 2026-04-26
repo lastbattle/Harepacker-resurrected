@@ -2160,12 +2160,12 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeRemoteVerificationReady = false;
             _tradeRemoteVerificationEntries.Clear();
             _tradeLocalVerificationEntries.Clear();
-            _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
+            _tradeLocalVerificationEntries.AddRange(BuildTradeRequestVerificationEntries());
             _tradeLocalVerificationReady = true;
             _tradeAutoCrcReplyPending = true;
             _tradeVerificationPending = true;
             RoomState = "CRC verification";
-            string baseStatus = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} local item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}, including zero-row replies when no local offer items are staged.";
+            string baseStatus = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} peer-side item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}, matching CTradingRoomDlg::OnTrade scanning m_aaItem[1] and including zero-row replies when no peer offer items are staged.";
             if (requestEntries == null)
             {
                 StatusMessage = $"{baseStatus} Subtype {TradingRoomTradePacketType} did not include the client Trade() checksum rows; continuing with the existing OnTrade follow-up path.";

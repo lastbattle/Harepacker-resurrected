@@ -79,7 +79,7 @@ namespace HaCreator.MapSimulator.Entities
                 return true;
             }
 
-            return nextAllowedTick != int.MinValue && currentTick >= nextAllowedTick;
+            return nextAllowedTick != int.MinValue && HasReachedTick(currentTick, nextAllowedTick);
         }
 
         public static string ResolveOwnerEffectPath(string mobTemplateId, string loadedEffectPath)
@@ -95,6 +95,18 @@ namespace HaCreator.MapSimulator.Entities
             return frames != null
                 && frames.Count > 0
                 && !string.IsNullOrWhiteSpace(effectPath);
+        }
+
+        public static bool HasReplayGateElapsed(int currentTick, int startTick, int intervalMs)
+        {
+            return startTick == int.MinValue
+                || intervalMs <= 0
+                || unchecked(currentTick - startTick) >= intervalMs;
+        }
+
+        private static bool HasReachedTick(int currentTick, int targetTick)
+        {
+            return unchecked(currentTick - targetTick) >= 0;
         }
     }
 }

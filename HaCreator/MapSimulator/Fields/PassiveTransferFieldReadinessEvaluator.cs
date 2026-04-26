@@ -146,6 +146,19 @@ namespace HaCreator.MapSimulator.Fields
             return QueuedRetryDecision.ReplayHandleUpKeyDown;
         }
 
+        public static bool ShouldClearQueuedRetryAfterInterfaceGateAdmission(
+            bool hasPendingRequest,
+            QueuedRetryDecision decision)
+        {
+            return hasPendingRequest
+                   && decision == QueuedRetryDecision.ReplayHandleUpKeyDown;
+        }
+
+        public static bool ShouldClearQueuedRetryFromTransferLifecycle(bool hasPendingRequest)
+        {
+            return hasPendingRequest;
+        }
+
         public static bool ShouldCancelQueuedRetryOnHorizontalKeyDown(
             bool hasPendingRequest,
             bool leftKeyPressed,

@@ -391,7 +391,7 @@ namespace HaCreator.MapSimulator.Character
                     foreach (WzImageProperty property in candidateImage.WzProperties)
                     {
                         if (property != null
-                            && LooksLikeActionName(property.Name)
+                            && LooksLikePublishedMorphAction(property)
                             && !actionNodes.ContainsKey(property.Name))
                         {
                             actionNodes[property.Name] = property;
@@ -742,7 +742,7 @@ namespace HaCreator.MapSimulator.Character
                 foreach (WzImageProperty property in candidateImage.WzProperties)
                 {
                     if (property != null
-                        && LooksLikeActionName(property.Name)
+                        && LooksLikePublishedMorphAction(property)
                         && !string.IsNullOrWhiteSpace(property.Name))
                     {
                         availableActionNames.Add(property.Name);
@@ -3019,6 +3019,30 @@ namespace HaCreator.MapSimulator.Character
             return !string.IsNullOrWhiteSpace(name)
                    && !NonActionProperties.Contains(name)
                    && !name.StartsWith("_", StringComparison.Ordinal);
+        }
+
+        private static bool LooksLikePublishedMorphAction(WzImageProperty actionNode)
+        {
+            if (actionNode == null || !LooksLikeActionName(actionNode.Name))
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty frameNode in actionNode.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (frameNode == null || !int.TryParse(frameNode.Name, out _))
+                {
+                    continue;
+                }
+
+                if (frameNode is WzCanvasProperty
+                    || (frameNode as WzUOLProperty)?.LinkValue is WzCanvasProperty)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         [Conditional("DEBUG")]

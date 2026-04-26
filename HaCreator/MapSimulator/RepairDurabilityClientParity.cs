@@ -1350,7 +1350,9 @@ namespace HaCreator.MapSimulator
 
         private static bool IsClientEncodableBodyPart(int bodyPart)
         {
-            return bodyPart is > 0 and <= byte.MaxValue;
+            // CRepairDurabilityDlg::SetItems appends equipped rows from aEquipped[0] down to aEquipped[-59].
+            // Keep the shared repair/Vega nPOS encoder on that recovered equipped-array range.
+            return bodyPart is > 0 and <= 59;
         }
 
         private static bool LooksLikeRepairOpcode(int candidateValue)

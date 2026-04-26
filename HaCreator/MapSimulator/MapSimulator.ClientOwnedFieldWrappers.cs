@@ -888,7 +888,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            RefreshClientOwnedLimitedViewShareView(mapInfo);
+            if (RefreshClientOwnedLimitedViewShareView(mapInfo))
+            {
+                _limitedViewField.ResetClientOwnedPreviousMaskTopLeftsForCurrentFrame();
+            }
+
             EnsureLimitedViewFieldInitialized();
             EnsureClientOwnedLimitedViewMetadataLoaded();
             _limitedViewField.ConfigureClientOwnedDarkLayer(
@@ -911,7 +915,7 @@ namespace HaCreator.MapSimulator
                 (int)MathF.Round(_clientOwnedLimitedViewMaskHeight));
         }
 
-        private void RefreshClientOwnedLimitedViewShareView(MapInfo mapInfo)
+        private bool RefreshClientOwnedLimitedViewShareView(MapInfo mapInfo)
         {
             int mapId = mapInfo?.id ?? int.MinValue;
             if (!HasClientOwnedLimitedViewMapBindingChanged(
@@ -920,12 +924,13 @@ namespace HaCreator.MapSimulator
                 _clientOwnedLimitedViewShareViewMapInfo,
                 _clientOwnedLimitedViewShareViewMapId))
             {
-                return;
+                return false;
             }
 
             _clientOwnedLimitedViewShareViewMapId = mapId;
             _clientOwnedLimitedViewShareViewMapInfo = mapInfo;
             _clientOwnedLimitedViewShareView = ResolveClientOwnedLimitedViewShareViewDefault(mapInfo);
+            return true;
         }
 
         internal static bool HasClientOwnedLimitedViewMapBindingChanged(

@@ -497,13 +497,18 @@ namespace HaCreator.MapSimulator.Managers
                 foreach (KeyValuePair<int, int> entry in cardCountsByMob)
                 {
                     if (entry.Key <= 0
-                        || entry.Value <= 0
-                        || !catalogByMobId.ContainsKey(entry.Key))
+                        || entry.Value <= 0)
                     {
                         continue;
                     }
 
-                    normalizedCounts[entry.Key] = Math.Clamp(entry.Value, 0, 5);
+                    int normalizedMobId = ResolveOwnershipSyncMobId(entry.Key, catalogByMobId);
+                    if (normalizedMobId <= 0)
+                    {
+                        continue;
+                    }
+
+                    normalizedCounts[normalizedMobId] = Math.Clamp(entry.Value, 0, 5);
                 }
             }
 
@@ -567,6 +572,27 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return GetSnapshot(build, characterId, characterName);
+        }
+
+        private int ResolveOwnershipSyncMobId(
+            int ownershipKey,
+            IReadOnlyDictionary<int, MonsterBookCardDefinition> catalogByMobId)
+        {
+            if (ownershipKey <= 0)
+            {
+                return 0;
+            }
+
+            if (catalogByMobId != null && catalogByMobId.ContainsKey(ownershipKey))
+            {
+                return ownershipKey;
+            }
+
+            // CMonsterBookMan::LoadCard indexes book records from Item/Consume/0238.img card ids
+            // and reads each card's info/mob field, so packet-owned ingress accepts either shape.
+            return TryResolveMobIdByCardItemId(ownershipKey, out int mobId)
+                ? mobId
+                : 0;
         }
 
         private static string BuildPageSubtitle(IEnumerable<MonsterBookCardSnapshot> cards)

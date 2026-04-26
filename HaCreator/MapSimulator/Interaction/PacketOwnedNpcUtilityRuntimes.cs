@@ -2341,9 +2341,23 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"body {bodyPreview}");
             }
 
+            AddTailPreview(parts, "baseTail", item.BaseTailBytes);
+            AddTailPreview(parts, "equipTail", item.EquipTailBytes);
+            AddTailPreview(parts, "bundleTail", item.BundleTailBytes);
+            AddTailPreview(parts, "petTail", item.PetTailBytes);
+
             return parts.Count > 0
                 ? $" | {string.Join(", ", parts)}"
                 : string.Empty;
+        }
+
+        private static void AddTailPreview(ICollection<string> parts, string label, byte[] bytes)
+        {
+            string preview = FormatHexPreview(bytes, 16);
+            if (!string.IsNullOrWhiteSpace(preview))
+            {
+                parts.Add($"{label} {preview}");
+            }
         }
 
         private static string BuildDecodedItemBodySuffix(StoreBankItemEntry item)

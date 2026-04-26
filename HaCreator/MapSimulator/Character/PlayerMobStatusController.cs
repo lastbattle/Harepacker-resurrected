@@ -27,7 +27,8 @@ namespace HaCreator.MapSimulator.Character
         StopPotion,
         Fear,
         Burn,
-        Bomb
+        Bomb,
+        BattlefieldFlag
     }
 
     internal readonly struct PlayerMobStatusFrameState
@@ -332,6 +333,12 @@ namespace HaCreator.MapSimulator.Character
                 case 172:
                 case 173:
                     return ApplyPolymorphStatus(runtimeData, currentTime);
+                case 799:
+                    return ApplyStatus(
+                        PlayerMobStatusEffect.BattlefieldFlag,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 1));
                 default:
                     return false;
             }
@@ -675,6 +682,13 @@ namespace HaCreator.MapSimulator.Character
                 case 172:
                 case 173:
                     return WouldPolymorphApplicationChangeState(runtimeData, currentTime, refreshLeadTimeMs);
+                case 799:
+                    return WouldStatusApplicationChangeState(
+                        PlayerMobStatusEffect.BattlefieldFlag,
+                        runtimeData.DurationMs,
+                        currentTime,
+                        ResolveValue(runtimeData, 1),
+                        refreshLeadTimeMs);
                 default:
                     return false;
             }
@@ -1093,6 +1107,9 @@ namespace HaCreator.MapSimulator.Character
                 case 172:
                 case 173:
                     effect = PlayerMobStatusEffect.Polymorph;
+                    return true;
+                case 799:
+                    effect = PlayerMobStatusEffect.BattlefieldFlag;
                     return true;
                 default:
                     effect = PlayerMobStatusEffect.None;

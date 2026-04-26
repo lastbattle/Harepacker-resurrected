@@ -100,6 +100,11 @@ internal static class MobSkillLevelResolver
         return true;
     }
 
+    public static WzSubProperty ResolveInheritedSubProperty(WzSubProperty levelNode, int level, string propertyName)
+    {
+        return FindInheritedProperty(levelNode, level, propertyName) as WzSubProperty;
+    }
+
     private static IEnumerable<int> EnumerateCandidateLevels(WzSubProperty levelNode, int level)
     {
         var seenLevels = new HashSet<int>();

@@ -134,6 +134,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int ClientPromptBoxHeight = 98;
         private const int ClientPromptButtonWidth = 64;
         private const int ClientPromptButtonHeight = 22;
+        private const int ClientDialogLeaveUpdateArgument = 2;
         private static readonly IReadOnlyDictionary<int, MiniRoomGameMessageDefinition> MiniRoomGameMessages = new Dictionary<int, MiniRoomGameMessageDefinition>
         {
             [0] = new MiniRoomGameMessageDefinition(0x1C8, "[%s] have been expelled."),
@@ -225,6 +226,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool _localTieRequestSentThisTurn;
         private bool _localGiveUpRequestSent;
         private bool _officialClientRelayEnabled;
+        private int _lastClientDialogUpdateArgument;
 
 
         public enum RoomStage
@@ -377,6 +379,7 @@ namespace HaCreator.MapSimulator.Fields
         public string LastPacketSummary => _lastPacketSummary;
         public bool HasPendingPrompt => _pendingPrompt.IsActive;
         public string PendingPromptText => _pendingPrompt.Text;
+        public int LastClientDialogUpdateArgument => _lastClientDialogUpdateArgument;
 
         public void SetOfficialClientRelayEnabled(bool enabled)
         {
@@ -1486,6 +1489,7 @@ namespace HaCreator.MapSimulator.Fields
             _localTieRequestSent = false;
             _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
+            _lastClientDialogUpdateArgument = 0;
             SyncMiniRoomRuntime();
         }
 
@@ -1893,7 +1897,13 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return TryResolveLobbyExit(_localPlayerIndex, out message);
+            if (!TryResolveLobbyExit(_localPlayerIndex, out message))
+            {
+                return false;
+            }
+
+            _lastClientDialogUpdateArgument = ClientDialogLeaveUpdateArgument;
+            return true;
         }
 
         private bool TryApplyOutgoingEnterResultAckPacket(byte[] packetBytes, out string message)

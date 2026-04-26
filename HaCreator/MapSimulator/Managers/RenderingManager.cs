@@ -555,8 +555,9 @@ namespace HaCreator.MapSimulator.Managers
                 if (currentFrame != null)
                 {
                     Color iconColor = Color.White * drop.Alpha;
+                    ResolveDropDrawPosition(drop, currentFrame, screenX, screenY, out int drawX, out int drawY);
                     currentFrame.DrawBackground(context.SpriteBatch, context.SkeletonMeshRenderer, null,
-                        screenX, screenY, iconColor, false, null);
+                        drawX, drawY, iconColor, false, null);
                 }
                 else if (context.DebugTexture != null)
                 {
@@ -577,6 +578,22 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
             }
+        }
+
+        internal static void ResolveDropDrawPosition(DropItem drop, IDXObject frame, int screenX, int screenY, out int drawX, out int drawY)
+        {
+            drawX = screenX;
+            drawY = screenY;
+
+            if (drop?.IsPacketControlled != true || frame == null)
+            {
+                return;
+            }
+
+            // CDropPool::OnDropEnterField anchors packet-owned GR2D layers at the drop vector
+            // and applies a -width/2, -height/2 relative move before insertion.
+            drawX -= frame.Width / 2;
+            drawY -= frame.Height / 2;
         }
 
         private static bool TryDrawLayeredPacketMeso(DropItem drop, int screenX, int screenY, in RenderContext context)

@@ -5,6 +5,8 @@ using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -143,6 +145,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
         private readonly Texture2D _debugTooltipTexture;
         private readonly GraphicsDevice _graphicsDevice;
+        private readonly Dictionary<int, Texture2D> _infoSampleTextureCache = new();
         private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
         private CharacterLoader _characterLoader;
         private CompanionEquipmentLoader _companionTooltipLoader;
@@ -2359,6 +2362,7 @@ namespace HaCreator.MapSimulator.UI
                 metadata.MetadataLines);
             string description = ResolveDisplayText(slot.Description, metadata.Description);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
+            Texture2D sampleTexture = ResolveInfoSampleTexture(slot.ItemId);
 
             int tooltipWidth = ResolveTooltipWidth();
             int textLeftOffset = TOOLTIP_PADDING + TOOLTIP_ICON_SIZE + TOOLTIP_ICON_GAP;
@@ -2408,7 +2412,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float iconBlockHeight = Math.Max(TOOLTIP_ICON_SIZE, contentHeight);
-            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_SECTION_GAP + iconBlockHeight);
+            float sampleHeight = sampleTexture?.Height ?? 0f;
+            float sampleGap = sampleHeight > 0f ? TOOLTIP_SECTION_GAP : 0f;
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_SECTION_GAP + iconBlockHeight + sampleGap + sampleHeight);
 
             int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
             int viewportHeight = sprite.GraphicsDevice.Viewport.Height;
@@ -2450,6 +2456,13 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 DrawWrappedSections(sprite, textX, sectionY, wrappedSections);
+            }
+
+            if (sampleTexture != null)
+            {
+                int sampleX = backgroundRect.X + Math.Max(TOOLTIP_PADDING, (backgroundRect.Width - sampleTexture.Width) / 2);
+                int sampleY = contentY + (int)Math.Ceiling(iconBlockHeight) + TOOLTIP_SECTION_GAP;
+                sprite.Draw(sampleTexture, new Vector2(sampleX, sampleY), Color.White);
             }
         }
 
@@ -2675,6 +2688,28 @@ namespace HaCreator.MapSimulator.UI
         {
             int textureWidth = _tooltipFrames[1]?.Width ?? 0;
             return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
+        }
+
+        private Texture2D ResolveInfoSampleTexture(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_infoSampleTextureCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = null;
+            if (InventoryItemMetadataResolver.TryResolveInfoCanvas(itemId, "sample", out WzCanvasProperty sampleCanvas))
+            {
+                texture = sampleCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+            }
+
+            _infoSampleTextureCache[itemId] = texture;
+            return texture;
         }
 
         private Rectangle ResolveHoveredSlotBounds()

@@ -154,7 +154,9 @@ namespace HaCreator.MapSimulator.Effects
             RemoteRelationshipOverlayType RelationshipType = RemoteRelationshipOverlayType.Generic,
             RemoteUserRelationshipRecord RelationshipRecord = default,
             int? RelationshipRemoveCharacterId = null,
-            long? RelationshipRemoveItemSerial = null);
+            long? RelationshipRemoveItemSerial = null,
+            RemoteRelationshipRecordDispatchKey RelationshipDispatchKey = default,
+            long? RelationshipPairLookupSerial = null);
 
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
@@ -1865,10 +1867,16 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            RemoteUserRelationshipRecord relationshipRecord = NormalizeWeddingRelationshipRecordForApply(
+                packet.RelationshipType,
+                packet.RelationshipRecord,
+                packet.DispatchKey,
+                packet.PairLookupSerial);
+
             RegisterRelationshipRecordDispatchKeys(
                 packet.RelationshipType,
                 packet.DispatchKey,
-                packet.RelationshipRecord,
+                relationshipRecord,
                 characterId);
 
             if (!TryResolveParticipantForTemporaryStats(characterId, out WeddingRemoteParticipant participant, out _))
@@ -1887,11 +1895,15 @@ namespace HaCreator.MapSimulator.Effects
                         0,
                         0,
                         packet.RelationshipType,
-                        packet.RelationshipRecord));
+                        relationshipRecord,
+                        null,
+                        null,
+                        packet.DispatchKey,
+                        packet.PairLookupSerial));
                 return true;
             }
 
-            ApplyRelationshipRecordAdd(participant, packet.RelationshipType, packet.RelationshipRecord);
+            ApplyRelationshipRecordAdd(participant, packet.RelationshipType, relationshipRecord, packet.DispatchKey, packet.PairLookupSerial);
             return true;
         }
 
@@ -1981,20 +1993,136 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
-        private static void ApplyRelationshipRecordAdd(
+        private void ApplyRelationshipRecordAdd(
             WeddingRemoteParticipant participant,
             RemoteRelationshipOverlayType relationshipType,
-            RemoteUserRelationshipRecord relationshipRecord)
+            RemoteUserRelationshipRecord relationshipRecord,
+            RemoteRelationshipRecordDispatchKey dispatchKey = default,
+            long? pairLookupSerial = null)
         {
             if (participant == null)
             {
                 return;
             }
 
+            relationshipRecord = NormalizeWeddingRelationshipRecordForApply(
+                relationshipType,
+                relationshipRecord,
+                dispatchKey,
+                pairLookupSerial);
+
             RemoteUserAvatarModifiedPacket state = participant.AvatarModifiedState
                 ?? CreateDefaultAvatarModifiedState(participant.CharacterId);
             state = ApplyRelationshipRecordToAvatarModifiedState(state, relationshipType, relationshipRecord);
             StoreAvatarModifiedState(participant, state);
+        }
+
+        private RemoteUserRelationshipRecord NormalizeWeddingRelationshipRecordForApply(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord,
+            RemoteRelationshipRecordDispatchKey dispatchKey,
+            long? pairLookupSerial)
+        {
+            if (relationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+                || !relationshipRecord.IsActive
+                || !pairLookupSerial.HasValue)
+            {
+                return relationshipRecord;
+            }
+
+            int ownerCharacterId = relationshipRecord.CharacterId ?? 0;
+            if (ownerCharacterId <= 0)
+            {
+                return relationshipRecord;
+            }
+
+            if (!TryFindWeddingRelationshipRecord(
+                    relationshipType,
+                    ownerCharacterId,
+                    pairLookupSerial.Value,
+                    out int matchedOwnerCharacterId,
+                    out RemoteUserRelationshipRecord matchedRecord))
+            {
+                return relationshipRecord;
+            }
+
+            long? ownerItemSerial = relationshipRecord.ItemSerial;
+            if (!ownerItemSerial.HasValue
+                && dispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial)
+            {
+                ownerItemSerial = dispatchKey.Serial;
+            }
+
+            long? matchedItemSerial = matchedRecord.ItemSerial;
+            if (!ownerItemSerial.HasValue || !matchedItemSerial.HasValue)
+            {
+                return relationshipRecord;
+            }
+
+            bool ownerIsLowerCharacterId = ownerCharacterId <= matchedOwnerCharacterId;
+            return relationshipRecord with
+            {
+                ItemId = relationshipRecord.ItemId > 0 ? relationshipRecord.ItemId : matchedRecord.ItemId,
+                ItemSerial = ownerIsLowerCharacterId ? ownerItemSerial.Value : matchedItemSerial.Value,
+                PairItemSerial = ownerIsLowerCharacterId ? matchedItemSerial.Value : ownerItemSerial.Value,
+                CharacterId = ownerIsLowerCharacterId ? ownerCharacterId : matchedOwnerCharacterId,
+                PairCharacterId = ownerIsLowerCharacterId ? matchedOwnerCharacterId : ownerCharacterId
+            };
+        }
+
+        private bool TryFindWeddingRelationshipRecord(
+            RemoteRelationshipOverlayType relationshipType,
+            int excludedOwnerCharacterId,
+            long pairLookupSerial,
+            out int ownerCharacterId,
+            out RemoteUserRelationshipRecord relationshipRecord)
+        {
+            ownerCharacterId = 0;
+            relationshipRecord = default;
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
+            {
+                if (participant == null
+                    || participant.CharacterId == excludedOwnerCharacterId
+                    || !participant.AvatarModifiedState.HasValue)
+                {
+                    continue;
+                }
+
+                RemoteUserRelationshipRecord candidate = GetRelationshipRecord(
+                    participant.AvatarModifiedState.Value,
+                    relationshipType);
+                if (!candidate.IsActive)
+                {
+                    continue;
+                }
+
+                if (!candidate.PairItemSerial.HasValue || candidate.PairItemSerial.Value != pairLookupSerial)
+                {
+                    continue;
+                }
+
+                ownerCharacterId = participant.CharacterId;
+                relationshipRecord = candidate;
+                return true;
+            }
+
+            if (!TryResolveRelationshipRecordOwnerFromDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        pairLookupSerial,
+                        CharacterId: null),
+                    out ownerCharacterId)
+                || ownerCharacterId == excludedOwnerCharacterId
+                || !TryResolveParticipantForTemporaryStats(ownerCharacterId, out WeddingRemoteParticipant mappedParticipant, out _)
+                || !mappedParticipant.AvatarModifiedState.HasValue)
+            {
+                ownerCharacterId = 0;
+                return false;
+            }
+
+            relationshipRecord = GetRelationshipRecord(mappedParticipant.AvatarModifiedState.Value, relationshipType);
+            return relationshipRecord.IsActive;
         }
 
         private static bool ApplyRelationshipRecordRemove(
@@ -2633,7 +2761,9 @@ namespace HaCreator.MapSimulator.Effects
                         ApplyRelationshipRecordAdd(
                             participant,
                             operation.RelationshipType,
-                            operation.RelationshipRecord);
+                            operation.RelationshipRecord,
+                            operation.RelationshipDispatchKey,
+                            operation.RelationshipPairLookupSerial);
                         break;
                     case PendingWeddingRemoteParticipantOperationType.RelationshipRecordRemove:
                         if (ApplyRelationshipRecordRemove(

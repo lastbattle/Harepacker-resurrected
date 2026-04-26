@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Loaders;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.UI;
 using System;
 using System.Collections.Generic;
@@ -24,8 +25,8 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < activeQuestIds.Count; i++)
             {
                 int questId = activeQuestIds[i];
-                EnsureQuestTimerOwnerWindow(questId, drawActionLayer: false, currentTick, activeWindowNames);
-                EnsureQuestTimerOwnerWindow(questId, drawActionLayer: true, currentTick, activeWindowNames);
+                TryEnsureQuestTimerOwnerWindow(questId, drawActionLayer: false, currentTick, activeWindowNames);
+                TryEnsureQuestTimerOwnerWindow(questId, drawActionLayer: true, currentTick, activeWindowNames);
             }
 
             UIWindowBase[] staleWindows = uiWindowManager.Windows
@@ -39,7 +40,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void EnsureQuestTimerOwnerWindow(
+        private bool TryEnsureQuestTimerOwnerWindow(
             int questId,
             bool drawActionLayer,
             int currentTick,
@@ -48,6 +49,16 @@ namespace HaCreator.MapSimulator
             string windowName = drawActionLayer
                 ? MapSimulatorWindowNames.GetQuestTimerActionWindowName(questId)
                 : MapSimulatorWindowNames.GetQuestTimerWindowName(questId);
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetWindowOpenRestrictionMessage(
+                _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                _mapBoard?.MapInfo,
+                windowName);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                uiWindowManager.RemoveWindow(windowName);
+                return false;
+            }
+
             activeWindowNames.Add(windowName);
 
             if (uiWindowManager.GetWindow(windowName) is not QuestTimerRuntimeWindowBase window)
@@ -55,7 +66,7 @@ namespace HaCreator.MapSimulator
                 window = UIWindowLoader.CreateQuestTimerRuntimeWindow(GraphicsDevice, questId, drawActionLayer) as QuestTimerRuntimeWindowBase;
                 if (window == null)
                 {
-                    return;
+                    return false;
                 }
 
                 uiWindowManager.RegisterCustomWindow(window);
@@ -68,6 +79,7 @@ namespace HaCreator.MapSimulator
                 () => _renderParams.RenderHeight,
                 () => currentTick);
             window.IsVisible = true;
+            return true;
         }
     }
 }

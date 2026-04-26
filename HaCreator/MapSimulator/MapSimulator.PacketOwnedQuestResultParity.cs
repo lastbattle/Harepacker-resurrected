@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
@@ -100,6 +101,18 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedQuestTimerAddRange(BinaryReader reader, bool timeKeepQuestTimer, out string message)
         {
             ushort count = reader.ReadUInt16();
+            string restrictionMessage = GetPacketOwnedQuestTimerWindowRestrictionMessage(timeKeepQuestTimer);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                if (count > 0)
+                {
+                    reader.ReadBytes(checked(count * (sizeof(ushort) + sizeof(int))));
+                }
+
+                message = restrictionMessage;
+                return false;
+            }
+
             var applied = new List<string>(count);
             for (int i = 0; i < count; i++)
             {
@@ -118,8 +131,26 @@ namespace HaCreator.MapSimulator
         {
             int questId = reader.ReadUInt16();
             int remainingMs = reader.ReadInt32();
+            string restrictionMessage = GetPacketOwnedQuestTimerWindowRestrictionMessage(timeKeepQuestTimer);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                message = restrictionMessage;
+                return false;
+            }
+
             message = _packetFieldStateRuntime.ApplyQuestTimer(questId, remainingMs, timeKeepQuestTimer, currTickCount);
             return true;
+        }
+
+        private string GetPacketOwnedQuestTimerWindowRestrictionMessage(bool timeKeepQuestTimer)
+        {
+            string windowName = timeKeepQuestTimer
+                ? MapSimulatorWindowNames.QuestTimerAction
+                : MapSimulatorWindowNames.QuestTimer;
+            return FieldInteractionRestrictionEvaluator.GetWindowOpenRestrictionMessage(
+                _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                _mapBoard?.MapInfo,
+                windowName);
         }
 
         private bool TryApplyPacketOwnedQuestTimerRemoveRange(BinaryReader reader, bool timeKeepQuestTimer, out string message)

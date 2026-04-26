@@ -2068,6 +2068,15 @@ namespace HaCreator.MapSimulator.Entities
                             drawReflectionInfo);
                     }
 
+                    DrawCurrentActionFrameOverlays(
+                        sprite,
+                        skeletonMeshRenderer,
+                        gameTime,
+                        adjustedShiftX,
+                        shiftCenteredY,
+                        flip,
+                        combinedAlpha);
+
                     IDXObject angerGaugeFrame = GetCurrentAngerGaugeAnimationFrame(TickCount);
                     DrawOverlayFrame(angerGaugeFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, spawnAlpha);
                 }
@@ -2081,6 +2090,41 @@ namespace HaCreator.MapSimulator.Entities
                     null,
                     renderParameters,
                     TickCount);
+            }
+        }
+
+        private void DrawCurrentActionFrameOverlays(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int adjustedShiftX,
+            int shiftCenteredY,
+            bool flip,
+            float alpha)
+        {
+            if (_animationController == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<MobAnimationSet.FrameOverlay> overlays =
+                _animationSet?.GetFrameOverlays(_animationController.CurrentAction);
+            if (overlays == null || overlays.Count == 0)
+            {
+                return;
+            }
+
+            int frameIndex = Math.Max(0, _animationController.CurrentFrameIndex);
+            foreach (MobAnimationSet.FrameOverlay overlay in overlays)
+            {
+                IReadOnlyList<IDXObject> overlayFrames = overlay?.Frames;
+                if (overlayFrames == null || overlayFrames.Count == 0)
+                {
+                    continue;
+                }
+
+                IDXObject overlayFrame = overlayFrames[Math.Min(frameIndex, overlayFrames.Count - 1)];
+                DrawOverlayFrame(overlayFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, alpha);
             }
         }
 

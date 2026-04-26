@@ -1405,7 +1405,11 @@ namespace HaCreator.MapSimulator
         {
             return entry.Type switch
             {
-                PacketOwnedFuncKeySkillType => _playerManager?.Skills?.TryCastPacketOwnedFuncKeySkill(entry.Id, currentTime, ownerInputToken) == true,
+                PacketOwnedFuncKeySkillType => _playerManager?.Skills?.TryCastPacketOwnedFuncKeySkill(
+                    entry.Id,
+                    currentTime,
+                    ResolvePacketOwnedFuncKeyOwnerHotkeySlot(ownerInputToken),
+                    ownerInputToken) == true,
                 PacketOwnedFuncKeyItemType or PacketOwnedFuncKeyItemTypeAlt or PacketOwnedFuncKeyItemTypeCash => TryUsePacketOwnedFuncKeyItem(entry.Id, currentTime),
                 PacketOwnedFuncKeyMacroType => TryExecutePacketOwnedMacro(entry.Id, currentTime),
                 _ => false,
@@ -1787,6 +1791,16 @@ namespace HaCreator.MapSimulator
             return 0x50000000 | (scanCode & 0xFFFF);
         }
 
+        internal static int ComposePacketOwnedFuncKeyOwnerHotkeySlot(int scanCode)
+        {
+            return SkillManager.TOTAL_SLOT_COUNT + Math.Max(0, scanCode);
+        }
+
+        internal static int ResolvePacketOwnedFuncKeyOwnerHotkeySlot(int ownerInputToken)
+        {
+            return ComposePacketOwnedFuncKeyOwnerHotkeySlot(ownerInputToken & 0xFFFF);
+        }
+
         private bool TryResolvePacketOwnedBindableHotkeySlot(
             PlayerInput input,
             Keys key,
@@ -1954,7 +1968,11 @@ namespace HaCreator.MapSimulator
                 if (owner.Entry.Type == PacketOwnedFuncKeySkillType && owner.Entry.Id > 0)
                 {
                     int ownerInputToken = ComposePacketOwnedFuncKeyInputToken(owner.ScanCode);
-                    skills.ReleasePacketOwnedFuncKeySkillIfActive(owner.Entry.Id, currentTime, ownerInputToken);
+                    skills.ReleasePacketOwnedFuncKeySkillIfActive(
+                        owner.Entry.Id,
+                        currentTime,
+                        ResolvePacketOwnedFuncKeyOwnerHotkeySlot(ownerInputToken),
+                        ownerInputToken);
                 }
 
                 _packetOwnedHeldRawCastInputOwnersByKey.Remove(key);

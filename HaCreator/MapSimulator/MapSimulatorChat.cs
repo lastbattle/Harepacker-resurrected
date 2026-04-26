@@ -57,6 +57,10 @@ namespace HaCreator.MapSimulator
             MapSimulatorChat.WhisperTargetPickerPresentation.Inline;
         public string InputText { get; init; } = string.Empty;
         public int CursorPosition { get; init; }
+        public int SelectionAnchor { get; init; } = -1;
+        public int SelectionStart => SelectionAnchor < 0 ? CursorPosition : Math.Min(CursorPosition, SelectionAnchor);
+        public int SelectionEnd => SelectionAnchor < 0 ? CursorPosition : Math.Max(CursorPosition, SelectionAnchor);
+        public bool HasSelection => SelectionEnd > SelectionStart;
         public MapSimulatorChatTargetType TargetType { get; init; }
         public string WhisperTarget { get; init; } = string.Empty;
         public int WhisperTargetPickerSelectionIndex { get; init; } = -1;
@@ -121,6 +125,7 @@ namespace HaCreator.MapSimulator
         private int _cursorBlinkTimer = 0;
         private int _lastTickCount = 0;
         private int _cursorPosition = 0; // Position within input text
+        private int _selectionAnchor = -1;
 
         private SpriteFont _font;
         private Texture2D _backgroundTexture;
@@ -331,6 +336,7 @@ namespace HaCreator.MapSimulator
 
                         _inputText.Clear();
                         _cursorPosition = 0;
+                        ClearInputSelection();
                         ResetHistoryNavigation();
 
                         ChatSubmitDisposition slashDisposition = TryHandleSlashCommand(message, tickCount);
@@ -465,6 +471,7 @@ namespace HaCreator.MapSimulator
                         _inputText.Clear();
                         _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
                         _cursorPosition = _inputText.Length; // Move cursor to end
+                        ClearInputSelection();
                     }
                 }
 
@@ -532,6 +539,7 @@ namespace HaCreator.MapSimulator
                         _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
                     }
                     _cursorPosition = _inputText.Length; // Move cursor to end
+                    ClearInputSelection();
                 }
 
                 if (isFirstPress)
@@ -576,6 +584,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (_cursorPosition > 0)
                         _cursorPosition--;
+                    ClearInputSelection();
                     _lastHeldKey = Keys.Left;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
@@ -584,6 +593,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (_cursorPosition > 0)
                         _cursorPosition--;
+                    ClearInputSelection();
                     _lastKeyRepeatTime = tickCount;
                 }
                 return true;
@@ -617,6 +627,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (_cursorPosition < _inputText.Length)
                         _cursorPosition++;
+                    ClearInputSelection();
                     _lastHeldKey = Keys.Right;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
@@ -625,6 +636,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (_cursorPosition < _inputText.Length)
                         _cursorPosition++;
+                    ClearInputSelection();
                     _lastKeyRepeatTime = tickCount;
                 }
                 return true;
@@ -646,7 +658,11 @@ namespace HaCreator.MapSimulator
                 if (oldKeyboardState.IsKeyUp(Keys.Back))
                 {
                     // First press - delete character before cursor
-                    if (_cursorPosition > 0)
+                    if (TryDeleteInputSelection())
+                    {
+                        SyncWhisperTargetPickerSelectionFromInput();
+                    }
+                    else if (_cursorPosition > 0)
                     {
                         _inputText.Remove(_cursorPosition - 1, 1);
                         _cursorPosition--;
@@ -659,7 +675,11 @@ namespace HaCreator.MapSimulator
                 else if (ShouldRepeatKey(Keys.Back, tickCount))
                 {
                     // Key repeat
-                    if (_cursorPosition > 0)
+                    if (TryDeleteInputSelection())
+                    {
+                        SyncWhisperTargetPickerSelectionFromInput();
+                    }
+                    else if (_cursorPosition > 0)
                     {
                         _inputText.Remove(_cursorPosition - 1, 1);
                         _cursorPosition--;
@@ -686,7 +706,11 @@ namespace HaCreator.MapSimulator
                 if (oldKeyboardState.IsKeyUp(Keys.Delete))
                 {
                     // First press - delete character at cursor
-                    if (_cursorPosition < _inputText.Length)
+                    if (TryDeleteInputSelection())
+                    {
+                        SyncWhisperTargetPickerSelectionFromInput();
+                    }
+                    else if (_cursorPosition < _inputText.Length)
                     {
                         _inputText.Remove(_cursorPosition, 1);
                         SyncWhisperTargetPickerSelectionFromInput();
@@ -698,7 +722,11 @@ namespace HaCreator.MapSimulator
                 else if (ShouldRepeatKey(Keys.Delete, tickCount))
                 {
                     // Key repeat
-                    if (_cursorPosition < _inputText.Length)
+                    if (TryDeleteInputSelection())
+                    {
+                        SyncWhisperTargetPickerSelectionFromInput();
+                    }
+                    else if (_cursorPosition < _inputText.Length)
                     {
                         _inputText.Remove(_cursorPosition, 1);
                         SyncWhisperTargetPickerSelectionFromInput();
@@ -732,16 +760,19 @@ namespace HaCreator.MapSimulator
                     else if (IsWhisperTargetPickerModalDropdownNavigating())
                     {
                         _cursorPosition = 0;
+                        ClearInputSelection();
                     }
                     else
                     {
                         _cursorPosition = 0;
+                        ClearInputSelection();
                     }
 
                     return true;
                 }
 
                 _cursorPosition = 0;
+                ClearInputSelection();
                 return true;
             }
 
@@ -765,16 +796,19 @@ namespace HaCreator.MapSimulator
                     else if (IsWhisperTargetPickerModalDropdownNavigating())
                     {
                         _cursorPosition = _inputText.Length;
+                        ClearInputSelection();
                     }
                     else
                     {
                         _cursorPosition = _inputText.Length;
+                        ClearInputSelection();
                     }
 
                     return true;
                 }
 
                 _cursorPosition = _inputText.Length;
+                ClearInputSelection();
                 return true;
             }
 
@@ -847,7 +881,7 @@ namespace HaCreator.MapSimulator
                 if (oldKeyboardState.IsKeyUp(key))
                 {
                     char? c = KeyToChar(key, shift);
-                    if (c.HasValue && _inputText.Length < CHAT_MAX_INPUT_LENGTH)
+                    if (c.HasValue && CanInsertInputCharacter())
                     {
                         if (IsWhisperTargetPickerModalFooterFocused())
                         {
@@ -855,8 +889,10 @@ namespace HaCreator.MapSimulator
                         }
 
                         ActivateWhisperTargetPickerModalComboFocus();
+                        TryDeleteInputSelection();
                         _inputText.Insert(_cursorPosition, c.Value);
                         _cursorPosition++;
+                        ClearInputSelection();
                         SyncWhisperTargetPickerSelectionFromInput();
                         // Track this key for potential repeat
                         _lastHeldKey = key;
@@ -871,15 +907,17 @@ namespace HaCreator.MapSimulator
                 newKeyboardState.IsKeyDown(_lastHeldKey) && ShouldRepeatKey(_lastHeldKey, tickCount))
             {
                 char? c = KeyToChar(_lastHeldKey, shift);
-                if (c.HasValue && _inputText.Length < CHAT_MAX_INPUT_LENGTH)
+                if (c.HasValue && CanInsertInputCharacter())
                 {
                     if (IsWhisperTargetPickerModalFooterFocused())
                     {
                         return true;
                     }
 
+                    TryDeleteInputSelection();
                     _inputText.Insert(_cursorPosition, c.Value);
                     _cursorPosition++;
+                    ClearInputSelection();
                     SyncWhisperTargetPickerSelectionFromInput();
                     _lastKeyRepeatTime = tickCount;
                 }
@@ -1101,6 +1139,7 @@ namespace HaCreator.MapSimulator
             CloseWhisperTargetPicker(restoreDraft: false);
             _inputText.Clear();
             _cursorPosition = 0;
+            ClearInputSelection();
             ResetKeyRepeat();
             ResetHistoryNavigation();
         }
@@ -1217,6 +1256,7 @@ namespace HaCreator.MapSimulator
                 WhisperTargetPickerPresentation = _whisperTargetPickerPresentation,
                 InputText = _inputText.ToString(),
                 CursorPosition = _cursorPosition,
+                SelectionAnchor = _selectionAnchor,
                 TargetType = _chatTarget,
                 WhisperTarget = _whisperTarget ?? string.Empty,
                 WhisperTargetPickerSelectionIndex = _whisperTargetPickerSelectionIndex,
@@ -1319,15 +1359,18 @@ namespace HaCreator.MapSimulator
             if (_isWhisperTargetPickerActive
                 && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal)
             {
-                string normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
-                if (string.IsNullOrWhiteSpace(normalizedTarget))
+                WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                    whisperTarget,
+                    _localPlayerName,
+                    out string normalizedTarget);
+                if (validationResult != WhisperTargetValidationResult.Valid)
                 {
                     return;
                 }
 
                 _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
                 _isWhisperTargetPickerComboDropdownOpen = false;
-                SetInputText(normalizedTarget);
+                SetInputText(normalizedTarget, selectAll: true);
                 SyncWhisperTargetPickerSelectionFromInput();
                 return;
             }
@@ -1350,7 +1393,7 @@ namespace HaCreator.MapSimulator
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             _whisperTargetPickerSelectionIndex = clientRowIndex;
             _isWhisperTargetPickerComboDropdownOpen = false;
-            SetInputText(_whisperCandidates[clientRowIndex]);
+            SetInputText(_whisperCandidates[clientRowIndex], selectAll: true);
             return true;
         }
 
@@ -1416,8 +1459,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
-            if (string.IsNullOrWhiteSpace(normalizedTarget))
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
             {
                 return;
             }
@@ -1459,8 +1505,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
-            if (string.IsNullOrWhiteSpace(normalizedTarget))
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
             {
                 return false;
             }
@@ -1512,7 +1561,7 @@ namespace HaCreator.MapSimulator
 
             _whisperTargetPickerSelectionIndex = 0;
             _whisperTargetPickerFirstVisibleIndex = 0;
-            SetInputText(_whisperCandidates[0]);
+            SetInputText(_whisperCandidates[0], selectAll: true);
         }
 
         internal void PageWhisperTargetPickerSelection(int deltaPages)
@@ -2413,8 +2462,11 @@ namespace HaCreator.MapSimulator
 
         private void AddWhisperCandidate(string whisperTarget)
         {
-            string normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
-            if (string.IsNullOrWhiteSpace(normalizedTarget))
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
             {
                 return;
             }
@@ -2447,6 +2499,7 @@ namespace HaCreator.MapSimulator
             {
                 SetInputText(_savedChatInputBeforeWhisperPicker);
                 _cursorPosition = Math.Clamp(_savedChatCursorBeforeWhisperPicker, 0, _inputText.Length);
+                ClearInputSelection();
             }
             else
             {
@@ -2878,7 +2931,7 @@ namespace HaCreator.MapSimulator
                 WhisperTargetPickerVisibleRowCount);
         }
 
-        private void SetInputText(string text)
+        private void SetInputText(string text, bool selectAll = false)
         {
             _inputText.Clear();
             if (!string.IsNullOrEmpty(text))
@@ -2887,6 +2940,39 @@ namespace HaCreator.MapSimulator
             }
 
             _cursorPosition = _inputText.Length;
+            _selectionAnchor = selectAll && _inputText.Length > 0 ? 0 : -1;
+        }
+
+        private void ClearInputSelection()
+        {
+            _selectionAnchor = -1;
+        }
+
+        private bool TryDeleteInputSelection()
+        {
+            if (_selectionAnchor < 0)
+            {
+                return false;
+            }
+
+            int selectionStart = Math.Clamp(Math.Min(_cursorPosition, _selectionAnchor), 0, _inputText.Length);
+            int selectionEnd = Math.Clamp(Math.Max(_cursorPosition, _selectionAnchor), 0, _inputText.Length);
+            ClearInputSelection();
+            if (selectionEnd <= selectionStart)
+            {
+                _cursorPosition = selectionStart;
+                return false;
+            }
+
+            _inputText.Remove(selectionStart, selectionEnd - selectionStart);
+            _cursorPosition = selectionStart;
+            return true;
+        }
+
+        private bool CanInsertInputCharacter()
+        {
+            return _inputText.Length < CHAT_MAX_INPUT_LENGTH
+                || (_selectionAnchor >= 0 && Math.Abs(_cursorPosition - _selectionAnchor) > 0);
         }
 
         private static bool TryParseTargetModeCommand(

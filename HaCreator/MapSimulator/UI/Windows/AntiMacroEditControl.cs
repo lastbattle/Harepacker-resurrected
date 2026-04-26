@@ -307,19 +307,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClearCompositionText();
-            DeleteSelectionIfAny();
-            foreach (char character in text)
+            string insertText = ResolveClientCommittedInsertText(text, _inputText, GetSelectionTextElementLength(), _maxLength);
+            if (insertText.Length == 0)
             {
-                if (GetTextElementCount(_inputText) >= _maxLength)
-                {
-                    break;
-                }
-
-                if (!char.IsControl(character))
-                {
-                    InsertCharacter(character);
-                }
+                return;
             }
+
+            DeleteSelectionIfAny();
+            InsertText(insertText);
         }
 
         public void HandleCompositionText(string text, bool capturesKeyboardInput)
@@ -535,6 +530,19 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static string ResolveClientCommittedInsertText(string text, string currentText, int selectedLength, int maxLength)
+        {
+            string sanitized = NativeAntiMacroEditHost.RemoveControlCharacters(text);
+            if (sanitized.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            int currentLength = GetTextElementCount(currentText ?? string.Empty);
+            int availableLength = Math.Max(0, maxLength - (currentLength - Math.Max(0, selectedLength)));
+            return NativeAntiMacroEditHost.TrimToMaxTextElements(sanitized, availableLength);
+        }
+
         public bool TryReplaceCharacterBeforeCaret(char character)
         {
             if (char.IsControl(character))
@@ -723,6 +731,20 @@ namespace HaCreator.MapSimulator.UI
             int insertionIndex = Math.Clamp(_caretIndex, 0, _inputText.Length);
             _inputText = _inputText.Insert(insertionIndex, character.ToString());
             _caretIndex = insertionIndex + 1;
+            ClearSelection();
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void InsertText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            int insertionIndex = Math.Clamp(_caretIndex, 0, _inputText.Length);
+            _inputText = _inputText.Insert(insertionIndex, text);
+            _caretIndex = insertionIndex + text.Length;
             ClearSelection();
             _caretBlinkTick = Environment.TickCount;
         }
@@ -1169,6 +1191,23 @@ namespace HaCreator.MapSimulator.UI
         private int GetSelectionLength()
         {
             return Math.Max(0, GetSelectionEnd() - GetSelectionStart());
+        }
+
+        private int GetSelectionTextElementLength()
+        {
+            if (!HasSelection)
+            {
+                return 0;
+            }
+
+            int selectionStart = GetSelectionStart();
+            int selectionLength = GetSelectionLength();
+            if (selectionLength <= 0 || selectionStart < 0 || selectionStart + selectionLength > _inputText.Length)
+            {
+                return 0;
+            }
+
+            return GetTextElementCount(_inputText.Substring(selectionStart, selectionLength));
         }
 
         private void ClearSelection()

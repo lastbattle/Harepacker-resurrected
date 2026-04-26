@@ -225,6 +225,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return;
             }
+
             bool changed = false;
             foreach (AriantArenaScoreUpdate update in updates)
             {
@@ -258,17 +259,18 @@ namespace HaCreator.MapSimulator.Fields
                     changed = true;
                 }
             }
-            if (!changed)
+
+            if (changed)
             {
-                return;
+                _entries.Sort(static (left, right) =>
+                {
+                    int scoreCompare = right.Score.CompareTo(left.Score);
+                    return scoreCompare != 0
+                        ? scoreCompare
+                        : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+                });
             }
-            _entries.Sort(static (left, right) =>
-            {
-                int scoreCompare = right.Score.CompareTo(left.Score);
-                return scoreCompare != 0
-                    ? scoreCompare
-                    : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
-            });
+
             _scoreRefreshSerial++;
             _showScoreboard = _entries.Count > 0;
             _showResult = false;

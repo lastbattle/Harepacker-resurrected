@@ -2026,9 +2026,23 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            return rawActionCode >= 0
-                   && rawActionCode < ClientMorphActionTableExclusiveUpperBound
-                   && rawActionCode != ClientMorphActionTableSkippedRawActionCode;
+            if (rawActionCode >= 0
+                && rawActionCode < ClientMorphActionTableExclusiveUpperBound
+                && rawActionCode != ClientMorphActionTableSkippedRawActionCode)
+            {
+                return true;
+            }
+
+            // Post-table WZ-backed action names are not seeded by the client's
+            // `s_sMorphAction` loop, but the simulator routes the checked redirect
+            // families through this same morph-owner resolver seam. Keep explicit
+            // post-table maps constrained to their evidenced alias surface instead
+            // of widening to unrelated published morph combat branches.
+            return IsClientPublishedAuthoredMorphFallbackAction(actionName)
+                   || IsClientPublishedMeleeMorphFallbackAction(actionName)
+                   || ClientPublishedJumpMorphFallbackAliases.ContainsKey(actionName)
+                   || ClientPublishedMovementMorphFallbackAliases.ContainsKey(actionName)
+                   || ClientPublishedPostureMorphFallbackAliases.ContainsKey(actionName);
         }
     }
 }

@@ -974,6 +974,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private Func<SkillData, string> _skillCancelRestrictionMessageProvider;
         private Func<IReadOnlyList<ActiveSummon>> _externalFriendlySupportSummonsProvider;
         private Func<int, bool> _externalCastBlockedEvaluator;
+        private Func<int, int, bool> _externalBoundJumpBlockedEvaluator;
         private Func<int, string> _additionalStateRestrictionMessageProvider;
 
         // Active state
@@ -1118,6 +1119,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void SetExternalFriendlySupportSummonsProvider(Func<IReadOnlyList<ActiveSummon>> provider) => _externalFriendlySupportSummonsProvider = provider;
         public void SetMacroResolver(Func<int, SkillMacro> macroResolver) => _macroResolver = macroResolver;
         public void SetExternalCastBlockedEvaluator(Func<int, bool> evaluator) => _externalCastBlockedEvaluator = evaluator;
+        public void SetExternalBoundJumpBlockedEvaluator(Func<int, int, bool> evaluator) => _externalBoundJumpBlockedEvaluator = evaluator;
         public void SetExternalStateRestrictionMessageProvider(Func<int, string> provider) => _externalStateRestrictionMessageProvider = provider;
         public void SetAdditionalStateRestrictionMessageProvider(Func<int, string> provider) => _additionalStateRestrictionMessageProvider = provider;
 
@@ -2324,17 +2326,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private static readonly HashSet<int> ClientShowSkillEffectPlacementOwnedPointOffsetSkillIds = new()
         {
-            3111002,
-            3211002,
-            33111003,
-            35111001,
-            35111002,
-            35111005,
-            35111009,
-            35111010,
-            35111011,
-            35121009,
-            35121010
+            // Keep recovered `DoActiveSkill_Summon` rows out of this list:
+            // that caller computes packet spawn `pt`, but still forwards
+            // `CUser::ShowSkillEffect(..., pPtOffset = 0)`. Summon-monster-style
+            // rows are admitted through `IsClientLocalShowSkillEffectSummonMonsterFamilySkill`.
         };
         private static readonly HashSet<int> ClientDoActiveSkillPrepareFamilySkillIds = new()
         {
@@ -2343,6 +2338,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             // `Skill/3312.img/skill/33121009` also keeps prepare/keydown branches with `info/type=2`.
             // Additional recovered `DoActiveSkill_Prepare` rows stay explicit here so
             // lane ownership does not regress when metadata is sparse or missing.
+            3121004,
+            3221001,
             35001001,
             35101009,
             33101005,
@@ -2625,10 +2622,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             return TryCastSkill(skillId, currentTime, ownerHotkeySlot: -1, ownerInputToken: 0);
         }
 
-        public bool TryCastPacketOwnedFuncKeySkill(int skillId, int currentTime, int ownerInputToken)
+        public bool TryCastPacketOwnedFuncKeySkill(int skillId, int currentTime, int ownerHotkeySlot, int ownerInputToken)
         {
             using var _ = BeginClientCancelBatchScope();
-            return TryCastSkill(skillId, currentTime, ownerHotkeySlot: -1, ownerInputToken);
+            return TryCastSkill(skillId, currentTime, ownerHotkeySlot, ownerInputToken);
         }
 
         public void ArmPacketOwnedExJablin()
@@ -3337,7 +3334,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        public void ReleasePacketOwnedFuncKeySkillIfActive(int skillId, int currentTime, int ownerInputToken)
+        public void ReleasePacketOwnedFuncKeySkillIfActive(int skillId, int currentTime, int ownerHotkeySlot, int ownerInputToken)
         {
             using var _ = BeginClientCancelBatchScope();
 
@@ -3346,7 +3343,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (skillId <= 0
                 || _preparedSkill.SkillId != skillId
-                || !CanInputSourceControlPreparedSkill(_preparedSkill, ownerHotkeySlot: -1, ownerInputToken))
+                || !CanInputSourceControlPreparedSkill(_preparedSkill, ownerHotkeySlot, ownerInputToken))
             {
                 return;
             }
@@ -8367,6 +8364,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
+            if (ClientShootAttackFamilyResolver.IsClientFallbackShootAttackVehicle(mountedStateMountItemId))
+            {
+                return mountedStateMountItemId;
+            }
+
             int currentActionMountItemId = ResolveClientOwnedVehicleCurrentActionMountItemId(
                 currentActionName,
                 activeSkillMountItemId,
@@ -8374,11 +8376,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (currentActionMountItemId > 0)
             {
                 return currentActionMountItemId;
-            }
-
-            if (ClientShootAttackFamilyResolver.IsClientFallbackShootAttackVehicle(mountedStateMountItemId))
-            {
-                return mountedStateMountItemId;
             }
 
             return ResolveClientOwnedVehicleAvatarTransformMountItemId(activeAvatarTransformSkillId);
@@ -12126,6 +12123,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
+        internal static bool ShouldBlockClientBoundJumpForExternalJumpBlocked(int skillId, bool isJumpBlocked)
+        {
+            // `DoActiveSkill_BoundJump` applies the client's `IsWeakened` branch to
+            // Wind Walk's direct-owner path. Mob-status Weakness is modeled as
+            // jump-blocking rather than a generic skill-cast block, so keep this
+            // admission rule on the bound-jump seam.
+            return isJumpBlocked && skillId == WindWalkSkillId;
+        }
+
         private static bool UsesSharedFlashJumpBoundJumpVelocity(SkillData skill, string movementActionName)
         {
             if (skill?.ClientInfoType != 40 || IsExplicitBoundJumpSkill(skill))
@@ -12153,6 +12159,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (!string.IsNullOrWhiteSpace(GetStateRestrictionMessage(skill, currentTime)))
+            {
+                return false;
+            }
+
+            if (_externalBoundJumpBlockedEvaluator?.Invoke(skill.SkillId, currentTime) == true)
             {
                 return false;
             }
@@ -15792,6 +15803,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ProjectileId = projectile.Id,
                 IsDetachedFromProjectile = false,
                 MainLayerObjectId = 0,
+                MainLayerHasAlphaVector = true,
                 Presentation = projectile.BulletAnimation,
                 CurrentPosition = ResolveBulletAnimationOwnerInitialPosition(
                     projectile.BulletAnimation,
@@ -18208,7 +18220,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Prefer the active main-layer alpha start when that identity is available.
             if (owner?.MainLayerObjectId > 0)
             {
-                return Math.Clamp(fallbackAlphaVectorStart, 0, 255);
+                return owner.MainLayerHasAlphaVector
+                    ? Math.Clamp(fallbackAlphaVectorStart, 0, 255)
+                    : 0;
             }
 
             if (previousLayer == null)
@@ -27045,6 +27059,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
             }
 
+            if (string.Equals(label, DebuffResistanceBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return IsVehicleTransformPlaceholderContext(activeTemporaryStatsByLabel);
+            }
+
             if (string.Equals(label, BlessBuffLabel, StringComparison.OrdinalIgnoreCase))
             {
                 return activeTemporaryStatsByLabel.ContainsKey("PAD")
@@ -29464,8 +29483,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasPendingSwallowAbsorb,
             bool swallowFamilyOutcome)
         {
-            return swallowFamilyOutcome
-                   && !hasSwallowState;
+            return swallowFamilyOutcome && !hasSwallowState && !hasPendingSwallowAbsorb;
         }
 
         private void QueuePendingWildHunterSwallowFollowUp(int requestedSkillId, int requestedLevel)

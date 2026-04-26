@@ -724,11 +724,11 @@ namespace HaCreator.MapSimulator
             bool usesOfficialSessionBridgeTransport,
             bool hasSubmittedRawPacket,
             bool bridgeHasQueuedPacket,
-            bool bridgeHasSentPacket)
+            bool bridgeHasSentPacketAfterTrackedSubmit)
         {
             return usesOfficialSessionBridgeTransport
                 && hasSubmittedRawPacket
-                && (bridgeHasQueuedPacket || bridgeHasSentPacket);
+                && (bridgeHasQueuedPacket || bridgeHasSentPacketAfterTrackedSubmit);
         }
 
         private bool HasPacketOwnedAntiMacroAuthoritativeSubmitTransport(string resultSource)
@@ -765,13 +765,14 @@ namespace HaCreator.MapSimulator
                     PacketOwnedAntiMacroAnswerSubmitOpcode,
                     _lastPacketOwnedAntiMacroSubmittedRawPacket);
             bool bridgeHasSentPacket = hasSubmittedRawPacket
-                && _localUtilityOfficialSessionBridge.HasSentOutboundPacket(
+                && _localUtilityOfficialSessionBridge.HasSentOutboundPacketSince(
                     PacketOwnedAntiMacroAnswerSubmitOpcode,
-                    _lastPacketOwnedAntiMacroSubmittedRawPacket);
+                    _lastPacketOwnedAntiMacroSubmittedRawPacket,
+                    Math.Max(0, _lastPacketOwnedAntiMacroSubmitBridgeSentOrdinal));
 
             // Keep authoritative submit tracking only while opcode 117 is either
             // still queued on the official-session bridge or has actually been
-            // injected into the bridged Maple socket.
+            // injected into the bridged Maple socket after this submit was staged.
             return HasPendingAuthoritativeSubmitTransportState(
                 usesOfficialSessionBridgeTransport,
                 hasSubmittedRawPacket,

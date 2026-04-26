@@ -537,6 +537,28 @@ namespace HaCreator.MapSimulator.Pools
             return Math.Clamp(levelData.X, 0, 100);
         }
 
+        public static int ResolveDerivedProjectedDamageToMpRedirectRate(SkillData skill, SkillLevelData levelData)
+        {
+            if (skill?.RedirectsDamageToMp != true || levelData == null)
+            {
+                return 0;
+            }
+
+            if (levelData.X > 0)
+            {
+                return Math.Clamp(levelData.X, 0, 100);
+            }
+
+            if (levelData.Y > 0)
+            {
+                return Math.Clamp(levelData.Y, 0, 100);
+            }
+
+            return levelData.V > 0
+                ? Math.Clamp(levelData.V, 0, 100)
+                : 0;
+        }
+
         private static bool HasAmplifyDamageMinionAbility(SkillData skill, IEnumerable<SkillData> supportSkills)
         {
             if (SummonRuntimeRules.HasMinionAbilityToken(skill?.MinionAbility, "amplifyDamage"))
@@ -1642,6 +1664,12 @@ namespace HaCreator.MapSimulator.Pools
                 && ContainsToken(combinedText, "dodge chance", "avoidability"))
             {
                 projected.AvoidabilityPercent = Math.Max(projected.AvoidabilityPercent, authoredLevelData.Z);
+            }
+
+            int damageToMpRedirectRate = ResolveDerivedProjectedDamageToMpRedirectRate(skill, authoredLevelData);
+            if (damageToMpRedirectRate > 0)
+            {
+                projected.X = Math.Max(projected.X, damageToMpRedirectRate);
             }
 
             return projected;

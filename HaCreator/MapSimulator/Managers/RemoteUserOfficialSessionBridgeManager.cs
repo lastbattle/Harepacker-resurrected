@@ -180,6 +180,26 @@ namespace HaCreator.MapSimulator.Managers
                 return 0;
             }
 
+            public void EnsureOfficialSessionBuildProofCount(string buildTag, int proofCount)
+            {
+                string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+                int normalizedProofCount = Math.Max(0, proofCount);
+                if (normalizedProofCount <= 0)
+                {
+                    return;
+                }
+
+                _officialSessionProofCountByBuild.TryGetValue(normalizedBuildTag, out int existingProofCount);
+                if (existingProofCount >= normalizedProofCount)
+                {
+                    return;
+                }
+
+                int addedProofCount = normalizedProofCount - existingProofCount;
+                _officialSessionProofCountByBuild[normalizedBuildTag] = normalizedProofCount;
+                OfficialSessionProofCount += addedProofCount;
+            }
+
             private void RememberOfficialSessionBuildProof(string source)
             {
                 if (!TryResolveOfficialSessionBuildTag(source, out string buildTag))
@@ -236,8 +256,9 @@ namespace HaCreator.MapSimulator.Managers
                 LastPayloadSignature = string.IsNullOrWhiteSpace(payloadSignature) ? "none" : payloadSignature;
                 ObservationCount = 1;
                 UniqueObservationCount = 1;
-                OfficialSessionObservationCount = 0;
+                OfficialSessionObservationCount = IsOfficialSessionSource(source) ? 1 : 0;
                 OfficialSessionUniqueObservationCount = 0;
+                _uniqueObservationSignatures.Add(LastPayloadSignature);
                 RememberOfficialSessionBuildObservation(source, LastPayloadSignature);
             }
 
@@ -793,6 +814,7 @@ namespace HaCreator.MapSimulator.Managers
                         _packetMap[opcode] = packetType;
                         string learnedEvidence = $"auto:{inferenceReason}; inferenceDistinctWrapperProof={inferenceBuildProof}/{MinOfficialSessionTutorInferenceProofCount}@{inferenceBuildTag}; {OfficialRemoteOwnerEvidence}";
                         RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
+                        EnsureLearnedTutorOpcodeBuildProofNoLock(opcode, packetType, inferenceBuildTag, inferenceBuildProof);
                         if (!trustV95LocalOwnerTable)
                         {
                             string promoted = PromoteBuildScopedTutorOwnerInferenceMappingsNoLock(inferenceBuildTag, source);
@@ -1243,6 +1265,7 @@ namespace HaCreator.MapSimulator.Managers
                 _packetMap[pendingOpcode] = pendingPacketType;
                 string evidence = $"auto:{pendingEvidence.Reason}; inferenceDistinctWrapperProof={buildProof}/{MinOfficialSessionTutorInferenceProofCount}@{buildTag}; pairedBuildTutorOwnerTable=1; {OfficialRemoteOwnerEvidence}";
                 RememberLearnedOpcodeNoLock(pendingOpcode, pendingPacketType, evidence, isManual: false, source, payload: null);
+                EnsureLearnedTutorOpcodeBuildProofNoLock(pendingOpcode, pendingPacketType, buildTag, buildProof);
                 (promotedMappings ??= new List<string>()).Add($"{pendingOpcode}->{RemoteUserPacketInboxManager.DescribePacketType(pendingPacketType)}");
             }
 
@@ -1378,6 +1401,27 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             learnedMap[opcode] = new LearnedOpcodeEntry(packetType, evidence, isManual: false, source, payload);
+        }
+
+        private void EnsureLearnedTutorOpcodeBuildProofNoLock(ushort opcode, int packetType, string buildTag, int proofCount)
+        {
+            if (packetType != (int)Pools.RemoteUserPacketType.UserTutorHire
+                && packetType != (int)Pools.RemoteUserPacketType.UserTutorMessage)
+            {
+                return;
+            }
+
+            if (_learnedPacketMap.TryGetValue(opcode, out LearnedOpcodeEntry learnedEntry))
+            {
+                learnedEntry.EnsureOfficialSessionBuildProofCount(buildTag, proofCount);
+            }
+
+            string normalizedBuildTag = NormalizeOfficialSessionBuildTag(buildTag);
+            if (_learnedTutorPacketMapByBuild.TryGetValue(normalizedBuildTag, out Dictionary<ushort, LearnedOpcodeEntry> learnedMap)
+                && learnedMap.TryGetValue(opcode, out LearnedOpcodeEntry buildScopedEntry))
+            {
+                buildScopedEntry.EnsureOfficialSessionBuildProofCount(normalizedBuildTag, proofCount);
+            }
         }
 
         private bool TryResolveBuildScopedLearnedTutorPacketTypeNoLock(

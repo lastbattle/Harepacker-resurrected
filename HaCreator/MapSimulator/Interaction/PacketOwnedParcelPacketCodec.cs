@@ -242,7 +242,7 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
-            bool hasMesoAttachment = postBodyState.HasMesoAttachment || attachmentMeso > 0;
+            bool hasMesoAttachment = postBodyState.HasMesoAttachment;
             if (!hasMesoAttachment)
             {
                 attachmentMeso = 0;

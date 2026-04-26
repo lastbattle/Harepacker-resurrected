@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.UI
     {
         public int ItemId { get; init; }
         public int ResultItemId { get; init; }
+        public int CommoditySerialNumber { get; init; }
         public long Price { get; init; } = long.MinValue;
         public bool? AlreadyWishlisted { get; init; }
         public string Title { get; init; } = string.Empty;
@@ -25,7 +26,8 @@ namespace HaCreator.MapSimulator.UI
             || !string.IsNullOrWhiteSpace(PriceLabel)
             || Price != long.MinValue
             || AlreadyWishlisted.HasValue
-            || ResultItemId > 0;
+            || ResultItemId > 0
+            || CommoditySerialNumber > 0;
     }
 
     internal sealed class AdminShopPacketOwnedWishlistSearchSnapshot
@@ -50,6 +52,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly byte[] Magic = Encoding.ASCII.GetBytes("WLSR");
         private const byte Version1 = 1;
         private const byte Version2 = 2;
+        private const byte Version3 = 3;
         private const int HeaderSize = 4 + 1 + 4 + 4 + 1;
         private const int LegacyHeaderSize = sizeof(int) + sizeof(int) + sizeof(ushort);
         private const byte FlagQuery = 1 << 0;
@@ -63,6 +66,7 @@ namespace HaCreator.MapSimulator.UI
         private const byte RowFlagDetail = 1 << 5;
         private const byte RowFlagCategoryKey = 1 << 6;
         private const byte RowFlagPriceLabel = 1 << 7;
+        private const byte RowFlag2CommoditySerialNumber = 1 << 0;
 
         internal static bool TryDecode(
             byte[] payload,
@@ -83,7 +87,7 @@ namespace HaCreator.MapSimulator.UI
 
             int offset = Magic.Length;
             byte version = span[offset++];
-            if (version != Version1 && version != Version2)
+            if (version != Version1 && version != Version2 && version != Version3)
             {
                 return false;
             }
@@ -129,7 +133,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<AdminShopPacketOwnedWishlistSearchResultRow> rows = new(itemCount);
-            if (version == Version2)
+            if (version == Version2 || version == Version3)
             {
                 for (int i = 0; i < itemCount; i++)
                 {
@@ -141,7 +145,19 @@ namespace HaCreator.MapSimulator.UI
                     int itemId = BitConverter.ToInt32(payload, offset);
                     offset += sizeof(int);
                     byte rowFlags = span[offset++];
+                    byte rowFlags2 = 0;
+                    if (version == Version3)
+                    {
+                        if (span.Length - offset < sizeof(byte))
+                        {
+                            return false;
+                        }
+
+                        rowFlags2 = span[offset++];
+                    }
+
                     int resultItemId = 0;
+                    int commoditySerialNumber = 0;
                     long price = long.MinValue;
                     bool? alreadyWishlisted = null;
                     string title = string.Empty;
@@ -158,6 +174,17 @@ namespace HaCreator.MapSimulator.UI
                         }
 
                         resultItemId = BitConverter.ToInt32(payload, offset);
+                        offset += sizeof(int);
+                    }
+
+                    if ((rowFlags2 & RowFlag2CommoditySerialNumber) != 0)
+                    {
+                        if (span.Length - offset < sizeof(int))
+                        {
+                            return false;
+                        }
+
+                        commoditySerialNumber = BitConverter.ToInt32(payload, offset);
                         offset += sizeof(int);
                     }
 
@@ -195,6 +222,7 @@ namespace HaCreator.MapSimulator.UI
                     {
                         ItemId = itemId,
                         ResultItemId = resultItemId,
+                        CommoditySerialNumber = commoditySerialNumber,
                         Price = price,
                         AlreadyWishlisted = alreadyWishlisted,
                         Title = title ?? string.Empty,

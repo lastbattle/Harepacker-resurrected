@@ -140,6 +140,7 @@ namespace HaCreator.MapSimulator.Effects
         public int Energy => _energy;
         public bool HasPlayerGauge => _hasPlayerState;
         public bool HasMonsterGauge => _bossHpPercent.HasValue;
+        public bool IsEnergyFullPresentationActive => _energy >= EnergyMax;
         public int LastDecodedClockType => _lastDecodedClockType;
         public int LastDecodedClockDurationSec => _lastDecodedClockDurationSec;
         public int LastDecodedClockPayloadLength => _lastDecodedClockPayloadLength;
@@ -1771,12 +1772,13 @@ namespace HaCreator.MapSimulator.Effects
         private void DrawEnergy(SpriteBatch spriteBatch, Viewport viewport, Texture2D pixelTexture)
         {
             Vector2 energyAnchor = new(EnergyOffsetX, EnergyOffsetY);
-            Rectangle energyBounds = DrawTextureAtTopLeft(spriteBatch, _energyTexture, energyAnchor);
-            if (_energy >= EnergyMax)
+            if (IsEnergyFullPresentationActive)
             {
                 DrawAnimation(spriteBatch, _energyFullFrames, Environment.TickCount, int.MaxValue, new Vector2(9f, 80f), repeat: true);
                 return;
             }
+
+            Rectangle energyBounds = DrawTextureAtTopLeft(spriteBatch, _energyTexture, energyAnchor);
             Rectangle energyGaugeBounds = new(
                 energyBounds.X + EnergyGaugeOffsetX,
                 energyBounds.Y + EnergyGaugeOffsetY,

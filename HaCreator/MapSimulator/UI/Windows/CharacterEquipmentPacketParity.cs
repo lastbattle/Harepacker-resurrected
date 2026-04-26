@@ -174,6 +174,8 @@ namespace HaCreator.MapSimulator.UI
                                     inventoryType,
                                     fromPosition,
                                     reader,
+                                    isLastOperation: i == operationCount - 1,
+                                    reservedTrailerBytes: requiresSecondaryStatChangedPointTrailer ? sizeof(byte) : 0,
                                     out int addedItemId,
                                     out bool matchedByHeader,
                                     out rejectReason))
@@ -1440,6 +1442,8 @@ namespace HaCreator.MapSimulator.UI
             byte inventoryType,
             short targetPosition,
             BinaryReader reader,
+            bool isLastOperation,
+            int reservedTrailerBytes,
             out int itemId,
             out bool matchedByHeader,
             out string rejectReason)
@@ -1512,7 +1516,12 @@ namespace HaCreator.MapSimulator.UI
                         inventoryType,
                         targetPosition,
                         itemId,
-                        matchedByHeader))
+                        matchedByHeader)
+                    && TryConsumeHeaderMatchedModeZeroFallbackBody(
+                        reader,
+                        isLastOperation,
+                        reservedTrailerBytes,
+                        out rejectReason))
                 {
                     // CWvsContext::OnInventoryOperation reads the mode-0 owner/position header
                     // before descending into GW_ItemSlotBase::Decode. Keep ownership recovery on
@@ -1533,6 +1542,37 @@ namespace HaCreator.MapSimulator.UI
                 rejectReason = "Inventory-operation add entry is truncated.";
                 return false;
             }
+        }
+
+        private static bool TryConsumeHeaderMatchedModeZeroFallbackBody(
+            BinaryReader reader,
+            bool isLastOperation,
+            int reservedTrailerBytes,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (!isLastOperation)
+            {
+                rejectReason = "Inventory-operation add entry body could not be decoded before later operations.";
+                return false;
+            }
+
+            Stream stream = reader?.BaseStream;
+            if (stream is not { CanSeek: true })
+            {
+                rejectReason = "Inventory-operation add entry body could not be skipped for header-matched ownership recovery.";
+                return false;
+            }
+
+            long bodyEnd = stream.Length - Math.Max(0, reservedTrailerBytes);
+            if (bodyEnd < stream.Position)
+            {
+                rejectReason = "Inventory-operation add entry is truncated before the expected trailer.";
+                return false;
+            }
+
+            stream.Position = bodyEnd;
+            return true;
         }
 
         private static bool ShouldKeepModeZeroOwnershipOnHeaderFallback(

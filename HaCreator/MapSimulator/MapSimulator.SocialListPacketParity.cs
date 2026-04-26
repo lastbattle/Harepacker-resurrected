@@ -469,13 +469,16 @@ namespace HaCreator.MapSimulator
             }
 
             bool isClientResultNotice = packet.Kind == SocialListClientGuildResultKind.ResultNotice;
-            bool shouldResolvePendingFromSharedNotice = isClientResultNotice || packet.UsesSharedResultNoticeFallback;
-            if (shouldResolvePendingFromSharedNotice)
+            bool isClientNoticeOnlyResult = IsClientGuildNoticeOnlyResult(packet);
+            bool shouldResolvePendingFromNotice = isClientResultNotice ||
+                                                  isClientNoticeOnlyResult ||
+                                                  packet.UsesSharedResultNoticeFallback;
+            if (shouldResolvePendingFromNotice)
             {
                 string pendingResolutionDetail = _guildSkillRuntime.TryResolvePendingFromClientResultNotice(
                     packet.RawSubtype,
-                    isClientResultNotice && packet.HasExplicitNotice,
-                    isClientResultNotice ? packet.ResultNotice : null);
+                    TryGetClientGuildResultNoticeText(packet, out string noticeText),
+                    noticeText);
                 if (!string.IsNullOrWhiteSpace(pendingResolutionDetail))
                 {
                     TryTriggerSpecialistPetSocialFeedback(pendingResolutionDetail, Environment.TickCount);
@@ -522,6 +525,39 @@ namespace HaCreator.MapSimulator
             return string.IsNullOrWhiteSpace(detail)
                 ? skillRecordDetail
                 : $"{detail} {skillRecordDetail}";
+        }
+
+        private static bool TryGetClientGuildResultNoticeText(SocialListClientGuildResultPacket packet, out string noticeText)
+        {
+            if (packet.Kind == SocialListClientGuildResultKind.ResultNotice && packet.HasExplicitNotice)
+            {
+                noticeText = packet.ResultNotice;
+                return true;
+            }
+
+            if (IsClientGuildNoticeOnlyResult(packet) && !string.IsNullOrWhiteSpace(packet.DirectNotice))
+            {
+                noticeText = packet.DirectNotice;
+                return true;
+            }
+
+            noticeText = null;
+            return false;
+        }
+
+        private static bool IsClientGuildNoticeOnlyResult(SocialListClientGuildResultPacket packet)
+        {
+            return packet.Kind is SocialListClientGuildResultKind.Notice35
+                or SocialListClientGuildResultKind.Notice37
+                or SocialListClientGuildResultKind.Notice42
+                or SocialListClientGuildResultKind.Notice43
+                or SocialListClientGuildResultKind.Notice44
+                or SocialListClientGuildResultKind.Notice47
+                or SocialListClientGuildResultKind.Notice50
+                or SocialListClientGuildResultKind.Notice55
+                or SocialListClientGuildResultKind.Notice56
+                or SocialListClientGuildResultKind.Notice57
+                or SocialListClientGuildResultKind.Notice58;
         }
 
         private string ApplyPacketOwnedGuildSkillResultPayload(byte[] payload)

@@ -71,6 +71,7 @@ namespace HaCreator.MapSimulator.UI
             public string PacketSource { get; set; } = string.Empty;
             public string PacketFieldSummary { get; set; } = string.Empty;
             public int PacketRawByteLength { get; set; }
+            public string PacketPayloadRawHex { get; set; } = string.Empty;
             public int PacketBuyerCharacterIdByteLength { get; set; }
             public string PacketBuyerCharacterIdRawHex { get; set; } = string.Empty;
             public string PacketSenderRaw { get; set; } = string.Empty;
@@ -976,6 +977,12 @@ namespace HaCreator.MapSimulator.UI
                 foreach (PacketCatalogEntry entry in _cashGiftPacketEntries.Take(2))
                 {
                     AppendStatusDetail(detailLines, entry.PacketFieldSummary);
+                    AppendStatusDetail(detailLines, entry.PacketPayloadRawHex);
+                }
+
+                foreach (PacketCatalogEntry entry in _cashPacketCatalogEntries.Take(2))
+                {
+                    AppendStatusDetail(detailLines, entry.PacketPayloadRawHex);
                 }
             }
             else
@@ -985,6 +992,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     AppendStatusDetail(detailLines, entry.Detail);
                     AppendStatusDetail(detailLines, entry.PacketFieldSummary);
+                    AppendStatusDetail(detailLines, entry.PacketPayloadRawHex);
                 }
             }
 
@@ -2793,7 +2801,11 @@ namespace HaCreator.MapSimulator.UI
                 Detail = summary,
                 Seller = "CCashShop",
                 PriceLabel = $"Subtype {subtype.ToString(CultureInfo.InvariantCulture)}",
-                StateLabel = "Unknown"
+                StateLabel = "Unknown",
+                PacketSource = subtypeLabel,
+                PacketFieldSummary = BuildRawPayloadFieldSummary(normalizedPayload, includeSubtypeByte: true),
+                PacketRawByteLength = normalizedPayload.Length,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(normalizedPayload)
             });
             _noticeState = summary;
             return summary;
@@ -4818,6 +4830,37 @@ namespace HaCreator.MapSimulator.UI
             return $"{ownerName} reached the simulator, but the packet body could not be decoded from {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s).";
         }
 
+        private static string BuildRawPayloadFieldSummary(byte[] payload, bool includeSubtypeByte)
+        {
+            byte[] normalizedPayload = payload ?? Array.Empty<byte>();
+            if (normalizedPayload.Length == 0)
+            {
+                return "Raw packet body: 0 byte(s).";
+            }
+
+            int bodyOffset = includeSubtypeByte ? 1 : 0;
+            int bodyLength = Math.Max(0, normalizedPayload.Length - bodyOffset);
+            string subtypeSummary = includeSubtypeByte
+                ? $"subtype {unchecked((sbyte)normalizedPayload[0]).ToString(CultureInfo.InvariantCulture)}, "
+                : string.Empty;
+            return $"Raw packet body: {subtypeSummary}{bodyLength.ToString(CultureInfo.InvariantCulture)} trailing byte(s).";
+        }
+
+        private static string BuildRawPayloadHexSummary(byte[] payload)
+        {
+            byte[] normalizedPayload = payload ?? Array.Empty<byte>();
+            if (normalizedPayload.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            int previewLength = Math.Min(normalizedPayload.Length, 32);
+            byte[] preview = new byte[previewLength];
+            Buffer.BlockCopy(normalizedPayload, 0, preview, 0, previewLength);
+            string suffix = normalizedPayload.Length > previewLength ? "..." : string.Empty;
+            return $"Raw packet hex ({normalizedPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)): {Convert.ToHexString(preview)}{suffix}";
+        }
+
         private static string SanitizePacketString(string value, string fallback)
         {
             string trimmed = value?.Trim();
@@ -5057,6 +5100,7 @@ namespace HaCreator.MapSimulator.UI
                 PacketSource = "GW_GiftList",
                 PacketFieldSummary = fieldSummary,
                 PacketRawByteLength = snapshot?.RawByteLength ?? GiftListPacketByteLength,
+                PacketPayloadRawHex = BuildGiftListRawPayloadHexSummary(snapshot),
                 PacketSenderRaw = snapshot?.SenderRaw ?? string.Empty,
                 PacketMessageRaw = snapshot?.MessageRaw ?? string.Empty,
                 PacketSenderByteLength = snapshot?.SenderByteLength ?? 13,
@@ -5076,6 +5120,23 @@ namespace HaCreator.MapSimulator.UI
             return string.Create(
                 CultureInfo.InvariantCulture,
                 $"GW_CashItemInfo[{snapshot.RawByteLength}]: liSN={snapshot.SerialNumber}, nAccountID={snapshot.AccountId}, nCharacterID={snapshot.CharacterId}, nItemID={snapshot.ItemId}, nCommodityID={snapshot.CommodityId}, nNumber={Math.Max(1, snapshot.Quantity)}, sBuyCharacterID[{snapshot.BuyerCharacterIdByteLength}]={SanitizePacketString(snapshot.BuyerCharacterId, string.Empty)}, sBuyCharacterIDRawHex[{snapshot.BuyerCharacterIdByteLength}]={snapshot.BuyerCharacterIdRawHex}, ftExpire={snapshot.RawExpireFileTime}, nPaybackRate={snapshot.PaybackRate}, nDiscountRate={snapshot.DiscountRate}");
+        }
+
+        private static string BuildGiftListRawPayloadHexSummary(GiftListPacketSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return string.Empty;
+            }
+
+            string senderHex = snapshot.SenderRawHex ?? string.Empty;
+            string messageHex = snapshot.MessageRawHex ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(senderHex) && string.IsNullOrWhiteSpace(messageHex))
+            {
+                return string.Empty;
+            }
+
+            return $"GW_GiftList raw slices: sender[{Math.Max(0, snapshot.SenderByteLength).ToString(CultureInfo.InvariantCulture)}]={senderHex}; message[{Math.Max(0, snapshot.MessageByteLength).ToString(CultureInfo.InvariantCulture)}]={messageHex}";
         }
 
         private static string BuildGiftListFieldSummary(GiftListPacketSnapshot snapshot)
@@ -5820,6 +5881,7 @@ namespace HaCreator.MapSimulator.UI
                 PacketSource = source.PacketSource,
                 PacketFieldSummary = source.PacketFieldSummary,
                 PacketRawByteLength = source.PacketRawByteLength,
+                PacketPayloadRawHex = source.PacketPayloadRawHex,
                 PacketBuyerCharacterIdByteLength = source.PacketBuyerCharacterIdByteLength,
                 PacketBuyerCharacterIdRawHex = source.PacketBuyerCharacterIdRawHex,
                 PacketSenderRaw = source.PacketSenderRaw,
@@ -6192,7 +6254,11 @@ namespace HaCreator.MapSimulator.UI
                 Detail = message,
                 Seller = "CITC",
                 PriceLabel = payload?.Length > 0 ? $"{payload.Length.ToString(CultureInfo.InvariantCulture)} bytes" : "0 bytes",
-                StateLabel = "Decode failed"
+                StateLabel = "Decode failed",
+                PacketSource = ownerName,
+                PacketFieldSummary = BuildRawPayloadFieldSummary(payload, includeSubtypeByte: true),
+                PacketRawByteLength = payload?.Length ?? 0,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(payload)
             });
             _noticeState = message;
             return message;
@@ -6219,7 +6285,11 @@ namespace HaCreator.MapSimulator.UI
                 Detail = summary,
                 Seller = "CITC",
                 PriceLabel = $"Subtype {subtype.ToString(CultureInfo.InvariantCulture)}",
-                StateLabel = "Unknown"
+                StateLabel = "Unknown",
+                PacketSource = subtypeLabel,
+                PacketFieldSummary = BuildRawPayloadFieldSummary(packetPayload, includeSubtypeByte: true),
+                PacketRawByteLength = packetPayload.Length,
+                PacketPayloadRawHex = BuildRawPayloadHexSummary(packetPayload)
             });
             _noticeState = summary;
             return summary;

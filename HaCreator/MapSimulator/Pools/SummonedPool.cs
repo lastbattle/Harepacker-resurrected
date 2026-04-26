@@ -8130,7 +8130,7 @@ namespace HaCreator.MapSimulator.Pools
                         token[i + 2],
                         out char decoded))
                 {
-                    if (IsPacketMobAttackGeneralEffectEscapedSyntaxCharacter(decoded))
+                    if (IsPacketMobAttackGeneralEffectPercentDecodedPathCharacter(decoded))
                     {
                         normalizedBuilder.Append(decoded == '\\' ? '/' : decoded);
                         i += 2;
@@ -8142,6 +8142,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalizedBuilder.ToString();
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectPercentDecodedPathCharacter(char character)
+        {
+            return (character >= 0x20 && character <= 0x7E)
+                   || char.IsWhiteSpace(character);
         }
 
         private static bool IsPacketMobAttackGeneralEffectEscapedSyntaxCharacter(char character)

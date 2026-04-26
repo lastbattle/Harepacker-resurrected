@@ -246,6 +246,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             byte normalizedAction = (byte)(packetAction & 0x7F);
+            if (normalizedAction == 0)
+            {
+                string noActionBranch = ResolveNoActionFamilyPacketSkillBranch(skill, assistType);
+                if (!string.IsNullOrWhiteSpace(noActionBranch))
+                {
+                    return noActionBranch;
+                }
+            }
+
             string indexedBranch = ResolvePacketIndexedSkillBranch(skill, normalizedAction);
             if (!string.IsNullOrWhiteSpace(indexedBranch))
             {
@@ -666,6 +675,54 @@ namespace HaCreator.MapSimulator.Character.Skills
                     "skill5",
                     "skill6",
                     "stand"));
+        }
+
+        private static string ResolveNoActionFamilyPacketSkillBranch(
+            SkillData skill,
+            SummonAssistType? assistType)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            bool hasExplicitSummonCue =
+                HasExplicitSummonOwnedPacketSkillBranch(skill, PacketSkillActionSubsummon);
+            bool hasExplicitSupportCue =
+                HasExplicitSupportOwnedPacketSkillBranch(skill, PacketSkillActionHealingRobotHeal);
+            if (hasExplicitSummonCue != hasExplicitSupportCue)
+            {
+                return hasExplicitSummonCue
+                    ? ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.SummonAction)
+                    : ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.Support);
+            }
+
+            if (hasExplicitSummonCue)
+            {
+                return assistType.HasValue
+                    ? ResolveAssistOwnedPacketSkillBranch(skill, assistType.Value)
+                    : null;
+            }
+
+            bool hasSummonMinionCue = HasSummonOwnedMinionAbilityCue(skill);
+            bool hasSupportMinionCue = HasSupportOwnedMinionAbilityCue(skill);
+            if (hasSummonMinionCue == hasSupportMinionCue)
+            {
+                return assistType.HasValue
+                    ? ResolveAssistOwnedPacketSkillBranch(skill, assistType.Value)
+                    : null;
+            }
+
+            if (hasSupportMinionCue)
+            {
+                return HasAuthoredSupportOwnedPacketSkillBranch(skill, PacketSkillActionHealingRobotHeal)
+                    ? ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.Support)
+                    : null;
+            }
+
+            return HasAuthoredSummonOwnedPacketSkillBranchWithoutExplicitFamilyCue(skill)
+                ? ResolveAssistOwnedPacketSkillBranch(skill, SummonAssistType.SummonAction)
+                : null;
         }
 
         private static bool HasExplicitSupportOwnedPacketSkillBranch(SkillData skill, byte normalizedAction)

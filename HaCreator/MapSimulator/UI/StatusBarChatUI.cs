@@ -1670,8 +1670,17 @@ namespace HaCreator.MapSimulator.UI
                 cursorPosition,
                 comboTextMaxWidth,
                 value => MeasureChatText(value).X,
+                out int visibleComboStartIndex,
                 out int visibleComboCursorOffset);
             int comboTextTopInset = StatusBarChatLayoutRules.ClientWhisperPickerModalComboTextTopInset;
+            DrawWhisperPickerModalComboSelection(
+                sprite,
+                chatState,
+                visibleComboText,
+                visibleComboStartIndex,
+                comboTextX,
+                comboBounds.Y + comboTextTopInset,
+                comboTextMaxWidth);
             DrawTextWithShadow(
                 sprite,
                 visibleComboText,
@@ -1706,6 +1715,43 @@ namespace HaCreator.MapSimulator.UI
                     1,
                     caretHeight),
                 Color.White);
+        }
+
+        private void DrawWhisperPickerModalComboSelection(
+            SpriteBatch sprite,
+            MapSimulatorChatRenderState chatState,
+            string visibleText,
+            int visibleStartIndex,
+            float textX,
+            int textY,
+            int maxWidth)
+        {
+            if (_pixelTexture == null
+                || chatState?.HasSelection != true
+                || string.IsNullOrEmpty(visibleText))
+            {
+                return;
+            }
+
+            int visibleEndIndex = visibleStartIndex + visibleText.Length;
+            int selectionStart = Math.Clamp(chatState.SelectionStart, visibleStartIndex, visibleEndIndex);
+            int selectionEnd = Math.Clamp(chatState.SelectionEnd, visibleStartIndex, visibleEndIndex);
+            if (selectionEnd <= selectionStart)
+            {
+                return;
+            }
+
+            string textBeforeSelection = visibleText.Substring(0, selectionStart - visibleStartIndex);
+            string selectedText = visibleText.Substring(selectionStart - visibleStartIndex, selectionEnd - selectionStart);
+            int selectionX = (int)Math.Round(textX + MeasureChatText(textBeforeSelection).X);
+            int selectionWidth = Math.Min(
+                Math.Max(1, (int)Math.Ceiling(MeasureChatText(selectedText).X)),
+                Math.Max(1, (int)Math.Round(textX + maxWidth) - selectionX));
+            int selectionHeight = Math.Clamp(Math.Max(1, ResolveFontLineSpacing() - 1), 1, 14);
+            sprite.Draw(
+                _pixelTexture,
+                new Rectangle(selectionX, textY, selectionWidth, selectionHeight),
+                new Color(51, 103, 209, 160));
         }
 
         private void DrawWhisperPickerModalComboDropdownRow(
@@ -2505,6 +2551,7 @@ namespace HaCreator.MapSimulator.UI
             int cursorPosition,
             float maxWidth,
             Func<string, float> measureWidth,
+            out int visibleStartIndex,
             out int visibleCursorOffset)
         {
             if (measureWidth == null)
@@ -2513,6 +2560,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             visibleCursorOffset = 0;
+            visibleStartIndex = 0;
             string text = inputText ?? string.Empty;
             if (string.IsNullOrEmpty(text))
             {
@@ -2552,6 +2600,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             visibleCursorOffset = safeCursorPosition - startIndex;
+            visibleStartIndex = startIndex;
             return text.Substring(startIndex, Math.Max(0, endIndex - startIndex));
         }
 
@@ -3417,7 +3466,12 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!string.IsNullOrWhiteSpace(message.WhisperTargetCandidate))
             {
-                return MapSimulatorChat.NormalizeChatSpeakerCandidate(message.WhisperTargetCandidate);
+                return TryResolveExplicitWhisperTargetCandidate(
+                    message.WhisperTargetCandidate,
+                    localPlayerName: string.Empty,
+                    out string explicitCandidate)
+                    ? explicitCandidate
+                    : string.Empty;
             }
 
             if (!CanBeginWhisperFromChatLogType(message.ChatLogType))
@@ -3528,10 +3582,21 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool CanBeginWhisperFromCandidate(string whisperTargetCandidate, string localPlayerName)
         {
+            return TryResolveExplicitWhisperTargetCandidate(
+                whisperTargetCandidate,
+                localPlayerName,
+                out _);
+        }
+
+        private static bool TryResolveExplicitWhisperTargetCandidate(
+            string whisperTargetCandidate,
+            string localPlayerName,
+            out string normalizedTarget)
+        {
             return MapSimulatorChat.ValidateExplicitWhisperTargetCandidate(
                 whisperTargetCandidate,
                 localPlayerName,
-                out _) == MapSimulatorChat.WhisperTargetValidationResult.Valid;
+                out normalizedTarget) == MapSimulatorChat.WhisperTargetValidationResult.Valid;
         }
         #endregion
 

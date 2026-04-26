@@ -843,16 +843,35 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
+        internal static bool HasRenderableFramesForTesting(WzImageProperty property)
+        {
+            return HasRenderableFrames(property);
+        }
+
         private static bool HasRenderableFrames(WzImageProperty property)
         {
-            if (property is WzCanvasProperty)
+            return HasRenderableFrames(property, new HashSet<WzImageProperty>());
+        }
+
+        private static bool HasRenderableFrames(WzImageProperty property, HashSet<WzImageProperty> visited)
+        {
+            WzImageProperty resolvedProperty = ResolveActionProperty(property);
+            if (resolvedProperty == null)
+            {
+                return false;
+            }
+
+            if (resolvedProperty is WzCanvasProperty)
             {
                 return true;
             }
 
-            return property != null &&
-                   property.WzProperties != null &&
-                   property.WzProperties.Any(child => ResolveCanvasProperty(child) != null);
+            if (resolvedProperty.WzProperties == null || !visited.Add(resolvedProperty))
+            {
+                return false;
+            }
+
+            return resolvedProperty.WzProperties.Any(child => HasRenderableFrames(child, visited));
         }
 
         private static WzImageProperty ResolveActionProperty(WzImageProperty property)

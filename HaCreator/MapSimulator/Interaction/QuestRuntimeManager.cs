@@ -345,6 +345,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndMonsterBookMaxCardTypes { get; init; }
             public IReadOnlyList<QuestMonsterBookCardRequirement> EndMonsterBookCardRequirements { get; init; } =
                 Array.Empty<QuestMonsterBookCardRequirement>();
+            public string EndTimeKeepFieldSet { get; init; } = string.Empty;
             public int? EndInfoNumber { get; init; }
             public IReadOnlyList<QuestRecordTextRequirement> EndInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
             public IReadOnlyList<QuestRecordValueRequirement> EndInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
@@ -1054,6 +1055,13 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add("Monster Book card-count demand is still unmet.");
             }
 
+            if (HasUnmetCompletionTimeKeepFieldSetDemand(
+                    definition.EndTimeKeepFieldSet,
+                    TryResolveCompletionTimeKeepQuestExKeptValue(definition.QuestId)))
+            {
+                issues.Add("Time-keep field-set demand is still unmet.");
+            }
+
             if (build == null &&
                 HasUnresolvedCompletionBuildContextDemand(
                     definition.MinLevel,
@@ -1313,6 +1321,22 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private string TryResolveCompletionTimeKeepQuestExKeptValue(int questId)
+        {
+            return TryGetQuestRecordValue(questId, out string recordValue) &&
+                   TryResolveQuestDetailRecordTokenValue(recordValue, "kept", out string keptValue)
+                ? keptValue
+                : string.Empty;
+        }
+
+        internal static bool HasUnmetCompletionTimeKeepFieldSetDemand(
+            string fieldSet,
+            string questExKeptValue)
+        {
+            return !string.IsNullOrWhiteSpace(fieldSet)
+                   && string.IsNullOrWhiteSpace(questExKeptValue);
         }
 
         internal static bool HasUnresolvedCompletionBuildContextDemand(
@@ -4968,6 +4992,8 @@ namespace HaCreator.MapSimulator.Interaction
                 infoNumber,
                 infoRequirements,
                 infoExRequirements);
+            bool hasUnmetTraitRequirement = state == QuestStateType.Not_Started &&
+                HasUnmetTraitRequirements(definition.StartTraitRequirements, build);
             IReadOnlyList<QuestSkillRequirement> skillRequirements = state == QuestStateType.Not_Started
                 ? definition.StartSkillRequirements
                 : definition.EndSkillRequirements;
@@ -5002,6 +5028,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUnmetQuestRequirements(questRequirements),
                 hasUnmetJobRequirement,
                 hasUnmetQuestRecordRequirements,
+                hasUnmetTraitRequirement,
                 hasUnmetLevelRequirement,
                 hasUnmetFameRequirement,
                 hasUnmetSkillRequirement,
@@ -5025,6 +5052,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasUnmetQuestRequirements,
             bool hasUnmetJobRequirement,
             bool hasUnmetQuestRecordRequirements,
+            bool hasUnmetTraitRequirement,
             bool hasUnmetLevelRequirement,
             bool hasUnmetFameRequirement,
             bool hasUnmetSkillRequirement,
@@ -5116,6 +5144,28 @@ namespace HaCreator.MapSimulator.Interaction
                     "questrecord"))
             {
                 return blockedInfoPages;
+            }
+
+            if (hasUnmetTraitRequirement &&
+                TryGetStopPagesByAliases(
+                    stopPages,
+                    out IReadOnlyList<NpcInteractionPage> traitPages,
+                    "trait",
+                    "traits",
+                    "charisma",
+                    "charismamin",
+                    "insight",
+                    "insightmin",
+                    "will",
+                    "willmin",
+                    "craft",
+                    "craftmin",
+                    "sense",
+                    "sensemin",
+                    "charm",
+                    "charmmin"))
+            {
+                return traitPages;
             }
 
             if (hasUnmetLevelRequirement &&
@@ -6557,6 +6607,7 @@ namespace HaCreator.MapSimulator.Interaction
                         CompletionPhase = completionPhase,
                         ActionLabel = actionLabel ?? string.Empty,
                         NpcId = npcId,
+                        OwnerContext = ResolveQuestRewardRaiseOwnerContext(questId),
                         Groups = pendingGroups
                     }
                 };
@@ -6607,6 +6658,16 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 GrantedItems = granted
             };
+        }
+
+        private static QuestRewardRaiseOwnerContext ResolveQuestRewardRaiseOwnerContext(int questId)
+        {
+            return InventoryItemMetadataResolver.TryResolveRaiseOwnerContextForQuest(
+                questId,
+                out QuestRewardRaiseOwnerContext ownerContext,
+                out _)
+                ? ownerContext
+                : null;
         }
 
         private void AppendQuestStateIssues(IReadOnlyList<QuestStateRequirement> requirements, ICollection<string> issues)
@@ -6907,6 +6968,28 @@ namespace HaCreator.MapSimulator.Interaction
 
                 issues.Add($"Raise {FormatTraitName(requirement.Trait)} to {requirement.MinimumValue}.");
             }
+        }
+
+        private static bool HasUnmetTraitRequirements(
+            IReadOnlyList<QuestTraitRequirement> requirements,
+            CharacterBuild build)
+        {
+            if (requirements == null || requirements.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestTraitRequirement requirement = requirements[i];
+                if (requirement != null &&
+                    GetCurrentTraitValue(build, requirement.Trait) < requirement.MinimumValue)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void ApplyTraitReward(CharacterBuild build, QuestTraitReward reward, ICollection<string> messages)
@@ -8615,6 +8698,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndMonsterBookMinCardTypes = ParseInt(endCheck?["mbmin"]),
                 EndMonsterBookMaxCardTypes = ParseInt(endCheck?["mbmax"]),
                 EndMonsterBookCardRequirements = ParseMonsterBookCardRequirements(endCheck?["mbcard"]),
+                EndTimeKeepFieldSet = ParseString(endCheck?["fieldset"] ?? endCheck?["fieldSet"]),
                 EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
                 EndInfoRequirements = ParseQuestRecordTextRequirements(endCheck?["info"]),
                 EndInfoExRequirements = ParseQuestRecordValueRequirements(endCheck?["infoex"]),

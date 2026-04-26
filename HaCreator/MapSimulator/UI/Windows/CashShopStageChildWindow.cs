@@ -115,6 +115,8 @@ namespace HaCreator.MapSimulator.UI
                 public int SlotIndex { get; init; }
                 public string CommandKey { get; init; } = string.Empty;
                 public Point Position { get; init; }
+                public int Width { get; init; }
+                public int Height { get; init; }
                 public bool HasCanvas { get; init; }
                 public bool IsLoaded { get; init; }
                 public bool IsEnabled { get; init; } = true;
@@ -1276,11 +1278,26 @@ namespace HaCreator.MapSimulator.UI
 
             OneADayOwnerState.PlateButtonState bestButton = null;
             int bestDistance = int.MaxValue;
+            bool hasSizedButton = false;
             foreach (OneADayOwnerState.PlateButtonState button in state.PlateButtons)
             {
                 if (button == null || !button.IsEnabled || string.IsNullOrWhiteSpace(button.CommandKey))
                 {
                     continue;
+                }
+
+                if (button.Width > 0 && button.Height > 0)
+                {
+                    hasSizedButton = true;
+                    Rectangle buttonBounds = new(
+                        absoluteBounds.X + button.Position.X - (button.Width / 2),
+                        absoluteBounds.Y + button.Position.Y - (button.Height / 2),
+                        button.Width,
+                        button.Height);
+                    if (buttonBounds.Contains(mousePosition))
+                    {
+                        return button.CommandKey;
+                    }
                 }
 
                 int buttonCenterX = absoluteBounds.X + button.Position.X;
@@ -1291,6 +1308,11 @@ namespace HaCreator.MapSimulator.UI
                     bestDistance = distance;
                     bestButton = button;
                 }
+            }
+
+            if (hasSizedButton)
+            {
+                return null;
             }
 
             return bestButton?.CommandKey;

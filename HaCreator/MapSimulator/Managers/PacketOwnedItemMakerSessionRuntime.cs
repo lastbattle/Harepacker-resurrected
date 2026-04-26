@@ -1425,9 +1425,18 @@ namespace HaCreator.MapSimulator.Managers
             {
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
-                List<PacketOwnedItemMakerSessionHiddenEntry> entries = ReadHiddenRecipeRemovalEntries16(
-                    reader,
-                    "Maker-session compact delta hidden recipe entry");
+                if (!TryReadHiddenRecipeRemovalEntries16(
+                        reader,
+                        "Maker-session compact delta hidden recipe entry",
+                        out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+                    && !TryReadHiddenRecipeRemovalEntries8(
+                        reader,
+                        "Maker-session compact delta hidden recipe entry",
+                        out entries))
+                {
+                    return false;
+                }
+
                 if (reader.BaseStream.Position != reader.BaseStream.Length)
                 {
                     return false;
@@ -2158,6 +2167,101 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return entries;
+        }
+
+        private static bool TryReadHiddenRecipeRemovalEntries16(
+            BinaryReader reader,
+            string label,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            return TryReadHiddenRecipeRemovalEntries(
+                reader,
+                label,
+                useByteCount: false,
+                out entries);
+        }
+
+        private static bool TryReadHiddenRecipeRemovalEntries8(
+            BinaryReader reader,
+            string label,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            return TryReadHiddenRecipeRemovalEntries(
+                reader,
+                label,
+                useByteCount: true,
+                out entries);
+        }
+
+        private static bool TryReadHiddenRecipeRemovalEntries(
+            BinaryReader reader,
+            string label,
+            bool useByteCount,
+            out List<PacketOwnedItemMakerSessionHiddenEntry> entries)
+        {
+            entries = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                int count = useByteCount
+                    ? ReadNonNegativeCount8(reader, $"{label} count is missing or negative.")
+                    : ReadNonNegativeCount16(reader, $"{label} count is missing or negative.");
+                if (count <= 0)
+                {
+                    return true;
+                }
+
+                long bytesRemaining = reader.BaseStream.Length - reader.BaseStream.Position;
+                int entryWidth = sizeof(int) * 2;
+                bool outputOnlyEncoding = false;
+                if (bytesRemaining == count * sizeof(int))
+                {
+                    outputOnlyEncoding = true;
+                    entryWidth = sizeof(int);
+                }
+
+                entries = new List<PacketOwnedItemMakerSessionHiddenEntry>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    EnsureReadable(reader, entryWidth, $"{label} entry is truncated.");
+                    int bucketKey;
+                    int outputItemId;
+                    if (outputOnlyEncoding)
+                    {
+                        bucketKey = -1;
+                        outputItemId = reader.ReadInt32();
+                    }
+                    else
+                    {
+                        bucketKey = reader.ReadInt32();
+                        outputItemId = reader.ReadInt32();
+                    }
+
+                    entries.Add(new PacketOwnedItemMakerSessionHiddenEntry(bucketKey, outputItemId));
+                }
+
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (IOException)
+            {
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
+            catch (InvalidDataException)
+            {
+                reader.BaseStream.Position = startPosition;
+                return false;
+            }
         }
 
         private static void EnsureReadable(BinaryReader reader, int requiredBytes, string message)

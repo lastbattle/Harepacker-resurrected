@@ -107,6 +107,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
         private readonly Texture2D _debugTooltipTexture;
+        private readonly Dictionary<int, Texture2D> _infoSampleTextureCache = new();
 
         private InventoryUI _inventory;
         private IStorageRuntime _storageRuntime;
@@ -911,7 +912,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _pendingPutInventoryType = inventoryType;
                     _pendingPutInventoryRowIndex = _inventorySelectedIndex;
-                    _pendingPutSlotData = selected.Clone();
+                    _pendingPutSlotData = selected;
                     string askCountPrompt = TrunkDialogClientParityText.ToInlineText(
                         TrunkDialogClientParityText.ResolveSendPutAskItemCountPrompt());
                     _statusMessage = $"CTrunkDlg::AskItemCount is staging SendPutItemRequest for {FormatItemLabel(selected)}. Prompt: {askCountPrompt}";
@@ -2378,23 +2379,14 @@ namespace HaCreator.MapSimulator.UI
             return liveSlot != null;
         }
 
+        public static bool MatchesPendingPutIdentityForTests(InventorySlotData stagedSlot, InventorySlotData liveSlot)
+        {
+            return MatchesPendingPutIdentity(stagedSlot, liveSlot);
+        }
+
         private static bool MatchesPendingPutIdentity(InventorySlotData stagedSlot, InventorySlotData liveSlot)
         {
-            if (ReferenceEquals(stagedSlot, liveSlot))
-            {
-                return true;
-            }
-
-            if (stagedSlot == null || liveSlot == null)
-            {
-                return false;
-            }
-
-            return stagedSlot.ItemId == liveSlot.ItemId
-                && stagedSlot.ClientItemToken.GetValueOrDefault() == liveSlot.ClientItemToken.GetValueOrDefault()
-                && stagedSlot.CashItemSerialNumber.GetValueOrDefault() == liveSlot.CashItemSerialNumber.GetValueOrDefault()
-                && stagedSlot.OwnerAccountId.GetValueOrDefault() == liveSlot.OwnerAccountId.GetValueOrDefault()
-                && stagedSlot.OwnerCharacterId.GetValueOrDefault() == liveSlot.OwnerCharacterId.GetValueOrDefault();
+            return ReferenceEquals(stagedSlot, liveSlot);
         }
 
         private static char? KeyToDigit(Keys key)

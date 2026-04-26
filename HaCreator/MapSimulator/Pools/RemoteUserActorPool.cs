@@ -1704,8 +1704,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (existingRecord.PairCharacterId.HasValue
-                && existingRecord.PairCharacterId.Value > 0
+            if (ShouldClearPortableChairPartnerRecordOnRemoveForParity(existingRecord)
                 && _portableChairPairRecordsByCharacterId.TryGetValue(existingRecord.PairCharacterId.Value, out PortableChairPairRecord partnerRecord))
             {
                 _portableChairPairRecordsByCharacterId[existingRecord.PairCharacterId.Value] = partnerRecord with
@@ -4985,6 +4984,12 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 return false;
+            }
+
+            if (prepared?.SkillId == PreparedSkillHudRules.SG88SkillId)
+            {
+                anchor = PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(actor.Position);
+                return true;
             }
 
             anchor = ResolveStandardPreparedSkillWorldAnchor(actor, currentTime);
@@ -9027,6 +9032,14 @@ namespace HaCreator.MapSimulator.Pools
             };
         }
 
+        internal static bool ShouldClearPortableChairPartnerRecordOnRemoveForParity(PortableChairPairRecord record)
+        {
+            // CUserPool::OnCoupleChairRecordRemove gates the partner clear on
+            // both nStatus and dwPairCharacterID. Inactive raw locks survive
+            // until the owner record itself is removed.
+            return record.IsActive;
+        }
+
         private void ClearPortableChairPairRecord(int characterId)
         {
             if (characterId > 0)
@@ -10840,7 +10853,7 @@ namespace HaCreator.MapSimulator.Pools
                     existingState.SkillId,
                     ownerActionName,
                     ownerFacingRight,
-                    Math.Max(0, currentTime - existingState.AnimationStartTime),
+                    ResolveRemoteTemporaryStatTickElapsedMs(currentTime, existingState.AnimationStartTime),
                     currentTime);
             }
 
@@ -11086,6 +11099,11 @@ namespace HaCreator.MapSimulator.Pools
             return elapsed >= int.MaxValue
                 ? int.MaxValue
                 : (int)elapsed;
+        }
+
+        internal static int ResolveRemoteTemporaryStatTickElapsedMsForTesting(int currentTime, int startTime)
+        {
+            return ResolveRemoteTemporaryStatTickElapsedMs(currentTime, startTime);
         }
 
         private static RemoteTemporaryStatAvatarEffectState CloneRemoteTemporaryStatAvatarEffectState(
@@ -11955,7 +11973,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                int elapsedTime = Math.Max(0, currentTime - state.AnimationStartTime);
+                int elapsedTime = ResolveRemoteTemporaryStatTickElapsedMs(currentTime, state.AnimationStartTime);
                 SkillAnimation animation = drawFrontLayers
                     ? state.OverlayAnimation
                     : state.UnderFaceAnimation;
@@ -13771,6 +13789,22 @@ namespace HaCreator.MapSimulator.Pools
                 return consensusChargeSkillId;
             }
 
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementValueConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out int elementValueConsensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    elementValueConsensusChargeElement,
+                    out int elementValueConsensusChargeSkillId))
+            {
+                return elementValueConsensusChargeSkillId;
+            }
+
             return AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 ? effectivePreferredSkillId
                 : null;
@@ -13921,6 +13955,18 @@ namespace HaCreator.MapSimulator.Pools
             if (!hasValidMetadataOffset
                 && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
                 && AfterImageChargeSkillResolver.TryResolveChargeElementByKnownSkillConsensusFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementValueConsensusFromTemporaryStatPayload(
                     snapshot.RawPayload,
                     payloadMaskBaseOffset,
                     effectivePreferredSkillId,

@@ -1366,7 +1366,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             EmployeeImageEntry employeeImgEntry = ResolveEmployeeImgEntry(templateId);
             WzImageProperty templateRoot = employeeImgEntry?.TemplateRoot;
-            WzCanvasProperty signboardCanvas = ResolveCanvasProperty(templateRoot?["skin"]?["signboard"]);
+            WzCanvasProperty signboardCanvas = ResolveMiniRoomBoardCanvas(templateRoot?["skin"]);
             Texture2D signboardTexture = LoadUiCanvasTexture(signboardCanvas, device);
             if (signboardTexture == null)
             {
@@ -1384,6 +1384,41 @@ namespace HaCreator.MapSimulator.Interaction
             };
             _cashEmployeeMiniRoomBoardCache[templateId] = loadedAssets;
             return loadedAssets;
+        }
+
+        private static WzCanvasProperty ResolveMiniRoomBoardCanvas(WzImageProperty skinSource)
+        {
+            if (skinSource == null)
+            {
+                return null;
+            }
+
+            return ResolveCanvasProperty(skinSource["signboard"])
+                ?? ResolveCanvasProperty(skinSource["shop"])
+                ?? ResolveCanvasProperty(skinSource["backgrnd"]);
+        }
+
+        internal static string ResolveMiniRoomBoardCanvasNameForTesting(params string[] childNames)
+        {
+            if (childNames == null || childNames.Length == 0)
+            {
+                return null;
+            }
+
+            HashSet<string> names = new(
+                childNames.Where(name => !string.IsNullOrWhiteSpace(name)),
+                StringComparer.OrdinalIgnoreCase);
+            if (names.Contains("signboard"))
+            {
+                return "signboard";
+            }
+
+            if (names.Contains("shop"))
+            {
+                return "shop";
+            }
+
+            return names.Contains("backgrnd") ? "backgrnd" : null;
         }
 
         private static EmployeeMiniRoomBoardEffectFrame[] LoadMiniRoomBoardEffectFrames(WzImageProperty source, GraphicsDevice device)

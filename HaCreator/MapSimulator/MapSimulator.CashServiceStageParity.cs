@@ -83,6 +83,12 @@ namespace HaCreator.MapSimulator
             public bool HasShortcutHelpCanvas { get; init; }
             public bool HasBuyButton { get; init; }
             public bool HasItemBoxButton { get; init; }
+            public int BuyButtonWidth { get; init; }
+            public int BuyButtonHeight { get; init; }
+            public int ItemBoxButtonWidth { get; init; }
+            public int ItemBoxButtonHeight { get; init; }
+            public int JoinButtonWidth { get; init; }
+            public int JoinButtonHeight { get; init; }
             public int NumberCanvasCount { get; init; }
             public int NumberCanvasReadyMask { get; init; }
             public int PlateCount { get; init; }
@@ -534,6 +540,8 @@ namespace HaCreator.MapSimulator
                         SlotIndex = 0,
                         CommandKey = "BtBuy",
                         Position = new Microsoft.Xna.Framework.Point(165, 202),
+                        Width = artSnapshot?.BuyButtonWidth ?? 0,
+                        Height = artSnapshot?.BuyButtonHeight ?? 0,
                         HasCanvas = hasBuyCanvas,
                         IsLoaded = hasBuyCanvas,
                         IsEnabled = hasCurrentReward,
@@ -546,6 +554,8 @@ namespace HaCreator.MapSimulator
                         SlotIndex = 1,
                         CommandKey = "BtItemBox",
                         Position = new Microsoft.Xna.Framework.Point(246, 202),
+                        Width = artSnapshot?.ItemBoxButtonWidth ?? 0,
+                        Height = artSnapshot?.ItemBoxButtonHeight ?? 0,
                         HasCanvas = hasItemBoxCanvas,
                         IsLoaded = hasItemBoxCanvas,
                         IsEnabled = true,
@@ -569,6 +579,8 @@ namespace HaCreator.MapSimulator
                     SlotIndex = i,
                     CommandKey = "BtJoin",
                     Position = new Microsoft.Xna.Framework.Point(16 + ((i % 4) * 92), 252 + ((i / 4) * 44)),
+                    Width = artSnapshot?.JoinButtonWidth ?? 0,
+                    Height = artSnapshot?.JoinButtonHeight ?? 0,
                     HasCanvas = artSnapshot?.HasPlateBigCanvas == true,
                     IsLoaded = hasHistoryEntry,
                     IsEnabled = hasHistoryEntry,
@@ -1612,6 +1624,8 @@ namespace HaCreator.MapSimulator
             WzSubProperty counterProperty = TryResolveCashShopOneADayUiSubProperty(0x16A7, "OneADay.img", "CSOneADay", "Counter");
             WzSubProperty buyButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x16A8, "OneADay.img", "CSOneADay", "BtBuy");
             WzSubProperty itemBoxButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x16A9, "OneADay.img", "CSOneADay", "BtItemBox");
+            WzSubProperty joinButtonProperty = picturePlateProperty?["BtJoin"] as WzSubProperty;
+            WzSubProperty shortcutButtonProperty = picturePlateProperty?["BtShortcut"] as WzSubProperty;
             int plateCount = 0;
             if (picturePlateProperty?["NoItem"] != null)
             {
@@ -1648,6 +1662,12 @@ namespace HaCreator.MapSimulator
                 HasShortcutHelpCanvas = picturePlateProperty?["ShortcutHelp"] != null,
                 HasBuyButton = buyButtonProperty != null || picturePlateProperty?["BtJoin"] != null,
                 HasItemBoxButton = itemBoxButtonProperty != null || picturePlateProperty?["BtShortcut"] != null,
+                BuyButtonWidth = ResolveCashShopOneADayButtonWidth(buyButtonProperty, joinButtonProperty),
+                BuyButtonHeight = ResolveCashShopOneADayButtonHeight(buyButtonProperty, joinButtonProperty),
+                ItemBoxButtonWidth = ResolveCashShopOneADayButtonWidth(itemBoxButtonProperty, shortcutButtonProperty),
+                ItemBoxButtonHeight = ResolveCashShopOneADayButtonHeight(itemBoxButtonProperty, shortcutButtonProperty),
+                JoinButtonWidth = ResolveCashShopOneADayButtonWidth(joinButtonProperty, buyButtonProperty),
+                JoinButtonHeight = ResolveCashShopOneADayButtonHeight(joinButtonProperty, buyButtonProperty),
                 NumberCanvasCount = numberCanvasCount,
                 NumberCanvasReadyMask = numberCanvasReadyMask,
                 PlateCount = plateCount,
@@ -1660,6 +1680,63 @@ namespace HaCreator.MapSimulator
                     || buyButtonProperty != null
                     || itemBoxButtonProperty != null
             };
+        }
+
+        private static int ResolveCashShopOneADayButtonWidth(params WzSubProperty[] buttonProperties)
+        {
+            return ResolveCashShopOneADayButtonDimension(buttonProperties, canvas => canvas.PngProperty?.Width ?? 0);
+        }
+
+        private static int ResolveCashShopOneADayButtonHeight(params WzSubProperty[] buttonProperties)
+        {
+            return ResolveCashShopOneADayButtonDimension(buttonProperties, canvas => canvas.PngProperty?.Height ?? 0);
+        }
+
+        private static int ResolveCashShopOneADayButtonDimension(
+            IEnumerable<WzSubProperty> buttonProperties,
+            Func<WzCanvasProperty, int> dimensionSelector)
+        {
+            if (buttonProperties == null || dimensionSelector == null)
+            {
+                return 0;
+            }
+
+            foreach (WzSubProperty buttonProperty in buttonProperties)
+            {
+                if (buttonProperty == null)
+                {
+                    continue;
+                }
+
+                if (TryResolveCashShopOneADayButtonCanvas(buttonProperty, out WzCanvasProperty canvas))
+                {
+                    return Math.Max(0, dimensionSelector(canvas));
+                }
+            }
+
+            return 0;
+        }
+
+        private static bool TryResolveCashShopOneADayButtonCanvas(WzSubProperty buttonProperty, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (buttonProperty == null)
+            {
+                return false;
+            }
+
+            string[] states = { "normal", "mouseOver", "pressed", "disabled", "keyFocused" };
+            foreach (string state in states)
+            {
+                if (buttonProperty[state] is WzSubProperty stateProperty
+                    && stateProperty["0"] is WzCanvasProperty stateCanvas)
+                {
+                    canvas = stateCanvas;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static WzSubProperty TryResolveCashShopOneADayUiSubProperty(int stringPoolId, params string[] fallbackPathSegments)
@@ -3194,10 +3271,25 @@ namespace HaCreator.MapSimulator
                 BuildCashPurchaseConfirmDialogLines(listSnapshot, selectedEntry, stageWindow, purchaseVariants),
                 new[]
                 {
-                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "OK", IsPrimary = true },
-                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
+                    new CashServiceModalOwnerWindow.ActionButtonState
+                    {
+                        Label = "OK",
+                        IsPrimary = true,
+                        ClientX = 157,
+                        ClientYFromBottom = 37,
+                        ClientWidth = 48,
+                        ClientHeight = 20
+                    },
+                    new CashServiceModalOwnerWindow.ActionButtonState
+                    {
+                        Label = "Cancel",
+                        ClientX = 207,
+                        ClientYFromBottom = 37,
+                        ClientWidth = 48,
+                        ClientHeight = 20
+                    }
                 },
-                footer: "Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000) at height-95, Prepaid Cash (1001) at height-80, Nexon Cash (1002) at height-65, and combo 1003 at (62,42,150,18) when the selected commodity exposes multiple packed entries.",
+                footer: "Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000) at height-95, Prepaid Cash (1001) at height-80, Nexon Cash (1002) at height-65, combo 1003 at (62,42,150,18) for multi-packed commodities, OK at (157,height-37), and Cancel at (207,height-37).",
                 checkBoxes: BuildCashPurchasePaymentSelectorStates(stageWindow, selectedEntry, purchaseVariants, preferredVariantSerialNumber),
                 comboBox: BuildCashPurchaseVariantComboBoxState(selectedEntry, purchaseVariants, preferredVariantSerialNumber));
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog);

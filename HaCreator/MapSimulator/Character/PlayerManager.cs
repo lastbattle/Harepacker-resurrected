@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
         private Func<DragonCompanionRuntime.OwnerPhaseContext> _dragonOwnerPhaseContextProvider;
+        private byte? _latestDragonClientKeyPadState;
         private bool _isFlyingMap;
         private bool _requiresFlyingSkillForMap;
 
@@ -126,6 +127,7 @@ namespace HaCreator.MapSimulator.Character
             Dragon = new DragonCompanionRuntime(device);
             CompanionEquipment = new CompanionEquipmentController(device);
             ConfigureDragonOwnerPhaseContextProvider();
+            ConfigureDragonClientKeyPadStateProvider();
         }
 
         /// <summary>
@@ -534,6 +536,10 @@ namespace HaCreator.MapSimulator.Character
 
             _mobStatusController = new PlayerMobStatusController(Player, Skills, TeleportToSpawn);
             Skills?.SetExternalCastBlockedEvaluator(currentTime => _currentMobStatusState.SkillCastBlocked);
+            Skills?.SetExternalBoundJumpBlockedEvaluator(
+                (skillId, currentTime) => SkillManager.ShouldBlockClientBoundJumpForExternalJumpBlocked(
+                    skillId,
+                    _currentMobStatusState.JumpBlocked));
             Skills?.SetExternalStateRestrictionMessageProvider(currentTime => _mobStatusController?.GetSkillCastRestrictionMessage(currentTime));
 
             Combat.SetDamageBlockedEvaluator(IsDamageBlockedByAffectedArea);
@@ -639,6 +645,11 @@ namespace HaCreator.MapSimulator.Character
         private void ConfigureDragonOwnerPhaseContextProvider()
         {
             Dragon.SetOwnerPhaseContextProvider(ResolveDragonOwnerPhaseContext);
+        }
+
+        private void ConfigureDragonClientKeyPadStateProvider()
+        {
+            Dragon.SetClientKeyPadStateProvider(() => _latestDragonClientKeyPadState);
         }
 
         private DragonCompanionRuntime.OwnerPhaseContext ResolveDragonOwnerPhaseContext()
@@ -1035,6 +1046,7 @@ namespace HaCreator.MapSimulator.Character
             if (!Player.IsAlive)
             {
                 ReleaseActiveKeydownSkillWithinClientCancelBatchScope(Skills, currentTime);
+                _latestDragonClientKeyPadState = 0;
                 Player.ClearInput();
                 return;
             }
@@ -1044,6 +1056,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 InputState inputState = Input.GetState();
                 InputState playerInputState = ApplyMobStatusToInput(inputState);
+                _latestDragonClientKeyPadState = DragonCompanionRuntime.ResolveClientVecCtrlPassiveKeyPadStateFromInput(playerInputState);
                 Input.ApplyToPlayer(Player, playerInputState);
 
                 // Handle pickup input separately
@@ -1087,6 +1100,7 @@ namespace HaCreator.MapSimulator.Character
             else
             {
                 ReleaseActiveKeydownSkillWithinClientCancelBatchScope(Skills, currentTime);
+                _latestDragonClientKeyPadState = 0;
                 Player.ClearInput();
             }
 

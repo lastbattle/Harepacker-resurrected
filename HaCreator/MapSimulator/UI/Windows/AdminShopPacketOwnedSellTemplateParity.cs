@@ -46,6 +46,13 @@ namespace HaCreator.MapSimulator.UI
             return !requiresInventorySource || position > 0;
         }
 
+        internal static bool IsSameClientSourceSlotToken(int? expectedClientItemToken, int? currentClientItemToken)
+        {
+            return !expectedClientItemToken.HasValue
+                || expectedClientItemToken.Value <= 0
+                || expectedClientItemToken == currentClientItemToken;
+        }
+
         internal static int ResolveSourceRequestCountCap(
             bool honorConfiguredMaxRequestCount,
             int configuredMaxRequestCount,

@@ -277,6 +277,7 @@ namespace HaCreator.MapSimulator.UI
             public int DisplayItemId { get; init; }
             public int DisplayQuantity { get; init; } = 1;
             public int InventorySlotIndex { get; init; } = -1;
+            public int? SourceClientItemToken { get; init; }
             public int PacketSerialNumber { get; init; }
             public byte PacketSaleState { get; init; }
             public bool IsPacketOwnedSnapshotRow { get; init; }
@@ -5003,6 +5004,7 @@ namespace HaCreator.MapSimulator.UI
             Dictionary<int, int> unfilteredItemCursorByItemId = new();
             int unresolvedItemCount = 0;
             int resolvedOutsideRequestedFilterCount = 0;
+            int serialNumberBoundCount = 0;
             for (int rowIndex = 0; rowIndex < packetRowCount; rowIndex++)
             {
                 AdminShopPacketOwnedWishlistSearchResultRow packetRow = rowIndex < packetRows.Count
@@ -5060,6 +5062,11 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                if (IsPacketOwnedWishlistSerialNumberMatch(packetRow, candidate))
+                {
+                    serialNumberBoundCount++;
+                }
+
                 WishlistSearchResult result = BuildWishlistSearchResult(candidate, int.MaxValue - results.Count);
                 if (result != null)
                 {
@@ -5112,7 +5119,29 @@ namespace HaCreator.MapSimulator.UI
                     " row(s) were rebound through the live NPC catalog outside the staged local filter lane.");
             }
 
+            if (serialNumberBoundCount > 0)
+            {
+                summary = string.Concat(
+                    summary,
+                    " ",
+                    serialNumberBoundCount.ToString(CultureInfo.InvariantCulture),
+                    " row(s) were bound by packet-authored commodity serial number before item-id fallback.");
+            }
+
             return true;
+        }
+
+        private static bool IsPacketOwnedWishlistSerialNumberMatch(
+            AdminShopPacketOwnedWishlistSearchResultRow packetRow,
+            AdminShopEntry candidate)
+        {
+            if (packetRow == null || candidate == null || packetRow.CommoditySerialNumber <= 0)
+            {
+                return false;
+            }
+
+            return candidate.CommoditySerialNumber == packetRow.CommoditySerialNumber
+                   || candidate.PacketSerialNumber == packetRow.CommoditySerialNumber;
         }
 
         private Dictionary<int, List<AdminShopEntry>> BuildWishlistRowsByItemId(Func<AdminShopEntry, bool> predicate = null)
@@ -5142,6 +5171,31 @@ namespace HaCreator.MapSimulator.UI
             if (wishlistRowsByItemId == null || wishlistRowsByItemId.Count == 0)
             {
                 return false;
+            }
+
+            if (packetRow?.CommoditySerialNumber > 0)
+            {
+                foreach (List<AdminShopEntry> candidatesByItem in wishlistRowsByItemId.Values)
+                {
+                    foreach (AdminShopEntry rowCandidate in candidatesByItem)
+                    {
+                        if (rowCandidate == null
+                            || (rowCandidate.CommoditySerialNumber != packetRow.CommoditySerialNumber
+                                && rowCandidate.PacketSerialNumber != packetRow.CommoditySerialNumber))
+                        {
+                            continue;
+                        }
+
+                        string entryKey = GetEntryKey(rowCandidate);
+                        if (string.IsNullOrWhiteSpace(entryKey) || !seenEntryKeys.Add(entryKey))
+                        {
+                            continue;
+                        }
+
+                        candidate = rowCandidate;
+                        return true;
+                    }
+                }
             }
 
             HashSet<int> rowItemIds = new();
@@ -5212,6 +5266,8 @@ namespace HaCreator.MapSimulator.UI
                 Math.Max(-1, searchSessionId).ToString(CultureInfo.InvariantCulture),
                 ":",
                 rowIndex.ToString(CultureInfo.InvariantCulture),
+                ":",
+                Math.Max(0, row?.CommoditySerialNumber ?? 0).ToString(CultureInfo.InvariantCulture),
                 ":",
                 Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture));
         }
@@ -5504,6 +5560,7 @@ namespace HaCreator.MapSimulator.UI
 
             return left.ItemId == right.ItemId
                    && left.ResultItemId == right.ResultItemId
+                   && left.CommoditySerialNumber == right.CommoditySerialNumber
                    && left.Price == right.Price
                    && left.AlreadyWishlisted == right.AlreadyWishlisted
                    && string.Equals(left.Title, right.Title, StringComparison.Ordinal)
@@ -6412,6 +6469,7 @@ namespace HaCreator.MapSimulator.UI
                 DisplayItemId = catalogEntry.SourceItemId,
                 DisplayQuantity = stackQuantity,
                 InventorySlotIndex = slotIndex,
+                SourceClientItemToken = slot.ClientItemToken,
                 PacketSerialNumber = catalogEntry.PacketSerialNumber,
                 PacketSaleState = catalogEntry.PacketSaleState,
                 IsPacketOwnedSnapshotRow = catalogEntry.IsPacketOwnedSnapshotRow
@@ -9190,6 +9248,15 @@ namespace HaCreator.MapSimulator.UI
                 if (slot == null
                     || slot.IsDisabled
                     || slot.ItemId != entry.SourceItemId)
+                {
+                    continue;
+                }
+
+                if (requiresSelectedSlot
+                    && i == entry.InventorySlotIndex
+                    && !AdminShopPacketOwnedSellTemplateParity.IsSameClientSourceSlotToken(
+                        entry.SourceClientItemToken,
+                        slot.ClientItemToken))
                 {
                     continue;
                 }

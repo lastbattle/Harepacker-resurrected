@@ -1912,15 +1912,6 @@ namespace HaCreator.MapSimulator.Combat
                 ?? targetInfo?.TargetX
                 ?? spawn.X;
 
-            if (targetInfo?.IsValid == true)
-            {
-                assignments.Add(new ProjectileLaneAssignment
-                {
-                    LanePoint = new Vector2(targetInfo.TargetX, targetInfo.TargetY),
-                    TargetInfo = targetInfo.Clone()
-                });
-            }
-
             List<Vector2> lanePositions = BuildProjectileLanePositions(
                 mobItem,
                 attack,
@@ -1928,6 +1919,17 @@ namespace HaCreator.MapSimulator.Combat
                 targetY ?? targetInfo?.TargetY,
                 laneCount,
                 sourceFacesRight);
+
+            if (targetInfo?.IsValid == true)
+            {
+                assignments.Add(new ProjectileLaneAssignment
+                {
+                    LanePoint = ResolvePrimaryProjectileLanePoint(
+                        lanePositions,
+                        new Vector2(targetInfo.TargetX, targetInfo.TargetY)),
+                    TargetInfo = targetInfo.Clone()
+                });
+            }
 
             int requestedAdditionalLanes = Math.Max(0, laneCount - assignments.Count);
             List<Vector2> packetLanePoints = ExtractPacketProjectileLanePoints(packetMultiTargetForBall, requestedAdditionalLanes);
@@ -2026,6 +2028,32 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return assignments;
+        }
+
+        internal static Vector2 ResolvePrimaryProjectileLanePoint(
+            IReadOnlyList<Vector2> lanePositions,
+            Vector2 targetPoint)
+        {
+            if (lanePositions == null || lanePositions.Count == 0)
+            {
+                return targetPoint;
+            }
+
+            int bestIndex = 0;
+            float bestScore = ScoreLaneTarget(lanePositions[0], targetPoint);
+            for (int i = 1; i < lanePositions.Count; i++)
+            {
+                float score = ScoreLaneTarget(lanePositions[i], targetPoint);
+                if (score >= bestScore)
+                {
+                    continue;
+                }
+
+                bestScore = score;
+                bestIndex = i;
+            }
+
+            return lanePositions[bestIndex];
         }
 
         private static int ResolveProjectileLaneCount(MobAttackEntry attack)

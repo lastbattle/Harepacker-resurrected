@@ -197,6 +197,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly bool _isBigBang;
         private readonly IDXObject _defaultFrame;
         private readonly Dictionary<UserInfoPage, UIObject> _pageButtons = new Dictionary<UserInfoPage, UIObject>();
+        private readonly List<UIObject> _rideTabButtons = new List<UIObject>();
         private readonly List<UIObject> _petTabButtons = new List<UIObject>();
         private readonly List<UIObject> _primaryButtons = new List<UIObject>();
         private readonly Dictionary<UserInfoPage, PageVisual> _pageVisuals = new Dictionary<UserInfoPage, PageVisual>();
@@ -259,6 +260,7 @@ namespace HaCreator.MapSimulator.UI
         private AuxiliaryPopupKind _activePopup;
         private LegacyExpandedPanel _legacyExpandedPanel;
         private LegacyCollectionMode _legacyCollectionMode = LegacyCollectionMode.Overview;
+        private int _selectedRideTabIndex;
         private int _selectedPetTabIndex;
         private int _selectedItemPopupIndex;
         private int _selectedWishIndex;
@@ -554,6 +556,40 @@ namespace HaCreator.MapSimulator.UI
 
                     _selectedPetTabIndex = capturedIndex;
                     _statusMessage = $"Pet {capturedIndex + 1} tab selected.";
+                    UpdateButtonStates();
+                };
+                tabIndex++;
+            }
+
+            UpdateButtonStates();
+        }
+
+        public void InitializeRideTabButtons(IEnumerable<UIObject> rideTabButtons)
+        {
+            _rideTabButtons.Clear();
+            if (rideTabButtons == null)
+            {
+                return;
+            }
+
+            int tabIndex = 0;
+            foreach (UIObject button in rideTabButtons)
+            {
+                if (button == null)
+                {
+                    tabIndex++;
+                    continue;
+                }
+
+                int capturedIndex = tabIndex;
+                _rideTabButtons.Add(button);
+                AddButton(button);
+                button.ButtonClickReleased += _ =>
+                {
+                    _selectedRideTabIndex = capturedIndex;
+                    _statusMessage = capturedIndex == 0
+                        ? "Ride equipment tab selected."
+                        : "Ride skill tab selected.";
                     UpdateButtonStates();
                 };
                 tabIndex++;
@@ -986,12 +1022,38 @@ namespace HaCreator.MapSimulator.UI
                 presentation.StatusColor);
             DrawLabeledRow(sprite, 66, "Mount", presentation.HasAuthoritativeRideState || presentation.HasBuildBackedRideState ? mountName : "-", ValueColor);
             DrawLabeledRow(sprite, 90, "Saddle", presentation.HasAuthoritativeRideState || presentation.HasBuildBackedRideState ? saddleName : "-", ValueColor);
-            DrawLabeledRow(sprite, 114, "Job", GetDisplayJobText(displayBuild), ValueColor);
+            if (_selectedRideTabIndex == 0)
+            {
+                DrawLabeledRow(sprite, 114, "Job", GetDisplayJobText(displayBuild), ValueColor);
+                DrawLabeledRow(
+                    sprite,
+                    138,
+                    "Notes",
+                    presentation.NotesText,
+                    MutedColor,
+                    144);
+                return;
+            }
+
+            DrawLabeledRow(
+                sprite,
+                114,
+                "Skill",
+                displayBuild?.HasMonsterRiding == true ? "Monster Riding learned" : "Monster Riding unavailable",
+                displayBuild?.HasMonsterRiding == true ? SuccessColor : WarningColor,
+                144);
             DrawLabeledRow(
                 sprite,
                 138,
-                "Notes",
-                presentation.NotesText,
+                "Equip",
+                presentation.HasBuildBackedRideState ? "Ride equipment present" : "No ride equipment",
+                presentation.HasBuildBackedRideState ? SuccessColor : WarningColor,
+                144);
+            DrawLabeledRow(
+                sprite,
+                162,
+                "Source",
+                presentation.HasAuthoritativeRideState ? "Live mount state" : "Build-backed ride data",
                 MutedColor,
                 144);
         }
@@ -1694,6 +1756,20 @@ namespace HaCreator.MapSimulator.UI
                 button.ButtonVisible = visible;
                 button.SetEnabled(visible && !_exceptionPopupOpen);
                 button.SetButtonState(_selectedPetTabIndex == i ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
+
+            for (int i = 0; i < _rideTabButtons.Count; i++)
+            {
+                UIObject button = _rideTabButtons[i];
+                if (button == null)
+                {
+                    continue;
+                }
+
+                bool visible = _currentPage == UserInfoPage.Ride;
+                button.ButtonVisible = visible;
+                button.SetEnabled(visible && !_exceptionPopupOpen);
+                button.SetButtonState(_selectedRideTabIndex == i ? UIObjectState.Pressed : UIObjectState.Normal);
             }
 
             for (int i = 0; i < _legacyPetButtons.Count; i++)

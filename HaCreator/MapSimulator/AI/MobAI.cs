@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Entities;
 using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.AI
@@ -1218,9 +1219,10 @@ namespace HaCreator.MapSimulator.AI
                 return false;
             }
 
-            if (repeatIntervalMs > 0
-                && _fullChargeEffectStartTime != int.MinValue
-                && currentTick < _fullChargeEffectStartTime + repeatIntervalMs)
+            if (!MobAngerGaugeBurstParity.HasReplayGateElapsed(
+                    currentTick,
+                    _fullChargeEffectStartTime,
+                    repeatIntervalMs))
             {
                 return false;
             }

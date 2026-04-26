@@ -1009,6 +1009,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             coconut.State = newState;
             ApplyAuthoredStateFrames(coconut, (int)newState);
+            MarkBoardLayerDirty();
             switch (newState)
             {
                 case CoconutState.OnTree:

@@ -4484,6 +4484,22 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            if (!hasValidMetadataOffset
+                && !AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementValueConsensusFromTemporaryStatPayload(
+                    rawPayload,
+                    payloadMaskBaseOffset,
+                    effectivePreferredSkillId,
+                    AfterImageChargeSkillResolver.ChargeMetadataMissingConsensusMinimumMatches,
+                    out int elementValueConsensusChargeElement)
+                && AfterImageChargeSkillResolver.TryResolvePreferredChargeSkillIdForElement(
+                    effectivePreferredSkillId,
+                    elementValueConsensusChargeElement,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
             if (AfterImageChargeSkillResolver.IsKnownChargeSkillId(effectivePreferredSkillId))
             {
                 chargeSkillId = effectivePreferredSkillId;

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int DualBladeTornadoSpinSkillId = 4321000;
         private const int CorsairBattleshipSkillId = 5221006;
         private const int BattleMageTwisterSpinSkillId = 32121003;
+        private const int MesoExplosionSkillId = 4211001;
         private const int MonsterRidingSkillId = 1004;
         private const int MonsterRidingBeginnerSkillId = 10001004;
         private const int MonsterRidingEvanSkillId = 20001004;
@@ -169,6 +170,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        private static string GetHpRatioRestrictionMessage(PlayerCharacter player, SkillData skill)
+        {
+            if (skill?.SkillId != MesoExplosionSkillId)
+            {
+                return null;
+            }
+
+            int maxHp = Math.Max(1, player?.MaxHP ?? 0);
+            int currentHp = Math.Max(0, player?.HP ?? 0);
+            return currentHp * 100 / maxHp >= 50
+                ? "Meso Explosion can only be used below 50% HP."
+                : null;
+        }
+
         private static string GetPrepareSkillRestrictionMessage(PlayerCharacter player, SkillData skill)
         {
             if (player?.Physics == null || skill == null || (!skill.IsPrepareSkill && !skill.IsKeydownSkill))
@@ -213,6 +228,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (!string.IsNullOrWhiteSpace(meleeAirborneRestrictionMessage))
             {
                 return meleeAirborneRestrictionMessage;
+            }
+
+            string hpRatioRestrictionMessage = GetHpRatioRestrictionMessage(player, skill);
+            if (!string.IsNullOrWhiteSpace(hpRatioRestrictionMessage))
+            {
+                return hpRatioRestrictionMessage;
             }
 
             if (ShouldBlockClientShootAttackOnLadderOrRope(

@@ -12,6 +12,7 @@ using HaCreator.MapSimulator.Managers;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
@@ -20,6 +21,16 @@ using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.UI
 {
+    internal sealed class QuestRewardRaiseItemMetadata
+    {
+        public int OwnerItemId { get; init; }
+        public int QuestId { get; init; }
+        public int IncrementExpUnit { get; init; }
+        public int Grade { get; init; }
+        public int MaxDropCount { get; init; }
+        public string UiData { get; init; } = string.Empty;
+    }
+
     public sealed class InventoryItemTooltipMetadata
     {
         public int ItemId { get; init; }
@@ -617,6 +628,40 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static bool TryResolveRaiseOwnerContextForQuest(
+            int questId,
+            out QuestRewardRaiseOwnerContext ownerContext,
+            out QuestRewardRaiseItemMetadata metadata)
+        {
+            ownerContext = null;
+            metadata = null;
+            if (questId <= 0)
+            {
+                return false;
+            }
+
+            metadata = EnumerateRaiseItemMetadata()
+                .Where(candidate => candidate.QuestId == questId)
+                .OrderByDescending(candidate => candidate.MaxDropCount)
+                .ThenBy(candidate => candidate.OwnerItemId)
+                .FirstOrDefault();
+            if (metadata == null)
+            {
+                return false;
+            }
+
+            ownerContext = new QuestRewardRaiseOwnerContext
+            {
+                OwnerItemId = metadata.OwnerItemId,
+                WindowMode = metadata.MaxDropCount > 0
+                    ? QuestRewardRaiseWindowMode.PiecePlacement
+                    : QuestRewardRaiseWindowMode.Selection,
+                MaxDropCount = Math.Max(1, metadata.MaxDropCount),
+                InitialQrData = 0
+            };
+            return true;
+        }
+
         public static IReadOnlyList<ConsumeItemRequirementMetadata> ResolveConsumeItemRequirements(int itemId)
         {
             if (itemId <= 0)
@@ -884,6 +929,19 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public static bool TryResolveInfoCanvas(int itemId, string canvasName, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (itemId <= 0 || string.IsNullOrWhiteSpace(canvasName))
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            canvas = (itemProperty?["info"] as WzSubProperty)?[canvasName] as WzCanvasProperty;
+            return canvas != null;
+        }
+
         private static string ResolveEquipmentFolder(int itemId)
         {
             int category = itemId / 10000;
@@ -933,6 +991,76 @@ namespace HaCreator.MapSimulator.UI
             itemImage.ParseImage();
             string itemNodeName = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
             return itemImage[itemNodeName] as WzSubProperty;
+        }
+
+        private static IReadOnlyList<QuestRewardRaiseItemMetadata> _raiseItemMetadataCache;
+
+        private static IReadOnlyList<QuestRewardRaiseItemMetadata> EnumerateRaiseItemMetadata()
+        {
+            if (_raiseItemMetadataCache != null)
+            {
+                return _raiseItemMetadataCache;
+            }
+
+            var metadata = new List<QuestRewardRaiseItemMetadata>();
+            var itemImage = global::HaCreator.Program.FindImage("Item", "Etc/0422.img");
+            if (itemImage == null)
+            {
+                _raiseItemMetadataCache = Array.Empty<QuestRewardRaiseItemMetadata>();
+                return _raiseItemMetadataCache;
+            }
+
+            itemImage.ParseImage();
+            foreach (WzImageProperty property in itemImage.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (property is not WzSubProperty itemProperty
+                    || !int.TryParse(itemProperty.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int ownerItemId)
+                    || itemProperty["info"] is not WzSubProperty infoProperty)
+                {
+                    continue;
+                }
+
+                string uiData = (infoProperty["uiData"] as WzStringProperty)?.Value?.Trim() ?? string.Empty;
+                int questId = GetIntValue(infoProperty["questId"]);
+                if (questId <= 0 || string.IsNullOrWhiteSpace(uiData) || uiData.IndexOf("/raise/", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                metadata.Add(new QuestRewardRaiseItemMetadata
+                {
+                    OwnerItemId = ownerItemId,
+                    QuestId = questId,
+                    IncrementExpUnit = GetIntValue(infoProperty["exp"]),
+                    Grade = GetIntValue(infoProperty["grade"]),
+                    MaxDropCount = CountPositiveRaiseItemEntries(infoProperty["item"] as WzSubProperty),
+                    UiData = uiData
+                });
+            }
+
+            _raiseItemMetadataCache = metadata;
+            return _raiseItemMetadataCache;
+        }
+
+        private static int CountPositiveRaiseItemEntries(WzSubProperty itemListProperty)
+        {
+            if (itemListProperty?.WzProperties == null || itemListProperty.WzProperties.Count == 0)
+            {
+                return 0;
+            }
+
+            int count = 0;
+            for (int i = 0; i < itemListProperty.WzProperties.Count; i++)
+            {
+                WzSubProperty entryProperty = itemListProperty.WzProperties[i] as WzSubProperty;
+                int itemId = GetIntValue(entryProperty?["0"]);
+                if (itemId > 0)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         private static int TryResolveSkillBookSuccessRate(WzSubProperty infoProperty, string description)

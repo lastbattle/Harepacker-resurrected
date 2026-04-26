@@ -1287,6 +1287,7 @@ namespace HaCreator.MapSimulator.Interaction
                     CharacterDataDecodeByteCount = consumedBytes
                 };
                 snapshot = ApplyCharacterDataKnownSectionByteCountDefaults(snapshot);
+                snapshot = ApplyCharacterDataSectionOwnershipMaps(snapshot);
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -1298,6 +1299,126 @@ namespace HaCreator.MapSimulator.Interaction
                 consumedBytes = 0;
                 return false;
             }
+        }
+
+        private static PacketCharacterDataSnapshot ApplyCharacterDataSectionOwnershipMaps(PacketCharacterDataSnapshot snapshot)
+        {
+            Dictionary<ulong, int> recordCountsByFlag = EnsureCharacterDataKnownSectionByteCountDefaults(new Dictionary<ulong, int>());
+            Dictionary<ulong, int> countByteCountsByFlag = EnsureCharacterDataKnownSectionByteCountDefaults(new Dictionary<ulong, int>());
+            Dictionary<ulong, int> recordByteCountsByFlag = EnsureCharacterDataKnownSectionByteCountDefaults(new Dictionary<ulong, int>());
+
+            recordCountsByFlag[CharacterDataStatFlag] = 1;
+            recordByteCountsByFlag[CharacterDataStatFlag] = checked(snapshot.CharacterDataStatByteCount + snapshot.CharacterDataStatTrailerByteCount);
+
+            if (snapshot.Meso.HasValue)
+            {
+                recordCountsByFlag[0x2UL] = 1;
+                recordByteCountsByFlag[0x2UL] = sizeof(int);
+            }
+
+            if (snapshot.InventorySlotLimits != null)
+            {
+                recordCountsByFlag[0x80UL] = CharacterDataInventoryOrder.Length;
+                recordByteCountsByFlag[0x80UL] = CharacterDataInventoryOrder.Length * sizeof(byte);
+            }
+
+            foreach (ulong inventoryFlag in CharacterDataInventorySectionFlags)
+            {
+                recordCountsByFlag[inventoryFlag] = snapshot.InventoryItemRecordCountsByFlag != null &&
+                    snapshot.InventoryItemRecordCountsByFlag.TryGetValue(inventoryFlag, out int inventoryRecordCount)
+                        ? inventoryRecordCount
+                        : 0;
+                recordByteCountsByFlag[inventoryFlag] = snapshot.InventoryItemRecordByteCountsByFlag != null &&
+                    snapshot.InventoryItemRecordByteCountsByFlag.TryGetValue(inventoryFlag, out int inventoryRecordByteCount)
+                        ? inventoryRecordByteCount
+                        : 0;
+            }
+
+            if (snapshot.TwoIntValueRecord.HasValue)
+            {
+                recordCountsByFlag[CharacterDataTwoIntValueRecordFlag] = 1;
+                recordByteCountsByFlag[CharacterDataTwoIntValueRecordFlag] = snapshot.TwoIntValueRecordByteCount;
+            }
+
+            recordCountsByFlag[CharacterDataSkillRecordFlag] = snapshot.SkillRecordCount;
+            countByteCountsByFlag[CharacterDataSkillRecordFlag] = snapshot.SkillRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataSkillRecordFlag] =
+                checked(snapshot.SkillRecordRecordByteCount + snapshot.SkillRecordMasterLevelRecordByteCount);
+
+            recordCountsByFlag[CharacterDataSkillExpirationFlag] = snapshot.SkillExpirationRecordCount;
+            countByteCountsByFlag[CharacterDataSkillExpirationFlag] = snapshot.SkillExpirationRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataSkillExpirationFlag] = snapshot.SkillExpirationRecordByteCount;
+
+            recordCountsByFlag[CharacterDataSkillCooldownFlag] = snapshot.SkillCooldownRecordCount;
+            countByteCountsByFlag[CharacterDataSkillCooldownFlag] = snapshot.SkillCooldownRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataSkillCooldownFlag] = snapshot.SkillCooldownRecordByteCount;
+
+            int int16ValueRecordCount = snapshot.Int16ValueRecordCount > 0
+                ? snapshot.Int16ValueRecordCount
+                : snapshot.OpaqueInt16ValueRecordCount;
+            int int16ValueCountByteCount = snapshot.Int16ValueRecordCountByteCount > 0
+                ? snapshot.Int16ValueRecordCountByteCount
+                : snapshot.OpaqueInt16ValueRecordCountByteCount;
+            int int16ValueRecordByteCount = snapshot.Int16ValueRecordRecordByteCount > 0
+                ? snapshot.Int16ValueRecordRecordByteCount
+                : snapshot.OpaqueInt16ValueRecordRecordByteCount;
+            recordCountsByFlag[CharacterDataInt16ValueRecordFlag] = int16ValueRecordCount;
+            countByteCountsByFlag[CharacterDataInt16ValueRecordFlag] = int16ValueCountByteCount;
+            recordByteCountsByFlag[CharacterDataInt16ValueRecordFlag] = int16ValueRecordByteCount;
+
+            recordCountsByFlag[CharacterDataQuestRecordFlag] = snapshot.QuestRecordCount;
+            countByteCountsByFlag[CharacterDataQuestRecordFlag] = snapshot.QuestRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataQuestRecordFlag] = snapshot.QuestRecordRecordByteCount;
+
+            recordCountsByFlag[CharacterDataShortFileTimeRecordFlag] = snapshot.ShortFileTimeRecordCount;
+            countByteCountsByFlag[CharacterDataShortFileTimeRecordFlag] = snapshot.ShortFileTimeRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataShortFileTimeRecordFlag] = snapshot.ShortFileTimeRecordByteCount;
+
+            recordCountsByFlag[CharacterDataMiniGameRecordFlag] = snapshot.MiniGameRecordCount;
+            countByteCountsByFlag[CharacterDataMiniGameRecordFlag] = snapshot.MiniGameRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataMiniGameRecordFlag] = snapshot.MiniGameRecordByteCount;
+
+            recordCountsByFlag[CharacterDataRelationshipRecordFlag] =
+                checked(snapshot.CoupleRecordCount + snapshot.FriendRecordCount + snapshot.MarriageRecordCount);
+            countByteCountsByFlag[CharacterDataRelationshipRecordFlag] =
+                checked(snapshot.CoupleRecordCountByteCount + snapshot.FriendRecordCountByteCount + snapshot.MarriageRecordCountByteCount);
+            recordByteCountsByFlag[CharacterDataRelationshipRecordFlag] =
+                checked(snapshot.CoupleRecordByteCount + snapshot.FriendRecordByteCount + snapshot.MarriageRecordByteCount);
+
+            recordCountsByFlag[CharacterDataMapTransferFlag] =
+                checked((snapshot.RegularMapTransferFields?.Count ?? 0) + (snapshot.ContinentMapTransferFields?.Count ?? 0));
+            recordByteCountsByFlag[CharacterDataMapTransferFlag] =
+                checked(snapshot.RegularMapTransferRecordByteCount + snapshot.ContinentMapTransferRecordByteCount);
+
+            recordCountsByFlag[CharacterDataNewYearCardRecordFlag] = snapshot.NewYearCardRecordCount;
+            countByteCountsByFlag[CharacterDataNewYearCardRecordFlag] = snapshot.NewYearCardRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataNewYearCardRecordFlag] = snapshot.NewYearCardRecordByteCount;
+
+            recordCountsByFlag[CharacterDataQuestExRecordFlag] = snapshot.QuestExRecordCount;
+            countByteCountsByFlag[CharacterDataQuestExRecordFlag] = snapshot.QuestExRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataQuestExRecordFlag] = snapshot.QuestExRecordByteCount;
+
+            if (snapshot.HasWildHunterInfo)
+            {
+                recordCountsByFlag[CharacterDataWildHunterInfoFlag] = 1;
+                recordByteCountsByFlag[CharacterDataWildHunterInfoFlag] =
+                    checked(snapshot.WildHunterInfoModeByteCount + snapshot.WildHunterInfoCapturedMobRecordByteCount);
+            }
+
+            recordCountsByFlag[CharacterDataQuestCompleteRecordFlag] = snapshot.QuestCompleteRecordCount;
+            countByteCountsByFlag[CharacterDataQuestCompleteRecordFlag] = snapshot.QuestCompleteRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataQuestCompleteRecordFlag] = snapshot.QuestCompleteRecordByteCount;
+
+            recordCountsByFlag[CharacterDataVisitorQuestRecordFlag] = snapshot.VisitorQuestRecordCount;
+            countByteCountsByFlag[CharacterDataVisitorQuestRecordFlag] = snapshot.VisitorQuestRecordCountByteCount;
+            recordByteCountsByFlag[CharacterDataVisitorQuestRecordFlag] = snapshot.VisitorQuestRecordByteCount;
+
+            return snapshot with
+            {
+                CharacterDataSectionRecordCountsByFlag = recordCountsByFlag,
+                CharacterDataSectionCountByteCountsByFlag = countByteCountsByFlag,
+                CharacterDataSectionRecordByteCountsByFlag = recordByteCountsByFlag
+            };
         }
 
         private static PacketCharacterDataSnapshot DecodeCharacterDataOwnedPreludeSections(
@@ -4124,7 +4245,14 @@ namespace HaCreator.MapSimulator.Interaction
         int CharacterDataDamageSeedByteCount = 0,
         int CharacterDataStatByteCount = 0,
         int CharacterDataStatTrailerByteCount = 0,
-        int CharacterDataDecodeByteCount = 0);
+        int CharacterDataDecodeByteCount = 0)
+    {
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRecordCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionCountByteCountsByFlag { get; init; } = null;
+
+        internal IReadOnlyDictionary<ulong, int> CharacterDataSectionRecordByteCountsByFlag { get; init; } = null;
+    }
 
     internal readonly record struct PacketCharacterDataBackwardUpdateCashMutation(
         InventoryType InventoryType,

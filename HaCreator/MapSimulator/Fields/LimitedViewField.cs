@@ -29,6 +29,8 @@ namespace HaCreator.MapSimulator.Fields
 
         internal enum ClientOwnedInitOperationKind
         {
+            ReleaseExistingDarkCanvas,
+            ClearPreviousMaskHistory,
             CreateDarkCanvas,
             FillDarkCanvasBlack,
             CreateDarkLayer,
@@ -1090,6 +1092,8 @@ namespace HaCreator.MapSimulator.Fields
 
             return new[]
             {
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.ReleaseExistingDarkCanvas),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.ClearPreviousMaskHistory),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.CreateDarkCanvas, ClientOwnedDarkCanvasWidth, ClientOwnedDarkCanvasHeight, source: $"StringPool[0x{ClientOwnedCanvasClassStringPoolId:X}]"),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.FillDarkCanvasBlack, ClientOwnedDarkCanvasWidth, ClientOwnedDarkCanvasHeight),
                 new ClientOwnedInitOperation(ClientOwnedInitOperationKind.CreateDarkLayer),

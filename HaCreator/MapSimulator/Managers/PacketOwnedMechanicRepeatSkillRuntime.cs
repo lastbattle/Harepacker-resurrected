@@ -44,7 +44,7 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly char[] Sg88MismatchByteListSeparators = { ',', ';', '|', ' ', '/', '+' };
         private static readonly char[] Sg88MismatchFieldListSeparators = { ',', ';', '|', '/', '+' };
         private static readonly Regex Sg88MismatchPairRegex = new(
-            @"byte[\s_\-]*(?<index>\d+)\s*:\s*(?<observed>(?:0x)?[0-9A-Fa-f]{1,2}|\d{1,3})\s*->\s*(?<rebuilt>(?:0x)?[0-9A-Fa-f]{1,2}|\d{1,3})",
+            @"byte[\s_\-]*(?<index>\d+)\s*(?::|=|\-)\s*(?<observed>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})\s*(?:->|=>|\bto\b|\-)\s*(?<rebuilt>0x[0-9A-Fa-f]{1,2}|\d{1,3}|[0-9A-Fa-f]{1,2})",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex Sg88MismatchByteListAssignmentRegex = new(
             @"[""']?(?<label>mismatch[\s_\-]*bytes|mismatch[\s_\-]*byte[\s_\-]*indices|byte[\s_\-]*indices)[""']?\s*[:=]\s*(?<value>\[[^\]]*\]|\{[^}]*\}|\([^\)]*\)|<[^>]*>|[^\s;\)]+)",
@@ -843,6 +843,20 @@ namespace HaCreator.MapSimulator.Managers
                 || decodeDetail.IndexOf("vectorControlLowBitChanged", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 mismatchClass = "lowBitChanged";
+                return true;
+            }
+
+            if (decodeDetail.IndexOf("vecCtrlZeroToNonZero", StringComparison.OrdinalIgnoreCase) >= 0
+                || decodeDetail.IndexOf("vectorControlZeroToNonZero", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                mismatchClass = "zeroToNonZero";
+                return true;
+            }
+
+            if (decodeDetail.IndexOf("vecCtrlNonZeroToZero", StringComparison.OrdinalIgnoreCase) >= 0
+                || decodeDetail.IndexOf("vectorControlNonZeroToZero", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                mismatchClass = "nonZeroToZero";
                 return true;
             }
 

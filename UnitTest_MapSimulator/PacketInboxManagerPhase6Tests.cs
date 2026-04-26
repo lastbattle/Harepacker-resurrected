@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using System.Net;
 using System.Net.Sockets;
@@ -82,6 +83,71 @@ namespace UnitTest_MapSimulator
             bool parsed = LocalOverlayPacketInboxManager.TryParseLine("fade", out LocalOverlayPacketInboxMessage msg, out string error);
             Assert.True(parsed, error);
             Assert.Equal(LocalOverlayPacketInboxManager.FieldFadeInOutClientPacketType, msg.PacketType);
+        }
+
+        [Theory]
+        [InlineData("hpdec")]
+        [InlineData("damagemeter")]
+        [InlineData("hazardresult")]
+        [InlineData("243")]
+        [InlineData("267")]
+        [InlineData("1026")]
+        public void LocalOverlayInbox_RejectsAdjacentUtilityPackets(string packetToken)
+        {
+            bool parsed = LocalOverlayPacketInboxManager.TryParseLine(packetToken, out LocalOverlayPacketInboxMessage msg, out string error);
+
+            Assert.False(parsed);
+            Assert.Null(msg);
+            Assert.Contains("Unsupported local overlay packet", error);
+        }
+
+        [Fact]
+        public void LocalOverlayInbox_ClientRawRejectsAdjacentUtilityOpcode()
+        {
+            bool parsed = LocalOverlayPacketInboxManager.TryParseLine(
+                "packetclientraw 0B01",
+                out LocalOverlayPacketInboxMessage msg,
+                out string error);
+
+            Assert.False(parsed);
+            Assert.Null(msg);
+            Assert.Contains("Unsupported local overlay client opcode 267", error);
+        }
+
+        [Fact]
+        public void LocalOverlayBalloonFormatter_FontSizeReset_EmitsEmptyFontControl()
+        {
+            string formatted = PacketOwnedBalloonTextFormatter.Format("#fs18#Large#fs#Normal");
+
+            Assert.True(PacketOwnedBalloonTextFormatter.TryParseFontControlMarker(
+                formatted,
+                0,
+                out PacketOwnedBalloonFontControlKind firstKind,
+                out string firstValue,
+                out int firstMarkerLength));
+            Assert.Equal(PacketOwnedBalloonFontControlKind.FontSize, firstKind);
+            Assert.Equal("18", firstValue);
+
+            int secondMarkerIndex = formatted.IndexOf("{{FONTCTRL:", firstMarkerLength, StringComparison.Ordinal);
+            Assert.True(secondMarkerIndex >= 0);
+            Assert.True(PacketOwnedBalloonTextFormatter.TryParseFontControlMarker(
+                formatted,
+                secondMarkerIndex,
+                out PacketOwnedBalloonFontControlKind secondKind,
+                out string secondValue,
+                out _));
+            Assert.Equal(PacketOwnedBalloonFontControlKind.FontSize, secondKind);
+            Assert.Equal(string.Empty, secondValue);
+        }
+
+        [Fact]
+        public void LocalOverlayBalloonFormatter_FontSizeReset_RestoresDefaultScale()
+        {
+            float enlargedScale = HaCreator.MapSimulator.MapSimulator.ResolvePacketOwnedBalloonFontScaleForTests("18", 1f);
+            float resetScale = HaCreator.MapSimulator.MapSimulator.ResolvePacketOwnedBalloonFontScaleForTests(string.Empty, enlargedScale);
+
+            Assert.True(enlargedScale > 1f);
+            Assert.Equal(1f, resetScale);
         }
 
         [Fact]

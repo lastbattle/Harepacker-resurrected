@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _slotTexture;
         private readonly Texture2D[] _statusIcons;
         private readonly Point[] _statusIconOffsets;
+        private readonly Texture2D[] _statusButtonTextures;
         private readonly Texture2D _todayTexture;
         private readonly Texture2D[] _calendarBackgroundTextures;
         private readonly Texture2D[] _calendarOverlayTextures;
@@ -85,7 +86,7 @@ namespace HaCreator.MapSimulator.UI
             string windowName,
             Texture2D normalRowTexture,
             Texture2D selectedRowTexture)
-            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(11, 88), new Point(6, 23), new Point(12, 68), Point.Zero, Point.Zero, new Point(226, 5), 57, 35)
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), Array.Empty<Texture2D>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), new Point(11, 88), new Point(6, 23), new Point(12, 68), Point.Zero, Point.Zero, new Point(226, 5), 57, 35)
         {
         }
 
@@ -97,6 +98,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D slotTexture,
             Texture2D[] statusIcons,
             Point[] statusIconOffsets,
+            Texture2D[] statusButtonTextures,
             Texture2D todayTexture,
             Texture2D[] calendarBackgroundTextures,
             Texture2D[] calendarOverlayTextures,
@@ -119,6 +121,7 @@ namespace HaCreator.MapSimulator.UI
             _slotTexture = slotTexture;
             _statusIcons = statusIcons ?? Array.Empty<Texture2D>();
             _statusIconOffsets = statusIconOffsets ?? Array.Empty<Point>();
+            _statusButtonTextures = statusButtonTextures ?? Array.Empty<Texture2D>();
             _todayTexture = todayTexture;
             _calendarBackgroundTextures = calendarBackgroundTextures ?? Array.Empty<Texture2D>();
             _calendarOverlayTextures = calendarOverlayTextures ?? Array.Empty<Texture2D>();
@@ -397,7 +400,7 @@ namespace HaCreator.MapSimulator.UI
                     _statusLaneMaxWidth,
                     entry.RowLayout);
                 DrawTrimmedText(sprite, entry.Title, textLayout.TitleX, textLayout.TitleY, textLayout.TitleMaxWidth, Color.White);
-                DrawTrimmedText(sprite, entry.StatusText, textLayout.StatusX, textLayout.StatusY, textLayout.StatusMaxWidth, new Color(255, 228, 151));
+                DrawStatusLane(sprite, entry, textLayout);
                 (string primaryDetail, string secondaryDetail) = ResolveEventRowDetailLines(entry);
                 if (!string.IsNullOrWhiteSpace(primaryDetail))
                 {
@@ -421,6 +424,24 @@ namespace HaCreator.MapSimulator.UI
                         new Color(206, 206, 206));
                 }
             }
+        }
+
+        private void DrawStatusLane(SpriteBatch sprite, EventEntrySnapshot entry, EventRowTextLayout textLayout)
+        {
+            Texture2D statusTexture = ResolveStatusButtonTexture(entry?.Status ?? EventEntryStatus.Upcoming);
+            if (statusTexture != null)
+            {
+                sprite.Draw(statusTexture, new Vector2(textLayout.StatusX, textLayout.StatusY), Color.White);
+                return;
+            }
+
+            DrawTrimmedText(
+                sprite,
+                entry?.StatusText,
+                textLayout.StatusX,
+                textLayout.StatusY,
+                textLayout.StatusMaxWidth,
+                new Color(255, 228, 151));
         }
 
         internal static (string Primary, string Secondary) ResolveEventRowDetailLines(EventEntrySnapshot entry)
@@ -1871,6 +1892,22 @@ namespace HaCreator.MapSimulator.UI
         {
             return index >= 0 && index < _statusIcons.Length
                 ? _statusIcons[index]
+                : null;
+        }
+
+        private Texture2D ResolveStatusButtonTexture(EventEntryStatus status)
+        {
+            int index = status switch
+            {
+                EventEntryStatus.Start => 0,
+                EventEntryStatus.InProgress => 1,
+                EventEntryStatus.Clear => 2,
+                EventEntryStatus.Upcoming => 3,
+                _ => -1
+            };
+
+            return index >= 0 && index < _statusButtonTextures.Length
+                ? _statusButtonTextures[index]
                 : null;
         }
 

@@ -49,6 +49,8 @@ namespace HaCreator.MapSimulator.Managers
         internal const string CountryNameRootPath = "Etc/CountryName.img";
         private const int LoadResultPayloadLength = 17;
         private const int SaveResultPayloadLength = 2;
+        private const uint ClientPlayStyleMask = (1u << 5) - 1u;
+        private const uint ClientActivityMask = (1u << 19) - 1u;
         private static readonly string[] PlayStyleLabels =
         {
             string.Empty,
@@ -208,8 +210,8 @@ namespace HaCreator.MapSimulator.Managers
 
             uint area = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(1, 4));
             uint birthday = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(5, 4));
-            _playStyleMask = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(9, 4));
-            _activityMask = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(13, 4));
+            _playStyleMask = MaskClientPlayStyleBits(BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(9, 4)));
+            _activityMask = MaskClientActivityBits(BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(13, 4)));
 
             int requestedAreaGroup = (int)(area & 0xFF);
             int requestedAreaDetail = (int)((area >> 8) & 0xFF);
@@ -302,7 +304,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            _playStyleMask ^= 1u << index;
+            _playStyleMask = MaskClientPlayStyleBits(_playStyleMask ^ (1u << index));
             _statusText = $"Toggled play-style bit {index + 1}.";
         }
 
@@ -313,7 +315,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            _activityMask ^= 1u << index;
+            _activityMask = MaskClientActivityBits(_activityMask ^ (1u << index));
             _statusText = $"Toggled activity bit {index + 1}.";
         }
 
@@ -406,6 +408,16 @@ namespace HaCreator.MapSimulator.Managers
         internal static string FormatComboNumericValue(int value)
         {
             return value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        internal static uint MaskClientPlayStyleBits(uint value)
+        {
+            return value & ClientPlayStyleMask;
+        }
+
+        internal static uint MaskClientActivityBits(uint value)
+        {
+            return value & ClientActivityMask;
         }
 
         internal static IReadOnlyDictionary<int, string> BuildCountryNameLookup(IPropertyContainer propertyContainer)

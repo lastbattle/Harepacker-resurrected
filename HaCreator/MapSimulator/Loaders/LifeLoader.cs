@@ -58,6 +58,15 @@ namespace HaCreator.MapSimulator.Loaders
             public List<WzCanvasProperty> FrameCanvases { get; init; }
             public List<int> FrameDelays { get; init; }
             public List<MobAnimationSet.FrameMetadata> FrameMetadata { get; init; }
+            public List<CachedMobFrameOverlay> FrameOverlays { get; init; }
+        }
+
+        private sealed class CachedMobFrameOverlay
+        {
+            public string Name { get; init; }
+            public string LayerZ { get; init; }
+            public List<WzCanvasProperty> FrameCanvases { get; init; }
+            public List<int> FrameDelays { get; init; }
         }
 
         private sealed class MobImgEntry
@@ -578,6 +587,7 @@ namespace HaCreator.MapSimulator.Loaders
 
                 List<MobAnimationSet.FrameMetadata> frameMetadata = BuildMobActionFrameMetadata(mobStateProperty);
                 List<int> frameDelays = BuildMobActionFrameDelays(frameCanvases);
+                List<CachedMobFrameOverlay> frameOverlays = BuildMobActionFrameOverlays(mobStateProperty);
                 if (frameMetadata.Count != frameCanvases.Count)
                 {
                     frameMetadata = AlignFrameMetadataToFrames(frameCanvases.Count, frameMetadata);
@@ -586,6 +596,10 @@ namespace HaCreator.MapSimulator.Loaders
                 if (ShouldAppendReversePlayback(mobStateProperty))
                 {
                     AppendReversePlayback(frameCanvases, frameDelays, frameMetadata);
+                    foreach (CachedMobFrameOverlay overlay in frameOverlays)
+                    {
+                        AppendReversePlayback(overlay.FrameCanvases, overlay.FrameDelays, null);
+                    }
                 }
 
                 if (TryResolveMobClientActionSlot(authoredActionName, out int clientActionSlot))
@@ -598,7 +612,8 @@ namespace HaCreator.MapSimulator.Loaders
                         SourcePriority = string.Equals(authoredActionName, resolvedActionName, StringComparison.OrdinalIgnoreCase) ? 1 : 0,
                         FrameCanvases = frameCanvases,
                         FrameDelays = frameDelays,
-                        FrameMetadata = frameMetadata
+                        FrameMetadata = frameMetadata,
+                        FrameOverlays = frameOverlays
                     };
 
                     if (!cached.ActionEntriesByClientSlot.TryGetValue(clientActionSlot, out CachedMobActionEntry existingEntry)
@@ -618,7 +633,8 @@ namespace HaCreator.MapSimulator.Loaders
                             SourcePriority = resolvedEntry.SourcePriority,
                             FrameCanvases = frameCanvases,
                             FrameDelays = frameDelays,
-                            FrameMetadata = frameMetadata
+                            FrameMetadata = frameMetadata,
+                            FrameOverlays = frameOverlays
                         };
                     }
 
@@ -631,7 +647,8 @@ namespace HaCreator.MapSimulator.Loaders
                     SourcePriority = 0,
                     FrameCanvases = frameCanvases,
                     FrameDelays = frameDelays,
-                    FrameMetadata = frameMetadata
+                    FrameMetadata = frameMetadata,
+                    FrameOverlays = frameOverlays
                 };
             }
 
@@ -849,6 +866,8 @@ namespace HaCreator.MapSimulator.Loaders
                     animationSet.SetFrameMetadata(actionName, actionEntry.FrameMetadata);
                 }
 
+                ApplyCachedMobFrameOverlays(animationSet, actionName, actionEntry, texturePool, x, y, device);
+
                 appliedActions.Add(actionName);
             }
 
@@ -879,6 +898,45 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     animationSet.SetFrameMetadata(actionName, actionEntry.FrameMetadata);
                 }
+
+                ApplyCachedMobFrameOverlays(animationSet, actionName, actionEntry, texturePool, x, y, device);
+            }
+        }
+
+        private static void ApplyCachedMobFrameOverlays(
+            MobAnimationSet animationSet,
+            string actionName,
+            CachedMobActionEntry actionEntry,
+            TexturePool texturePool,
+            int x,
+            int y,
+            GraphicsDevice device)
+        {
+            if (animationSet == null ||
+                string.IsNullOrWhiteSpace(actionName) ||
+                actionEntry?.FrameOverlays == null ||
+                actionEntry.FrameOverlays.Count == 0)
+            {
+                return;
+            }
+
+            foreach (CachedMobFrameOverlay overlay in actionEntry.FrameOverlays)
+            {
+                List<IDXObject> overlayFrames = InstantiateMobActionFrames(
+                    texturePool,
+                    overlay.FrameCanvases,
+                    overlay.FrameDelays,
+                    x,
+                    y,
+                    device);
+                animationSet.AddFrameOverlay(
+                    actionName,
+                    new MobAnimationSet.FrameOverlay
+                    {
+                        Name = overlay.Name,
+                        LayerZ = overlay.LayerZ,
+                        Frames = overlayFrames
+                    });
             }
         }
 
@@ -1637,6 +1695,60 @@ namespace HaCreator.MapSimulator.Loaders
             var frameCanvases = new List<WzCanvasProperty>();
             AppendMobActionFrameCanvases(source, frameCanvases);
             return frameCanvases;
+        }
+
+        private static List<CachedMobFrameOverlay> BuildMobActionFrameOverlays(WzSubProperty actionProperty)
+        {
+            var overlays = new List<CachedMobFrameOverlay>();
+            if (actionProperty?.WzProperties == null)
+            {
+                return overlays;
+            }
+
+            foreach (WzImageProperty childProperty in actionProperty.WzProperties)
+            {
+                if (childProperty == null ||
+                    int.TryParse(childProperty.Name, out _) ||
+                    string.Equals(childProperty.Name, "info", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                List<WzCanvasProperty> overlayFrames = BuildMobActionFrameCanvases(childProperty);
+                if (overlayFrames.Count == 0)
+                {
+                    continue;
+                }
+
+                overlays.Add(new CachedMobFrameOverlay
+                {
+                    Name = childProperty.Name,
+                    LayerZ = ResolveMobOverlayLayerZ(overlayFrames[0]) ?? childProperty.Name,
+                    FrameCanvases = overlayFrames,
+                    FrameDelays = BuildMobActionFrameDelays(overlayFrames)
+                });
+            }
+
+            return overlays;
+        }
+
+        internal static int CountMobActionFrameOverlaysForTests(WzSubProperty actionProperty)
+        {
+            return BuildMobActionFrameOverlays(actionProperty).Count;
+        }
+
+        internal static string ResolveMobOverlayLayerZForTests(WzCanvasProperty canvasProperty)
+        {
+            return ResolveMobOverlayLayerZ(canvasProperty);
+        }
+
+        private static string ResolveMobOverlayLayerZ(WzCanvasProperty canvasProperty)
+        {
+            WzImageProperty zProperty = WzInfoTools.GetRealProperty(canvasProperty?["z"]);
+            return zProperty is WzStringProperty stringProperty &&
+                   !string.IsNullOrWhiteSpace(stringProperty.Value)
+                ? stringProperty.Value.Trim()
+                : null;
         }
 
         private static void AppendMobActionFrameCanvases(WzImageProperty source, List<WzCanvasProperty> frameCanvases)

@@ -1912,7 +1912,7 @@ namespace HaCreator.MapSimulator
             string descriptor = ResolveVegaResultLoopSoundDescriptor();
             if (!TryResolvePacketOwnedWzSound(
                     descriptor,
-                    "UI.img",
+                    VegaResultPreludeLoopSoundOwnerImage,
                     out MapleLib.WzLib.WzProperties.WzBinaryProperty soundProperty,
                     out string resolvedDescriptor,
                     false))
@@ -1923,7 +1923,7 @@ namespace HaCreator.MapSimulator
                 if (string.Equals(descriptor, fallbackDescriptor, StringComparison.OrdinalIgnoreCase)
                     || !TryResolvePacketOwnedWzSound(
                         fallbackDescriptor,
-                        "UI.img",
+                        VegaResultPreludeLoopSoundOwnerImage,
                         out soundProperty,
                         out resolvedDescriptor,
                         false))

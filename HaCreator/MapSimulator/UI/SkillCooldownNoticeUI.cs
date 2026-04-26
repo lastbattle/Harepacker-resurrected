@@ -614,19 +614,9 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (incomingSkillId > 0
-                    && owner.OwnerKind == StatusBarNoticeOwnerKind.ItemMsg
-                    && owner.OwnerSourceKind == WeatherMessageOwnerSourceKind.SkillCooldownNotice
-                    && owner.OwnerSkillId == incomingSkillId)
-                {
-                    // Keep same-skill cooldown owner refreshes on the current row while still
-                    // blocking cross-skill or non-cooldown status-bar notice owners.
-                    continue;
-                }
-
                 // Client parity seam:
                 // CUIStatusBar::SetItemMsg blocks while quizPanel/floatNotice/itemMsg owner
-                // objects exist.
+                // objects exist, including same-skill itemMsg owners.
                 // Timer expiry is processed in CUIStatusBar::Update, so expired-yet-uncollected
                 // entries can still block admission before cleanup runs.
                 // Mirror that owner-identity gate by treating any valid owner

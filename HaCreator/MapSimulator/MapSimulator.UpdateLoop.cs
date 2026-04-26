@@ -949,7 +949,7 @@ namespace HaCreator.MapSimulator
                         case ShipState.Moving:
                         case ShipState.InTransit:
                             // Trigger Balrog attack during voyage
-                            _transportField.TriggerBalrogAttack(5000);
+                            _transportField.TryStartVoyageBalrogAttack(5000, out _);
                             break;
                         case ShipState.Docked:
                             // Ship is docked, start departure (LeaveShipMove - Case 8 value 2)

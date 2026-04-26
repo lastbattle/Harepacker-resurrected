@@ -48,6 +48,35 @@ namespace UnitTest_MapSimulator
             Assert.Equal(144, manager.LastSentOpcode);
         }
 
+        [Fact]
+        public void ReactorHarness_DoesNotFlushDeferredTouchQueue_OnInitEvent()
+        {
+            using ReactorPoolOfficialSessionBridgeManager manager = new ReactorPoolOfficialSessionBridgeManager();
+            Assert.True(manager.TryQueueTouchRequest(1001, isTouching: true, out string enterStatus, currentTick: 1000), enterStatus);
+            Assert.True(manager.TryQueueTouchRequest(1001, isTouching: false, out string leaveStatus, currentTick: 1250), leaveStatus);
+            Assert.Equal(2, manager.QueuedTouchRequestCount);
+
+            using ConnectedSessionHarness harness = ConnectedSessionHarness.Attach(manager);
+            harness.RaiseManagerInitEvent("OnRoleSessionServerPacketReceived");
+
+            Assert.True(manager.HasConnectedSession);
+            Assert.Equal(2, manager.QueuedTouchRequestCount);
+            Assert.Equal(0, manager.InjectedTouchRequestCount);
+
+            Assert.True(manager.TryFlushDeferredTouchRequests(2000, out string flushStatus), flushStatus);
+            Assert.Equal(1, manager.QueuedTouchRequestCount);
+            Assert.Equal(1, manager.InjectedTouchRequestCount);
+            Assert.True(manager.WasLastInjectedTouchRequest(1001, isTouching: true));
+
+            Assert.False(manager.TryFlushDeferredTouchRequests(2249, out _));
+            Assert.Equal(1, manager.QueuedTouchRequestCount);
+
+            Assert.True(manager.TryFlushDeferredTouchRequests(2250, out _));
+            Assert.Equal(0, manager.QueuedTouchRequestCount);
+            Assert.Equal(2, manager.InjectedTouchRequestCount);
+            Assert.True(manager.WasLastInjectedTouchRequest(1001, isTouching: false));
+        }
+
         private sealed class ConnectedSessionHarness : IDisposable
         {
             private readonly object _manager;

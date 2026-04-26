@@ -36,6 +36,10 @@ namespace HaCreator.MapSimulator.Fields
             @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        private static readonly Regex MemberAliasReferencePattern = new(
+            @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)\b",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         private static readonly Regex MemberAliasInvokerInvocationPattern = new(
             @"(?:^|[^A-Za-z0-9_])(?:this|owner|[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?:call|apply|bind)\s*\(",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -54,6 +58,10 @@ namespace HaCreator.MapSimulator.Fields
 
         private static readonly Regex ObjectLiteralAssignmentPattern = new(
             @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\{(?<body>[^{}]*)\}",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        private static readonly Regex ArrayLiteralAssignmentPattern = new(
+            @"(?:^|[;\{\(\s,])(?:(?:var|let|const)\s+)?(?<lhs>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\[(?<body>[^\[\]]*)\]",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         internal readonly record struct PublishedTagMutation(
@@ -334,6 +342,35 @@ namespace HaCreator.MapSimulator.Fields
                 if (memberAliasMap.Count > 0)
                 {
                     objectMemberAliasMap[objectName] = memberAliasMap;
+                }
+            }
+
+            foreach (Match match in ArrayLiteralAssignmentPattern.Matches(scriptName))
+            {
+                string arrayName = NormalizeFunctionAliasArgument(match.Groups["lhs"]?.Value);
+                string arrayBody = match.Groups["body"]?.Value;
+                if (!IsPotentialFunctionAliasName(arrayName) || string.IsNullOrWhiteSpace(arrayBody))
+                {
+                    continue;
+                }
+
+                var memberAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                IReadOnlyList<string> elements = SplitTopLevelByComma(arrayBody);
+                for (int i = 0; i < elements.Count; i++)
+                {
+                    string resolvedAlias = ResolveAssignmentAliasCandidate(
+                        elements[i],
+                        localAliasMap,
+                        objectMemberAliasMap);
+                    if (IsPotentialFunctionAliasName(resolvedAlias))
+                    {
+                        memberAliasMap[i.ToString(System.Globalization.CultureInfo.InvariantCulture)] = resolvedAlias;
+                    }
+                }
+
+                if (memberAliasMap.Count > 0)
+                {
+                    objectMemberAliasMap[arrayName] = memberAliasMap;
                 }
             }
 
@@ -667,8 +704,6 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
-            yield return normalizedCandidate;
-
             if (TryTrimCallbackInvokerTargetExpression(normalizedCandidate, out string callbackTargetExpression)
                 && !string.Equals(callbackTargetExpression, normalizedCandidate, StringComparison.OrdinalIgnoreCase))
             {
@@ -688,7 +723,10 @@ namespace HaCreator.MapSimulator.Fields
                     out string objectAlias))
             {
                 yield return objectAlias;
+                yield break;
             }
+
+            yield return normalizedCandidate;
 
             if (localAliasMap == null || localAliasMap.Count == 0)
             {
@@ -772,6 +810,15 @@ namespace HaCreator.MapSimulator.Fields
                 if (IsPotentialFunctionAliasName(memberLeafName))
                 {
                     yield return memberLeafName;
+                }
+            }
+
+            foreach (Match match in MemberAliasReferencePattern.Matches(normalizedValue))
+            {
+                string memberReferenceName = NormalizeFunctionAliasArgument(match.Groups["name"]?.Value).TrimEnd(';');
+                if (IsPotentialFunctionAliasName(memberReferenceName))
+                {
+                    yield return memberReferenceName;
                 }
             }
 

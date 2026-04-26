@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 
@@ -130,7 +131,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             35101009
         };
 
-        private const int SG88SkillId = 35121003;
+        internal const int SG88SkillId = 35121003;
+        internal static readonly Vector2 ClientKeyDownBarCanvasOrigin = new(40f, 83f);
+        internal static readonly Vector2 ClientLocalKeyDownBarLayerOffset = new(-36f, -100f);
+        internal static readonly Vector2 ClientSg88KeyDownBarLayerOffset = new(-26f, -52f);
         private const int MonkeyWaveFallbackGaugeDurationMs = 1080;
         private static int? _monkeyWaveGaugeDurationMs;
         private static readonly object AuthoredKeydownSkillCacheLock = new();
@@ -144,7 +148,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 FireArrowIceArrowSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
                 AssaulterShadowChargeSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
-                SG88SkillId => new PreparedSkillHudProfile(true, "KeyDownBar4", 2000),
+                SG88SkillId => new PreparedSkillHudProfile(true, "KeyDownBar4", 2000, PreparedSkillHudSurface.World),
                 4341002 => new PreparedSkillHudProfile(true, "KeyDownBar1", 600),
                 PirateScrewPunchSkillId => new PreparedSkillHudProfile(true, "KeyDownBar1", 1000),
                 ThunderBreakerSharkWaveSkillId => new PreparedSkillHudProfile(true, "KeyDownBar1", 1000),
@@ -444,6 +448,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static bool ArmsAtFullStrengthOnCriticalHit(int skillId) => skillId == MonkeyWaveSkillId;
 
         public static bool IsDragonOverlaySkill(int skillId) => skillId is 22121000 or 22151001;
+
+        internal static Vector2 ResolveClientLocalKeyDownBarAnchor(Vector2 vectorControlPosition)
+        {
+            return vectorControlPosition
+                + ClientLocalKeyDownBarLayerOffset
+                + ClientKeyDownBarCanvasOrigin;
+        }
+
+        internal static Vector2 ResolveClientSg88KeyDownBarAnchor(Vector2 vectorControlPosition)
+        {
+            return vectorControlPosition
+                + ClientSg88KeyDownBarLayerOffset
+                + ClientKeyDownBarCanvasOrigin;
+        }
 
         private static bool HasAuthoredKeydownNode(int skillId)
         {

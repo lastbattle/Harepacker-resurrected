@@ -1606,7 +1606,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!string.IsNullOrWhiteSpace(entry.TooltipText))
             {
-                return entry.TooltipText;
+                return QuestAlarmOwnerStringPoolText.NormalizePacketEscapedText(entry.TooltipText);
             }
 
             if (entry.IsRecentlyUpdated)

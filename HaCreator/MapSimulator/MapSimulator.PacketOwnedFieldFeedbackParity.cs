@@ -40,7 +40,7 @@ namespace HaCreator.MapSimulator
         private Texture2D _packetFieldClockPmTexture;
         private readonly Texture2D[] _remoteEvolRingFloatNoticeFrameTextures = new Texture2D[3];
         private bool _remoteEvolRingFloatNoticeFrameLoaded;
-        private int _remoteEvolRingFloatNoticeExpireTime = int.MinValue;
+        private RemoteStatusBarEffectOwnerState _remoteStatusBarEffectOwnerState;
         private bool _packetFieldBossTimerAssetsLoaded;
         private const int PacketOwnedSummonEffectStringPoolId = 0x663;
         private const int PacketOwnedSummonSoundStringPoolId = 0x8BE;
@@ -128,6 +128,15 @@ namespace HaCreator.MapSimulator
             "Summon.img"
             ,"Tomb.img"
         };
+
+        private sealed class RemoteStatusBarEffectOwnerState
+        {
+            public int CharacterId { get; init; }
+            public byte EffectType { get; init; }
+            public string EffectName { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int DurationMs { get; init; }
+        }
         private static readonly string[] PacketOwnedRewardRouletteLayerPaths =
         {
             "MainNotice/userReward/Default",
@@ -368,15 +377,32 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(presentation.EffectName, "Eff_EvolRing", StringComparison.Ordinal))
             {
-                ShowRemoteEvolRingFloatNotice(presentation.CurrentTime);
+                ShowRemoteEvolRingFloatNotice(
+                    presentation.CharacterId,
+                    presentation.EffectType,
+                    presentation.CurrentTime);
             }
 
             ShowUtilityFeedbackMessage($"Remote user {presentation.CharacterId} triggered status-bar {presentation.EffectName}.");
         }
 
-        private void ShowRemoteEvolRingFloatNotice(int currentTime)
+        private void ShowRemoteEvolRingFloatNotice(int characterId, byte effectType, int currentTime)
         {
-            _remoteEvolRingFloatNoticeExpireTime = currentTime + RemoteEvolRingFloatNoticeDurationMs;
+            int initialElapsedMs = ResolveRemoteStatusBarEffectInitialElapsed(
+                _remoteStatusBarEffectOwnerState,
+                characterId,
+                effectType,
+                "Eff_EvolRing",
+                currentTime,
+                RemoteEvolRingFloatNoticeDurationMs);
+            _remoteStatusBarEffectOwnerState = new RemoteStatusBarEffectOwnerState
+            {
+                CharacterId = characterId,
+                EffectType = effectType,
+                EffectName = "Eff_EvolRing",
+                AnimationStartTime = unchecked(currentTime - initialElapsedMs),
+                DurationMs = RemoteEvolRingFloatNoticeDurationMs
+            };
         }
 
         private bool TryPlayPacketOwnedSummonEffectSound(byte effectId, int x, int y)
@@ -1265,8 +1291,14 @@ namespace HaCreator.MapSimulator
         {
             if (_spriteBatch == null
                 || _fontChat == null
-                || currentTickCount >= _remoteEvolRingFloatNoticeExpireTime)
+                || !IsRemoteStatusBarEffectOwnerActive(_remoteStatusBarEffectOwnerState, currentTickCount))
             {
+                if (_remoteStatusBarEffectOwnerState != null
+                    && !IsRemoteStatusBarEffectOwnerActive(_remoteStatusBarEffectOwnerState, currentTickCount))
+                {
+                    _remoteStatusBarEffectOwnerState = null;
+                }
+
                 return;
             }
 
@@ -2650,6 +2682,68 @@ namespace HaCreator.MapSimulator
                 bounds.Height,
                 RemoteEvolRingFloatNoticeDurationMs,
                 RemoteEvolRingFloatNoticePropertyPath);
+        }
+
+        internal static int ResolveRemoteStatusBarEffectRestoreElapsedForTest(
+            int existingCharacterId,
+            byte existingEffectType,
+            string existingEffectName,
+            int existingAnimationStartTime,
+            int characterId,
+            byte effectType,
+            string effectName,
+            int currentTime,
+            int durationMs)
+        {
+            var existingState = new RemoteStatusBarEffectOwnerState
+            {
+                CharacterId = existingCharacterId,
+                EffectType = existingEffectType,
+                EffectName = existingEffectName,
+                AnimationStartTime = existingAnimationStartTime,
+                DurationMs = durationMs
+            };
+            return ResolveRemoteStatusBarEffectInitialElapsed(
+                existingState,
+                characterId,
+                effectType,
+                effectName,
+                currentTime,
+                durationMs);
+        }
+
+        private static int ResolveRemoteStatusBarEffectInitialElapsed(
+            RemoteStatusBarEffectOwnerState existingState,
+            int characterId,
+            byte effectType,
+            string effectName,
+            int currentTime,
+            int durationMs)
+        {
+            if (existingState == null
+                || characterId <= 0
+                || durationMs <= 0
+                || existingState.CharacterId != characterId
+                || existingState.EffectType != effectType
+                || !string.Equals(existingState.EffectName, effectName, StringComparison.Ordinal)
+                || !IsRemoteStatusBarEffectOwnerActive(existingState, currentTime))
+            {
+                return 0;
+            }
+
+            return Math.Clamp(
+                unchecked(currentTime - existingState.AnimationStartTime),
+                0,
+                durationMs - 1);
+        }
+
+        private static bool IsRemoteStatusBarEffectOwnerActive(
+            RemoteStatusBarEffectOwnerState state,
+            int currentTime)
+        {
+            return state != null
+                && state.DurationMs > 0
+                && unchecked(currentTime - state.AnimationStartTime) < state.DurationMs;
         }
 
         private static Rectangle ResolveRemoteEvolRingFloatNoticeBounds(int renderWidth, int renderHeight)

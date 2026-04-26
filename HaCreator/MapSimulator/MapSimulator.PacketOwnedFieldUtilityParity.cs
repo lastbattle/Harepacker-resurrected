@@ -720,7 +720,47 @@ namespace HaCreator.MapSimulator
             string payloadShapeSummary = DescribePacketOwnedFootholdResponsePayloadShapeForPacketParity(
                 _packetFieldUtilityFootholdLastResponseOpcode,
                 _packetFieldUtilityFootholdLastResponsePayload);
-            return $"{traceSummary} {payloadShapeSummary}";
+            string capturedPayloadSummary = DescribePacketOwnedFootholdCapturedResponseForPacketParity(
+                _packetFieldUtilityFootholdLastResponseOpcode,
+                _packetFieldUtilityFootholdLastResponsePayload,
+                rawPacket);
+            return $"{capturedPayloadSummary} {traceSummary} {payloadShapeSummary}";
+        }
+
+        internal static string DescribePacketOwnedFootholdCapturedResponseForPacketParity(
+            int opcode,
+            IReadOnlyList<byte> payload,
+            IReadOnlyList<byte> rawPacket)
+        {
+            int payloadLength = payload?.Count ?? 0;
+            string payloadHex = payloadLength == 0
+                ? string.Empty
+                : Convert.ToHexString(ToPacketOwnedFootholdTraceByteArray(payload));
+            string rawPacketHex = rawPacket == null || rawPacket.Count == 0
+                ? string.Empty
+                : Convert.ToHexString(ToPacketOwnedFootholdTraceByteArray(rawPacket));
+            return $"Captured response: opcode={opcode}, payloadBytes={payloadLength}, payloadHex={payloadHex}, rawPacketHex={rawPacketHex}.";
+        }
+
+        private static byte[] ToPacketOwnedFootholdTraceByteArray(IReadOnlyList<byte> bytes)
+        {
+            if (bytes is byte[] array)
+            {
+                return array;
+            }
+
+            byte[] copy = new byte[bytes?.Count ?? 0];
+            if (bytes == null)
+            {
+                return copy;
+            }
+
+            for (int i = 0; i < bytes.Count; i++)
+            {
+                copy[i] = bytes[i];
+            }
+
+            return copy;
         }
 
         private static int ReadLittleEndianInt32(IReadOnlyList<byte> payload, int offset)

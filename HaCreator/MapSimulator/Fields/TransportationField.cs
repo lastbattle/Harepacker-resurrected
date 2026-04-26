@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _voyageBalrogAutoDurationMs = DefaultVoyageBalrogAttackDurationMs;
         private int _voyageBalrogDepartureStartTime;
         private bool _voyageBalrogAutoTriggered;
+        private string _lastVoyageBalrogEventOwner = "none";
         #endregion
 
         #region Visual Properties
@@ -127,6 +128,7 @@ namespace HaCreator.MapSimulator.Fields
         public int VoyageBalrogAutoTriggerOffsetMs => _voyageBalrogAutoTriggerOffsetMs;
         public int VoyageBalrogAutoDurationMs => _voyageBalrogAutoDurationMs;
         public bool VoyageBalrogAutoTriggered => _voyageBalrogAutoTriggered;
+        public string LastVoyageBalrogEventOwner => _lastVoyageBalrogEventOwner;
         public bool HasRouteConfiguration => !string.IsNullOrWhiteSpace(_shipPath) || _x != 0 || _y != 0 || _x0 != 0 || _tMove != 0;
         public int ShipKind => _shipKind;
         public int DockX => _x;
@@ -398,6 +400,11 @@ namespace HaCreator.MapSimulator.Fields
         /// </summary>
         public void TriggerBalrogAttack(int durationMs = 5000)
         {
+            TriggerBalrogAttack(durationMs, "simulator-direct");
+        }
+
+        private void TriggerBalrogAttack(int durationMs, string owner)
+        {
             if (_balrogState != BalrogState.Hidden) return;
 
             System.Diagnostics.Debug.WriteLine("[TransportField] TriggerBalrogAttack");
@@ -416,6 +423,7 @@ namespace HaCreator.MapSimulator.Fields
             _balrogX = _balrogStartX;
             _balrogY = _balrogStartY;
             _balrogAlpha = 0f;
+            _lastVoyageBalrogEventOwner = string.IsNullOrWhiteSpace(owner) ? "unknown" : owner;
 
             OnBalrogAppear?.Invoke();
             QueueAnnouncement("Balrog has appeared!", 2000);
@@ -442,7 +450,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int normalizedDuration = durationMs > 0 ? durationMs : 5000;
-            TriggerBalrogAttack(normalizedDuration);
+            TriggerBalrogAttack(normalizedDuration, "transport-voyagebalrog-command");
             _voyageBalrogAutoTriggered = true;
             message = $"Applied voyage Balrog event -> TriggerBalrogAttack ({normalizedDuration} ms).";
             return true;
@@ -467,6 +475,7 @@ namespace HaCreator.MapSimulator.Fields
             _balrogApproachDirection = ResolveShipFacingDirection();
             _balrogFlip = _balrogApproachDirection > 0;
             _voyageBalrogAutoTriggered = false;
+            _lastVoyageBalrogEventOwner = "none";
             message = "Applied voyage Balrog reset.";
             return true;
         }
@@ -1151,6 +1160,7 @@ namespace HaCreator.MapSimulator.Fields
             _voyageBalrogAutoDurationMs = DefaultVoyageBalrogAttackDurationMs;
             _voyageBalrogDepartureStartTime = 0;
             _voyageBalrogAutoTriggered = false;
+            _lastVoyageBalrogEventOwner = "none";
 
             _bgScrollX = 0f;
             _announcements.Clear();
@@ -1179,6 +1189,7 @@ namespace HaCreator.MapSimulator.Fields
             _balrogFlip = _balrogApproachDirection > 0;
             _voyageBalrogDepartureStartTime = 0;
             _voyageBalrogAutoTriggered = false;
+            _lastVoyageBalrogEventOwner = "none";
             _bgScrollX = 0;
             _announcements.Clear();
             _currentAnnouncement = null;
@@ -1198,7 +1209,7 @@ namespace HaCreator.MapSimulator.Fields
             string announcement = _currentAnnouncement?.Message ?? "<none>";
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, voyageBalrogActive={HasActiveVoyageBalrogAttack}, voyageBalrogSide={DescribeBalrogApproachSide()}, voyageBalrogAuto={DescribeVoyageBalrogAutoEventStatus()}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
+                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, voyageBalrogActive={HasActiveVoyageBalrogAttack}, voyageBalrogSide={DescribeBalrogApproachSide()}, voyageBalrogOwner={_lastVoyageBalrogEventOwner}, voyageBalrogAuto={DescribeVoyageBalrogAutoEventStatus()}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
         }
 
         private int ResolveShipFacingDirection()
@@ -1234,7 +1245,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            TriggerBalrogAttack(_voyageBalrogAutoDurationMs);
+            TriggerBalrogAttack(_voyageBalrogAutoDurationMs, "wz-route-auto");
             _voyageBalrogAutoTriggered = true;
         }
 

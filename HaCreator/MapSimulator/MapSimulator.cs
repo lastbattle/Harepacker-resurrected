@@ -6637,7 +6637,7 @@ namespace HaCreator.MapSimulator
             Action<int> releaseActiveKeydownSkill,
             Func<int, int, bool> requestClientSkillCancel)
         {
-            if (skillId == 1311006)
+            if (ShouldSuppressStatusBarSkillCancelIngress(skillId))
             {
                 return false;
             }
@@ -6652,6 +6652,18 @@ namespace HaCreator.MapSimulator
             using var _ = beginClientCancelBatchScope();
             releaseActiveKeydownSkill(currentTime);
             return requestClientSkillCancel(skillId, currentTime);
+        }
+
+        private static bool ShouldSuppressStatusBarSkillCancelIngress(int skillId)
+        {
+            return skillId is 1311006
+                or 5101007
+                or 35001002
+                or 35111004
+                or 35121005
+                or 35121013
+                or 35001001
+                or 35101009;
         }
 
         internal static bool TryExecuteStatusBarBuffCancelForClientCancelIngressForTests(
@@ -20600,8 +20612,13 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                int pickupIntervalMs = ResolveMobDropPickupIntervalMs(
-                    ResolveMobDropItemPeriodSecondsForPickup(mob));
+                int dropItemPeriodSeconds = ResolveMobDropItemPeriodSecondsForPickup(mob);
+                if (!ShouldEnableMobDropPickupProducer(dropItemPeriodSeconds))
+                {
+                    continue;
+                }
+
+                int pickupIntervalMs = ResolveMobDropPickupIntervalMs(dropItemPeriodSeconds);
                 if (_lastMobPickupTimes.TryGetValue(mob.PoolId, out int lastPickupTime)
                     && currentTime - lastPickupTime < pickupIntervalMs)
                 {
@@ -21015,7 +21032,7 @@ namespace HaCreator.MapSimulator
         {
             return skillId switch
             {
-                120 or 121 or 122 or 123 or 124 or 125 or 126 or 127 or 128 or 129 or 131 or 132 or 133 or 134 or 135 or 136 or 137 or 138 or 170 or 171 or 172 or 173 => true,
+                120 or 121 or 122 or 123 or 124 or 125 or 126 or 127 or 128 or 129 or 131 or 132 or 133 or 134 or 135 or 136 or 137 or 138 or 170 or 171 or 172 or 173 or 799 => true,
                 _ => false
             };
         }
@@ -21522,8 +21539,7 @@ namespace HaCreator.MapSimulator
             Point? lt = MobSkillLevelResolver.ResolveInheritedVector(levelNode, level, "lt");
 
             Point? rb = MobSkillLevelResolver.ResolveInheritedVector(levelNode, level, "rb");
-            WzSubProperty skillLevelNode = MobSkillLevelResolver.ResolveLevelNode(levelNode, level);
-            WzSubProperty bombInfoNode = skillLevelNode?["bombInfo"] as WzSubProperty;
+            WzSubProperty bombInfoNode = MobSkillLevelResolver.ResolveInheritedSubProperty(levelNode, level, "bombInfo");
             Point? bombLt = (bombInfoNode?["lt"] as WzVectorProperty) is WzVectorProperty bombLtVector
                 ? new Point(bombLtVector.X.Value, bombLtVector.Y.Value)
                 : null;
@@ -22506,10 +22522,34 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            return InventoryItemMetadataResolver.IsConsumedOnPickup(itemId)
-                   || ShouldAutoConsumePickedUpItem(itemId)
-                   || ShouldAutoApplyRunOnPickupConsumableItem(itemId)
-                   || InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId);
+            bool consumedOnPickup = InventoryItemMetadataResolver.IsConsumedOnPickup(itemId);
+            bool runOnPickup = InventoryItemMetadataResolver.IsRunOnPickup(itemId);
+            bool autoConsume = ShouldAutoConsumePickedUpItem(itemId);
+            bool autoRunConsumable = ShouldAutoApplyRunOnPickupConsumableItem(itemId);
+            bool autoRunInteraction = InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId);
+            return ShouldBypassPickupInventoryCapacity(
+                consumeOnPickupMonsterCard: false,
+                consumedOnPickup: consumedOnPickup,
+                runOnPickup: runOnPickup,
+                autoConsume: autoConsume,
+                autoRunConsumable: autoRunConsumable,
+                autoRunInteraction: autoRunInteraction);
+        }
+
+        internal static bool ShouldBypassPickupInventoryCapacity(
+            bool consumeOnPickupMonsterCard,
+            bool consumedOnPickup,
+            bool runOnPickup,
+            bool autoConsume,
+            bool autoRunConsumable,
+            bool autoRunInteraction)
+        {
+            return consumeOnPickupMonsterCard
+                   || consumedOnPickup
+                   || runOnPickup
+                   || autoConsume
+                   || autoRunConsumable
+                   || autoRunInteraction;
         }
 
         private bool TryApplyQuestBuffItemReward(int itemId)
@@ -27616,7 +27656,13 @@ namespace HaCreator.MapSimulator
                 SocialRoomOccupant occupant = runtime.Occupants.FirstOrDefault(candidate =>
                     candidate != null
                     && string.Equals(candidate.Name, participantName, StringComparison.OrdinalIgnoreCase));
-                if (TryAppendMiniRoomTrackedUserMarker(trackedUsers, runtime, player, occupant, participantName))
+                if (TryAppendMiniRoomTrackedUserMarker(
+                        trackedUsers,
+                        runtime,
+                        player,
+                        occupant,
+                        participantName,
+                        isPacketOwnedParticipantName: true))
                 {
                     seededNames.Add(participantName.Trim());
                 }
@@ -27632,7 +27678,13 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (TryAppendMiniRoomTrackedUserMarker(trackedUsers, runtime, player, occupant, occupant.Name))
+                if (TryAppendMiniRoomTrackedUserMarker(
+                        trackedUsers,
+                        runtime,
+                        player,
+                        occupant,
+                        occupant.Name,
+                        isPacketOwnedParticipantName: false))
                 {
                     seededNames.Add(occupant.Name.Trim());
                 }
@@ -27667,14 +27719,16 @@ namespace HaCreator.MapSimulator
             SocialRoomRuntime runtime,
             PlayerCharacter player,
             SocialRoomOccupant occupant,
-            string occupantName)
+            string occupantName,
+            bool isPacketOwnedParticipantName)
         {
             if (!ShouldSeedSyntheticMinimapOccupantMarker(
                     SocialRoomKind.MiniRoom,
                     runtime,
                     hasDedicatedFieldActorMarker: false,
                     occupant,
-                    occupantName))
+                    occupantName,
+                    isPacketOwnedParticipantName))
             {
                 return false;
             }
@@ -27765,7 +27819,8 @@ namespace HaCreator.MapSimulator
             SocialRoomRuntime runtime,
             bool hasDedicatedFieldActorMarker,
             SocialRoomOccupant occupant,
-            string occupantName)
+            string occupantName,
+            bool isPacketOwnedMiniRoomParticipantName = false)
         {
             if (string.IsNullOrWhiteSpace(occupantName))
             {
@@ -27774,6 +27829,7 @@ namespace HaCreator.MapSimulator
 
             bool isRepresentedByDedicatedFieldActor = IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant);
             bool hasEligibleMiniRoomOccupantRole = kind is not SocialRoomKind.MiniRoom
+                || isPacketOwnedMiniRoomParticipantName
                 || IsMiniRoomOccupantRoleEligibleForSyntheticHelper(occupant?.Role);
             bool hasEligibleTraderOccupantRole = kind is not SocialRoomKind.PersonalShop
                 && kind is not SocialRoomKind.EntrustedShop
@@ -27787,6 +27843,7 @@ namespace HaCreator.MapSimulator
                 _remoteUserPool.TryGetPosition(occupantName, out _),
                 occupant?.AvatarBuild != null,
                 occupant != null,
+                isPacketOwnedMiniRoomParticipantName,
                 hasEligibleMiniRoomOccupantRole,
                 hasEligibleTraderOccupantRole);
         }
@@ -27799,6 +27856,7 @@ namespace HaCreator.MapSimulator
             bool hasRemotePosition,
             bool hasAvatarBuild,
             bool hasOccupant,
+            bool hasPacketOwnedMiniRoomParticipantName,
             bool hasEligibleMiniRoomOccupantRole,
             bool hasEligibleTraderOccupantRole)
         {
@@ -27817,8 +27875,10 @@ namespace HaCreator.MapSimulator
             }
 
             // Owner-window-only names without an active room occupant should not
-            // be promoted into synthetic minimap helper markers.
-            if (!hasOccupant)
+            // be promoted into synthetic minimap helper markers. Packet-owned
+            // Match Cards participant names are a separate live field source.
+            if (!hasOccupant
+                && (kind != SocialRoomKind.MiniRoom || !hasPacketOwnedMiniRoomParticipantName))
             {
                 return false;
             }
@@ -29255,7 +29315,15 @@ namespace HaCreator.MapSimulator
 
             if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack)
             {
-                return IsClientBodyLaneAreaCompatible(skill);
+                if (hasExplicitOwnerBranch)
+                {
+                    return IsClientBodyLaneAreaCompatible(skill);
+                }
+
+                return levelData != null
+                       && HasLocalOwnedAffectedAreaMetadata(skill, levelData)
+                       && Math.Max(0, skill.ClientInfoType) > 0
+                       && IsClientBodyLaneAreaCompatible(skill);
             }
 
             if (!hasExplicitOwnerBranch && levelData == null)
@@ -30316,6 +30384,7 @@ namespace HaCreator.MapSimulator
             }
 
         private readonly Dictionary<Keys, int> _skillMacroForwardedConfiguredHotkeySlotsByPhysicalKey = new();
+        private readonly Dictionary<Keys, int> _skillMacroForwardedUtilityFunctionIdsByPhysicalKey = new();
         private readonly HashSet<Keys> _skillMacroImeSuppressedConfiguredHotkeyPhysicalKeys = new();
 
         private bool TrySelectSkillMacroImeCandidate(int listIndex, int candidateIndex)
@@ -30392,25 +30461,51 @@ namespace HaCreator.MapSimulator
                 controlHeld,
                 suppressImeOwnedForwarding,
                 bindingResolver);
-            if (!keyDown)
+            HandleSkillMacroClientForwardedUtilityFunctionState(
+                key,
+                keyDown,
+                suppressImeOwnedForwarding,
+                bindingResolver);
+        }
+
+        private void HandleSkillMacroClientForwardedUtilityFunctionState(
+            Keys key,
+            bool keyDown,
+            bool suppressImeOwnedForwarding,
+            Func<InputAction, KeyBinding> bindingResolver)
+        {
+            if (key == Keys.None)
             {
                 return;
             }
 
-            if (suppressImeOwnedForwarding)
+            if (keyDown)
             {
+                if (suppressImeOwnedForwarding)
+                {
+                    _skillMacroForwardedUtilityFunctionIdsByPhysicalKey.Remove(key);
+                    return;
+                }
+
+                if (_skillMacroForwardedUtilityFunctionIdsByPhysicalKey.ContainsKey(key))
+                {
+                    return;
+                }
+
+                if (!TryResolveSkillMacroForwardedUtilityFunctionIdForTesting(
+                        key,
+                        bindingResolver,
+                        out int clientFunctionId))
+                {
+                    return;
+                }
+
+                _skillMacroForwardedUtilityFunctionIdsByPhysicalKey[key] = clientFunctionId;
+                TryDispatchPacketOwnedRawFunctionEntry(clientFunctionId, currTickCount);
                 return;
             }
 
-            if (!TryResolveSkillMacroForwardedUtilityFunctionIdForTesting(
-                    key,
-                    bindingResolver,
-                    out int clientFunctionId))
-            {
-                return;
-            }
-
-            TryDispatchPacketOwnedRawFunctionEntry(clientFunctionId, currTickCount);
+            _skillMacroForwardedUtilityFunctionIdsByPhysicalKey.Remove(key);
         }
 
         private void HandleSkillMacroClientForwardedConfiguredNonFunctionHotkeyState(
@@ -31269,7 +31364,13 @@ namespace HaCreator.MapSimulator
                     TryHandlePortalInteractCore(currentTime);
                 }
 
-                ClearPassiveTransferRequest();
+                if (PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryAfterInterfaceGateAdmission(
+                        _passiveTransferRequestPending,
+                        queuedRetryDecision))
+                {
+                    ClearPassiveTransferRequest();
+                }
+
                 return;
             }
 
@@ -31358,7 +31459,8 @@ namespace HaCreator.MapSimulator
 
         private void ConsumePassiveTransferRequestFromTransferLifecycle()
         {
-            if (!_passiveTransferRequestPending)
+            if (!PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryFromTransferLifecycle(
+                    _passiveTransferRequestPending))
             {
                 return;
             }
@@ -32058,6 +32160,11 @@ namespace HaCreator.MapSimulator
                 cadenceShapedPath,
                 !flushAdmitted ? _portalOwnedMovePathPostFlushCarry : Array.Empty<MovePathElement>(),
                 out bool consumedPostFlushCarry);
+            if (consumedPostFlushCarry)
+            {
+                cadenceShapedPath =
+                    CMovePathClientPacketCodec.NormalizeForPortalOwnedClientMakeMovePath(cadenceShapedPath);
+            }
             if (consumedPostFlushCarry)
             {
                 _portalOwnedMovePathPostFlushCarry.Clear();
@@ -38954,22 +39061,55 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-
-            PlayerCharacter player = _playerManager.Player;
-            Point? bodyOrigin = player.TryGetCurrentBodyOrigin(currentTime);
-            Rectangle? frameBounds = player.TryGetCurrentFrameBounds(currentTime);
-            if (bodyOrigin.HasValue && frameBounds.HasValue)
+            if (preparedSkill.SkillId == PreparedSkillHudRules.SG88SkillId
+                && TryResolveLocalSg88KeyDownBarAnchor(out Vector2 sg88Anchor))
             {
-                float topY = bodyOrigin.Value.Y + frameBounds.Value.Top;
-                anchor = new Vector2(player.X, topY - 18f);
+                anchor = sg88Anchor;
                 return true;
             }
 
 
-            anchor = new Vector2(player.X, player.Y - 80f);
+            PlayerCharacter player = _playerManager.Player;
+            anchor = ResolveClientLocalKeyDownBarAnchor(player.Position);
 
             return true;
 
+        }
+
+        private bool TryResolveLocalSg88KeyDownBarAnchor(out Vector2 anchor)
+        {
+            anchor = Vector2.Zero;
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                return false;
+            }
+
+            int ownerCharacterId = player.Build?.Id ?? 0;
+            if (ownerCharacterId > 0)
+            {
+                IReadOnlyList<ActiveSummon> summons = _summonedPool.GetSummonsForOwner(ownerCharacterId);
+                ActiveSummon sg88Summon = summons?
+                    .FirstOrDefault(static summon => summon?.SkillId == PreparedSkillHudRules.SG88SkillId);
+                if (sg88Summon != null)
+                {
+                    anchor = ResolveClientSg88KeyDownBarAnchor(new Vector2(sg88Summon.PositionX, sg88Summon.PositionY));
+                    return true;
+                }
+            }
+
+            anchor = ResolveClientSg88KeyDownBarAnchor(player.Position);
+            return true;
+        }
+
+        internal static Vector2 ResolveClientLocalKeyDownBarAnchor(Vector2 vectorControlPosition)
+        {
+            return PreparedSkillHudRules.ResolveClientLocalKeyDownBarAnchor(vectorControlPosition);
+        }
+
+        internal static Vector2 ResolveClientSg88KeyDownBarAnchor(Vector2 vectorControlPosition)
+        {
+            return PreparedSkillHudRules.ResolveClientSg88KeyDownBarAnchor(vectorControlPosition);
         }
 
 

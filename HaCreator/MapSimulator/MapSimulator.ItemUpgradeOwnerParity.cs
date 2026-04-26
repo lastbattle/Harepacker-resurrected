@@ -277,6 +277,26 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
+                if (TryResolveItemUpgradePacketOwnedOutcomeWithoutPendingRequest(
+                        decodeState,
+                        out string packetOwnedOutcomeWithoutPendingRequest,
+                        out bool? packetOwnedOutcomeSuccess))
+                {
+                    ShowUtilityFeedbackMessage(packetOwnedOutcomeWithoutPendingRequest);
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
+                    {
+                        itemUpgradeWindow.SetOwnerStatusMessage(packetOwnedOutcomeWithoutPendingRequest, packetOwnedOutcomeSuccess);
+                    }
+
+                    message = $"Applied packet-owned item-upgrade outcome result code {decodeState.ResultCode} without a pending request.";
+                    if (consumedQuestStartLatch)
+                    {
+                        message = $"{message} The same shared exclusive-reset event also cleared the packet-owned StartQuest follow-up latch.";
+                    }
+
+                    return true;
+                }
+
                 message = $"Observed packet-owned item-upgrade result code {decodeState.ResultCode}, but no pending request is waiting for it.";
                 if (consumedQuestStartLatch)
                 {
@@ -384,6 +404,46 @@ namespace HaCreator.MapSimulator
                 resultValue,
                 recoverySlotCountArgument,
                 out message);
+        }
+
+        private static bool TryResolveItemUpgradePacketOwnedOutcomeWithoutPendingRequest(
+            ItemUpgradeResultDecodeState decodeState,
+            out string message,
+            out bool? success)
+        {
+            return TryResolveItemUpgradePacketOwnedOutcomeWithoutPendingRequest(
+                decodeState.ResultCode,
+                decodeState.HasOutcomeState ? decodeState.OutcomeResultValue : (int?)null,
+                out message,
+                out success);
+        }
+
+        private static bool TryResolveItemUpgradePacketOwnedOutcomeWithoutPendingRequest(
+            byte resultCode,
+            int? resultValue,
+            out string message,
+            out bool? success)
+        {
+            message = null;
+            success = null;
+
+            if (resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot ||
+                resultCode == ItemUpgradePacketResultCodeClientRejected ||
+                !resultValue.HasValue)
+            {
+                return false;
+            }
+
+            if (!TryMapItemUpgradeOutcomeStateResult(resultValue.Value, out bool mappedSuccess))
+            {
+                return false;
+            }
+
+            success = mappedSuccess;
+            message = mappedSuccess
+                ? "Packet-owned item enhancement succeeded."
+                : "Packet-owned item enhancement failed.";
+            return true;
         }
 
         private static int ResolveItemUpgradeResultReadyDelayMs(byte resultCode, int? outcomeResultValue)
@@ -1153,6 +1213,19 @@ namespace HaCreator.MapSimulator
                 resultValue,
                 recoverySlotCountArgument,
                 out message);
+        }
+
+        internal static bool TryResolveItemUpgradePacketOwnedOutcomeWithoutPendingRequestForTests(
+            byte resultCode,
+            int? resultValue,
+            out string message,
+            out bool? success)
+        {
+            return TryResolveItemUpgradePacketOwnedOutcomeWithoutPendingRequest(
+                resultCode,
+                resultValue,
+                out message,
+                out success);
         }
 
         internal static string ResolveItemUpgradeRecoveredSlotNoticeForTests(int remainingUpgradeCount)

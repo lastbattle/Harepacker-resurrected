@@ -751,6 +751,90 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            return TryResolveChargeElementFromConsensusCounts(
+                iceMatches,
+                fireMatches,
+                lightningMatches,
+                holyMatches,
+                preferredSkillId,
+                minimumMatches,
+                out chargeElement);
+        }
+
+        internal static bool TryResolveChargeElementValueConsensusFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            int minimumMatches,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int)
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int)
+                || minimumMatches <= 1)
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            if (alignedStartOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int iceMatches = 0;
+            int fireMatches = 0;
+            int lightningMatches = 0;
+            int holyMatches = 0;
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            {
+                int candidateElement = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                switch (candidateElement)
+                {
+                    case 1:
+                        iceMatches++;
+                        break;
+                    case 2:
+                        fireMatches++;
+                        break;
+                    case 3:
+                        lightningMatches++;
+                        break;
+                    case 5:
+                        holyMatches++;
+                        break;
+                }
+            }
+
+            return TryResolveChargeElementFromConsensusCounts(
+                iceMatches,
+                fireMatches,
+                lightningMatches,
+                holyMatches,
+                preferredSkillId,
+                minimumMatches,
+                out chargeElement);
+        }
+
+        private static bool TryResolveChargeElementFromConsensusCounts(
+            int iceMatches,
+            int fireMatches,
+            int lightningMatches,
+            int holyMatches,
+            int preferredSkillId,
+            int minimumMatches,
+            out int chargeElement)
+        {
+            chargeElement = 0;
             int maxMatches = Math.Max(Math.Max(iceMatches, fireMatches), Math.Max(lightningMatches, holyMatches));
             if (maxMatches < minimumMatches)
             {

@@ -87,6 +87,7 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Func<WzImageProperty, List<IDXObject>> _lazySourceFrameLoader;
         private readonly HashSet<int> _authoredStates;
         private readonly int[] _availableStates;
+        private const int ClientLoadLayerFallbackDelayMs = 100;
         private readonly int _rootHitDuration;
         private readonly IDXObject[] _rootHitFrames;
         private readonly WzImageProperty _rootHitProperty;
@@ -2210,7 +2211,10 @@ namespace HaCreator.MapSimulator.Entities
 
             if (realProperty is WzCanvasProperty canvasProperty)
             {
-                return Math.Max(1, TryReadOptionalInt(WzInfoTools.GetRealProperty(canvasProperty["delay"])) ?? 0);
+                return Math.Max(
+                    1,
+                    TryReadOptionalInt(WzInfoTools.GetRealProperty(canvasProperty["delay"]))
+                        ?? ClientLoadLayerFallbackDelayMs);
             }
 
             if (realProperty is not WzSubProperty hitProperty)
@@ -2224,7 +2228,10 @@ namespace HaCreator.MapSimulator.Entities
                 WzImageProperty resolvedFrameProperty = WzInfoTools.GetRealProperty(frameProperty);
                 if (resolvedFrameProperty is WzCanvasProperty frameCanvas)
                 {
-                    totalDuration += Math.Max(1, TryReadOptionalInt(WzInfoTools.GetRealProperty(frameCanvas["delay"])) ?? 0);
+                    totalDuration += Math.Max(
+                        1,
+                        TryReadOptionalInt(WzInfoTools.GetRealProperty(frameCanvas["delay"]))
+                            ?? ClientLoadLayerFallbackDelayMs);
                 }
             }
 

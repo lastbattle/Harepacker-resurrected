@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         SectionHeader,
         RichText,
+        Canvas,
         ConditionLines,
         Progress
     }
@@ -85,13 +86,20 @@ namespace HaCreator.MapSimulator.Interaction
         public string Text { get; init; } = string.Empty;
         public string HeaderSurfaceKey { get; init; } = string.Empty;
         public string HeaderFallbackText { get; init; } = string.Empty;
+        public string CanvasSurfaceKey { get; init; } = string.Empty;
         public IReadOnlyList<QuestLogLineSnapshot> Lines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
         public QuestDetailCtEntryPalette Palette { get; init; }
         public QuestDetailInlineReferenceSource Source { get; init; }
         public int XOffset { get; init; }
         public int YOffset { get; init; }
+        public int Width { get; init; }
+        public int Height { get; init; }
         public int VerticalGapAfter { get; init; }
         public bool RewardSection { get; init; }
+        public bool Bold { get; init; }
+        public string FontFamily { get; init; } = string.Empty;
+        public float FontPixelSize { get; init; }
+        public int? TextColorArgb { get; init; }
     }
 
     internal readonly record struct QuestDetailInlineReference

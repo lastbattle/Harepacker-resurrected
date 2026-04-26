@@ -9,6 +9,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Fields;
@@ -701,7 +702,7 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        private static bool TryDecodeInboundMassacrePacket(
+        internal static bool TryDecodeInboundMassacrePacket(
             byte[] rawPacket,
             string source,
             IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedOpcodes,
@@ -733,6 +734,11 @@ namespace HaCreator.MapSimulator.Managers
             if (opcode == CurrentWrapperRelayOpcode
                 && SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out byte[] relayedPayload, out _))
             {
+                if (relayedPacketType == DefaultInboundSessionValueOpcode)
+                {
+                    return TryDecodeSessionValueMessage(relayedPayload, source, sessionValueInfoState, rawPacket, out message);
+                }
+
                 message = new MassacrePacketInboxMessage(
                     MassacrePacketInboxMessageKind.Packet,
                     source,
@@ -744,8 +750,12 @@ namespace HaCreator.MapSimulator.Managers
                     || relayedPacketType == PacketTypeResult;
             }
 
-            if (opcode == DefaultInboundSessionValueOpcode
-                || opcode == PacketTypeIncGauge
+            if (opcode == DefaultInboundSessionValueOpcode)
+            {
+                return TryDecodeSessionValueMessage(payload, source, sessionValueInfoState, rawPacket, out message);
+            }
+
+            if (opcode == PacketTypeIncGauge
                 || opcode == PacketTypeResult)
             {
                 message = new MassacrePacketInboxMessage(
@@ -758,6 +768,167 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        private static bool TryDecodeSessionValueMessage(
+            byte[] payload,
+            string source,
+            MassacreSessionValueInfoState sessionValueInfoState,
+            byte[] rawPacket,
+            out MassacrePacketInboxMessage message)
+        {
+            message = null;
+            if (!TryDecodeSessionValuePair(payload, out string key, out string value))
+            {
+                return false;
+            }
+
+            if (!TryParseClientAtoi(value, out int parsedValue))
+            {
+                parsedValue = 0;
+            }
+
+            string rawText = $"packetclientraw {Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}";
+            if (TryMatchSessionValueKey(key, MassacreStageSessionKeyStringPoolId, MassacreStageSessionKeyFallback))
+            {
+                if (parsedValue <= 0)
+                {
+                    return false;
+                }
+
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Stage,
+                    source,
+                    rawText,
+                    value1: parsedValue,
+                    packetType: DefaultInboundSessionValueOpcode,
+                    payload: payload);
+                return true;
+            }
+
+            if (TryMatchSessionValueKey(key, MassacrePartySessionKeyStringPoolId, MassacrePartySessionKeyFallback))
+            {
+                if (parsedValue < 0)
+                {
+                    return false;
+                }
+
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Bonus,
+                    source,
+                    rawText,
+                    value1: parsedValue,
+                    packetType: DefaultInboundSessionValueOpcode,
+                    payload: payload);
+                return true;
+            }
+
+            if (parsedValue < 0)
+            {
+                return false;
+            }
+
+            if (sessionValueInfoState != null
+                && sessionValueInfoState.TryApply(key, parsedValue, out bool hasInfoBaseline)
+                && hasInfoBaseline)
+            {
+                message = new MassacrePacketInboxMessage(
+                    MassacrePacketInboxMessageKind.Info,
+                    source,
+                    rawText,
+                    sessionValueInfoState.Hit,
+                    sessionValueInfoState.Miss,
+                    sessionValueInfoState.Cool,
+                    sessionValueInfoState.Skill,
+                    packetType: DefaultInboundSessionValueOpcode,
+                    payload: payload);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodeSessionValuePair(byte[] payload, out string key, out string value)
+        {
+            key = null;
+            value = null;
+            payload ??= Array.Empty<byte>();
+
+            int offset = 0;
+            return TryReadMapleString(payload, ref offset, out key)
+                && TryReadMapleString(payload, ref offset, out value)
+                && offset == payload.Length
+                && !string.IsNullOrWhiteSpace(key);
+        }
+
+        private static bool TryReadMapleString(byte[] payload, ref int offset, out string value)
+        {
+            value = null;
+            if (payload == null || offset < 0 || offset + sizeof(ushort) > payload.Length)
+            {
+                return false;
+            }
+
+            int length = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(offset, sizeof(ushort)));
+            offset += sizeof(ushort);
+            if (length < 0 || offset + length > payload.Length)
+            {
+                return false;
+            }
+
+            value = Encoding.Default.GetString(payload, offset, length);
+            offset += length;
+            return true;
+        }
+
+        internal static bool TryParseClientAtoi(string text, out int value)
+        {
+            value = 0;
+            if (text == null)
+            {
+                return false;
+            }
+
+            int index = 0;
+            while (index < text.Length && char.IsWhiteSpace(text[index]))
+            {
+                index++;
+            }
+
+            int sign = 1;
+            if (index < text.Length && (text[index] == '+' || text[index] == '-'))
+            {
+                sign = text[index] == '-' ? -1 : 1;
+                index++;
+            }
+
+            if (index >= text.Length || !char.IsDigit(text[index]))
+            {
+                return false;
+            }
+
+            long parsed = 0;
+            while (index < text.Length && char.IsDigit(text[index]))
+            {
+                parsed = (parsed * 10) + (text[index] - '0');
+                long signed = parsed * sign;
+                if (signed > int.MaxValue)
+                {
+                    value = int.MaxValue;
+                    return true;
+                }
+
+                if (signed < int.MinValue)
+                {
+                    value = int.MinValue;
+                    return true;
+                }
+
+                index++;
+            }
+
+            value = (int)(parsed * sign);
+            return true;
         }
 
         private void RecordInboundPacket(byte[] rawPacket, MassacrePacketInboxMessage message, string source)

@@ -10311,12 +10311,12 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localoverlay",
                 "Inspect or drive packet-authored local overlays, damage-meter timing, and field-hazard notices",
-                "/localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]",
+                "/localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]",
                 HandlePacketOwnedLocalOverlayCommand);
             _chat.CommandHandler.RegisterCommand(
                 "localoverlaypacket",
                 "Inspect or inject packet-authored field-fade and balloon payloads through the dedicated overlay inbox",
-                "/localoverlaypacket [status|start [port]|stop|packet <fade|fadeoutforce|balloon|damagemeter|hpdec|hazardresult|240|241|243|245|267|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
+                "/localoverlaypacket [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedLocalOverlayInboxCommand);
             _chat.CommandHandler.RegisterCommand(
                 "combopacket",
@@ -11539,7 +11539,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "fieldstate",
                 "Inspect or drive packet-authored field help, quest timers, field-specific data, and object-state flips",
-                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|163|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|163|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <stateIndex|-1|on|off>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|163|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|163|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
@@ -11607,25 +11607,26 @@ namespace HaCreator.MapSimulator
                         case "objectstate":
                             if (args.Length < 3)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate objectstate <tag> <on|off|0|1>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate objectstate <tag> <stateIndex|-1|on|off>");
                             }
 
 
-                            bool? isEnabled = args[2].ToLowerInvariant() switch
+                            int? objectStateIndex = args[2].ToLowerInvariant() switch
                             {
-                                "1" => true,
-                                "on" => true,
-                                "true" => true,
-                                "0" => false,
-                                "off" => false,
-                                "false" => false,
+                                "on" => 1,
+                                "true" => 1,
+                                "off" => 0,
+                                "false" => 0,
                                 _ => null
                             };
-                            if (!isEnabled.HasValue)
+                            int parsedObjectStateIndex = 0;
+                            if (!objectStateIndex.HasValue &&
+                                (!int.TryParse(args[2], out parsedObjectStateIndex) || parsedObjectStateIndex < -1))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate objectstate <tag> <on|off|0|1>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate objectstate <tag> <stateIndex|-1|on|off>");
                             }
 
+                            int stateIndex = objectStateIndex ?? parsedObjectStateIndex;
 
 
                             using (var stream = new MemoryStream())
@@ -11634,7 +11635,7 @@ namespace HaCreator.MapSimulator
                                 byte[] tagBytes = Encoding.ASCII.GetBytes(args[1]);
                                 writer.Write((short)tagBytes.Length);
                                 writer.Write(tagBytes);
-                                writer.Write(isEnabled.Value ? 1 : 0);
+                                writer.Write(stateIndex);
                                 return TryApplyPacketOwnedFieldStatePacket(169, stream.ToArray(), out string objectStateMessage)
                                     ? ChatCommandHandler.CommandResult.Ok(objectStateMessage)
                                     : ChatCommandHandler.CommandResult.Error(objectStateMessage);
@@ -11757,7 +11758,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|163|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|163|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <stateIndex|-1|on|off>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|163|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|163|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
                     }
                 });
 

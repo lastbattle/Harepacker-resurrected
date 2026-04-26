@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Managers
         }
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
+        public int ObservedSentCount { get; private set; }
         public string LastStatus { get; private set; } = "Map transfer official-session bridge inactive.";
 
         public MapTransferOfficialSessionBridgeManager(Func<MapleRoleSessionProxy> roleSessionProxyFactory = null)
@@ -79,7 +80,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? "connected Maple session"
                 : "no active Maple session";
-            return $"Map transfer official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; observed outbound={ObservedOutboundRequestCount}; inbound opcode={MapTransferPacketCodec.InboundResultOpcode}; outbound opcode={MapTransferPacketCodec.OutboundRequestOpcode}. {LastStatus}";
+            return $"Map transfer official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; observed sent={ObservedSentCount}; observed outbound={ObservedOutboundRequestCount}; inbound opcode={MapTransferPacketCodec.InboundResultOpcode}; outbound opcode={MapTransferPacketCodec.OutboundRequestOpcode}. {LastStatus}";
         }
 
         public bool TryStart(int listenPort, string remoteHost, int remotePort, out string status)
@@ -246,6 +247,7 @@ namespace HaCreator.MapSimulator.Managers
                 string.IsNullOrWhiteSpace(source) ? "official-session" : source,
                 rawPacket == null ? string.Empty : Convert.ToHexString(rawPacket));
 
+            ObservedSentCount++;
             status = $"Observed map transfer opcode {MapTransferPacketCodec.OutboundRequestOpcode} from {source ?? "official-session"}.";
             LastStatus = status;
             return true;
@@ -462,14 +464,16 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            TryObserveOutboundRequestPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", out _);
-            LastStatus = _roleSessionProxy.LastStatus;
+            if (!TryObserveOutboundRequestPacket(e.RawPacket, $"official-session:{e.SourceEndpoint}", out _))
+            {
+                LastStatus = _roleSessionProxy.LastStatus;
+            }
         }
 
         private void StopInternal(bool clearPending)
         {
             _roleSessionProxy.Stop(resetCounters: clearPending);
-if (clearPending)
+            if (clearPending)
             {
                 while (_pendingMessages.TryDequeue(out _))
                 {
@@ -482,6 +486,7 @@ if (clearPending)
 
                 ReceivedCount = 0;
                 SentCount = 0;
+                ObservedSentCount = 0;
             }
         }
         private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)

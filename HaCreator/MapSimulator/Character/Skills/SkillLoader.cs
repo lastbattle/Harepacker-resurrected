@@ -2935,13 +2935,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // `LoadShadowPartnerAction` still falls back to plain action-name lookup when an
             // action-specific helper row is missing from Character/00002000.img. Keep mounted
-            // piece rows as first priority, then synthesize remapped attack aliases for any
-            // remaining non-ghost client-initialized rows.
+            // piece rows as first priority, then synthesize built-in piece plans or remapped
+            // aliases for any remaining client-initialized rows.
             foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedFallbackActionNames())
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
-                    || actionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase)
                     || ShadowPartnerClientActionResolver.IsFamilyGatedMountedAliasActionName(actionName)
                     || !ShadowPartnerClientActionResolver.ShouldSynthesizeClientInitializedFallbackAction(actionName))
                 {
@@ -6066,7 +6065,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || property is WzUOLProperty
                    || property is WzIntProperty
                    || property is WzShortProperty
-                   || property is WzLongProperty;
+                   || property is WzLongProperty
+                   || property is WzFloatProperty
+                   || property is WzDoubleProperty;
         }
 
         private static bool LooksLikeClientSummonedUolHeuristicCandidateValue(string value)
@@ -6417,9 +6418,40 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return shortProperty.Value.ToString(CultureInfo.InvariantCulture);
                 case WzLongProperty longProperty when longProperty.Value > 0:
                     return longProperty.Value.ToString(CultureInfo.InvariantCulture);
+                case WzFloatProperty floatProperty when TryFormatClientSummonedUolFloatSkillValue(floatProperty.Value, out string floatValue):
+                    return floatValue;
+                case WzDoubleProperty doubleProperty when TryFormatClientSummonedUolNumericSkillValue(doubleProperty.Value, out string doubleValue):
+                    return doubleValue;
                 default:
                     return null;
             }
+        }
+
+        private static bool TryFormatClientSummonedUolNumericSkillValue(double value, out string formattedValue)
+        {
+            formattedValue = null;
+            if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
+            {
+                return false;
+            }
+
+            double roundedValue = Math.Round(value);
+            if (Math.Abs(value - roundedValue) > double.Epsilon
+                || roundedValue > int.MaxValue)
+            {
+                return false;
+            }
+
+            formattedValue = ((int)roundedValue).ToString(CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        private static bool TryFormatClientSummonedUolFloatSkillValue(float value, out string formattedValue)
+        {
+            formattedValue = null;
+            const int maxConsecutiveIntegerInSinglePrecision = 16_777_216;
+            return value <= maxConsecutiveIntegerInSinglePrecision
+                   && TryFormatClientSummonedUolNumericSkillValue(value, out formattedValue);
         }
 
         private static string[] BuildClientSummonedUolCandidateContextPathParts(
@@ -9678,10 +9710,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.IndieMaxMP = PreferPrimaryStat(levelData.IndieMaxMP, GetInt(node, "mmpX", 0, level));
             levelData.MaxHPPercent = PreferPrimaryStat(GetInt(node, "mhpR", 0, level), GetInt(node, "indieMhpR", 0, level));
             levelData.MaxMPPercent = PreferPrimaryStat(GetInt(node, "mmpR", 0, level), GetInt(node, "indieMmpR", 0, level));
-            levelData.DefensePercent = GetInt(node, "pddR", 0, level);
-            levelData.MagicDefensePercent = GetInt(node, "mddR", 0, level);
-            levelData.AccuracyPercent = GetInt(node, "accR", 0, level);
-            levelData.AvoidabilityPercent = GetInt(node, "evaR", 0, level);
+            levelData.DefensePercent = PreferPrimaryStat(levelData.DefensePercent, GetInt(node, "pddR", 0, level));
+            levelData.MagicDefensePercent = PreferPrimaryStat(levelData.MagicDefensePercent, GetInt(node, "mddR", 0, level));
+            levelData.AccuracyPercent = PreferPrimaryStat(levelData.AccuracyPercent, GetInt(node, "accR", 0, level));
+            levelData.AvoidabilityPercent = PreferPrimaryStat(levelData.AvoidabilityPercent, GetInt(node, "evaR", 0, level));
             levelData.AllStat = GetInt(node, "indieAllStat", 0, level);
             levelData.AbnormalStatusResistance = PreferPrimaryStat(GetInt(node, "asrR", 0, level), GetInt(node, "indieAsrR", 0, level));
             levelData.ElementalResistance = PreferPrimaryStat(GetInt(node, "terR", 0, level), GetInt(node, "indieTerR", 0, level));

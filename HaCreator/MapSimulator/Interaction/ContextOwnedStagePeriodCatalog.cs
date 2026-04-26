@@ -524,8 +524,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (string.IsNullOrWhiteSpace(backgroundSet)
                 || property == null
                 || entries == null
-                || !int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number)
-                || number < 0)
+                || !TryParseClientStageBackObjectKey(property.Name, out int number))
             {
                 return false;
             }
@@ -563,6 +562,50 @@ namespace HaCreator.MapSimulator.Interaction
                 ReadIntWithFallback(property, "z", defaultValue: 0, backImgInfo),
                 spineAnimation,
                 ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo)));
+            return true;
+        }
+
+        private static bool TryParseClientStageBackObjectKey(string name, out int number)
+        {
+            number = 0;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string trimmed = name.TrimStart();
+            int index = 0;
+            int sign = 1;
+            if (trimmed.Length > 0 && (trimmed[0] == '+' || trimmed[0] == '-'))
+            {
+                sign = trimmed[0] == '-' ? -1 : 1;
+                index = 1;
+            }
+
+            long value = 0;
+            bool hasDigit = false;
+            while (index < trimmed.Length && char.IsDigit(trimmed[index]))
+            {
+                hasDigit = true;
+                value = value * 10 + (trimmed[index] - '0');
+                long signedValue = value * sign;
+                if (signedValue > int.MaxValue || signedValue < int.MinValue)
+                {
+                    number = signedValue > 0 ? int.MaxValue : int.MinValue;
+                    return true;
+                }
+
+                index++;
+            }
+
+            if (!hasDigit)
+            {
+                // `LoadStageBackImgInfo` uses `_wtoi`; non-numeric names become key 0.
+                number = 0;
+                return true;
+            }
+
+            number = (int)(value * sign);
             return true;
         }
 

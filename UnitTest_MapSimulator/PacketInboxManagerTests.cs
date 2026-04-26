@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Fields;
 using System.Net;
 using System.Net.Sockets;
 
@@ -94,6 +95,51 @@ namespace UnitTest_MapSimulator
             Assert.Same(message, queuedMessage);
             Assert.Contains("Queued Transport OnContiMove start", manager.LastStatus);
             Assert.Contains("from transport-command", manager.LastStatus);
+        }
+
+        [Fact]
+        public void TransportationField_VoyageBalrogCommand_RecordsTransportOwner()
+        {
+            TransportationField field = new TransportationField();
+            field.Initialize(
+                shipKind: 0,
+                x: 1545,
+                y: -195,
+                x0: 2100,
+                f: 0,
+                tMove: 15,
+                shipPath: "Map/Obj/vehicle.img/ship/ossyria/99");
+            field.LeaveShipMove();
+
+            bool applied = field.TryStartVoyageBalrogAttack(5000, out string message);
+
+            Assert.True(applied, message);
+            Assert.Equal("transport-voyagebalrog-command", field.LastVoyageBalrogEventOwner);
+            Assert.True(field.HasActiveVoyageBalrogAttack);
+            Assert.Contains("voyageBalrogOwner=transport-voyagebalrog-command", field.DescribeStatus());
+        }
+
+        [Fact]
+        public void TransportationField_VoyageBalrogAuto_RecordsWzRouteOwner()
+        {
+            TransportationField field = new TransportationField();
+            field.Initialize(
+                shipKind: 0,
+                x: 1545,
+                y: -195,
+                x0: 2100,
+                f: 0,
+                tMove: 15,
+                shipPath: "Map/Obj/vehicle/ship/ossyria/99");
+            field.LeaveShipMove();
+
+            int triggerTime = Environment.TickCount + field.VoyageBalrogAutoTriggerOffsetMs + 1;
+            field.Update(triggerTime, 0f);
+
+            Assert.True(field.VoyageBalrogAutoTriggered);
+            Assert.Equal("wz-route-auto", field.LastVoyageBalrogEventOwner);
+            Assert.True(field.HasActiveVoyageBalrogAttack);
+            Assert.Contains("voyageBalrogOwner=wz-route-auto", field.DescribeStatus());
         }
 
         [Fact]

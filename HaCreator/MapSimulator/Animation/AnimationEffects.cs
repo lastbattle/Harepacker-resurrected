@@ -87,7 +87,22 @@ namespace HaCreator.MapSimulator.Animation
             public int SimulatedAnimationStateId { get; internal set; }
             public IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode { get; internal set; }
                 = new Dictionary<int, int>();
+
+            internal SecondaryMotionBlurAnimationStateTrace CaptureTrace()
+            {
+                return new SecondaryMotionBlurAnimationStateTrace(
+                    SimulatedAnimationStateId,
+                    TerminateRequested,
+                    IsTerminated,
+                    SimulatedLayerHandleIdsByLayerCode);
+            }
         }
+
+        internal readonly record struct SecondaryMotionBlurAnimationStateTrace(
+            int SimulatedAnimationStateId,
+            bool TerminateRequested,
+            bool IsTerminated,
+            IReadOnlyDictionary<int, int> SimulatedLayerHandleIdsByLayerCode);
 
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
         private readonly List<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayers = new();

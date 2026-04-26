@@ -129,7 +129,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<List<IDXObject>>> _animationDisplayerSkillUseEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<AnimationDisplayerSkillUseAvatarEffectVariant>> _animationDisplayerSkillUseAvatarEffectCache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<(int ItemId, EquipSlot Slot), AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
+        private readonly Dictionary<(int ItemId, EquipSlot Slot, int ClientEquipIndex), AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
         private readonly Dictionary<int, List<AnimationDisplayerFollowRegistrationEntry>> _animationDisplayerFollowAnimationIds = new();
         private readonly Dictionary<int, int> _animationDisplayerFollowRegistrationSignatures = new();
         private readonly Dictionary<int, AnimationDisplayerRemoteGenericUserStateOwnerState> _animationDisplayerRemoteGenericUserStateOwnerStates = new();
@@ -1869,6 +1869,35 @@ namespace HaCreator.MapSimulator
             }
 
             return (actorActionName, actorFacingRight);
+        }
+
+        internal static Vector2 ResolveAnimationDisplayerReservedVisualPosition(
+            Vector2 ownerPosition,
+            AnimationDisplayerReservedEffectMetadata metadata,
+            int registerTime,
+            int currentTime)
+        {
+            Vector2 basePosition = metadata.PositionX.HasValue && metadata.PositionY.HasValue
+                ? new Vector2(metadata.PositionX.Value, metadata.PositionY.Value)
+                : ownerPosition;
+            basePosition = new Vector2(
+                basePosition.X + metadata.OffsetX,
+                basePosition.Y + metadata.OffsetY);
+
+            if (metadata.Type != 0
+                || (metadata.RelativeOffsetX == 0 && metadata.RelativeOffsetY == 0))
+            {
+                return new Vector2(
+                    basePosition.X + metadata.RelativeOffsetX,
+                    basePosition.Y + metadata.RelativeOffsetY);
+            }
+
+            int durationMs = Math.Max(1, metadata.DurationMs);
+            int elapsedMs = Math.Clamp(currentTime - registerTime, 0, durationMs);
+            float t = elapsedMs / (float)durationMs;
+            return new Vector2(
+                basePosition.X + (metadata.RelativeOffsetX * t),
+                basePosition.Y + (metadata.RelativeOffsetY * t));
         }
 
         private bool TryRegisterAnimationDisplayerLocalCooldownReady(int currentTime)
@@ -3662,9 +3691,15 @@ namespace HaCreator.MapSimulator
             if (metadata.Type == 3)
             {
                 consumed = true;
-                _ = TryApplyAnimationDisplayerReservedRemoteUtilityEquipOwnerEffect(
-                    presentation.CharacterId,
-                    metadata.EquippedItemIds);
+                // Client evidence (`RESERVEDINFO::Update`, case 3):
+                // AvatarLook is rebuilt for CUserLocal before CAvatar::SetAvatarLook.
+                if (ShouldApplyAnimationDisplayerReservedLocalOnlyOwnerEffect(
+                        presentation.CharacterId,
+                        localCharacterId))
+                {
+                    _ = TryApplyAnimationDisplayerReservedLocalUtilityEquipOwnerEffect(
+                        metadata.EquippedItemIds);
+                }
             }
 
             if (metadata.Type == 5)
@@ -3783,15 +3818,21 @@ namespace HaCreator.MapSimulator
 
                 if (metadata.PositionX.HasValue && metadata.PositionY.HasValue)
                 {
+                    Func<Vector2> getFixedPosition = () => ResolveAnimationDisplayerReservedVisualPosition(
+                        getPosition(),
+                        metadata,
+                        registerTime,
+                        currTickCount);
+                    Vector2 fallbackFixedPosition = getFixedPosition();
                     int initialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(
                         ownerContext,
                         reservedFrames);
                     _animationEffects.AddOneTimeAttached(
                         reservedFrames,
-                        () => anchor,
+                        getFixedPosition,
                         getFlip: null,
-                        anchor.X,
-                        anchor.Y,
+                        fallbackFixedPosition.X,
+                        fallbackFixedPosition.Y,
                         fallbackFlip: false,
                         registerTime,
                         metadata.LayerZ,
@@ -3803,9 +3844,11 @@ namespace HaCreator.MapSimulator
                 Func<Vector2> getAttachedPosition = () =>
                 {
                     Vector2 ownerPosition = getPosition();
-                    return new Vector2(
-                        ownerPosition.X + metadata.OffsetX + metadata.RelativeOffsetX,
-                        ownerPosition.Y + metadata.OffsetY + metadata.RelativeOffsetY);
+                    return ResolveAnimationDisplayerReservedVisualPosition(
+                        ownerPosition,
+                        metadata,
+                        registerTime,
+                        currTickCount);
                 };
                 Vector2 fallbackPosition = getAttachedPosition();
                 int attachedInitialElapsedMs = ResolveAnimationDisplayerRemotePacketOwnedStringEffectInitialElapsed(
@@ -3948,21 +3991,16 @@ namespace HaCreator.MapSimulator
                 : $"{imageBaseName}/{propertyPath}";
         }
 
-        private bool TryApplyAnimationDisplayerReservedRemoteUtilityEquipOwnerEffect(
-            int characterId,
+        private bool TryApplyAnimationDisplayerReservedLocalUtilityEquipOwnerEffect(
             IReadOnlyList<int> equippedItemIds)
         {
-            if (characterId <= 0
-                || equippedItemIds == null
-                || equippedItemIds.Count <= 0
-                || _remoteUserPool?.TryGetActor(characterId, out RemoteUserActor actor) != true
-                || actor?.Build == null)
-            {
-                return false;
-            }
-
+            PlayerCharacter player = _playerManager?.Player;
             CharacterLoader loader = _playerManager?.Loader;
-            if (loader == null)
+            CharacterBuild build = player?.Build;
+            if (equippedItemIds == null
+                || equippedItemIds.Count <= 0
+                || loader == null
+                || build == null)
             {
                 return false;
             }
@@ -3982,7 +4020,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                actor.Build.Equip(part);
+                build.Equip(part);
                 appliedAnyEquipment = true;
             }
 
@@ -3991,7 +4029,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            actor.RefreshAssembler();
+            player.Assembler?.ClearCache();
             return true;
         }
 
@@ -6864,7 +6902,8 @@ namespace HaCreator.MapSimulator
                 }
 
                 int candidateIdentity = BuildAnimationDisplayerFollowCandidateIdentity(candidate);
-                (int ItemId, EquipSlot Slot) cacheKey = (candidate.ItemId, candidate.Slot);
+                (int ItemId, EquipSlot Slot, int ClientEquipIndex) cacheKey =
+                    BuildAnimationDisplayerFollowEquipmentCacheKey(candidate);
                 if (_animationDisplayerFollowEquipmentCache.TryGetValue(cacheKey, out AnimationDisplayerFollowEquipmentDefinition cachedDefinition))
                 {
                     if (cachedDefinition != null)
@@ -6878,7 +6917,7 @@ namespace HaCreator.MapSimulator
                 AnimationDisplayerFollowEquipmentDefinition loadedDefinition = LoadAnimationDisplayerFollowEquipmentDefinition(
                     candidate.ItemId,
                     candidate.Slot,
-                    candidate.ClientEquipIndex);
+                    cacheKey.ClientEquipIndex);
                 _animationDisplayerFollowEquipmentCache[cacheKey] = loadedDefinition;
                 if (loadedDefinition != null)
                 {
@@ -6922,6 +6961,16 @@ namespace HaCreator.MapSimulator
                 identity = (identity * 31) + (candidate.IsHidden ? 1 : 0);
                 return identity;
             }
+        }
+
+        internal static (int ItemId, EquipSlot Slot, int ClientEquipIndex) BuildAnimationDisplayerFollowEquipmentCacheKey(
+            AnimationDisplayerFollowEquipmentCandidate candidate)
+        {
+            int resolvedClientEquipIndex = candidate.ClientEquipIndex >= 0
+                ? candidate.ClientEquipIndex
+                : ResolveAnimationDisplayerFollowClientEquipIndex(candidate.Slot);
+
+            return (candidate.ItemId, candidate.Slot, resolvedClientEquipIndex);
         }
 
         internal static int BuildAnimationDisplayerFollowCandidateSignature(

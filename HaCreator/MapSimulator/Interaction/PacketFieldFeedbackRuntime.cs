@@ -881,6 +881,17 @@ namespace HaCreator.MapSimulator.Interaction
                         string target = ReadMapleString(reader);
                         byte result = reader.ReadByte();
                         int value = reader.ReadInt32();
+                        int transferX = 0;
+                        int transferY = 0;
+                        bool hasTransferPosition = subtype == 9
+                            && result == 1
+                            && TryReadWhisperFindTransferPosition(reader, stream, out transferX, out transferY);
+                        if (subtype == 9 && result == 1 && !hasTransferPosition)
+                        {
+                            message = "Packet-owned whisper chase response is missing target transfer coordinates.";
+                            return false;
+                        }
+
                         bool hiddenFieldResult = subtype == 9
                             && result == 1
                             && IsWhisperHiddenField(value, callbacks);
@@ -893,7 +904,7 @@ namespace HaCreator.MapSimulator.Interaction
                             && !hiddenFieldResult
                             && chaseTransferArmed
                             && HasWhisperTransferTarget(value, callbacks)
-                            && TryReadWhisperFindTransferPosition(reader, stream, out int transferX, out int transferY))
+                            && hasTransferPosition)
                         {
                             queuedTransfer = callbacks?.QueueMapTransfer?.Invoke(value, transferX, transferY) == true;
                         }

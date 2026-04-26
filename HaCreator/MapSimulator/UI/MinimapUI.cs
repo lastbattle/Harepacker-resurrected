@@ -1270,10 +1270,6 @@ namespace HaCreator.MapSimulator.UI
                 {
                     AddHoverTarget(portal, clientHoverBounds);
                 }
-                else if (!hoverBounds.IsEmpty)
-                {
-                    AddHoverTarget(portal, hoverBounds);
-                }
             }
         }
 
@@ -1642,14 +1638,25 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetClientMarkerHoverBounds(BaseDXDrawableItem marker, Point minimapPoint)
         {
-            if (marker == null || !IsWithinMinimapImage(minimapPoint))
+            if (marker == null)
             {
                 return Rectangle.Empty;
             }
 
-            return ResolveClientMarkerHoverBoundsForTesting(
+            return ResolveClientVisibleMarkerHoverBoundsForTesting(
+                IsWithinMinimapImage(minimapPoint),
                 Position.X + marker.Position.X + minimapPoint.X,
                 Position.Y + marker.Position.Y + minimapPoint.Y);
+        }
+
+        internal static Rectangle ResolveClientVisibleMarkerHoverBoundsForTesting(
+            bool isWithinMinimapImage,
+            int markerScreenX,
+            int markerScreenY)
+        {
+            return isWithinMinimapImage
+                ? ResolveClientMarkerHoverBoundsForTesting(markerScreenX, markerScreenY)
+                : Rectangle.Empty;
         }
 
         private static bool IsClientNpcHoverCandidate(NpcItem npc)

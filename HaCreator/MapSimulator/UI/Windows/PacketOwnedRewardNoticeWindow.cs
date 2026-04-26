@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator.UI
         private const float BodyTopY = 20f;
         private const float BodyLeftX = 20f;
         private const float BodyLineSpacing = 14f;
-        private const int ClientNoticeOkButtonX = 198;
+        private const int ClientNoticeOkButtonX = 156;
         private const int ButtonBottomMargin = 15;
         private const int SeparatorTopFromBottom = 64;
         private const int CloseButtonRightMargin = 8;

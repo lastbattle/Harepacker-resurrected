@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.UI
             string description = ResolveDisplayText(slot.Description, metadata.Description);
             Texture2D itemTexture = ResolveSlotItemTexture(sprite.GraphicsDevice, slot);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
+            Texture2D sampleTexture = ResolveInfoSampleTexture(sprite.GraphicsDevice, slot.ItemId);
 
             int tooltipWidth = ResolveTooltipWidth();
             int textLeftOffset = TooltipPadding + TooltipIconSize + TooltipIconGap;
@@ -138,7 +139,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float iconBlockHeight = Math.Max(TooltipIconSize, contentHeight);
-            int tooltipHeight = (int)Math.Ceiling((TooltipPadding * 2) + titleHeight + TooltipSectionGap + iconBlockHeight);
+            float sampleHeight = sampleTexture?.Height ?? 0f;
+            float sampleGap = sampleHeight > 0f ? TooltipSectionGap : 0f;
+            int tooltipHeight = (int)Math.Ceiling((TooltipPadding * 2) + titleHeight + TooltipSectionGap + iconBlockHeight + sampleGap + sampleHeight);
             Rectangle anchorRect = ResolveHoveredTooltipAnchorRect();
             Point tooltipAnchor = new Point(anchorRect.Right + TooltipOffsetX, anchorRect.Bottom);
             Rectangle backgroundRect = ResolveTooltipRect(
@@ -177,6 +180,13 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 DrawWrappedSections(sprite, textX, sectionY, wrappedSections);
+            }
+
+            if (sampleTexture != null)
+            {
+                int sampleX = backgroundRect.X + Math.Max(TooltipPadding, (backgroundRect.Width - sampleTexture.Width) / 2);
+                int sampleY = contentY + (int)Math.Ceiling(iconBlockHeight) + TooltipSectionGap;
+                sprite.Draw(sampleTexture, new Vector2(sampleX, sampleY), Color.White);
             }
         }
 
@@ -389,6 +399,28 @@ namespace HaCreator.MapSimulator.UI
                                           ?? infoProperty?["icon"] as WzCanvasProperty;
             slot.ItemTexture = iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
             return slot.ItemTexture;
+        }
+
+        private Texture2D ResolveInfoSampleTexture(GraphicsDevice device, int itemId)
+        {
+            if (itemId <= 0 || device == null)
+            {
+                return null;
+            }
+
+            if (_infoSampleTextureCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = null;
+            if (InventoryItemMetadataResolver.TryResolveInfoCanvas(itemId, "sample", out WzCanvasProperty sampleCanvas))
+            {
+                texture = sampleCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            }
+
+            _infoSampleTextureCache[itemId] = texture;
+            return texture;
         }
 
         private int ResolveTooltipWidth()

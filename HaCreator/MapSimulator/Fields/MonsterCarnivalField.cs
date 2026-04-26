@@ -3757,13 +3757,9 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int pendingCount = _pendingGuardianPlacements.Count;
-            List<PendingGuardianPlacement> unmatched = new(pendingCount);
-            bool hasExactSlotTeamMatch = false;
-            PendingGuardianPlacement exactSlotTeamMatch = default;
-            bool hasExactSlotMatch = false;
-            PendingGuardianPlacement exactSlotMatch = default;
-            bool hasTeamMatch = false;
-            PendingGuardianPlacement teamMatch = default;
+            List<PendingGuardianPlacement> pendingPlacements = new(pendingCount);
+            int selectedIndex = -1;
+            int selectedAffinity = -1;
             for (int i = 0; i < pendingCount; i++)
             {
                 PendingGuardianPlacement next = _pendingGuardianPlacements.Dequeue();
@@ -3773,54 +3769,33 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 bool slotMatches = preferredSlotIndex >= 0 && next.Entry.Index == preferredSlotIndex;
-                if (!hasExactSlotTeamMatch && slotMatches && next.Team == team)
+                int affinity = slotMatches && next.Team == team
+                    ? 3
+                    : slotMatches
+                        ? 2
+                        : next.Team == team
+                            ? 1
+                            : 0;
+                pendingPlacements.Add(next);
+                if (affinity > selectedAffinity)
                 {
-                    exactSlotTeamMatch = next;
-                    hasExactSlotTeamMatch = true;
-                    continue;
+                    selectedIndex = pendingPlacements.Count - 1;
+                    selectedAffinity = affinity;
                 }
-
-                if (!hasExactSlotMatch && slotMatches)
-                {
-                    exactSlotMatch = next;
-                    hasExactSlotMatch = true;
-                    continue;
-                }
-
-                if (!hasTeamMatch && next.Team == team)
-                {
-                    teamMatch = next;
-                    hasTeamMatch = true;
-                    continue;
-                }
-
-                unmatched.Add(next);
             }
 
-            if (hasExactSlotTeamMatch || hasExactSlotMatch || hasTeamMatch)
-            {
-                foreach (PendingGuardianPlacement pending in unmatched)
-                {
-                    _pendingGuardianPlacements.Enqueue(pending);
-                }
-
-                placement = hasExactSlotTeamMatch
-                    ? exactSlotTeamMatch
-                    : hasExactSlotMatch
-                        ? exactSlotMatch
-                        : teamMatch;
-                return true;
-            }
-
-            if (unmatched.Count <= 0)
+            if (selectedIndex < 0)
             {
                 return false;
             }
 
-            placement = unmatched[0];
-            for (int i = 1; i < unmatched.Count; i++)
+            placement = pendingPlacements[selectedIndex];
+            for (int i = 0; i < pendingPlacements.Count; i++)
             {
-                _pendingGuardianPlacements.Enqueue(unmatched[i]);
+                if (i != selectedIndex)
+                {
+                    _pendingGuardianPlacements.Enqueue(pendingPlacements[i]);
+                }
             }
 
             return true;
